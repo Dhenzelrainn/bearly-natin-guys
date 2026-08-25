@@ -10,6 +10,8 @@ export default defineConfig({
                 'resources/js/bearly-auth.js',
                 'resources/css/admin.css',
                 'resources/js/admin.js',
+                'resources/css/courier.css',
+                'resources/js/courier.js',
             ],
             refresh: true,
         }),

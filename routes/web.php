@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AdminController;
+use App\Http\Controllers\CourierController;
 use App\Http\Controllers\PsgcController;
 use Illuminate\Support\Facades\Route;
 
@@ -48,4 +49,28 @@ Route::prefix('admin')->name('admin.')->group(function () {
     Route::get('/settings', [AdminController::class, 'settings'])->name('settings');
     Route::get('/messages', [AdminController::class, 'messages'])->name('messages');
     Route::get('/account', [AdminController::class, 'account'])->name('account');
+});
+
+
+/*
+|--------------------------------------------------------------------------
+| Static Courier Front-End Routes
+|--------------------------------------------------------------------------
+| No auth/database middleware is applied yet so the team can preview all
+| courier screens while the project is still in its front-end phase.
+*/
+Route::prefix('courier')->name('courier.')->group(function () {
+    Route::redirect('/', '/courier/dashboard');
+
+    Route::get('/register', [CourierController::class, 'register'])->name('register');
+    Route::get('/pending', [CourierController::class, 'pending'])->name('pending');
+    Route::get('/dashboard', [CourierController::class, 'dashboard'])->name('dashboard');
+    Route::get('/requests', [CourierController::class, 'requests'])->name('requests');
+    Route::get('/pickup', [CourierController::class, 'pickup'])->name('pickup');
+    Route::get('/transit', [CourierController::class, 'transit'])->name('transit');
+    Route::get('/complete', [CourierController::class, 'complete'])->name('complete');
+    Route::get('/earnings', [CourierController::class, 'earnings'])->name('earnings');
+    Route::get('/history', [CourierController::class, 'history'])->name('history');
+    Route::get('/messages', [CourierController::class, 'messages'])->name('messages');
+    Route::get('/account', [CourierController::class, 'account'])->name('account');
 });

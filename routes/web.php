@@ -3,6 +3,7 @@
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\CourierController;
 use App\Http\Controllers\PsgcController;
+use App\Http\Controllers\SellerController;
 use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/login')->name('shop.home');
@@ -73,4 +74,17 @@ Route::prefix('courier')->name('courier.')->group(function () {
     Route::get('/history', [CourierController::class, 'history'])->name('history');
     Route::get('/messages', [CourierController::class, 'messages'])->name('messages');
     Route::get('/account', [CourierController::class, 'account'])->name('account');
+});
+
+/*
+|--------------------------------------------------------------------------
+| Static Seller Front-End Routes
+|--------------------------------------------------------------------------
+| The dashboard uses populated mock data while the seller backend is still
+| being prepared. The remaining navigation items intentionally point to the
+| dashboard for now so the layout can be previewed without broken links.
+*/
+Route::prefix('seller')->name('seller.')->group(function () {
+    Route::redirect('/', '/seller/dashboard');
+    Route::get('/dashboard', [SellerController::class, 'dashboard'])->name('dashboard');
 });

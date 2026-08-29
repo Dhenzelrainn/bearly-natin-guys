@@ -13,9 +13,9 @@
 <body class="seller-body">
 @php
     $sellerNav = [
-        ['label' => 'Dashboard', 'icon' => 'house', 'active' => true],
-        ['label' => 'My Store', 'icon' => 'store'],
-        ['label' => 'Products', 'icon' => 'tag'],
+        ['label' => 'Dashboard', 'icon' => 'house', 'route' => 'seller.dashboard'],
+        ['label' => 'My Store', 'icon' => 'store', 'route' => 'seller.store'],
+        ['label' => 'Products', 'icon' => 'package', 'route' => 'seller.products'],
         ['label' => 'Orders', 'icon' => 'shopping-bag'],
         ['label' => 'Inventory', 'icon' => 'package'],
         ['label' => 'Deliveries', 'icon' => 'truck'],
@@ -43,9 +43,10 @@
 </a>
         <nav class="seller-nav" aria-label="Seller navigation">
             @foreach ($sellerNav as $item)
-                <a href="{{ ($item['active'] ?? false) ? route('seller.dashboard') : '#' }}"
-                   class="seller-nav-link {{ $item['active'] ?? false ? 'is-active' : '' }}"
-                   @unless($item['active'] ?? false) data-preview-link="{{ $item['label'] }}" @endunless>
+                @php($isActive = isset($item['route']) && request()->routeIs($item['route']))
+                <a href="{{ isset($item['route']) ? route($item['route']) : '#' }}"
+                   class="seller-nav-link {{ $isActive ? 'is-active' : '' }}"
+                   @unless(isset($item['route'])) data-preview-link="{{ $item['label'] }}" @endunless>
                     <i data-lucide="{{ $item['icon'] }}"></i>
                     <span>{{ $item['label'] }}</span>
                 </a>
@@ -106,6 +107,9 @@
 </div>
 
 <div class="seller-toast" data-seller-toast role="status" aria-live="polite"></div>
+@if (session('success'))
+    <div class="seller-toast is-visible" data-server-toast role="status">{{ session('success') }}</div>
+@endif
 <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
 </body>
 </html>

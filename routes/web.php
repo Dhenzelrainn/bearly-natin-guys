@@ -87,4 +87,9 @@ Route::prefix('courier')->name('courier.')->group(function () {
 Route::prefix('seller')->name('seller.')->group(function () {
     Route::redirect('/', '/seller/dashboard');
     Route::get('/dashboard', [SellerController::class, 'dashboard'])->name('dashboard');
+    Route::get('/store', [SellerController::class, 'store'])->name('store');
+    Route::post('/store', [SellerController::class, 'saveStore'])->name('store.save');
+    Route::get('/products', [SellerController::class, 'products'])->name('products');
+    Route::post('/products', [SellerController::class, 'addProduct'])->name('products.add');
+    Route::patch('/products/{product}/archive', [SellerController::class, 'toggleProductArchive'])->name('products.archive');
 });

@@ -43,11 +43,11 @@
 </a>
         <nav class="seller-nav" aria-label="Seller navigation">
             @foreach ($sellerNav as $item)
-                @php($isActive = isset($item['route']) && request()->routeIs($item['route']))
+                @php($isActive = isset($item['route']) && request()->routeIs($item['route'], $item['route'].'.*'))
                 <a href="{{ isset($item['route']) ? route($item['route']) : '#' }}"
                    class="seller-nav-link {{ $isActive ? 'is-active' : '' }}"
                    @unless(isset($item['route'])) data-preview-link="{{ $item['label'] }}" @endunless>
-                    <i data-lucide="{{ $item['icon'] }}"></i>
+                    <i class="seller-ui-icon" data-lucide="{{ $item['icon'] }}" aria-hidden="true"></i>
                     <span>{{ $item['label'] }}</span>
                 </a>
             @endforeach
@@ -55,7 +55,7 @@
 
         <div class="seller-sidebar-footer">
             <a href="{{ route('login') }}" class="seller-nav-link seller-logout">
-                <i data-lucide="log-out"></i><span>Logout</span>
+                <i class="seller-ui-icon" data-lucide="log-out" aria-hidden="true"></i><span>Logout</span>
             </a>
         </div>
     </aside>
@@ -66,14 +66,14 @@
         <header class="seller-topbar">
             <div class="seller-topbar-left">
                 <button class="seller-icon-button seller-menu-button" type="button" data-seller-menu aria-label="Open seller navigation">
-                    <i data-lucide="menu"></i>
+                    <i class="seller-ui-icon" data-lucide="menu" aria-hidden="true"></i>
                 </button>
                 <h1>@yield('page-title', 'Seller Dashboard')</h1>
             </div>
             <div class="seller-topbar-actions">
                 <div class="seller-popover-wrap">
                     <button class="seller-icon-button notification-trigger" type="button" data-seller-popover-toggle="notifications" aria-label="Open notifications">
-                        <i data-lucide="bell"></i><span></span>
+                        <i class="seller-ui-icon" data-lucide="bell" aria-hidden="true"></i><span></span>
                     </button>
                     <div class="seller-popover notification-popover" data-seller-popover="notifications" hidden>
                         <div class="seller-popover-heading"><strong>Notifications</strong><small>{{ count($notifications ?? []) }} new</small></div>
@@ -90,13 +90,13 @@
                     <button class="seller-profile-button" type="button" data-seller-popover-toggle="profile">
                         <span class="seller-avatar">{{ $seller['initials'] ?? 'BR' }}</span>
                         <span class="seller-profile-name">{{ $seller['name'] ?? 'Bearly Seller' }}</span>
-                        <i data-lucide="chevron-down"></i>
+                        <i class="seller-ui-icon" data-lucide="chevron-down" aria-hidden="true"></i>
                     </button>
                     <div class="seller-popover profile-popover" data-seller-popover="profile" hidden>
                         <strong>{{ $seller['name'] ?? 'Bearly Seller' }}</strong>
                         <small>{{ $seller['email'] ?? 'seller@bearly.test' }}</small>
-                        <a href="#" data-preview-link="Account"><i data-lucide="user-round-cog"></i> Account settings</a>
-                        <a href="{{ route('login') }}"><i data-lucide="log-out"></i> Logout</a>
+                        <a href="#" data-preview-link="Account"><i class="seller-ui-icon" data-lucide="user-round-cog" aria-hidden="true"></i> Account settings</a>
+                        <a href="{{ route('login') }}"><i class="seller-ui-icon" data-lucide="log-out" aria-hidden="true"></i> Logout</a>
                     </div>
                 </div>
             </div>

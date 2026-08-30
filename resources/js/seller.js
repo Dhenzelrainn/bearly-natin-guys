@@ -60,6 +60,47 @@ const bootSeller = () => {
         if (descriptionCount) descriptionCount.textContent = description.value.length;
     });
 
+    const productDescription = document.querySelector('[data-product-description]');
+    const productDescriptionCount = document.querySelector('[data-product-description-count]');
+    productDescription?.addEventListener('input', () => {
+        if (productDescriptionCount) productDescriptionCount.textContent = productDescription.value.length;
+    });
+
+    const productPrice = document.querySelector('[data-product-price]');
+    const productDiscount = document.querySelector('[data-product-discount]');
+    const productSalePrice = document.querySelector('[data-sale-price]');
+    const updateSalePrice = () => {
+        if (!productSalePrice) return;
+        const price = Math.max(0, Number(productPrice?.value || 0));
+        const discount = Math.min(90, Math.max(0, Number(productDiscount?.value || 0)));
+        const salePrice = price * (1 - (discount / 100));
+        productSalePrice.textContent = `₱${salePrice.toLocaleString('en-PH', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        })}`;
+    };
+    productPrice?.addEventListener('input', updateSalePrice);
+    productDiscount?.addEventListener('input', updateSalePrice);
+
+    const productImageInput = document.querySelector('[data-product-image-input]');
+    productImageInput?.addEventListener('change', () => {
+        const file = productImageInput.files?.[0];
+        const preview = document.querySelector('[data-product-image-preview]');
+        if (!file || !preview) return;
+        const image = document.createElement('img');
+        image.alt = 'Selected product preview';
+        image.src = URL.createObjectURL(file);
+        image.addEventListener('load', () => URL.revokeObjectURL(image.src), { once: true });
+        preview.replaceChildren(image);
+    });
+
+    const galleryInput = document.querySelector('input[name="gallery_images[]"]');
+    galleryInput?.addEventListener('change', () => {
+        const exceedsLimit = (galleryInput.files?.length ?? 0) > 4;
+        galleryInput.setCustomValidity(exceedsLimit ? 'Choose up to four gallery images only.' : '');
+        if (exceedsLimit) galleryInput.reportValidity();
+    });
+
     document.querySelectorAll('[data-photo-input]').forEach((input) => {
         input.addEventListener('change', () => {
             const file = input.files?.[0];
@@ -91,7 +132,6 @@ const bootSeller = () => {
         const noResults = document.querySelector('[data-no-results]');
         if (noResults) noResults.hidden = visible > 0;
     };
-    document.querySelector('[data-apply-filter]')?.addEventListener('click', applyProductFilters);
     document.querySelector('[data-product-search]')?.addEventListener('input', applyProductFilters);
     document.querySelectorAll('[data-product-category],[data-product-status]').forEach((select) => select.addEventListener('change', applyProductFilters));
 

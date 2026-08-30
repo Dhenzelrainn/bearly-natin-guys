@@ -6,7 +6,7 @@ use App\Http\Controllers\PsgcController;
 use App\Http\Controllers\SellerController;
 use Illuminate\Support\Facades\Route;
 
-Route::redirect('/', '/login')->name('shop.home');
+Route::view('/', 'auth.login')->name('shop.home');
 
 Route::view('/login', 'auth.login')->name('login');
 Route::view('/register', 'auth.register')->name('register');
@@ -34,8 +34,8 @@ Route::prefix('api/psgc')
 |--------------------------------------------------------------------------
 | Static Admin Front-End Routes
 |--------------------------------------------------------------------------
-| No auth/database middleware is applied yet so the team can preview all
-| admin screens while the project is still in its front-end phase.
+| These preview screens remain publicly accessible while the UI is still in
+| the front-end stage and backend authentication is not yet implemented.
 */
 Route::prefix('admin')->name('admin.')->group(function () {
     Route::redirect('/', '/admin/dashboard');
@@ -57,8 +57,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
 |--------------------------------------------------------------------------
 | Static Courier Front-End Routes
 |--------------------------------------------------------------------------
-| No auth/database middleware is applied yet so the team can preview all
-| courier screens while the project is still in its front-end phase.
+| These preview screens remain public while the project is still focused on
+| front-end design and layout work.
 */
 Route::prefix('courier')->name('courier.')->group(function () {
     Route::redirect('/', '/courier/dashboard');
@@ -80,9 +80,8 @@ Route::prefix('courier')->name('courier.')->group(function () {
 |--------------------------------------------------------------------------
 | Static Seller Front-End Routes
 |--------------------------------------------------------------------------
-| The dashboard uses populated mock data while the seller backend is still
-| being prepared. The remaining navigation items intentionally point to the
-| dashboard for now so the layout can be previewed without broken links.
+| These preview screens remain public so the team can continue working on the
+| seller interface before backend authentication is implemented.
 */
 Route::prefix('seller')->name('seller.')->group(function () {
     Route::redirect('/', '/seller/dashboard');
@@ -90,6 +89,9 @@ Route::prefix('seller')->name('seller.')->group(function () {
     Route::get('/store', [SellerController::class, 'store'])->name('store');
     Route::post('/store', [SellerController::class, 'saveStore'])->name('store.save');
     Route::get('/products', [SellerController::class, 'products'])->name('products');
+    Route::get('/products/create', [SellerController::class, 'createProduct'])->name('products.create');
     Route::post('/products', [SellerController::class, 'addProduct'])->name('products.add');
+    Route::get('/products/{product}/edit', [SellerController::class, 'editProduct'])->name('products.edit');
+    Route::put('/products/{product}', [SellerController::class, 'updateProduct'])->name('products.update');
     Route::patch('/products/{product}/archive', [SellerController::class, 'toggleProductArchive'])->name('products.archive');
 });

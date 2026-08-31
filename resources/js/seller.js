@@ -135,6 +135,324 @@ const bootSeller = () => {
     document.querySelector('[data-product-search]')?.addEventListener('input', applyProductFilters);
     document.querySelectorAll('[data-product-category],[data-product-status]').forEach((select) => select.addEventListener('change', applyProductFilters));
 
+    /* Orders page: frontend-only filtering, selection, and preview actions. */
+    const orderWorkspace = document.querySelector('[data-orders-workspace]');
+
+    if (orderWorkspace) {
+        let activeOrderStatus = 'all';
+        const orderRows = [...orderWorkspace.querySelectorAll('[data-order-row]')];
+        const orderSearch = orderWorkspace.querySelector('[data-order-search]');
+        const orderDate = orderWorkspace.querySelector('[data-order-date]');
+        const orderPayment = orderWorkspace.querySelector('[data-order-payment]');
+        const orderCheckAll = orderWorkspace.querySelector('[data-order-check-all]');
+        const selectedCount = orderWorkspace.querySelector('[data-order-selected-count]');
+        const visibleCount = orderWorkspace.querySelector('[data-order-visible-count]');
+        const noResults = orderWorkspace.querySelector('[data-orders-no-results]');
+        const bulkButtons = [...orderWorkspace.querySelectorAll('[data-order-bulk-action]')];
+
+        const updateOrderSelection = () => {
+            const visibleChecks = orderRows
+                .filter((row) => !row.hidden)
+                .map((row) => row.querySelector('[data-order-check]'));
+            const checked = orderRows.filter((row) => row.querySelector('[data-order-check]')?.checked).length;
+
+            if (selectedCount) selectedCount.textContent = checked;
+            bulkButtons.forEach((button) => { button.disabled = checked === 0; });
+
+            if (orderCheckAll) {
+                orderCheckAll.checked = visibleChecks.length > 0 && visibleChecks.every((check) => check?.checked);
+                orderCheckAll.indeterminate = visibleChecks.some((check) => check?.checked) && !orderCheckAll.checked;
+            }
+        };
+
+        const applyOrderFilters = () => {
+            const search = orderSearch?.value.trim().toLowerCase() ?? '';
+            const date = orderDate?.value ?? '';
+            const payment = orderPayment?.value ?? '';
+            let visible = 0;
+
+            orderRows.forEach((row) => {
+                const matches = (activeOrderStatus === 'all' || row.dataset.status === activeOrderStatus)
+                    && (!search || row.dataset.search.includes(search))
+                    && (!date || row.dataset.date === date)
+                    && (!payment || row.dataset.payment === payment);
+
+                row.hidden = !matches;
+                if (matches) visible += 1;
+            });
+
+            if (visibleCount) visibleCount.textContent = visible;
+            if (noResults) noResults.hidden = visible > 0;
+            updateOrderSelection();
+        };
+
+        orderWorkspace.querySelectorAll('[data-order-tab]').forEach((tab) => {
+            tab.addEventListener('click', () => {
+                activeOrderStatus = tab.dataset.orderTab;
+                orderWorkspace.querySelectorAll('[data-order-tab]').forEach((item) => {
+                    const active = item === tab;
+                    item.classList.toggle('is-active', active);
+                    item.setAttribute('aria-selected', String(active));
+                });
+                applyOrderFilters();
+            });
+        });
+
+        orderSearch?.addEventListener('input', applyOrderFilters);
+        orderDate?.addEventListener('change', applyOrderFilters);
+        orderPayment?.addEventListener('change', applyOrderFilters);
+
+        orderWorkspace.querySelector('[data-order-reset]')?.addEventListener('click', () => {
+            if (orderSearch) orderSearch.value = '';
+            if (orderDate) orderDate.value = '';
+            if (orderPayment) orderPayment.value = '';
+            activeOrderStatus = 'all';
+            orderWorkspace.querySelectorAll('[data-order-tab]').forEach((tab) => {
+                const active = tab.dataset.orderTab === 'all';
+                tab.classList.toggle('is-active', active);
+                tab.setAttribute('aria-selected', String(active));
+            });
+            applyOrderFilters();
+        });
+
+        orderCheckAll?.addEventListener('change', () => {
+            orderRows.filter((row) => !row.hidden).forEach((row) => {
+                const checkbox = row.querySelector('[data-order-check]');
+                if (checkbox) checkbox.checked = orderCheckAll.checked;
+            });
+            updateOrderSelection();
+        });
+
+        orderRows.forEach((row) => row.querySelector('[data-order-check]')?.addEventListener('change', updateOrderSelection));
+
+        bulkButtons.forEach((button) => button.addEventListener('click', () => {
+            const count = Number(selectedCount?.textContent ?? 0);
+            if (!toast || count === 0) return;
+            toast.textContent = `${button.dataset.orderBulkAction} is ready for ${count} selected order${count === 1 ? '' : 's'} (preview only).`;
+            toast.classList.add('is-visible');
+            window.clearTimeout(window.sellerToastTimer);
+            window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3000);
+        }));
+
+        applyOrderFilters();
+    }
+
+    document.querySelectorAll('[data-order-demo]').forEach((button) => {
+        button.addEventListener('click', () => {
+            if (!toast) return;
+            toast.textContent = `${button.dataset.orderDemo} Frontend preview only.`;
+            toast.classList.add('is-visible');
+            window.clearTimeout(window.sellerToastTimer);
+            window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3000);
+        });
+    });
+
+    document.querySelectorAll('[data-order-details]').forEach((button) => {
+        button.addEventListener('click', () => {
+            const modal = document.querySelector('[data-modal="order-details"]');
+            if (!modal) return;
+            const orderId = modal.querySelector('[data-order-detail-id]');
+            if (orderId) orderId.textContent = button.dataset.orderDetails;
+            modal.hidden = false;
+            document.body.style.overflow = 'hidden';
+        });
+    });
+
+
+    /* Inventory page — frontend-only controls and non-persistent stock preview. */
+    const inventoryWorkspace = document.querySelector('[data-inventory-workspace]');
+
+    if (inventoryWorkspace) {
+        let activeInventoryStatus = 'all';
+        const inventoryRows = [...inventoryWorkspace.querySelectorAll('[data-inventory-row]')];
+        const inventorySearch = inventoryWorkspace.querySelector('[data-inventory-search]');
+        const inventoryCategory = inventoryWorkspace.querySelector('[data-inventory-category]');
+        const inventoryStatus = inventoryWorkspace.querySelector('[data-inventory-status]');
+        const showVariations = inventoryWorkspace.querySelector('[data-inventory-variations]');
+        const checkAll = inventoryWorkspace.querySelector('[data-inventory-check-all]');
+        const selectedCount = inventoryWorkspace.querySelector('[data-inventory-selected-count]');
+        const visibleCount = inventoryWorkspace.querySelector('[data-inventory-visible-count]');
+        const noResults = inventoryWorkspace.querySelector('[data-inventory-no-results]');
+        const bulkButtons = [...inventoryWorkspace.querySelectorAll('[data-inventory-bulk]')];
+
+        const updateInventorySelection = () => {
+            const visibleChecks = inventoryRows
+                .filter((row) => !row.hidden)
+                .map((row) => row.querySelector('[data-inventory-check]'));
+            const checked = inventoryRows.filter((row) => row.querySelector('[data-inventory-check]')?.checked).length;
+
+            if (selectedCount) selectedCount.textContent = checked;
+            bulkButtons.forEach((button) => { button.disabled = checked === 0; });
+
+            if (checkAll) {
+                checkAll.checked = visibleChecks.length > 0 && visibleChecks.every((checkbox) => checkbox?.checked);
+                checkAll.indeterminate = visibleChecks.some((checkbox) => checkbox?.checked) && !checkAll.checked;
+            }
+        };
+
+        const applyInventoryFilters = () => {
+            const search = inventorySearch?.value.trim().toLowerCase() ?? '';
+            const category = inventoryCategory?.value ?? '';
+            const selectedStatus = inventoryStatus?.value ?? '';
+            const variationsVisible = showVariations?.checked ?? true;
+            let visible = 0;
+
+            inventoryRows.forEach((row) => {
+                const matches = (activeInventoryStatus === 'all' || row.dataset.status === activeInventoryStatus)
+                    && (!selectedStatus || row.dataset.status === selectedStatus)
+                    && (!search || row.dataset.search.includes(search))
+                    && (!category || row.dataset.category === category)
+                    && (variationsVisible || row.dataset.variationRow !== 'true');
+
+                row.hidden = !matches;
+                if (matches) visible += 1;
+            });
+
+            if (visibleCount) visibleCount.textContent = visible;
+            if (noResults) noResults.hidden = visible > 0;
+            updateInventorySelection();
+        };
+
+        inventoryWorkspace.querySelectorAll('[data-inventory-tab]').forEach((tab) => {
+            tab.addEventListener('click', () => {
+                activeInventoryStatus = tab.dataset.inventoryTab;
+                inventoryWorkspace.querySelectorAll('[data-inventory-tab]').forEach((item) => {
+                    const active = item === tab;
+                    item.classList.toggle('is-active', active);
+                    item.setAttribute('aria-selected', String(active));
+                });
+                applyInventoryFilters();
+            });
+        });
+
+        inventorySearch?.addEventListener('input', applyInventoryFilters);
+        inventoryCategory?.addEventListener('change', applyInventoryFilters);
+        inventoryStatus?.addEventListener('change', applyInventoryFilters);
+        showVariations?.addEventListener('change', applyInventoryFilters);
+
+        inventoryWorkspace.querySelector('[data-inventory-reset]')?.addEventListener('click', () => {
+            if (inventorySearch) inventorySearch.value = '';
+            if (inventoryCategory) inventoryCategory.value = '';
+            if (inventoryStatus) inventoryStatus.value = '';
+            if (showVariations) showVariations.checked = true;
+            activeInventoryStatus = 'all';
+
+            inventoryWorkspace.querySelectorAll('[data-inventory-tab]').forEach((tab) => {
+                const active = tab.dataset.inventoryTab === 'all';
+                tab.classList.toggle('is-active', active);
+                tab.setAttribute('aria-selected', String(active));
+            });
+
+            applyInventoryFilters();
+        });
+
+        checkAll?.addEventListener('change', () => {
+            inventoryRows.filter((row) => !row.hidden).forEach((row) => {
+                const checkbox = row.querySelector('[data-inventory-check]');
+                if (checkbox) checkbox.checked = checkAll.checked;
+            });
+            updateInventorySelection();
+        });
+
+        inventoryRows.forEach((row) => row.querySelector('[data-inventory-check]')?.addEventListener('change', updateInventorySelection));
+
+        bulkButtons.forEach((button) => button.addEventListener('click', () => {
+            const count = Number(selectedCount?.textContent ?? 0);
+            if (!toast || count === 0) return;
+            toast.textContent = `${button.dataset.inventoryBulk} selected for ${count} inventory item${count === 1 ? '' : 's'} (preview only).`;
+            toast.classList.add('is-visible');
+            window.clearTimeout(window.sellerToastTimer);
+            window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3000);
+        }));
+
+        applyInventoryFilters();
+    }
+
+    const adjustModal = document.querySelector('[data-modal="inventory-adjust"]');
+    const adjustItemId = adjustModal?.querySelector('[data-adjust-item-id]');
+    const adjustItemLabel = adjustModal?.querySelector('[data-adjust-item-label]');
+    const adjustCurrent = adjustModal?.querySelector('[data-adjust-current]');
+    const adjustMode = adjustModal?.querySelector('[data-adjust-mode]');
+    const adjustQuantity = adjustModal?.querySelector('[data-adjust-quantity]');
+
+    document.querySelectorAll('[data-adjust-stock]').forEach((button) => {
+        button.addEventListener('click', () => {
+            const row = button.closest('[data-inventory-row]');
+            if (!adjustModal || !row) return;
+            if (adjustItemId) adjustItemId.value = button.dataset.itemId;
+            if (adjustItemLabel) adjustItemLabel.textContent = button.dataset.itemLabel;
+            if (adjustCurrent) adjustCurrent.textContent = row.dataset.onHand;
+            if (adjustMode) adjustMode.value = 'add';
+            if (adjustQuantity) adjustQuantity.value = '1';
+            adjustModal.hidden = false;
+            document.body.style.overflow = 'hidden';
+            adjustQuantity?.focus();
+        });
+    });
+
+    adjustModal?.querySelector('[data-apply-stock-adjustment]')?.addEventListener('click', () => {
+        const row = document.querySelector(`[data-inventory-row][data-id="${adjustItemId?.value}"]`);
+        if (!row) return;
+
+        const current = Math.max(0, Number(row.dataset.onHand || 0));
+        const reserved = Math.max(0, Number(row.dataset.reserved || 0));
+        const threshold = Math.max(0, Number(row.dataset.threshold || 0));
+        const quantity = Math.max(0, Math.floor(Number(adjustQuantity?.value || 0)));
+        let next = current;
+
+        if (adjustMode?.value === 'add') next = current + quantity;
+        if (adjustMode?.value === 'remove') next = Math.max(0, current - quantity);
+        if (adjustMode?.value === 'set') next = quantity;
+
+        const available = Math.max(0, next - reserved);
+        const statusKey = available === 0 ? 'out-of-stock' : available <= threshold ? 'low-stock' : 'in-stock';
+        const statusLabel = statusKey === 'out-of-stock' ? 'Out of Stock' : statusKey === 'low-stock' ? 'Low Stock' : 'In Stock';
+        const status = row.querySelector('[data-stock-status]');
+        const availableCell = row.querySelector('[data-stock-available]');
+
+        row.dataset.onHand = String(next);
+        row.dataset.status = statusKey;
+        if (row.querySelector('[data-stock-on-hand]')) row.querySelector('[data-stock-on-hand]').textContent = next;
+        if (availableCell) {
+            availableCell.textContent = available;
+            availableCell.classList.toggle('is-empty', available === 0);
+        }
+        if (status) {
+            status.textContent = statusLabel;
+            status.className = `inventory-stock-badge stock-${statusKey}`;
+        }
+
+        const action = row.querySelector('[data-adjust-stock]');
+        if (action) action.textContent = available === 0 ? 'Restock' : 'Adjust Stock';
+        if (adjustModal) adjustModal.hidden = true;
+        document.body.style.overflow = '';
+
+        if (toast) {
+            toast.textContent = `Stock preview updated to ${next}. Refreshing the page will reset this change.`;
+            toast.classList.add('is-visible');
+            window.clearTimeout(window.sellerToastTimer);
+            window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3400);
+        }
+
+        inventoryWorkspace?.querySelector('[data-inventory-search]')?.dispatchEvent(new Event('input'));
+    });
+
+    document.querySelector('[data-inventory-alerts]')?.addEventListener('click', () => {
+        document.querySelector('[data-inventory-tab="low-stock"]')?.click();
+        document.querySelector('[data-inventory-workspace]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+
+    document.querySelectorAll('[data-inventory-demo]').forEach((button) => {
+        button.addEventListener('click', () => {
+            if (!toast) return;
+            toast.textContent = `${button.dataset.inventoryDemo} Frontend preview only.`;
+            toast.classList.add('is-visible');
+            window.clearTimeout(window.sellerToastTimer);
+            window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3000);
+        });
+    });
+
+
     const serverToast = document.querySelector('[data-server-toast]');
     if (serverToast) window.setTimeout(() => serverToast.classList.remove('is-visible'), 3200);
 };

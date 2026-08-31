@@ -39,10 +39,10 @@ class SellerController extends Controller
                 'action_count' => 18,
                 'pickup_time' => '3:00 PM',
                 'tasks' => [
-                    ['count' => 8, 'label' => 'Awaiting review', 'action' => 'Review orders', 'icon' => 'clipboard-list', 'tone' => 'amber', 'target' => '#recent-orders'],
-                    ['count' => 5, 'label' => 'To prepare by 1:30 PM', 'action' => 'Prepare orders', 'icon' => 'package', 'tone' => 'olive', 'target' => '#recent-orders'],
-                    ['count' => 3, 'label' => 'Waybills to print', 'action' => 'Print waybills', 'icon' => 'printer', 'tone' => 'brown', 'target' => '#order-status'],
-                    ['count' => 2, 'label' => 'Pickup requests', 'action' => 'Schedule pickup', 'icon' => 'truck', 'tone' => 'green', 'target' => '#delivery-monitoring'],
+                    ['count' => 8, 'label' => 'Need review', 'action' => 'Open orders', 'icon' => 'clipboard-list', 'tone' => 'amber', 'target' => route('seller.orders')],
+                    ['count' => 5, 'label' => 'Ready to pack', 'action' => 'Fulfill orders', 'icon' => 'package', 'tone' => 'olive', 'target' => route('seller.orders')],
+                    ['count' => 3, 'label' => 'Low stock', 'action' => 'Review inventory', 'icon' => 'triangle-alert', 'tone' => 'brown', 'target' => route('seller.inventory')],
+                    ['count' => 2, 'label' => 'Store upkeep', 'action' => 'Edit store', 'icon' => 'store', 'tone' => 'green', 'target' => route('seller.store')],
                 ],
             ],
             'stats' => [
@@ -87,6 +87,74 @@ class SellerController extends Controller
                     ['customer' => 'Maria Santos', 'initials' => 'MS', 'rating' => '5.0', 'comment' => 'Great quality and fast preparation.'],
                     ['customer' => 'Carlo Reyes', 'initials' => 'CR', 'rating' => '4.0', 'comment' => 'Item arrived in good condition.'],
                 ],
+            ],
+        ]);
+    }
+
+    public function inventory(): View
+    {
+        return view('seller.inventory', [
+            'seller' => $this->seller(),
+            'notifications' => $this->notifications(),
+            'inventoryTotal' => 48,
+            'inventorySummary' => [
+                ['label' => 'Total SKUs', 'value' => '48', 'note' => '24 active products', 'icon' => 'box', 'tone' => 'neutral'],
+                ['label' => 'Available Units', 'value' => '1,246', 'note' => 'Across all variations', 'icon' => 'package-check', 'tone' => 'success'],
+                ['label' => 'Low Stock', 'value' => '5', 'note' => 'Below threshold', 'icon' => 'triangle-alert', 'tone' => 'warning'],
+                ['label' => 'Out of Stock', 'value' => '2', 'note' => 'Needs restocking', 'icon' => 'circle-x', 'tone' => 'danger'],
+            ],
+            'inventoryAttention' => ['total' => 7, 'low' => 5, 'out' => 2],
+            'inventoryTabs' => [
+                ['key' => 'all', 'label' => 'All Inventory', 'count' => 48],
+                ['key' => 'low-stock', 'label' => 'Low Stock', 'count' => 5],
+                ['key' => 'out-of-stock', 'label' => 'Out of Stock', 'count' => 2],
+                ['key' => 'archived', 'label' => 'Archived', 'count' => null],
+            ],
+            'inventoryCategories' => ['Fashion and Apparel'],
+            'inventoryItems' => [
+                ['id' => 'inv-1', 'parent' => 'classic-linen-shirt', 'variation_row' => false, 'product' => 'Classic Linen Shirt', 'sku' => 'CLS-OLV-M', 'variation' => 'Olive / Medium', 'category' => 'Fashion and Apparel', 'icon' => 'shirt', 'on_hand' => 12, 'reserved' => 3, 'available' => 9, 'threshold' => 5, 'status' => 'In Stock', 'status_key' => 'in-stock'],
+                ['id' => 'inv-2', 'parent' => 'classic-linen-shirt', 'variation_row' => true, 'product' => 'Classic Linen Shirt', 'sku' => 'CLS-CRM-L', 'variation' => 'Cream / Large', 'category' => 'Fashion and Apparel', 'icon' => 'shirt', 'on_hand' => 6, 'reserved' => 2, 'available' => 4, 'threshold' => 5, 'status' => 'Low Stock', 'status_key' => 'low-stock'],
+                ['id' => 'inv-3', 'parent' => 'canvas-tote-bag', 'variation_row' => false, 'product' => 'Canvas Tote Bag', 'sku' => 'CTB-NAT-OS', 'variation' => 'Natural / One Size', 'category' => 'Fashion and Apparel', 'icon' => 'shopping-bag', 'on_hand' => 7, 'reserved' => 5, 'available' => 2, 'threshold' => 4, 'status' => 'Low Stock', 'status_key' => 'low-stock'],
+                ['id' => 'inv-4', 'parent' => 'everyday-sneakers', 'variation_row' => false, 'product' => 'Everyday Sneakers', 'sku' => 'ES-WHT-38', 'variation' => 'White / Size 38', 'category' => 'Fashion and Apparel', 'icon' => 'footprints', 'on_hand' => 0, 'reserved' => 0, 'available' => 0, 'threshold' => 3, 'status' => 'Out of Stock', 'status_key' => 'out-of-stock'],
+                ['id' => 'inv-5', 'parent' => 'everyday-sneakers', 'variation_row' => true, 'product' => 'Everyday Sneakers', 'sku' => 'ES-BLK-40', 'variation' => 'Black / Size 40', 'category' => 'Fashion and Apparel', 'icon' => 'footprints', 'on_hand' => 18, 'reserved' => 4, 'available' => 14, 'threshold' => 3, 'status' => 'In Stock', 'status_key' => 'in-stock'],
+            ],
+            'stockMovements' => [
+                ['date' => 'Aug 31, 2026 · 10:30 AM', 'type' => 'Order Deduction', 'tone' => 'order', 'product' => 'Classic Linen Shirt', 'sku' => 'CLS-OLV-M', 'variation' => 'Olive / Medium', 'reference' => 'Order #BR-1058', 'quantity' => '−2', 'direction' => 'negative', 'balance' => 12, 'actor' => 'System'],
+                ['date' => 'Aug 31, 2026 · 9:15 AM', 'type' => 'Reservation', 'tone' => 'reservation', 'product' => 'Canvas Tote Bag', 'sku' => 'CTB-NAT-OS', 'variation' => 'Natural / One Size', 'reference' => 'Order #BR-1057', 'quantity' => '−1', 'direction' => 'negative', 'balance' => 7, 'actor' => 'System'],
+                ['date' => 'Aug 30, 2026 · 4:42 PM', 'type' => 'Manual Addition', 'tone' => 'addition', 'product' => 'Everyday Sneakers', 'sku' => 'ES-BLK-40', 'variation' => 'Black / Size 40', 'reference' => 'Stock count', 'quantity' => '+8', 'direction' => 'positive', 'balance' => 18, 'actor' => 'Bea Rivera'],
+                ['date' => 'Aug 30, 2026 · 2:10 PM', 'type' => 'Damage Adjustment', 'tone' => 'damage', 'product' => 'Classic Linen Shirt', 'sku' => 'CLS-CRM-L', 'variation' => 'Cream / Large', 'reference' => 'Damaged item', 'quantity' => '−1', 'direction' => 'negative', 'balance' => 6, 'actor' => 'Bea Rivera'],
+            ],
+        ]);
+    }
+
+
+    public function orders(): View
+    {
+        return view('seller.orders', [
+            'seller' => $this->seller(),
+            'notifications' => $this->notifications(),
+            'orderQueue' => [
+                ['label' => 'New orders', 'count' => 8, 'note' => 'Review within 2 hrs', 'icon' => 'clipboard-list', 'tone' => 'gold'],
+                ['label' => 'To prepare', 'count' => 5, 'note' => 'Pack before 1:30 PM', 'icon' => 'package', 'tone' => 'olive'],
+                ['label' => 'Waybills to print', 'count' => 3, 'note' => "For today's pickup", 'icon' => 'printer', 'tone' => 'blue'],
+                ['label' => 'Ready for pickup', 'count' => 2, 'note' => 'Courier pickup at 3:00 PM', 'icon' => 'truck', 'tone' => 'brown'],
+            ],
+            'orderTabs' => [
+                ['key' => 'all', 'label' => 'All Orders', 'count' => 23],
+                ['key' => 'new', 'label' => 'New', 'count' => 8],
+                ['key' => 'to-prepare', 'label' => 'To Prepare', 'count' => 5],
+                ['key' => 'ready-pickup', 'label' => 'Ready for Pickup', 'count' => 3],
+                ['key' => 'in-transit', 'label' => 'In Transit', 'count' => 4],
+                ['key' => 'completed', 'label' => 'Completed', 'count' => null],
+                ['key' => 'cancelled', 'label' => 'Cancelled', 'count' => null],
+            ],
+            'orders' => [
+                ['id' => '#BR-1058', 'customer' => 'Maria Santos', 'items' => '2 items', 'payment' => 'GCash · Paid', 'payment_key' => 'paid', 'total' => '₱1,850', 'deadline' => 'Today · 11:30 AM', 'date_key' => 'today', 'urgent' => true, 'status' => 'New', 'status_key' => 'new', 'tone' => 'new', 'action' => 'Review'],
+                ['id' => '#BR-1057', 'customer' => 'Carlo Reyes', 'items' => '1 item', 'payment' => 'Cash on Delivery', 'payment_key' => 'cod', 'total' => '₱899', 'deadline' => 'Today · 1:30 PM', 'date_key' => 'today', 'urgent' => true, 'status' => 'To Prepare', 'status_key' => 'to-prepare', 'tone' => 'prepare', 'action' => 'Prepare'],
+                ['id' => '#BR-1056', 'customer' => 'Ana Cruz', 'items' => '3 items', 'payment' => 'Maya · Paid', 'payment_key' => 'paid', 'total' => '₱2,450', 'deadline' => 'Today · 3:00 PM', 'date_key' => 'today', 'urgent' => false, 'status' => 'Waybill Ready', 'status_key' => 'to-prepare', 'tone' => 'waybill', 'action' => 'Print Waybill'],
+                ['id' => '#BR-1055', 'customer' => 'Miguel Garcia', 'items' => '1 item', 'payment' => 'Cash on Delivery', 'payment_key' => 'cod', 'total' => '₱1,299', 'deadline' => 'Today · 3:00 PM', 'date_key' => 'today', 'urgent' => false, 'status' => 'Ready for Pickup', 'status_key' => 'ready-pickup', 'tone' => 'pickup', 'action' => 'Schedule Pickup'],
+                ['id' => '#BR-1054', 'customer' => 'Jamie Lim', 'items' => '2 items', 'payment' => 'GCash · Paid', 'payment_key' => 'paid', 'total' => '₱1,720', 'deadline' => 'September 1', 'date_key' => 'upcoming', 'urgent' => false, 'status' => 'In Transit', 'status_key' => 'in-transit', 'tone' => 'transit', 'action' => 'Track'],
+                ['id' => '#BR-1053', 'customer' => 'Sofia Mendoza', 'items' => '1 item', 'payment' => 'GCash · Paid', 'payment_key' => 'paid', 'total' => '₱1,050', 'deadline' => 'Delivered Aug 30', 'date_key' => 'upcoming', 'urgent' => false, 'status' => 'Completed', 'status_key' => 'completed', 'tone' => 'completed', 'action' => 'View'],
             ],
         ]);
     }

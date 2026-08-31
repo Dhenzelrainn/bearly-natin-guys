@@ -15,7 +15,7 @@
             </div>
         </div>
         <div class="operations-header-actions">
-            <a class="seller-primary-button" href="#recent-orders"><img class="seller-ui-icon" src="{{ asset('images/clipboard-list.svg') }}" alt="" aria-hidden="true">Manage Orders</a>
+            <a class="seller-primary-button" href="{{ route('seller.orders') }}"><img class="seller-ui-icon" src="{{ asset('images/clipboard-list.svg') }}" alt="" aria-hidden="true">Manage Orders</a>
             <a class="seller-secondary-button" href="{{ route('seller.store') }}"><img class="seller-ui-icon" src="{{ asset('images/external-link.svg') }}" alt="" aria-hidden="true">View Store</a>
         </div>
     </div>
@@ -75,7 +75,7 @@
     </article>
 
     <article class="seller-panel order-status-panel" id="order-status">
-        <div class="seller-panel-heading"><div><span class="section-kicker">Fulfillment</span><h3>Order Status</h3></div><a href="#recent-orders">View all</a></div>
+        <div class="seller-panel-heading"><div><span class="section-kicker">Fulfillment</span><h3>Order Status</h3></div><a href="{{ route('seller.orders') }}">View all</a></div>
         <div class="status-list">
             @foreach ($orderStatuses as $status)
                 <div class="status-row">
@@ -91,7 +91,7 @@
 
 <section class="seller-dashboard-grid seller-dashboard-secondary">
     <article class="seller-panel recent-orders-panel" id="recent-orders">
-        <div class="seller-panel-heading"><div><span class="section-kicker">Latest activity</span><h3>Recent Orders</h3></div><a href="#" data-preview-link="Order Management">View all</a></div>
+        <div class="seller-panel-heading"><div><span class="section-kicker">Latest activity</span><h3>Recent Orders</h3></div><a href="{{ route('seller.orders') }}">View all</a></div>
         <div class="seller-table-wrap">
             <table class="seller-table">
                 <thead><tr><th>Order ID</th><th>Customer</th><th>Items</th><th>Total</th><th>Status</th></tr></thead>
@@ -105,7 +105,7 @@
     </article>
 
     <article class="seller-panel inventory-panel">
-        <div class="seller-panel-heading"><div><span class="section-kicker">Stock monitoring</span><h3>Inventory Alerts</h3></div><a href="{{ route('seller.products') }}">View all</a></div>
+        <div class="seller-panel-heading"><div><span class="section-kicker">Stock monitoring</span><h3>Inventory Alerts</h3></div><a href="{{ route('seller.inventory') }}">View all</a></div>
         <div class="inventory-list">
             @foreach ($inventoryAlerts as $alert)
                 <div class="inventory-row">

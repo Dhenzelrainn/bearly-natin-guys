@@ -89,6 +89,8 @@ Route::prefix('seller')->name('seller.')->group(function () {
     Route::get('/store', [SellerController::class, 'store'])->name('store');
     Route::post('/store', [SellerController::class, 'saveStore'])->name('store.save');
     Route::get('/products', [SellerController::class, 'products'])->name('products');
+    Route::get('/orders', [SellerController::class, 'orders'])->name('orders');
+    Route::get('/inventory', [SellerController::class, 'inventory'])->name('inventory');
     Route::get('/products/create', [SellerController::class, 'createProduct'])->name('products.create');
     Route::post('/products', [SellerController::class, 'addProduct'])->name('products.add');
     Route::get('/products/{product}/edit', [SellerController::class, 'editProduct'])->name('products.edit');

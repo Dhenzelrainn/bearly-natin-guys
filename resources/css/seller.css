@@ -1750,6 +1750,64 @@ svg {
     color: var(--seller-danger);
 }
 
+/* Connected financial snapshot */
+
+.seller-financial-strip {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin-bottom: 28px;
+    overflow: hidden;
+    border: 1px solid var(--seller-line);
+    border-radius: 16px;
+    background: #fff;
+    box-shadow: var(--seller-shadow);
+}
+
+.seller-financial-item {
+    position: relative;
+    display: flex;
+    min-width: 0;
+    min-height: 122px;
+    align-items: center;
+    gap: 16px;
+    padding: 20px 24px;
+}
+
+.seller-financial-item + .seller-financial-item::before {
+    content: "";
+    position: absolute;
+    top: 20px;
+    bottom: 20px;
+    left: 0;
+    width: 1px;
+    background: var(--seller-line);
+}
+
+.seller-financial-item p {
+    margin: 0 0 3px;
+    color: var(--seller-muted);
+    font-size: clamp(11px, 0.76vw, 13px);
+}
+
+.seller-financial-item strong {
+    display: block;
+    color: var(--seller-brown-950);
+    font-size: clamp(22px, 1.8vw, 28px);
+    line-height: 1.12;
+    letter-spacing: -0.025em;
+    white-space: nowrap;
+}
+
+.seller-financial-item small {
+    display: block;
+    margin-top: 5px;
+    overflow: hidden;
+    color: var(--seller-success);
+    font-size: clamp(9px, 0.65vw, 11px);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 /* Dashboard panels */
 
 .seller-dashboard-grid {
@@ -2048,6 +2106,109 @@ svg {
 
 .progress-blue {
     background: #4d96c4;
+}
+
+/* Top-selling products */
+
+.top-products-head,
+.top-product-row {
+    display: grid;
+    grid-template-columns: 44px minmax(150px, 1.35fr) 42px minmax(90px, 0.8fr) minmax(78px, auto);
+    align-items: center;
+    column-gap: 12px;
+}
+
+.top-products-head {
+    padding: 0 0 9px;
+    color: var(--seller-muted);
+    font-size: 10px;
+}
+
+.top-products-head span:first-child {
+    grid-column: 1 / 3;
+}
+
+.top-products-head span:nth-child(2) {
+    grid-column: 3 / 4;
+    text-align: center;
+}
+
+.top-products-head span:last-child {
+    grid-column: 5 / 6;
+    text-align: right;
+}
+
+.top-product-row {
+    min-height: 79px;
+    border-top: 1px solid #eee8e2;
+}
+
+.top-product-thumb {
+    display: grid;
+    width: 42px;
+    height: 42px;
+    place-items: center;
+    border: 1px solid #eee4d9;
+    border-radius: 9px;
+    background: #faf5ee;
+    --seller-icon-filter: var(--seller-icon-brown);
+}
+
+.top-product-thumb .seller-ui-icon {
+    width: 21px;
+    height: 21px;
+}
+
+.top-product-name {
+    min-width: 0;
+}
+
+.top-product-name strong,
+.top-product-name small {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.top-product-name strong {
+    color: var(--seller-brown-950);
+    font-size: 12px;
+}
+
+.top-product-name small {
+    margin-top: 3px;
+    color: var(--seller-muted);
+    font-size: 9px;
+}
+
+.top-product-sold,
+.top-product-revenue {
+    font-size: 12px;
+}
+
+.top-product-sold {
+    text-align: center;
+}
+
+.top-product-revenue {
+    color: var(--seller-brown-950);
+    text-align: right;
+    white-space: nowrap;
+}
+
+.top-product-bar {
+    height: 6px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: #ede8e2;
+}
+
+.top-product-bar i {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: #e99a20;
 }
 
 /* Recent orders table */
@@ -2540,6 +2701,18 @@ svg {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
+    .seller-financial-strip {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .seller-financial-item:nth-child(3)::before {
+        display: none;
+    }
+
+    .seller-financial-item:nth-child(n + 3) {
+        border-top: 1px solid var(--seller-line);
+    }
+
     .seller-dashboard-primary,
     .seller-dashboard-secondary,
     .seller-dashboard-support {
@@ -2738,6 +2911,23 @@ svg {
         grid-template-columns: 1fr;
     }
 
+    .seller-financial-strip {
+        grid-template-columns: 1fr;
+    }
+
+    .seller-financial-item {
+        min-height: 98px;
+        padding: 17px 20px;
+    }
+
+    .seller-financial-item + .seller-financial-item::before {
+        display: none;
+    }
+
+    .seller-financial-item:nth-child(n + 2) {
+        border-top: 1px solid var(--seller-line);
+    }
+
     .seller-stat-card {
         min-height: 96px;
     }
@@ -2776,6 +2966,36 @@ svg {
 
         width: 100%;
         margin-bottom: 8px;
+    }
+
+    .top-products-head {
+        display: none;
+    }
+
+    .top-product-row {
+        grid-template-columns: 42px minmax(0, 1fr) auto;
+        gap: 10px;
+        padding: 12px 0;
+    }
+
+    .top-product-sold {
+        grid-column: 2 / 3;
+        text-align: left;
+    }
+
+    .top-product-sold::after {
+        content: " sold";
+        color: var(--seller-muted);
+        font-weight: 400;
+    }
+
+    .top-product-bar {
+        display: none;
+    }
+
+    .top-product-revenue {
+        grid-column: 3 / 4;
+        grid-row: 1 / 3;
     }
 
     .inventory-row {

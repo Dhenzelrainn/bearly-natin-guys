@@ -198,6 +198,21 @@ const bootSeller = () => {
             });
         });
 
+        const requestedOrderStatus = new URLSearchParams(window.location.search).get('status');
+        const requestedOrderTab = requestedOrderStatus
+            ? orderWorkspace.querySelector(`[data-order-tab="${CSS.escape(requestedOrderStatus)}"]`)
+            : null;
+
+        if (requestedOrderTab) {
+            activeOrderStatus = requestedOrderStatus;
+            orderWorkspace.querySelectorAll('[data-order-tab]').forEach((tab) => {
+                const active = tab === requestedOrderTab;
+                tab.classList.toggle('is-active', active);
+                tab.setAttribute('aria-selected', String(active));
+            });
+            applyOrderFilters();
+        }
+
         orderSearch?.addEventListener('input', applyOrderFilters);
         orderDate?.addEventListener('change', applyOrderFilters);
         orderPayment?.addEventListener('change', applyOrderFilters);

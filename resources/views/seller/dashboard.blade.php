@@ -39,9 +39,9 @@
     </div>
 </section>
 
-<section class="seller-stat-grid" aria-label="Store performance summary">
+<section class="seller-financial-strip" aria-label="Financial performance summary">
     @foreach ($stats as $stat)
-        <article class="seller-stat-card">
+        <article class="seller-financial-item">
             <span class="stat-icon stat-{{ $stat['tone'] }}"><img class="seller-ui-icon" src="{{ asset('images/'.$stat['icon'].'.svg') }}" alt="" aria-hidden="true"></span>
             <div><p>{{ $stat['label'] }}</p><strong>{{ $stat['value'] }}</strong><small>{{ $stat['change'] }}</small></div>
         </article>
@@ -74,16 +74,18 @@
         </div>
     </article>
 
-    <article class="seller-panel order-status-panel" id="order-status">
-        <div class="seller-panel-heading"><div><span class="section-kicker">Fulfillment</span><h3>Order Status</h3></div><a href="{{ route('seller.orders') }}">View all</a></div>
-        <div class="status-list">
-            @foreach ($orderStatuses as $status)
-                <div class="status-row">
-                    <span class="status-icon status-{{ $status['tone'] }}"><img class="seller-ui-icon" src="{{ asset('images/'.$status['icon'].'.svg') }}" alt="" aria-hidden="true"></span>
-                    <span class="status-label">{{ $status['label'] }}</span>
-                    <strong>{{ $status['count'] }}</strong>
-                    <span class="status-progress"><i class="progress-{{ $status['tone'] }}" style="width: {{ $status['percent'] }}%"></i></span>
-                </div>
+    <article class="seller-panel top-products-panel" id="top-products">
+        <div class="seller-panel-heading"><div><span class="section-kicker">Catalog performance</span><h3>Top-Selling Products</h3></div><a href="{{ route('seller.products') }}">View products</a></div>
+        <div class="top-products-head" aria-hidden="true"><span>Product</span><span>Sold</span><span>Revenue</span></div>
+        <div class="top-products-list">
+            @foreach ($topProducts as $product)
+                <article class="top-product-row">
+                    <span class="top-product-thumb"><img class="seller-ui-icon" src="{{ asset('images/'.$product['icon'].'.svg') }}" alt="" aria-hidden="true"></span>
+                    <div class="top-product-name"><strong>{{ $product['name'] }}</strong><small>SKU: {{ $product['sku'] }}</small></div>
+                    <strong class="top-product-sold">{{ $product['sold'] }}</strong>
+                    <span class="top-product-bar" aria-hidden="true"><i style="width: {{ $product['percent'] }}%"></i></span>
+                    <strong class="top-product-revenue">{{ $product['revenue'] }}</strong>
+                </article>
             @endforeach
         </div>
     </article>

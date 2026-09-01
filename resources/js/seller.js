@@ -487,6 +487,32 @@ const bootSeller = () => {
         });
     });
 
+    const sellerWorkspace = document.querySelector('[data-seller-workspace]');
+    const workspaceSearch = sellerWorkspace?.querySelector('[data-workspace-search]');
+    workspaceSearch?.addEventListener('input', () => {
+        const query = workspaceSearch.value.trim().toLowerCase();
+        let visible = 0;
+        sellerWorkspace.querySelectorAll('[data-workspace-row]').forEach((row) => {
+            const matches = !query || row.dataset.search.includes(query);
+            row.hidden = !matches;
+            if (matches) visible += 1;
+        });
+        const count = sellerWorkspace.querySelector('[data-workspace-count]');
+        const empty = sellerWorkspace.querySelector('[data-workspace-empty]');
+        if (count) count.textContent = visible;
+        if (empty) empty.hidden = visible > 0;
+    });
+
+    document.querySelectorAll('[data-workspace-demo]').forEach((button) => {
+        button.addEventListener('click', () => {
+            if (!toast) return;
+            toast.textContent = `${button.dataset.workspaceDemo} Frontend preview only.`;
+            toast.classList.add('is-visible');
+            window.clearTimeout(window.sellerToastTimer);
+            window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3000);
+        });
+    });
+
 
     const serverToast = document.querySelector('[data-server-toast]');
     if (serverToast) window.setTimeout(() => serverToast.classList.remove('is-visible'), 3200);

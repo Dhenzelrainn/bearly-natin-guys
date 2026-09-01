@@ -14,30 +14,38 @@
 @php
     $sellerNavGroups = [
         ['key' => 'orders', 'label' => 'Orders', 'icon' => 'clipboard-list', 'active' => request()->routeIs('seller.orders*'), 'children' => [
-            ['label' => 'New Orders', 'route' => 'seller.orders', 'query' => ['status' => 'new']],
-            ['label' => 'To Prepare', 'route' => 'seller.orders', 'query' => ['status' => 'to-prepare']],
-            ['label' => 'Ready for Pickup', 'route' => 'seller.orders', 'query' => ['status' => 'ready-pickup']],
-            ['label' => 'Order History', 'route' => 'seller.orders', 'query' => ['status' => 'completed']],
+            ['label' => 'New Orders', 'route' => 'seller.orders.new'],
+            ['label' => 'To Prepare', 'route' => 'seller.orders.prepare'],
+            ['label' => 'Ready for Pickup', 'route' => 'seller.orders.ready'],
+            ['label' => 'Order History', 'route' => 'seller.orders.history'],
         ]],
-        ['key' => 'fulfillment', 'label' => 'Fulfillment', 'icon' => 'truck', 'children' => [
-            ['label' => 'Waybills'], ['label' => 'Pickup Scheduling'], ['label' => 'Shipment Tracking'],
+        ['key' => 'fulfillment', 'label' => 'Fulfillment', 'icon' => 'truck', 'active' => request()->routeIs('seller.fulfillment*'), 'children' => [
+            ['label' => 'Waybills', 'route' => 'seller.fulfillment.waybills'],
+            ['label' => 'Pickup Scheduling', 'route' => 'seller.fulfillment.pickups'],
+            ['label' => 'Shipment Tracking', 'route' => 'seller.fulfillment.tracking'],
         ]],
         ['key' => 'products', 'label' => 'Products', 'icon' => 'package', 'active' => request()->routeIs('seller.products*', 'seller.inventory'), 'children' => [
             ['label' => 'Product Management', 'route' => 'seller.products'],
             ['label' => 'Inventory', 'route' => 'seller.inventory'],
-            ['label' => 'Pricing & Promotions'],
+            ['label' => 'Pricing & Promotions', 'route' => 'seller.products.pricing'],
         ]],
         ['key' => 'store', 'label' => 'Store', 'icon' => 'store', 'active' => request()->routeIs('seller.store*'), 'children' => [
-            ['label' => 'Store Profile', 'route' => 'seller.store'], ['label' => 'Store Appearance'], ['label' => 'Publication Settings'],
+            ['label' => 'Store Profile', 'route' => 'seller.store'],
+            ['label' => 'Store Appearance', 'route' => 'seller.store.appearance'],
+            ['label' => 'Publication Settings', 'route' => 'seller.store.publication'],
         ]],
-        ['key' => 'reports', 'label' => 'Reports', 'icon' => 'chart-no-axes-combined', 'children' => [
-            ['label' => 'Sales Report'], ['label' => 'Financial Report'],
+        ['key' => 'reports', 'label' => 'Reports', 'icon' => 'chart-no-axes-combined', 'active' => request()->routeIs('seller.reports*'), 'children' => [
+            ['label' => 'Sales Report', 'route' => 'seller.reports.sales'],
+            ['label' => 'Financial Report', 'route' => 'seller.reports.financial'],
         ]],
-        ['key' => 'customer-service', 'label' => 'Customer Service', 'icon' => 'message-circle-more', 'children' => [
-            ['label' => 'Messages'], ['label' => 'Customer Feedback'],
+        ['key' => 'customer-service', 'label' => 'Customer Service', 'icon' => 'message-circle-more', 'active' => request()->routeIs('seller.support*'), 'children' => [
+            ['label' => 'Messages', 'route' => 'seller.support.messages'],
+            ['label' => 'Customer Feedback', 'route' => 'seller.support.feedback'],
         ]],
-        ['key' => 'settings', 'label' => 'Settings', 'icon' => 'user-round-cog', 'children' => [
-            ['label' => 'Account'], ['label' => 'Security'], ['label' => 'Notifications'],
+        ['key' => 'settings', 'label' => 'Settings', 'icon' => 'user-round-cog', 'active' => request()->routeIs('seller.settings*'), 'children' => [
+            ['label' => 'Account', 'route' => 'seller.settings.account'],
+            ['label' => 'Security', 'route' => 'seller.settings.security'],
+            ['label' => 'Notifications', 'route' => 'seller.settings.notifications'],
         ]],
     ];
 @endphp
@@ -74,7 +82,7 @@
                         @foreach ($group['children'] as $child)
                             @php($childHref = isset($child['route']) ? route($child['route'], $child['query'] ?? []) : '#')
                             @php($childStatus = $child['query']['status'] ?? null)
-                            @php($childActive = isset($child['route']) && request()->routeIs($child['route']) && ($childStatus ? request()->query('status') === $childStatus : !request()->has('status')))
+                            @php($childActive = isset($child['route']) && request()->routeIs($child['route']) && ($childStatus ? request()->query('status') === $childStatus : true))
                             @php($previewAttr = !isset($child['route']) ? ' data-preview-link="' . e($child['label']) . '"' : '')
                             <a href="{{ $childHref }}" class="seller-nav-child {{ $childActive ? 'is-active' : '' }}" {!! $previewAttr !!}>{{ $child['label'] }}</a>
                         @endforeach

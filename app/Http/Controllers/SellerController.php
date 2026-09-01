@@ -38,10 +38,10 @@ class SellerController extends Controller
                 'action_count' => 18,
                 'pickup_time' => '3:00 PM',
                 'actions' => [
-                    ['count' => 8, 'label' => 'new orders', 'detail' => 'Review within 2 hours', 'action' => 'Review', 'icon' => 'clipboard-list', 'tone' => 'amber', 'target' => route('seller.orders') . '?status=new'],
-                    ['count' => 5, 'label' => 'orders to prepare', 'detail' => 'Pack before 1:30 PM', 'action' => 'Prepare', 'icon' => 'package', 'tone' => 'olive', 'target' => route('seller.orders') . '?status=to-prepare'],
-                    ['count' => 3, 'label' => 'waybills to print', 'detail' => "For today's pickup", 'action' => 'Print', 'icon' => 'printer', 'tone' => 'brown', 'target' => route('seller.orders') . '?status=to-prepare'],
-                    ['count' => 2, 'label' => 'pickup requests', 'detail' => 'Pickup at 3:00 PM', 'action' => 'Schedule', 'icon' => 'truck', 'tone' => 'green', 'target' => route('seller.orders') . '?status=ready-pickup'],
+                    ['count' => 8, 'label' => 'new orders', 'detail' => 'Review within 2 hours', 'action' => 'Review', 'icon' => 'clipboard-list', 'tone' => 'amber', 'target' => route('seller.orders.new')],
+                    ['count' => 5, 'label' => 'orders to prepare', 'detail' => 'Pack before 1:30 PM', 'action' => 'Prepare', 'icon' => 'package', 'tone' => 'olive', 'target' => route('seller.orders.prepare')],
+                    ['count' => 3, 'label' => 'waybills to print', 'detail' => "For today's pickup", 'action' => 'Print', 'icon' => 'printer', 'tone' => 'brown', 'target' => route('seller.fulfillment.waybills')],
+                    ['count' => 2, 'label' => 'pickup requests', 'detail' => 'Pickup at 3:00 PM', 'action' => 'Schedule', 'icon' => 'truck', 'tone' => 'green', 'target' => route('seller.fulfillment.pickups')],
                 ],
             ],
             'stats' => [
@@ -69,6 +69,48 @@ class SellerController extends Controller
                 'not_ready' => 2,
             ],
         ]);
+    }
+
+    public function workspace(Request $request): View
+    {
+        $key = (string) $request->route('workspace');
+        $pages = $this->workspacePages();
+        abort_unless(isset($pages[$key]), 404);
+
+        return view('seller.workspace', [
+            'seller' => $this->seller(),
+            'notifications' => $this->notifications(),
+            'page' => $pages[$key],
+        ]);
+    }
+
+    private function workspacePages(): array
+    {
+        $orders = [
+            ['#BR-1058', 'Maria Santos', '2 items', 'GCash · Paid', '₱1,850', 'Today · 11:30 AM', 'New'],
+            ['#BR-1057', 'Carlo Reyes', '1 item', 'Cash on Delivery', '₱899', 'Today · 1:30 PM', 'To Prepare'],
+            ['#BR-1056', 'Ana Cruz', '3 items', 'Maya · Paid', '₱2,450', 'Today · 3:00 PM', 'Ready'],
+        ];
+
+        return [
+            'orders-new' => ['title' => 'New Orders', 'subtitle' => 'Review newly placed orders before they enter preparation.', 'kpis' => [['Awaiting review','8'],['Paid orders','6'],['Cash on delivery','2'],['Oldest waiting','42 min']], 'columns' => ['Order','Customer','Items','Payment','Total','Placed','Status'], 'rows' => [$orders[0], ['#BR-1059','Jamie Lim','1 item','GCash · Paid','₱1,299','Today · 10:47 AM','New']], 'action' => 'Review Order'],
+            'orders-prepare' => ['title' => 'To Prepare', 'subtitle' => 'Pack confirmed orders accurately before their deadline.', 'kpis' => [['To prepare','5'],['Due within 1 hour','2'],['Packed today','11'],['Late','0']], 'columns' => ['Order','Customer','Items','Payment','Total','Deadline','Status'], 'rows' => [$orders[1], ['#BR-1060','Sofia Mendoza','2 items','GCash · Paid','₱2,120','Today · 2:00 PM','To Prepare']], 'action' => 'Open Packing'],
+            'orders-ready' => ['title' => 'Ready for Pickup', 'subtitle' => 'Confirm packed orders waiting for courier handover.', 'kpis' => [['Ready orders','3'],['Packages','4'],['Pickup today','3'],['Missing label','0']], 'columns' => ['Order','Customer','Packages','Payment','Total','Ready Since','Status'], 'rows' => [[$orders[2][0],$orders[2][1],'2 packages',$orders[2][3],$orders[2][4],'10:15 AM','Ready'], ['#BR-1055','Miguel Garcia','1 package','Cash on Delivery','₱1,299','9:42 AM','Ready']], 'action' => 'View Package'],
+            'orders-history' => ['title' => 'Order History', 'subtitle' => 'Review completed and cancelled orders without mixing them with active work.', 'kpis' => [['Completed this month','86'],['Cancelled','3'],['Returned','1'],['Completion rate','96.8%']], 'columns' => ['Order','Customer','Items','Payment','Total','Completed','Result'], 'rows' => [['#BR-1045','Miguel Tan','1 item','GCash · Paid','₱1,299','Aug 30, 2026','Completed'], ['#BR-1038','Ryan Cruz','2 items','Refunded','₱1,780','Aug 28, 2026','Cancelled']], 'action' => 'View Details'],
+            'fulfillment-waybills' => ['title' => 'Waybills', 'subtitle' => 'Generate and print shipping labels for packed orders.', 'kpis' => [['Ready to print','3'],['Printed today','12'],['Reprint needed','1'],['Pickup cutoff','2:30 PM']], 'columns' => ['Order','Courier','Packages','Destination','Label Status','Pickup','Status'], 'rows' => [['#BR-1057','Bearly Logistics','1','Santa Rosa, Laguna','Ready to print','Today · 3:00 PM','Pending'], ['#BR-1056','Bearly Logistics','2','Calamba, Laguna','Printed','Today · 3:00 PM','Ready']], 'action' => 'Print Waybill'],
+            'fulfillment-pickups' => ['title' => 'Pickup Scheduling', 'subtitle' => 'Request courier pickup for labeled and packed orders.', 'kpis' => [['Ready for request','2'],['Scheduled today','5'],['Awaiting courier','1'],['Next pickup','3:00 PM']], 'columns' => ['Request','Orders','Packages','Courier','Schedule','Location','Status'], 'rows' => [['PU-0901-01','3 orders','4','Bearly Logistics','Today · 3:00 PM','Juan’s Clothing Shop','Scheduled'], ['Draft request','2 orders','2','Not assigned','Choose schedule','Store address','Draft']], 'action' => 'Manage Pickup'],
+            'fulfillment-tracking' => ['title' => 'Shipment Tracking', 'subtitle' => 'Monitor parcels after courier handover until delivery confirmation.', 'kpis' => [['In transit','7'],['Out for delivery','2'],['Delivered today','9'],['Delayed','1']], 'columns' => ['Tracking No.','Order','Courier','Destination','Latest Update','ETA','Status'], 'rows' => [['BRLY-784201','#BR-1054','Bearly Logistics','Biñan, Laguna','Sorting center','Sep 2','In Transit'], ['BRLY-784188','#BR-1052','Bearly Logistics','Cabuyao, Laguna','Out for delivery','Today','Out for Delivery']], 'action' => 'Track'],
+            'products-pricing' => ['title' => 'Pricing & Promotions', 'subtitle' => 'Manage product prices, discounts, and voucher eligibility.', 'kpis' => [['Active products','24'],['Discounted','6'],['Voucher eligible','12'],['Ending soon','2']], 'columns' => ['Product','SKU','Regular Price','Sale Price','Discount','Voucher','Status'], 'rows' => [['Classic Linen Shirt','CLS-LINEN-SHIRT','₱1,299','₱1,169','10%','Eligible','Active'], ['Canvas Tote Bag','CNV-TOTE-BAG','₱899','₱899','—','Not eligible','Regular']], 'action' => 'Edit Pricing'],
+            'store-appearance' => ['title' => 'Store Appearance', 'subtitle' => 'Manage the buyer-facing profile photo, cover, and storefront description.', 'kpis' => [['Profile photo','Added'],['Cover photo','Missing'],['Description','Added'],['Preview','Available']], 'columns' => ['Store Element','Current State','Recommended Size','Visibility','Last Updated','Owner','Status'], 'rows' => [['Profile photo','Uploaded','1:1 square','Public','Aug 31, 2026','Bea Rivera','Complete'], ['Cover photo','Not uploaded','16:5 landscape','Public','—','Bea Rivera','Required']], 'action' => 'Update'],
+            'store-publication' => ['title' => 'Publication Settings', 'subtitle' => 'Control whether the completed storefront is visible to buyers.', 'kpis' => [['Current status','Draft'],['Required fields','4 of 5'],['Pending review','0'],['Buyer visibility','Hidden']], 'columns' => ['Requirement','Current Value','Required','Review','Visibility','Updated','Status'], 'rows' => [['Business information','Verified','Yes','Approved','Private','Registration','Complete'], ['Cover photo','Missing','Yes','Not submitted','Public','—','Required']], 'action' => 'Review Setting'],
+            'reports-sales' => ['title' => 'Sales Report', 'subtitle' => 'Analyze sales and product performance within a selected period.', 'kpis' => [['Gross sales','₱128,450'],['Orders','91'],['Average order','₱1,420'],['Units sold','146']], 'columns' => ['Period','Orders','Units Sold','Gross Sales','Discounts','Returns','Net Sales'], 'rows' => [['Aug 25–31','32','51','₱48,900','₱2,450','₱0','₱46,450'], ['Aug 18–24','28','44','₱39,600','₱1,980','₱899','₱36,721']], 'action' => 'Export'],
+            'reports-financial' => ['title' => 'Financial Report', 'subtitle' => 'Review gross sales, commission, refunds, and net revenue.', 'kpis' => [['Gross sales','₱128,450'],['Commission','₱12,845'],['Refunds','₱1,299'],['Net revenue','₱114,306']], 'columns' => ['Period','Gross Sales','Commission','Discounts','Refunds','Net Revenue','Payout Status'], 'rows' => [['August 2026','₱128,450','₱12,845','₱4,430','₱1,299','₱109,876','Processing'], ['July 2026','₱112,800','₱11,280','₱3,820','₱0','₱97,700','Paid']], 'action' => 'Export'],
+            'support-messages' => ['title' => 'Messages', 'subtitle' => 'Respond to buyer questions about products and active orders.', 'kpis' => [['Unread','4'],['Open conversations','7'],['Replied today','12'],['Average response','18 min']], 'columns' => ['Customer','Regarding','Last Message','Received','Assigned To','Priority','Status'], 'rows' => [['Maria Santos','#BR-1058','Can I change the size?','8 min ago','Bea Rivera','Normal','Unread'], ['Carlo Reyes','Canvas Tote Bag','Is this available in black?','32 min ago','Bea Rivera','Normal','Open']], 'action' => 'Open Chat'],
+            'support-feedback' => ['title' => 'Customer Feedback', 'subtitle' => 'Review ratings and reply to customer feedback after delivery.', 'kpis' => [['Average rating','4.7'],['New feedback','3'],['Replied','18'],['Total reviews','126']], 'columns' => ['Customer','Order','Product','Rating','Comment','Received','Status'], 'rows' => [['Maria Santos','#BR-1048','Classic Linen Shirt','5.0','Great quality and fit.','Today','New'], ['Carlo Reyes','#BR-1047','Canvas Tote Bag','4.0','Good material.','Yesterday','Replied']], 'action' => 'Reply'],
+            'settings-account' => ['title' => 'Account', 'subtitle' => 'Manage the seller contact information used for account communication.', 'kpis' => [['Account status','Active'],['Email','Verified'],['Phone','Verified'],['Role','Seller']], 'columns' => ['Field','Current Value','Visibility','Verification','Last Updated','Managed By','Status'], 'rows' => [['Full name','Bea Rivera','Private','Verified','Registration','Seller','Locked'], ['Email','bea@juansclothing.test','Private','Verified','Aug 31, 2026','Seller','Active']], 'action' => 'Edit'],
+            'settings-security' => ['title' => 'Security', 'subtitle' => 'Protect account access and review recent sign-in activity.', 'kpis' => [['Password','Set'],['Two-step verification','Off'],['Active sessions','1'],['Security alerts','0']], 'columns' => ['Security Item','Current State','Recommendation','Last Updated','Device','Location','Status'], 'rows' => [['Password','Set','Change regularly','Aug 20, 2026','—','—','Protected'], ['Current session','Active','Recognized device','Now','Windows · Edge','Laguna','Active']], 'action' => 'Manage'],
+            'settings-notifications' => ['title' => 'Notifications', 'subtitle' => 'Choose which seller events are shown in-app or sent by email.', 'kpis' => [['Order alerts','On'],['Stock alerts','On'],['Pickup alerts','On'],['Marketing','Off']], 'columns' => ['Notification','In-app','Email','Trigger','Priority','Last Sent','Status'], 'rows' => [['New order','Enabled','Enabled','Order placed','High','5 min ago','Active'], ['Low stock','Enabled','Enabled','Below threshold','Medium','42 min ago','Active']], 'action' => 'Configure'],
+        ];
     }
 
     public function inventory(): View

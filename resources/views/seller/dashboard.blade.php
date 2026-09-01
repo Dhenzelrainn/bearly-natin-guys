@@ -36,7 +36,7 @@
 
 <section class="seller-dashboard-grid seller-dashboard-primary">
     <article class="seller-panel sales-panel">
-        <div class="seller-panel-heading"><div><span class="section-kicker">Performance</span><h3>Sales Overview</h3></div><a href="#" data-preview-link="Sales Report">Open sales report</a></div>
+        <div class="seller-panel-heading"><div><span class="section-kicker">Performance</span><h3>Sales Overview</h3></div><a href="{{ route('seller.reports.sales') }}">Open sales report</a></div>
         <div class="sales-chart" aria-label="Sales overview for the last seven days">
             <div class="chart-y-axis"><span>₱30,000</span><span>₱20,000</span><span>₱10,000</span><span>₱0</span></div>
             <div class="line-chart-wrap">
@@ -54,7 +54,7 @@
     </article>
 
     <article class="seller-panel top-products-panel">
-        <div class="seller-panel-heading"><div><span class="section-kicker">Product performance</span><h3>Top-Selling Products</h3></div><a href="#" data-preview-link="Product Performance">View report</a></div>
+        <div class="seller-panel-heading"><div><span class="section-kicker">Product performance</span><h3>Top-Selling Products</h3></div><a href="{{ route('seller.reports.sales') }}">View report</a></div>
         <div class="top-products-head" aria-hidden="true"><span>Product</span><span>Sold</span><span>Revenue</span></div>
         <div class="top-products-list">
             @foreach ($topProducts as $product)
@@ -70,11 +70,11 @@
 
 <section class="dashboard-bottom-grid">
     <article class="seller-panel dashboard-payout-panel">
-        <div class="seller-panel-heading"><div><span class="section-kicker">Earnings</span><h3>Payout Summary</h3></div><a href="#" data-preview-link="Financial Report">View financial report</a></div>
+        <div class="seller-panel-heading"><div><span class="section-kicker">Earnings</span><h3>Payout Summary</h3></div><a href="{{ route('seller.reports.financial') }}">View financial report</a></div>
         <dl class="dashboard-payout-list">@foreach ($payoutSummary as $item)<div><dt>{{ $item['label'] }}</dt><dd>{{ $item['value'] }}</dd></div>@endforeach</dl>
     </article>
     <article class="seller-panel dashboard-pickup-panel">
-        <div class="seller-panel-heading"><div><span class="section-kicker">Fulfillment</span><h3>Upcoming Pickup</h3></div><a href="#" data-preview-link="Pickup Scheduling">Open schedule</a></div>
+        <div class="seller-panel-heading"><div><span class="section-kicker">Fulfillment</span><h3>Upcoming Pickup</h3></div><a href="{{ route('seller.fulfillment.pickups') }}">Open schedule</a></div>
         <div class="dashboard-pickup-content"><span class="dashboard-pickup-icon"><img class="seller-ui-icon" src="{{ asset('images/truck.svg') }}" alt="" aria-hidden="true"></span><div><strong>{{ $pickupSummary['time'] }}</strong><span>{{ $pickupSummary['date'] }}</span></div><dl><div><dt>Ready</dt><dd>{{ $pickupSummary['ready'] }}</dd></div><div><dt>Not ready</dt><dd>{{ $pickupSummary['not_ready'] }}</dd></div></dl></div>
     </article>
 </section>

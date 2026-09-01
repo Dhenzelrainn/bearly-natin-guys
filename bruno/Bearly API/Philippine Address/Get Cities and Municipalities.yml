@@ -1,0 +1,14 @@
+info:
+  name: Get Cities and Municipalities
+  type: http
+
+http:
+  method: GET
+  url: https://psgc.cloud/api/v2/cities-municipalities
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

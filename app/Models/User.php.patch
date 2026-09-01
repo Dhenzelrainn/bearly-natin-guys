@@ -1,0 +1,26 @@
+Add these fields to the existing `$fillable` array in `app/Models/User.php`:
+
+```php
+'name',
+'first_name',
+'last_name',
+'middle_initial',
+'sex',
+'birthday',
+'email',
+'contact_number',
+'role',
+'status',
+'province',
+'city',
+'barangay',
+'street_address',
+'business_name',
+'business_category',
+'vehicle_type',
+'plate_number',
+'valid_id_path',
+'business_permit_path',
+'courier_documents_path',
+'password',
+```

@@ -16,4 +16,11 @@ class ExampleTest extends TestCase
 
         $response->assertStatus(200);
     }
+
+    public function test_admin_routes_require_authentication(): void
+    {
+        $response = $this->get('/admin/dashboard');
+
+        $response->assertRedirect('/login');
+    }
 }

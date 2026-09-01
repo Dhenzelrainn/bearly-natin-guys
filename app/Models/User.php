@@ -2,15 +2,12 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
-use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
 class User extends Authenticatable
 {
-    /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
 
     /**
@@ -20,7 +17,26 @@ class User extends Authenticatable
      */
     protected $fillable = [
         'name',
+        'first_name',
+        'last_name',
+        'middle_initial',
+        'sex',
+        'birthday',
         'email',
+        'contact_number',
+        'role',
+        'status',
+        'province',
+        'city',
+        'barangay',
+        'street_address',
+        'business_name',
+        'business_category',
+        'vehicle_type',
+        'plate_number',
+        'valid_id_path',
+        'business_permit_path',
+        'courier_documents_path',
         'password',
     ];
 
@@ -35,15 +51,13 @@ class User extends Authenticatable
     ];
 
     /**
-     * Get the attributes that should be cast.
+     * The attributes that should be cast.
      *
-     * @return array<string, string>
+     * @var array<string, string>
      */
-    protected function casts(): array
-    {
-        return [
-            'email_verified_at' => 'datetime',
-            'password' => 'hashed',
-        ];
-    }
+    protected $casts = [
+        'birthday' => 'date',
+        'email_verified_at' => 'datetime',
+        'last_login_at' => 'datetime',
+    ];
 }

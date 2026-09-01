@@ -1,356 +1,76 @@
-/* =========================================================
-   BEARLY E-COMMERCE JAVASCRIPT
-========================================================= */
+document.addEventListener('DOMContentLoaded', () => {
+    const toast = document.getElementById('toast');
+    let toastTimer;
 
-document.addEventListener("DOMContentLoaded", function () {
+    const showToast = (message) => {
+        if (!toast) return;
+        toast.textContent = message;
+        toast.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => toast.classList.remove('show'), 2200);
+    };
 
-
-    /* =====================================================
-       CART
-    ====================================================== */
-
-    let cartCount = 0;
-
-    const cartCounter = document.getElementById("cartCount");
-
-    const cartButtons = document.querySelectorAll(
-        ".add-cart-button"
-    );
-
-
-    cartButtons.forEach(function (button) {
-
-        button.addEventListener("click", function () {
-
-            cartCount++;
-
-            cartCounter.textContent = cartCount;
-
-            showToast("Product added to cart!");
-
+    document.querySelectorAll('.wishlist-product').forEach((button) => {
+        button.addEventListener('click', () => {
+            button.classList.toggle('liked');
+            button.textContent = button.classList.contains('liked') ? '♥' : '♡';
+            showToast(button.classList.contains('liked') ? 'Added to wishlist' : 'Removed from wishlist');
         });
-
     });
 
-
-
-    /* =====================================================
-       WISHLIST
-    ====================================================== */
-
-    const wishlistButtons = document.querySelectorAll(
-        ".wishlist-product"
-    );
-
-    wishlistButtons.forEach(function (button) {
-
-        button.addEventListener("click", function () {
-
-            if (button.classList.contains("liked")) {
-
-                button.classList.remove("liked");
-
-                button.textContent = "♡";
-
-                showToast("Removed from wishlist!");
-
-            } else {
-
-                button.classList.add("liked");
-
-                button.textContent = "♥";
-
-                showToast("Added to wishlist!");
-
-            }
-
+    document.querySelectorAll('.add-to-cart-btn').forEach((button) => {
+        button.addEventListener('click', () => {
+            const counter = document.getElementById('cartCount');
+            const current = Number(counter?.textContent || 0) + 1;
+            if (counter) counter.textContent = current;
+            showToast('Product added to cart');
         });
-
     });
 
+    const menuButton = document.querySelector('.mobile-menu');
+    const sidebar = document.querySelector('.category-sidebar');
+    menuButton?.addEventListener('click', () => sidebar?.classList.toggle('open'));
 
+    const slides = [...document.querySelectorAll('.hero-banner[data-slide]')];
+    const slideButtons = [...document.querySelectorAll('[data-slide-to]')];
+    let activeSlide = 0;
+    let sliderTimer;
 
-    /* =====================================================
-       SEARCH
-    ====================================================== */
-
-    const searchInput = document.getElementById(
-        "searchInput"
-    );
-
-    const searchButton = document.getElementById(
-        "searchButton"
-    );
-
-    const products = document.querySelectorAll(
-        ".product-card"
-    );
-
-
-    function searchProducts() {
-
-        const searchValue =
-            searchInput.value
-                .toLowerCase()
-                .trim();
-
-
-        products.forEach(function (product) {
-
-            const productName =
-                product.dataset.productName;
-
-
-            if (
-                productName.includes(searchValue)
-                || searchValue === ""
-            ) {
-
-                product.style.display = "";
-
-            } else {
-
-                product.style.display = "none";
-
-            }
-
+    const showSlide = (index) => {
+        activeSlide = (index + slides.length) % slides.length;
+        slides.forEach((slide, slideIndex) => slide.classList.toggle('is-active', slideIndex === activeSlide));
+        slideButtons.forEach((button, buttonIndex) => {
+            button.classList.toggle('selected', buttonIndex === activeSlide);
+            button.setAttribute('aria-selected', buttonIndex === activeSlide ? 'true' : 'false');
         });
+    };
 
-    }
+    const restartSlider = () => {
+        clearInterval(sliderTimer);
+        sliderTimer = setInterval(() => showSlide(activeSlide + 1), 5000);
+    };
 
+    slideButtons.forEach((button) => button.addEventListener('click', () => {
+        showSlide(Number(button.dataset.slideTo));
+        restartSlider();
+    }));
 
-    searchButton.addEventListener(
-        "click",
-        searchProducts
-    );
+    const slider = document.querySelector('.hero-slider');
+    slider?.addEventListener('mouseenter', () => clearInterval(sliderTimer));
+    slider?.addEventListener('mouseleave', restartSlider);
+    if (slides.length) restartSlider();
 
-
-    searchInput.addEventListener(
-        "keyup",
-        function (event) {
-
-            if (event.key === "Enter") {
-
-                searchProducts();
-
-            }
-
-        }
-    );
-
-
-
-    /* =====================================================
-       COUNTDOWN TIMER
-    ====================================================== */
-
-    let totalSeconds =
-        (2 * 60 * 60)
-        + (34 * 60)
-        + 20;
-
-
-    const hoursElement =
-        document.getElementById("hours");
-
-    const minutesElement =
-        document.getElementById("minutes");
-
-    const secondsElement =
-        document.getElementById("seconds");
-
-
-    function updateCountdown() {
-
-        if (totalSeconds <= 0) {
-
-            totalSeconds = 3 * 60 * 60;
-
-        }
-
-
-        const hours =
-            Math.floor(totalSeconds / 3600);
-
-
-        const minutes =
-            Math.floor(
-                (totalSeconds % 3600) / 60
-            );
-
-
-        const seconds =
-            totalSeconds % 60;
-
-
-        hoursElement.textContent =
-            String(hours).padStart(2, "0");
-
-
-        minutesElement.textContent =
-            String(minutes).padStart(2, "0");
-
-
-        secondsElement.textContent =
-            String(seconds).padStart(2, "0");
-
-
-        totalSeconds--;
-
-    }
-
-
+    let remaining = 2 * 60 * 60 + 45 * 60 + 18;
+    const updateCountdown = () => {
+        const hours = document.getElementById('hours');
+        const minutes = document.getElementById('minutes');
+        const seconds = document.getElementById('seconds');
+        if (!hours || !minutes || !seconds) return;
+        hours.textContent = String(Math.floor(remaining / 3600)).padStart(2, '0');
+        minutes.textContent = String(Math.floor((remaining % 3600) / 60)).padStart(2, '0');
+        seconds.textContent = String(remaining % 60).padStart(2, '0');
+        remaining = remaining > 0 ? remaining - 1 : 3 * 60 * 60;
+    };
     updateCountdown();
-
-    setInterval(
-        updateCountdown,
-        1000
-    );
-
-
-
-    /* =====================================================
-       VOUCHERS
-    ====================================================== */
-
-    const claimButtons =
-        document.querySelectorAll(
-            ".claim-button"
-        );
-
-
-    claimButtons.forEach(function (button) {
-
-        button.addEventListener(
-            "click",
-            function () {
-
-                const code =
-                    button.dataset.code;
-
-
-                navigator.clipboard
-                    .writeText(code)
-                    .then(function () {
-
-                        showToast(
-                            "Voucher " +
-                            code +
-                            " copied!"
-                        );
-
-                    })
-                    .catch(function () {
-
-                        showToast(
-                            "Voucher code: " +
-                            code
-                        );
-
-                    });
-
-            }
-        );
-
-    });
-
-
-
-    /* =====================================================
-       HERO BUTTON
-    ====================================================== */
-
-    const shopButton =
-        document.getElementById(
-            "shopNowButton"
-        );
-
-
-    if (shopButton) {
-
-        shopButton.addEventListener(
-            "click",
-            function () {
-
-                document
-                    .querySelector(".flash-section")
-                    .scrollIntoView({
-                        behavior: "smooth"
-                    });
-
-            }
-        );
-
-    }
-
-
-
-    /* =====================================================
-       TOAST
-    ====================================================== */
-
-    function showToast(message) {
-
-        const toast =
-            document.getElementById("toast");
-
-
-        toast.textContent =
-            message;
-
-
-        toast.classList.add("show");
-
-
-        setTimeout(function () {
-
-            toast.classList.remove(
-                "show"
-            );
-
-        }, 2500);
-
-    }
-
-
-
-    /* =====================================================
-       NAVIGATION
-    ====================================================== */
-
-    const navLinks =
-        document.querySelectorAll(
-            ".main-navigation a"
-        );
-
-
-    navLinks.forEach(function (link) {
-
-        link.addEventListener(
-            "click",
-            function (event) {
-
-                event.preventDefault();
-
-
-                navLinks.forEach(
-                    function (item) {
-
-                        item.classList.remove(
-                            "active"
-                        );
-
-                    }
-                );
-
-
-                link.classList.add(
-                    "active"
-                );
-
-            }
-        );
-
-    });
-
+    setInterval(updateCountdown, 1000);
 });

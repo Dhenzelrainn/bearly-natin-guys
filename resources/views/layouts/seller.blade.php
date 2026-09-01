@@ -12,16 +12,33 @@
 </head>
 <body class="seller-body">
 @php
-    $sellerNav = [
-        ['label' => 'Dashboard', 'icon' => 'house', 'route' => 'seller.dashboard'],
-        ['label' => 'My Store', 'icon' => 'store', 'route' => 'seller.store'],
-        ['label' => 'Products', 'icon' => 'package', 'route' => 'seller.products'],
-        ['label' => 'Orders', 'icon' => 'shopping-bag', 'route' => 'seller.orders'],
-        ['label' => 'Inventory', 'icon' => 'package', 'route' => 'seller.inventory'],
-        ['label' => 'Deliveries', 'icon' => 'truck'],
-        ['label' => 'Reports', 'icon' => 'chart-no-axes-combined'],
-        ['label' => 'Messages', 'icon' => 'message-circle-more'],
-        ['label' => 'Account', 'icon' => 'circle-user-round'],
+    $sellerNavGroups = [
+        ['key' => 'orders', 'label' => 'Orders', 'icon' => 'clipboard-list', 'active' => request()->routeIs('seller.orders*'), 'children' => [
+            ['label' => 'New Orders', 'route' => 'seller.orders', 'query' => ['status' => 'new']],
+            ['label' => 'To Prepare', 'route' => 'seller.orders', 'query' => ['status' => 'to-prepare']],
+            ['label' => 'Ready for Pickup', 'route' => 'seller.orders', 'query' => ['status' => 'ready-pickup']],
+            ['label' => 'Order History', 'route' => 'seller.orders', 'query' => ['status' => 'completed']],
+        ]],
+        ['key' => 'fulfillment', 'label' => 'Fulfillment', 'icon' => 'truck', 'children' => [
+            ['label' => 'Waybills'], ['label' => 'Pickup Scheduling'], ['label' => 'Shipment Tracking'],
+        ]],
+        ['key' => 'products', 'label' => 'Products', 'icon' => 'package', 'active' => request()->routeIs('seller.products*', 'seller.inventory'), 'children' => [
+            ['label' => 'Product Management', 'route' => 'seller.products'],
+            ['label' => 'Inventory', 'route' => 'seller.inventory'],
+            ['label' => 'Pricing & Promotions'],
+        ]],
+        ['key' => 'store', 'label' => 'Store', 'icon' => 'store', 'active' => request()->routeIs('seller.store*'), 'children' => [
+            ['label' => 'Store Profile', 'route' => 'seller.store'], ['label' => 'Store Appearance'], ['label' => 'Publication Settings'],
+        ]],
+        ['key' => 'reports', 'label' => 'Reports', 'icon' => 'chart-no-axes-combined', 'children' => [
+            ['label' => 'Sales Report'], ['label' => 'Financial Report'],
+        ]],
+        ['key' => 'customer-service', 'label' => 'Customer Service', 'icon' => 'message-circle-more', 'children' => [
+            ['label' => 'Messages'], ['label' => 'Customer Feedback'],
+        ]],
+        ['key' => 'settings', 'label' => 'Settings', 'icon' => 'user-round-cog', 'children' => [
+            ['label' => 'Account'], ['label' => 'Security'], ['label' => 'Notifications'],
+        ]],
     ];
 @endphp
 <div class="seller-shell" data-seller-shell>
@@ -42,14 +59,27 @@
     </span>
 </a>
         <nav class="seller-nav" aria-label="Seller navigation">
-            @foreach ($sellerNav as $item)
-                @php($isActive = isset($item['route']) && request()->routeIs($item['route'], $item['route'].'.*'))
-                <a href="{{ isset($item['route']) ? route($item['route']) : '#' }}"
-                   class="seller-nav-link {{ $isActive ? 'is-active' : '' }}"
-                   @unless(isset($item['route'])) data-preview-link="{{ $item['label'] }}" @endunless>
-                    <i class="seller-ui-icon" data-lucide="{{ $item['icon'] }}" aria-hidden="true"></i>
-                    <span>{{ $item['label'] }}</span>
-                </a>
+            <a href="{{ route('seller.dashboard') }}" class="seller-nav-link {{ request()->routeIs('seller.dashboard') ? 'is-active' : '' }}">
+                <i class="seller-ui-icon" data-lucide="house" aria-hidden="true"></i><span>Dashboard</span>
+            </a>
+            @foreach ($sellerNavGroups as $group)
+                @php($isOpen = $group['active'] ?? false)
+                <section class="seller-nav-group {{ $isOpen ? 'is-open' : '' }}" data-seller-nav-group="{{ $group['key'] }}">
+                    <button class="seller-nav-link seller-nav-toggle" type="button" data-seller-nav-toggle aria-expanded="{{ $isOpen ? 'true' : 'false' }}">
+                        <i class="seller-ui-icon" data-lucide="{{ $group['icon'] }}" aria-hidden="true"></i>
+                        <span>{{ $group['label'] }}</span>
+                        <i class="seller-nav-chevron" data-lucide="chevron-down" aria-hidden="true"></i>
+                    </button>
+                    <div class="seller-nav-children" {{ !$isOpen ? 'hidden' : '' }}>
+                        @foreach ($group['children'] as $child)
+                            @php($childHref = isset($child['route']) ? route($child['route'], $child['query'] ?? []) : '#')
+                            @php($childStatus = $child['query']['status'] ?? null)
+                            @php($childActive = isset($child['route']) && request()->routeIs($child['route']) && ($childStatus ? request()->query('status') === $childStatus : !request()->has('status')))
+                            @php($previewAttr = !isset($child['route']) ? ' data-preview-link="' . e($child['label']) . '"' : '')
+                            <a href="{{ $childHref }}" class="seller-nav-child {{ $childActive ? 'is-active' : '' }}" {!! $previewAttr !!}>{{ $child['label'] }}</a>
+                        @endforeach
+                    </div>
+                </section>
             @endforeach
         </nav>
 

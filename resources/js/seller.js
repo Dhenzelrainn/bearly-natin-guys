@@ -5,6 +5,26 @@ const bootSeller = () => {
     document.querySelector('[data-seller-menu]')?.addEventListener('click', () => shell?.classList.add('menu-open'));
     document.querySelector('[data-seller-overlay]')?.addEventListener('click', () => shell?.classList.remove('menu-open'));
 
+    document.querySelectorAll('[data-seller-nav-toggle]').forEach((button) => {
+        button.addEventListener('click', () => {
+            const group = button.closest('[data-seller-nav-group]');
+            const children = group?.querySelector('.seller-nav-children');
+            if (!group || !children) return;
+
+            const willOpen = !group.classList.contains('is-open');
+            document.querySelectorAll('[data-seller-nav-group]').forEach((item) => {
+                item.classList.remove('is-open');
+                item.querySelector('[data-seller-nav-toggle]')?.setAttribute('aria-expanded', 'false');
+                const itemChildren = item.querySelector('.seller-nav-children');
+                if (itemChildren) itemChildren.hidden = true;
+            });
+
+            group.classList.toggle('is-open', willOpen);
+            button.setAttribute('aria-expanded', String(willOpen));
+            children.hidden = !willOpen;
+        });
+    });
+
     const closePopovers = (except = null) => {
         document.querySelectorAll('[data-seller-popover]').forEach((popover) => {
             if (popover !== except) popover.hidden = true;

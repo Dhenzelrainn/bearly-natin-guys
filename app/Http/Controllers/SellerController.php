@@ -33,16 +33,15 @@ class SellerController extends Controller
         return view('seller.dashboard', [
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
-            'operations' => [
-                'account_status' => 'Seller account active',
+            'dashboard' => [
                 'updated_at' => '10:42 AM',
                 'action_count' => 18,
                 'pickup_time' => '3:00 PM',
-                'tasks' => [
-                    ['count' => 8, 'label' => 'New orders', 'action' => 'Review orders', 'icon' => 'clipboard-list', 'tone' => 'amber', 'target' => route('seller.orders') . '?status=new'],
-                    ['count' => 5, 'label' => 'To pack', 'action' => 'Prepare orders', 'icon' => 'package', 'tone' => 'olive', 'target' => route('seller.orders') . '?status=to-prepare'],
-                    ['count' => 3, 'label' => 'Waybills', 'action' => 'Print labels', 'icon' => 'printer', 'tone' => 'brown', 'target' => route('seller.orders') . '?status=to-prepare'],
-                    ['count' => 2, 'label' => 'Pickup requests', 'action' => 'Schedule pickup', 'icon' => 'truck', 'tone' => 'green', 'target' => route('seller.orders') . '?status=ready-pickup'],
+                'actions' => [
+                    ['count' => 8, 'label' => 'new orders', 'detail' => 'Review within 2 hours', 'action' => 'Review', 'icon' => 'clipboard-list', 'tone' => 'amber', 'target' => route('seller.orders') . '?status=new'],
+                    ['count' => 5, 'label' => 'orders to prepare', 'detail' => 'Pack before 1:30 PM', 'action' => 'Prepare', 'icon' => 'package', 'tone' => 'olive', 'target' => route('seller.orders') . '?status=to-prepare'],
+                    ['count' => 3, 'label' => 'waybills to print', 'detail' => "For today's pickup", 'action' => 'Print', 'icon' => 'printer', 'tone' => 'brown', 'target' => route('seller.orders') . '?status=to-prepare'],
+                    ['count' => 2, 'label' => 'pickup requests', 'detail' => 'Pickup at 3:00 PM', 'action' => 'Schedule', 'icon' => 'truck', 'tone' => 'green', 'target' => route('seller.orders') . '?status=ready-pickup'],
                 ],
             ],
             'stats' => [
@@ -57,35 +56,17 @@ class SellerController extends Controller
                 ['name' => 'Canvas Tote Bag', 'sku' => 'CNV-TOTE-BAG', 'sold' => 31, 'revenue' => '₱27,869', 'percent' => 74, 'icon' => 'shopping-bag'],
                 ['name' => 'Everyday Sneakers', 'sku' => 'EV-SNKRS-WHT', 'sold' => 18, 'revenue' => '₱23,382', 'percent' => 43, 'icon' => 'footprints'],
             ],
-            'recentOrders' => [
-                ['id' => '#BR-1048', 'customer' => 'Maria Santos', 'items' => '2 items', 'total' => '₱1,850', 'status' => 'To Prepare', 'tone' => 'warning'],
-                ['id' => '#BR-1047', 'customer' => 'Carlo Reyes', 'items' => '1 item', 'total' => '₱899', 'status' => 'Ready for Pickup', 'tone' => 'success'],
-                ['id' => '#BR-1046', 'customer' => 'Anne Cruz', 'items' => '3 items', 'total' => '₱2,450', 'status' => 'In Transit', 'tone' => 'info'],
-                ['id' => '#BR-1045', 'customer' => 'Miguel Tan', 'items' => '1 item', 'total' => '₱1,299', 'status' => 'Completed', 'tone' => 'neutral'],
+            'payoutSummary' => [
+                ['label' => 'Gross sales', 'value' => '₱128,450'],
+                ['label' => 'Platform commission (10%)', 'value' => '−₱12,845'],
+                ['label' => 'Net revenue', 'value' => '₱115,605'],
+                ['label' => 'Next payout', 'value' => 'September 5'],
             ],
-            'inventoryAlerts' => [
-                ['name' => 'Classic Linen Shirt', 'stock' => '3 left', 'icon' => 'shirt', 'status' => 'Low Stock', 'tone' => 'warning'],
-                ['name' => 'Canvas Tote Bag', 'stock' => '2 left', 'icon' => 'shopping-bag', 'status' => 'Low Stock', 'tone' => 'warning'],
-                ['name' => 'Everyday Sneakers / Size 38', 'stock' => '0 left', 'icon' => 'footprints', 'status' => 'Out of Stock', 'tone' => 'danger'],
-            ],
-            'deliverySummary' => [
-                'pickup_time' => '3:00 PM',
-                'pickup_date' => 'Today · Laguna route',
+            'pickupSummary' => [
+                'time' => '3:00 PM',
+                'date' => 'Today · Laguna route',
                 'ready' => 5,
                 'not_ready' => 2,
-                'steps' => [
-                    ['label' => 'Pack orders', 'detail' => 'Complete before 1:30 PM', 'icon' => 'package-check', 'complete' => true],
-                    ['label' => 'Print waybills', 'detail' => '3 labels are ready', 'icon' => 'printer', 'complete' => false],
-                    ['label' => 'Courier handover', 'detail' => 'Scheduled for 3:00 PM', 'icon' => 'truck', 'complete' => false],
-                ],
-            ],
-            'feedbackSummary' => [
-                'rating' => '4.7',
-                'new_count' => 3,
-                'items' => [
-                    ['customer' => 'Maria Santos', 'initials' => 'MS', 'rating' => '5.0', 'comment' => 'Great quality and fast preparation.'],
-                    ['customer' => 'Carlo Reyes', 'initials' => 'CR', 'rating' => '4.0', 'comment' => 'Item arrived in good condition.'],
-                ],
             ],
         ]);
     }

@@ -241,18 +241,44 @@ class SellerController extends Controller
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
             'summary' => [
-                ['label' => 'Action Required', 'value' => '2'],
-                ['label' => 'Under Review', 'value' => '3'],
-                ['label' => 'Approved Returns', 'value' => '1'],
-                ['label' => 'Refunded This Month', 'value' => '₱3,079'],
+                ['label' => 'Action Required', 'value' => '2', 'note' => 'Respond before deadline', 'icon' => 'triangle-alert', 'tone' => 'warning'],
+                ['label' => 'Under Review', 'value' => '3', 'note' => 'Awaiting platform decision', 'icon' => 'scan-search', 'tone' => 'neutral'],
+                ['label' => 'Return in Progress', 'value' => '1', 'note' => 'Parcel returning to store', 'icon' => 'package-open', 'tone' => 'info'],
+                ['label' => 'Refunded This Month', 'value' => '₱3,079', 'note' => '2 resolved requests', 'icon' => 'badge-check', 'tone' => 'success'],
             ],
-            'returns' => [
-                ['id' => 'RR-2041', 'order' => '#BR-1048', 'customer' => 'Maria Santos', 'request' => 'Return & refund', 'reason' => 'Wrong size received', 'amount' => '₱1,299', 'submitted' => 'Today · 9:20 AM', 'status' => 'Action Required', 'action' => 'Review Evidence'],
-                ['id' => 'RR-2038', 'order' => '#BR-1044', 'customer' => 'Carlo Reyes', 'request' => 'Refund only', 'reason' => 'Missing item', 'amount' => '₱899', 'submitted' => 'Yesterday · 4:10 PM', 'status' => 'Under Review', 'action' => 'View Case'],
-                ['id' => 'RR-2031', 'order' => '#BR-1036', 'customer' => 'Jamie Lim', 'request' => 'Return & refund', 'reason' => 'Damaged during delivery', 'amount' => '₱1,780', 'submitted' => 'Aug 29, 2026', 'status' => 'Return Approved', 'action' => 'Track Return'],
-                ['id' => 'RR-2025', 'order' => '#BR-1029', 'customer' => 'Ana Cruz', 'request' => 'Refund only', 'reason' => 'Seller approved refund', 'amount' => '₱1,299', 'submitted' => 'Aug 27, 2026', 'status' => 'Refunded', 'action' => 'View Details'],
+            'tabs' => [
+                ['key' => 'all', 'label' => 'All Cases', 'count' => 6],
+                ['key' => 'action-required', 'label' => 'Action Required', 'count' => 2],
+                ['key' => 'under-review', 'label' => 'Under Review', 'count' => 2],
+                ['key' => 'return-shipping', 'label' => 'Return Shipping', 'count' => 1],
+                ['key' => 'resolved', 'label' => 'Resolved', 'count' => 1],
             ],
+            'returns' => $this->returnCases(),
         ]);
+    }
+
+    public function returnDetails(string $caseId): View
+    {
+        $case = collect($this->returnCases())->firstWhere('id', strtoupper($caseId));
+        abort_if($case === null, 404);
+
+        return view('seller.return-details', [
+            'seller' => $this->seller(),
+            'notifications' => $this->notifications(),
+            'case' => $case,
+        ]);
+    }
+
+    private function returnCases(): array
+    {
+        return [
+            ['id' => 'RR-2041', 'order' => '#BR-1048', 'customer' => 'Maria Santos', 'product' => 'Classic Linen Shirt · Olive / M', 'sku' => 'CLS-OLV-M', 'request' => 'Return & Refund', 'reason' => 'Wrong size received', 'amount' => '₱1,299', 'submitted' => 'Today · 9:20 AM', 'deadline' => '1h 42m left', 'status' => 'Action Required', 'status_key' => 'action-required', 'tone' => 'warning', 'evidence' => '3 photos', 'buyer_note' => 'The tag says Medium, but the actual fit and measurements are smaller than the listed size.', 'seller_response' => 'No response submitted yet.', 'resolution' => 'Awaiting seller response', 'action' => 'Review Case', 'tracking' => 'Not yet created'],
+            ['id' => 'RR-2040', 'order' => '#BR-1046', 'customer' => 'Paolo Ramos', 'product' => 'Canvas Tote Bag · Natural', 'sku' => 'CTB-NAT-OS', 'request' => 'Refund Only', 'reason' => 'Missing item', 'amount' => '₱899', 'submitted' => 'Today · 8:05 AM', 'deadline' => '3h 10m left', 'status' => 'Action Required', 'status_key' => 'action-required', 'tone' => 'warning', 'evidence' => '1 unboxing video', 'buyer_note' => 'The parcel arrived sealed, but the tote bag was not inside the package.', 'seller_response' => 'No response submitted yet.', 'resolution' => 'Awaiting seller response', 'action' => 'Review Case', 'tracking' => 'Not yet created'],
+            ['id' => 'RR-2038', 'order' => '#BR-1044', 'customer' => 'Carlo Reyes', 'product' => 'Everyday Sneakers · White / 39', 'sku' => 'ES-WHT-39', 'request' => 'Return & Refund', 'reason' => 'Item not as described', 'amount' => '₱1,780', 'submitted' => 'Yesterday · 4:10 PM', 'deadline' => 'Responded', 'status' => 'Under Review', 'status_key' => 'under-review', 'tone' => 'review', 'evidence' => '4 photos', 'buyer_note' => 'The color and sole pattern do not match the product listing.', 'seller_response' => 'Requested platform review; warehouse packing photo was attached.', 'resolution' => 'Platform reviewing both parties’ evidence', 'action' => 'View Case', 'tracking' => 'Not yet created'],
+            ['id' => 'RR-2035', 'order' => '#BR-1041', 'customer' => 'Sofia Mendoza', 'product' => 'Classic Linen Shirt · Cream / L', 'sku' => 'CLS-CRM-L', 'request' => 'Refund Only', 'reason' => 'Damaged item', 'amount' => '₱1,299', 'submitted' => 'Aug 30, 2026', 'deadline' => 'Responded', 'status' => 'Under Review', 'status_key' => 'under-review', 'tone' => 'review', 'evidence' => '2 photos', 'buyer_note' => 'There is a visible tear near the left sleeve seam.', 'seller_response' => 'Accepted buyer evidence and approved refund without return.', 'resolution' => 'Refund approval being processed', 'action' => 'View Case', 'tracking' => 'Not required'],
+            ['id' => 'RR-2031', 'order' => '#BR-1036', 'customer' => 'Jamie Lim', 'product' => 'Everyday Sneakers · Black / 40', 'sku' => 'ES-BLK-40', 'request' => 'Return & Refund', 'reason' => 'Damaged during delivery', 'amount' => '₱1,780', 'submitted' => 'Aug 29, 2026', 'deadline' => 'Return by Sep 6', 'status' => 'Return Shipping', 'status_key' => 'return-shipping', 'tone' => 'shipping', 'evidence' => '3 photos', 'buyer_note' => 'The shoe box and right shoe were crushed when delivered.', 'seller_response' => 'Return approved after reviewing courier damage evidence.', 'resolution' => 'Return parcel is in transit to seller', 'action' => 'Track Return', 'tracking' => 'BRLY-RET-20431'],
+            ['id' => 'RR-2025', 'order' => '#BR-1029', 'customer' => 'Ana Cruz', 'product' => 'Canvas Tote Bag · Natural', 'sku' => 'CTB-NAT-OS', 'request' => 'Refund Only', 'reason' => 'Seller approved refund', 'amount' => '₱1,299', 'submitted' => 'Aug 27, 2026', 'deadline' => 'Closed Aug 29', 'status' => 'Refunded', 'status_key' => 'resolved', 'tone' => 'resolved', 'evidence' => '2 photos', 'buyer_note' => 'The printed design was incomplete on one side.', 'seller_response' => 'Refund approved. No item return required.', 'resolution' => '₱1,299 returned to buyer via GCash', 'action' => 'View Details', 'tracking' => 'Not required'],
+        ];
     }
 
     public function store(Request $request): View

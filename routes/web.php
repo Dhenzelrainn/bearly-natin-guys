@@ -91,6 +91,7 @@ Route::prefix('seller')->name('seller.')->group(function () {
     Route::get('/products', [SellerController::class, 'products'])->name('products');
     Route::get('/orders', [SellerController::class, 'orders'])->name('orders');
     Route::get('/orders/returns-refunds', [SellerController::class, 'returns'])->name('orders.returns');
+    Route::get('/orders/returns-refunds/{caseId}', [SellerController::class, 'returnDetails'])->name('orders.returns.show');
 
     // Preserve old Seller Center URLs while statuses move to horizontal tabs.
     Route::redirect('/orders/new', '/seller/orders?status=new')->name('orders.new');

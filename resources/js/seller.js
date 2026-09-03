@@ -493,6 +493,151 @@ const bootSeller = () => {
         });
     });
 
+    /* Returns & refunds: Shopee-style case filtering and ERP resolution preview. */
+    const returnsWorkspace = document.querySelector('[data-returns-workspace]');
+    if (returnsWorkspace) {
+        let activeReturnStatus = 'all';
+        const rows = [...returnsWorkspace.querySelectorAll('[data-return-row]')];
+        const search = returnsWorkspace.querySelector('[data-return-search]');
+        const type = returnsWorkspace.querySelector('[data-return-type]');
+        const count = returnsWorkspace.querySelector('[data-return-count]');
+        const empty = returnsWorkspace.querySelector('[data-returns-empty]');
+
+        const applyReturnFilters = () => {
+            const query = search?.value.trim().toLowerCase() ?? '';
+            const requestType = type?.value ?? '';
+            let visible = 0;
+            rows.forEach((row) => {
+                const matches = (activeReturnStatus === 'all' || row.dataset.status === activeReturnStatus)
+                    && (!requestType || row.dataset.type === requestType)
+                    && (!query || row.dataset.search.includes(query));
+                row.hidden = !matches;
+                if (matches) visible += 1;
+            });
+            if (count) count.textContent = visible;
+            if (empty) empty.hidden = visible > 0;
+        };
+
+        returnsWorkspace.querySelectorAll('[data-return-tab]').forEach((tab) => {
+            tab.addEventListener('click', () => {
+                activeReturnStatus = tab.dataset.returnTab;
+                returnsWorkspace.querySelectorAll('[data-return-tab]').forEach((item) => {
+                    const active = item === tab;
+                    item.classList.toggle('is-active', active);
+                    item.setAttribute('aria-selected', String(active));
+                });
+                applyReturnFilters();
+            });
+        });
+        search?.addEventListener('input', applyReturnFilters);
+        type?.addEventListener('change', applyReturnFilters);
+        returnsWorkspace.querySelector('[data-return-reset]')?.addEventListener('click', () => {
+            if (search) search.value = '';
+            if (type) type.value = '';
+            activeReturnStatus = 'all';
+            returnsWorkspace.querySelectorAll('[data-return-tab]').forEach((tab) => {
+                const active = tab.dataset.returnTab === 'all';
+                tab.classList.toggle('is-active', active);
+                tab.setAttribute('aria-selected', String(active));
+            });
+            applyReturnFilters();
+        });
+        returnsWorkspace.querySelector('[data-return-export]')?.addEventListener('click', () => {
+            const visibleRows = rows.filter((row) => !row.hidden);
+            const headings = [...returnsWorkspace.querySelectorAll('.returns-table thead th')]
+                .slice(0, -1)
+                .map((cell) => cell.textContent.trim());
+            const records = visibleRows.map((row) => [...row.querySelectorAll('td')]
+                .slice(0, -1)
+                .map((cell) => cell.innerText.replace(/\s+/g, ' ').trim()));
+            const escapeCsv = (value) => `"${String(value).replaceAll('"', '""')}"`;
+            const csv = [headings, ...records].map((record) => record.map(escapeCsv).join(',')).join('\n');
+            const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' }));
+            const download = document.createElement('a');
+            download.href = url;
+            download.download = `returns-refunds-${new Date().toISOString().slice(0, 10)}.csv`;
+            download.click();
+            URL.revokeObjectURL(url);
+            if (toast) {
+                toast.textContent = `${visibleRows.length} return and refund case${visibleRows.length === 1 ? '' : 's'} exported.`;
+                toast.classList.add('is-visible');
+                window.clearTimeout(window.sellerToastTimer);
+                window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3200);
+            }
+        });
+        applyReturnFilters();
+    }
+
+    document.querySelectorAll('[data-case-preview]').forEach((button) => {
+        button.addEventListener('click', () => {
+            if (!toast) return;
+            toast.textContent = `${button.dataset.casePreview} opened. Frontend preview only.`;
+            toast.classList.add('is-visible');
+            window.clearTimeout(window.sellerToastTimer);
+            window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3200);
+        });
+    });
+
+    const caseResponse = document.querySelector('[data-case-response]');
+    const caseCharacterCount = document.querySelector('[data-case-character-count]');
+    caseResponse?.addEventListener('input', () => {
+        if (caseCharacterCount) caseCharacterCount.textContent = caseResponse.value.length;
+    });
+
+    document.querySelector('[data-case-evidence-input]')?.addEventListener('change', (event) => {
+        const files = [...event.target.files];
+        const label = document.querySelector('[data-case-evidence-name]');
+        if (!label) return;
+        label.textContent = files.length ? `${files.length} file${files.length > 1 ? 's' : ''} selected` : 'Images, video, or PDF · Maximum 10 MB per file';
+    });
+
+    const caseConfirmModal = document.querySelector('[data-modal="case-confirm"]');
+    let pendingCaseAction = null;
+    document.querySelectorAll('[data-case-action]').forEach((button) => {
+        button.addEventListener('click', () => {
+            if (!caseConfirmModal) return;
+            const responseText = caseResponse?.value.trim() ?? '';
+            if (!responseText) {
+                caseResponse?.focus();
+                if (toast) {
+                    toast.textContent = 'Add a clear seller response before submitting your decision.';
+                    toast.classList.add('is-visible');
+                    window.clearTimeout(window.sellerToastTimer);
+                    window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3200);
+                }
+                return;
+            }
+
+            pendingCaseAction = button.dataset.caseAction;
+            const accept = pendingCaseAction === 'accept';
+            const title = caseConfirmModal.querySelector('[data-case-confirm-title]');
+            const message = caseConfirmModal.querySelector('[data-case-confirm-message]');
+            const confirm = caseConfirmModal.querySelector('[data-case-confirm]');
+            if (title) title.textContent = accept ? 'Accept buyer request?' : 'Submit case dispute?';
+            if (message) message.textContent = accept
+                ? 'This sends the request for return or refund processing. Review the amount and response before confirming.'
+                : 'This sends your response and evidence to Bearly for platform review. Clearly explain why you dispute the request.';
+            if (confirm) {
+                confirm.textContent = accept ? 'Accept request' : 'Submit dispute';
+                confirm.classList.toggle('is-danger', !accept);
+            }
+            caseConfirmModal.hidden = false;
+            document.body.style.overflow = 'hidden';
+        });
+    });
+
+    caseConfirmModal?.querySelector('[data-case-confirm]')?.addEventListener('click', () => {
+        caseConfirmModal.hidden = true;
+        document.body.style.overflow = '';
+        if (!toast) return;
+        toast.textContent = pendingCaseAction === 'accept'
+            ? 'Request accepted and queued for platform processing. Frontend preview only.'
+            : 'Dispute submitted for platform review. Frontend preview only.';
+        toast.classList.add('is-visible');
+        window.clearTimeout(window.sellerToastTimer);
+        window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3600);
+    });
+
     const sellerWorkspace = document.querySelector('[data-seller-workspace]');
     const workspaceSearch = sellerWorkspace?.querySelector('[data-workspace-search]');
     workspaceSearch?.addEventListener('input', () => {

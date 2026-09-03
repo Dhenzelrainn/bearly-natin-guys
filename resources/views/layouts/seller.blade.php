@@ -80,7 +80,7 @@
                         @foreach ($group['children'] as $child)
                             @php($childHref = isset($child['route']) ? route($child['route'], $child['query'] ?? []) : '#')
                             @php($childStatus = $child['query']['status'] ?? null)
-                            @php($childActive = isset($child['route']) && request()->routeIs($child['route']) && ($childStatus ? request()->query('status') === $childStatus : true))
+                            @php($childActive = isset($child['route']) && (request()->routeIs($child['route']) || ($child['route'] === 'seller.orders.returns' && request()->routeIs('seller.orders.returns.*'))) && ($childStatus ? request()->query('status') === $childStatus : true))
                             @php($previewAttr = !isset($child['route']) ? ' data-preview-link="' . e($child['label']) . '"' : '')
                             <a href="{{ $childHref }}" class="seller-nav-child {{ $childActive ? 'is-active' : '' }}" {!! $previewAttr !!}>{{ $child['label'] }}</a>
                         @endforeach

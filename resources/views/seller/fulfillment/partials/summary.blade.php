@@ -1,0 +1,1 @@
+<section class="fulfillment-summary" aria-label="Fulfillment summary">@foreach($items as $item)<article><span class="tone-{{ $item['tone'] }}"><i data-lucide="{{ $item['icon'] }}"></i></span><div><small>{{ $item['label'] }}</small><strong>{{ $item['value'] }}</strong><p>{{ $item['note'] }}</p></div></article>@endforeach</section>

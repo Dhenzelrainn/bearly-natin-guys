@@ -98,11 +98,11 @@ Route::prefix('seller')->name('seller.')->group(function () {
     Route::redirect('/orders/to-prepare', '/seller/orders?status=to-prepare')->name('orders.prepare');
     Route::redirect('/orders/ready-for-pickup', '/seller/orders?status=ready-pickup')->name('orders.ready');
     Route::redirect('/orders/history', '/seller/orders?status=history')->name('orders.history');
-    Route::get('/fulfillment/waybills', [SellerController::class, 'workspace'])->defaults('workspace', 'fulfillment-waybills')->name('fulfillment.waybills');
-    Route::get('/fulfillment/pickups', [SellerController::class, 'workspace'])->defaults('workspace', 'fulfillment-pickups')->name('fulfillment.pickups');
-    Route::get('/fulfillment/tracking', [SellerController::class, 'workspace'])->defaults('workspace', 'fulfillment-tracking')->name('fulfillment.tracking');
+    Route::get('/fulfillment/waybills', [SellerController::class, 'waybills'])->name('fulfillment.waybills');
+    Route::get('/fulfillment/pickups', [SellerController::class, 'pickupRequests'])->name('fulfillment.pickups');
+    Route::get('/fulfillment/tracking', [SellerController::class, 'shipmentTracking'])->name('fulfillment.tracking');
     Route::get('/inventory', [SellerController::class, 'inventory'])->name('inventory');
-    Route::get('/products/pricing', [SellerController::class, 'workspace'])->defaults('workspace', 'products-pricing')->name('products.pricing');
+    Route::get('/products/pricing', [SellerController::class, 'pricing'])->name('products.pricing');
     Route::get('/store/appearance', [SellerController::class, 'workspace'])->defaults('workspace', 'store-appearance')->name('store.appearance');
     Route::get('/store/publication', [SellerController::class, 'workspace'])->defaults('workspace', 'store-publication')->name('store.publication');
     Route::get('/reports/sales', [SellerController::class, 'workspace'])->defaults('workspace', 'reports-sales')->name('reports.sales');

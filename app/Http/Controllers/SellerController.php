@@ -84,6 +84,77 @@ class SellerController extends Controller
         ]);
     }
 
+    public function waybills(): View
+    {
+        return view('seller.fulfillment.waybills', [
+            'seller' => $this->seller(),
+            'notifications' => $this->notifications(),
+            'summary' => [
+                ['label' => 'Ready to Print', 'value' => '3', 'note' => 'Packed and verified', 'icon' => 'printer', 'tone' => 'gold'],
+                ['label' => 'Printed Today', 'value' => '12', 'note' => 'Labels generated', 'icon' => 'file-check-2', 'tone' => 'olive'],
+                ['label' => 'Reprint Required', 'value' => '1', 'note' => 'Damaged label reported', 'icon' => 'refresh-cw', 'tone' => 'brown'],
+                ['label' => 'Pickup Cutoff', 'value' => '2:30 PM', 'note' => 'For today’s collection', 'icon' => 'clock-3', 'tone' => 'warning'],
+            ],
+            'waybills' => [
+                ['order' => '#BR-1058', 'tracking' => 'Pending generation', 'customer' => 'Maria Santos', 'destination' => 'Santa Rosa, Laguna', 'courier' => 'Bearly Logistics', 'packages' => 1, 'weight' => '0.6 kg', 'size' => '25 × 20 × 8 cm', 'pickup' => 'Today · 3:00 PM', 'status' => 'Ready to Print', 'status_key' => 'ready', 'action' => 'Print Waybill'],
+                ['order' => '#BR-1057', 'tracking' => 'Pending generation', 'customer' => 'Carlo Reyes', 'destination' => 'Calamba, Laguna', 'courier' => 'Bearly Logistics', 'packages' => 2, 'weight' => '1.4 kg', 'size' => '35 × 25 × 15 cm', 'pickup' => 'Today · 3:00 PM', 'status' => 'Ready to Print', 'status_key' => 'ready', 'action' => 'Print Waybill'],
+                ['order' => '#BR-1056', 'tracking' => 'Pending generation', 'customer' => 'Jamie Lim', 'destination' => 'Biñan, Laguna', 'courier' => 'Bearly Logistics', 'packages' => 1, 'weight' => '0.8 kg', 'size' => '30 × 22 × 10 cm', 'pickup' => 'Tomorrow · 10:00 AM', 'status' => 'Ready to Print', 'status_key' => 'ready', 'action' => 'Print Waybill'],
+                ['order' => '#BR-1055', 'tracking' => 'BRLY-784220', 'customer' => 'Sofia Mendoza', 'destination' => 'Cabuyao, Laguna', 'courier' => 'Bearly Logistics', 'packages' => 1, 'weight' => '0.5 kg', 'size' => '24 × 18 × 7 cm', 'pickup' => 'Today · 3:00 PM', 'status' => 'Printed', 'status_key' => 'printed', 'action' => 'View Label'],
+                ['order' => '#BR-1052', 'tracking' => 'BRLY-784188', 'customer' => 'Ana Cruz', 'destination' => 'Los Baños, Laguna', 'courier' => 'Bearly Logistics', 'packages' => 1, 'weight' => '0.7 kg', 'size' => '28 × 20 × 9 cm', 'pickup' => 'Today · 3:00 PM', 'status' => 'Reprint Required', 'status_key' => 'reprint', 'action' => 'Reprint'],
+            ],
+            'history' => [
+                ['time' => 'Today · 11:24 AM', 'order' => '#BR-1055', 'tracking' => 'BRLY-784220', 'action' => 'Waybill printed', 'actor' => 'Bea Rivera'],
+                ['time' => 'Today · 10:46 AM', 'order' => '#BR-1052', 'tracking' => 'BRLY-784188', 'action' => 'Reprint requested', 'actor' => 'Bea Rivera'],
+                ['time' => 'Today · 9:18 AM', 'order' => '#BR-1051', 'tracking' => 'BRLY-784176', 'action' => 'Waybill printed', 'actor' => 'Bea Rivera'],
+            ],
+        ]);
+    }
+
+    public function pickupRequests(): View
+    {
+        return view('seller.fulfillment.pickups', [
+            'seller' => $this->seller(),
+            'notifications' => $this->notifications(),
+            'summary' => [
+                ['label' => 'Ready to Request', 'value' => '2', 'note' => 'Labeled parcels', 'icon' => 'package-check', 'tone' => 'gold'],
+                ['label' => 'Awaiting Approval', 'value' => '1', 'note' => 'Submitted to logistics', 'icon' => 'hourglass', 'tone' => 'brown'],
+                ['label' => 'Rider Assigned', 'value' => '1', 'note' => 'Pickup scheduled', 'icon' => 'bike', 'tone' => 'olive'],
+                ['label' => 'Picked Up Today', 'value' => '5', 'note' => 'Handover confirmed', 'icon' => 'truck', 'tone' => 'info'],
+            ],
+            'eligibleOrders' => [
+                ['order' => '#BR-1058', 'tracking' => 'BRLY-784231', 'packages' => 1, 'weight' => '0.6 kg'],
+                ['order' => '#BR-1057', 'tracking' => 'BRLY-784230', 'packages' => 2, 'weight' => '1.4 kg'],
+            ],
+            'requests' => [
+                ['id' => 'PU-0903-04', 'orders' => '2 orders', 'packages' => 3, 'provider' => 'Bearly Logistics', 'schedule' => 'Today · 3:00–5:00 PM', 'address' => 'Juan’s Clothing Shop, Santa Rosa', 'rider' => 'Marco Dela Cruz · Rider 014', 'status' => 'Rider Assigned', 'status_key' => 'assigned'],
+                ['id' => 'PU-0903-03', 'orders' => '1 order', 'packages' => 1, 'provider' => 'Bearly Logistics', 'schedule' => 'Tomorrow · 10:00 AM–12:00 PM', 'address' => 'Juan’s Clothing Shop, Santa Rosa', 'rider' => 'Awaiting assignment', 'status' => 'Pending Approval', 'status_key' => 'pending'],
+                ['id' => 'PU-0902-08', 'orders' => '4 orders', 'packages' => 5, 'provider' => 'Bearly Logistics', 'schedule' => 'Sep 2 · 3:00 PM', 'address' => 'Juan’s Clothing Shop, Santa Rosa', 'rider' => 'Paolo Reyes · Rider 008', 'status' => 'Picked Up', 'status_key' => 'picked-up'],
+                ['id' => 'PU-0901-06', 'orders' => '2 orders', 'packages' => 2, 'provider' => 'Bearly Logistics', 'schedule' => 'Sep 1 · 1:00 PM', 'address' => 'Juan’s Clothing Shop, Santa Rosa', 'rider' => 'Not assigned', 'status' => 'Cancelled', 'status_key' => 'cancelled'],
+            ],
+        ]);
+    }
+
+    public function shipmentTracking(): View
+    {
+        return view('seller.fulfillment.tracking', [
+            'seller' => $this->seller(),
+            'notifications' => $this->notifications(),
+            'summary' => [
+                ['label' => 'In Transit', 'value' => '6', 'note' => 'Moving between hubs', 'icon' => 'truck', 'tone' => 'info'],
+                ['label' => 'Out for Delivery', 'value' => '2', 'note' => 'With delivery riders', 'icon' => 'bike', 'tone' => 'gold'],
+                ['label' => 'Delivered Today', 'value' => '9', 'note' => 'Proof recorded', 'icon' => 'badge-check', 'tone' => 'olive'],
+                ['label' => 'Needs Attention', 'value' => '1', 'note' => 'Delivery exception', 'icon' => 'triangle-alert', 'tone' => 'warning'],
+            ],
+            'shipments' => [
+                ['tracking' => 'BRLY-784220', 'order' => '#BR-1055', 'customer' => 'Sofia Mendoza', 'destination' => 'Cabuyao, Laguna', 'rider' => 'Marco Dela Cruz', 'latest' => 'Parcel received at Santa Rosa Sorting Center', 'updated' => 'Today · 12:18 PM', 'eta' => 'Sep 4', 'status' => 'At Sorting Center', 'status_key' => 'sorting'],
+                ['tracking' => 'BRLY-784201', 'order' => '#BR-1054', 'customer' => 'Jamie Lim', 'destination' => 'Biñan, Laguna', 'rider' => 'Rider assignment pending', 'latest' => 'Departed origin sorting center', 'updated' => 'Today · 11:42 AM', 'eta' => 'Sep 4', 'status' => 'In Transit', 'status_key' => 'transit'],
+                ['tracking' => 'BRLY-784188', 'order' => '#BR-1052', 'customer' => 'Ana Cruz', 'destination' => 'Los Baños, Laguna', 'rider' => 'Paolo Reyes', 'latest' => 'Rider is delivering the parcel', 'updated' => 'Today · 9:15 AM', 'eta' => 'Today', 'status' => 'Out for Delivery', 'status_key' => 'out-delivery'],
+                ['tracking' => 'BRLY-784176', 'order' => '#BR-1051', 'customer' => 'Miguel Garcia', 'destination' => 'Calamba, Laguna', 'rider' => 'John Ramos', 'latest' => 'Delivered to customer; proof uploaded', 'updated' => 'Today · 10:05 AM', 'eta' => 'Delivered', 'status' => 'Delivered', 'status_key' => 'delivered'],
+                ['tracking' => 'BRLY-784160', 'order' => '#BR-1049', 'customer' => 'Paolo Ramos', 'destination' => 'Pagsanjan, Laguna', 'rider' => 'Alex Santos', 'latest' => 'Delivery failed: customer unavailable', 'updated' => 'Yesterday · 5:40 PM', 'eta' => 'Reschedule', 'status' => 'Delivery Failed', 'status_key' => 'failed'],
+            ],
+        ]);
+    }
+
     public function account(): View
     {
         return view('seller.account', [
@@ -419,6 +490,36 @@ class SellerController extends Controller
                 'low' => $products->filter(fn (array $product) => $product['status'] === 'Active'
                     && (int) $product['stock'] <= (int) $product['low_stock_threshold'])->count(),
                 'archived' => $products->where('status', 'Archived')->count(),
+            ],
+        ]);
+    }
+
+    public function pricing(Request $request): View
+    {
+        $storedProducts = collect($request->session()->get('seller.products', []))
+            ->map(fn (array $product) => $this->normalizeProduct($product));
+
+        $products = $storedProducts->isNotEmpty() ? $storedProducts : collect([
+            ['id' => 'demo-1', 'name' => 'Classic Linen Shirt', 'sku' => 'CLS-LINEN-SHIRT', 'category' => 'Fashion and Apparel', 'price' => 1299, 'discount_percent' => 10, 'voucher_eligible' => true, 'stock' => 42, 'status' => 'Active', 'image' => null],
+            ['id' => 'demo-2', 'name' => 'Canvas Tote Bag', 'sku' => 'CNV-TOTE-BAG', 'category' => 'Fashion and Apparel', 'price' => 899, 'discount_percent' => 0, 'voucher_eligible' => true, 'stock' => 31, 'status' => 'Active', 'image' => null],
+            ['id' => 'demo-3', 'name' => 'Everyday Sneakers', 'sku' => 'EV-SNKRS-WHT', 'category' => 'Fashion and Apparel', 'price' => 1780, 'discount_percent' => 15, 'voucher_eligible' => false, 'stock' => 18, 'status' => 'Active', 'image' => null],
+            ['id' => 'demo-4', 'name' => 'Minimalist Crossbody Bag', 'sku' => 'MCB-BRN-01', 'category' => 'Fashion and Apparel', 'price' => 1050, 'discount_percent' => 0, 'voucher_eligible' => false, 'stock' => 24, 'status' => 'Draft', 'image' => null],
+        ])->map(fn (array $product) => $this->normalizeProduct($product));
+
+        return view('seller.pricing', [
+            'seller' => $this->seller(),
+            'notifications' => $this->notifications(),
+            'products' => $products,
+            'summary' => [
+                ['label' => 'Active Promotions', 'value' => '2', 'note' => 'Across 2 products', 'icon' => 'badge-percent', 'tone' => 'gold'],
+                ['label' => 'Discounted Products', 'value' => (string) $products->where('discount_percent', '>', 0)->count(), 'note' => 'Current sale prices', 'icon' => 'tags', 'tone' => 'olive'],
+                ['label' => 'Voucher Eligible', 'value' => (string) $products->where('voucher_eligible', true)->count(), 'note' => 'Can join store vouchers', 'icon' => 'ticket-percent', 'tone' => 'brown'],
+                ['label' => 'Ending Soon', 'value' => '1', 'note' => 'Within the next 48 hours', 'icon' => 'clock-3', 'tone' => 'warning'],
+            ],
+            'campaigns' => [
+                ['name' => 'September Payday Sale', 'type' => 'Product Discount', 'period' => 'Sep 1–5, 2026', 'products' => 2, 'sales' => '₱18,420', 'status' => 'Active', 'status_key' => 'active'],
+                ['name' => 'New Buyer Voucher', 'type' => 'Store Voucher', 'period' => 'Sep 1–30, 2026', 'products' => 3, 'sales' => '₱6,390', 'status' => 'Active', 'status_key' => 'active'],
+                ['name' => 'August Weekend Deal', 'type' => 'Product Discount', 'period' => 'Aug 24–25, 2026', 'products' => 4, 'sales' => '₱27,860', 'status' => 'Ended', 'status_key' => 'ended'],
             ],
         ]);
     }

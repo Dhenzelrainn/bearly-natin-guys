@@ -752,6 +752,196 @@ const bootSeller = () => {
     });
 
 
+    /* Fulfillment workspaces. */
+    const setupFulfillmentFilter = (workspaceSelector, rowSelector, tabSelector, searchSelector, countSelector, emptySelector, resetSelector = null, statusSelector = null) => {
+        const workspace = document.querySelector(workspaceSelector);
+        if (!workspace) return;
+        const rows = [...workspace.querySelectorAll(rowSelector)];
+        const search = workspace.querySelector(searchSelector);
+        const count = workspace.querySelector(countSelector);
+        const empty = workspace.querySelector(emptySelector);
+        const status = statusSelector ? workspace.querySelector(statusSelector) : null;
+        let active = 'all';
+        const apply = () => {
+            const query = search?.value.trim().toLowerCase() ?? '';
+            const selected = status?.value ?? '';
+            let visible = 0;
+            rows.forEach((row) => {
+                const match = (active === 'all' || row.dataset.status === active) && (!selected || row.dataset.status === selected) && (!query || row.dataset.search.includes(query));
+                row.hidden = !match;
+                if (match) visible += 1;
+            });
+            if (count) count.textContent = visible;
+            if (empty) empty.hidden = visible > 0;
+        };
+        workspace.querySelectorAll(tabSelector).forEach((tab) => tab.addEventListener('click', () => {
+            active = tab.dataset.waybillTab || tab.dataset.pickupTab || tab.dataset.trackingTab || 'all';
+            workspace.querySelectorAll(tabSelector).forEach((item) => item.classList.toggle('is-active', item === tab));
+            apply();
+        }));
+        search?.addEventListener('input', apply);
+        status?.addEventListener('change', apply);
+        if (resetSelector) workspace.querySelector(resetSelector)?.addEventListener('click', () => {
+            if (search) search.value = '';
+            if (status) status.value = '';
+            active = 'all';
+            workspace.querySelectorAll(tabSelector).forEach((tab, index) => tab.classList.toggle('is-active', index === 0));
+            apply();
+        });
+        apply();
+    };
+    setupFulfillmentFilter('[data-waybill-workspace]', '[data-waybill-row]', '[data-waybill-tab]', '[data-waybill-search]', '[data-waybill-count]', '[data-waybill-empty]');
+    setupFulfillmentFilter('[data-pickup-workspace]', '[data-pickup-row]', '[data-pickup-tab]', '[data-pickup-search]', '[data-pickup-count]', '[data-pickup-empty]');
+    setupFulfillmentFilter('[data-tracking-workspace]', '[data-tracking-row]', '[data-tracking-tab]', '[data-tracking-search]', '[data-tracking-count]', '[data-tracking-empty]', '[data-tracking-reset]', '[data-tracking-status]');
+
+    const waybillChecks = [...document.querySelectorAll('[data-waybill-check]:not(:disabled)')];
+    const waybillBulk = document.querySelector('[data-waybill-bulk]');
+    const updateWaybillBulk = () => {
+        const selected = waybillChecks.filter((check) => check.checked).length;
+        if (waybillBulk) { waybillBulk.disabled = selected === 0; waybillBulk.innerHTML = `<i data-lucide="printer"></i>Print Selected${selected ? ` (${selected})` : ''}`; window.lucide?.createIcons(); }
+    };
+    waybillChecks.forEach((check) => check.addEventListener('change', updateWaybillBulk));
+    document.querySelector('[data-waybill-check-all]')?.addEventListener('change', (event) => { waybillChecks.forEach((check) => { check.checked = event.currentTarget.checked; }); updateWaybillBulk(); });
+    waybillBulk?.addEventListener('click', () => { if (toast) { toast.textContent = `${waybillChecks.filter((check) => check.checked).length} waybills prepared for printing.`; toast.classList.add('is-visible'); } });
+    document.querySelector('[data-waybill-history]')?.addEventListener('click', () => { const modal = document.querySelector('[data-modal="waybill-history"]'); if (modal) { modal.hidden = false; document.body.style.overflow = 'hidden'; } });
+    document.querySelectorAll('[data-waybill-action]').forEach((button) => button.addEventListener('click', () => {
+        const item = JSON.parse(button.dataset.waybill); const modal = document.querySelector('[data-modal="waybill-preview"]'); if (!modal) return;
+        const set = (selector, value) => { const node = modal.querySelector(selector); if (node) node.textContent = value; };
+        set('[data-waybill-modal-order]', `${item.action} · ${item.order}`); set('[data-waybill-modal-tracking]', item.tracking); set('[data-waybill-modal-customer]', item.customer); set('[data-waybill-modal-destination]', item.destination); set('[data-waybill-modal-courier]', item.courier); set('[data-waybill-modal-parcel]', `${item.packages} package(s) · ${item.weight} · ${item.size}`);
+        modal.hidden = false; document.body.style.overflow = 'hidden';
+    }));
+    document.querySelector('[data-waybill-print]')?.addEventListener('click', () => { if (toast) { toast.textContent = 'Waybill sent to the print dialog.'; toast.classList.add('is-visible'); } window.print(); });
+
+    document.querySelector('[data-pickup-form]')?.addEventListener('submit', (event) => {
+        event.preventDefault();
+        if (!event.currentTarget.querySelector('[data-pickup-order]:checked')) { if (toast) { toast.textContent = 'Select at least one labeled parcel.'; toast.classList.add('is-visible'); } return; }
+        event.currentTarget.closest('[data-modal]').hidden = true; document.body.style.overflow = '';
+        if (toast) { toast.textContent = 'Pickup request submitted to logistics for approval.'; toast.classList.add('is-visible'); }
+    });
+    document.querySelectorAll('[data-pickup-view]').forEach((button) => button.addEventListener('click', () => {
+        const item = JSON.parse(button.dataset.pickup); const modal = document.querySelector('[data-modal="pickup-details"]'); if (!modal) return;
+        const set = (selector, value) => { const node = modal.querySelector(selector); if (node) node.textContent = value; };
+        set('[data-pickup-id]', item.id); set('[data-pickup-status]', item.status); set('[data-pickup-orders]', `${item.orders} · ${item.packages} parcels`); set('[data-pickup-schedule]', item.schedule); set('[data-pickup-rider]', item.rider); set('[data-pickup-address]', item.address);
+        const actions = modal.querySelector('[data-pickup-actions]'); if (actions) actions.hidden = !['pending', 'assigned'].includes(item.status_key);
+        const cancel = modal.querySelector('[data-pickup-cancel]'); if (cancel) cancel.hidden = item.status_key !== 'pending';
+        const confirm = modal.querySelector('[data-pickup-confirm]'); if (confirm) confirm.hidden = item.status_key !== 'assigned';
+        modal.hidden = false; document.body.style.overflow = 'hidden';
+    }));
+    document.querySelectorAll('[data-pickup-cancel],[data-pickup-confirm]').forEach((button) => button.addEventListener('click', () => { button.closest('[data-modal]').hidden = true; document.body.style.overflow = ''; if (toast) { toast.textContent = button.hasAttribute('data-pickup-confirm') ? 'Parcel handover confirmed and orders moved to In Transit.' : 'Pending pickup request cancelled.'; toast.classList.add('is-visible'); } }));
+
+    document.querySelectorAll('[data-tracking-view]').forEach((button) => button.addEventListener('click', () => {
+        const item = JSON.parse(button.dataset.shipment); const modal = document.querySelector('[data-modal="tracking-details"]'); if (!modal) return;
+        const set = (selector, value) => { const node = modal.querySelector(selector); if (node) node.textContent = value; };
+        set('[data-tracking-number]', item.tracking); set('[data-tracking-order]', item.order); set('[data-tracking-customer]', item.customer); set('[data-tracking-destination]', item.destination); set('[data-tracking-eta]', item.eta); set('[data-tracking-latest]', item.latest); set('[data-tracking-updated]', item.updated);
+        const proof = modal.querySelector('[data-delivery-proof]'); if (proof) proof.hidden = item.status_key !== 'delivered';
+        modal.hidden = false; document.body.style.overflow = 'hidden';
+    }));
+    document.querySelector('[data-report-shipment]')?.addEventListener('click', () => { const details = document.querySelector('[data-modal="tracking-details"]'); const report = document.querySelector('[data-modal="tracking-report"]'); if (details) details.hidden = true; if (report) report.hidden = false; });
+    document.querySelector('[data-shipment-report-form]')?.addEventListener('submit', (event) => { event.preventDefault(); event.currentTarget.closest('[data-modal]').hidden = true; document.body.style.overflow = ''; if (toast) { toast.textContent = 'Shipment issue submitted to logistics support.'; toast.classList.add('is-visible'); } });
+    document.querySelector('[data-tracking-export]')?.addEventListener('click', () => { if (toast) { toast.textContent = 'Shipment report prepared for export.'; toast.classList.add('is-visible'); } });
+    document.querySelectorAll('[data-fulfillment-demo]').forEach((button) => button.addEventListener('click', () => { if (toast) { toast.textContent = `${button.dataset.fulfillmentDemo} Frontend preview only.`; toast.classList.add('is-visible'); } }));
+
+    /* Product pricing and promotion workspace. */
+    const pricingWorkspace = document.querySelector('[data-pricing-workspace]');
+    if (pricingWorkspace) {
+        const pricingRows = [...pricingWorkspace.querySelectorAll('[data-pricing-row]')];
+        const pricingSearch = pricingWorkspace.querySelector('[data-pricing-search]');
+        const pricingStatus = pricingWorkspace.querySelector('[data-pricing-status]');
+        const pricingCount = pricingWorkspace.querySelector('[data-pricing-count]');
+        const pricingEmpty = pricingWorkspace.querySelector('[data-pricing-empty]');
+        const applyPricingFilters = () => {
+            const query = pricingSearch?.value.trim().toLowerCase() ?? '';
+            const status = pricingStatus?.value ?? '';
+            let visible = 0;
+            pricingRows.forEach((row) => {
+                const match = (!query || row.dataset.search.includes(query)) && (!status || row.dataset.state === status);
+                row.hidden = !match;
+                if (match) visible += 1;
+            });
+            if (pricingCount) pricingCount.textContent = visible;
+            if (pricingEmpty) pricingEmpty.hidden = visible > 0;
+        };
+        pricingSearch?.addEventListener('input', applyPricingFilters);
+        pricingStatus?.addEventListener('change', applyPricingFilters);
+        pricingWorkspace.querySelector('[data-pricing-reset]')?.addEventListener('click', () => {
+            if (pricingSearch) pricingSearch.value = '';
+            if (pricingStatus) pricingStatus.value = '';
+            applyPricingFilters();
+        });
+        pricingWorkspace.querySelectorAll('[data-pricing-tab]').forEach((tab) => tab.addEventListener('click', () => {
+            pricingWorkspace.querySelectorAll('[data-pricing-tab]').forEach((item) => {
+                const active = item === tab;
+                item.classList.toggle('is-active', active);
+                item.setAttribute('aria-selected', String(active));
+            });
+            pricingWorkspace.querySelectorAll('[data-pricing-panel]').forEach((panel) => {
+                panel.hidden = panel.dataset.pricingPanel !== tab.dataset.pricingTab;
+            });
+        }));
+    }
+
+    const priceModal = document.querySelector('[data-modal="pricing-price"]');
+    const campaignModal = document.querySelector('[data-modal="pricing-campaign"]');
+    const calculatePrice = () => {
+        if (!priceModal) return;
+        const regular = Math.max(0, Number(priceModal.querySelector('[data-price-regular]')?.value || 0));
+        const discount = Math.min(90, Math.max(0, Number(priceModal.querySelector('[data-price-discount]')?.value || 0)));
+        const sale = regular * (1 - discount / 100);
+        const fee = sale * .10;
+        const format = (value) => `₱${value.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        priceModal.querySelector('[data-price-sale]').textContent = format(sale);
+        priceModal.querySelector('[data-price-fee]').textContent = `−${format(fee)}`;
+        priceModal.querySelector('[data-price-net]').textContent = format(sale - fee);
+    };
+    document.querySelectorAll('[data-pricing-open]').forEach((button) => button.addEventListener('click', () => {
+        const isPrice = button.dataset.pricingOpen === 'price';
+        const modal = isPrice ? priceModal : campaignModal;
+        if (!modal) return;
+        if (isPrice) {
+            const product = JSON.parse(button.dataset.product);
+            modal.querySelector('[data-price-product]').textContent = product.name;
+            modal.querySelector('[data-price-regular]').value = product.price;
+            modal.querySelector('[data-price-discount]').value = product.discount_percent;
+            calculatePrice();
+        }
+        modal.hidden = false;
+        document.body.style.overflow = 'hidden';
+    }));
+    priceModal?.querySelectorAll('[data-price-regular],[data-price-discount]').forEach((input) => input.addEventListener('input', calculatePrice));
+    priceModal?.querySelector('[data-price-save]')?.addEventListener('click', () => {
+        priceModal.hidden = true;
+        document.body.style.overflow = '';
+        if (toast) {
+            toast.textContent = 'Product price updated for this frontend preview.';
+            toast.classList.add('is-visible');
+            window.clearTimeout(window.sellerToastTimer);
+            window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3200);
+        }
+    });
+    campaignModal?.querySelector('[data-campaign-save]')?.addEventListener('click', () => {
+        const name = campaignModal.querySelector('[data-campaign-name]');
+        if (!name?.value.trim()) { name?.focus(); name?.reportValidity(); return; }
+        campaignModal.hidden = true;
+        document.body.style.overflow = '';
+        if (toast) {
+            toast.textContent = `${name.value.trim()} created as a frontend preview.`;
+            toast.classList.add('is-visible');
+            window.clearTimeout(window.sellerToastTimer);
+            window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3200);
+        }
+    });
+    document.querySelectorAll('[data-voucher-toggle]').forEach((toggle) => toggle.addEventListener('change', () => {
+        const label = toggle.closest('.pricing-switch')?.querySelector('span');
+        if (label) label.textContent = toggle.checked ? 'Eligible' : 'Not eligible';
+    }));
+    document.querySelectorAll('[data-pricing-demo]').forEach((button) => button.addEventListener('click', () => {
+        if (!toast) return;
+        toast.textContent = `${button.dataset.pricingDemo} Frontend preview only.`;
+        toast.classList.add('is-visible');
+        window.clearTimeout(window.sellerToastTimer);
+        window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3000);
+    }));
+
     const serverToast = document.querySelector('[data-server-toast]');
     if (serverToast) window.setTimeout(() => serverToast.classList.remove('is-visible'), 3200);
 };

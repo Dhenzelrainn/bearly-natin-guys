@@ -21,7 +21,7 @@
         ]],
         ['key' => 'fulfillment', 'label' => 'Fulfillment', 'icon' => 'truck', 'active' => request()->routeIs('seller.fulfillment*'), 'children' => [
             ['label' => 'Waybills', 'route' => 'seller.fulfillment.waybills'],
-            ['label' => 'Pickup Scheduling', 'route' => 'seller.fulfillment.pickups'],
+            ['label' => 'Pickup Requests', 'route' => 'seller.fulfillment.pickups'],
             ['label' => 'Shipment Tracking', 'route' => 'seller.fulfillment.tracking'],
         ]],
         ['key' => 'products', 'label' => 'Products', 'icon' => 'package', 'active' => request()->routeIs('seller.products*', 'seller.inventory'), 'children' => [

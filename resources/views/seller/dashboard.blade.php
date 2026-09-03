@@ -74,7 +74,7 @@
         <dl class="dashboard-payout-list">@foreach ($payoutSummary as $item)<div><dt>{{ $item['label'] }}</dt><dd>{{ $item['value'] }}</dd></div>@endforeach</dl>
     </article>
     <article class="seller-panel dashboard-pickup-panel">
-        <div class="seller-panel-heading"><div><span class="section-kicker">Fulfillment</span><h3>Upcoming Pickup</h3></div><a href="{{ route('seller.fulfillment.pickups') }}">Open schedule</a></div>
+        <div class="seller-panel-heading"><div><span class="section-kicker">Fulfillment</span><h3>Upcoming Pickup</h3></div><a href="{{ route('seller.fulfillment.pickups') }}">View pickup requests</a></div>
         <div class="dashboard-pickup-content"><span class="dashboard-pickup-icon"><img class="seller-ui-icon" src="{{ asset('images/truck.svg') }}" alt="" aria-hidden="true"></span><div><strong>{{ $pickupSummary['time'] }}</strong><span>{{ $pickupSummary['date'] }}</span></div><dl><div><dt>Ready</dt><dd>{{ $pickupSummary['ready'] }}</dd></div><div><dt>Not ready</dt><dd>{{ $pickupSummary['not_ready'] }}</dd></div></dl></div>
     </article>
 </section>

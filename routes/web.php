@@ -105,9 +105,9 @@ Route::prefix('seller')->name('seller.')->group(function () {
     Route::get('/reports/financial', [SellerController::class, 'workspace'])->defaults('workspace', 'reports-financial')->name('reports.financial');
     Route::get('/support/messages', [SellerController::class, 'workspace'])->defaults('workspace', 'support-messages')->name('support.messages');
     Route::get('/support/feedback', [SellerController::class, 'workspace'])->defaults('workspace', 'support-feedback')->name('support.feedback');
-    Route::get('/settings/account', [SellerController::class, 'workspace'])->defaults('workspace', 'settings-account')->name('settings.account');
-    Route::get('/settings/security', [SellerController::class, 'workspace'])->defaults('workspace', 'settings-security')->name('settings.security');
-    Route::get('/settings/notifications', [SellerController::class, 'workspace'])->defaults('workspace', 'settings-notifications')->name('settings.notifications');
+    Route::get('/settings/account', [SellerController::class, 'account'])->name('settings.account');
+    Route::get('/settings/security', [SellerController::class, 'security'])->name('settings.security');
+    Route::get('/settings/notifications', [SellerController::class, 'notificationSettings'])->name('settings.notifications');
     Route::get('/products/create', [SellerController::class, 'createProduct'])->name('products.create');
     Route::post('/products', [SellerController::class, 'addProduct'])->name('products.add');
     Route::get('/products/{product}/edit', [SellerController::class, 'editProduct'])->name('products.edit');

@@ -41,7 +41,7 @@ class SellerController extends Controller
                     ['count' => 8, 'label' => 'new orders', 'detail' => 'Review within 2 hours', 'action' => 'Review', 'icon' => 'clipboard-list', 'tone' => 'amber', 'target' => route('seller.orders.new')],
                     ['count' => 5, 'label' => 'orders to prepare', 'detail' => 'Pack before 1:30 PM', 'action' => 'Prepare', 'icon' => 'package', 'tone' => 'olive', 'target' => route('seller.orders.prepare')],
                     ['count' => 3, 'label' => 'waybills to print', 'detail' => "For today's pickup", 'action' => 'Print', 'icon' => 'printer', 'tone' => 'brown', 'target' => route('seller.fulfillment.waybills')],
-                    ['count' => 2, 'label' => 'pickup requests', 'detail' => 'Pickup at 3:00 PM', 'action' => 'Schedule', 'icon' => 'truck', 'tone' => 'green', 'target' => route('seller.fulfillment.pickups')],
+                    ['count' => 2, 'label' => 'pickup requests', 'detail' => 'Awaiting logistics approval', 'action' => 'View requests', 'icon' => 'truck', 'tone' => 'green', 'target' => route('seller.fulfillment.pickups')],
                 ],
             ],
             'stats' => [
@@ -84,6 +84,65 @@ class SellerController extends Controller
         ]);
     }
 
+    public function account(): View
+    {
+        return view('seller.account', [
+            'seller' => $this->seller(),
+            'notifications' => $this->notifications(),
+            'account' => [
+                'full_name' => 'Bea Rivera',
+                'email' => 'bea@juansclothing.test',
+                'phone' => '+63 917 123 4567',
+                'birthday' => 'May 18, 1998',
+                'sex' => 'Female',
+                'address' => 'Blk 12 Lot 8, Barangay Balibago, Santa Rosa City, Laguna',
+                'status' => 'Active',
+                'verification' => 'Verified',
+                'member_since' => 'August 20, 2026',
+                'last_updated' => 'August 31, 2026 · 4:18 PM',
+                'last_sign_in' => 'Today · 10:42 AM',
+            ],
+        ]);
+    }
+
+    public function security(): View
+    {
+        return view('seller.security', [
+            'seller' => $this->seller(),
+            'notifications' => $this->notifications(),
+            'security' => [
+                'two_factor_enabled' => false,
+                'last_password_change' => 'August 20, 2026',
+                'sessions' => [
+                    ['device' => 'Windows · Microsoft Edge', 'location' => 'Santa Rosa, Laguna', 'activity' => 'Active now', 'current' => true],
+                    ['device' => 'Android · Chrome', 'location' => 'Santa Rosa, Laguna', 'activity' => 'August 29, 2026 · 8:16 PM', 'current' => false],
+                ],
+                'activity' => [
+                    ['event' => 'Successful sign-in', 'detail' => 'Windows · Microsoft Edge', 'time' => 'Today · 10:42 AM', 'tone' => 'success'],
+                    ['event' => 'Password changed', 'detail' => 'Account password updated', 'time' => 'August 20, 2026', 'tone' => 'neutral'],
+                    ['event' => 'New device verified', 'detail' => 'Android · Chrome', 'time' => 'August 18, 2026', 'tone' => 'warning'],
+                ],
+            ],
+        ]);
+    }
+
+    public function notificationSettings(): View
+    {
+        return view('seller.notifications', [
+            'seller' => $this->seller(),
+            'notifications' => $this->notifications(),
+            'preferences' => [
+                ['key' => 'new_orders', 'title' => 'New orders', 'description' => 'Notify me when a buyer places a new order.', 'icon' => 'clipboard-list', 'in_app' => true, 'email' => true],
+                ['key' => 'preparation_deadlines', 'title' => 'Preparation deadlines', 'description' => 'Remind me when an order is nearing its packing deadline.', 'icon' => 'clock-3', 'in_app' => true, 'email' => true],
+                ['key' => 'inventory_alerts', 'title' => 'Inventory alerts', 'description' => 'Notify me when available stock reaches its threshold.', 'icon' => 'triangle-alert', 'in_app' => true, 'email' => true],
+                ['key' => 'pickup_updates', 'title' => 'Pickup request updates', 'description' => 'Receive logistics approval and rider handover updates.', 'icon' => 'truck', 'in_app' => true, 'email' => true],
+                ['key' => 'shipment_updates', 'title' => 'Shipment exceptions', 'description' => 'Notify me about failed, delayed, or returned deliveries.', 'icon' => 'package-search', 'in_app' => true, 'email' => true],
+                ['key' => 'buyer_messages', 'title' => 'Buyer messages', 'description' => 'Notify me when a buyer sends a new message.', 'icon' => 'message-circle-more', 'in_app' => true, 'email' => false],
+                ['key' => 'account_security', 'title' => 'Account and security alerts', 'description' => 'Critical sign-in and account status notifications cannot be disabled in-app.', 'icon' => 'shield-alert', 'in_app' => true, 'email' => true, 'required' => true],
+            ],
+        ]);
+    }
+
     private function workspacePages(): array
     {
         $orders = [
@@ -95,11 +154,11 @@ class SellerController extends Controller
         return [
             'orders-new' => ['title' => 'New Orders', 'subtitle' => 'Review newly placed orders before they enter preparation.', 'kpis' => [['Awaiting review','8'],['Paid orders','6'],['Cash on delivery','2'],['Oldest waiting','42 min']], 'columns' => ['Order','Customer','Items','Payment','Total','Placed','Status'], 'rows' => [$orders[0], ['#BR-1059','Jamie Lim','1 item','GCash · Paid','₱1,299','Today · 10:47 AM','New']], 'action' => 'Review Order'],
             'orders-prepare' => ['title' => 'To Prepare', 'subtitle' => 'Pack confirmed orders accurately before their deadline.', 'kpis' => [['To prepare','5'],['Due within 1 hour','2'],['Packed today','11'],['Late','0']], 'columns' => ['Order','Customer','Items','Payment','Total','Deadline','Status'], 'rows' => [$orders[1], ['#BR-1060','Sofia Mendoza','2 items','GCash · Paid','₱2,120','Today · 2:00 PM','To Prepare']], 'action' => 'Open Packing'],
-            'orders-ready' => ['title' => 'Ready for Pickup', 'subtitle' => 'Confirm packed orders waiting for courier handover.', 'kpis' => [['Ready orders','3'],['Packages','4'],['Pickup today','3'],['Missing label','0']], 'columns' => ['Order','Customer','Packages','Payment','Total','Ready Since','Status'], 'rows' => [[$orders[2][0],$orders[2][1],'2 packages',$orders[2][3],$orders[2][4],'10:15 AM','Ready'], ['#BR-1055','Miguel Garcia','1 package','Cash on Delivery','₱1,299','9:42 AM','Ready']], 'action' => 'View Package'],
+            'orders-ready' => ['title' => 'Ready for Pickup', 'subtitle' => 'Review packed parcels and confirm handover when the assigned pickup rider arrives.', 'kpis' => [['Ready orders','3'],['Packages','4'],['Approved pickups','3'],['Missing label','0']], 'columns' => ['Order','Customer','Packages','Payment','Total','Pickup Request','Status'], 'rows' => [[$orders[2][0],$orders[2][1],'2 packages',$orders[2][3],$orders[2][4],'Approved · 3:00 PM','Awaiting Handover'], ['#BR-1055','Miguel Garcia','1 package','Cash on Delivery','₱1,299','Awaiting approval','Ready']], 'action' => 'Confirm Handover'],
             'orders-history' => ['title' => 'Order History', 'subtitle' => 'Review completed and cancelled orders without mixing them with active work.', 'kpis' => [['Completed this month','86'],['Cancelled','3'],['Returned','1'],['Completion rate','96.8%']], 'columns' => ['Order','Customer','Items','Payment','Total','Completed','Result'], 'rows' => [['#BR-1045','Miguel Tan','1 item','GCash · Paid','₱1,299','Aug 30, 2026','Completed'], ['#BR-1038','Ryan Cruz','2 items','Refunded','₱1,780','Aug 28, 2026','Cancelled']], 'action' => 'View Details'],
             'fulfillment-waybills' => ['title' => 'Waybills', 'subtitle' => 'Generate and print shipping labels for packed orders.', 'kpis' => [['Ready to print','3'],['Printed today','12'],['Reprint needed','1'],['Pickup cutoff','2:30 PM']], 'columns' => ['Order','Courier','Packages','Destination','Label Status','Pickup','Status'], 'rows' => [['#BR-1057','Bearly Logistics','1','Santa Rosa, Laguna','Ready to print','Today · 3:00 PM','Pending'], ['#BR-1056','Bearly Logistics','2','Calamba, Laguna','Printed','Today · 3:00 PM','Ready']], 'action' => 'Print Waybill'],
-            'fulfillment-pickups' => ['title' => 'Pickup Scheduling', 'subtitle' => 'Request courier pickup for labeled and packed orders.', 'kpis' => [['Ready for request','2'],['Scheduled today','5'],['Awaiting courier','1'],['Next pickup','3:00 PM']], 'columns' => ['Request','Orders','Packages','Courier','Schedule','Location','Status'], 'rows' => [['PU-0901-01','3 orders','4','Bearly Logistics','Today · 3:00 PM','Juan’s Clothing Shop','Scheduled'], ['Draft request','2 orders','2','Not assigned','Choose schedule','Store address','Draft']], 'action' => 'Manage Pickup'],
-            'fulfillment-tracking' => ['title' => 'Shipment Tracking', 'subtitle' => 'Monitor parcels after courier handover until delivery confirmation.', 'kpis' => [['In transit','7'],['Out for delivery','2'],['Delivered today','9'],['Delayed','1']], 'columns' => ['Tracking No.','Order','Courier','Destination','Latest Update','ETA','Status'], 'rows' => [['BRLY-784201','#BR-1054','Bearly Logistics','Biñan, Laguna','Sorting center','Sep 2','In Transit'], ['BRLY-784188','#BR-1052','Bearly Logistics','Cabuyao, Laguna','Out for delivery','Today','Out for Delivery']], 'action' => 'Track'],
+            'fulfillment-pickups' => ['title' => 'Pickup Requests', 'subtitle' => 'Submit labeled and packed parcels for logistics approval and pickup assignment.', 'kpis' => [['Ready to request','2'],['Approved today','5'],['Awaiting approval','1'],['Next approved pickup','3:00 PM']], 'columns' => ['Request','Orders','Packages','Logistics Provider','Preferred Time','Pickup Location','Status'], 'rows' => [['PU-0901-01','3 orders','4','Bearly Logistics','Today · 3:00 PM','Juan’s Clothing Shop','Approved'], ['Draft request','2 orders','2','Bearly Logistics','Choose preferred time','Store address','Draft']], 'action' => 'View Request'],
+            'fulfillment-tracking' => ['title' => 'Shipment Tracking', 'subtitle' => 'Monitor parcels after rider handover through sorting and final delivery.', 'kpis' => [['At sorting center','3'],['Assigned to rider','2'],['Out for delivery','2'],['Delivered today','9']], 'columns' => ['Tracking No.','Order','Logistics Provider','Destination','Latest Update','Updated','Status'], 'rows' => [['BRLY-784201','#BR-1054','Bearly Logistics','Biñan, Laguna','Parcel received at sorting center','Today · 8:40 AM','At Sorting Center'], ['BRLY-784188','#BR-1052','Bearly Logistics','Cabuyao, Laguna','Assigned to delivery rider','Today · 9:15 AM','Assigned to Rider'], ['BRLY-784176','#BR-1051','Bearly Logistics','Calamba, Laguna','Rider is delivering the parcel','Today · 10:05 AM','Out for Delivery']], 'action' => 'Track'],
             'products-pricing' => ['title' => 'Pricing & Promotions', 'subtitle' => 'Manage product prices, discounts, and voucher eligibility.', 'kpis' => [['Active products','24'],['Discounted','6'],['Voucher eligible','12'],['Ending soon','2']], 'columns' => ['Product','SKU','Regular Price','Sale Price','Discount','Voucher','Status'], 'rows' => [['Classic Linen Shirt','CLS-LINEN-SHIRT','₱1,299','₱1,169','10%','Eligible','Active'], ['Canvas Tote Bag','CNV-TOTE-BAG','₱899','₱899','—','Not eligible','Regular']], 'action' => 'Edit Pricing'],
             'store-appearance' => ['title' => 'Store Appearance', 'subtitle' => 'Manage the buyer-facing profile photo, cover, and storefront description.', 'kpis' => [['Profile photo','Added'],['Cover photo','Missing'],['Description','Added'],['Preview','Available']], 'columns' => ['Store Element','Current State','Recommended Size','Visibility','Last Updated','Owner','Status'], 'rows' => [['Profile photo','Uploaded','1:1 square','Public','Aug 31, 2026','Bea Rivera','Complete'], ['Cover photo','Not uploaded','16:5 landscape','Public','—','Bea Rivera','Required']], 'action' => 'Update'],
             'store-publication' => ['title' => 'Publication Settings', 'subtitle' => 'Control whether the completed storefront is visible to buyers.', 'kpis' => [['Current status','Draft'],['Required fields','4 of 5'],['Pending review','0'],['Buyer visibility','Hidden']], 'columns' => ['Requirement','Current Value','Required','Review','Visibility','Updated','Status'], 'rows' => [['Business information','Verified','Yes','Approved','Private','Registration','Complete'], ['Cover photo','Missing','Yes','Not submitted','Public','—','Required']], 'action' => 'Review Setting'],

@@ -513,6 +513,93 @@ const bootSeller = () => {
         });
     });
 
+    /* Seller account page — frontend-only edit and photo preview. */
+    const accountForm = document.querySelector('[data-account-form]');
+    const accountEdit = document.querySelector('[data-account-edit]');
+    const accountCancel = document.querySelector('[data-account-cancel]');
+    const accountActions = document.querySelector('[data-account-actions]');
+    const accountEditState = document.querySelector('[data-account-edit-state]');
+    const accountEditableFields = [...document.querySelectorAll('[data-account-editable]')];
+    const originalAccountValues = new Map(accountEditableFields.map((field) => [field, field.value]));
+
+    const setAccountEditing = (editing) => {
+        accountEditableFields.forEach((field) => { field.disabled = !editing; });
+        if (accountActions) accountActions.hidden = !editing;
+        if (accountEdit) {
+            accountEdit.disabled = editing;
+            accountEdit.querySelector('span').textContent = editing ? 'Editing profile' : 'Edit profile';
+        }
+        if (accountEditState) accountEditState.textContent = editing ? 'Editing' : 'View only';
+        if (editing) accountEditableFields[0]?.focus();
+    };
+
+    accountEdit?.addEventListener('click', () => setAccountEditing(true));
+    accountCancel?.addEventListener('click', () => {
+        originalAccountValues.forEach((value, field) => { field.value = value; });
+        setAccountEditing(false);
+    });
+    accountForm?.addEventListener('submit', (event) => {
+        event.preventDefault();
+        accountEditableFields.forEach((field) => originalAccountValues.set(field, field.value));
+        setAccountEditing(false);
+        if (!toast) return;
+        toast.textContent = 'Profile preview updated. Changes will reset after refreshing the page.';
+        toast.classList.add('is-visible');
+        window.clearTimeout(window.sellerToastTimer);
+        window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3400);
+    });
+
+    document.querySelector('[data-account-photo]')?.addEventListener('change', (event) => {
+        const file = event.currentTarget.files?.[0];
+        const avatar = document.querySelector('[data-account-avatar]');
+        if (!file || !avatar) return;
+        const image = document.createElement('img');
+        image.alt = 'Seller profile preview';
+        image.src = URL.createObjectURL(file);
+        image.addEventListener('load', () => URL.revokeObjectURL(image.src), { once: true });
+        avatar.replaceChildren(image);
+    });
+
+    document.querySelector('[data-password-form]')?.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const form = event.currentTarget;
+        const password = form.querySelector('[data-new-password]');
+        const confirmation = form.querySelector('[data-confirm-password]');
+        if (password?.value !== confirmation?.value) {
+            confirmation?.setCustomValidity('Passwords do not match.');
+            confirmation?.reportValidity();
+            return;
+        }
+        confirmation?.setCustomValidity('');
+        form.reset();
+        if (!toast) return;
+        toast.textContent = 'Password update validated. Backend saving will be connected later.';
+        toast.classList.add('is-visible');
+        window.clearTimeout(window.sellerToastTimer);
+        window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3400);
+    });
+
+    document.querySelector('[data-confirm-password]')?.addEventListener('input', (event) => event.currentTarget.setCustomValidity(''));
+    document.querySelector('[data-two-factor-toggle]')?.addEventListener('change', (event) => {
+        const label = document.querySelector('[data-two-factor-label]');
+        if (label) label.textContent = event.currentTarget.checked ? 'Enabled (preview)' : 'Not enabled';
+    });
+    document.querySelectorAll('[data-security-demo]').forEach((button) => button.addEventListener('click', () => {
+        if (!toast) return;
+        toast.textContent = `${button.dataset.securityDemo} Frontend preview only.`;
+        toast.classList.add('is-visible');
+        window.clearTimeout(window.sellerToastTimer);
+        window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3000);
+    }));
+
+    document.querySelector('[data-save-notifications]')?.addEventListener('click', () => {
+        if (!toast) return;
+        toast.textContent = 'Notification preferences updated for this preview. They will reset after refresh.';
+        toast.classList.add('is-visible');
+        window.clearTimeout(window.sellerToastTimer);
+        window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3400);
+    });
+
 
     const serverToast = document.querySelector('[data-server-toast]');
     if (serverToast) window.setTimeout(() => serverToast.classList.remove('is-visible'), 3200);

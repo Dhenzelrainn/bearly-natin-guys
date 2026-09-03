@@ -14,10 +14,8 @@
 @php
     $sellerNavGroups = [
         ['key' => 'orders', 'label' => 'Orders', 'icon' => 'clipboard-list', 'active' => request()->routeIs('seller.orders*'), 'children' => [
-            ['label' => 'New Orders', 'route' => 'seller.orders.new'],
-            ['label' => 'To Prepare', 'route' => 'seller.orders.prepare'],
-            ['label' => 'Ready for Pickup', 'route' => 'seller.orders.ready'],
-            ['label' => 'Order History', 'route' => 'seller.orders.history'],
+            ['label' => 'Manage Orders', 'route' => 'seller.orders'],
+            ['label' => 'Returns & Refunds', 'route' => 'seller.orders.returns'],
         ]],
         ['key' => 'fulfillment', 'label' => 'Fulfillment', 'icon' => 'truck', 'active' => request()->routeIs('seller.fulfillment*'), 'children' => [
             ['label' => 'Waybills', 'route' => 'seller.fulfillment.waybills'],

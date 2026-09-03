@@ -159,7 +159,10 @@ const bootSeller = () => {
     const orderWorkspace = document.querySelector('[data-orders-workspace]');
 
     if (orderWorkspace) {
-        let activeOrderStatus = 'all';
+        const defaultStatusNode = document.querySelector('[data-default-order-status]');
+        let activeOrderStatus = defaultStatusNode
+            ? JSON.parse(defaultStatusNode.textContent)
+            : 'all';
         const orderRows = [...orderWorkspace.querySelectorAll('[data-order-row]')];
         const orderSearch = orderWorkspace.querySelector('[data-order-search]');
         const orderDate = orderWorkspace.querySelector('[data-order-date]');
@@ -192,7 +195,10 @@ const bootSeller = () => {
             let visible = 0;
 
             orderRows.forEach((row) => {
-                const matches = (activeOrderStatus === 'all' || row.dataset.status === activeOrderStatus)
+                const statusMatches = activeOrderStatus === 'all'
+                    || row.dataset.status === activeOrderStatus
+                    || (activeOrderStatus === 'history' && row.dataset.history === 'true');
+                const matches = statusMatches
                     && (!search || row.dataset.search.includes(search))
                     && (!date || row.dataset.date === date)
                     && (!payment || row.dataset.payment === payment);
@@ -218,7 +224,7 @@ const bootSeller = () => {
             });
         });
 
-        const requestedOrderStatus = new URLSearchParams(window.location.search).get('status');
+        const requestedOrderStatus = new URLSearchParams(window.location.search).get('status') || activeOrderStatus;
         const requestedOrderTab = requestedOrderStatus
             ? orderWorkspace.querySelector(`[data-order-tab="${CSS.escape(requestedOrderStatus)}"]`)
             : null;

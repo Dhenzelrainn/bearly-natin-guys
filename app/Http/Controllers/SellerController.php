@@ -145,17 +145,7 @@ class SellerController extends Controller
 
     private function workspacePages(): array
     {
-        $orders = [
-            ['#BR-1058', 'Maria Santos', '2 items', 'GCash · Paid', '₱1,850', 'Today · 11:30 AM', 'New'],
-            ['#BR-1057', 'Carlo Reyes', '1 item', 'Cash on Delivery', '₱899', 'Today · 1:30 PM', 'To Prepare'],
-            ['#BR-1056', 'Ana Cruz', '3 items', 'Maya · Paid', '₱2,450', 'Today · 3:00 PM', 'Ready'],
-        ];
-
         return [
-            'orders-new' => ['title' => 'New Orders', 'subtitle' => 'Review newly placed orders before they enter preparation.', 'kpis' => [['Awaiting review','8'],['Paid orders','6'],['Cash on delivery','2'],['Oldest waiting','42 min']], 'columns' => ['Order','Customer','Items','Payment','Total','Placed','Status'], 'rows' => [$orders[0], ['#BR-1059','Jamie Lim','1 item','GCash · Paid','₱1,299','Today · 10:47 AM','New']], 'action' => 'Review Order'],
-            'orders-prepare' => ['title' => 'To Prepare', 'subtitle' => 'Pack confirmed orders accurately before their deadline.', 'kpis' => [['To prepare','5'],['Due within 1 hour','2'],['Packed today','11'],['Late','0']], 'columns' => ['Order','Customer','Items','Payment','Total','Deadline','Status'], 'rows' => [$orders[1], ['#BR-1060','Sofia Mendoza','2 items','GCash · Paid','₱2,120','Today · 2:00 PM','To Prepare']], 'action' => 'Open Packing'],
-            'orders-ready' => ['title' => 'Ready for Pickup', 'subtitle' => 'Review packed parcels and confirm handover when the assigned pickup rider arrives.', 'kpis' => [['Ready orders','3'],['Packages','4'],['Approved pickups','3'],['Missing label','0']], 'columns' => ['Order','Customer','Packages','Payment','Total','Pickup Request','Status'], 'rows' => [[$orders[2][0],$orders[2][1],'2 packages',$orders[2][3],$orders[2][4],'Approved · 3:00 PM','Awaiting Handover'], ['#BR-1055','Miguel Garcia','1 package','Cash on Delivery','₱1,299','Awaiting approval','Ready']], 'action' => 'Confirm Handover'],
-            'orders-history' => ['title' => 'Order History', 'subtitle' => 'Review completed and cancelled orders without mixing them with active work.', 'kpis' => [['Completed this month','86'],['Cancelled','3'],['Returned','1'],['Completion rate','96.8%']], 'columns' => ['Order','Customer','Items','Payment','Total','Completed','Result'], 'rows' => [['#BR-1045','Miguel Tan','1 item','GCash · Paid','₱1,299','Aug 30, 2026','Completed'], ['#BR-1038','Ryan Cruz','2 items','Refunded','₱1,780','Aug 28, 2026','Cancelled']], 'action' => 'View Details'],
             'fulfillment-waybills' => ['title' => 'Waybills', 'subtitle' => 'Generate and print shipping labels for packed orders.', 'kpis' => [['Ready to print','3'],['Printed today','12'],['Reprint needed','1'],['Pickup cutoff','2:30 PM']], 'columns' => ['Order','Courier','Packages','Destination','Label Status','Pickup','Status'], 'rows' => [['#BR-1057','Bearly Logistics','1','Santa Rosa, Laguna','Ready to print','Today · 3:00 PM','Pending'], ['#BR-1056','Bearly Logistics','2','Calamba, Laguna','Printed','Today · 3:00 PM','Ready']], 'action' => 'Print Waybill'],
             'fulfillment-pickups' => ['title' => 'Pickup Requests', 'subtitle' => 'Submit labeled and packed parcels for logistics approval and pickup assignment.', 'kpis' => [['Ready to request','2'],['Approved today','5'],['Awaiting approval','1'],['Next approved pickup','3:00 PM']], 'columns' => ['Request','Orders','Packages','Logistics Provider','Preferred Time','Pickup Location','Status'], 'rows' => [['PU-0901-01','3 orders','4','Bearly Logistics','Today · 3:00 PM','Juan’s Clothing Shop','Approved'], ['Draft request','2 orders','2','Bearly Logistics','Choose preferred time','Store address','Draft']], 'action' => 'View Request'],
             'fulfillment-tracking' => ['title' => 'Shipment Tracking', 'subtitle' => 'Monitor parcels after rider handover through sorting and final delivery.', 'kpis' => [['At sorting center','3'],['Assigned to rider','2'],['Out for delivery','2'],['Delivered today','9']], 'columns' => ['Tracking No.','Order','Logistics Provider','Destination','Latest Update','Updated','Status'], 'rows' => [['BRLY-784201','#BR-1054','Bearly Logistics','Biñan, Laguna','Parcel received at sorting center','Today · 8:40 AM','At Sorting Center'], ['BRLY-784188','#BR-1052','Bearly Logistics','Cabuyao, Laguna','Assigned to delivery rider','Today · 9:15 AM','Assigned to Rider'], ['BRLY-784176','#BR-1051','Bearly Logistics','Calamba, Laguna','Rider is delivering the parcel','Today · 10:05 AM','Out for Delivery']], 'action' => 'Track'],
@@ -209,11 +199,14 @@ class SellerController extends Controller
     }
 
 
-    public function orders(): View
+    public function orders(Request $request): View
     {
         return view('seller.orders', [
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
+            'defaultOrderStatus' => in_array((string) $request->query('status', 'all'), ['all', 'new', 'to-prepare', 'ready-pickup', 'in-transit', 'history', 'completed', 'cancelled'], true)
+                ? (string) $request->query('status', 'all')
+                : 'all',
             'orderQueue' => [
                 ['label' => 'New orders', 'count' => 8, 'note' => 'Review within 2 hrs', 'icon' => 'clipboard-list', 'tone' => 'gold'],
                 ['label' => 'To prepare', 'count' => 5, 'note' => 'Pack before 1:30 PM', 'icon' => 'package', 'tone' => 'olive'],
@@ -226,6 +219,7 @@ class SellerController extends Controller
                 ['key' => 'to-prepare', 'label' => 'To Prepare', 'count' => 5],
                 ['key' => 'ready-pickup', 'label' => 'Ready for Pickup', 'count' => 3],
                 ['key' => 'in-transit', 'label' => 'In Transit', 'count' => 4],
+                ['key' => 'history', 'label' => 'History', 'count' => null],
                 ['key' => 'completed', 'label' => 'Completed', 'count' => null],
                 ['key' => 'cancelled', 'label' => 'Cancelled', 'count' => null],
             ],
@@ -236,6 +230,27 @@ class SellerController extends Controller
                 ['id' => '#BR-1055', 'customer' => 'Miguel Garcia', 'items' => '1 item', 'payment' => 'Cash on Delivery', 'payment_key' => 'cod', 'total' => '₱1,299', 'deadline' => 'Today · 3:00 PM', 'date_key' => 'today', 'urgent' => false, 'status' => 'Ready for Pickup', 'status_key' => 'ready-pickup', 'tone' => 'pickup', 'action' => 'Schedule Pickup'],
                 ['id' => '#BR-1054', 'customer' => 'Jamie Lim', 'items' => '2 items', 'payment' => 'GCash · Paid', 'payment_key' => 'paid', 'total' => '₱1,720', 'deadline' => 'September 1', 'date_key' => 'upcoming', 'urgent' => false, 'status' => 'In Transit', 'status_key' => 'in-transit', 'tone' => 'transit', 'action' => 'Track'],
                 ['id' => '#BR-1053', 'customer' => 'Sofia Mendoza', 'items' => '1 item', 'payment' => 'GCash · Paid', 'payment_key' => 'paid', 'total' => '₱1,050', 'deadline' => 'Delivered Aug 30', 'date_key' => 'upcoming', 'urgent' => false, 'status' => 'Completed', 'status_key' => 'completed', 'tone' => 'completed', 'action' => 'View'],
+                ['id' => '#BR-1049', 'customer' => 'Paolo Ramos', 'items' => '2 items', 'payment' => 'Refunded', 'payment_key' => 'paid', 'total' => '₱1,780', 'deadline' => 'Cancelled Aug 28', 'date_key' => 'upcoming', 'urgent' => false, 'status' => 'Cancelled', 'status_key' => 'cancelled', 'tone' => 'cancelled', 'action' => 'View'],
+            ],
+        ]);
+    }
+
+    public function returns(): View
+    {
+        return view('seller.returns', [
+            'seller' => $this->seller(),
+            'notifications' => $this->notifications(),
+            'summary' => [
+                ['label' => 'Action Required', 'value' => '2'],
+                ['label' => 'Under Review', 'value' => '3'],
+                ['label' => 'Approved Returns', 'value' => '1'],
+                ['label' => 'Refunded This Month', 'value' => '₱3,079'],
+            ],
+            'returns' => [
+                ['id' => 'RR-2041', 'order' => '#BR-1048', 'customer' => 'Maria Santos', 'request' => 'Return & refund', 'reason' => 'Wrong size received', 'amount' => '₱1,299', 'submitted' => 'Today · 9:20 AM', 'status' => 'Action Required', 'action' => 'Review Evidence'],
+                ['id' => 'RR-2038', 'order' => '#BR-1044', 'customer' => 'Carlo Reyes', 'request' => 'Refund only', 'reason' => 'Missing item', 'amount' => '₱899', 'submitted' => 'Yesterday · 4:10 PM', 'status' => 'Under Review', 'action' => 'View Case'],
+                ['id' => 'RR-2031', 'order' => '#BR-1036', 'customer' => 'Jamie Lim', 'request' => 'Return & refund', 'reason' => 'Damaged during delivery', 'amount' => '₱1,780', 'submitted' => 'Aug 29, 2026', 'status' => 'Return Approved', 'action' => 'Track Return'],
+                ['id' => 'RR-2025', 'order' => '#BR-1029', 'customer' => 'Ana Cruz', 'request' => 'Refund only', 'reason' => 'Seller approved refund', 'amount' => '₱1,299', 'submitted' => 'Aug 27, 2026', 'status' => 'Refunded', 'action' => 'View Details'],
             ],
         ]);
     }

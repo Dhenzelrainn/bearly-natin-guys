@@ -89,11 +89,14 @@ Route::prefix('seller')->name('seller.')->group(function () {
     Route::get('/store', [SellerController::class, 'store'])->name('store');
     Route::post('/store', [SellerController::class, 'saveStore'])->name('store.save');
     Route::get('/products', [SellerController::class, 'products'])->name('products');
-    Route::redirect('/orders', '/seller/orders/new')->name('orders');
-    Route::get('/orders/new', [SellerController::class, 'workspace'])->defaults('workspace', 'orders-new')->name('orders.new');
-    Route::get('/orders/to-prepare', [SellerController::class, 'workspace'])->defaults('workspace', 'orders-prepare')->name('orders.prepare');
-    Route::get('/orders/ready-for-pickup', [SellerController::class, 'workspace'])->defaults('workspace', 'orders-ready')->name('orders.ready');
-    Route::get('/orders/history', [SellerController::class, 'workspace'])->defaults('workspace', 'orders-history')->name('orders.history');
+    Route::get('/orders', [SellerController::class, 'orders'])->name('orders');
+    Route::get('/orders/returns-refunds', [SellerController::class, 'returns'])->name('orders.returns');
+
+    // Preserve old Seller Center URLs while statuses move to horizontal tabs.
+    Route::redirect('/orders/new', '/seller/orders?status=new')->name('orders.new');
+    Route::redirect('/orders/to-prepare', '/seller/orders?status=to-prepare')->name('orders.prepare');
+    Route::redirect('/orders/ready-for-pickup', '/seller/orders?status=ready-pickup')->name('orders.ready');
+    Route::redirect('/orders/history', '/seller/orders?status=history')->name('orders.history');
     Route::get('/fulfillment/waybills', [SellerController::class, 'workspace'])->defaults('workspace', 'fulfillment-waybills')->name('fulfillment.waybills');
     Route::get('/fulfillment/pickups', [SellerController::class, 'workspace'])->defaults('workspace', 'fulfillment-pickups')->name('fulfillment.pickups');
     Route::get('/fulfillment/tracking', [SellerController::class, 'workspace'])->defaults('workspace', 'fulfillment-tracking')->name('fulfillment.tracking');

@@ -4,6 +4,7 @@
 @section('page-title', 'Orders')
 
 @section('content')
+@php($activeOrderStatus = $defaultOrderStatus ?? 'all')
 <div class="page-heading orders-page-heading">
     <div>
         <h2>Order Management</h2>
@@ -32,10 +33,10 @@
     <div class="order-tabs" role="tablist" aria-label="Filter orders by fulfillment status">
         @foreach ($orderTabs as $tab)
             <button
-                class="order-tab {{ $tab['key'] === 'all' ? 'is-active' : '' }}"
+                class="order-tab {{ $tab['key'] === $activeOrderStatus ? 'is-active' : '' }}"
                 type="button"
                 role="tab"
-                aria-selected="{{ $tab['key'] === 'all' ? 'true' : 'false' }}"
+                aria-selected="{{ $tab['key'] === $activeOrderStatus ? 'true' : 'false' }}"
                 data-order-tab="{{ $tab['key'] }}"
             >
                 {{ $tab['label'] }}
@@ -109,6 +110,7 @@
                     <tr
                         data-order-row
                         data-status="{{ $order['status_key'] }}"
+                        data-history="{{ in_array($order['status_key'], ['completed', 'cancelled'], true) ? 'true' : 'false' }}"
                         data-date="{{ $order['date_key'] }}"
                         data-payment="{{ $order['payment_key'] }}"
                         data-search="{{ strtolower($order['id'].' '.$order['customer']) }}"
@@ -191,4 +193,5 @@
         </div>
     </section>
 </div>
+<script type="application/json" data-default-order-status>@json($activeOrderStatus)</script>
 @endsection

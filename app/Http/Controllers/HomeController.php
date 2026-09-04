@@ -239,7 +239,7 @@ class HomeController extends Controller
             ],
         ];
 
-        return view('home', compact(
+        return view('buyer.home', compact(
             'categories',
             'recommendedProducts',
             'bestSellers',

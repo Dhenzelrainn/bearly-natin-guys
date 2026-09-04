@@ -14,6 +14,8 @@ export default defineConfig({
                 'resources/js/courier.js',
                 'resources/css/seller.css',
                 'resources/js/seller.js',
+                'resources/css/buyer-home.css',
+                'resources/js/homepage.js',
             ],
             refresh: true,
         }),

@@ -18,7 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    document.querySelectorAll('.add-to-cart-btn').forEach((button) => {
+    document.querySelectorAll('.add-to-cart-btn:not([data-server-cart="true"])').forEach((button) => {
         button.addEventListener('click', () => {
             const counter = document.getElementById('cartCount');
             const current = Number(counter?.textContent || 0) + 1;

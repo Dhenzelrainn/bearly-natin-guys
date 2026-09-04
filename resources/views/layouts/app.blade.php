@@ -15,6 +15,8 @@
         content="Bearly - Your everyday e-commerce marketplace"
     >
 
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+
     <title>@yield('title', 'Bearly')</title>
 
     <!-- Google Font -->
@@ -33,7 +35,7 @@
 
     <!-- Laravel Vite -->
     @vite([
-        'resources/css/homepage.css',
+        'resources/css/buyer-home.css',
         'resources/js/homepage.js'
     ])
 

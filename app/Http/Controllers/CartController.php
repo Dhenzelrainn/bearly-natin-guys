@@ -21,7 +21,7 @@ class CartController extends Controller
             return $item->quantity * $item->price;
         });
 
-        return view('cart.index', compact('cartItems', 'total'));
+        return view('cart.homecart', compact('cartItems', 'total'));
     }
 
     public function add(Request $request): JsonResponse

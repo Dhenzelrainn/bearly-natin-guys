@@ -165,6 +165,8 @@
 
                         <button
                             class="add-to-cart-btn"
+                            type="button"
+                            data-server-cart="true"
                             data-product-id="{{ $product->id }}"
                             data-product-name="{{ $product->name }}"
                             data-product-price="{{ $product->price }}"
@@ -423,6 +425,36 @@
         background: #c19560;
     }
 
+    .add-to-cart-btn:disabled {
+        cursor: wait;
+        opacity: 0.8;
+    }
+
+    .add-to-cart-btn.is-loading::before {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        margin-right: 7px;
+        vertical-align: -2px;
+        border: 2px solid rgba(255, 255, 255, 0.45);
+        border-top-color: white;
+        border-radius: 50%;
+        content: '';
+        animation: cart-spinner 0.7s linear infinite;
+    }
+
+    .add-to-cart-btn.is-success {
+        background: #3f8f68;
+    }
+
+    .add-to-cart-btn.is-error {
+        background: #b5483f;
+    }
+
+    @keyframes cart-spinner {
+        to { transform: rotate(360deg); }
+    }
+
     .pagination {
         text-align: center;
         margin-top: 40px;
@@ -499,29 +531,51 @@
     }
 
     // Add to Cart functionality
-    document.querySelectorAll('.add-to-cart-btn').forEach(button => {
-        button.addEventListener('click', function(e) {
+    document.querySelectorAll('.add-to-cart-btn[data-server-cart="true"]').forEach(button => {
+        button.addEventListener('click', async function(e) {
             e.preventDefault();
-            const productId = this.dataset.productId;
-            const productName = this.dataset.productName;
+            if (this.disabled) return;
 
-            fetch('{{ route("cart.add") }}', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-                },
-                body: JSON.stringify({
-                    product_id: productId,
-                    quantity: 1
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    alert('✓ ' + productName + ' added to cart!');
-                }
-            });
+            const originalLabel = this.textContent.trim();
+            this.disabled = true;
+            this.classList.add('is-loading');
+            this.classList.remove('is-success', 'is-error');
+            this.textContent = 'Adding...';
+
+            try {
+                const response = await fetch('{{ route("cart.add") }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                    },
+                    body: JSON.stringify({
+                        product_id: this.dataset.productId,
+                        quantity: 1
+                    })
+                });
+
+                if (!response.ok) throw new Error('Cart request failed');
+
+                const data = await response.json();
+                if (!data.success) throw new Error(data.message || 'Cart request failed');
+
+                const counter = document.getElementById('cartCount');
+                if (counter && data.cart_count !== undefined) counter.textContent = data.cart_count;
+                this.classList.remove('is-loading');
+                this.classList.add('is-success');
+                this.textContent = 'Added to Cart';
+            } catch (error) {
+                this.classList.remove('is-loading');
+                this.classList.add('is-error');
+                this.textContent = 'Try Again';
+            } finally {
+                setTimeout(() => {
+                    this.disabled = false;
+                    this.classList.remove('is-success', 'is-error');
+                    this.textContent = originalLabel;
+                }, 1800);
+            }
         });
     });
 

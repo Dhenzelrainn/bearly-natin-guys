@@ -56,7 +56,7 @@ class ProductController extends Controller
             'Groceries',
         ];
 
-        return view('products.index', compact('products', 'categories'));
+        return view('products.home.products', compact('products', 'categories'));
     }
 
     public function show(Product $product): View

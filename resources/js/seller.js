@@ -2,27 +2,46 @@ const bootSeller = () => {
     window.lucide?.createIcons();
 
     const shell = document.querySelector('[data-seller-shell]');
-    document.querySelector('[data-seller-menu]')?.addEventListener('click', () => shell?.classList.add('menu-open'));
-    document.querySelector('[data-seller-overlay]')?.addEventListener('click', () => shell?.classList.remove('menu-open'));
-
-    document.querySelectorAll('[data-seller-nav-toggle]').forEach((button) => {
-        button.addEventListener('click', () => {
-            const group = button.closest('[data-seller-nav-group]');
-            const children = group?.querySelector('.seller-nav-children');
-            if (!group || !children) return;
-
-            const willOpen = !group.classList.contains('is-open');
-            document.querySelectorAll('[data-seller-nav-group]').forEach((item) => {
-                item.classList.remove('is-open');
-                item.querySelector('[data-seller-nav-toggle]')?.setAttribute('aria-expanded', 'false');
-                const itemChildren = item.querySelector('.seller-nav-children');
-                if (itemChildren) itemChildren.hidden = true;
-            });
-
-            group.classList.toggle('is-open', willOpen);
-            button.setAttribute('aria-expanded', String(willOpen));
-            children.hidden = !willOpen;
-        });
+    const menuButton = document.querySelector('[data-seller-menu]');
+    const mobileMenuButton = document.querySelector('[data-seller-mobile-menu]');
+    const mobileSidebar = window.matchMedia('(max-width: 820px)');
+    const setSidebarCollapsed = (collapsed, remember = true) => {
+        if (!shell || mobileSidebar.matches) return;
+        shell.classList.toggle('sidebar-collapsed', collapsed);
+        menuButton?.setAttribute('aria-expanded', String(!collapsed));
+        menuButton?.setAttribute('aria-label', collapsed ? 'Expand seller navigation' : 'Collapse seller navigation');
+        if (remember) {
+            try { window.localStorage.setItem('bearlySellerSidebarCollapsed', String(collapsed)); } catch (_) {}
+        }
+    };
+    if (!mobileSidebar.matches) {
+        try { setSidebarCollapsed(window.localStorage.getItem('bearlySellerSidebarCollapsed') === 'true', false); } catch (_) {}
+    } else {
+        mobileMenuButton?.setAttribute('aria-expanded', 'false');
+    }
+    menuButton?.addEventListener('click', () => {
+        if (mobileSidebar.matches) shell?.classList.remove('menu-open');
+        else setSidebarCollapsed(!shell?.classList.contains('sidebar-collapsed'));
+    });
+    mobileMenuButton?.addEventListener('click', () => {
+        const opened = shell?.classList.toggle('menu-open') ?? false;
+        mobileMenuButton.setAttribute('aria-expanded', String(opened));
+        mobileMenuButton.setAttribute('aria-label', opened ? 'Close seller navigation' : 'Open seller navigation');
+    });
+    document.querySelector('[data-seller-overlay]')?.addEventListener('click', () => {
+        shell?.classList.remove('menu-open');
+        mobileMenuButton?.setAttribute('aria-expanded', 'false');
+        mobileMenuButton?.setAttribute('aria-label', 'Open seller navigation');
+    });
+    mobileSidebar.addEventListener('change', (event) => {
+        shell?.classList.remove('menu-open');
+        if (event.matches) {
+            shell?.classList.remove('sidebar-collapsed');
+            mobileMenuButton?.setAttribute('aria-expanded', 'false');
+            mobileMenuButton?.setAttribute('aria-label', 'Open seller navigation');
+        } else {
+            try { setSidebarCollapsed(window.localStorage.getItem('bearlySellerSidebarCollapsed') === 'true', false); } catch (_) { setSidebarCollapsed(false, false); }
+        }
     });
 
     const closePopovers = (except = null) => {
@@ -751,6 +770,90 @@ const bootSeller = () => {
         window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3400);
     });
 
+    /* Store appearance — frontend-only image, description, and buyer preview. */
+    const appearance = document.querySelector('[data-storefront-appearance]');
+    if (appearance) {
+        const description = appearance.querySelector('[data-storefront-description]');
+        const count = appearance.querySelector('[data-storefront-description-count]');
+        const previewDescription = appearance.querySelector('[data-storefront-preview-description]');
+
+        description?.addEventListener('input', () => {
+            if (count) count.textContent = description.value.length;
+            if (previewDescription) previewDescription.textContent = description.value.trim() || 'Your store description will appear here.';
+        });
+
+        appearance.querySelectorAll('[data-storefront-image]').forEach((input) => {
+            input.addEventListener('change', () => {
+                const file = input.files?.[0];
+                if (!file) return;
+
+                const maximum = input.dataset.storefrontImage === 'cover' ? 10 : 5;
+                if (file.size > maximum * 1024 * 1024) {
+                    input.value = '';
+                    if (toast) {
+                        toast.textContent = `${input.dataset.storefrontImage === 'cover' ? 'Cover' : 'Profile'} image must be ${maximum}MB or smaller.`;
+                        toast.classList.add('is-visible');
+                    }
+                    return;
+                }
+
+                const reader = new FileReader();
+                reader.addEventListener('load', () => {
+                    const createPreview = () => {
+                        const image = document.createElement('img');
+                        image.alt = `${input.dataset.storefrontImage} preview`;
+                        image.src = reader.result;
+                        return image;
+                    };
+                    if (input.dataset.storefrontImage === 'profile') {
+                        appearance.querySelector('[data-storefront-profile-placeholder]')?.replaceChildren(createPreview());
+                        appearance.querySelector('[data-storefront-preview-profile]')?.replaceChildren(createPreview());
+                    } else {
+                        appearance.querySelector('[data-storefront-cover-placeholder]')?.replaceChildren(createPreview());
+                        appearance.querySelector('[data-storefront-preview-cover]')?.replaceChildren(createPreview());
+                    }
+                });
+                reader.readAsDataURL(file);
+            });
+        });
+    }
+
+    document.querySelector('[data-storefront-preview-toggle]')?.addEventListener('click', () => {
+        document.querySelector('.storefront-preview-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    document.querySelector('[data-save-appearance]')?.addEventListener('click', () => {
+        if (!toast) return;
+        toast.textContent = 'Store appearance saved for this preview. It will reset after refresh.';
+        toast.classList.add('is-visible');
+        window.clearTimeout(window.sellerToastTimer);
+        window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3400);
+    });
+
+    /* Publication settings — frontend-only visibility preview. */
+    document.querySelector('[data-publication-toggle]')?.addEventListener('click', (event) => {
+        const button = event.currentTarget;
+        const nextPublished = button.dataset.published !== 'true';
+        button.dataset.published = String(nextPublished);
+        button.querySelector('span').textContent = nextPublished ? 'Unpublish Store' : 'Publish Store';
+
+        const title = document.querySelector('[data-publication-title]');
+        const copy = document.querySelector('[data-publication-copy]');
+        const badge = document.querySelector('[data-publication-badge]');
+        const visibility = document.querySelector('[data-publication-visibility]');
+        if (title) title.textContent = nextPublished ? 'Store Published' : 'Store Not Published';
+        if (copy) copy.textContent = nextPublished ? 'Your storefront is currently visible to buyers.' : 'Your storefront is hidden from buyers.';
+        if (badge) {
+            badge.classList.toggle('is-live', nextPublished);
+            badge.lastChild.textContent = nextPublished ? 'Published' : 'Draft';
+        }
+        if (visibility) visibility.textContent = nextPublished ? 'Visible to buyers' : 'Hidden from buyers';
+        if (!toast) return;
+        toast.textContent = `${nextPublished ? 'Publish' : 'Unpublish'} action previewed. Backend confirmation will be connected later.`;
+        toast.classList.add('is-visible');
+        window.clearTimeout(window.sellerToastTimer);
+        window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3400);
+    });
+
 
     /* Fulfillment workspaces. */
     const setupFulfillmentFilter = (workspaceSelector, rowSelector, tabSelector, searchSelector, countSelector, emptySelector, resetSelector = null, statusSelector = null) => {
@@ -941,6 +1044,207 @@ const bootSeller = () => {
         window.clearTimeout(window.sellerToastTimer);
         window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3000);
     }));
+
+    /* Customer Service — frontend-only seller inbox. */
+    const messageWorkspace = document.querySelector('[data-message-workspace]');
+    if (messageWorkspace) {
+        const conversationRows = [...messageWorkspace.querySelectorAll('[data-conversation]')];
+        const search = messageWorkspace.querySelector('[data-message-search]');
+        const empty = messageWorkspace.querySelector('[data-conversation-empty]');
+        const thread = messageWorkspace.querySelector('[data-message-thread]');
+        const input = messageWorkspace.querySelector('[data-message-input]');
+        let filter = 'all';
+        let activeConversation = JSON.parse(conversationRows[0]?.dataset.payload || '{}');
+
+        const setText = (selector, value) => {
+            const node = messageWorkspace.querySelector(selector);
+            if (node) node.textContent = value;
+        };
+        const renderThread = (conversation) => {
+            if (!thread) return;
+            thread.replaceChildren();
+            const day = document.createElement('div');
+            day.className = 'message-day';
+            day.innerHTML = '<span>Today</span>';
+            thread.append(day);
+            conversation.messages.forEach((message) => {
+                const row = document.createElement('article');
+                row.className = `chat-bubble-row is-${message.from}`;
+                if (message.from === 'buyer') {
+                    const avatar = document.createElement('span');
+                    avatar.className = 'conversation-avatar';
+                    avatar.textContent = conversation.initials;
+                    row.append(avatar);
+                }
+                const bubble = document.createElement('div');
+                const copy = document.createElement('p');
+                const time = document.createElement('time');
+                copy.textContent = message.text;
+                time.textContent = message.time;
+                if (message.from === 'seller') time.insertAdjacentHTML('beforeend', '<i data-lucide="check-check"></i>');
+                bubble.append(copy, time);
+                row.append(bubble);
+                thread.append(row);
+            });
+            window.lucide?.createIcons();
+            thread.scrollTop = thread.scrollHeight;
+        };
+        const openConversation = (row) => {
+            activeConversation = JSON.parse(row.dataset.payload);
+            conversationRows.forEach((item) => item.classList.toggle('is-active', item === row));
+            row.dataset.unread = '0';
+            row.querySelector('.conversation-unread')?.remove();
+            setText('[data-chat-initials]', activeConversation.initials);
+            setText('[data-chat-buyer]', activeConversation.buyer);
+            setText('[data-chat-active]', activeConversation.active);
+            setText('[data-chat-order]', activeConversation.order);
+            setText('[data-chat-context-product]', activeConversation.product);
+            setText('[data-chat-context-order]', activeConversation.order);
+            setText('[data-detail-initials]', activeConversation.initials);
+            setText('[data-detail-buyer]', activeConversation.buyer);
+            setText('[data-detail-member]', activeConversation.member);
+            setText('[data-detail-order]', activeConversation.order);
+            setText('[data-detail-status]', activeConversation.status);
+            setText('[data-detail-product]', activeConversation.product);
+            setText('[data-detail-variant]', activeConversation.variant);
+            setText('[data-detail-price]', activeConversation.price);
+            setText('[data-detail-previous]', activeConversation.previous);
+            renderThread(activeConversation);
+            const unread = conversationRows.reduce((total, item) => total + Number(item.dataset.unread || 0), 0);
+            setText('[data-total-unread]', unread);
+        };
+        const applyConversationFilter = () => {
+            const query = search?.value.trim().toLowerCase() ?? '';
+            let visible = 0;
+            conversationRows.forEach((row) => {
+                const matchesFilter = filter === 'all' || (filter === 'unread' && Number(row.dataset.unread) > 0) || row.dataset.type === filter;
+                const matchesSearch = !query || row.dataset.search.includes(query);
+                row.hidden = !(matchesFilter && matchesSearch);
+                if (!row.hidden) visible += 1;
+            });
+            if (empty) empty.hidden = visible > 0;
+        };
+        conversationRows.forEach((row) => row.addEventListener('click', () => openConversation(row)));
+        messageWorkspace.querySelectorAll('[data-message-filter]').forEach((button) => button.addEventListener('click', () => {
+            filter = button.dataset.messageFilter;
+            messageWorkspace.querySelectorAll('[data-message-filter]').forEach((item) => item.classList.toggle('is-active', item === button));
+            applyConversationFilter();
+        }));
+        search?.addEventListener('input', applyConversationFilter);
+        messageWorkspace.querySelectorAll('[data-quick-reply]').forEach((button) => button.addEventListener('click', () => {
+            if (input) { input.value = button.dataset.quickReply; input.focus(); }
+        }));
+        const messageForm = messageWorkspace.querySelector('[data-message-form]');
+        messageForm?.addEventListener('submit', (event) => {
+            event.preventDefault();
+            const message = input?.value.trim();
+            if (!message || !thread) { input?.focus(); return; }
+            activeConversation.messages.push({ from: 'seller', text: message, time: 'Just now' });
+            renderThread(activeConversation);
+            input.value = '';
+        });
+        input?.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); messageForm?.requestSubmit(); }
+        });
+        messageWorkspace.querySelector('[data-message-attach]')?.addEventListener('click', () => {
+            if (toast) { toast.textContent = 'Attachment picker will be connected with the backend later.'; toast.classList.add('is-visible'); }
+        });
+        messageWorkspace.querySelector('[data-seller-availability]')?.addEventListener('change', (event) => {
+            if (toast) { toast.textContent = `Status changed to ${event.currentTarget.value} for this preview.`; toast.classList.add('is-visible'); }
+        });
+        messageWorkspace.querySelector('[data-report-conversation]')?.addEventListener('click', () => {
+            if (toast) { toast.textContent = 'Conversation report form will be connected during backend integration.'; toast.classList.add('is-visible'); }
+        });
+    }
+
+    /* Customer feedback — frontend-only filters and replies. */
+    const feedbackWorkspace = document.querySelector('[data-feedback-workspace]');
+    if (feedbackWorkspace) {
+        const reviews = [...feedbackWorkspace.querySelectorAll('[data-feedback-review]')];
+        const search = feedbackWorkspace.querySelector('[data-feedback-search]');
+        const empty = feedbackWorkspace.querySelector('[data-feedback-empty]');
+        let activeFilter = 'all';
+        const applyFeedbackFilter = () => {
+            const query = search?.value.trim().toLowerCase() ?? '';
+            let visible = 0;
+            reviews.forEach((review) => {
+                const matches = (activeFilter === 'all' || review.dataset.status === activeFilter) && (!query || review.dataset.search.includes(query));
+                review.hidden = !matches;
+                if (matches) visible += 1;
+            });
+            if (empty) empty.hidden = visible > 0;
+        };
+        feedbackWorkspace.querySelectorAll('[data-feedback-filter]').forEach((button) => button.addEventListener('click', () => {
+            activeFilter = button.dataset.feedbackFilter;
+            feedbackWorkspace.querySelectorAll('[data-feedback-filter]').forEach((item) => item.classList.toggle('is-active', item === button));
+            applyFeedbackFilter();
+        }));
+        search?.addEventListener('input', applyFeedbackFilter);
+        feedbackWorkspace.querySelectorAll('[data-feedback-reply]').forEach((button) => button.addEventListener('click', () => {
+            button.hidden = true;
+            const form = button.parentElement.querySelector('[data-feedback-form]');
+            if (form) { form.hidden = false; form.querySelector('textarea')?.focus(); }
+        }));
+        feedbackWorkspace.querySelectorAll('[data-feedback-cancel]').forEach((button) => button.addEventListener('click', () => {
+            const area = button.closest('[data-feedback-reply-area]');
+            area.querySelector('[data-feedback-form]').hidden = true;
+            area.querySelector('[data-feedback-reply]').hidden = false;
+        }));
+        feedbackWorkspace.querySelectorAll('[data-feedback-form]').forEach((form) => form.addEventListener('submit', (event) => {
+            event.preventDefault();
+            const textarea = form.querySelector('textarea');
+            if (!textarea?.value.trim()) { textarea?.focus(); return; }
+            const review = form.closest('[data-feedback-review]');
+            const response = document.createElement('div');
+            response.className = 'seller-feedback-response';
+            const label = document.createElement('span');
+            const copy = document.createElement('p');
+            label.textContent = 'Seller response';
+            copy.textContent = textarea.value.trim();
+            response.append(label, copy);
+            form.closest('[data-feedback-reply-area]').replaceWith(response);
+            review.dataset.status = 'replied';
+            const status = review.querySelector('.feedback-review-status');
+            if (status) { status.textContent = 'Replied'; status.classList.add('is-replied'); }
+            if (toast) { toast.textContent = 'Reply posted for this frontend preview.'; toast.classList.add('is-visible'); }
+        }));
+    }
+
+    /* Reports — frontend-only filters and export feedback. */
+    document.querySelectorAll('[data-report-page]').forEach((page) => {
+        const search = page.querySelector('[data-report-search]');
+        const rows = [...page.querySelectorAll('[data-report-row]')];
+        const count = page.querySelector('[data-report-count]');
+        const empty = page.querySelector('[data-report-empty]');
+
+        const filterRows = () => {
+            const query = search?.value.trim().toLowerCase() ?? '';
+            let visible = 0;
+            rows.forEach((row) => {
+                const matches = !query || row.dataset.search.includes(query);
+                row.hidden = !matches;
+                if (matches) visible += 1;
+            });
+            if (count) count.textContent = visible;
+            if (empty) empty.hidden = visible > 0;
+        };
+
+        search?.addEventListener('input', filterRows);
+        page.querySelector('[data-report-period]')?.addEventListener('change', (event) => {
+            if (!toast) return;
+            toast.textContent = `${event.currentTarget.value} selected. Report data is a frontend preview.`;
+            toast.classList.add('is-visible');
+            window.clearTimeout(window.sellerToastTimer);
+            window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3200);
+        });
+        page.querySelector('[data-report-export]')?.addEventListener('click', () => {
+            if (!toast) return;
+            toast.textContent = 'Report export previewed. File generation will be connected with the backend.';
+            toast.classList.add('is-visible');
+            window.clearTimeout(window.sellerToastTimer);
+            window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3400);
+        });
+    });
 
     const serverToast = document.querySelector('[data-server-toast]');
     if (serverToast) window.setTimeout(() => serverToast.classList.remove('is-visible'), 3200);

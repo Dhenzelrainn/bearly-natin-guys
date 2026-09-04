@@ -84,6 +84,136 @@ class SellerController extends Controller
         ]);
     }
 
+    public function reports(): View
+    {
+        return view('seller.Reports.overview', [
+            'seller' => $this->seller(),
+            'notifications' => $this->notifications(),
+            'period' => 'Aug 1 – Aug 31, 2026',
+            'metrics' => [
+                ['label' => 'Net Revenue', 'value' => '₱109,876', 'change' => '+10.8%', 'context' => 'vs July (₱99,210)', 'primary' => true],
+                ['label' => 'Gross Sales', 'value' => '₱128,450', 'change' => '+12.5%', 'context' => 'vs July'],
+                ['label' => 'Orders', 'value' => '91', 'change' => '+8.3%', 'context' => 'vs July'],
+                ['label' => 'Average Order', 'value' => '₱1,411', 'change' => '+3.9%', 'context' => 'vs July'],
+            ],
+            'salesTrend' => [14200, 17850, 19600, 18100, 16900, 20700, 21100],
+            'salesLabels' => ['Aug 1–4', 'Aug 5–9', 'Aug 10–14', 'Aug 15–19', 'Aug 20–24', 'Aug 25–28', 'Aug 29–31'],
+            'financialBridge' => [
+                ['label' => 'Gross Sales', 'value' => '₱128,450.00', 'negative' => false],
+                ['label' => 'Discounts', 'value' => '−₱4,430.00', 'negative' => true],
+                ['label' => 'Refunds', 'value' => '−₱1,299.00', 'negative' => true],
+                ['label' => 'Platform Commission (10%)', 'value' => '−₱12,845.00', 'negative' => true],
+            ],
+            'insights' => [
+                ['title' => 'Best seller', 'value' => 'Classic Linen Shirt · 38 sold', 'detail' => 'Your top product by unit volume this month.', 'icon' => 'shirt'],
+                ['title' => 'Strongest period', 'value' => 'Aug 25–31 · ₱41,800', 'detail' => 'This period captured the highest sales.', 'icon' => 'trending-up'],
+                ['title' => 'Refund rate', 'value' => '1.4% · Stable', 'detail' => 'Below your previous month’s 1.8%.', 'icon' => 'rotate-ccw'],
+            ],
+            'products' => [
+                ['name' => 'Classic Linen Shirt', 'units' => 38, 'revenue' => '₱52,440.00', 'share' => 40.8, 'icon' => 'shirt'],
+                ['name' => 'Canvas Tote Bag', 'units' => 29, 'revenue' => '₱34,018.00', 'share' => 26.5, 'icon' => 'shopping-bag'],
+                ['name' => 'Everyday Sneakers', 'units' => 24, 'revenue' => '₱25,320.00', 'share' => 19.7, 'icon' => 'footprints'],
+            ],
+        ]);
+    }
+
+    public function salesReport(): View
+    {
+        return view('seller.Reports.sales', [
+            'seller' => $this->seller(),
+            'notifications' => $this->notifications(),
+            'summary' => [
+                ['label' => 'Gross Sales', 'value' => '₱128,450', 'note' => '+12.5% vs July'],
+                ['label' => 'Completed Orders', 'value' => '91', 'note' => '+7 orders'],
+                ['label' => 'Units Sold', 'value' => '146', 'note' => '+18 units'],
+                ['label' => 'Average Order', 'value' => '₱1,411', 'note' => '+3.9% vs July'],
+            ],
+            'momentum' => [
+                ['label' => 'Aug 1–7', 'value' => 17600, 'height' => 42],
+                ['label' => 'Aug 8–14', 'value' => 28350, 'height' => 68],
+                ['label' => 'Aug 15–21', 'value' => 40700, 'height' => 97],
+                ['label' => 'Aug 22–31', 'value' => 41800, 'height' => 100],
+            ],
+            'productPerformance' => [
+                ['rank' => 1, 'name' => 'Classic Linen Shirt', 'sku' => 'CLS-LINEN-SHIRT', 'units' => 38, 'revenue' => '₱52,440', 'share' => 40.8, 'icon' => 'shirt'],
+                ['rank' => 2, 'name' => 'Canvas Tote Bag', 'sku' => 'CNV-TOTE-BAG', 'units' => 29, 'revenue' => '₱34,018', 'share' => 26.5, 'icon' => 'shopping-bag'],
+                ['rank' => 3, 'name' => 'Everyday Sneakers', 'sku' => 'EV-SNKRS-WHT', 'units' => 24, 'revenue' => '₱25,320', 'share' => 19.7, 'icon' => 'footprints'],
+            ],
+            'rows' => [
+                ['period' => 'Aug 25–31', 'orders' => 24, 'units' => 39, 'gross' => '₱41,800', 'discounts' => '₱1,520', 'refunds' => '₱0', 'netSales' => '₱40,280'],
+                ['period' => 'Aug 18–24', 'orders' => 21, 'units' => 34, 'gross' => '₱37,600', 'discounts' => '₱1,310', 'refunds' => '₱1,299', 'netSales' => '₱34,991'],
+                ['period' => 'Aug 11–17', 'orders' => 25, 'units' => 41, 'gross' => '₱31,450', 'discounts' => '₱980', 'refunds' => '₱0', 'netSales' => '₱30,470'],
+                ['period' => 'Aug 1–10', 'orders' => 21, 'units' => 32, 'gross' => '₱17,600', 'discounts' => '₱620', 'refunds' => '₱0', 'netSales' => '₱16,980'],
+            ],
+        ]);
+    }
+
+    public function financialReport(): View
+    {
+        return view('seller.Reports.financial', [
+            'seller' => $this->seller(),
+            'notifications' => $this->notifications(),
+            'summary' => [
+                ['label' => 'Gross Sales', 'value' => '₱128,450', 'note' => 'Before deductions'],
+                ['label' => 'Total Deductions', 'value' => '₱18,574', 'note' => 'Discounts, refunds, commission'],
+                ['label' => 'Net Revenue', 'value' => '₱109,876', 'note' => '+10.8% vs July'],
+                ['label' => 'Commission Rate', 'value' => '10%', 'note' => 'Platform rate'],
+            ],
+            'currentStatement' => [
+                ['label' => 'Gross Sales', 'value' => '₱128,450.00'],
+                ['label' => 'Seller-funded Discounts', 'value' => '−₱4,430.00'],
+                ['label' => 'Refunds', 'value' => '−₱1,299.00'],
+                ['label' => 'Platform Commission', 'value' => '−₱12,845.00'],
+            ],
+            'deductions' => [
+                ['label' => 'Platform Commission', 'value' => '₱12,845', 'percent' => 69.2, 'tone' => 'brown'],
+                ['label' => 'Seller Discounts', 'value' => '₱4,430', 'percent' => 23.9, 'tone' => 'gold'],
+                ['label' => 'Refunds', 'value' => '₱1,299', 'percent' => 6.9, 'tone' => 'olive'],
+            ],
+            'rows' => [
+                ['period' => 'August 2026', 'gross' => '₱128,450', 'discounts' => '₱4,430', 'refunds' => '₱1,299', 'commission' => '₱12,845', 'net' => '₱109,876', 'status' => 'Processing'],
+                ['period' => 'July 2026', 'gross' => '₱112,800', 'discounts' => '₱3,820', 'refunds' => '₱0', 'commission' => '₱11,280', 'net' => '₱97,700', 'status' => 'Paid'],
+                ['period' => 'June 2026', 'gross' => '₱106,240', 'discounts' => '₱3,140', 'refunds' => '₱899', 'commission' => '₱10,624', 'net' => '₱91,577', 'status' => 'Paid'],
+            ],
+        ]);
+    }
+
+    public function messages(): View
+    {
+        return view('seller.CustomerService.messages', [
+            'seller' => $this->seller(),
+            'notifications' => $this->notifications(),
+            'conversations' => [
+                ['id' => 1, 'buyer' => 'Maria Santos', 'initials' => 'MS', 'time' => '10:24 AM', 'last' => "Large please, if it’s still available.", 'context' => 'Order #BR-1058', 'order' => '#BR-1058', 'product' => 'Classic Linen Shirt', 'variant' => 'Medium', 'price' => '₱1,299', 'status' => 'To Prepare', 'unread' => 1, 'type' => 'order', 'active' => 'Active 8 min ago', 'member' => 'October 12, 2023', 'previous' => 6, 'messages' => [['from' => 'buyer', 'text' => 'Hi, can I change the size from Medium to Large?', 'time' => '10:18 AM'], ['from' => 'seller', 'text' => 'Hi Maria! Yes, we can change the size to Large for you. Would you like me to proceed?', 'time' => '10:20 AM'], ['from' => 'buyer', 'text' => "Large please, if it’s still available.", 'time' => '10:24 AM']]],
+                ['id' => 2, 'buyer' => 'Juan Dela Cruz', 'initials' => 'JD', 'time' => '9:58 AM', 'last' => 'When will my order be shipped?', 'context' => 'Order #BR-1055', 'order' => '#BR-1055', 'product' => 'Canvas Tote Bag', 'variant' => 'Natural', 'price' => '₱899', 'status' => 'To Prepare', 'unread' => 2, 'type' => 'order', 'active' => 'Active 20 min ago', 'member' => 'January 8, 2025', 'previous' => 2, 'messages' => [['from' => 'buyer', 'text' => 'Hello, when will my order be shipped?', 'time' => '9:58 AM']]],
+                ['id' => 3, 'buyer' => 'Angela Cruz', 'initials' => 'AC', 'time' => 'Yesterday', 'last' => 'Do you have this in black?', 'context' => 'Classic Linen Shirt', 'order' => 'No active order', 'product' => 'Classic Linen Shirt', 'variant' => 'Product inquiry', 'price' => '₱1,299', 'status' => 'Product Inquiry', 'unread' => 1, 'type' => 'product', 'active' => 'Active yesterday', 'member' => 'March 14, 2026', 'previous' => 1, 'messages' => [['from' => 'buyer', 'text' => 'Hi! Do you have the Classic Linen Shirt in black?', 'time' => 'Yesterday · 4:18 PM']]],
+                ['id' => 4, 'buyer' => 'Liam Reyes', 'initials' => 'LR', 'time' => 'Yesterday', 'last' => 'Thank you, I’ll wait for it.', 'context' => 'Order #BR-1049', 'order' => '#BR-1049', 'product' => 'Everyday Sneakers', 'variant' => 'White / Size 40', 'price' => '₱1,499', 'status' => 'In Transit', 'unread' => 0, 'type' => 'order', 'active' => 'Active yesterday', 'member' => 'June 2, 2024', 'previous' => 4, 'messages' => [['from' => 'buyer', 'text' => 'Can you check the latest delivery update?', 'time' => 'Yesterday · 1:05 PM'], ['from' => 'seller', 'text' => 'Your parcel is already in transit. You can also track it from your order page.', 'time' => 'Yesterday · 1:12 PM'], ['from' => 'buyer', 'text' => 'Thank you, I’ll wait for it.', 'time' => 'Yesterday · 1:14 PM']]],
+                ['id' => 5, 'buyer' => 'Kim Chua', 'initials' => 'KC', 'time' => '2d ago', 'last' => 'I received the wrong item.', 'context' => 'Order #BR-1042', 'order' => '#BR-1042', 'product' => 'Canvas Tote Bag', 'variant' => 'Natural', 'price' => '₱899', 'status' => 'Completed', 'unread' => 1, 'type' => 'order', 'active' => 'Active 2 days ago', 'member' => 'November 20, 2025', 'previous' => 3, 'messages' => [['from' => 'buyer', 'text' => 'I received the wrong item. What should I do?', 'time' => 'Sep 2 · 3:42 PM']]],
+            ],
+            'quickReplies' => [
+                ['label' => 'Size availability', 'text' => 'Let me check the available sizes for you. I’ll send an update shortly.'],
+                ['label' => 'Order preparation', 'text' => 'Your order is currently being prepared and will be ready before the scheduled pickup.'],
+                ['label' => 'Pickup schedule', 'text' => 'Your parcel is scheduled for courier pickup today. Tracking will update after handover.'],
+            ],
+        ]);
+    }
+
+    public function customerFeedback(): View
+    {
+        return view('seller.CustomerService.feedback', [
+            'seller' => $this->seller(),
+            'notifications' => $this->notifications(),
+            'summary' => ['rating' => '4.7', 'total' => 126, 'new' => 3, 'response_rate' => '91%'],
+            'distribution' => [5 => 82, 4 => 29, 3 => 10, 2 => 3, 1 => 2],
+            'reviews' => [
+                ['id' => 1, 'customer' => 'Maria Santos', 'initials' => 'MS', 'order' => '#BR-1048', 'product' => 'Classic Linen Shirt', 'variant' => 'Olive / Medium', 'rating' => 5, 'date' => 'Today · 9:32 AM', 'comment' => 'Great quality and comfortable fit. The size guide was accurate.', 'status' => 'new', 'response' => null],
+                ['id' => 2, 'customer' => 'Carlo Reyes', 'initials' => 'CR', 'order' => '#BR-1047', 'product' => 'Canvas Tote Bag', 'variant' => 'Natural', 'rating' => 4, 'date' => 'Yesterday · 4:18 PM', 'comment' => 'Good material and looks durable. Packaging could be improved.', 'status' => 'new', 'response' => null],
+                ['id' => 3, 'customer' => 'Anne Cruz', 'initials' => 'AC', 'order' => '#BR-1046', 'product' => 'Everyday Sneakers', 'variant' => 'White / Size 38', 'rating' => 5, 'date' => 'Aug 30 · 11:06 AM', 'comment' => 'Arrived in good condition and exactly as shown.', 'status' => 'replied', 'response' => 'Thank you, Anne! We’re glad the sneakers arrived safely and met your expectations.'],
+                ['id' => 4, 'customer' => 'Miguel Tan', 'initials' => 'MT', 'order' => '#BR-1045', 'product' => 'Classic Linen Shirt', 'variant' => 'Cream / Large', 'rating' => 3, 'date' => 'Aug 28 · 2:44 PM', 'comment' => 'The shirt is nice, but delivery took longer than expected.', 'status' => 'replied', 'response' => 'Thank you for sharing this. We’ll coordinate delivery concerns more closely with logistics.'],
+            ],
+        ]);
+    }
+
     public function waybills(): View
     {
         return view('seller.fulfillment.waybills', [
@@ -221,12 +351,6 @@ class SellerController extends Controller
             'fulfillment-pickups' => ['title' => 'Pickup Requests', 'subtitle' => 'Submit labeled and packed parcels for logistics approval and pickup assignment.', 'kpis' => [['Ready to request','2'],['Approved today','5'],['Awaiting approval','1'],['Next approved pickup','3:00 PM']], 'columns' => ['Request','Orders','Packages','Logistics Provider','Preferred Time','Pickup Location','Status'], 'rows' => [['PU-0901-01','3 orders','4','Bearly Logistics','Today · 3:00 PM','Juan’s Clothing Shop','Approved'], ['Draft request','2 orders','2','Bearly Logistics','Choose preferred time','Store address','Draft']], 'action' => 'View Request'],
             'fulfillment-tracking' => ['title' => 'Shipment Tracking', 'subtitle' => 'Monitor parcels after rider handover through sorting and final delivery.', 'kpis' => [['At sorting center','3'],['Assigned to rider','2'],['Out for delivery','2'],['Delivered today','9']], 'columns' => ['Tracking No.','Order','Logistics Provider','Destination','Latest Update','Updated','Status'], 'rows' => [['BRLY-784201','#BR-1054','Bearly Logistics','Biñan, Laguna','Parcel received at sorting center','Today · 8:40 AM','At Sorting Center'], ['BRLY-784188','#BR-1052','Bearly Logistics','Cabuyao, Laguna','Assigned to delivery rider','Today · 9:15 AM','Assigned to Rider'], ['BRLY-784176','#BR-1051','Bearly Logistics','Calamba, Laguna','Rider is delivering the parcel','Today · 10:05 AM','Out for Delivery']], 'action' => 'Track'],
             'products-pricing' => ['title' => 'Pricing & Promotions', 'subtitle' => 'Manage product prices, discounts, and voucher eligibility.', 'kpis' => [['Active products','24'],['Discounted','6'],['Voucher eligible','12'],['Ending soon','2']], 'columns' => ['Product','SKU','Regular Price','Sale Price','Discount','Voucher','Status'], 'rows' => [['Classic Linen Shirt','CLS-LINEN-SHIRT','₱1,299','₱1,169','10%','Eligible','Active'], ['Canvas Tote Bag','CNV-TOTE-BAG','₱899','₱899','—','Not eligible','Regular']], 'action' => 'Edit Pricing'],
-            'store-appearance' => ['title' => 'Store Appearance', 'subtitle' => 'Manage the buyer-facing profile photo, cover, and storefront description.', 'kpis' => [['Profile photo','Added'],['Cover photo','Missing'],['Description','Added'],['Preview','Available']], 'columns' => ['Store Element','Current State','Recommended Size','Visibility','Last Updated','Owner','Status'], 'rows' => [['Profile photo','Uploaded','1:1 square','Public','Aug 31, 2026','Bea Rivera','Complete'], ['Cover photo','Not uploaded','16:5 landscape','Public','—','Bea Rivera','Required']], 'action' => 'Update'],
-            'store-publication' => ['title' => 'Publication Settings', 'subtitle' => 'Control whether the completed storefront is visible to buyers.', 'kpis' => [['Current status','Draft'],['Required fields','4 of 5'],['Pending review','0'],['Buyer visibility','Hidden']], 'columns' => ['Requirement','Current Value','Required','Review','Visibility','Updated','Status'], 'rows' => [['Business information','Verified','Yes','Approved','Private','Registration','Complete'], ['Cover photo','Missing','Yes','Not submitted','Public','—','Required']], 'action' => 'Review Setting'],
-            'reports-sales' => ['title' => 'Sales Report', 'subtitle' => 'Analyze sales and product performance within a selected period.', 'kpis' => [['Gross sales','₱128,450'],['Orders','91'],['Average order','₱1,420'],['Units sold','146']], 'columns' => ['Period','Orders','Units Sold','Gross Sales','Discounts','Returns','Net Sales'], 'rows' => [['Aug 25–31','32','51','₱48,900','₱2,450','₱0','₱46,450'], ['Aug 18–24','28','44','₱39,600','₱1,980','₱899','₱36,721']], 'action' => 'Export'],
-            'reports-financial' => ['title' => 'Financial Report', 'subtitle' => 'Review gross sales, commission, refunds, and net revenue.', 'kpis' => [['Gross sales','₱128,450'],['Commission','₱12,845'],['Refunds','₱1,299'],['Net revenue','₱114,306']], 'columns' => ['Period','Gross Sales','Commission','Discounts','Refunds','Net Revenue','Payout Status'], 'rows' => [['August 2026','₱128,450','₱12,845','₱4,430','₱1,299','₱109,876','Processing'], ['July 2026','₱112,800','₱11,280','₱3,820','₱0','₱97,700','Paid']], 'action' => 'Export'],
-            'support-messages' => ['title' => 'Messages', 'subtitle' => 'Respond to buyer questions about products and active orders.', 'kpis' => [['Unread','4'],['Open conversations','7'],['Replied today','12'],['Average response','18 min']], 'columns' => ['Customer','Regarding','Last Message','Received','Assigned To','Priority','Status'], 'rows' => [['Maria Santos','#BR-1058','Can I change the size?','8 min ago','Bea Rivera','Normal','Unread'], ['Carlo Reyes','Canvas Tote Bag','Is this available in black?','32 min ago','Bea Rivera','Normal','Open']], 'action' => 'Open Chat'],
-            'support-feedback' => ['title' => 'Customer Feedback', 'subtitle' => 'Review ratings and reply to customer feedback after delivery.', 'kpis' => [['Average rating','4.7'],['New feedback','3'],['Replied','18'],['Total reviews','126']], 'columns' => ['Customer','Order','Product','Rating','Comment','Received','Status'], 'rows' => [['Maria Santos','#BR-1048','Classic Linen Shirt','5.0','Great quality and fit.','Today','New'], ['Carlo Reyes','#BR-1047','Canvas Tote Bag','4.0','Good material.','Yesterday','Replied']], 'action' => 'Reply'],
             'settings-account' => ['title' => 'Account', 'subtitle' => 'Manage the seller contact information used for account communication.', 'kpis' => [['Account status','Active'],['Email','Verified'],['Phone','Verified'],['Role','Seller']], 'columns' => ['Field','Current Value','Visibility','Verification','Last Updated','Managed By','Status'], 'rows' => [['Full name','Bea Rivera','Private','Verified','Registration','Seller','Locked'], ['Email','bea@juansclothing.test','Private','Verified','Aug 31, 2026','Seller','Active']], 'action' => 'Edit'],
             'settings-security' => ['title' => 'Security', 'subtitle' => 'Protect account access and review recent sign-in activity.', 'kpis' => [['Password','Set'],['Two-step verification','Off'],['Active sessions','1'],['Security alerts','0']], 'columns' => ['Security Item','Current State','Recommendation','Last Updated','Device','Location','Status'], 'rows' => [['Password','Set','Change regularly','Aug 20, 2026','—','—','Protected'], ['Current session','Active','Recognized device','Now','Windows · Edge','Laguna','Active']], 'action' => 'Manage'],
             'settings-notifications' => ['title' => 'Notifications', 'subtitle' => 'Choose which seller events are shown in-app or sent by email.', 'kpis' => [['Order alerts','On'],['Stock alerts','On'],['Pickup alerts','On'],['Marketing','Off']], 'columns' => ['Notification','In-app','Email','Trigger','Priority','Last Sent','Status'], 'rows' => [['New order','Enabled','Enabled','Order placed','High','5 min ago','Active'], ['Low stock','Enabled','Enabled','Below threshold','Medium','42 min ago','Active']], 'action' => 'Configure'],
@@ -388,7 +512,6 @@ class SellerController extends Controller
         ]);
 
         $store = array_merge($request->session()->get('seller.store', []), [
-            'description' => $validated['description'] ?? '',
             'email' => $validated['email'],
             'phone' => $validated['phone'],
         ]);
@@ -407,6 +530,54 @@ class SellerController extends Controller
 
         $message = $store['published'] ? 'Your store profile is now published.' : 'Your store profile was saved as a draft.';
         return redirect()->route('seller.store')->with('success', $message);
+    }
+
+    public function storeAppearance(Request $request): View
+    {
+        $store = array_merge([
+            'name' => "Juan's Clothing Shop",
+            'category' => 'Fashion and Apparel',
+            'description' => 'Everyday clothing and accessories selected for comfort, quality, and practical style.',
+            'profile_photo' => null,
+            'cover_photo' => null,
+        ], $request->session()->get('seller.store', []));
+
+        return view('seller.Store.appearance', [
+            'seller' => $this->seller(),
+            'notifications' => $this->notifications(),
+            'store' => $store,
+        ]);
+    }
+
+    public function publicationSettings(Request $request): View
+    {
+        $store = array_merge([
+            'name' => "Juan's Clothing Shop",
+            'description' => '',
+            'profile_photo' => null,
+            'cover_photo' => null,
+            'published' => false,
+        ], $request->session()->get('seller.store', []));
+
+        $requirements = [
+            ['label' => 'Business information verified', 'detail' => 'Store name and category were approved during registration.', 'complete' => true, 'route' => 'seller.store'],
+            ['label' => 'Contact information added', 'detail' => 'Buyers and the platform have valid store contact details.', 'complete' => true, 'route' => 'seller.store'],
+            ['label' => 'Store description added', 'detail' => 'Explain what your store sells and what buyers can expect.', 'complete' => filled($store['description']), 'route' => 'seller.store.appearance'],
+            ['label' => 'Profile photo added', 'detail' => 'Use a clear square image that identifies your store.', 'complete' => filled($store['profile_photo']), 'route' => 'seller.store.appearance'],
+            ['label' => 'Cover photo added', 'detail' => 'Use a storefront banner suitable for desktop and mobile.', 'complete' => filled($store['cover_photo']), 'route' => 'seller.store.appearance'],
+            ['label' => 'At least one active product', 'detail' => 'A published store must have something available to buyers.', 'complete' => true, 'route' => 'seller.products'],
+        ];
+
+        $completeCount = collect($requirements)->where('complete', true)->count();
+
+        return view('seller.Store.publication', [
+            'seller' => $this->seller(),
+            'notifications' => $this->notifications(),
+            'store' => $store,
+            'requirements' => $requirements,
+            'completeCount' => $completeCount,
+            'completion' => (int) round(($completeCount / count($requirements)) * 100),
+        ]);
     }
 
     private function productCategories(): array

@@ -1,13 +1,10 @@
 <?php
 
 use App\Http\Controllers\AdminController;
-use App\Http\Controllers\CartController;
+use App\Http\Controllers\BuyerController;
 use App\Http\Controllers\CourierController;
-use App\Http\Controllers\HomeController;
 use App\Http\Controllers\PsgcController;
-use App\Http\Controllers\ProductController;
 use App\Http\Controllers\SellerController;
-use App\Http\Controllers\WishlistController;
 use Illuminate\Support\Facades\Route;
 
 Route::view('/', 'auth.login')->name('shop.home');
@@ -15,15 +12,15 @@ Route::view('/', 'auth.login')->name('shop.home');
 Route::view('/login', 'auth.login')->name('login');
 Route::view('/register', 'auth.register')->name('register');
 
-Route::get('/home', [HomeController::class, 'index'])->name('home');
-Route::get('/products', [ProductController::class, 'index'])->name('products.index');
-Route::get('/wishlist', [WishlistController::class, 'index'])->name('wishlist.index');
-Route::post('/wishlist/toggle', [WishlistController::class, 'toggle'])->name('wishlist.toggle');
-Route::get('/cart', [CartController::class, 'view'])->name('cart.view');
-Route::post('/cart/add', [CartController::class, 'add'])->name('cart.add');
-Route::patch('/cart/{cartItem}', [CartController::class, 'update'])->name('cart.update');
-Route::delete('/cart/{cartItem}', [CartController::class, 'remove'])->name('cart.remove');
-Route::delete('/cart', [CartController::class, 'clear'])->name('cart.clear');
+Route::get('/home', [BuyerController::class, 'home'])->name('home');
+Route::get('/products', [BuyerController::class, 'products'])->name('products.index');
+Route::get('/wishlist', [BuyerController::class, 'wishlist'])->name('wishlist.index');
+Route::post('/wishlist/toggle', [BuyerController::class, 'toggleWishlist'])->name('wishlist.toggle');
+Route::get('/cart', [BuyerController::class, 'cart'])->name('cart.view');
+Route::post('/cart/add', [BuyerController::class, 'addToCart'])->name('cart.add');
+Route::patch('/cart/{cartItem}', [BuyerController::class, 'updateCart'])->name('cart.update');
+Route::delete('/cart/{cartItem}', [BuyerController::class, 'removeFromCart'])->name('cart.remove');
+Route::delete('/cart', [BuyerController::class, 'clearCart'])->name('cart.clear');
 
 Route::get('/forgot-password', fn () => redirect()->route('login'))->name('password.request');
 
@@ -51,7 +48,7 @@ Route::prefix('api/psgc')
 | These preview screens remain publicly accessible while the UI is still in
 | the front-end stage and backend authentication is not yet implemented.
 */
-Route::prefix('admin')->name('admin.')->group(function () {
+Route::middleware('auth')->prefix('admin')->name('admin.')->group(function () {
     Route::redirect('/', '/admin/dashboard');
 
     Route::get('/dashboard', [AdminController::class, 'dashboard'])->name('dashboard');

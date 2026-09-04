@@ -2,11 +2,16 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\CartItem;
+use App\Models\Product;
+use App\Models\Wishlist;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\View\View;
 
-class HomeController extends Controller
+class BuyerController extends Controller
 {
-    public function index(): View
+    public function home(): View
     {
         $categories = [
             [
@@ -245,5 +250,179 @@ class HomeController extends Controller
             'bestSellers',
             'featuredShops'
         ));
+    }
+
+    public function products(Request $request): View
+    {
+        $query = Product::with('shop');
+
+        if ($request->category && $request->category !== 'All') {
+            $query->where('category', $request->category);
+        }
+
+        if ($request->search) {
+            $query->where('name', 'like', '%' . $request->search . '%')
+                ->orWhere('description', 'like', '%' . $request->search . '%');
+        }
+
+        $sort = $request->sort ?? 'featured';
+        switch ($sort) {
+            case 'price_low':
+                $query->orderBy('price', 'asc');
+                break;
+            case 'price_high':
+                $query->orderBy('price', 'desc');
+                break;
+            case 'newest':
+                $query->orderByDesc('created_at');
+                break;
+            case 'popular':
+                $query->orderByDesc('sold_count');
+                break;
+            default:
+                $query->where('is_featured', true)->orderByDesc('sold_count');
+        }
+
+        $products = $query->paginate(12);
+        $categories = [
+            'All',
+            'Electronics',
+            'Fashion',
+            'Home & Living',
+            'Beauty',
+            'Sports',
+            'Books',
+            'Automotive',
+            'Groceries',
+        ];
+
+        return view('buyer.products', compact('products', 'categories'));
+    }
+
+    public function showProduct(Product $product): View
+    {
+        $product->load('shop', 'orderItems');
+
+        $relatedProducts = Product::where('category', $product->category)
+            ->where('id', '!=', $product->id)
+            ->limit(4)
+            ->get();
+
+        return view('products.show', compact('product', 'relatedProducts'));
+    }
+
+    public function cart(): View
+    {
+        $sessionId = session()->getId();
+        $cartItems = CartItem::where('session_id', $sessionId)
+            ->with('product.shop')
+            ->get();
+
+        $total = $cartItems->sum(fn (CartItem $item) => $item->quantity * $item->price);
+
+        return view('buyer.cart.homecart', compact('cartItems', 'total'));
+    }
+
+    public function addToCart(Request $request): JsonResponse
+    {
+        $request->validate([
+            'product_id' => 'required|exists:products,id',
+            'quantity' => 'required|integer|min:1',
+        ]);
+
+        $product = Product::findOrFail($request->product_id);
+        $sessionId = session()->getId();
+        $existingItem = CartItem::where('session_id', $sessionId)
+            ->where('product_id', $request->product_id)
+            ->first();
+
+        if ($existingItem) {
+            $existingItem->quantity += $request->quantity;
+            $existingItem->save();
+        } else {
+            CartItem::create([
+                'session_id' => $sessionId,
+                'product_id' => $request->product_id,
+                'quantity' => $request->quantity,
+                'price' => $product->price,
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Product added to cart',
+            'cart_count' => CartItem::where('session_id', $sessionId)->count(),
+        ]);
+    }
+
+    public function updateCart(Request $request, CartItem $cartItem): JsonResponse
+    {
+        $request->validate(['quantity' => 'required|integer|min:1']);
+
+        $cartItem->quantity = $request->quantity;
+        $cartItem->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Cart updated',
+            'total' => $cartItem->quantity * $cartItem->price,
+        ]);
+    }
+
+    public function removeFromCart(CartItem $cartItem): JsonResponse
+    {
+        $cartItem->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Item removed from cart',
+        ]);
+    }
+
+    public function clearCart(): JsonResponse
+    {
+        CartItem::where('session_id', session()->getId())->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Cart cleared',
+        ]);
+    }
+
+    public function wishlist(): View
+    {
+        $sessionId = session()->getId();
+        $wishlistItems = Wishlist::where('session_id', $sessionId)
+            ->with('product')
+            ->get();
+
+        return view('buyer.wishlist.wishlist', compact('wishlistItems'));
+    }
+
+    public function toggleWishlist(Request $request): JsonResponse
+    {
+        $request->validate(['product_id' => 'required|exists:products,id']);
+
+        $sessionId = session()->getId();
+        $wishlistItem = Wishlist::where('session_id', $sessionId)
+            ->where('product_id', $request->product_id)
+            ->first();
+
+        if ($wishlistItem) {
+            $wishlistItem->delete();
+            $isWishlisted = false;
+        } else {
+            Wishlist::create([
+                'session_id' => $sessionId,
+                'product_id' => $request->product_id,
+            ]);
+            $isWishlisted = true;
+        }
+
+        return response()->json([
+            'success' => true,
+            'is_wishlisted' => $isWishlisted,
+            'wishlist_count' => Wishlist::where('session_id', $sessionId)->count(),
+        ]);
     }
 }

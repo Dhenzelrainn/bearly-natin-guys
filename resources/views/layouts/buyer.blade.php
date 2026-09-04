@@ -35,8 +35,8 @@
 
     <!-- Laravel Vite -->
     @vite([
-        'resources/css/buyer-home.css',
-        'resources/js/homepage.js'
+        'resources/css/buyer.css',
+        'resources/js/buyer.js'
     ])
 
 </head>

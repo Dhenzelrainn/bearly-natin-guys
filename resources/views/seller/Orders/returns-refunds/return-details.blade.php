@@ -8,10 +8,10 @@
     <a class="seller-secondary-button" href="{{ route('seller.orders.returns') }}"><i data-lucide="arrow-left"></i>Back to cases</a>
 </div>
 @switch($case['status_key'])
-    @case('action-required') @include('seller.return-actions.action-required') @break
-    @case('under-review') @include('seller.return-actions.under-review') @break
-    @case('return-shipping') @include('seller.return-actions.return-shipping') @break
-    @case('resolved') @include('seller.return-actions.resolved') @break
+    @case('action-required') @include('seller.Orders.returns-refunds.return-actions.action-required') @break
+    @case('under-review') @include('seller.Orders.returns-refunds.return-actions.under-review') @break
+    @case('return-shipping') @include('seller.Orders.returns-refunds.return-actions.return-shipping') @break
+    @case('resolved') @include('seller.Orders.returns-refunds.return-actions.resolved') @break
 @endswitch
 <div class="seller-modal case-confirm-modal" data-modal="case-confirm" hidden>
     <button class="modal-backdrop" type="button" data-modal-close aria-label="Close confirmation"></button>

@@ -30,7 +30,7 @@ class SellerController extends Controller
 
     public function dashboard(): View
     {
-        return view('seller.dashboard', [
+        return view('seller.Dashboard.dashboard', [
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
             'dashboard' => [
@@ -157,7 +157,7 @@ class SellerController extends Controller
 
     public function account(): View
     {
-        return view('seller.account', [
+        return view('seller.Settings.account', [
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
             'account' => [
@@ -178,7 +178,7 @@ class SellerController extends Controller
 
     public function security(): View
     {
-        return view('seller.security', [
+        return view('seller.Settings.security', [
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
             'security' => [
@@ -199,7 +199,7 @@ class SellerController extends Controller
 
     public function notificationSettings(): View
     {
-        return view('seller.notifications', [
+        return view('seller.Settings.notifications', [
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
             'preferences' => [
@@ -235,7 +235,7 @@ class SellerController extends Controller
 
     public function inventory(): View
     {
-        return view('seller.inventory', [
+        return view('seller.Products.inventory', [
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
             'inventoryTotal' => 48,
@@ -272,7 +272,7 @@ class SellerController extends Controller
 
     public function orders(Request $request): View
     {
-        return view('seller.orders', [
+        return view('seller.Orders.orders', [
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
             'defaultOrderStatus' => in_array((string) $request->query('status', 'all'), ['all', 'new', 'to-prepare', 'ready-pickup', 'in-transit', 'history', 'completed', 'cancelled'], true)
@@ -308,7 +308,7 @@ class SellerController extends Controller
 
     public function returns(): View
     {
-        return view('seller.returns', [
+        return view('seller.Orders.returns-refunds.returns', [
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
             'summary' => [
@@ -333,7 +333,7 @@ class SellerController extends Controller
         $case = collect($this->returnCases())->firstWhere('id', strtoupper($caseId));
         abort_if($case === null, 404);
 
-        return view('seller.return-details', [
+        return view('seller.Orders.returns-refunds.return-details', [
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
             'case' => $case,
@@ -368,7 +368,7 @@ class SellerController extends Controller
 
         $completed = 2 + (int) filled($store['profile_photo']) + (int) filled($store['cover_photo']) + (int) filled($store['description']);
 
-        return view('seller.store', [
+        return view('seller.Store.store', [
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
             'store' => $store,
@@ -478,7 +478,7 @@ class SellerController extends Controller
         $products = collect($request->session()->get('seller.products', []))
             ->map(fn (array $product) => $this->normalizeProduct($product));
 
-        return view('seller.products', [
+        return view('seller.Products.products', [
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
             'products' => $products,
@@ -506,7 +506,7 @@ class SellerController extends Controller
             ['id' => 'demo-4', 'name' => 'Minimalist Crossbody Bag', 'sku' => 'MCB-BRN-01', 'category' => 'Fashion and Apparel', 'price' => 1050, 'discount_percent' => 0, 'voucher_eligible' => false, 'stock' => 24, 'status' => 'Draft', 'image' => null],
         ])->map(fn (array $product) => $this->normalizeProduct($product));
 
-        return view('seller.pricing', [
+        return view('seller.Products.pricing', [
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
             'products' => $products,
@@ -526,7 +526,7 @@ class SellerController extends Controller
 
     public function createProduct(): View
     {
-        return view('seller.product-form', [
+        return view('seller.Products.product-form', [
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
             'categories' => $this->productCategories(),
@@ -584,7 +584,7 @@ class SellerController extends Controller
 
         abort_if(!$item, 404);
 
-        return view('seller.product-form', [
+        return view('seller.Products.product-form', [
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
             'categories' => $this->productCategories(),

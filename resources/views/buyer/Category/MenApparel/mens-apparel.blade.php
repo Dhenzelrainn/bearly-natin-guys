@@ -103,7 +103,7 @@
                         @endforeach
                     </nav>
                 </details>
-                @include('buyer.Products.components.product-filter')
+                @include('buyer.Category.MenApparel.components.mens-apparel-filter')
             </aside>
             <main id="bc-main" tabindex="-1">
                 <nav class="breadcrumb" aria-label="Breadcrumb">
@@ -295,7 +295,7 @@
                 Sign in
             </a>
         </dialog>
-        @include('buyer.Products.components.product-card')
+        @include('buyer.Category.MenApparel.components.mens-apparel-product-card')
         <script type="application/json" id="bc-data">
             {!! json_encode($catalog, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR) !!}
         </script>

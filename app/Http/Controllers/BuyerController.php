@@ -264,11 +264,11 @@ class BuyerController extends Controller
     public function products(Request $request): View
     {
         if ($request->query('category') === 'men-s-apparel') {
-            return view('buyer.Products.products');
+            return view('buyer.Category.MenApparel.mens-apparel');
         }
 
         if (! $this->hasBuyerTables()) {
-            return view('buyer.Products.products');
+            return view('buyer.Category.MenApparel.mens-apparel');
         }
 
         $query = Product::with('shop');
@@ -313,7 +313,7 @@ class BuyerController extends Controller
             'Groceries',
         ];
 
-        return view('buyer.Products.products', compact('products', 'categories'));
+        return view('buyer.Category.MenApparel.mens-apparel', compact('products', 'categories'));
     }
 
     public function showProduct(Product $product): View

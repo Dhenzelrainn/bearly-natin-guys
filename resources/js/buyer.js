@@ -1,3 +1,4 @@
+/* BEARLY shared buyer JavaScript: homepage + legacy page + category V2. */
 /* Homepage-only catalog preview. No checkout or account mutations. */
 export function selectProducts(products, {category = '', search = '', sort = 'featured'} = {}) {
     const query = search.trim().toLocaleLowerCase();
@@ -139,7 +140,7 @@ function initialize() {
 /* ===== MEN'S APPAREL PAGE ===== */
 function initializeBuyerProductsPage() {
     const page = document.getElementById('buyer-products-page');
-    if (!page) return;
+    if (!page || document.getElementById('bc-data')) return;
 
     const grid = document.getElementById('bp-product-grid');
     const cards = [...grid.querySelectorAll('[data-bp-product]')];
@@ -501,4 +502,84 @@ function initializeBuyerProductsPage() {
 
 if (typeof document !== 'undefined') {
     initializeBuyerProductsPage();
+}
+
+
+/* ===== CATEGORY V2: initializes only when #bc-data exists ===== */
+export const defaults = () => ({search:'',subcategory:'',min:0,max:5000,size:[],color:[],condition:[],location:[],shipping:false,voucher:false,rating:0,sort:'featured',saved:false,view:'grid'});
+export function filterCatalog(products,state,savedIds=[]) {
+    const search=state.search.trim().toLowerCase();
+    const rows=products.filter(p=>(!search||p.name.toLowerCase().includes(search))&&(!state.subcategory||p.subcategory===state.subcategory)&&p.price>=state.min&&p.price<=state.max&&(!state.size.length||state.size.some(size=>p.sizes.includes(size)))&&['color','condition','location'].every(k=>!state[k].length||state[k].includes(p[k]))&&(!state.shipping||p.free_shipping)&&(!state.voucher||p.voucher)&&p.rating>=state.rating&&(!state.saved||savedIds.includes(p.id)));
+    if(state.sort==='price-low') rows.sort((a,b)=>a.price-b.price||a.id-b.id);
+    if(state.sort==='price-high') rows.sort((a,b)=>b.price-a.price||a.id-b.id);
+    if(state.sort==='newest') rows.sort((a,b)=>b.id-a.id);
+    return rows;
+}
+export function readState(params, products) {
+    const s=defaults();
+    s.search=(params.get('q')||'').slice(0,120);
+    s.subcategory=products.some(p=>p.subcategory===params.get('sub'))?params.get('sub'):'';
+    for(const key of ['size','color','condition','location']){
+        const valid=new Set(products.flatMap(p=>key==='size'?p.sizes:[p[key]]));
+        s[key]=[...new Set(params.getAll(key))].filter(v=>valid.has(v));
+    }
+    for(const key of ['min','max']){const value=Number(params.get(key)??s[key]);if(Number.isFinite(value))s[key]=Math.min(5000,Math.max(0,value));}
+    if(s.min>s.max){s.min=0;s.max=5000;}
+    s.shipping=params.get('shipping')==='1';s.voucher=params.get('voucher')==='1';s.saved=params.get('saved')==='1';s.rating=params.get('rating')==='4'?4:0;
+    s.sort=['featured','newest','price-low','price-high'].includes(params.get('sort'))?params.get('sort'):'featured';s.view=params.get('view')==='list'?'list':'grid';return s;
+}
+const categoryEscapeHtml=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const price=n=>new Intl.NumberFormat('en-PH',{style:'currency',currency:'PHP',maximumFractionDigits:0}).format(n);
+if(typeof document!=='undefined'&&document.getElementById('bc-data'))init();
+function init(){
+    const $=id=>document.getElementById(id), products=JSON.parse($('bc-data').textContent), validIds=new Set(products.map(p=>p.id));
+    let state=readState(new URLSearchParams(location.search),products),limit=20,saved=[];
+    try{const stored=JSON.parse(localStorage.getItem('bearly-category-saved-v1')||'[]');if(Array.isArray(stored))saved=stored.filter(id=>validIds.has(id));}catch{}
+    const colors={Blue:'#305e94',Black:'#26292a',White:'#fff',Beige:'#d8c8a4',Green:'#68745a',Gray:'#8a8b8e',Brown:'#79543b'};
+    function option(container,key,values){$(container).innerHTML=values.map(value=>key==='size'?`<label><input type="checkbox" data-field="size" value="${categoryEscapeHtml(value)}"><span>${categoryEscapeHtml(value)}</span></label>`:key==='color'?`<label><input type="checkbox" data-field="color" value="${categoryEscapeHtml(value)}"><span class="swatch" style="--swatch:${colors[value]||'#aaa'}"></span>${categoryEscapeHtml(value)}</label>`:`<label><input type="checkbox" data-field="${key}" value="${categoryEscapeHtml(value)}">${categoryEscapeHtml(value)}</label>`).join('');}
+    option('bc-size-options','size',[...new Set(products.flatMap(p=>p.sizes))]);
+    for(const key of ['color','condition','location'])option(`bc-${key}-options`,key,[...new Set(products.map(p=>p[key]))]);
+    function chips(){const a=[];if(state.search)a.push(['search',state.search,`Search: ${state.search}`]);if(state.subcategory)a.push(['subcategory',state.subcategory,state.subcategory]);if(state.min||state.max!==5000)a.push(['price','',`${price(state.min)}–${price(state.max)}`]);for(const key of ['size','color','condition','location'])state[key].forEach(value=>a.push([key,value,value]));if(state.shipping)a.push(['shipping','','Free shipping']);if(state.voucher)a.push(['voucher','','Has voucher']);if(state.rating)a.push(['rating','','4 stars & up']);if(state.saved)a.push(['saved','','Saved items']);return a;}
+    function photoStyle(el,p){el.style.setProperty('--x',`${p.photo%5*25}%`);el.style.setProperty('--y',`${Math.floor(p.photo/5)*100/3}%`);}
+    function render(){
+        const filtered=filterCatalog(products,state,saved),shown=filtered.slice(0,limit),fragment=document.createDocumentFragment();
+        for(const p of shown){const card=$('bc-card-template').content.firstElementChild.cloneNode(true);card.dataset.id=p.id;photoStyle(card.querySelector('.photo'),p);card.querySelector('.photo').setAttribute('aria-label',p.name);card.querySelector('h2').textContent=p.name;card.querySelector('.condition').textContent=p.condition;card.querySelector('.price-row strong').textContent=price(p.price);card.querySelector('.color-label').textContent=p.color;card.querySelectorAll('[data-quick]').forEach(b=>b.setAttribute('aria-label',`Quick view: ${p.name}`));const heart=card.querySelector('[data-save]');heart.setAttribute('aria-pressed',String(saved.includes(p.id)));heart.setAttribute('aria-label',`${saved.includes(p.id)?'Remove':'Save'} ${p.name}`);fragment.append(card);}
+        $('bc-grid').replaceChildren(fragment);$('bc-grid').classList.toggle('is-list',state.view==='list');$('bc-count').textContent=`${filtered.length} sample products`;$('bc-status').textContent=`Showing ${shown.length} of ${filtered.length} sample products`;$('bc-empty').hidden=filtered.length>0;$('bc-more').hidden=shown.length>=filtered.length;
+        const selected=chips(),markup=selected.map(([key,value,label])=>`<button class="chip" data-remove="${key}" data-value="${categoryEscapeHtml(value)}" aria-label="Remove ${categoryEscapeHtml(label)}">${categoryEscapeHtml(label)} ×</button>`).join('');$('bc-chips').innerHTML=markup;$('bc-side-chips').innerHTML=markup;$('bc-selected').textContent=`Selected (${selected.length})`;$('bc-mobile-count').textContent=selected.length?`(${selected.length})`:'';$('bc-show-results').textContent=`Show ${filtered.length} results`;$('bc-saved-count').textContent=saved.length;$('bc-saved-filter').setAttribute('aria-pressed',String(state.saved));
+        document.querySelectorAll('[data-sub]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.sub===state.subcategory)));document.querySelectorAll('[data-sort]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.sort===state.sort)));document.querySelectorAll('[data-view]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.view===state.view)));
+    }
+    function syncInputs(){for(const input of document.querySelectorAll('[data-field]')){const key=input.dataset.field;input.checked=Array.isArray(state[key])?state[key].includes(input.value):key==='rating'?Number(input.value)===state.rating:Boolean(state[key]);}$('bc-search').value=state.search;$('bc-within').value=state.search;for(const key of ['min','max']){$(`bc-${key}`).value=state[key];$(`bc-${key}-range`).value=state[key];}$('bc-price-error').hidden=true;}
+    function writeUrl(){const url=new URL(location.href);const keys=['q','sub','size','color','condition','location','min','max','shipping','voucher','rating','sort','saved','view'];keys.forEach(key=>url.searchParams.delete(key));url.searchParams.set('category','men-s-apparel');if(state.search)url.searchParams.set('q',state.search);if(state.subcategory)url.searchParams.set('sub',state.subcategory);for(const key of ['size','color','condition','location'])state[key].forEach(v=>url.searchParams.append(key,v));if(state.min)url.searchParams.set('min',state.min);if(state.max!==5000)url.searchParams.set('max',state.max);for(const k of ['shipping','voucher','saved'])if(state[k])url.searchParams.set(k,'1');if(state.rating)url.searchParams.set('rating',state.rating);if(state.sort!=='featured')url.searchParams.set('sort',state.sort);if(state.view!=='grid')url.searchParams.set('view',state.view);history.replaceState({},'',url);}
+    function change(){limit=20;syncInputs();render();writeUrl();}
+    function reset(){const view=state.view;state=defaults();state.view=view;change();}
+    $('bc-search-form').addEventListener('submit',e=>{e.preventDefault();state.search=$('bc-search').value.trim();change();});
+    $('bc-within').addEventListener('input',()=>{state.search=$('bc-within').value.trim();$('bc-search').value=state.search;limit=20;render();writeUrl();});
+    document.addEventListener('change',e=>{const input=e.target.closest('[data-field]');if(!input)return;const k=input.dataset.field;if(Array.isArray(state[k]))state[k]=[...document.querySelectorAll(`[data-field="${k}"]:checked`)].map(el=>el.value);else state[k]=k==='rating'?Number(input.value):input.checked;change();});
+    function updatePrice(key,range){let value=Number($(`bc-${key}${range?'-range':''}`).value);if(!Number.isFinite(value))return;value=Math.round(Math.min(5000,Math.max(0,value)));const candidate={...state,[key]:value};if(candidate.min>candidate.max){if(range)candidate[key]=key==='min'?candidate.max:candidate.min;else{$('bc-price-error').hidden=false;return;}}state.min=candidate.min;state.max=candidate.max;change();}
+    for(const key of ['min','max']){$(`bc-${key}`).addEventListener('change',()=>updatePrice(key,false));$(`bc-${key}-range`).addEventListener('input',()=>updatePrice(key,true));}
+    $('bc-location-search').addEventListener('input',e=>{const q=e.target.value.toLowerCase();document.querySelectorAll('#bc-location-options label').forEach(label=>label.hidden=!label.textContent.toLowerCase().includes(q));});
+    $('bc-collapse').addEventListener('click',()=>{const nodes=[...$('bc-filter-panel').querySelectorAll('details')];const expand=!nodes.some(el=>el.open);nodes.forEach(el=>el.open=expand);$('bc-collapse').textContent=expand?'Collapse all':'Expand all';$('bc-collapse').setAttribute('aria-expanded',String(expand));});
+    $('bc-more').addEventListener('click',()=>{const previousCount=$('bc-grid').children.length;limit+=20;render();$('bc-grid').children[previousCount]?.querySelector('[data-quick]')?.focus({preventScroll:true});});
+    $('bc-saved-filter').addEventListener('click',()=>{state.saved=!state.saved;change();});
+    const mobile=$('bc-mobile-dialog'),panel=$('bc-filter-panel');
+    $('bc-open-filters').addEventListener('click',()=>{$('bc-mobile-content').append(panel);mobile.showModal();document.body.style.overflow='hidden';});
+    mobile.addEventListener('close',()=>{$('bc-sidebar').append(panel);document.body.style.overflow='';$('bc-open-filters').focus();});
+    $('bc-show-results').addEventListener('click',()=>mobile.close());
+    const mq=matchMedia('(min-width:721px)');mq.addEventListener('change',()=>{if(mq.matches&&mobile.open)mobile.close();});
+    function showProduct(p){const sizes=p.sizes.length?`<label>Sample size <select aria-label="Select sample size">${p.sizes.map(s=>`<option>${categoryEscapeHtml(s)}</option>`).join('')}</select></label>`:'';$('bc-product-detail').innerHTML=`<div class="detail"><div class="photo" role="img" aria-label="${categoryEscapeHtml(p.name)}"></div><div><p>${categoryEscapeHtml(p.subcategory)}</p><h2 id="bc-product-title">${categoryEscapeHtml(p.name)}</h2><strong>${price(p.price)}</strong><dl><dt>Condition</dt><dd>${categoryEscapeHtml(p.condition)}</dd><dt>Color</dt><dd>${categoryEscapeHtml(p.color)}</dd><dt>Seller location</dt><dd>${categoryEscapeHtml(p.location)}</dd><dt>Sample rating</dt><dd>${p.rating||'Not rated'}</dd></dl>${sizes}<p>${categoryEscapeHtml(p.description)}</p><small>Preview only. These sample listings cannot be purchased.</small></div></div>`;photoStyle($('bc-product-detail').querySelector('.photo'),p);$('bc-product-dialog').showModal();}
+    document.addEventListener('click',e=>{const button=e.target.closest('button');if(!button)return;
+        if(button.hasAttribute('data-sub')){state.subcategory=state.subcategory===button.dataset.sub?'':button.dataset.sub;change();}
+        if(button.dataset.sort){state.sort=button.dataset.sort;change();}
+        if(button.dataset.view){state.view=button.dataset.view;render();writeUrl();}
+        if(button.hasAttribute('data-reset'))reset();
+        if(button.dataset.price){[state.min,state.max]=button.dataset.price.split(',').map(Number);change();}
+        if(button.dataset.remove){const key=button.dataset.remove;if(Array.isArray(state[key]))state[key]=state[key].filter(v=>v!==button.dataset.value);else if(key==='price'){state.min=0;state.max=5000;}else state[key]=defaults()[key];change();}
+        if(button.hasAttribute('data-save')){const id=Number(button.closest('.card').dataset.id);saved=saved.includes(id)?saved.filter(v=>v!==id):[...saved,id];try{localStorage.setItem('bearly-category-saved-v1',JSON.stringify(saved));}catch{}render();$('bc-grid').querySelector(`[data-id="${id}"] [data-save]`)?.focus({preventScroll:true});}
+        if(button.hasAttribute('data-quick')){const p=products.find(p=>p.id===Number(button.closest('.card').dataset.id));if(p)showProduct(p);}
+        if(button.hasAttribute('data-close'))button.closest('dialog').close();
+        if(button.dataset.info){const info={orders:['Your orders','Order tracking will be connected to approved buyer accounts during backend integration. No orders are created in this preview.'],chat:['Chat with sellers','Messaging will be connected to buyer and seller accounts. This preview does not send messages.'],help:['Explore Bearly','Search within Men’s Apparel, combine filters, save sample items on this browser, or open Quick view. Prices and ratings are illustrative.'],about:['About Bearly','A marketplace for everyday finds across twelve categories. This page previews the Men’s Apparel collection.']}[button.dataset.info];if(info){$('bc-info-title').textContent=info[0];$('bc-info-copy').textContent=info[1];$('bc-info-dialog').showModal();}}
+    });
+    document.querySelectorAll('dialog').forEach(d=>d.addEventListener('click',e=>{if(e.target!==d)return;const r=d.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)d.close();}));
+    window.addEventListener('popstate',()=>{state=readState(new URLSearchParams(location.search),products);limit=20;syncInputs();render();});
+    syncInputs();render();
 }

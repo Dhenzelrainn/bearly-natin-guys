@@ -1,5 +1,7 @@
-<section class="bp-product-grid" id="bp-product-grid" aria-label="Men's Apparel products">
-    @foreach($mensProducts as $product)
-        @include('buyer.Products.components.product-card', ['product' => $product])
-    @endforeach
-</section>
+<div class="catalog-grid" id="bc-grid">
+</div>
+<noscript>
+    <p>
+        Enable JavaScript to explore the sample catalog and filters.
+    </p>
+</noscript>

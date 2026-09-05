@@ -1,135 +1,131 @@
-<section class="bp-filter-section" aria-labelledby="bp-filter-title">
-    <div class="bp-filter-heading">
-        <h2 id="bp-filter-title">
-            <span class="material-symbols-outlined">tune</span>
+<section id="bc-filter-panel" class="filter-panel" aria-label="Product filters">
+    <div class="filter-heading">
+        <h2>
+            <i class="mi" aria-hidden="true">
+                tune
+            </i>
             Filters
         </h2>
-        <button type="button" id="bp-hide-filters">Hide</button>
-    </div>
-
-    <label class="bp-filter-search">
-        <span class="material-symbols-outlined">search</span>
-        <input id="bp-filter-search" type="search" placeholder="Search this category" autocomplete="off">
-    </label>
-
-    <div class="bp-selected-block">
-        <div>
-            <strong>Selected (<span id="bp-selected-count">0</span>)</strong>
-            <button type="button" data-bp-clear-all>Clear all</button>
-        </div>
-        <div class="bp-selected-chips" id="bp-selected-chips"></div>
-    </div>
-
-    <div class="bp-filter-group">
-        <div class="bp-filter-group-title">
-            <strong>Price range</strong>
-            <span class="material-symbols-outlined">expand_less</span>
-        </div>
-
-        <div class="bp-price-inputs">
-            <label>
-                <span>₱</span>
-                <input id="bp-min-price" type="number" min="0" placeholder="Min">
-            </label>
-
-            <label>
-                <span>₱</span>
-                <input id="bp-max-price" type="number" min="0" placeholder="Max">
-            </label>
-        </div>
-
-        <div class="bp-range-visual" aria-hidden="true">
-            <span></span>
-            <i></i>
-            <span></span>
-        </div>
-
-        <button class="bp-apply-price" id="bp-apply-price" type="button">Apply</button>
-    </div>
-
-    <div class="bp-filter-group">
-        <div class="bp-filter-group-title">
-            <strong>Size</strong>
-            <span class="material-symbols-outlined">expand_less</span>
-        </div>
-
-        <div class="bp-size-options">
-            @foreach(['S', 'M', 'L', 'XL', 'XXL'] as $size)
-                <label>
-                    <input class="sr-only bp-size-input" type="checkbox" value="{{ $size }}">
-                    <span>{{ $size }}</span>
-                </label>
-            @endforeach
-        </div>
-    </div>
-
-    <div class="bp-filter-group">
-        <div class="bp-filter-group-title">
-            <strong>Color</strong>
-            <span class="material-symbols-outlined">expand_less</span>
-        </div>
-
-        <div class="bp-color-options" aria-label="Color">
-            @php
-                $colors = [
-                    ['slug' => 'blue', 'label' => 'Blue', 'class' => 'is-blue'],
-                    ['slug' => 'black', 'label' => 'Black', 'class' => 'is-black'],
-                    ['slug' => 'white', 'label' => 'White', 'class' => 'is-white'],
-                    ['slug' => 'beige', 'label' => 'Beige', 'class' => 'is-beige'],
-                    ['slug' => 'navy', 'label' => 'Navy', 'class' => 'is-navy'],
-                ];
-            @endphp
-
-            @foreach($colors as $color)
-                <label title="{{ $color['label'] }}">
-                    <input class="sr-only bp-color-input" type="checkbox" value="{{ $color['slug'] }}" data-label="{{ $color['label'] }}">
-                    <span class="bp-color-dot {{ $color['class'] }}">
-                        <span class="material-symbols-outlined">check</span>
-                    </span>
-                </label>
-            @endforeach
-        </div>
-    </div>
-
-    <div class="bp-filter-group">
-        <div class="bp-filter-group-title">
-            <strong>Condition</strong>
-            <span class="material-symbols-outlined">expand_less</span>
-        </div>
-
-        <div class="bp-check-options">
-            <label><input class="bp-condition-input" type="checkbox" value="new-with-tags" data-label="New with tags"> New with tags</label>
-            <label><input class="bp-condition-input" type="checkbox" value="new-without-tags" data-label="New without tags"> New without tags</label>
-            <label><input class="bp-condition-input" type="checkbox" value="pre-owned" data-label="Pre-owned"> Pre-owned</label>
-        </div>
-    </div>
-
-    <div class="bp-filter-group">
-        <div class="bp-filter-group-title bp-location-title">
-            <strong>
-                <span class="material-symbols-outlined">location_on</span>
-                Delivery location
-            </strong>
-        </div>
-
-        <button class="bp-location-button" type="button">
-            <span class="material-symbols-outlined">location_on</span>
-            Set location
+        <button id="bc-collapse" aria-expanded="true">
+            Collapse all
         </button>
     </div>
-
-    <div class="bp-filter-group">
-        <div class="bp-filter-group-title">
-            <strong>Shipping</strong>
-            <span class="material-symbols-outlined">expand_less</span>
-        </div>
-
-        <label class="bp-free-shipping">
-            <input id="bp-free-shipping" type="checkbox">
-            <span>
-                Free shipping
-                <small>When offered by seller</small>
-            </span>
-        </label>
+    <label class="category-search">
+        <i class="mi" aria-hidden="true">
+            search
+        </i>
+        <input type="search" id="bc-within" placeholder="Search within this category" aria-label="Search within this category" maxlength="120">
+    </label>
+    <div class="selected">
+        <strong id="bc-selected">
+            Selected (0)
+        </strong>
+        <button data-reset>
+            Clear all
+        </button>
     </div>
+    <div id="bc-side-chips" class="chips">
+    </div>
+    <details open>
+        <summary>
+            Price range
+        </summary>
+        <div class="price-fields">
+            <label>
+                <span>
+                    ₱ Min
+                </span>
+                <input id="bc-min" type="number" min="0" max="5000" step="1" placeholder="0">
+            </label>
+            <label>
+                <span>
+                    ₱ Max
+                </span>
+                <input id="bc-max" type="number" min="0" max="5000" step="1" placeholder="5000">
+            </label>
+        </div>
+        <div class="ranges">
+            <input id="bc-min-range" type="range" min="0" max="5000" step="1" value="0" aria-label="Minimum price">
+            <input id="bc-max-range" type="range" min="0" max="5000" step="1" value="5000" aria-label="Maximum price">
+        </div>
+        <p id="bc-price-error" class="error" role="alert" hidden>
+            Minimum price must not exceed maximum price.
+        </p>
+        <div class="presets">
+            <button data-price="0,499">
+                Under ₱500
+            </button>
+            <button data-price="500,1000">
+                ₱500–₱1,000
+            </button>
+            <button data-price="1001,5000">
+                Over ₱1,000
+            </button>
+        </div>
+    </details>
+    <details open>
+        <summary>
+            Size
+        </summary>
+        <div class="size-options" id="bc-size-options">
+        </div>
+    </details>
+    <details open>
+        <summary>
+            Color
+        </summary>
+        <div class="colors" id="bc-color-options">
+        </div>
+    </details>
+    <details open>
+        <summary>
+            Condition
+        </summary>
+        <div class="checks" id="bc-condition-options">
+        </div>
+    </details>
+    <details open>
+        <summary>
+            Seller location
+        </summary>
+        <input type="search" id="bc-location-search" placeholder="Find a location" aria-label="Find a seller location">
+        <div class="checks" id="bc-location-options">
+        </div>
+    </details>
+    <details open>
+        <summary>
+            Delivery & offers
+        </summary>
+        <div class="checks">
+            <label>
+                <input type="checkbox" data-field="shipping" value="1">
+                Free shipping
+            </label>
+            <label>
+                <input type="checkbox" data-field="voucher" value="1">
+                Has voucher
+            </label>
+        </div>
+        <small>
+            When offered by seller
+        </small>
+    </details>
+    <details open>
+        <summary>
+            Customer rating
+        </summary>
+        <div class="checks">
+            <label>
+                <input type="radio" name="rating" data-field="rating" value="4">
+                4 stars & up
+            </label>
+            <label>
+                <input type="radio" name="rating" data-field="rating" value="0" checked>
+                Any rating
+            </label>
+        </div>
+        <small>
+            Sample ratings for filter testing
+        </small>
+    </details>
 </section>

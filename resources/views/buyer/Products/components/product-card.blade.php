@@ -1,31 +1,33 @@
-<article
-    class="bp-product-card"
-    data-bp-product
-    data-id="{{ $product['id'] }}"
-    data-name="{{ strtolower($product['name']) }}"
-    data-price="{{ $product['price'] }}"
-    data-condition="{{ $product['condition_slug'] }}"
-    data-subcategory="{{ $product['subcategory_slug'] }}"
-    data-sizes="{{ implode('|', $product['sizes']) }}"
-    data-colors="{{ implode('|', $product['colors']) }}"
-    data-free-shipping="{{ $product['free_shipping'] ? '1' : '0' }}"
->
-    <div class="bp-product-image">
-        <img src="{{ $product['image'] }}" alt="{{ $product['name'] }}" loading="lazy">
-    </div>
-
-    <div class="bp-product-info">
-        <h3>{{ $product['name'] }}</h3>
-        <p>{{ $product['condition'] }}</p>
-        <strong>₱{{ number_format($product['price']) }}</strong>
-
-        <button
-            class="bp-view-product"
-            type="button"
-            data-bp-preview="{{ $product['name'] }}"
-        >
-            View product
-            <span aria-hidden="true">→</span>
-        </button>
-    </div>
-</article>
+<template id="bc-card-template">
+    <article class="card">
+        <div class="card-image">
+            <button class="image-open" data-quick>
+                <span class="photo" role="img">
+                </span>
+            </button>
+            <button class="save" data-save aria-pressed="false">
+                <i class="mi" aria-hidden="true">
+                    favorite
+                </i>
+            </button>
+        </div>
+        <div class="card-copy">
+            <h2>
+            </h2>
+            <p class="condition">
+            </p>
+            <div class="price-row">
+                <strong>
+                </strong>
+                <span class="color-label">
+                </span>
+            </div>
+            <button class="quick" data-quick>
+                <i class="mi" aria-hidden="true">
+                    visibility
+                </i>
+                Quick view
+            </button>
+        </div>
+    </article>
+</template>

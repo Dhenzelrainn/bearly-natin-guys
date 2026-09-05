@@ -1,28 +1,50 @@
-<section class="bp-toolbar" aria-label="Product controls">
-    <div class="bp-toolbar-left">
-        <span>Showing:</span>
-        <div id="bp-toolbar-chips" class="bp-toolbar-chips">
-            <span class="bp-toolbar-placeholder">All Men's Apparel</span>
-        </div>
-    </div>
-
-    <div class="bp-toolbar-right">
-        <label class="bp-sort">
-            <span>Sort by:</span>
-            <select id="bp-sort">
-                <option value="relevance">Relevance</option>
-                <option value="price-low">Price: Low to High</option>
-                <option value="price-high">Price: High to Low</option>
-                <option value="name">Name: A–Z</option>
-            </select>
-        </label>
-
-        <button class="bp-view-toggle is-active" type="button" data-bp-view="grid" aria-label="Grid view">
-            <span class="material-symbols-outlined">grid_view</span>
+<div class="toolbar">
+    <strong id="bc-count">
+        48 sample products
+    </strong>
+    <button class="mobile-filter button outline" id="bc-open-filters">
+        <i class="mi" aria-hidden="true">
+            tune
+        </i>
+        Filters
+        <span id="bc-mobile-count">
+        </span>
+    </button>
+    <div class="sorts" aria-label="Sort products">
+        <button data-sort="featured" aria-pressed="true">
+            All items
         </button>
-
-        <button class="bp-view-toggle" type="button" data-bp-view="list" aria-label="List view">
-            <span class="material-symbols-outlined">view_list</span>
+        <button data-sort="newest" aria-pressed="false">
+            New arrivals
+        </button>
+        <button data-sort="price-low" aria-pressed="false">
+            Price: low to high
+        </button>
+        <button data-sort="price-high" aria-pressed="false">
+            Price: high to low
         </button>
     </div>
-</section>
+    <div class="views">
+        <button data-view="grid" aria-label="Grid view" aria-pressed="true">
+            <i class="mi" aria-hidden="true">
+                grid_view
+            </i>
+        </button>
+        <button data-view="list" aria-label="List view" aria-pressed="false">
+            <i class="mi" aria-hidden="true">
+                view_list
+            </i>
+        </button>
+    </div>
+    <button class="saved-filter" id="bc-saved-filter" aria-pressed="false">
+        <i class="mi" aria-hidden="true">
+            favorite
+        </i>
+        <span id="bc-saved-count">
+            0
+        </span>
+        <span class="sr">
+            Show saved items
+        </span>
+    </button>
+</div>

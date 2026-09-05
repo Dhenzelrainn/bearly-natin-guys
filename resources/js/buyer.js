@@ -103,7 +103,21 @@ function initialize() {
     $('load-more').addEventListener('click',()=>{const count=selectProducts(products,state).slice(0,state.limit).length;state.limit+=8;render();const cards=document.querySelectorAll('.product-open');cards[count]?.focus({preventScroll:true});});
     document.addEventListener('click',event=>{
         const category=event.target.closest('[data-category]');
-        if(category){state.category=category.dataset.category;state.search='';state.sort='featured';$('search-category').value=state.category;$('search-input').value='';$('sort').value='featured';if($('sidebar').classList.contains('is-open'))menu(false);change();}
+        if(category){
+            if(category.dataset.category === 'men-s-apparel'){
+                event.preventDefault();
+                window.location.href = '/products?category=men-s-apparel';
+                return;
+            }
+            state.category=category.dataset.category;
+            state.search='';
+            state.sort='featured';
+            $('search-category').value=state.category;
+            $('search-input').value='';
+            $('sort').value='featured';
+            if($('sidebar').classList.contains('is-open'))menu(false);
+            change();
+        }
         const clear=event.target.closest('[data-clear]');
         if(clear){state[clear.dataset.clear]='';$('search-category').value=state.category;$('search-input').value=state.search;change();}
         const productButton=event.target.closest('[data-product]');
@@ -120,4 +134,371 @@ function initialize() {
     document.querySelectorAll('dialog').forEach(dialog=>dialog.addEventListener('click',event=>{if(event.target===dialog){const r=dialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)dialog.close();}}));
     window.addEventListener('popstate',()=>{readUrl();render();});
     readUrl();render();
+}
+
+/* ===== MEN'S APPAREL PAGE ===== */
+function initializeBuyerProductsPage() {
+    const page = document.getElementById('buyer-products-page');
+    if (!page) return;
+
+    const grid = document.getElementById('bp-product-grid');
+    const cards = [...grid.querySelectorAll('[data-bp-product]')];
+
+    const filterSearch = document.getElementById('bp-filter-search');
+    const globalSearchForm = document.getElementById('bp-global-search');
+    const globalSearchInput = document.getElementById('bp-global-search-input');
+    const minPrice = document.getElementById('bp-min-price');
+    const maxPrice = document.getElementById('bp-max-price');
+    const applyPrice = document.getElementById('bp-apply-price');
+    const sizeInputs = [...document.querySelectorAll('.bp-size-input')];
+    const colorInputs = [...document.querySelectorAll('.bp-color-input')];
+    const conditionInputs = [...document.querySelectorAll('.bp-condition-input')];
+    const freeShipping = document.getElementById('bp-free-shipping');
+    const sort = document.getElementById('bp-sort');
+
+    const selectedCount = document.getElementById('bp-selected-count');
+    const selectedChips = document.getElementById('bp-selected-chips');
+    const toolbarChips = document.getElementById('bp-toolbar-chips');
+    const headingCount = document.getElementById('bp-heading-count');
+    const resultStatus = document.getElementById('bp-result-status');
+    const emptyState = document.getElementById('bp-empty-state');
+    const loadMore = document.getElementById('bp-load-more');
+
+    const sidebar = document.getElementById('bp-sidebar');
+    const sidebarBackdrop = document.getElementById('bp-sidebar-backdrop');
+    const openSidebar = document.getElementById('bp-mobile-filter-button');
+    const closeSidebar = document.getElementById('bp-sidebar-close');
+
+    const state = {
+        search: '',
+        minPrice: null,
+        maxPrice: null,
+        sizes: [],
+        colors: [],
+        conditions: [],
+        freeShipping: false,
+        subcategory: '',
+        sort: 'relevance',
+    };
+
+    const text = value => String(value || '').trim().toLowerCase();
+
+    function readCard(card) {
+        return {
+            element: card,
+            id: Number(card.dataset.id),
+            name: text(card.dataset.name),
+            price: Number(card.dataset.price),
+            condition: card.dataset.condition,
+            subcategory: card.dataset.subcategory,
+            sizes: (card.dataset.sizes || '').split('|').filter(Boolean),
+            colors: (card.dataset.colors || '').split('|').filter(Boolean),
+            freeShipping: card.dataset.freeShipping === '1',
+        };
+    }
+
+    function selectedLabels() {
+        const labels = [];
+
+        if (state.search) labels.push({key: 'search', label: `“${state.search}”`});
+        if (state.subcategory) {
+            const button = document.querySelector(`[data-bp-subcategory="${state.subcategory}"]`);
+            labels.push({key: 'subcategory', label: button?.textContent.trim() || 'Subcategory'});
+        }
+
+        state.sizes.forEach(value => labels.push({key: `size:${value}`, label: value}));
+
+        state.colors.forEach(value => {
+            const input = colorInputs.find(item => item.value === value);
+            labels.push({key: `color:${value}`, label: input?.dataset.label || value});
+        });
+
+        state.conditions.forEach(value => {
+            const input = conditionInputs.find(item => item.value === value);
+            labels.push({key: `condition:${value}`, label: input?.dataset.label || value});
+        });
+
+        if (state.minPrice !== null || state.maxPrice !== null) {
+            const low = state.minPrice ?? 0;
+            const high = state.maxPrice ?? '∞';
+            labels.push({key: 'price', label: `₱${low}–₱${high}`});
+        }
+
+        if (state.freeShipping) labels.push({key: 'shipping', label: 'Free shipping'});
+
+        return labels;
+    }
+
+    function removeFilter(key) {
+        if (key === 'search') {
+            state.search = '';
+            filterSearch.value = '';
+            globalSearchInput.value = '';
+        }
+
+        if (key === 'subcategory') {
+            state.subcategory = '';
+            document.querySelectorAll('[data-bp-subcategory]').forEach(button => button.classList.remove('is-active'));
+        }
+
+        if (key === 'price') {
+            state.minPrice = null;
+            state.maxPrice = null;
+            minPrice.value = '';
+            maxPrice.value = '';
+        }
+
+        if (key === 'shipping') {
+            state.freeShipping = false;
+            freeShipping.checked = false;
+        }
+
+        if (key.startsWith('size:')) {
+            const value = key.split(':')[1];
+            state.sizes = state.sizes.filter(item => item !== value);
+            const input = sizeInputs.find(item => item.value === value);
+            if (input) input.checked = false;
+        }
+
+        if (key.startsWith('color:')) {
+            const value = key.split(':')[1];
+            state.colors = state.colors.filter(item => item !== value);
+            const input = colorInputs.find(item => item.value === value);
+            if (input) input.checked = false;
+        }
+
+        if (key.startsWith('condition:')) {
+            const value = key.split(':')[1];
+            state.conditions = state.conditions.filter(item => item !== value);
+            const input = conditionInputs.find(item => item.value === value);
+            if (input) input.checked = false;
+        }
+
+        render();
+    }
+
+    function renderChips() {
+        const labels = selectedLabels();
+        selectedCount.textContent = String(labels.length);
+
+        const chipMarkup = labels.map(item => `
+            <span class="bp-selected-chip">
+                ${item.label}
+                <button type="button" data-bp-remove="${item.key}" aria-label="Remove ${item.label}">×</button>
+            </span>
+        `).join('');
+
+        selectedChips.innerHTML = chipMarkup;
+
+        toolbarChips.innerHTML = labels.length
+            ? labels.map(item => `
+                <span class="bp-toolbar-chip">
+                    ${item.label}
+                    <button type="button" data-bp-remove="${item.key}" aria-label="Remove ${item.label}">×</button>
+                </span>
+            `).join('')
+            : '<span class="bp-toolbar-placeholder">All Men\'s Apparel</span>';
+    }
+
+    function filteredProducts() {
+        return cards.map(readCard).filter(product => {
+            if (state.search && !product.name.includes(text(state.search))) return false;
+
+            if (state.minPrice !== null && product.price < state.minPrice) return false;
+            if (state.maxPrice !== null && product.price > state.maxPrice) return false;
+
+            if (state.subcategory && product.subcategory !== state.subcategory) return false;
+
+            if (state.sizes.length && !state.sizes.some(size => product.sizes.includes(size))) return false;
+            if (state.colors.length && !state.colors.some(color => product.colors.includes(color))) return false;
+            if (state.conditions.length && !state.conditions.includes(product.condition)) return false;
+
+            if (state.freeShipping && !product.freeShipping) return false;
+
+            return true;
+        });
+    }
+
+    function sortProducts(products) {
+        const sorted = [...products];
+
+        if (state.sort === 'price-low') sorted.sort((a, b) => a.price - b.price);
+        if (state.sort === 'price-high') sorted.sort((a, b) => b.price - a.price);
+        if (state.sort === 'name') sorted.sort((a, b) => a.name.localeCompare(b.name));
+
+        return sorted;
+    }
+
+    function render() {
+        const results = sortProducts(filteredProducts());
+
+        cards.forEach(card => {
+            card.hidden = true;
+        });
+
+        results.forEach(product => {
+            product.element.hidden = false;
+            grid.appendChild(product.element);
+        });
+
+        const count = results.length;
+        headingCount.textContent = `${count} sample ${count === 1 ? 'result' : 'results'}`;
+        resultStatus.textContent = `Showing ${count} sample ${count === 1 ? 'listing' : 'listings'}`;
+        emptyState.hidden = count !== 0;
+        grid.hidden = count === 0;
+
+        // The sample page already contains 16 cards, so this is kept visually
+        // for the concept but disabled when there is nothing else to reveal.
+        loadMore.disabled = true;
+        loadMore.textContent = 'All sample products loaded';
+
+        renderChips();
+    }
+
+    function clearAll() {
+        state.search = '';
+        state.minPrice = null;
+        state.maxPrice = null;
+        state.sizes = [];
+        state.colors = [];
+        state.conditions = [];
+        state.freeShipping = false;
+        state.subcategory = '';
+        state.sort = 'relevance';
+
+        filterSearch.value = '';
+        globalSearchInput.value = '';
+        minPrice.value = '';
+        maxPrice.value = '';
+        freeShipping.checked = false;
+        sort.value = 'relevance';
+
+        [...sizeInputs, ...colorInputs, ...conditionInputs].forEach(input => {
+            input.checked = false;
+        });
+
+        document.querySelectorAll('[data-bp-subcategory]').forEach(button => {
+            button.classList.remove('is-active');
+        });
+
+        render();
+    }
+
+    filterSearch.addEventListener('input', () => {
+        state.search = filterSearch.value.trim();
+        globalSearchInput.value = filterSearch.value;
+        render();
+    });
+
+    globalSearchForm.addEventListener('submit', event => {
+        event.preventDefault();
+        state.search = globalSearchInput.value.trim();
+        filterSearch.value = state.search;
+        render();
+    });
+
+    applyPrice.addEventListener('click', () => {
+        const min = minPrice.value === '' ? null : Number(minPrice.value);
+        const max = maxPrice.value === '' ? null : Number(maxPrice.value);
+
+        state.minPrice = Number.isFinite(min) ? min : null;
+        state.maxPrice = Number.isFinite(max) ? max : null;
+
+        if (state.minPrice !== null && state.maxPrice !== null && state.minPrice > state.maxPrice) {
+            [state.minPrice, state.maxPrice] = [state.maxPrice, state.minPrice];
+            minPrice.value = state.minPrice;
+            maxPrice.value = state.maxPrice;
+        }
+
+        render();
+    });
+
+    sizeInputs.forEach(input => {
+        input.addEventListener('change', () => {
+            state.sizes = sizeInputs.filter(item => item.checked).map(item => item.value);
+            render();
+        });
+    });
+
+    colorInputs.forEach(input => {
+        input.addEventListener('change', () => {
+            state.colors = colorInputs.filter(item => item.checked).map(item => item.value);
+            render();
+        });
+    });
+
+    conditionInputs.forEach(input => {
+        input.addEventListener('change', () => {
+            state.conditions = conditionInputs.filter(item => item.checked).map(item => item.value);
+            render();
+        });
+    });
+
+    freeShipping.addEventListener('change', () => {
+        state.freeShipping = freeShipping.checked;
+        render();
+    });
+
+    sort.addEventListener('change', () => {
+        state.sort = sort.value;
+        render();
+    });
+
+    document.querySelectorAll('[data-bp-subcategory]').forEach(button => {
+        button.addEventListener('click', () => {
+            const value = button.dataset.bpSubcategory;
+
+            if (state.subcategory === value) {
+                state.subcategory = '';
+                button.classList.remove('is-active');
+            } else {
+                state.subcategory = value;
+                document.querySelectorAll('[data-bp-subcategory]').forEach(item => item.classList.remove('is-active'));
+                button.classList.add('is-active');
+            }
+
+            render();
+        });
+    });
+
+    document.querySelectorAll('[data-bp-clear-all]').forEach(button => {
+        button.addEventListener('click', clearAll);
+    });
+
+    document.addEventListener('click', event => {
+        const remove = event.target.closest('[data-bp-remove]');
+        if (remove) removeFilter(remove.dataset.bpRemove);
+
+        const viewToggle = event.target.closest('[data-bp-view]');
+        if (viewToggle) {
+            document.querySelectorAll('[data-bp-view]').forEach(button => button.classList.remove('is-active'));
+            viewToggle.classList.add('is-active');
+            grid.classList.toggle('is-list', viewToggle.dataset.bpView === 'list');
+        }
+
+        const preview = event.target.closest('[data-bp-preview]');
+        if (preview) {
+            window.alert(`${preview.dataset.bpPreview}\n\nFront-end preview only. Product details will connect to the backend later.`);
+        }
+    });
+
+    function setSidebar(open) {
+        sidebar.classList.toggle('is-open', open);
+        sidebarBackdrop.hidden = !open;
+        document.body.classList.toggle('menu-open', open);
+    }
+
+    openSidebar?.addEventListener('click', () => setSidebar(true));
+    closeSidebar?.addEventListener('click', () => setSidebar(false));
+    sidebarBackdrop?.addEventListener('click', () => setSidebar(false));
+
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape') setSidebar(false);
+    });
+
+    render();
+}
+
+if (typeof document !== 'undefined') {
+    initializeBuyerProductsPage();
 }

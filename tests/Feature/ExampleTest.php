@@ -17,6 +17,17 @@ class ExampleTest extends TestCase
         $response->assertStatus(200);
     }
 
+    public function test_buyer_home_and_products_pages_load(): void
+    {
+        $this->get('/home')->assertStatus(200);
+        $this->get('/products')->assertStatus(200);
+    }
+
+    public function test_buyer_category_filtered_products_page_loads(): void
+    {
+        $this->get('/products?category=men-s-apparel')->assertStatus(200);
+    }
+
     public function test_admin_routes_require_authentication(): void
     {
         $response = $this->get('/admin/dashboard');

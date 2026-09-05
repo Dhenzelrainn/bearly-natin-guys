@@ -41,13 +41,6 @@ Route::prefix('api/psgc')
         )->name('psgc.barangays');
     });
 
-/*
-|--------------------------------------------------------------------------
-| Static Admin Front-End Routes
-|--------------------------------------------------------------------------
-| These preview screens remain publicly accessible while the UI is still in
-| the front-end stage and backend authentication is not yet implemented.
-*/
 Route::middleware('auth')->prefix('admin')->name('admin.')->group(function () {
     Route::redirect('/', '/admin/dashboard');
 
@@ -63,14 +56,6 @@ Route::middleware('auth')->prefix('admin')->name('admin.')->group(function () {
     Route::get('/account', [AdminController::class, 'account'])->name('account');
 });
 
-
-/*
-|--------------------------------------------------------------------------
-| Static Courier Front-End Routes
-|--------------------------------------------------------------------------
-| These preview screens remain public while the project is still focused on
-| front-end design and layout work.
-*/
 Route::prefix('courier')->name('courier.')->group(function () {
     Route::redirect('/', '/courier/dashboard');
 
@@ -87,13 +72,6 @@ Route::prefix('courier')->name('courier.')->group(function () {
     Route::get('/account', [CourierController::class, 'account'])->name('account');
 });
 
-/*
-|--------------------------------------------------------------------------
-| Static Seller Front-End Routes
-|--------------------------------------------------------------------------
-| These preview screens remain public so the team can continue working on the
-| seller interface before backend authentication is implemented.
-*/
 Route::prefix('seller')->name('seller.')->group(function () {
     Route::redirect('/', '/seller/dashboard');
     Route::get('/dashboard', [SellerController::class, 'dashboard'])->name('dashboard');

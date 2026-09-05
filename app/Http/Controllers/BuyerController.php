@@ -7,10 +7,19 @@ use App\Models\Product;
 use App\Models\Wishlist;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 
 class BuyerController extends Controller
 {
+    private function hasBuyerTables(): bool
+    {
+        return Schema::hasTable('products')
+            && Schema::hasTable('shops')
+            && Schema::hasTable('cart_items')
+            && Schema::hasTable('wishlist');
+    }
+
     public function home(): View
     {
         $categories = [
@@ -244,7 +253,7 @@ class BuyerController extends Controller
             ],
         ];
 
-        return view('buyer.home', compact(
+        return view('buyer.Dashboard.home', compact(
             'categories',
             'recommendedProducts',
             'bestSellers',
@@ -254,6 +263,14 @@ class BuyerController extends Controller
 
     public function products(Request $request): View
     {
+        if ($request->query('category') === 'men-s-apparel') {
+            return view('buyer.Products.products');
+        }
+
+        if (! $this->hasBuyerTables()) {
+            return view('buyer.Products.products');
+        }
+
         $query = Product::with('shop');
 
         if ($request->category && $request->category !== 'All') {
@@ -296,11 +313,15 @@ class BuyerController extends Controller
             'Groceries',
         ];
 
-        return view('buyer.products', compact('products', 'categories'));
+        return view('buyer.Products.products', compact('products', 'categories'));
     }
 
     public function showProduct(Product $product): View
     {
+        if (! $this->hasBuyerTables()) {
+            abort(404);
+        }
+
         $product->load('shop', 'orderItems');
 
         $relatedProducts = Product::where('category', $product->category)
@@ -313,6 +334,10 @@ class BuyerController extends Controller
 
     public function cart(): View
     {
+        if (! $this->hasBuyerTables()) {
+            return view('buyer.Dashboard.home');
+        }
+
         $sessionId = session()->getId();
         $cartItems = CartItem::where('session_id', $sessionId)
             ->with('product.shop')
@@ -320,7 +345,7 @@ class BuyerController extends Controller
 
         $total = $cartItems->sum(fn (CartItem $item) => $item->quantity * $item->price);
 
-        return view('buyer.cart.homecart', compact('cartItems', 'total'));
+        return view('buyer.Dashboard.home', compact('cartItems', 'total'));
     }
 
     public function addToCart(Request $request): JsonResponse
@@ -391,12 +416,16 @@ class BuyerController extends Controller
 
     public function wishlist(): View
     {
+        if (! $this->hasBuyerTables()) {
+            return view('buyer.Dashboard.home');
+        }
+
         $sessionId = session()->getId();
         $wishlistItems = Wishlist::where('session_id', $sessionId)
             ->with('product')
             ->get();
 
-        return view('buyer.wishlist.wishlist', compact('wishlistItems'));
+        return view('buyer.Dashboard.home', compact('wishlistItems'));
     }
 
     public function toggleWishlist(Request $request): JsonResponse

@@ -1,5 +1,5 @@
 @php
-    $catalog = json_decode(file_get_contents(resource_path('data/buyer-mens-products.json')), true, 512, JSON_THROW_ON_ERROR);
+    $catalog = json_decode(file_get_contents(resource_path('data/buyer-mens-products (1).json')), true, 512, JSON_THROW_ON_ERROR);
     $taxonomy = json_decode(file_get_contents(resource_path('data/buyer-categories.json')), true, 512, JSON_THROW_ON_ERROR);
     $mensCategory = collect($taxonomy)->firstWhere('slug', 'men-s-apparel');
     $subcategories = $mensCategory['subcategories'];
@@ -68,7 +68,42 @@
         </header>
         <div class="bc-shell">
             <aside class="bc-sidebar" id="bc-sidebar" aria-label="Categories and filters">
-                @include('buyer.Products.components.category-sidebar') @include('buyer.Products.components.product-filter')
+                <a class="back" href="{{ route('home') }}">
+                    <i class="mi" aria-hidden="true">
+                        arrow_back
+                    </i>
+                    All categories
+                </a>
+                <div class="active-category">
+                    <i class="mi" aria-hidden="true">
+                        apparel
+                    </i>
+                    <strong>
+                        Men's Apparel
+                    </strong>
+                </div>
+                <details open class="subcategories">
+                    <summary>
+                        Subcategories
+                    </summary>
+                    <nav aria-label="Subcategories">
+                        <button data-sub="" aria-pressed="true">
+                            <i class="mi" aria-hidden="true">
+                                grid_view
+                            </i>
+                            All items
+                        </button>
+                        @foreach($subcategories as $i => $sub)
+                        <button data-sub="{{ $sub }}" aria-pressed="false">
+                            <i class="mi" aria-hidden="true">
+                                {{ ['checkroom','apparel','checkroom','directions_run','steps','styler'][$i] }}
+                            </i>
+                            {{ $sub }}
+                        </button>
+                        @endforeach
+                    </nav>
+                </details>
+                @include('buyer.Products.components.product-filter')
             </aside>
             <main id="bc-main" tabindex="-1">
                 <nav class="breadcrumb" aria-label="Breadcrumb">
@@ -91,7 +126,56 @@
                 <p class="preview">
                     Concept catalog · Sample products, prices and ratings
                 </p>
-                @include('buyer.Products.components.product-toolbar')
+                <div class="toolbar">
+                    <strong id="bc-count">
+                        48 sample products
+                    </strong>
+                    <button class="mobile-filter button outline" id="bc-open-filters">
+                        <i class="mi" aria-hidden="true">
+                            tune
+                        </i>
+                        Filters
+                        <span id="bc-mobile-count">
+                        </span>
+                    </button>
+                    <div class="sorts" aria-label="Sort products">
+                        <button data-sort="featured" aria-pressed="true">
+                            All items
+                        </button>
+                        <button data-sort="newest" aria-pressed="false">
+                            New arrivals
+                        </button>
+                        <button data-sort="price-low" aria-pressed="false">
+                            Price: low to high
+                        </button>
+                        <button data-sort="price-high" aria-pressed="false">
+                            Price: high to low
+                        </button>
+                    </div>
+                    <div class="views">
+                        <button data-view="grid" aria-label="Grid view" aria-pressed="true">
+                            <i class="mi" aria-hidden="true">
+                                grid_view
+                            </i>
+                        </button>
+                        <button data-view="list" aria-label="List view" aria-pressed="false">
+                            <i class="mi" aria-hidden="true">
+                                view_list
+                            </i>
+                        </button>
+                    </div>
+                    <button class="saved-filter" id="bc-saved-filter" aria-pressed="false">
+                        <i class="mi" aria-hidden="true">
+                            favorite
+                        </i>
+                        <span id="bc-saved-count">
+                            0
+                        </span>
+                        <span class="sr">
+                            Show saved items
+                        </span>
+                    </button>
+                </div>
                 <div class="shortcuts" aria-label="Explore subcategories">
                     @foreach($subcategories as $i => $sub)
                     <button data-sub="{{ $sub }}">
@@ -108,7 +192,13 @@
                 </div>
                 <div id="bc-chips" class="chips">
                 </div>
-                @include('buyer.Products.components.product-grid')
+                <div class="catalog-grid" id="bc-grid">
+                </div>
+                <noscript>
+                    <p>
+                        Enable JavaScript to explore the sample catalog and filters.
+                    </p>
+                </noscript>
                 <section id="bc-empty" class="empty" hidden>
                     <i class="mi" aria-hidden="true">
                         search_off

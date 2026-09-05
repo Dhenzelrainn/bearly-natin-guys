@@ -244,7 +244,7 @@ class BuyerController extends Controller
             ],
         ];
 
-        return view('buyer.home', compact(
+        return view('buyer.Dashboard.home', compact(
             'categories',
             'recommendedProducts',
             'bestSellers',

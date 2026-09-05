@@ -46,7 +46,40 @@
                     <td><span class="status-badge {{ $application['status'] === 'Pending' ? 'badge-warning' : 'badge-info' }}">{{ $application['status'] }}</span></td>
                     <td class="align-right"><div class="row-actions">
                         <button type="button" class="button button-ghost button-small" data-open-modal="application-{{ $loop->index }}"><i data-lucide="eye"></i> Review</button>
-                        <button type="button" class="icon-button table-more" data-mock-action="More application actions opened."><i data-lucide="ellipsis"></i></button>
+                        <button
+                            type="button"
+                            class="icon-button table-more"
+                            data-registration-menu-toggle="registration-menu-{{ $loop->index }}"
+                            aria-label="More actions for {{ $application['name'] }}"
+                            aria-expanded="false"
+                        >
+                            <i data-lucide="ellipsis"></i>
+                        </button>
+                        <div
+                            class="registration-action-menu"
+                            data-registration-menu="registration-menu-{{ $loop->index }}"
+                            hidden
+                        >
+                            <button type="button" data-open-modal="application-{{ $loop->index }}">
+                                <i data-lucide="eye"></i>
+                                <span>View application</span>
+                            </button>
+                            <button
+                                type="button"
+                                data-registration-needs-review
+                                data-application-id="{{ $application['id'] }}"
+                            >
+                                <i data-lucide="flag"></i>
+                                <span>Mark as needs review</span>
+                            </button>
+                            <button
+                                type="button"
+                                data-copy-application-id="{{ $application['id'] }}"
+                            >
+                                <i data-lucide="copy"></i>
+                                <span>Copy application ID</span>
+                            </button>
+                        </div>
                     </div></td>
                 </tr>
             @endforeach

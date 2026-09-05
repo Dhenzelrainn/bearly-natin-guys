@@ -15,7 +15,7 @@
         <label class="field-with-icon"><i data-lucide="search"></i><input type="search" placeholder="Search conversations..." data-conversation-search></label>
         <div class="conversation-list">
             @foreach ($conversations as $index => $conversation)
-                <button type="button" class="conversation-item {{ $index === 0 ? 'is-active' : '' }}" data-conversation-item data-search="{{ strtolower($conversation['name'].' '.$conversation['role'].' '.$conversation['preview']) }}" data-name="{{ $conversation['name'] }}" data-role="{{ $conversation['role'] }}" data-initials="{{ $conversation['initials'] }}">
+                <button type="button" class="conversation-item {{ $index === 0 ? 'is-active' : '' }}" data-conversation-item data-search="{{ strtolower($conversation['name'].' '.$conversation['role'].' '.$conversation['preview']) }}" data-name="{{ $conversation['name'] }}" data-role="{{ $conversation['role'] }}" data-initials="{{ $conversation['initials'] }}" data-preview="{{ $conversation['preview'] }}" data-time="{{ $conversation['time'] }}">
                     <span class="avatar avatar-soft">{{ $conversation['initials'] }}</span>
                     <span class="conversation-copy"><span><strong>{{ $conversation['name'] }}</strong><time>{{ $conversation['time'] }}</time></span><small>{{ $conversation['role'] }} • {{ $conversation['preview'] }}</small></span>
                     @if($conversation['unread'] > 0)<span class="unread-count">{{ $conversation['unread'] }}</span>@endif

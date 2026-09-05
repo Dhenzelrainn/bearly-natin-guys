@@ -27,12 +27,24 @@
 <section class="panel">
     <div class="panel-heading panel-heading-wrap">
         <div><span class="eyebrow">Commission ledger</span><h2>Seller fee breakdown</h2></div>
-        <div class="table-toolbar"><input class="date-field" type="date" value="2026-08-01"><span>to</span><input class="date-field" type="date" value="2026-08-24"><button class="button button-secondary button-small" type="button" data-mock-action="Commission date range applied."><i data-lucide="filter"></i> Apply</button></div>
+        <div class="table-toolbar">
+            <input class="date-field" type="date" value="2026-08-01" data-commission-date-start>
+            <span>to</span>
+            <input class="date-field" type="date" value="2026-08-24" data-commission-date-end>
+            <button class="button button-secondary button-small" type="button" data-commission-date-apply>
+                <i data-lucide="filter"></i> Apply
+            </button>
+        </div>
     </div>
     <div class="table-wrap"><table class="admin-table"><thead><tr><th>Date</th><th>Order</th><th>Seller</th><th class="align-right">Gross</th><th class="align-right">10% Commission</th><th class="align-right">Seller Net</th></tr></thead><tbody>
         @foreach ($ledger as $row)
-            <tr><td>{{ $row['date'] }}</td><td><strong>{{ $row['order'] }}</strong></td><td>{{ $row['seller'] }}</td><td class="align-right">₱{{ number_format($row['gross'], 2) }}</td><td class="align-right commission-value">₱{{ number_format($row['commission'], 2) }}</td><td class="align-right">₱{{ number_format($row['sellerNet'], 2) }}</td></tr>
+            <tr data-commission-ledger-row data-commission-date="{{ \Carbon\Carbon::parse($row['date'])->format('Y-m-d') }}"><td>{{ $row['date'] }}</td><td><strong>{{ $row['order'] }}</strong></td><td>{{ $row['seller'] }}</td><td class="align-right">₱{{ number_format($row['gross'], 2) }}</td><td class="align-right commission-value">₱{{ number_format($row['commission'], 2) }}</td><td class="align-right">₱{{ number_format($row['sellerNet'], 2) }}</td></tr>
         @endforeach
+        <tr data-commission-empty hidden>
+            <td colspan="6" style="text-align:center; padding: 28px 16px;">
+                No commission transactions found for the selected date range.
+            </td>
+        </tr>
     </tbody></table></div>
 </section>
 @endsection

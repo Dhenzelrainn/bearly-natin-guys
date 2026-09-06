@@ -6,12 +6,32 @@ use App\Http\Controllers\PsgcController;
 use App\Http\Controllers\SellerController;
 use Illuminate\Support\Facades\Route;
 
-Route::view('/', 'auth.login')->name('shop.home');
+/*
+|--------------------------------------------------------------------------
+| Public Landing / Authentication Routes
+|--------------------------------------------------------------------------
+| The landing page is the first page visitors see. Login and registration
+| remain separate pages, while the buyer shopping pages are routed below.
+*/
+Route::view('/', 'landing-page.index')->name('shop.home');
+Route::redirect('/landing', '/')->name('landing');
 
 Route::view('/login', 'auth.login')->name('login');
 Route::view('/register', 'auth.register')->name('register');
 
 Route::get('/forgot-password', fn () => redirect()->route('login'))->name('password.request');
+
+/*
+|--------------------------------------------------------------------------
+| Static Buyer Front-End Routes
+|--------------------------------------------------------------------------
+| Buyer routes remain publicly accessible while the project is still in the
+| front-end stage and backend authentication/approval is not yet implemented.
+*/
+Route::redirect('/home', '/')->name('home');
+Route::redirect('/products', '/')->name('products.index');
+Route::redirect('/wishlist', '/')->name('wishlist.index');
+Route::redirect('/cart', '/')->name('cart.view');
 
 Route::prefix('api/psgc')
     ->middleware('throttle:60,1')

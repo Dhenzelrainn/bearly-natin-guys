@@ -1,0 +1,8 @@
+[
+    {"id": 2, "name": "Wireless Headphones", "price": 2499, "category_slug": "electronics", "photo": 0},
+    {"id": 4, "name": "Everyday Linen Shirt", "price": 1299, "category_slug": "fashion", "photo": 1},
+    {"id": 6, "name": "Ceramic Tableware Set", "price": 1899, "category_slug": "home-living", "photo": 2},
+    {"id": 8, "name": "Glow Beauty Set", "price": 999, "category_slug": "beauty", "photo": 3},
+    {"id": 9, "name": "The Everyday Journal", "price": 549, "category_slug": "home-living", "photo": 4},
+    {"id": 12, "name": "Classic Steel Watch", "price": 6390, "category_slug": "fashion", "photo": 5}
+]

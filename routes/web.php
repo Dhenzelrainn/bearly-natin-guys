@@ -25,8 +25,8 @@ Route::get('/forgot-password', fn () => redirect()->route('login'))->name('passw
 |--------------------------------------------------------------------------
 | Static Buyer Front-End Routes
 |--------------------------------------------------------------------------
-| Buyer routes remain publicly accessible while the project is still in the
-| front-end stage and backend authentication/approval is not yet implemented.
+| These URLs currently redirect to the landing page. Replace each redirect
+| with its buyer view or controller route when those pages are connected.
 */
 Route::redirect('/home', '/')->name('home');
 Route::redirect('/products', '/')->name('products.index');

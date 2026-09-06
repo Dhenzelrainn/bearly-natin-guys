@@ -1,233 +1,91 @@
 @php
-    $landingCategories = json_decode(file_get_contents(resource_path('data/buyer-categories.json')), true, 512, JSON_THROW_ON_ERROR);
-    $landingProducts = json_decode(file_get_contents(resource_path('data/buyer-home-products.json')), true, 512, JSON_THROW_ON_ERROR);
-
-    $categorySamples = [];
-    foreach ($landingProducts as $product) {
-        $slug = $product['category_slug'] ?? '';
-        if ($slug !== '' && !isset($categorySamples[$slug])) {
-            $categorySamples[$slug] = $product;
-        }
-    }
-
-    $featuredIds = [2, 4, 6, 8, 9, 12];
-    $featuredProducts = array_values(array_filter(
-        $landingProducts,
-        fn ($product) => in_array($product['id'], $featuredIds, true)
-    ));
-
-    $featuredMeta = [
-        2 => ['seller' => 'AudioNest', 'rating' => '4.8', 'reviews' => '620', 'sold' => '910 sold'],
-        4 => ['seller' => 'UrbanBasics', 'rating' => '4.6', 'reviews' => '285', 'sold' => '430 sold'],
-        6 => ['seller' => 'HomeEssentials', 'rating' => '4.7', 'reviews' => '405', 'sold' => '680 sold'],
-        8 => ['seller' => 'Glow & Co.', 'rating' => '4.9', 'reviews' => '560', 'sold' => '1.2k sold'],
-        9 => ['seller' => 'BookHive', 'rating' => '4.9', 'reviews' => '1.2k', 'sold' => '2.1k sold'],
-        12 => ['seller' => 'TimeMinded PH', 'rating' => '4.7', 'reviews' => '390', 'sold' => '510 sold'],
+    $homeCategories = json_decode(file_get_contents(resource_path('data/categories.json')), true, 512, JSON_THROW_ON_ERROR);
+    // Reference imagery is displayed through CSS windows; sample listings are not live seller inventory.
+    $featured = [
+        ['name'=>'Keychron K2 Mechanical Keyboard','price'=>3290,'shop'=>'TechifyPH','rating'=>'4.8','reviews'=>'570','sold'=>'340','category'=>'electronics-and-gadgets'],
+        ['name'=>'Logitech M660 Wireless Mouse','price'=>1290,'shop'=>'Gadget Go','rating'=>'4.7','reviews'=>'320','sold'=>'620','category'=>'electronics-and-gadgets'],
+        ['name'=>'Stanley Classic Insulated Tumbler 20oz','price'=>2490,'shop'=>'Daily Essentials','rating'=>'4.9','reviews'=>'410','sold'=>'680','category'=>'home-and-garden'],
+        ['name'=>'Premium Polo Shirt (Black)','price'=>890,'shop'=>'UrbanBasics','rating'=>'4.8','reviews'=>'265','sold'=>'430','category'=>'men-s-apparel'],
+        ['name'=>'SoundPEATS Air4 True Wireless Earbuds','price'=>1990,'shop'=>'AudioNest','rating'=>'4.8','reviews'=>'620','sold'=>'910','category'=>'electronics-and-gadgets'],
+        ['name'=>'Atomic Habits by James Clear','price'=>645,'shop'=>'BookHive','rating'=>'4.9','reviews'=>'1.2k','sold'=>'2.1k','category'=>'books-and-media'],
     ];
+    $faqs = [
+        ['How do I place an order?', 'Browse a category and open a product to see its details. Ordering and checkout will be available when the store launches.'],
+        ['Can I change or cancel my order?', 'Order changes and cancellations will depend on the seller and shipping status. Full instructions will be available at launch.'],
+        ['How do I track my order?', 'Tracking will be available once delivery services are connected.'],
+        ['What payment methods are available?', 'Supported payment methods will be announced before checkout becomes available.'],
+        ['What is your return and refund policy?', 'The return and refund policy will be published before the marketplace starts accepting orders.'],
+    ];
+    $sprite = fn ($x, $y, $w, $h) => '--sprite-size:'.(683/$w*100).'% '.(2048/$h*100).'%;--sprite-position:'.($x/(683-$w)*100).'% '.($y/(2048-$h)*100).'%';
 @endphp
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="Bearly — an easy marketplace for curated finds from independent stores.">
-    <title>Bearly — Shopping made Bearly a hassle</title>
-
+    <meta name="description" content="Discover unique finds from independent stores. Shopping made Bearly a hassle.">
+    <title>BEARLY — Find more. Live better.</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Libre+Caslon+Display&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,300,0,0&display=swap" rel="stylesheet">
-
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet">
     @vite(['resources/css/landing.css', 'resources/js/landing.js'])
 </head>
-<body
-    class="landing-page"
-    style="
-        --product-atlas: url('{{ asset('images/product-atlas.png') }}');
-        --hero-image: url('{{ asset('images/landing/bearly-hero-background.png') }}');
-        --story-image: url('{{ asset('images/landing/bearly-story-lifestyle.png') }}');
-        --cta-image: url('{{ asset('images/landing/bearly-cta-background.jpg') }}');
-    "
->
-<a class="skip-link" href="#main-content">Skip to content</a>
-
-<div class="announcement">Shopping made bearly easy.</div>
-
-<header class="site-header" id="top">
-    <div class="header-main shell-width">
-        <a class="brand" href="{{ route('shop.home') }}" aria-label="Bearly landing page">
-            <strong>BEARLY</strong>
-            <span>Find more. Live better.</span>
-        </a>
-
-        <button class="menu-toggle" id="menu-toggle" type="button" aria-expanded="false" aria-controls="main-nav" aria-label="Open navigation">
-            <span class="material-symbols-outlined">menu</span>
-        </button>
-
-        <nav class="main-nav" id="main-nav" aria-label="Primary navigation">
-            <a class="active" href="{{ route('shop.home') }}">Home</a>
-            <a href="{{ route('home') }}">Shop</a>
-            <a href="#about">About</a>
-            <a href="#delivery">Delivery</a>
-            <a href="#contact">Contact</a>
-        </nav>
-
-        <div class="account-links">
-            <a class="login-link" href="{{ route('login') }}">Log in</a>
-            <a class="create-link" href="{{ route('register') }}">Create Account</a>
-        </div>
-    </div>
-
-    <form class="landing-search shell-width" action="{{ route('products.index') }}" method="GET" role="search">
-        <span class="material-symbols-outlined" aria-hidden="true">search</span>
-        <label class="sr-only" for="landing-search-input">Search products</label>
-        <input id="landing-search-input" name="q" type="search" placeholder="Search for products, brands, or independent stores..." autocomplete="off">
-        <label class="sr-only" for="landing-search-category">Category</label>
-        <select id="landing-search-category" name="category">
-            <option value="">All categories</option>
-            @foreach ($landingCategories as $category)
-                <option value="{{ $category['slug'] }}">{{ $category['name'] }}</option>
-            @endforeach
-        </select>
-        <button type="submit">Search</button>
-    </form>
+<body class="bl" style="--bl-catalog:url('{{ asset('images/cloud.png') }}')">
+<svg class="bl-symbols" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
+<symbol id="bl-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="7.5"/><path d="m16 16 5 5"/></symbol>
+<symbol id="bl-user" viewBox="0 0 24 24"><circle cx="12" cy="7" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2Z"/></symbol>
+<symbol id="bl-heart" viewBox="0 0 24 24"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z"/></symbol>
+<symbol id="bl-cart" viewBox="0 0 24 24"><path d="M1 2h3l3 14h13l2-10H5"/><circle cx="9" cy="21" r="1"/><circle cx="19" cy="21" r="1"/></symbol>
+<symbol id="bl-arrow" viewBox="0 0 24 24"><path d="M3 12h18m-7-7 7 7-7 7"/></symbol>
+<symbol id="bl-store" viewBox="0 0 24 24"><path d="M3 10v12h18V10M2 10l3-8h14l3 8M2 10q3 5 5 0 3 5 5 0 3 5 5 0 3 5 5 0M8 22v-8h8v8"/></symbol>
+<symbol id="bl-bag" viewBox="0 0 24 24"><path d="M4 7h16l2 16H2ZM8 9V5a4 4 0 0 1 8 0v4"/></symbol>
+<symbol id="bl-shield" viewBox="0 0 24 24"><path d="m12 1 9 4v6c0 6-9 12-9 12S3 17 3 11V5ZM7 11l4 4 6-8"/></symbol>
+<symbol id="bl-truck" viewBox="0 0 24 24"><path d="M1 3h14v15H1ZM15 8h4l4 6v4h-8"/><circle cx="5" cy="20" r="2"/><circle cx="19" cy="20" r="2"/></symbol>
+<symbol id="bl-people" viewBox="0 0 24 24"><circle cx="12" cy="5" r="3"/><path d="M6 22v-7a6 6 0 0 1 12 0v7M3 8a3 3 0 1 0 0 6M21 8a3 3 0 1 1 0 6M1 22v-4h3m19 4v-4h-3"/></symbol>
+<symbol id="bl-mail" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 5 10 8L22 5"/></symbol>
+<symbol id="bl-phone" viewBox="0 0 24 24"><path d="m5 2 4 5-3 3q2 6 8 8l3-3 5 4-2 3C10 24 0 14 2 4Z"/></symbol>
+<symbol id="bl-pin" viewBox="0 0 24 24"><path d="M20 9c0 6-8 14-8 14S4 15 4 9a8 8 0 1 1 16 0Z"/><circle cx="12" cy="9" r="3"/></symbol>
+<symbol id="bl-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 5v7l5 3"/></symbol>
+</defs></svg>
+<a class="skip-link" href="#bl-main">Skip to content</a>
+<header class="bl-header">
+    <a class="bl-brand" href="{{ url('/') }}">BEARLY<small>Find more. Live better.</small></a>
+    <nav class="bl-nav" aria-label="Main navigation"><a href="{{ url('/') }}" aria-current="page">Home</a><a href="{{ url('/home') }}">Shop</a><a href="#bl-about">About</a><a href="#bl-delivery">Delivery</a><a href="#bl-contact">Contact</a></nav>
+    <div class="bl-actions"><a href="{{ url('/login') }}" aria-label="Sign in"><svg><use href="#bl-user"/></svg></a><button type="button" data-bl-wishlist aria-label="Saved products"><svg><use href="#bl-heart"/></svg></button><button type="button" data-bl-info="cart" aria-label="Shopping cart"><svg><use href="#bl-cart"/></svg><span class="bl-count">0</span></button></div>
+    <form class="bl-search" action="{{ url('/home') }}" role="search"><button aria-label="Search"><svg><use href="#bl-search"/></svg></button><label class="sr-only" for="bl-query">Search products</label><input id="bl-query" name="search" type="search" maxlength="120" placeholder="Search for products, brands, or independent stores..."></form>
 </header>
-
-<main id="main-content">
-    <section class="hero" aria-labelledby="hero-title">
-        <div class="hero-bg" role="img" aria-label="Bearly lifestyle models"></div>
-        <div class="hero-overlay shell-width">
-            <div class="hero-copy">
-                <p class="hero-kicker">BEARLY</p>
-                <h1 id="hero-title">Shopping<br>made <span>Bearly</span><br>a hassle.</h1>
-                <p class="hero-lead">Shopping should be easy. Bearly stressful.</p>
-                <p class="hero-description">Discover unique finds from independent stores all in one place. Curated pieces, great deals, and effortless discovery.</p>
-
-                <div class="hero-actions">
-                    <a class="button button-primary" href="{{ route('home') }}">Shop now <span>→</span></a>
-                    <a class="button button-outline" href="#categories">Explore categories</a>
-                </div>
-
-                <div class="hero-benefits" aria-label="Why shop on Bearly">
-                    <div><span class="material-symbols-outlined">storefront</span><p><strong>Support</strong><br>independent stores</p></div>
-                    <div><span class="material-symbols-outlined">diamond</span><p><strong>Curated finds</strong><br>for every lifestyle</p></div>
-                    <div><span class="material-symbols-outlined">favorite</span><p><strong>A more meaningful</strong><br>way to shop</p></div>
-                </div>
-            </div>
-        </div>
+<main id="bl-main">
+    <section class="bl-hero" aria-labelledby="bl-title">
+        <img class="bl-banner-image" src="{{ asset('images/hero.png') }}" alt="Three men in casual everyday outfits in a sunlit studio" width="1536" height="1024" fetchpriority="high">
+        <div class="bl-hero-copy"><p class="bl-wordmark">BEARLY</p><h1 id="bl-title">Shopping<br>made <em>Bearly<br>a hassle.</em></h1><p class="bl-lead">Shopping should be easy. Bearly stressful.</p><p class="bl-description">Discover unique finds from independent stores all in one place. Curated pieces, great deals, and effortless discovery.</p><div class="bl-buttons"><a class="bl-button" href="{{ url('/home') }}">Shop now <svg><use href="#bl-arrow"/></svg></a><a class="bl-button bl-outline" href="#bl-categories">Explore categories</a></div>
+        <div class="bl-mini-benefits"><span><svg><use href="#bl-store"/></svg>Support<br>independent stores</span><span><svg><use href="#bl-bag"/></svg>Curated finds<br>for every lifestyle</span><span><svg><use href="#bl-heart"/></svg>A more meaningful<br>way to shop</span></div></div>
+        <p class="bl-hero-note">Good<br>Things<br>Find You<br>Here.</p>
     </section>
-
-    <section class="section shell-width" id="categories" aria-labelledby="categories-title">
-        <div class="section-heading">
-            <h2 id="categories-title">Shop by Categories</h2>
-            <a href="{{ route('products.index') }}">View all categories <span>→</span></a>
-        </div>
-
-        <div class="category-grid">
-            @foreach ($landingCategories as $category)
-                @php
-                    $sample = $categorySamples[$category['slug']] ?? null;
-                    $photoIndex = $sample['photo'] ?? $loop->index;
-                    $x = ($photoIndex % 4) * 100 / 3;
-                    $y = floor($photoIndex / 4) * 100 / 3;
-                @endphp
-                <a class="category-card" href="{{ route('products.index', ['category' => $category['slug']]) }}">
-                    <span class="atlas-photo category-photo" style="--x: {{ $x }}%; --y: {{ $y }}%" aria-hidden="true"></span>
-                    <span>{{ $category['name'] }}</span>
-                </a>
+    <div class="bl-container">
+        <section id="bl-categories" class="bl-section" aria-labelledby="bl-category-title"><div class="bl-section-heading"><h2 id="bl-category-title">Shop by Categories</h2><a href="{{ url('/home') }}">View all categories <svg><use href="#bl-arrow"/></svg></a></div><div class="bl-categories">
+        @foreach ($homeCategories as $index => $category)
+            <a class="bl-category" href="{{ $category['slug'] === 'men-s-apparel' ? url('/products') : url('/home').'?category='.$category['slug'] }}"><span class="bl-catalog-image" style="{{ $sprite(22 + ($index % 6) * 108, $index < 6 ? 554 : 676, 96, 84) }}" role="img" aria-label="{{ $category['name'] }}"></span><span>{{ str_replace(' and ', ' & ', $category['name']) }}</span></a>
+        @endforeach
+        </div></section>
+        <section class="bl-section" id="bl-featured" aria-labelledby="bl-featured-title"><div class="bl-section-heading"><h2 id="bl-featured-title">Featured Products</h2><a href="{{ url('/home') }}">View all products <svg><use href="#bl-arrow"/></svg></a></div><div class="bl-products">
+        @foreach ($featured as $index => $product)
+            <article class="bl-product"><button type="button" class="bl-save" data-bl-save="{{ $index }}" aria-label="Save {{ $product['name'] }}" aria-pressed="false"><svg><use href="#bl-heart"/></svg></button><button class="bl-product-open" type="button" data-bl-product="{{ $index }}"><span class="bl-catalog-image bl-product-photo" style="{{ $sprite(23 + $index * 108, 859, 96, 92) }}" role="img" aria-label="{{ $product['name'] }}"></span><h3>{{ $product['name'] }}</h3><strong class="bl-price">₱{{ number_format($product['price']) }}</strong></button><p class="bl-seller">{{ $product['shop'] }}</p><p class="bl-rating"><span aria-label="Rating">★</span> {{ $product['rating'] }} ({{ $product['reviews'] }}) · {{ $product['sold'] }} sold</p><p class="bl-shipping">Delivery: 2–4 days</p></article>
+        @endforeach
+        </div></section>
+        <section id="bl-delivery" class="bl-benefits" aria-label="Why shop with Bearly">
+            @foreach ([['bag','Deals from independent stores','Compare prices and save more.'],['shield','Shop with confidence','Secure checkout, buyer protection, and easy returns.'],['truck','Reliable delivery','Fast shipping from local sellers to your doorstep.'],['people','Support small businesses','A marketplace that empowers independent sellers.']] as $benefit)
+            <div><svg><use href="#bl-{{ $benefit[0] }}"/></svg><div><h3>{{ $benefit[1] }}</h3><p>{{ $benefit[2] }}</p></div></div>
             @endforeach
-        </div>
-    </section>
-
-    <section class="section shell-width" aria-labelledby="featured-title">
-        <div class="section-heading">
-            <h2 id="featured-title">Featured Products</h2>
-            <a href="{{ route('products.index') }}">View all products <span>→</span></a>
-        </div>
-
-        <div class="featured-grid">
-            @foreach ($featuredProducts as $product)
-                @php
-                    $photoIndex = $product['photo'];
-                    $x = ($photoIndex % 4) * 100 / 3;
-                    $y = floor($photoIndex / 4) * 100 / 3;
-                    $meta = $featuredMeta[$product['id']] ?? ['seller' => 'Independent Seller', 'rating' => '4.8', 'reviews' => '120', 'sold' => '200 sold'];
-                @endphp
-                <a class="product-card" href="{{ route('products.index', ['product' => $product['id']]) }}">
-                    <span class="heart material-symbols-outlined" aria-hidden="true">favorite</span>
-                    <span class="atlas-photo product-photo" style="--x: {{ $x }}%; --y: {{ $y }}%" role="img" aria-label="{{ $product['name'] }}"></span>
-                    <span class="product-copy">
-                        <span class="product-name">{{ $product['name'] }}</span>
-                        <strong>₱{{ number_format($product['price']) }}</strong>
-                        <small>{{ $meta['seller'] }}</small>
-                        <span class="rating"><b>★</b> {{ $meta['rating'] }} ({{ $meta['reviews'] }}) <i>·</i> {{ $meta['sold'] }}</span>
-                        <span class="delivery-text">Delivery: 2–4 days</span>
-                    </span>
-                </a>
-            @endforeach
-        </div>
-    </section>
-
-    <section class="benefit-strip shell-width" id="delivery" aria-label="Shopping benefits">
-        <article><span class="material-symbols-outlined">shopping_bag</span><div><strong>Deals from independent stores</strong><p>Compare prices and save more.</p></div></article>
-        <article><span class="material-symbols-outlined">verified_user</span><div><strong>Shop with confidence</strong><p>Secure checkout, buyer protection, and easy returns.</p></div></article>
-        <article><span class="material-symbols-outlined">local_shipping</span><div><strong>Reliable delivery</strong><p>Fast shipping from local sellers to your doorstep.</p></div></article>
-        <article><span class="material-symbols-outlined">groups</span><div><strong>Support small businesses</strong><p>A marketplace that empowers independent sellers.</p></div></article>
-    </section>
-
-    <section class="story shell-width" id="about" aria-labelledby="story-title">
-        <div class="story-copy">
-            <h2 id="story-title">More than just shopping.<br>A brighter everyday.</h2>
-            <p>Discover curated finds from independent stores and small businesses. Unique items, better value, and a more meaningful way to shop.</p>
-            <a class="button button-primary" href="{{ route('home') }}">Shop now <span>→</span></a>
-        </div>
-        <div class="story-image" role="img" aria-label="Warm lifestyle objects and home decor"></div>
-    </section>
-
-    <section class="faq shell-width" aria-labelledby="faq-title">
-        <div class="section-heading compact-heading">
-            <h2 id="faq-title">Frequently asked questions</h2>
-            <a href="#contact">More questions? Contact us.</a>
-        </div>
-        <div class="faq-list">
-            <details><summary>How do I place an order?</summary><p>Browse the buyer shop, open a product, add it to your cart, then continue to checkout.</p></details>
-            <details><summary>Can I change or cancel my order?</summary><p>Order-management actions will follow the final backend order rules once the checkout flow is connected.</p></details>
-            <details><summary>How do I track my order?</summary><p>Order tracking will follow the buyer order status from preparation through delivery.</p></details>
-            <details><summary>What payment methods are available?</summary><p>Available payment methods will appear during checkout once payment integration is enabled.</p></details>
-            <details><summary>What is your return and refund policy?</summary><p>The final return and refund policy will be shown here when the marketplace policies are finalized.</p></details>
-        </div>
-    </section>
-
-    <section class="support shell-width" id="contact" aria-labelledby="support-title">
-        <div class="support-intro"><h2 id="support-title">We’re here to help</h2><p>Our contact details will be shared soon.</p></div>
-        <article><span class="material-symbols-outlined">mail</span><p><strong>Email</strong><br>To be announced</p></article>
-        <article><span class="material-symbols-outlined">call</span><p><strong>Phone</strong><br>To be announced</p></article>
-        <article><span class="material-symbols-outlined">location_on</span><p><strong>Location</strong><br>To be announced</p></article>
-        <article><span class="material-symbols-outlined">schedule</span><p><strong>Support hours</strong><br>To be announced</p></article>
-    </section>
-
-    <section class="cta shell-width" aria-labelledby="cta-title">
-        <div class="cta-copy">
-            <h2 id="cta-title">Make shopping<br>Bearly a hassle.</h2>
-            <p>Create an account and start discovering great finds from independent stores.</p>
-            <a class="button button-primary" href="{{ route('register') }}">Create an account</a>
-        </div>
-        <div class="cta-image" role="img" aria-label="Bearly lifestyle accessories"></div>
-    </section>
-</main>
-
-<footer class="site-footer">
-    <div class="footer-grid shell-width">
-        <div class="footer-brand">
-            <strong>BEARLY</strong>
-            <p>Find more. Live better.</p>
-            <div class="socials"><span>f</span><span>◎</span><span>♪</span><span>▶</span></div>
-            <small>© 2026 Bearly. All rights reserved.</small>
-        </div>
-        <nav><strong>Shop</strong><a href="{{ route('products.index') }}">All Products</a><a href="{{ route('home') }}">New Arrivals</a><a href="{{ route('home') }}">Best Sellers</a><a href="#categories">Categories</a></nav>
-        <nav><strong>About</strong><a href="#about">Our Story</a><a href="{{ route('register') }}">Careers</a><a href="#about">Press</a></nav>
-        <nav><strong>Support</strong><a href="#delivery">Delivery</a><a href="#faq-title">FAQ</a><a href="#contact">Contact Us</a></nav>
-        <div class="newsletter"><strong>Be the first to know</strong><p>Get updates on new launches and special offers.</p><form><input type="email" placeholder="Enter your email" aria-label="Email for newsletter"><button type="button">Subscribe</button></form><div><a href="#">Privacy Policy</a><span>|</span><a href="#">Terms of Service</a></div></div>
+        </section>
+        <section id="bl-about" class="bl-lifestyle bl-banner"><img class="bl-banner-image" src="{{ asset('images/lifestyle.png') }}" alt="Books, a brown mug, and a leafy plant on a warm wood table" width="1536" height="640" loading="lazy"><div class="bl-banner-copy"><h2>More than just shopping.<br>A brighter everyday.</h2><p>Discover curated finds from independent stores and small businesses. Unique items, better value, a more meaningful way to shop.</p><a class="bl-button" href="{{ url('/home') }}">Shop now <svg><use href="#bl-arrow"/></svg></a></div></section>
+        <section id="bl-faq" class="bl-section bl-faq" aria-labelledby="bl-faq-title"><div class="bl-section-heading"><h2 id="bl-faq-title">Frequently asked questions</h2><a href="#bl-contact">More questions? Contact us.</a></div>@foreach ($faqs as [$question, $answer])<details><summary>{{ $question }}<span aria-hidden="true">+</span></summary><p>{{ $answer }}</p></details>@endforeach</section>
+        <section class="bl-contact" id="bl-contact" aria-labelledby="bl-contact-title"><div><h2 id="bl-contact-title">We’re here to help</h2><p>Our contact details will be shared soon.</p></div>@foreach ([['mail','Email'],['phone','Phone'],['pin','Location'],['clock','Support hours']] as [$icon, $label])<div class="bl-contact-item"><svg><use href="#bl-{{ $icon }}"/></svg><div><h3>{{ $label }}</h3><p>To be announced</p></div></div>@endforeach</section>
+        <section class="bl-signup bl-banner"><img class="bl-banner-image" src="{{ asset('images/signup.png') }}" alt="Camera, notebook, sunglasses, plant, phone, and a brown cap" width="1536" height="512" loading="lazy"><div class="bl-banner-copy"><h2>Make shopping<br>Bearly a hassle.</h2><p>Create an account and start discovering great finds from independent stores.</p><a class="bl-button" href="{{ url('/register') }}">Create an account</a></div></section>
     </div>
-</footer>
+</main>
+<footer class="bl-footer"><div class="bl-footer-grid"><div><a class="bl-brand" href="{{ url('/') }}">BEARLY<small>Find more. Live better.</small></a><p class="bl-copyright">© {{ date('Y') }} Bearly. All rights reserved.</p></div><nav aria-label="Shop links"><h3>Shop</h3><a href="{{ url('/home') }}">All Products</a><a href="#bl-featured">Featured Products</a><a href="#bl-categories">Categories</a></nav><nav aria-label="About links"><h3>About</h3><a href="#bl-about">Our Story</a><a href="{{ url('/seller/dashboard') }}">Sell on Bearly</a></nav><nav aria-label="Support links"><h3>Support</h3><a href="#bl-delivery">Delivery</a><a href="#bl-faq">FAQ</a><a href="#bl-contact">Contact Us</a></nav><div class="bl-newsletter"><h3>Be the first to know</h3><p>Get updates on new launches and special offers.</p><form id="bl-newsletter"><label class="sr-only" for="bl-email">Your email</label><input type="email" id="bl-email" required maxlength="254" placeholder="Enter your email"><button class="bl-button">Subscribe</button></form><p id="bl-newsletter-status" role="status"></p></div></div><div class="bl-footer-bottom"><span>Preview marketplace · Sample products and prices</span><div><button data-bl-info="privacy">Privacy Policy</button><span>|</span><button data-bl-info="terms">Terms of Service</button></div></div></footer>
+<dialog class="bl-dialog" id="bl-dialog" aria-labelledby="bl-dialog-title"><button class="bl-dialog-close" aria-label="Close dialog">×</button><h2 id="bl-dialog-title"></h2><div id="bl-dialog-content"></div></dialog>
+<p class="bl-toast" id="bl-toast" role="status" hidden></p>
+<script id="bl-featured-data" type="application/json">{!! json_encode($featured, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR) !!}</script>
 </body>
 </html>

@@ -52,7 +52,7 @@ function initializeBearlyLanding() {
         shopUrl.searchParams.set('category', product.category);
         open(product.name, `<div class="bl-detail-photo"></div>
             <p class="bl-price">${peso(product.price)}</p>
-            <p>${escapeHtml(product.shop)} · ★ ${escapeHtml(product.rating)}</p>
+            <p>${escapeHtml(product.shop)} · <span class="material-symbols-outlined bl-star" aria-hidden="true">star</span> ${escapeHtml(product.rating)}</p>
             <p>Sample product preview. Final specifications, availability, delivery estimates, and seller details will come from the seller’s listing.</p>
             <button class="bl-button" data-bl-save="${id}">${saved.includes(id) ? 'Remove from saved' : 'Save this product'}</button>
             <a class="bl-button bl-outline" href="${escapeHtml(shopUrl.href)}">Browse category</a>`);

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AdminController;
+use App\Http\Controllers\BuyerController;
 use App\Http\Controllers\CourierController;
 use App\Http\Controllers\PsgcController;
 use App\Http\Controllers\SellerController;
@@ -28,10 +29,15 @@ Route::get('/forgot-password', fn () => redirect()->route('login'))->name('passw
 | These URLs currently redirect to the landing page. Replace each redirect
 | with its buyer view or controller route when those pages are connected.
 */
-Route::redirect('/home', '/')->name('home');
-Route::redirect('/products', '/')->name('products.index');
-Route::redirect('/wishlist', '/')->name('wishlist.index');
-Route::redirect('/cart', '/')->name('cart.view');
+Route::get('/home', [BuyerController::class, 'home'])->name('home');
+Route::get('/products', [BuyerController::class, 'products'])->name('products.index');
+Route::get('/wishlist', [BuyerController::class, 'wishlist'])->name('wishlist.index');
+Route::post('/wishlist/toggle', [BuyerController::class, 'toggleWishlist'])->name('wishlist.toggle');
+Route::get('/cart', [BuyerController::class, 'cart'])->name('cart.view');
+Route::post('/cart/add', [BuyerController::class, 'addToCart'])->name('cart.add');
+Route::patch('/cart/{cartItem}', [BuyerController::class, 'updateCart'])->name('cart.update');
+Route::delete('/cart/{cartItem}', [BuyerController::class, 'removeFromCart'])->name('cart.remove');
+Route::delete('/cart', [BuyerController::class, 'clearCart'])->name('cart.clear');
 
 Route::prefix('api/psgc')
     ->middleware('throttle:60,1')

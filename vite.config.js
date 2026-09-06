@@ -16,6 +16,8 @@ export default defineConfig({
                 'resources/js/seller.js',
                 'resources/css/landing.css',
                 'resources/js/landing.js',
+                'resources/js/landing-about.js',
+                'resources/css/about.css',
                 'resources/css/buyer.css',
                 'resources/js/buyer.js',
                 'resources/js/buyer-bootstrap.js',

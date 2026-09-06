@@ -1,0 +1,353 @@
+/* =========================================================
+   BEARLY ABOUT PAGE
+   seller-backup branch
+   Extends resources/css/landing.css for shared header/footer.
+   ========================================================= */
+
+body.ba {
+    background: #fcfaf7;
+    color: #302217;
+}
+
+body.ba .bl-header {
+    border-bottom: 1px solid #e9e2da;
+    background: #fcfaf7;
+}
+
+body.ba .bl-actions a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+body.ba .ba-shell {
+    width: min(1180px, calc(100% - 80px));
+    margin-inline: auto;
+}
+
+body.ba .ba-hero {
+    padding: 92px 0 86px;
+    border-bottom: 1px solid #e5dfd6;
+    background:
+        radial-gradient(circle at 82% 18%, rgba(149, 96, 31, .05), transparent 28%),
+        #fcfaf7;
+}
+
+body.ba .ba-eyebrow,
+body.ba .ba-label {
+    margin: 0 0 16px;
+    color: #95601f;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: .09em;
+}
+
+body.ba .ba-hero h1 {
+    max-width: 860px;
+    margin: 0;
+    font-size: clamp(46px, 6vw, 78px);
+    font-weight: 600;
+    letter-spacing: -.055em;
+    line-height: .98;
+}
+
+body.ba .ba-hero h1 span {
+    color: #a67a5d;
+}
+
+body.ba .ba-hero-copy {
+    max-width: 760px;
+    margin-top: 30px;
+    color: #51483f;
+    font-size: 18px;
+    line-height: 1.65;
+}
+
+body.ba .ba-section {
+    padding: 72px 0;
+    border-bottom: 1px solid #e5dfd6;
+}
+
+body.ba .ba-two-column {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 70px;
+}
+
+body.ba .ba-copy-block h2,
+body.ba .ba-name-grid h2,
+body.ba .ba-offers h2,
+body.ba .ba-cta h2 {
+    margin: 0;
+    color: #241811;
+    font-family: 'Poppins', Arial, sans-serif;
+    font-weight: 600;
+    letter-spacing: -.04em;
+}
+
+body.ba .ba-copy-block h2,
+body.ba .ba-name-grid h2 {
+    max-width: 520px;
+    font-size: clamp(28px, 3vw, 42px);
+    line-height: 1.12;
+}
+
+body.ba .ba-copy-block p:not(.ba-label),
+body.ba .ba-name-grid p {
+    margin: 22px 0 0;
+    color: #51483f;
+    font-size: 15px;
+    line-height: 1.75;
+}
+
+body.ba .ba-copy-divider {
+    padding-left: 70px;
+    border-left: 1px solid #ded6cd;
+}
+
+body.ba .ba-name-section {
+    background: #f7f0e8;
+}
+
+body.ba .ba-name-grid {
+    display: grid;
+    grid-template-columns: 1.15fr .85fr;
+    gap: 80px;
+    align-items: center;
+}
+
+body.ba .ba-name-grid article {
+    max-width: 620px;
+}
+
+body.ba .ba-name-grid blockquote {
+    margin: 0;
+    padding: 42px 0 42px 70px;
+    border-left: 1px solid #d9c9b8;
+    color: #573320;
+    font-size: clamp(30px, 4vw, 50px);
+    font-weight: 400;
+    line-height: 1.22;
+}
+
+body.ba .ba-name-grid blockquote strong {
+    color: #95601f;
+    font-weight: 600;
+}
+
+body.ba .ba-offers > .ba-shell > h2 {
+    margin-bottom: 42px;
+    font-size: clamp(30px, 4vw, 48px);
+}
+
+body.ba .ba-offer-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    border-top: 1px solid #ded6cd;
+    border-bottom: 1px solid #ded6cd;
+}
+
+body.ba .ba-offer-grid article {
+    min-height: 245px;
+    padding: 34px 28px;
+    border-right: 1px solid #ded6cd;
+}
+
+body.ba .ba-offer-grid article:last-child {
+    border-right: 0;
+}
+
+body.ba .ba-offer-grid .material-symbols-outlined {
+    width: 52px;
+    height: 52px;
+    margin-bottom: 28px;
+    border-radius: 50%;
+    background: #f3eade;
+    color: #95601f;
+    font-size: 27px;
+}
+
+body.ba .ba-offer-grid h3 {
+    margin: 0;
+    color: #2f2118;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+body.ba .ba-offer-grid p {
+    margin: 12px 0 0;
+    color: #655b53;
+    font-size: 13px;
+    line-height: 1.65;
+}
+
+body.ba .ba-cta {
+    padding: 58px 0;
+    background: #f5ede4;
+}
+
+body.ba .ba-cta-inner {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 50px;
+    align-items: center;
+}
+
+body.ba .ba-cta h2 {
+    font-size: clamp(30px, 4vw, 48px);
+}
+
+body.ba .ba-cta p:not(.ba-label) {
+    max-width: 650px;
+    margin: 12px 0 0;
+    color: #655b53;
+    font-size: 14px;
+    line-height: 1.65;
+}
+
+body.ba .ba-cta-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+body.ba .ba-primary,
+body.ba .ba-secondary {
+    min-height: 46px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 0 22px;
+    border-radius: 24px;
+    font-size: 13px;
+    font-weight: 500;
+    transition:
+        background .18s ease,
+        color .18s ease,
+        border-color .18s ease,
+        transform .18s ease;
+}
+
+body.ba .ba-primary {
+    background: #4a291b;
+    color: #fff;
+}
+
+body.ba .ba-primary:hover {
+    background: #6a3c25;
+    transform: translateY(-1px);
+}
+
+body.ba .ba-primary .material-symbols-outlined {
+    font-size: 19px;
+}
+
+body.ba .ba-secondary {
+    border: 1px solid #4a291b;
+    background: transparent;
+    color: #4a291b;
+}
+
+body.ba .ba-secondary:hover {
+    background: #fff;
+    transform: translateY(-1px);
+}
+
+body.ba .bl-footer {
+    margin-top: 0;
+}
+
+/* Tablet */
+@media (max-width: 980px) {
+    body.ba .ba-shell {
+        width: min(100% - 48px, 1180px);
+    }
+
+    body.ba .ba-two-column,
+    body.ba .ba-name-grid {
+        grid-template-columns: 1fr;
+        gap: 44px;
+    }
+
+    body.ba .ba-copy-divider {
+        padding: 44px 0 0;
+        border-top: 1px solid #ded6cd;
+        border-left: 0;
+    }
+
+    body.ba .ba-name-grid blockquote {
+        padding: 38px 0 0;
+        border-top: 1px solid #d9c9b8;
+        border-left: 0;
+    }
+
+    body.ba .ba-offer-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    body.ba .ba-offer-grid article:nth-child(2) {
+        border-right: 0;
+    }
+
+    body.ba .ba-offer-grid article:nth-child(-n+2) {
+        border-bottom: 1px solid #ded6cd;
+    }
+
+    body.ba .ba-cta-inner {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Mobile */
+@media (max-width: 700px) {
+    body.ba .ba-shell {
+        width: min(100% - 32px, 1180px);
+    }
+
+    body.ba .ba-hero {
+        padding: 62px 0 58px;
+    }
+
+    body.ba .ba-hero h1 {
+        font-size: clamp(42px, 12vw, 58px);
+    }
+
+    body.ba .ba-hero-copy {
+        font-size: 15px;
+        line-height: 1.7;
+    }
+
+    body.ba .ba-section {
+        padding: 54px 0;
+    }
+
+    body.ba .ba-copy-block p:not(.ba-label),
+    body.ba .ba-name-grid p {
+        font-size: 14px;
+    }
+
+    body.ba .ba-offer-grid {
+        grid-template-columns: 1fr;
+    }
+
+    body.ba .ba-offer-grid article,
+    body.ba .ba-offer-grid article:nth-child(2) {
+        border-right: 0;
+        border-bottom: 1px solid #ded6cd;
+    }
+
+    body.ba .ba-offer-grid article:last-child {
+        border-bottom: 0;
+    }
+
+    body.ba .ba-cta-actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    body.ba .ba-primary,
+    body.ba .ba-secondary {
+        width: 100%;
+    }
+}

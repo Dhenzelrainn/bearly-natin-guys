@@ -14,8 +14,11 @@ use Illuminate\Support\Facades\Route;
 | The landing page is the first page visitors see. Login and registration
 | remain separate pages, while the buyer shopping pages are routed below.
 */
-Route::view('/', 'landing-page.index')->name('shop.home');
+Route::view('/', 'landing-page.landingpage')->name('shop.home');
 Route::redirect('/landing', '/')->name('landing');
+
+Route::view('/about', 'landing-page.about.about')->name('about');
+Route::view('/contact', 'landing-page.contact.contact')->name('contact');
 
 Route::view('/login', 'auth.login')->name('login');
 Route::view('/register', 'auth.register')->name('register');
@@ -26,8 +29,8 @@ Route::get('/forgot-password', fn () => redirect()->route('login'))->name('passw
 |--------------------------------------------------------------------------
 | Static Buyer Front-End Routes
 |--------------------------------------------------------------------------
-| These URLs currently redirect to the landing page. Replace each redirect
-| with its buyer view or controller route when those pages are connected.
+| These buyer shopping pages remain accessible while backend authentication
+| and approval logic are still being connected.
 */
 Route::get('/home', [BuyerController::class, 'home'])->name('home');
 Route::get('/products', [BuyerController::class, 'products'])->name('products.index');
@@ -78,7 +81,6 @@ Route::prefix('admin')->name('admin.')->group(function () {
     Route::get('/account', [AdminController::class, 'account'])->name('account');
 });
 
-
 /*
 |--------------------------------------------------------------------------
 | Static Courier Front-End Routes
@@ -124,21 +126,28 @@ Route::prefix('seller')->name('seller.')->group(function () {
     Route::redirect('/orders/to-prepare', '/seller/orders?status=to-prepare')->name('orders.prepare');
     Route::redirect('/orders/ready-for-pickup', '/seller/orders?status=ready-pickup')->name('orders.ready');
     Route::redirect('/orders/history', '/seller/orders?status=history')->name('orders.history');
+
     Route::get('/fulfillment/waybills', [SellerController::class, 'waybills'])->name('fulfillment.waybills');
     Route::get('/fulfillment/pickups', [SellerController::class, 'pickupRequests'])->name('fulfillment.pickups');
     Route::get('/fulfillment/tracking', [SellerController::class, 'shipmentTracking'])->name('fulfillment.tracking');
+
     Route::get('/inventory', [SellerController::class, 'inventory'])->name('inventory');
     Route::get('/products/pricing', [SellerController::class, 'pricing'])->name('products.pricing');
+
     Route::get('/store/appearance', [SellerController::class, 'storeAppearance'])->name('store.appearance');
     Route::get('/store/publication', [SellerController::class, 'publicationSettings'])->name('store.publication');
+
     Route::get('/reports', [SellerController::class, 'reports'])->name('reports');
     Route::get('/reports/sales', [SellerController::class, 'salesReport'])->name('reports.sales');
     Route::get('/reports/financial', [SellerController::class, 'financialReport'])->name('reports.financial');
+
     Route::get('/support/messages', [SellerController::class, 'messages'])->name('support.messages');
     Route::get('/support/feedback', [SellerController::class, 'customerFeedback'])->name('support.feedback');
+
     Route::get('/settings/account', [SellerController::class, 'account'])->name('settings.account');
     Route::get('/settings/security', [SellerController::class, 'security'])->name('settings.security');
     Route::get('/settings/notifications', [SellerController::class, 'notificationSettings'])->name('settings.notifications');
+
     Route::get('/products/create', [SellerController::class, 'createProduct'])->name('products.create');
     Route::post('/products', [SellerController::class, 'addProduct'])->name('products.add');
     Route::get('/products/{product}/edit', [SellerController::class, 'editProduct'])->name('products.edit');

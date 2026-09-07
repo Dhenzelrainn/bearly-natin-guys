@@ -159,14 +159,14 @@
 
             <div class="shortcuts" aria-label="Explore subcategories">
                 @php
-                    $shortcutPhotos = [0, 5, 10, 15, 1, 6];
+                    $shortcutPhotos = [0, 5, 10, 15, 20, 25];
                 @endphp
 
                 @foreach($subcategories as $i => $sub)
                     <button data-sub="{{ $sub }}">
                         <span
                             class="photo"
-                            style="--x:{{ ($shortcutPhotos[$i] % 5) * 25 }}%;--y:{{ floor($shortcutPhotos[$i] / 5) * 100 / 3 }}%"
+                            style="--x:{{ ($shortcutPhotos[$i] % 5) * 25 }}%;--y:{{ floor($shortcutPhotos[$i] / 5) * 20 }}%"
                             aria-hidden="true"
                         ></span>
 

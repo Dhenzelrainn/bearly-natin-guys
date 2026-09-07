@@ -1382,7 +1382,7 @@ function init() {
 
         element.style.setProperty(
             '--y',
-            `${Math.floor(product.photo / 5) * 100 / 3}%`
+            `${Math.floor(product.photo / 5) * 20}%`
         );
     }
 

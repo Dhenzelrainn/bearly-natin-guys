@@ -1334,7 +1334,7 @@ body.bc .photo{
     width:100%;
     aspect-ratio:1;
     background-image:var(--catalog-image);
-    background-size:500% 400%;
+    background-size:500% 600%;
     background-position:var(--x) var(--y);
     background-repeat:no-repeat;
     background-color:var(--bg)

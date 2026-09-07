@@ -1099,3 +1099,673 @@ body.sidebar-collapsed .sidebar-logout { justify-content: center; }
     flex: 0 0 auto;
 }
 
+
+/* =========================================================
+   ADMIN READABILITY PASS
+   Goal:
+   - Improve readability at 100% browser zoom
+   - Preserve current Admin layout and card proportions
+   - Do not affect Seller UI
+   ========================================================= */
+
+
+/* ---------------------------------------------------------
+   1. SIDEBAR TYPOGRAPHY
+   --------------------------------------------------------- */
+
+.admin-brand-subtitle {
+    font-size: 10.5px;
+}
+
+.admin-nav > .admin-nav-link {
+    font-size: 13px;
+}
+
+.admin-nav-label {
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.055em;
+    color: rgba(255, 255, 255, 0.82);
+}
+
+.admin-nav-children .admin-nav-link {
+    font-size: 11.5px;
+    font-weight: 500;
+    line-height: 1.35;
+    color: rgba(255, 255, 255, 0.78);
+}
+
+.admin-nav-children .admin-nav-link:hover {
+    color: #ffffff;
+}
+
+.admin-nav-children .admin-nav-link.is-active {
+    color: #ffffff;
+    font-weight: 600;
+}
+
+
+/* ---------------------------------------------------------
+   2. TOPBAR
+   --------------------------------------------------------- */
+
+.admin-topbar h1 {
+    font-size: 26px;
+    line-height: 1.2;
+}
+
+.admin-profile-name {
+    font-size: 12px;
+}
+
+.profile-popover-head strong {
+    font-size: 12px;
+}
+
+.profile-popover-head small {
+    font-size: 10px;
+    line-height: 1.45;
+}
+
+.profile-popover > a {
+    font-size: 11px;
+}
+
+
+/* ---------------------------------------------------------
+   3. GLOBAL ADMIN MICRO-TYPOGRAPHY
+   --------------------------------------------------------- */
+
+.eyebrow {
+    font-size: 10.5px;
+    line-height: 1.35;
+    letter-spacing: 0.1em;
+}
+
+.page-hero p {
+    font-size: 12.5px;
+    line-height: 1.7;
+}
+
+.hero-summary-card strong {
+    font-size: 16px;
+}
+
+.hero-summary-card small {
+    font-size: 10.5px;
+}
+
+
+/* ---------------------------------------------------------
+   4. BUTTONS
+   --------------------------------------------------------- */
+
+.button {
+    font-size: 11.5px;
+}
+
+.button-small {
+    font-size: 10.5px;
+}
+
+.text-button {
+    font-size: 11px;
+}
+
+
+/* ---------------------------------------------------------
+   5. KPI / DASHBOARD METRICS
+   --------------------------------------------------------- */
+
+.kpi-card p {
+    font-size: 11px;
+}
+
+.kpi-card > small {
+    font-size: 9.5px;
+    line-height: 1.45;
+}
+
+.metric-trend {
+    font-size: 9.5px;
+}
+
+.mini-stat strong {
+    font-size: 16px;
+}
+
+.mini-stat small {
+    font-size: 9.5px;
+}
+
+
+/* ---------------------------------------------------------
+   6. PANEL HEADERS / SUPPORTING TEXT
+   --------------------------------------------------------- */
+
+.panel-heading h2 {
+    font-size: 16px;
+}
+
+.panel-heading p {
+    font-size: 10.5px;
+    line-height: 1.6;
+}
+
+
+/* ---------------------------------------------------------
+   7. DASHBOARD CHART
+   --------------------------------------------------------- */
+
+.segmented-control button {
+    font-size: 9.5px;
+}
+
+.chart-y-labels {
+    font-size: 9.5px;
+}
+
+.bar-column small {
+    font-size: 9px;
+}
+
+
+/* ---------------------------------------------------------
+   8. ADMIN QUEUE / NOTICE CARDS
+   --------------------------------------------------------- */
+
+.notice-card strong {
+    font-size: 11px;
+}
+
+.notice-card p {
+    font-size: 9.75px;
+    line-height: 1.6;
+}
+
+.notice-card a {
+    font-size: 10px;
+}
+
+
+/* ---------------------------------------------------------
+   9. TOPBAR POPOVERS / NOTIFICATIONS
+   --------------------------------------------------------- */
+
+.popover-heading strong {
+    font-size: 12.5px;
+}
+
+.popover-heading span:not(.status-badge) {
+    font-size: 10px;
+}
+
+.notification-row strong {
+    font-size: 11.5px;
+}
+
+.notification-row small {
+    font-size: 10px;
+}
+
+
+/* ---------------------------------------------------------
+   10. FORMS
+   --------------------------------------------------------- */
+
+.admin-search input,
+.field-with-icon input {
+    font-size: 12.5px;
+}
+
+.admin-search kbd {
+    font-size: 9.5px;
+}
+
+.form-field label,
+.field-label {
+    font-size: 11px;
+}
+
+.form-field input,
+.form-field select,
+.form-field textarea,
+.select-field,
+.date-field {
+    font-size: 12px;
+}
+
+
+/* ---------------------------------------------------------
+   11. TABLE READABILITY
+   --------------------------------------------------------- */
+
+.admin-table {
+    font-size: 11px;
+}
+
+.admin-table th {
+    font-size: 9.75px;
+    font-weight: 700;
+    letter-spacing: 0.035em;
+    line-height: 1.4;
+}
+
+.admin-table td {
+    font-size: 11px;
+    line-height: 1.5;
+}
+
+.admin-table td small,
+.admin-table .table-meta,
+.admin-table .muted {
+    font-size: 9.5px;
+    line-height: 1.45;
+}
+
+
+/* ---------------------------------------------------------
+   12. BADGES / CHIPS / STATUS LABELS
+   --------------------------------------------------------- */
+
+.status-badge,
+.badge,
+.chip,
+.tag {
+    font-size: 9.5px;
+    line-height: 1.3;
+}
+
+
+/* ---------------------------------------------------------
+   13. DETAIL CARDS / METADATA
+   --------------------------------------------------------- */
+
+.detail-card strong,
+.summary-card strong,
+.info-card strong {
+    font-size: 11.5px;
+}
+
+.detail-card small,
+.summary-card small,
+.info-card small {
+    font-size: 9.75px;
+    line-height: 1.5;
+}
+
+
+/* ---------------------------------------------------------
+   14. DISPUTE / CASE WORKSPACE
+   --------------------------------------------------------- */
+
+.case-card strong,
+.case-summary strong,
+.case-participant strong,
+.evidence-item strong {
+    font-size: 11px;
+}
+
+.case-card small,
+.case-summary small,
+.case-participant small,
+.evidence-item small {
+    font-size: 9.5px;
+    line-height: 1.5;
+}
+
+.timeline-item,
+.timeline-item p,
+.timeline-item small {
+    font-size: 9.75px;
+    line-height: 1.55;
+}
+
+
+/* ---------------------------------------------------------
+   15. GENERAL SMALL TEXT SAFETY NET
+   Only common semantic/helper classes — no global <small>.
+   --------------------------------------------------------- */
+
+.helper-text,
+.meta-text,
+.secondary-text,
+.field-help,
+.form-help {
+    font-size: 9.75px;
+    line-height: 1.5;
+}
+
+
+/* =========================================================
+   ADMIN READABILITY PASS 02
+   Precision adjustments after visual review
+   ========================================================= */
+
+
+/* ---------------------------------------------------------
+   SIDEBAR
+   Bring Admin navigation closer to Seller readability
+   --------------------------------------------------------- */
+
+.admin-nav > .admin-nav-link {
+    font-size: 13.5px;
+}
+
+.admin-nav-label {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.88);
+}
+
+.admin-nav-children .admin-nav-link {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.76);
+}
+
+.admin-nav-children .admin-nav-link:hover {
+    color: rgba(255, 255, 255, 0.96);
+}
+
+.admin-nav-children .admin-nav-link.is-active {
+    color: #ffffff;
+    font-weight: 600;
+}
+
+
+/* ---------------------------------------------------------
+   REGISTRATION / DATA TABLES
+   --------------------------------------------------------- */
+
+.admin-table {
+    font-size: 11.5px;
+}
+
+.admin-table th {
+    font-size: 10.25px;
+    line-height: 1.4;
+}
+
+.admin-table td {
+    font-size: 11.5px;
+    line-height: 1.5;
+}
+
+/* Secondary applicant info: ID, email, etc. */
+.admin-table td small,
+.admin-table .table-meta,
+.admin-table .muted {
+    font-size: 10px;
+    line-height: 1.45;
+}
+
+/* Requirements/status chips */
+.admin-table .status-badge,
+.admin-table .badge,
+.admin-table .chip,
+.admin-table .tag {
+    font-size: 9.75px;
+}
+
+
+/* ---------------------------------------------------------
+   DISPUTE QUEUE
+   --------------------------------------------------------- */
+
+.case-card strong {
+    font-size: 11.5px;
+    line-height: 1.4;
+}
+
+.case-card small {
+    font-size: 10px;
+    line-height: 1.5;
+}
+
+
+/* ---------------------------------------------------------
+   CASE SUMMARY / PARTICIPANTS
+   --------------------------------------------------------- */
+
+.case-summary strong,
+.case-participant strong {
+    font-size: 11.5px;
+}
+
+.case-summary small,
+.case-participant small {
+    font-size: 10px;
+    line-height: 1.5;
+}
+
+
+/* ---------------------------------------------------------
+   SUPPORTING EVIDENCE
+   --------------------------------------------------------- */
+
+.evidence-item strong {
+    font-size: 11.5px;
+}
+
+.evidence-item small {
+    font-size: 10px;
+    line-height: 1.5;
+}
+
+
+/* ---------------------------------------------------------
+   CASE TIMELINE
+   --------------------------------------------------------- */
+
+.timeline-item,
+.timeline-item p {
+    font-size: 10.5px;
+    line-height: 1.55;
+}
+
+.timeline-item small {
+    font-size: 10px;
+    line-height: 1.5;
+}
+
+
+/* ---------------------------------------------------------
+   DASHBOARD
+   Only secondary text — major headings stay untouched
+   --------------------------------------------------------- */
+
+.kpi-card p {
+    font-size: 11.5px;
+}
+
+.kpi-card > small {
+    font-size: 10px;
+}
+
+.notice-card strong {
+    font-size: 11.5px;
+}
+
+.notice-card p {
+    font-size: 10.25px;
+}
+
+.notice-card a {
+    font-size: 10.5px;
+}
+
+.chart-y-labels {
+    font-size: 10px;
+}
+
+.bar-column small {
+    font-size: 9.5px;
+}
+
+
+/* ---------------------------------------------------------
+   GENERAL ADMIN HELPER TEXT
+   --------------------------------------------------------- */
+
+.helper-text,
+.meta-text,
+.secondary-text,
+.field-help,
+.form-help {
+    font-size: 10px;
+    line-height: 1.5;
+}
+
+
+/* =========================================================
+   ADMIN READABILITY — FINAL CALIBRATION
+   ========================================================= */
+
+/* SIDEBAR */
+
+.admin-nav-label {
+    font-size: 11.5px;
+}
+
+.admin-nav > .admin-nav-link {
+    font-size: 14px;
+}
+
+.admin-nav-children .admin-nav-link {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.80);
+}
+
+
+/* PAGE SUPPORTING TEXT */
+
+.page-hero p {
+    font-size: 13.5px;
+}
+
+
+/* DASHBOARD */
+
+.kpi-card p {
+    font-size: 12.5px;
+}
+
+.kpi-card > small {
+    font-size: 11px;
+}
+
+.metric-trend {
+    font-size: 10.5px;
+}
+
+.panel-heading p {
+    font-size: 11.5px;
+}
+
+.notice-card strong {
+    font-size: 12px;
+}
+
+.notice-card p {
+    font-size: 11px;
+}
+
+.notice-card a {
+    font-size: 11px;
+}
+
+.chart-y-labels {
+    font-size: 10.5px;
+}
+
+.bar-column small {
+    font-size: 10.5px;
+}
+
+
+/* REGISTRATION / OTHER ADMIN TABLES */
+
+.admin-table {
+    font-size: 12.5px;
+}
+
+.admin-table th {
+    font-size: 11px;
+}
+
+.admin-table td {
+    font-size: 12.5px;
+}
+
+.admin-table td small,
+.admin-table .table-meta,
+.admin-table .muted {
+    font-size: 10.75px;
+}
+
+.admin-table .status-badge,
+.admin-table .badge,
+.admin-table .chip,
+.admin-table .tag {
+    font-size: 10.25px;
+}
+
+
+/* DISPUTE QUEUE */
+
+.case-card strong {
+    font-size: 12.5px;
+}
+
+.case-card small {
+    font-size: 10.75px;
+}
+
+
+/* DISPUTE DETAILS */
+
+.case-summary strong,
+.case-participant strong {
+    font-size: 12px;
+}
+
+.case-summary small,
+.case-participant small {
+    font-size: 10.75px;
+}
+
+.evidence-item strong {
+    font-size: 12px;
+}
+
+.evidence-item small {
+    font-size: 10.75px;
+}
+
+
+/* TIMELINE */
+
+.timeline-item,
+.timeline-item p {
+    font-size: 11.25px;
+}
+
+.timeline-item small {
+    font-size: 10.5px;
+}
+
+
+/* COMMON BUTTONS */
+
+.button {
+    font-size: 12px;
+}
+
+.button-small {
+    font-size: 11px;
+}
+
+.text-button {
+    font-size: 11.5px;
+}
+
+

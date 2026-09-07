@@ -1,0 +1,7 @@
+@extends('layouts.rider')
+@section('title','Earnings') @section('page-title','Profit Dashboard')
+@section('content')
+<div class="page-intro"><div><span class="eyebrow">Rider Finance</span><h2>Earnings & Payouts</h2><p>Track completed jobs, daily and weekly earnings, pending payouts, and transaction history.</p></div></div>
+<div class="metric-grid"><article class="metric-card"><strong>₱{{ number_format($earnings['today']) }}</strong><p>Today</p></article><article class="metric-card"><strong>₱{{ number_format($earnings['week']) }}</strong><p>This week</p></article><article class="metric-card"><strong>₱{{ number_format($earnings['month']) }}</strong><p>This month</p></article><article class="metric-card"><strong>₱{{ number_format($earnings['pending']) }}</strong><p>Pending payout</p></article></div>
+<section class="card"><div class="card-head"><h3>Earnings log</h3><button class="btn btn-secondary" data-mock-action="Earnings statement export prepared."><i data-lucide="download"></i>Export</button></div><div class="table-wrap"><table class="data-table"><thead><tr><th>Date</th><th>Job</th><th>Type</th><th>Amount</th><th>Status</th></tr></thead><tbody>@foreach($logs as $l)<tr><td>{{ $l['date'] }}</td><td class="table-title">{{ $l['job'] }}</td><td>{{ $l['type'] }}</td><td>₱{{ number_format($l['amount']) }}</td><td><span class="badge {{ $l['status']==='Posted'?'badge-success':'badge-warning' }}">{{ $l['status'] }}</span></td></tr>@endforeach</tbody></table></div></section>
+@endsection

@@ -1,0 +1,28 @@
+const ready=(fn)=>document.readyState==='loading'?document.addEventListener('DOMContentLoaded',fn,{once:true}):fn();
+ready(()=>{
+ const body=document.body,bp=820,moduleName=body.dataset.module||'ops';
+ const refresh=()=>window.lucide?.createIcons&&window.lucide.createIcons();refresh();setTimeout(refresh,100);
+ const saved=localStorage.getItem(`bearly-${moduleName}-sidebar`);
+ if(saved==='collapsed'&&innerWidth>bp)body.classList.add('sidebar-collapsed');
+ document.querySelectorAll('[data-menu]').forEach(b=>b.addEventListener('click',()=>{if(innerWidth<=bp){body.classList.add('mobile-sidebar-open');return}body.classList.toggle('sidebar-collapsed');localStorage.setItem(`bearly-${moduleName}-sidebar`,body.classList.contains('sidebar-collapsed')?'collapsed':'expanded')}));
+ document.querySelectorAll('[data-mobile-menu]').forEach(b=>b.addEventListener('click',()=>body.classList.add('mobile-sidebar-open')));
+ document.querySelectorAll('[data-overlay]').forEach(b=>b.addEventListener('click',()=>body.classList.remove('mobile-sidebar-open')));
+ const closePop=(except=null)=>document.querySelectorAll('[data-popover]').forEach(p=>{if(p!==except)p.hidden=true});
+ document.querySelectorAll('[data-popover-toggle]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();const p=document.querySelector(`[data-popover="${b.dataset.popoverToggle}"]`);if(!p)return;const opening=p.hidden;closePop(p);p.hidden=!opening}));
+ document.addEventListener('click',e=>{if(!e.target.closest('.popover-wrap'))closePop()});
+ const stack=document.querySelector('[data-toast-stack]');
+ window.bearlyToast=(message,title='Preview updated')=>{if(!stack)return;const el=document.createElement('div');el.className='toast';el.innerHTML=`<strong>${title}</strong><span>${message}</span>`;stack.appendChild(el);setTimeout(()=>el.remove(),3300)};
+ document.querySelectorAll('[data-mock-action]').forEach(el=>el.addEventListener('click',e=>{if(el.tagName==='A')e.preventDefault();bearlyToast(el.dataset.mockAction)}));
+ document.querySelectorAll('[data-status-action]').forEach(btn=>btn.addEventListener('click',()=>{const row=btn.closest('[data-state-row]'),badge=row?.querySelector('[data-state-badge]');if(!badge)return;const status=btn.dataset.statusAction;badge.textContent=status;badge.className='badge '+(/Approved|Active|Verified|Delivered|Sorted|Confirmed/.test(status)?'badge-success':/Disapproved|Inactive|Failed|Exception|Returned|Rejected/.test(status)?'badge-danger':'badge-info');bearlyToast(`${row.dataset.stateRow||'Record'} → ${status}`,'Status updated')}));
+ document.querySelectorAll('[data-filter]').forEach(input=>input.addEventListener('input',()=>{const q=input.value.toLowerCase().trim(),target=input.dataset.filter;document.querySelectorAll(`[data-filter-row="${target}"]`).forEach(row=>row.hidden=!row.textContent.toLowerCase().includes(q))}));
+ document.querySelectorAll('[data-age-source]').forEach(input=>input.addEventListener('change',()=>{const out=document.querySelector(`[data-age-output="${input.dataset.ageSource}"]`);if(!out||!input.value)return;const dob=new Date(input.value),now=new Date();let age=now.getFullYear()-dob.getFullYear(),m=now.getMonth()-dob.getMonth();if(m<0||(m===0&&now.getDate()<dob.getDate()))age--;out.value=Math.max(0,age)}));
+ document.querySelectorAll('[data-file-input]').forEach(input=>input.addEventListener('change',()=>{const label=input.closest('.file-box')?.querySelector('[data-file-label]');if(label)label.textContent=input.files?.[0]?.name||'No file selected'}));
+ const conv=[...document.querySelectorAll('[data-conversation]')],chatName=document.querySelector('[data-chat-name]'),chatRole=document.querySelector('[data-chat-role]');
+ conv.forEach(item=>item.addEventListener('click',()=>{conv.forEach(x=>x.classList.remove('is-active'));item.classList.add('is-active');if(chatName)chatName.textContent=item.dataset.name;if(chatRole)chatRole.textContent=item.dataset.role}));
+ const send=document.querySelector('[data-chat-send]'),inp=document.querySelector('[data-chat-input]'),thread=document.querySelector('[data-message-thread]');
+ send?.addEventListener('click',()=>{const t=inp.value.trim();if(!t||!thread)return;const m=document.createElement('div');m.className='message me';m.textContent=t;thread.appendChild(m);inp.value='';thread.scrollTop=thread.scrollHeight;bearlyToast('Message added to this front-end session.','Message sent')});
+ document.querySelectorAll('[data-check-all]').forEach(btn=>btn.addEventListener('click',()=>{document.querySelectorAll(`[data-check-group="${btn.dataset.checkAll}"] input[type=checkbox]`).forEach(c=>c.checked=true);bearlyToast('Manifest checks completed.','Checklist updated')}));
+ document.querySelectorAll('[data-dispatch]').forEach(btn=>btn.addEventListener('click',()=>{const select=btn.closest('.zone-card')?.querySelector('select');bearlyToast(`Assigned to ${select?.value||'selected rider'}.`,'Dispatch created')}));
+ document.querySelectorAll('[data-sort-zone]').forEach(sel=>sel.addEventListener('change',()=>{const row=sel.closest('[data-state-row]'),badge=row?.querySelector('[data-state-badge]');if(badge){badge.textContent='Sorted';badge.className='badge badge-success'}bearlyToast(`${row?.dataset.stateRow||'Parcel'} sorted to ${sel.value}.`,'Parcel sorted')}));
+ document.querySelectorAll('[data-report-refresh]').forEach(btn=>btn.addEventListener('click',()=>bearlyToast('Report preview recalculated using selected date filters.','Report refreshed')));
+});

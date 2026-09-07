@@ -1,0 +1,7 @@
+@extends('layouts.logistics')
+@section('title','Account') @section('page-title','Account Management')
+@section('content')
+<div class="page-intro"><div><span class="eyebrow">Profile & Security</span><h2>Account Management</h2><p>Review logistics identity information and preview profile/security changes.</p></div></div>
+<div class="account-grid"><section class="card profile-card"><span class="avatar">{{ $operator['initials'] }}</span><h3>{{ $operator['name'] }}</h3><p>{{ $operator['role'] }}<br>{{ $operator['email'] }}</p><button class="btn btn-secondary" data-mock-action="Profile photo selector opened.">Change photo</button></section>
+<section class="card"><div class="card-head"><h3>Profile details</h3></div><div class="card-body form-grid"><div class="form-group"><label>Display name</label><input value="{{ $operator['name'] }}"></div><div class="form-group"><label>Email</label><input value="{{ $operator['email'] }}"></div><div class="form-group"><label>Contact no.</label><input value="0917 555 0182"></div><div class="form-group"><label>Account role</label><input value="{{ $operator['role'] }}" readonly></div><div class="form-group full"><label>Business address</label><input value="San Pablo City, Laguna"></div><div class="form-group full"><div class="actions"><button class="btn btn-primary" data-mock-action="Profile changes validated and saved in preview.">Save changes</button><button class="btn btn-secondary" data-mock-action="Password update form opened.">Change password</button></div></div></div></section></div>
+@endsection

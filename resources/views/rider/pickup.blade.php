@@ -1,0 +1,9 @@
+@extends('layouts.rider')
+@section('title','Pickup Process') @section('page-title','Pickup Execution')
+@section('content')
+<div class="page-intro"><div><span class="eyebrow">Pickup Process</span><h2>Pickup {{ $job['id'] }}</h2><p>Verify the seller location and parcel manifest before confirming physical handover.</p></div></div>
+@if(session('job_status'))<div class="flash">{{ session('job_status') }}</div>@endif
+<div class="stepper"><div class="step is-active">1. Arrive at seller</div><div class="step is-active">2. Check manifest</div><div class="step">3. Confirm pickup</div></div>
+<div class="route-card"><section class="card"><div class="card-head"><h3>Package manifest</h3><button class="btn btn-soft" data-check-all="manifest">Check all</button></div><div class="card-body checklist" data-check-group="manifest">@foreach($job['manifest'] as $m)<label class="checkrow"><input type="checkbox"><span><strong>{{ $m['waybill'] }}</strong><small>{{ $m['size'] }} package • Qty {{ $m['qty'] }}</small></span></label>@endforeach</div></section>
+<aside class="card"><div class="card-head"><h3>Seller location</h3></div><div class="card-body"><span class="eyebrow">Seller</span><h3>{{ $job['seller'] }}</h3><p style="font-size:10px;color:var(--muted);line-height:1.6">{{ $job['address'] }}<br><strong>{{ $job['window'] }}</strong></p><div class="actions"><button class="btn btn-secondary" data-mock-action="Calling {{ $job['contact'] }}."><i data-lucide="phone"></i>Call</button><button class="btn btn-secondary" data-mock-action="Map preview opened for seller location."><i data-lucide="navigation"></i>Directions</button></div><form method="POST" action="{{ route('rider.pickup.confirm',$job['id']) }}" style="margin-top:14px">@csrf<button class="btn btn-primary" style="width:100%"><i data-lucide="package-check"></i>Confirm Pickup</button></form></div></aside></div>
+@endsection

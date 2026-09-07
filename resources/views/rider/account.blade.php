@@ -1,0 +1,7 @@
+@extends('layouts.rider')
+@section('title','Account') @section('page-title','Account Management')
+@section('content')
+<div class="page-intro"><div><span class="eyebrow">Profile & Security</span><h2>Rider Account</h2><p>Review rider identity, vehicle profile, and editable account settings.</p></div></div>
+<div class="account-grid"><section class="card profile-card"><span class="avatar">{{ $rider['initials'] }}</span><h3>{{ $rider['name'] }}</h3><p>{{ $rider['role'] }}<br>{{ $rider['vehicle'] }} • {{ $rider['plate'] }}</p><button class="btn btn-secondary" data-mock-action="Profile photo selector opened.">Change photo</button></section>
+<section class="card"><div class="card-head"><h3>Profile details</h3></div><div class="card-body form-grid"><div class="form-group"><label>Display name</label><input value="{{ $rider['name'] }}"></div><div class="form-group"><label>Email</label><input value="{{ $rider['email'] }}"></div><div class="form-group"><label>Vehicle</label><input value="{{ $rider['vehicle'] }}"></div><div class="form-group"><label>Plate number</label><input value="{{ $rider['plate'] }}"></div><div class="form-group full"><label>Service address</label><input value="San Pablo City, Laguna"></div><div class="form-group full"><div class="actions"><button class="btn btn-primary" data-mock-action="Rider profile changes validated and saved in preview.">Save changes</button><button class="btn btn-secondary" data-mock-action="Password update form opened.">Change password</button></div></div></div></section></div>
+@endsection

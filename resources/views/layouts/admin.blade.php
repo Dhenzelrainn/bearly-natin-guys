@@ -490,11 +490,11 @@ $adminNavGroups = [
                 aria-label="Open profile menu"
             >
 
-                <span class="admin-avatar">
+                <span class="admin-avatar" data-current-admin-avatar>
                     {{ $admin['initials'] ?? 'AR' }}
                 </span>
 
-                <span class="admin-profile-name">
+                <span class="admin-profile-name" data-current-admin-name>
                     {{ $admin['name'] ?? 'Alex Rivera' }}
                 </span>
 
@@ -515,17 +515,17 @@ $adminNavGroups = [
 
                 <div class="profile-popover-head">
 
-                    <span class="admin-avatar admin-avatar-small">
+                    <span class="admin-avatar admin-avatar-small" data-current-admin-avatar>
                         {{ $admin['initials'] ?? 'AR' }}
                     </span>
 
                     <div>
 
-                        <strong>
+                        <strong data-current-admin-name>
                             {{ $admin['name'] ?? 'Alex Rivera' }}
                         </strong>
 
-                        <small>
+                        <small data-current-admin-email>
                             {{ $admin['email'] ?? 'admin@bearly.test' }}
                         </small>
 

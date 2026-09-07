@@ -267,6 +267,10 @@ class BuyerController extends Controller
             return view('buyer.Category.MenApparel.mens-apparel');
         }
 
+        if ($request->query('category') === 'women-s-apparel') {
+            return view('buyer.Category.WomenApparel.womens-apparel');
+        }
+
         if (! $this->hasBuyerTables()) {
             return view('buyer.Category.MenApparel.mens-apparel');
         }

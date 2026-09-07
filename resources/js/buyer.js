@@ -355,6 +355,12 @@ function initialize() {
                 return;
             }
 
+            if (category.dataset.category === 'women-s-apparel') {
+                event.preventDefault();
+                window.location.href = '/products?category=women-s-apparel';
+                return;
+            }
+
             state.category = category.dataset.category;
             state.search = '';
             state.sort = 'featured';

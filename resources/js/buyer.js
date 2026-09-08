@@ -51,17 +51,8 @@ function initialize() {
     const dataElement = document.getElementById('home-data');
     if (!dataElement) return;
 
-    const requestedCategory = new URLSearchParams(location.search).get('category');
-    const dedicatedCategories = [
-        'men-s-apparel',
-        'women-s-apparel',
-        'pet-supplies',
-        'sports-and-outdoors',
-        'jewelry-and-watches',
-    ];
-
-    if (dedicatedCategories.includes(requestedCategory)) {
-        window.location.replace(`/products?category=${requestedCategory}`);
+    if (new URLSearchParams(location.search).get('category') === 'furniture-and-office-equipment') {
+        window.location.replace('/products?category=furniture-and-office-equipment');
         return;
     }
 
@@ -375,19 +366,9 @@ function initialize() {
                 return;
             }
 
-            if (category.dataset.category === 'jewelry-and-watches') {
+            if (category.dataset.category === 'furniture-and-office-equipment') {
                 event.preventDefault();
-                window.location.href = '/products?category=jewelry-and-watches';
-                return;
-            }
-
-            if (
-                ['pet-supplies', 'sports-and-outdoors'].includes(
-                    category.dataset.category
-                )
-            ) {
-                event.preventDefault();
-                window.location.href = `/products?category=${category.dataset.category}`;
+                window.location.href = '/products?category=furniture-and-office-equipment';
                 return;
             }
 
@@ -1252,8 +1233,6 @@ function init() {
     };
 
     function option(container, key, values) {
-        if (!$(container)) return;
-
         $(container).innerHTML = values
             .map(value => {
                 if (key === 'size') {

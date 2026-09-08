@@ -35,6 +35,22 @@ class BuyerController extends Controller
             return redirect()->route('products.index', ['category' => 'jewelry-and-watches']);
         }
 
+        if ($request->query('category') === 'kids-and-baby') {
+            return redirect()->route('products.index', ['category' => 'kids-and-baby']);
+        }
+
+        if ($request->query('category') === 'home-and-garden') {
+            return redirect()->route('products.index', ['category' => 'home-and-garden']);
+        }
+
+        if ($request->query('category') === 'health-and-beauty') {
+            return redirect()->route('products.index', ['category' => 'health-and-beauty']);
+        }
+
+        if ($request->query('category') === 'furniture-and-office-equipment') {
+            return redirect()->route('products.index', ['category' => 'furniture-and-office-equipment']);
+        }
+
         $categories = [
             [
                 'name' => 'Electronics',
@@ -294,6 +310,22 @@ class BuyerController extends Controller
 
         if ($request->query('category') === 'jewelry-and-watches') {
             return view('buyer.Category.Jewelry&Watches.jewelry-watches');
+        }
+
+        if ($request->query('category') === 'kids-and-baby') {
+            return view('buyer.Category.Kids&Baby.components.kids-baby');
+        }
+
+        if ($request->query('category') === 'home-and-garden') {
+            return view('buyer.Category.Home&Garden.home-garden');
+        }
+
+        if ($request->query('category') === 'health-and-beauty') {
+            return view('buyer.Category.Health&Beauty.health-beauty');
+        }
+
+        if ($request->query('category') === 'furniture-and-office-equipment') {
+            return view('buyer.Category.Furniture&OfficeEquipment.furniture-office');
         }
 
         if (! $this->hasBuyerTables()) {

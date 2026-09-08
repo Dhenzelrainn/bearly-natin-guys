@@ -51,6 +51,20 @@ function initialize() {
     const dataElement = document.getElementById('home-data');
     if (!dataElement) return;
 
+    const requestedCategory = new URLSearchParams(location.search).get('category');
+    const dedicatedCategories = [
+        'men-s-apparel',
+        'women-s-apparel',
+        'pet-supplies',
+        'sports-and-outdoors',
+        'jewelry-and-watches',
+    ];
+
+    if (dedicatedCategories.includes(requestedCategory)) {
+        window.location.replace(`/products?category=${requestedCategory}`);
+        return;
+    }
+
     const { categories, products } = JSON.parse(dataElement.textContent);
     const $ = id => document.getElementById(id);
 
@@ -358,6 +372,22 @@ function initialize() {
             if (category.dataset.category === 'women-s-apparel') {
                 event.preventDefault();
                 window.location.href = '/products?category=women-s-apparel';
+                return;
+            }
+
+            if (category.dataset.category === 'jewelry-and-watches') {
+                event.preventDefault();
+                window.location.href = '/products?category=jewelry-and-watches';
+                return;
+            }
+
+            if (
+                ['pet-supplies', 'sports-and-outdoors'].includes(
+                    category.dataset.category
+                )
+            ) {
+                event.preventDefault();
+                window.location.href = `/products?category=${category.dataset.category}`;
                 return;
             }
 
@@ -1222,6 +1252,8 @@ function init() {
     };
 
     function option(container, key, values) {
+        if (!$(container)) return;
+
         $(container).innerHTML = values
             .map(value => {
                 if (key === 'size') {

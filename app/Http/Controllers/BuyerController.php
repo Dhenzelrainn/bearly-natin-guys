@@ -7,6 +7,7 @@ use App\Models\Product;
 use App\Models\Wishlist;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 
@@ -20,8 +21,20 @@ class BuyerController extends Controller
             && Schema::hasTable('wishlist');
     }
 
-    public function home(): View
+    public function home(Request $request): View|RedirectResponse
     {
+        if ($request->query('category') === 'pet-supplies') {
+            return redirect()->route('products.index', ['category' => 'pet-supplies']);
+        }
+
+        if ($request->query('category') === 'sports-and-outdoors') {
+            return redirect()->route('products.index', ['category' => 'sports-and-outdoors']);
+        }
+
+        if ($request->query('category') === 'jewelry-and-watches') {
+            return redirect()->route('products.index', ['category' => 'jewelry-and-watches']);
+        }
+
         $categories = [
             [
                 'name' => 'Electronics',
@@ -269,6 +282,18 @@ class BuyerController extends Controller
 
         if ($request->query('category') === 'women-s-apparel') {
             return view('buyer.Category.WomenApparel.womens-apparel');
+        }
+
+        if ($request->query('category') === 'pet-supplies') {
+            return view('buyer.Category.Pet-Supplies.pet-supplies');
+        }
+
+        if ($request->query('category') === 'sports-and-outdoors') {
+            return view('buyer.Category.Sports&Outdoors.sports-outdoors');
+        }
+
+        if ($request->query('category') === 'jewelry-and-watches') {
+            return view('buyer.Category.Jewelry&Watches.jewelry-watches');
         }
 
         if (! $this->hasBuyerTables()) {

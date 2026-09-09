@@ -1,0 +1,512 @@
+[
+  {
+    "id": 1,
+    "name": "The Silent Path — Fiction Novel",
+    "price": 499,
+    "subcategory": "Books",
+    "photo": 0,
+    "color": "Blue",
+    "sizes": [
+      "Paperback"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.7,
+    "description": "The Silent Path — Fiction Novel sample listing for the Bearly Books & Media frontend preview. All displayed titles and artwork are fictional/original frontend placeholders."
+  },
+  {
+    "id": 2,
+    "name": "The Lost Key — Mystery Book",
+    "price": 549,
+    "subcategory": "Books",
+    "photo": 1,
+    "color": "Black",
+    "sizes": [
+      "Paperback"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.4,
+    "description": "The Lost Key — Mystery Book sample listing for the Bearly Books & Media frontend preview. All displayed titles and artwork are fictional/original frontend placeholders."
+  },
+  {
+    "id": 3,
+    "name": "More Than Yesterday — Romance Novel",
+    "price": 499,
+    "subcategory": "Books",
+    "photo": 2,
+    "color": "Gold",
+    "sizes": [
+      "Paperback"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.8,
+    "description": "More Than Yesterday — Romance Novel sample listing for the Bearly Books & Media frontend preview. All displayed titles and artwork are fictional/original frontend placeholders."
+  },
+  {
+    "id": 4,
+    "name": "Beyond the Horizon — Science Fiction",
+    "price": 599,
+    "subcategory": "Books",
+    "photo": 3,
+    "color": "Blue",
+    "sizes": [
+      "Paperback"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.5,
+    "description": "Beyond the Horizon — Science Fiction sample listing for the Bearly Books & Media frontend preview. All displayed titles and artwork are fictional/original frontend placeholders."
+  },
+  {
+    "id": 5,
+    "name": "The Ember Crown — Fantasy Novel",
+    "price": 599,
+    "subcategory": "Books",
+    "photo": 4,
+    "color": "Brown",
+    "sizes": [
+      "Paperback"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.9,
+    "description": "The Ember Crown — Fantasy Novel sample listing for the Bearly Books & Media frontend preview. All displayed titles and artwork are fictional/original frontend placeholders."
+  },
+  {
+    "id": 6,
+    "name": "A Brighter You — Self-Help Book",
+    "price": 449,
+    "subcategory": "Nonfiction",
+    "photo": 5,
+    "color": "White",
+    "sizes": [
+      "Paperback"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.6,
+    "description": "A Brighter You — Self-Help Book sample listing for the Bearly Books & Media frontend preview. All displayed titles and artwork are fictional/original frontend placeholders."
+  },
+  {
+    "id": 7,
+    "name": "Build Better — Business Book",
+    "price": 549,
+    "subcategory": "Nonfiction",
+    "photo": 6,
+    "color": "White",
+    "sizes": [
+      "Paperback"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.3,
+    "description": "Build Better — Business Book sample listing for the Bearly Books & Media frontend preview. All displayed titles and artwork are fictional/original frontend placeholders."
+  },
+  {
+    "id": 8,
+    "name": "Voices of the Past — History Book",
+    "price": 599,
+    "subcategory": "Nonfiction",
+    "photo": 7,
+    "color": "Brown",
+    "sizes": [
+      "Hardcover"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.7,
+    "description": "Voices of the Past — History Book sample listing for the Bearly Books & Media frontend preview. All displayed titles and artwork are fictional/original frontend placeholders."
+  },
+  {
+    "id": 9,
+    "name": "The Wonders of Science",
+    "price": 649,
+    "subcategory": "Nonfiction",
+    "photo": 8,
+    "color": "Black",
+    "sizes": [
+      "Hardcover"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.4,
+    "description": "The Wonders of Science sample listing for the Bearly Books & Media frontend preview. All displayed titles and artwork are fictional/original frontend placeholders."
+  },
+  {
+    "id": 10,
+    "name": "Good Food Everyday — Cookbook",
+    "price": 699,
+    "subcategory": "Nonfiction",
+    "photo": 9,
+    "color": "White",
+    "sizes": [
+      "Hardcover"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.8,
+    "description": "Good Food Everyday — Cookbook sample listing for the Bearly Books & Media frontend preview. All displayed titles and artwork are fictional/original frontend placeholders."
+  },
+  {
+    "id": 11,
+    "name": "Little Big Dreams — Picture Book",
+    "price": 399,
+    "subcategory": "Children & Education",
+    "photo": 10,
+    "color": "Blue",
+    "sizes": [
+      "Hardcover"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.5,
+    "description": "Little Big Dreams — Picture Book sample listing for the Bearly Books & Media frontend preview. All displayed titles and artwork are fictional/original frontend placeholders."
+  },
+  {
+    "id": 12,
+    "name": "Brain Boost — Educational Workbook",
+    "price": 349,
+    "subcategory": "Children & Education",
+    "photo": 11,
+    "color": "Blue",
+    "sizes": [
+      "Paperback"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.9,
+    "description": "Brain Boost — Educational Workbook sample listing for the Bearly Books & Media frontend preview. All displayed titles and artwork are fictional/original frontend placeholders."
+  },
+  {
+    "id": 13,
+    "name": "Creative Colors — Coloring Book",
+    "price": 299,
+    "subcategory": "Children & Education",
+    "photo": 12,
+    "color": "White",
+    "sizes": [
+      "Paperback"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.6,
+    "description": "Creative Colors — Coloring Book sample listing for the Bearly Books & Media frontend preview. All displayed titles and artwork are fictional/original frontend placeholders."
+  },
+  {
+    "id": 14,
+    "name": "Heroes Unite — Original Comic Book",
+    "price": 399,
+    "subcategory": "Comics & Graphic Books",
+    "photo": 13,
+    "color": "Black",
+    "sizes": [
+      "Paperback"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.3,
+    "description": "Heroes Unite — Original Comic Book sample listing for the Bearly Books & Media frontend preview. All displayed titles and artwork are fictional/original frontend placeholders."
+  },
+  {
+    "id": 15,
+    "name": "Skyward — Original Manga-Style Book",
+    "price": 399,
+    "subcategory": "Comics & Graphic Books",
+    "photo": 14,
+    "color": "Blue",
+    "sizes": [
+      "Paperback"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.7,
+    "description": "Skyward — Original Manga-Style Book sample listing for the Bearly Books & Media frontend preview. All displayed titles and artwork are fictional/original frontend placeholders."
+  },
+  {
+    "id": 16,
+    "name": "Lifestyle Today Magazine",
+    "price": 249,
+    "subcategory": "Magazines & Periodicals",
+    "photo": 15,
+    "color": "White",
+    "sizes": [
+      "Issue"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.4,
+    "description": "Lifestyle Today Magazine sample listing for the Bearly Books & Media frontend preview. All displayed titles and artwork are fictional/original frontend placeholders."
+  },
+  {
+    "id": 17,
+    "name": "Just a Thought — Journal",
+    "price": 349,
+    "subcategory": "Stationery & Reading",
+    "photo": 16,
+    "color": "Brown",
+    "sizes": [
+      "A5"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.8,
+    "description": "Just a Thought — Journal sample listing for the Bearly Books & Media frontend preview. All displayed titles and artwork are fictional/original frontend placeholders."
+  },
+  {
+    "id": 18,
+    "name": "Notes Ideas Progress — Notebook",
+    "price": 299,
+    "subcategory": "Stationery & Reading",
+    "photo": 17,
+    "color": "Blue",
+    "sizes": [
+      "A5"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.5,
+    "description": "Notes Ideas Progress — Notebook sample listing for the Bearly Books & Media frontend preview. All displayed titles and artwork are fictional/original frontend placeholders."
+  },
+  {
+    "id": 19,
+    "name": "My Plan — Planner",
+    "price": 399,
+    "subcategory": "Stationery & Reading",
+    "photo": 18,
+    "color": "White",
+    "sizes": [
+      "A5"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.9,
+    "description": "My Plan — Planner sample listing for the Bearly Books & Media frontend preview. All displayed titles and artwork are fictional/original frontend placeholders."
+  },
+  {
+    "id": 20,
+    "name": "The Essential Dictionary",
+    "price": 649,
+    "subcategory": "Reference Books",
+    "photo": 19,
+    "color": "Blue",
+    "sizes": [
+      "Hardcover"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.6,
+    "description": "The Essential Dictionary sample listing for the Bearly Books & Media frontend preview. All displayed titles and artwork are fictional/original frontend placeholders."
+  },
+  {
+    "id": 21,
+    "name": "The Last Journey — DVD Movie",
+    "price": 499,
+    "subcategory": "Movies & Music",
+    "photo": 20,
+    "color": "Blue",
+    "sizes": [
+      "DVD"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.3,
+    "description": "The Last Journey — DVD Movie sample listing for the Bearly Books & Media frontend preview. All displayed titles and artwork are fictional/original frontend placeholders."
+  },
+  {
+    "id": 22,
+    "name": "Ocean Depths — Blu-ray Movie",
+    "price": 699,
+    "subcategory": "Movies & Music",
+    "photo": 21,
+    "color": "Blue",
+    "sizes": [
+      "Blu-ray"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.7,
+    "description": "Ocean Depths — Blu-ray Movie sample listing for the Bearly Books & Media frontend preview. All displayed titles and artwork are fictional/original frontend placeholders."
+  },
+  {
+    "id": 23,
+    "name": "Midnight Vibes — Music CD",
+    "price": 399,
+    "subcategory": "Movies & Music",
+    "photo": 22,
+    "color": "Black",
+    "sizes": [
+      "CD"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.4,
+    "description": "Midnight Vibes — Music CD sample listing for the Bearly Books & Media frontend preview. All displayed titles and artwork are fictional/original frontend placeholders."
+  },
+  {
+    "id": 24,
+    "name": "Golden Days — Vinyl Record",
+    "price": 999,
+    "subcategory": "Movies & Music",
+    "photo": 23,
+    "color": "Brown",
+    "sizes": [
+      "12 inch"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.8,
+    "description": "Golden Days — Vinyl Record sample listing for the Bearly Books & Media frontend preview. All displayed titles and artwork are fictional/original frontend placeholders."
+  },
+  {
+    "id": 25,
+    "name": "A Brighter Mind — Audiobook",
+    "price": 599,
+    "subcategory": "Movies & Music",
+    "photo": 24,
+    "color": "Black",
+    "sizes": [
+      "Audio"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.5,
+    "description": "A Brighter Mind — Audiobook sample listing for the Bearly Books & Media frontend preview. All displayed titles and artwork are fictional/original frontend placeholders."
+  },
+  {
+    "id": 26,
+    "name": "Learning Flash Cards",
+    "price": 349,
+    "subcategory": "Educational Media",
+    "photo": 25,
+    "color": "White",
+    "sizes": [
+      "Set"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.9,
+    "description": "Learning Flash Cards sample listing for the Bearly Books & Media frontend preview. All displayed titles and artwork are fictional/original frontend placeholders."
+  },
+  {
+    "id": 27,
+    "name": "Quest Together — Board Game",
+    "price": 899,
+    "subcategory": "Games & Puzzles",
+    "photo": 26,
+    "color": "Blue",
+    "sizes": [
+      "Set"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.6,
+    "description": "Quest Together — Board Game sample listing for the Bearly Books & Media frontend preview. All displayed titles and artwork are fictional/original frontend placeholders."
+  },
+  {
+    "id": 28,
+    "name": "Serenity 1000-Piece Puzzle",
+    "price": 699,
+    "subcategory": "Games & Puzzles",
+    "photo": 27,
+    "color": "Blue",
+    "sizes": [
+      "1000 pcs"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.3,
+    "description": "Serenity 1000-Piece Puzzle sample listing for the Bearly Books & Media frontend preview. All displayed titles and artwork are fictional/original frontend placeholders."
+  },
+  {
+    "id": 29,
+    "name": "The Journey Series — Book Gift Set",
+    "price": 1499,
+    "subcategory": "Gift Sets",
+    "photo": 28,
+    "color": "Brown",
+    "sizes": [
+      "3 Books"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.7,
+    "description": "The Journey Series — Book Gift Set sample listing for the Bearly Books & Media frontend preview. All displayed titles and artwork are fictional/original frontend placeholders."
+  },
+  {
+    "id": 30,
+    "name": "Media Storage Organizer",
+    "price": 799,
+    "subcategory": "Media Accessories",
+    "photo": 29,
+    "color": "Black",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.4,
+    "description": "Media Storage Organizer sample listing for the Bearly Books & Media frontend preview. All displayed titles and artwork are fictional/original frontend placeholders."
+  }
+]

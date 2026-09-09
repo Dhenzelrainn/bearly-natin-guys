@@ -51,8 +51,19 @@ function initialize() {
     const dataElement = document.getElementById('home-data');
     if (!dataElement) return;
 
-    if (new URLSearchParams(location.search).get('category') === 'furniture-and-office-equipment') {
-        window.location.replace('/products?category=furniture-and-office-equipment');
+    const requestedCategory = new URLSearchParams(location.search).get('category');
+    const dedicatedCategories = [
+        'men-s-apparel',
+        'women-s-apparel',
+        'electronics-and-gadgets',
+        'books-and-media',
+        'pet-supplies',
+        'sports-and-outdoors',
+        'jewelry-and-watches',
+    ];
+
+    if (dedicatedCategories.includes(requestedCategory)) {
+        window.location.replace(`/products?category=${requestedCategory}`);
         return;
     }
 
@@ -354,21 +365,19 @@ function initialize() {
         const category = event.target.closest('[data-category]');
 
         if (category) {
-            if (category.dataset.category === 'men-s-apparel') {
-                event.preventDefault();
-                window.location.href = '/products?category=men-s-apparel';
-                return;
-            }
+            const dedicated = [
+                'men-s-apparel',
+                'women-s-apparel',
+                'electronics-and-gadgets',
+                'books-and-media',
+                'pet-supplies',
+                'sports-and-outdoors',
+                'jewelry-and-watches',
+            ];
 
-            if (category.dataset.category === 'women-s-apparel') {
+            if (dedicated.includes(category.dataset.category)) {
                 event.preventDefault();
-                window.location.href = '/products?category=women-s-apparel';
-                return;
-            }
-
-            if (category.dataset.category === 'furniture-and-office-equipment') {
-                event.preventDefault();
-                window.location.href = '/products?category=furniture-and-office-equipment';
+                window.location.href = `/products?category=${category.dataset.category}`;
                 return;
             }
 

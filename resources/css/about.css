@@ -167,11 +167,14 @@ body.ba .ba-offer-grid article:last-child {
 body.ba .ba-offer-grid .material-symbols-outlined {
     width: 52px;
     height: 52px;
+    display: inline-grid;
+    place-items: center;
     margin-bottom: 28px;
     border-radius: 50%;
     background: #f3eade;
     color: #95601f;
     font-size: 27px;
+    line-height: 1;
 }
 
 body.ba .ba-offer-grid h3 {

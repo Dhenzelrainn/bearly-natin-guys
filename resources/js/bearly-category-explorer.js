@@ -102,6 +102,7 @@
 
         explorer.hidden = false;
         explorer.setAttribute('aria-hidden', 'false');
+        openButton.setAttribute('aria-expanded', 'true');
         document.body.classList.add('bl-category-explorer-open');
 
         requestAnimationFrame(() => {
@@ -113,6 +114,7 @@
     const closeExplorer = () => {
         explorer.hidden = true;
         explorer.setAttribute('aria-hidden', 'true');
+        openButton.setAttribute('aria-expanded', 'false');
         document.body.classList.remove('bl-category-explorer-open');
         resetFilter();
 

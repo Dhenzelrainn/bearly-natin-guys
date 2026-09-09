@@ -1,7 +1,7 @@
 /* =========================================================
    BEARLY — VIEW ALL CATEGORIES EXPLORER
    seller-backup branch
-   Loaded only by resources/views/landing-page/index.blade.php
+   Loaded only by resources/views/landing-page/landingpage.blade.php
    ========================================================= */
 
 body.bl.bl-category-explorer-open {
@@ -25,11 +25,11 @@ body.bl .bl-view-all-categories {
 body.bl .bl-view-all-categories .material-symbols-outlined {
     width: 21px;
     height: 21px;
-    color: var(--bl-gold);
+    color: var(--caramel-dark);
 }
 
 body.bl .bl-view-all-categories:hover {
-    color: var(--bl-gold);
+    color: var(--caramel-dark);
 }
 
 body.bl .bl-category-explorer[hidden] {
@@ -123,6 +123,7 @@ body.bl .bl-category-explorer-close {
     display: grid;
     place-items: center;
     justify-self: end;
+    border: 0;
     border-radius: 50%;
     background: transparent;
     color: #302217;
@@ -161,7 +162,7 @@ body.bl .bl-category-explorer-search input {
 }
 
 body.bl .bl-category-explorer-search input:focus {
-    border-color: var(--bl-gold);
+    border-color: var(--caramel-dark);
     box-shadow: 0 0 0 2px rgba(149, 96, 31, .12);
 }
 
@@ -195,13 +196,14 @@ body.bl .bl-category-explorer-tile {
 }
 
 body.bl .bl-category-explorer-tile:hover {
-    color: var(--bl-gold);
+    color: var(--caramel-dark);
 }
 
 body.bl .bl-category-explorer-image {
     width: 86px;
     height: 86px;
     aspect-ratio: auto;
+    margin-bottom: 0;
     border-radius: 4px;
     background-color: #f8f5f1;
 }
@@ -259,7 +261,7 @@ body.bl .bl-category-explorer-group-title {
 }
 
 body.bl .bl-category-explorer-group-title .material-symbols-outlined {
-    color: var(--bl-gold);
+    color: var(--caramel-dark);
     font-size: 18px;
 }
 
@@ -281,7 +283,7 @@ body.bl .bl-category-explorer-group li a {
 }
 
 body.bl .bl-category-explorer-group li a:hover {
-    color: var(--bl-gold);
+    color: var(--caramel-dark);
     text-decoration: underline;
     text-underline-offset: 3px;
 }

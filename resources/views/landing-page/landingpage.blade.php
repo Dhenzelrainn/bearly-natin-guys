@@ -13,7 +13,12 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@300&display=block" rel="stylesheet">
-    @vite(['resources/css/landing.css', 'resources/js/landing.js'])
+    @vite([
+        'resources/css/landing.css',
+        'resources/css/bearly-category-explorer.css',
+        'resources/js/landing.js',
+        'resources/js/bearly-category-explorer.js',
+    ])
 </head>
 <body
     class="bl"
@@ -93,7 +98,17 @@
                 <p class="bl-eyebrow">EXPLORE BEARLY</p>
                 <h2 id="category-title">Shop by Categories</h2>
             </div>
-            <a href="{{ url('/home') }}">View all categories <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span></a>
+            <button
+                type="button"
+                class="bl-view-all-categories"
+                data-bl-open-categories
+                aria-haspopup="dialog"
+                aria-controls="bl-category-explorer"
+                aria-expanded="false"
+            >
+                View all categories
+                <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
+            </button>
         </div>
         <div class="bl-category-grid">
             @foreach ($homeCategories as $index => $category)
@@ -134,5 +149,86 @@
     </div>
     <div class="bl-footer-bottom"><span>© {{ date('Y') }} BEARLY. All rights reserved.</span><span>Good People. Better Days.</span></div>
 </footer>
+
+<div class="bl-category-explorer" id="bl-category-explorer" hidden aria-hidden="true">
+    <div class="bl-category-explorer-backdrop" data-bl-close-categories></div>
+
+    <section
+        class="bl-category-explorer-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="bl-category-explorer-title"
+        tabindex="-1"
+    >
+        <header class="bl-category-explorer-header">
+            <a class="bl-category-explorer-brand" href="{{ url('/') }}" aria-label="Bearly home">
+                <img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly">
+            </a>
+
+            <div class="bl-category-explorer-heading">
+                <p>BEARLY MARKETPLACE</p>
+                <h2 id="bl-category-explorer-title">Shop by category</h2>
+            </div>
+
+            <button type="button" class="bl-category-explorer-close" data-bl-close-categories aria-label="Close categories">
+                <span class="material-symbols-outlined" aria-hidden="true">close</span>
+            </button>
+        </header>
+
+        <div class="bl-category-explorer-body">
+            <form class="bl-category-explorer-search" role="search" onsubmit="return false">
+                <label class="bl-sr-only" for="bl-category-search">Search categories</label>
+                <input id="bl-category-search" type="search" placeholder="What are you looking for?" autocomplete="off" data-bl-category-search>
+                <span class="material-symbols-outlined" aria-hidden="true">search</span>
+            </form>
+
+            <div class="bl-category-explorer-top-grid" aria-label="Main categories">
+                @foreach ($homeCategories as $index => $category)
+                    <a
+                        class="bl-category-explorer-tile"
+                        data-bl-category-tile
+                        data-search="{{ strtolower($category['name'].' '.implode(' ', $category['subcategories'])) }}"
+                        href="{{ $category['slug'] === 'men-s-apparel' ? url('/products') : url('/home').'?category='.$category['slug'] }}"
+                    >
+                        <span class="bl-category-image bl-category-explorer-image" style="{{ $sprite($index) }}" role="img" aria-label="{{ $category['name'] }}"></span>
+                        <span>{{ str_replace(' and ', ' & ', $category['name']) }}</span>
+                    </a>
+                @endforeach
+            </div>
+
+            <div class="bl-category-explorer-divider"></div>
+
+            <div class="bl-category-explorer-subhead">
+                <h3>Explore subcategories</h3>
+                <p>Find exactly what you need across Bearly's independent stores.</p>
+            </div>
+
+            <div class="bl-category-explorer-groups">
+                @foreach ($homeCategories as $category)
+                    <article
+                        class="bl-category-explorer-group"
+                        data-bl-category-group
+                        data-search="{{ strtolower($category['name'].' '.implode(' ', $category['subcategories'])) }}"
+                    >
+                        <a class="bl-category-explorer-group-title" href="{{ $category['slug'] === 'men-s-apparel' ? url('/products') : url('/home').'?category='.$category['slug'] }}">
+                            {{ $category['name'] }}
+                            <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
+                        </a>
+
+                        <ul>
+                            @foreach ($category['subcategories'] as $subcategory)
+                                <li data-search="{{ strtolower($category['name'].' '.$subcategory) }}">
+                                    <a href="{{ url('/home').'?category='.$category['slug'].'&subcategory='.urlencode($subcategory) }}">{{ $subcategory }}</a>
+                                </li>
+                            @endforeach
+                        </ul>
+                    </article>
+                @endforeach
+            </div>
+
+            <p class="bl-category-explorer-empty" data-bl-category-empty hidden>No categories match your search.</p>
+        </div>
+    </section>
+</div>
 </body>
 </html>

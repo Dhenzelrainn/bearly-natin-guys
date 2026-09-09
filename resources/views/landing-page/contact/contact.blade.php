@@ -32,7 +32,7 @@
 </head>
 
 <body class="bl contact-page">
-<a class="skip-link" href="#contact-main">Skip to content</a>
+<a class="bl-skip" href="#contact-main">Skip to content</a>
 
 <header class="bl-header contact-header">
     <a class="bl-logo" href="{{ route('shop.home') }}" aria-label="Bearly home">
@@ -490,67 +490,43 @@
 
 <footer class="bl-footer">
     <div class="bl-footer-grid">
-        <div>
-            <a class="bl-brand" href="{{ route('shop.home') }}" aria-label="Bearly home">
-                <img
-                    src="{{ asset('images/bearly-logo.png') }}"
-                    alt="Bearly"
-                >
+        <div class="bl-footer-about">
+            <a class="bl-footer-logo" href="{{ route('shop.home') }}" aria-label="Bearly home">
+                <img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly">
             </a>
-
-            <p class="bl-copyright">
-                © {{ date('Y') }} Bearly.<br>
-                All rights reserved.
-            </p>
+            <p>A modern marketplace for the things you love. Good things find you here.</p>
         </div>
 
-        <nav aria-label="Shop links">
-            <h3>Shop</h3>
-            <a href="{{ route('home') }}">All Products</a>
-            <a href="{{ route('shop.home') }}#bl-featured">Featured Products</a>
-            <a href="{{ route('shop.home') }}#bl-categories">Categories</a>
+        <nav aria-label="Explore links">
+            <h2>Explore</h2>
+            <a href="{{ route('shop.home') }}">Home</a>
+            <a href="{{ route('home') }}">Discover</a>
+            <a href="{{ route('about') }}">About</a>
+            <a href="{{ route('contact') }}">Contact</a>
         </nav>
 
-        <nav aria-label="About links">
-            <h3>About</h3>
-            <a href="{{ route('about') }}">Our Story</a>
-            <a href="{{ route('contact') }}">Contact Bearly</a>
-        </nav>
-
-        <nav aria-label="Support links">
-            <h3>Support</h3>
-            <a href="{{ route('shop.home') }}#bl-delivery">Delivery</a>
+        <nav aria-label="Help links">
+            <h2>Help</h2>
+            <a href="{{ route('contact') }}">FAQs</a>
+            <a href="{{ route('contact') }}">Shipping</a>
+            <a href="{{ route('contact') }}">Returns</a>
             <a href="#contact-form">Send a Message</a>
-            <a href="{{ route('contact') }}">Contact Us</a>
         </nav>
 
-        <div class="bl-newsletter">
-            <h3>Be the first to know</h3>
-            <p>Get updates on new launches and special offers.</p>
-
-            <form action="#" onsubmit="return false;">
-                <label class="sr-only" for="contact-footer-email">Your email</label>
-
-                <input
-                    type="email"
-                    id="contact-footer-email"
-                    maxlength="254"
-                    placeholder="Enter your email"
-                >
-
-                <button class="bl-button" type="submit">Subscribe</button>
-            </form>
+        <div class="bl-social">
+            <h2>Follow Us</h2>
+            <div>
+                <a href="#" aria-label="Instagram">IG</a>
+                <a href="#" aria-label="Facebook">f</a>
+                <a href="#" aria-label="TikTok">♪</a>
+                <a href="#" aria-label="YouTube">▶</a>
+            </div>
         </div>
     </div>
 
     <div class="bl-footer-bottom">
-        <span>Shopping should be easy. Bearly stressful.</span>
-
-        <div>
-            <span>Privacy Policy</span>
-            <span>|</span>
-            <span>Terms of Service</span>
-        </div>
+        <span>© {{ date('Y') }} BEARLY. All rights reserved.</span>
+        <span>Good People. Better Days.</span>
     </div>
 </footer>
 

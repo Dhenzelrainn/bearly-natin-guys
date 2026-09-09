@@ -10,8 +10,15 @@ body.ba {
 }
 
 body.ba .bl-header {
+    min-height: 78px;
+    grid-template-columns: 230px minmax(0, 1fr) 230px;
     border-bottom: 1px solid #e9e2da;
     background: #fcfaf7;
+}
+
+body.ba .bl-nav {
+    gap: clamp(24px, 3.2vw, 54px);
+    font-size: 14px;
 }
 
 body.ba .bl-actions a {

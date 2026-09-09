@@ -17,11 +17,7 @@
 </head>
 <body
     class="bl"
-    style="
-        --bl-catalog: url('{{ asset('images/catalog-placeholders.png') }}');
-        --bl-hero-image: url('{{ asset('images/landing-hero-bg.png') }}');
-        --bl-collections-image: url('{{ asset('images/landing-collections.png') }}');
-    "
+    style="--bl-catalog: url('{{ asset('images/catalog-placeholders.png') }}');"
 >
 <a class="bl-skip" href="#main-content">Skip to content</a>
 
@@ -54,6 +50,7 @@
 
 <main id="main-content">
     <section class="bl-hero" aria-labelledby="hero-title">
+        <img class="bl-hero-image" src="{{ asset('images/landing-hero-bg (2).png') }}" alt="" width="1870" height="841" fetchpriority="high">
         <div class="bl-hero-content">
             <h1 id="hero-title">BEARLY</h1>
             <a class="bl-button bl-button-solid" href="{{ url('/home') }}">Shop now</a>
@@ -68,18 +65,21 @@
 
     <section class="bl-editorial" aria-label="Featured collections">
         <article class="bl-collection bl-collection-fashion">
+            <img class="bl-collection-image" src="{{ asset('images/collection-fashion.png') }}" alt="A coordinated flat lay of a hoodie, striped shirt, jeans, cap, and sneakers" width="769" height="511" loading="lazy">
             <div class="bl-collection-copy">
                 <h2>Wear It<br>Your Way</h2>
                 <a class="bl-button bl-button-outline" href="{{ url('/home') }}?category=men-s-apparel">Shop now</a>
             </div>
         </article>
         <article class="bl-collection bl-collection-tech">
+            <img class="bl-collection-image" src="{{ asset('images/collection-tech.png') }}" alt="Everyday technology including a laptop, phone, headphones, speaker, and charger" width="769" height="511" loading="lazy">
             <div class="bl-collection-copy bl-copy-dark">
                 <h2>Everyday<br>Essentials</h2>
                 <a class="bl-button bl-button-outline bl-outline-dark" href="{{ url('/home') }}?category=electronics-and-gadgets">Shop now</a>
             </div>
         </article>
         <article class="bl-collection bl-collection-details">
+            <img class="bl-collection-image" src="{{ asset('images/collection-accessories.png') }}" alt="Fragrances, watches, eyewear, and a cap arranged on a warm stone surface" width="1538" height="511" loading="lazy">
             <div class="bl-collection-copy bl-copy-dark">
                 <h2>Details That<br>Define You</h2>
                 <a class="bl-button bl-button-outline bl-outline-dark" href="{{ url('/home') }}?category=jewelry-and-watches">Shop now</a>

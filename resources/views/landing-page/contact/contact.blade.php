@@ -35,7 +35,7 @@
 <a class="skip-link" href="#contact-main">Skip to content</a>
 
 <header class="bl-header contact-header">
-    <a class="bl-brand" href="{{ route('shop.home') }}" aria-label="Bearly home">
+    <a class="bl-logo" href="{{ route('shop.home') }}" aria-label="Bearly home">
         <img
             src="{{ asset('images/bearly-logo.png') }}"
             alt="Bearly"
@@ -44,9 +44,8 @@
 
     <nav class="bl-nav" aria-label="Main navigation">
         <a href="{{ route('shop.home') }}">Home</a>
-        <a href="{{ route('home') }}">Shop</a>
+        <a href="{{ route('home') }}">Discover</a>
         <a href="{{ route('about') }}">About</a>
-        <a href="{{ route('shop.home') }}#bl-delivery">Delivery</a>
         <a href="{{ route('contact') }}" aria-current="page">Contact</a>
     </nav>
 
@@ -64,21 +63,6 @@
         </a>
     </div>
 
-    <form class="bl-search" action="{{ route('products.index') }}" method="GET" role="search">
-        <button type="submit" aria-label="Search">
-            <span class="material-symbols-outlined" aria-hidden="true">search</span>
-        </button>
-
-        <label class="sr-only" for="contact-site-search">Search products</label>
-
-        <input
-            id="contact-site-search"
-            name="search"
-            type="search"
-            maxlength="120"
-            placeholder="Search for products, brands, or independent stores..."
-        >
-    </form>
 </header>
 
 <main id="contact-main">

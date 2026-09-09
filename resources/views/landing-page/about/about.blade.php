@@ -13,25 +13,19 @@
 </head>
 <body class="bl ba">
 <header class="bl-header">
-    <a class="bl-brand" href="{{ url('/') }}" aria-label="Bearly home">
+    <a class="bl-logo" href="{{ url('/') }}" aria-label="Bearly home">
         <img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly - Find more. Live better.">
     </a>
     <nav class="bl-nav" aria-label="Main navigation">
         <a href="{{ url('/') }}">Home</a>
-        <a href="{{ url('/home') }}">Shop</a>
+        <a href="{{ url('/home') }}">Discover</a>
         <a href="{{ route('about') }}" aria-current="page">About</a>
-        <a href="{{ url('/').'#bl-delivery' }}">Delivery</a>
         <a href="{{ route('contact') }}">Contact</a>
     </nav>
     <div class="bl-actions">
         <a href="{{ url('/login') }}" aria-label="Sign in"><span class="material-symbols-outlined" aria-hidden="true">person</span></a>
         <a href="{{ url('/cart') }}" aria-label="Shopping cart"><span class="material-symbols-outlined" aria-hidden="true">shopping_cart</span></a>
     </div>
-    <form class="bl-search" action="{{ url('/home') }}" role="search">
-        <button aria-label="Search"><span class="material-symbols-outlined" aria-hidden="true">search</span></button>
-        <label class="sr-only" for="about-query">Search products</label>
-        <input id="about-query" name="search" type="search" maxlength="120" placeholder="Search for products, brands, or independent stores...">
-    </form>
 </header>
 
 <main>

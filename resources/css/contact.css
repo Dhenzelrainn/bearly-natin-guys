@@ -11,8 +11,32 @@ body.contact-page {
 }
 
 body.contact-page .contact-header {
+    height: 78px;
+    min-height: 78px;
+    grid-template-columns: 230px minmax(0, 1fr) 230px;
+    padding: 12px clamp(22px, 4vw, 70px);
     border-bottom: 1px solid #e8e0d7;
     background: #fcfaf7;
+}
+
+body.contact-page .bl-nav {
+    gap: clamp(24px, 3.2vw, 54px);
+    font-size: 14px;
+}
+
+body.contact-page .bl-logo {
+    width: 168px;
+}
+
+body.contact-page .bl-logo img {
+    width: 100%;
+    height: 54px;
+    object-fit: contain;
+    object-position: left center;
+}
+
+body.contact-page .bl-actions {
+    gap: 22px;
 }
 
 body.contact-page .bl-actions a {

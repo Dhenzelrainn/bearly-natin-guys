@@ -7,12 +7,20 @@
     <div><span class="section-kicker">Return and refund case</span><div class="case-title-row"><h2>{{ $case['id'] }}</h2><span class="return-status status-{{ $case['tone'] }}">{{ $case['status'] }}</span></div><p>{{ $case['request'] }} for order {{ $case['order'] }} · Submitted {{ $case['submitted'] }}</p></div>
     <a class="seller-secondary-button" href="{{ route('seller.orders.returns') }}"><i data-lucide="arrow-left"></i>Back to cases</a>
 </div>
+
+<section class="case-financial-impact" aria-label="Financial impact of this return case">
+    <div><span class="case-impact-icon"><i data-lucide="badge-percent"></i></span><div><small>Platform commission effect</small><strong>{{ $case['commission_effect'] }}</strong></div></div>
+    <div><span class="case-impact-icon"><i data-lucide="wallet-cards"></i></span><div><small>Seller earnings effect</small><strong>{{ $case['earnings_effect'] }}</strong></div></div>
+    <p><i data-lucide="info"></i> Financial values change only after the refund/return resolution is finalized. A full finalized refund reverses the commission from the completed sale.</p>
+</section>
+
 @switch($case['status_key'])
     @case('action-required') @include('seller.Orders.returns-refunds.return-actions.action-required') @break
     @case('under-review') @include('seller.Orders.returns-refunds.return-actions.under-review') @break
     @case('return-shipping') @include('seller.Orders.returns-refunds.return-actions.return-shipping') @break
     @case('resolved') @include('seller.Orders.returns-refunds.return-actions.resolved') @break
 @endswitch
+
 <div class="seller-modal case-confirm-modal" data-modal="case-confirm" hidden>
     <button class="modal-backdrop" type="button" data-modal-close aria-label="Close confirmation"></button>
     <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="case-confirm-title">

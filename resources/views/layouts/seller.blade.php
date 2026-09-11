@@ -8,7 +8,12 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    @vite(['resources/css/seller.css', 'resources/js/seller.js'])
+    @vite([
+        'resources/css/seller.css',
+        'resources/css/seller-polish.css',
+        'resources/js/seller.js',
+        'resources/js/seller-polish.js'
+    ])
 </head>
 <body class="seller-body">
 @php
@@ -31,6 +36,10 @@
             ['label' => 'Store Profile', 'route' => 'seller.store'],
             ['label' => 'Store Appearance', 'route' => 'seller.store.appearance'],
             ['label' => 'Publication Settings', 'route' => 'seller.store.publication'],
+        ]],
+        ['key' => 'finance', 'label' => 'Finance', 'icon' => 'wallet-cards', 'active' => request()->routeIs('seller.finance*'), 'children' => [
+            ['label' => 'My Earnings', 'route' => 'seller.finance.earnings'],
+            ['label' => 'Transaction History', 'route' => 'seller.finance.transactions'],
         ]],
         ['key' => 'reports', 'label' => 'Reports', 'icon' => 'chart-no-axes-combined', 'active' => request()->routeIs('seller.reports*'), 'children' => [
             ['label' => 'Reports Overview', 'route' => 'seller.reports'],
@@ -81,7 +90,6 @@
                 </section>
             @endforeach
         </nav>
-
         <div class="seller-sidebar-footer">
             <a href="{{ route('login') }}" class="seller-nav-link seller-logout" title="Logout">
                 <i class="seller-ui-icon" data-lucide="log-out" aria-hidden="true"></i><span>Logout</span>
@@ -90,7 +98,6 @@
     </aside>
 
     <button class="seller-overlay" type="button" data-seller-overlay aria-label="Close menu"></button>
-
     <div class="seller-main">
         <header class="seller-topbar">
             <div class="seller-topbar-left">
@@ -124,13 +131,12 @@
                     <div class="seller-popover profile-popover" data-seller-popover="profile" hidden>
                         <strong>{{ $seller['name'] ?? 'Bearly Seller' }}</strong>
                         <small>{{ $seller['email'] ?? 'seller@bearly.test' }}</small>
-                        <a href="#" data-preview-link="Account"><i class="seller-ui-icon" data-lucide="user-round-cog" aria-hidden="true"></i> Account settings</a>
+                        <a href="{{ route('seller.settings.account') }}"><i class="seller-ui-icon" data-lucide="user-round-cog" aria-hidden="true"></i> Account settings</a>
                         <a href="{{ route('login') }}"><i class="seller-ui-icon" data-lucide="log-out" aria-hidden="true"></i> Logout</a>
                     </div>
                 </div>
             </div>
         </header>
-
         <main class="seller-content">@yield('content')</main>
     </div>
 </div>

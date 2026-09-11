@@ -5,6 +5,9 @@ use App\Http\Controllers\PsgcController;
 use App\Http\Controllers\SellerController;
 use App\Http\Controllers\LogisticsController;
 use App\Http\Controllers\RiderController;
+use App\Http\Controllers\BuyerController;
+use App\Http\Controllers\SellerWorkflowController;
+use App\Http\Controllers\SellerProductController;
 use Illuminate\Support\Facades\Route;
 
 Route::view('/', 'auth.login')->name('shop.home');
@@ -106,6 +109,39 @@ Route::prefix('admin')->name('admin.')->group(function () {
 
 /*
 |--------------------------------------------------------------------------
+| Buyer Front-End Routes
+|--------------------------------------------------------------------------
+*/
+
+    Route::get('/home', [BuyerController::class, 'home'])->name('home');
+
+    Route::get('/products', [BuyerController::class, 'products'])
+        ->name('products.index');
+
+    Route::get('/wishlist', [BuyerController::class, 'wishlist'])
+        ->name('wishlist.index');
+
+    Route::post('/wishlist/toggle', [BuyerController::class, 'toggleWishlist'])
+        ->name('wishlist.toggle');
+
+    Route::get('/cart', [BuyerController::class, 'cart'])
+        ->name('cart.view');
+
+    Route::post('/cart/add', [BuyerController::class, 'addToCart'])
+        ->name('cart.add');
+
+    Route::patch('/cart/{cartItem}', [BuyerController::class, 'updateCart'])
+        ->name('cart.update');
+
+    Route::delete('/cart/{cartItem}', [BuyerController::class, 'removeFromCart'])
+        ->name('cart.remove');
+
+    Route::delete('/cart', [BuyerController::class, 'clearCart'])
+        ->name('cart.clear');
+
+/*
+/*
+|--------------------------------------------------------------------------
 | Static Seller Front-End Routes
 |--------------------------------------------------------------------------
 | These preview screens remain public so the team can continue working on the
@@ -115,48 +151,114 @@ Route::prefix('admin')->name('admin.')->group(function () {
 Route::prefix('seller')->name('seller.')->group(function () {
     Route::redirect('/', '/seller/dashboard');
 
-    Route::get('/dashboard', [SellerController::class, 'dashboard'])->name('dashboard');
+    // Dashboard
+    Route::get('/dashboard', [SellerWorkflowController::class, 'dashboard'])
+        ->name('dashboard');
 
-    Route::get('/store', [SellerController::class, 'store'])->name('store');
-    Route::post('/store', [SellerController::class, 'saveStore'])->name('store.save');
+    // Store
+    Route::get('/store', [SellerController::class, 'store'])
+        ->name('store');
 
-    Route::get('/products', [SellerController::class, 'products'])->name('products');
-    Route::get('/products/create', [SellerController::class, 'createProduct'])->name('products.create');
-    Route::post('/products', [SellerController::class, 'addProduct'])->name('products.add');
-    Route::get('/products/{product}/edit', [SellerController::class, 'editProduct'])->name('products.edit');
-    Route::put('/products/{product}', [SellerController::class, 'updateProduct'])->name('products.update');
-    Route::patch('/products/{product}/archive', [SellerController::class, 'toggleProductArchive'])->name('products.archive');
-    Route::get('/products/pricing', [SellerController::class, 'pricing'])->name('products.pricing');
+    Route::post('/store', [SellerController::class, 'saveStore'])
+        ->name('store.save');
 
-    Route::get('/orders', [SellerController::class, 'orders'])->name('orders');
-    Route::get('/orders/returns-refunds', [SellerController::class, 'returns'])->name('orders.returns');
-    Route::get('/orders/returns-refunds/{caseId}', [SellerController::class, 'returnDetails'])->name('orders.returns.show');
+    Route::get('/store/appearance', [SellerController::class, 'storeAppearance'])
+        ->name('store.appearance');
+
+    Route::get('/store/publication', [SellerController::class, 'publicationSettings'])
+        ->name('store.publication');
+
+    // Products & Inventory
+    Route::get('/products', [SellerController::class, 'products'])
+        ->name('products');
+
+    Route::get('/inventory', [SellerController::class, 'inventory'])
+        ->name('inventory');
+
+    Route::get('/products/pricing', [SellerController::class, 'pricing'])
+        ->name('products.pricing');
+
+    Route::get('/products/create', [SellerProductController::class, 'createProduct'])
+        ->name('products.create');
+
+    Route::post('/products', [SellerProductController::class, 'addProduct'])
+        ->name('products.add');
+
+    Route::get('/products/{product}/edit', [SellerProductController::class, 'editProduct'])
+        ->name('products.edit');
+
+    Route::put('/products/{product}', [SellerProductController::class, 'updateProduct'])
+        ->name('products.update');
+
+    Route::patch('/products/{product}/archive', [SellerProductController::class, 'toggleProductArchive'])
+        ->name('products.archive');
+
+    // Orders
+    Route::get('/orders', [SellerWorkflowController::class, 'orders'])
+        ->name('orders');
+
+    Route::get('/orders/returns-refunds', [SellerWorkflowController::class, 'returns'])
+        ->name('orders.returns');
+
+    Route::get('/orders/returns-refunds/{caseId}', [SellerWorkflowController::class, 'returnDetails'])
+        ->name('orders.returns.show');
 
     // Preserve old Seller Center URLs while statuses move to horizontal tabs.
-    Route::redirect('/orders/new', '/seller/orders?status=new')->name('orders.new');
-    Route::redirect('/orders/to-prepare', '/seller/orders?status=to-prepare')->name('orders.prepare');
-    Route::redirect('/orders/ready-for-pickup', '/seller/orders?status=ready-pickup')->name('orders.ready');
-    Route::redirect('/orders/history', '/seller/orders?status=history')->name('orders.history');
+    Route::redirect('/orders/new', '/seller/orders?status=new')
+        ->name('orders.new');
 
-    Route::get('/fulfillment/waybills', [SellerController::class, 'waybills'])->name('fulfillment.waybills');
-    Route::get('/fulfillment/pickups', [SellerController::class, 'pickupRequests'])->name('fulfillment.pickups');
-    Route::get('/fulfillment/tracking', [SellerController::class, 'shipmentTracking'])->name('fulfillment.tracking');
+    Route::redirect('/orders/to-prepare', '/seller/orders?status=to-prepare')
+        ->name('orders.prepare');
 
-    Route::get('/inventory', [SellerController::class, 'inventory'])->name('inventory');
+    Route::redirect('/orders/ready-for-pickup', '/seller/orders?status=ready-pickup')
+        ->name('orders.ready');
 
-    Route::get('/store/appearance', [SellerController::class, 'storeAppearance'])->name('store.appearance');
-    Route::get('/store/publication', [SellerController::class, 'publicationSettings'])->name('store.publication');
+    Route::redirect('/orders/history', '/seller/orders?status=history')
+        ->name('orders.history');
 
-    Route::get('/reports', [SellerController::class, 'reports'])->name('reports');
-    Route::get('/reports/sales', [SellerController::class, 'salesReport'])->name('reports.sales');
-    Route::get('/reports/financial', [SellerController::class, 'financialReport'])->name('reports.financial');
+    // Fulfillment
+    Route::get('/fulfillment/waybills', [SellerWorkflowController::class, 'waybills'])
+        ->name('fulfillment.waybills');
 
-    Route::get('/support/messages', [SellerController::class, 'messages'])->name('support.messages');
-    Route::get('/support/feedback', [SellerController::class, 'customerFeedback'])->name('support.feedback');
+    Route::get('/fulfillment/pickups', [SellerWorkflowController::class, 'pickupRequests'])
+        ->name('fulfillment.pickups');
 
-    Route::get('/settings/account', [SellerController::class, 'account'])->name('settings.account');
-    Route::get('/settings/security', [SellerController::class, 'security'])->name('settings.security');
-    Route::get('/settings/notifications', [SellerController::class, 'notificationSettings'])->name('settings.notifications');
+    Route::get('/fulfillment/tracking', [SellerWorkflowController::class, 'shipmentTracking'])
+        ->name('fulfillment.tracking');
+
+    // Finance
+    Route::get('/finance/earnings', [SellerWorkflowController::class, 'financeEarnings'])
+        ->name('finance.earnings');
+
+    Route::get('/finance/transactions', [SellerWorkflowController::class, 'financeTransactions'])
+        ->name('finance.transactions');
+
+    // Reports
+    Route::get('/reports', [SellerWorkflowController::class, 'reportsOverview'])
+        ->name('reports');
+
+    Route::get('/reports/sales', [SellerController::class, 'salesReport'])
+        ->name('reports.sales');
+
+    Route::get('/reports/financial', [SellerWorkflowController::class, 'financialReport'])
+        ->name('reports.financial');
+
+    // Support
+    Route::get('/support/messages', [SellerController::class, 'messages'])
+        ->name('support.messages');
+
+    Route::get('/support/feedback', [SellerController::class, 'customerFeedback'])
+        ->name('support.feedback');
+
+    // Settings
+    Route::get('/settings/account', [SellerController::class, 'account'])
+        ->name('settings.account');
+
+    Route::get('/settings/security', [SellerController::class, 'security'])
+        ->name('settings.security');
+
+    Route::get('/settings/notifications', [SellerController::class, 'notificationSettings'])
+        ->name('settings.notifications');
 });
 
 /*

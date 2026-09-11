@@ -3,7 +3,7 @@
 @section('title', 'Sign In | Bearly')
 
 @section('header-action')
-    <a href="{{ url('/') }}" class="header-link">
+    <a href="{{ route('home') }}" class="header-link">
         <span aria-hidden="true">←</span>
         <span>Back to shop</span>
     </a>

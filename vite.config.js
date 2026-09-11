@@ -15,7 +15,10 @@ export default defineConfig({
                 'resources/css/logistics.css',
                 'resources/js/logistics.js',
                 'resources/css/rider.css',
-                'resources/js/rider.js'
+                'resources/js/rider.js',
+                'resources/css/buyer.css',
+                'resources/js/buyer.js',
+                'resources/js/buyer-bootstrap.js'
             ],
             refresh: true,
         }),

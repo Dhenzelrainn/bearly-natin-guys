@@ -21,8 +21,28 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        const email = demoLogin.elements.email.value.trim().toLowerCase();
+        const password = demoLogin.elements.password.value;
         const message = demoLogin.querySelector('[data-login-message]');
-        if (message) message.hidden = false;
+        const isDemoAccount =
+            email === 'mia.santos@example.com' && password === 'BearlyDemo123!';
+
+        if (!message) return;
+
+        message.hidden = false;
+        message.classList.toggle('is-error', !isDemoAccount);
+
+        if (!isDemoAccount) {
+            message.textContent =
+                'Invalid demo credentials. Use mia.santos@example.com and BearlyDemo123!';
+            return;
+        }
+
+        message.textContent = 'Signed in as Mia Santos. Redirecting to your homepage...';
+        window.sessionStorage.setItem('bearly-demo-account', 'mia.santos@example.com');
+        window.setTimeout(() => {
+            window.location.assign('/home');
+        }, 250);
     });
 
     const registration = document.querySelector('[data-registration]');

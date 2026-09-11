@@ -1,7 +1,43 @@
 @php
 $homeCategories = json_decode(file_get_contents(resource_path('data/buyer-categories.json')), true, 512, JSON_THROW_ON_ERROR);
 
-$homeProducts = json_decode(file_get_contents(resource_path('data/buyer-home-products.json')), true, 512, JSON_THROW_ON_ERROR);
+$categoryProductSources = [
+    'pet-supplies' => ['file' => 'buyer-pet-supplies-products.json', 'name' => 'Pet Supplies', 'atlas' => 'pet-supplies-catalog-atlas.png'],
+    'electronics-and-gadgets' => ['file' => 'buyer-electronics-gadgets-products.json', 'name' => 'Electronics and Gadgets', 'atlas' => 'electronics-gadgets-catalog-atlas.png'],
+    'women-s-apparel' => ['file' => 'buyer-womens-products.json', 'name' => "Women's Apparel", 'atlas' => 'womens-catalog-atlas.png'],
+    'men-s-apparel' => ['file' => 'buyer-mens-products (1).json', 'name' => "Men's Apparel", 'atlas' => 'mens-catalog-atlas.png'],
+    'kids-and-baby' => ['file' => 'buyer-kids-baby-products.json', 'name' => 'Kids and Baby', 'atlas' => 'kids-baby-catalog-atlas.png'],
+    'home-and-garden' => ['file' => 'buyer-home-garden-products.json', 'name' => 'Home and Garden', 'atlas' => 'home-garden-catalog-atlas.png'],
+    'sports-and-outdoors' => ['file' => 'buyer-sports-products.json', 'name' => 'Sports and Outdoors', 'atlas' => 'sports-outdoors-catalog-atlas.png'],
+    'health-and-beauty' => ['file' => 'buyer-health-beauty-products.json', 'name' => 'Health and Beauty', 'atlas' => 'health-beauty-catalog-atlas.png'],
+    'books-and-media' => ['file' => 'buyer-books-media-products.json', 'name' => 'Books and Media', 'atlas' => 'books-media-catalog-atlas.png'],
+    'jewelry-and-watches' => ['file' => 'buyer-jewelry-watches-products.json', 'name' => 'Jewelry and Watches', 'atlas' => 'jewelry-watches-catalog-atlas.png'],
+    'food-and-gourmet' => ['file' => 'buyer-foods-gourmet-products.json', 'name' => 'Foods and Gourmet', 'atlas' => 'foods-gourmet-catalog-atlas.png'],
+    'furniture-and-office-equipment' => ['file' => 'buyer-furniture-office-products.json', 'name' => 'Furniture and Office Equipment', 'atlas' => 'furniture-office-catalog-atlas.png'],
+];
+
+$homeProductsByCategory = [];
+foreach ($categoryProductSources as $slug => $source) {
+    $categoryProducts = json_decode(file_get_contents(resource_path('data/' . $source['file'])), true, 512, JSON_THROW_ON_ERROR);
+    $homeProductsByCategory[$slug] = [];
+
+    foreach (array_slice($categoryProducts, 0, 5) as $product) {
+        $product['id'] = 'home-' . $slug . '-' . $product['id'];
+        $product['category'] = $source['name'];
+        $product['category_slug'] = $slug;
+        $product['atlas'] = asset('images/' . $source['atlas']);
+        $homeProductsByCategory[$slug][] = $product;
+    }
+}
+
+$homeProducts = [];
+for ($round = 0; $round < 5; $round++) {
+    foreach (array_keys($categoryProductSources) as $slug) {
+        if (isset($homeProductsByCategory[$slug][$round])) {
+            $homeProducts[] = $homeProductsByCategory[$slug][$round];
+        }
+    }
+}
 
 @endphp
 
@@ -62,7 +98,7 @@ $homeProducts = json_decode(file_get_contents(resource_path('data/buyer-home-pro
 
 <a href="{{ url('/cart') }}"><span class="material-symbols-outlined" aria-hidden="true">shopping_cart</span><span>Cart</span></a>
 
-<a href="{{ url('/login') }}"><span class="material-symbols-outlined" aria-hidden="true">person</span><span>Sign in</span></a>
+<button class="account-action" data-info="account" aria-label="Open demo account"><span class="material-symbols-outlined" aria-hidden="true">person</span><span>Mia Santos</span></button>
 
 </nav>
 
@@ -230,10 +266,47 @@ $homeProducts = json_decode(file_get_contents(resource_path('data/buyer-home-pro
 
 </div>
 <footer class="footer"><a href="{{ url('/home') }}"><img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly home" width="110" height="37"></a><p>Good finds. Happy spaces.</p><nav aria-label="Footer"><button data-info="about">About Bearly</button><button data-info="help">Help centre</button><a href="{{ url('/seller/dashboard') }}">Become a seller</a></nav><span>Homepage preview</span></footer>
-<button class="chat-button" data-info="chat"><span class="material-symbols-outlined" aria-hidden="true">chat_bubble</span>Chat</button>
+<button class="chat-button" data-info="chat" aria-controls="chat-drawer" aria-expanded="false"><span class="material-symbols-outlined" aria-hidden="true">chat_bubble</span>Chat</button>
+
+<div class="chat-drawer-backdrop" id="chat-drawer-backdrop" data-chat-close hidden></div>
+<aside class="chat-drawer" id="chat-drawer" aria-label="Chat with sellers" aria-hidden="true">
+    <header class="chat-drawer-header">
+        <div><p class="eyebrow">Buyer messages</p><h2>Chat</h2></div>
+        <button class="icon-button" type="button" data-chat-close aria-label="Close chat"><span class="material-symbols-outlined" aria-hidden="true">close</span></button>
+    </header>
+    <div class="chat-drawer-body">
+        <div class="chat-conversations" aria-label="Seller conversations">
+            <button class="chat-conversation is-active" type="button" data-chat-conversation="Greenline Home">
+                <span class="chat-store-avatar">GH</span><span><strong>Greenline Home</strong><small>Your desk lamp is on the way.</small></span><time>2m</time>
+            </button>
+            <button class="chat-conversation" type="button" data-chat-conversation="Sundays Market">
+                <span class="chat-store-avatar is-sand">SM</span><span><strong>Sundays Market</strong><small>Thanks for your order!</small></span><time>Yesterday</time>
+            </button>
+        </div>
+        <section class="chat-thread" aria-label="Current conversation">
+            <div class="chat-thread-heading"><span class="chat-store-avatar">GH</span><div><strong>Greenline Home</strong><small>Usually replies within an hour</small></div></div>
+            <div class="chat-messages" data-chat-messages>
+                <p class="chat-date">Today</p>
+                <div class="chat-bubble seller">Hi Mia! Your desk lamp has been handed to the courier.</div>
+                <div class="chat-bubble buyer">Great, thank you for the update!</div>
+            </div>
+            <form class="chat-composer" data-chat-form>
+                <label class="sr-only" for="chat-message">Message seller</label>
+                <input id="chat-message" type="text" placeholder="Write a message..." autocomplete="off" maxlength="240">
+                <button type="submit" aria-label="Send message"><span class="material-symbols-outlined" aria-hidden="true">send</span></button>
+            </form>
+        </section>
+    </div>
+</aside>
+
+<div class="cart-drawer-backdrop" id="cart-drawer-backdrop" data-cart-close hidden></div>
+<aside class="cart-drawer" id="cart-drawer" aria-label="Shopping cart" aria-hidden="true">
+    <header class="cart-drawer-header"><div><p class="eyebrow">Your finds</p><h2>Cart</h2></div><button class="icon-button" type="button" data-cart-close aria-label="Close cart"><span class="material-symbols-outlined" aria-hidden="true">close</span></button></header>
+    <div class="cart-drawer-content" data-cart-content></div>
+</aside>
 
 <dialog id="product-dialog" aria-labelledby="product-title"><button class="dialog-close icon-button" data-close aria-label="Close product details"><span class="material-symbols-outlined" aria-hidden="true">close</span></button><div id="product-detail"></div></dialog>
-<dialog id="info-dialog" aria-labelledby="info-title"><button class="dialog-close icon-button" data-close aria-label="Close"><span class="material-symbols-outlined" aria-hidden="true">close</span></button><h2 id="info-title"></h2><p id="info-copy"></p><a class="button gold" href="{{ url('/login') }}">Go to sign in</a></dialog>
+<dialog id="info-dialog" aria-labelledby="info-title"><button class="dialog-close icon-button" data-close aria-label="Close"><span class="material-symbols-outlined" aria-hidden="true">close</span></button><h2 id="info-title"></h2><div id="info-copy"></div><div class="info-actions" id="info-actions"></div></dialog>
 <script id="home-data" type="application/json">{!! json_encode(['categories' => $homeCategories, 'products' => $homeProducts], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR) !!}</script>
 
 </body>

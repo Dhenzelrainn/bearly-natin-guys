@@ -367,20 +367,9 @@ class BuyerController extends Controller
         return view('products.show', compact('product', 'relatedProducts'));
     }
 
-    public function cart(): View
+    public function cart(): View|RedirectResponse
     {
-        if (! $this->hasBuyerTables()) {
-            return view('buyer.Dashboard.home');
-        }
-
-        $sessionId = session()->getId();
-        $cartItems = CartItem::where('session_id', $sessionId)
-            ->with('product.shop')
-            ->get();
-
-        $total = $cartItems->sum(fn (CartItem $item) => $item->quantity * $item->price);
-
-        return view('buyer.Dashboard.home', compact('cartItems', 'total'));
+        return redirect()->route('home', ['cart' => 'open']);
     }
 
     public function addToCart(Request $request): JsonResponse

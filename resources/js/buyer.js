@@ -44,7 +44,25 @@ const peso = value =>
     }).format(value);
 
 if (typeof document !== 'undefined') {
-    initialize();
+    const bootHomepage = () => {
+        const categoryAccountLink = document.querySelector(
+            'body.bc header nav a[href$="/login"]'
+        );
+
+        if (categoryAccountLink) {
+            categoryAccountLink.href = '/home';
+            categoryAccountLink.innerHTML =
+                '<i class="mi" aria-hidden="true">person</i> Mia Santos';
+        }
+
+        initialize();
+    };
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', bootHomepage, { once: true });
+    } else {
+        bootHomepage();
+    }
 }
 
 function initialize() {
@@ -69,6 +87,96 @@ function initialize() {
 
     const { categories, products } = JSON.parse(dataElement.textContent);
     const $ = id => document.getElementById(id);
+    const chatDrawer = $('chat-drawer');
+    const cartDrawer = $('cart-drawer');
+    const cartStorageKey = 'bearly-preview-cart-v1';
+    const chatMessages = $('chat-messages');
+    let activeConversation = 'Greenline Home';
+
+    const chatStorageKey = conversation =>
+        `bearly-demo-chat-${conversation.toLowerCase().replaceAll(' ', '-')}`;
+
+    const conversations = {
+        'Greenline Home': {
+            initials: 'GH',
+            reply: 'Hi Mia! Your desk lamp has been handed to the courier.',
+            messages: [
+                ['seller', 'Hi Mia! Your desk lamp has been handed to the courier.'],
+                ['buyer', 'Great, thank you for the update!'],
+            ],
+        },
+        'Sundays Market': {
+            initials: 'SM',
+            reply: 'Thanks for your order!',
+            messages: [['seller', 'Thanks for your order!']],
+        },
+    };
+
+    const appendChatMessage = (sender, text, time = '') => {
+        const bubble = document.createElement('div');
+        bubble.className = `chat-bubble ${sender}`;
+        bubble.textContent = text;
+        if (time) bubble.title = time;
+        chatMessages?.append(bubble);
+    };
+
+    const renderChatConversation = conversation => {
+        const details = conversations[conversation];
+        if (!details || !chatMessages) return;
+
+        activeConversation = conversation;
+        document.querySelectorAll('[data-chat-conversation]').forEach(button => {
+            button.classList.toggle(
+                'is-active',
+                button.dataset.chatConversation === conversation
+            );
+        });
+
+        const heading = chatDrawer.querySelector('.chat-thread-heading');
+        heading.querySelector('.chat-store-avatar').textContent = details.initials;
+        heading.querySelector('strong').textContent = conversation;
+        chatMessages.replaceChildren();
+        const date = document.createElement('p');
+        date.className = 'chat-date';
+        date.textContent = 'Today';
+        chatMessages.append(date);
+
+        details.messages.forEach(([sender, text]) => appendChatMessage(sender, text));
+
+        const savedMessages = JSON.parse(
+            window.localStorage.getItem(chatStorageKey(conversation)) || '[]'
+        );
+        savedMessages.forEach(message =>
+            appendChatMessage('buyer', message.text, message.time)
+        );
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    };
+
+    renderChatConversation(activeConversation);
+
+    chatDrawer?.querySelector('[data-chat-form]')?.addEventListener('submit', event => {
+        event.preventDefault();
+
+        const input = event.currentTarget.querySelector('input');
+        const message = input.value.trim();
+
+        if (!message) return;
+
+        const sentMessage = {
+            text: message,
+            time: new Date().toLocaleTimeString('en-PH', {
+                hour: 'numeric',
+                minute: '2-digit',
+            }),
+        };
+        const key = chatStorageKey(activeConversation);
+        const savedMessages = JSON.parse(window.localStorage.getItem(key) || '[]');
+        savedMessages.push(sentMessage);
+        window.localStorage.setItem(key, JSON.stringify(savedMessages));
+        appendChatMessage('buyer', sentMessage.text, sentMessage.time);
+        input.value = '';
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    });
 
     const state = {
         category: '',
@@ -77,7 +185,78 @@ function initialize() {
         limit: 20,
     };
 
+    const notify = message => {
+        let toast = document.getElementById('home-preview-toast');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.id = 'home-preview-toast';
+            toast.className = 'home-preview-toast';
+            document.body.append(toast);
+        }
+        toast.textContent = message;
+        toast.classList.add('is-visible');
+        window.clearTimeout(toast.hideTimer);
+        toast.hideTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 2400);
+    };
+
     let previousFocus = null;
+
+    const readPreviewCart = () => {
+        try {
+            const cart = JSON.parse(window.localStorage.getItem(cartStorageKey) || '[]');
+            return Array.isArray(cart) ? cart : [];
+        } catch {
+            return [];
+        }
+    };
+
+    const writePreviewCart = cart =>
+        window.localStorage.setItem(cartStorageKey, JSON.stringify(cart));
+
+    const setCartOpen = open => {
+        if (!cartDrawer) return;
+
+        cartDrawer.classList.toggle('is-open', open);
+        cartDrawer.setAttribute('aria-hidden', String(!open));
+        $('cart-drawer-backdrop').hidden = !open;
+        document.body.classList.toggle('cart-open', open);
+        document.querySelectorAll('a[href="/cart"]').forEach(link => {
+            link.setAttribute('aria-expanded', String(open));
+        });
+        if (open) renderPreviewCart();
+    };
+
+    const renderPreviewCart = () => {
+        const content = cartDrawer?.querySelector('[data-cart-content]');
+        if (!content) return;
+
+        const cart = readPreviewCart();
+        if (!cart.length) {
+            content.innerHTML = '<div class="cart-empty"><span class="material-symbols-outlined" aria-hidden="true">shopping_cart</span><strong>Your cart is empty</strong><p>Add a find from any category to see it here.</p></div>';
+            return;
+        }
+
+        const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+        content.innerHTML = `<div class="cart-items">${cart.map(item => `<article class="cart-item"><div class="cart-item-photo" aria-hidden="true"></div><div class="cart-item-copy"><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.seller_name || 'Bearly seller')}${item.color ? ` · ${escapeHtml(item.color)}` : ''}</small><div class="cart-item-row"><span>${peso(item.price)}</span><div class="cart-quantity"><button type="button" data-cart-decrease="${escapeHtml(item.key)}" aria-label="Decrease quantity">−</button><span>${item.quantity}</span><button type="button" data-cart-increase="${escapeHtml(item.key)}" aria-label="Increase quantity">+</button></div></div></div><button class="cart-remove" type="button" data-cart-remove="${escapeHtml(item.key)}" aria-label="Remove ${escapeHtml(item.name)}"><span class="material-symbols-outlined" aria-hidden="true">delete</span></button></article>`).join('')}</div><div class="cart-summary"><div><span>Subtotal</span><strong>${peso(total)}</strong></div><button class="button gold" type="button" data-cart-checkout>Proceed to checkout</button><button class="cart-clear" type="button" data-cart-clear>Clear cart</button><p>Preview cart · Checkout will be connected during backend integration.</p></div>`;
+    };
+
+    if (new URLSearchParams(location.search).get('cart') === 'open') {
+        setCartOpen(true);
+    }
+
+    const setChatOpen = open => {
+        if (!chatDrawer) return;
+
+        chatDrawer.classList.toggle('is-open', open);
+        chatDrawer.setAttribute('aria-hidden', String(!open));
+        $('chat-drawer-backdrop').hidden = !open;
+        document.body.classList.toggle('chat-open', open);
+        document.querySelectorAll('[data-info="chat"]').forEach(button =>
+            button.setAttribute('aria-expanded', String(open))
+        );
+
+        if (open) $('chat-message')?.focus();
+    };
 
     const categoryLabel = slug =>
         categories.find(category => category.slug === slug)?.name || '';
@@ -88,7 +267,7 @@ function initialize() {
         return `
             <span
                 class="product-photo"
-                style="--x:${x}%;--y:${y}%"
+                style="--x:${x}%;--y:${y}%;--buyer-product-atlas:url(${escapeHtml(product.atlas || '/images/product-atlas.png')})"
                 role="img"
                 aria-label="${escapeHtml(product.name)}"
             ></span>
@@ -99,7 +278,7 @@ function initialize() {
         <article class="product-card">
             <button
                 class="product-open"
-                data-product="${product.id}"
+                data-product="${escapeHtml(product.id)}"
                 aria-label="View ${escapeHtml(product.name)}"
             >
                 ${photo(product)}
@@ -409,50 +588,106 @@ function initialize() {
 
         if (productButton) {
             const product = products.find(
-                item => item.id === Number(productButton.dataset.product)
+                item => String(item.id) === String(productButton.dataset.product)
             );
 
             if (!product) return;
 
+            const productSizes = product.sizes || [];
+            const productColor = product.color || 'Default';
+            const productSubcategory = product.subcategory || product.category;
+            const productLocation = product.location || 'Metro Manila';
+
             $('product-detail').innerHTML = `
-                <div class="detail-grid">
-                    ${photo(product)}
-                    <div>
-                        <p class="eyebrow">${escapeHtml(product.category)}</p>
+                <article class="home-product-detail">
+                    <section class="home-product-media">
+                        <div class="home-product-image">${photo(product)}</div>
+                        <div class="home-product-media-note"><span class="material-symbols-outlined" aria-hidden="true">verified</span>Product preview</div>
+                    </section>
+                    <section class="home-product-info">
+                        <p class="home-product-category">${escapeHtml(productSubcategory)}</p>
                         <h2 id="product-title">${escapeHtml(product.name)}</h2>
-                        <strong class="product-price">${peso(product.price)}</strong>
-                        <p>${escapeHtml(product.description)}</p>
-                        <p>
-                            Color: ${escapeHtml(product.color)}
-                            ${
-                                product.sizes.length
-                                    ? `<br>Sample sizes: ${product.sizes
-                                        .map(escapeHtml)
-                                        .join(', ')}`
-                                    : ''
-                            }
-                        </p>
-                        <small>
-                            Sample listing · Ordering is not enabled for preview products.
-                        </small>
-                    </div>
-                </div>
+                        <div class="home-social-proof"><span>★ 4.8</span><i></i><span>75 sold</span></div>
+                        <strong class="home-product-price">${peso(product.price)}</strong>
+                        <div class="home-product-facts"><div><span>Condition</span><strong>${escapeHtml(product.condition || 'New')}</strong></div><div><span>Ships from</span><strong>${escapeHtml(productLocation)}</strong></div></div>
+                        <p class="home-product-description">${escapeHtml(product.description)}</p>
+                        <div class="home-product-options"><div class="home-option-heading"><strong>Color</strong><span>${escapeHtml(productColor)}</span></div><button type="button" class="home-color-option is-selected"><span></span>${escapeHtml(productColor)}</button></div>
+                        ${productSizes.length ? `<div class="home-product-options"><div class="home-option-heading"><strong>Size</strong><span>Choose an option</span></div><div class="home-option-list">${productSizes.map((size, index) => `<button type="button" class="home-size-option${index === 0 ? ' is-selected' : ''}" data-home-size="${escapeHtml(size)}">${escapeHtml(size)}</button>`).join('')}</div></div>` : ''}
+                        <div class="home-product-options"><div class="home-option-heading"><strong>Quantity</strong><span>10 pieces available</span></div><div class="home-quantity"><button type="button" data-home-minus aria-label="Decrease quantity">−</button><span data-home-quantity>1</span><button type="button" data-home-plus aria-label="Increase quantity">+</button></div></div>
+                        <div class="home-product-actions"><button type="button" class="button outline home-add-cart" data-home-add-cart><span class="material-symbols-outlined" aria-hidden="true">shopping_cart</span>Add to Cart</button><button type="button" class="button gold" data-home-buy-now>Buy Now</button></div>
+                        <small class="home-product-note">Preview product · Availability and seller details are illustrative.</small>
+                    </section>
+                </article>
             `;
 
             $('product-dialog').showModal();
+
+            let selectedSize = productSizes[0] || '';
+            let quantity = 1;
+            const stock = 10;
+            const quantityNode = $('product-detail').querySelector('[data-home-quantity]');
+            const updateQuantity = () => {
+                quantityNode.textContent = String(quantity);
+            };
+
+            $('product-detail').querySelectorAll('[data-home-size]').forEach(button => {
+                button.addEventListener('click', () => {
+                    selectedSize = button.dataset.homeSize;
+                    $('product-detail').querySelectorAll('[data-home-size]').forEach(option => option.classList.toggle('is-selected', option === button));
+                });
+            });
+            $('product-detail').querySelector('[data-home-minus]').addEventListener('click', () => {
+                quantity = Math.max(1, quantity - 1);
+                updateQuantity();
+            });
+            $('product-detail').querySelector('[data-home-plus]').addEventListener('click', () => {
+                quantity = Math.min(stock, quantity + 1);
+                updateQuantity();
+            });
+            $('product-detail').querySelector('[data-home-add-cart]').addEventListener('click', event => {
+                const cart = readPreviewCart();
+                const key = [product.id, productColor, selectedSize].join('-');
+                const existing = cart.find(item => item.key === key);
+                if (existing) {
+                    existing.quantity = Math.min(stock, existing.quantity + quantity);
+                } else {
+                    cart.push({ key, product_id: product.id, name: product.name, price: product.price, color: productColor, size: selectedSize, quantity, photo: product.photo, seller_name: 'Bearly seller', frontend_preview: true });
+                }
+                writePreviewCart(cart);
+                event.currentTarget.innerHTML = '<span class="material-symbols-outlined" aria-hidden="true">check</span>Added to Cart';
+                notify(`${quantity} × ${product.name} added to your cart.`);
+                setTimeout(() => {
+                    if (event.currentTarget.isConnected) event.currentTarget.innerHTML = '<span class="material-symbols-outlined" aria-hidden="true">shopping_cart</span>Add to Cart';
+                }, 1400);
+            });
+            $('product-detail').querySelector('[data-home-buy-now]').addEventListener('click', () => {
+                notify('Buy Now preview: your item is ready for checkout integration.');
+            });
         }
 
         const info = event.target.closest('[data-info]');
 
         if (info) {
+            if (info.dataset.info === 'chat') {
+                setChatOpen(true);
+                return;
+            }
+
             const copy = {
                 orders: [
                     'Your orders',
-                    'Order tracking will connect to your buyer account in the next integration. This homepage preview does not create or display real orders.',
+                    `<div class="demo-order-list"><article class="demo-order"><div><strong>Order #BR-1048</strong><span>Wireless headphones · 1 item</span></div><strong class="demo-order-status is-shipping">On the way</strong></article><article class="demo-order"><div><strong>Order #BR-1032</strong><span>Desk lamp · 1 item</span></div><strong class="demo-order-status is-complete">Delivered</strong></article></div>`,
+                    '<a class="button gold" href="#results">Continue shopping</a>',
                 ],
                 chat: [
                     'Chat with sellers',
-                    'Seller messaging will connect to your buyer account. No messages are sent from this homepage preview.',
+                    '<div class="demo-empty"><span class="material-symbols-outlined" aria-hidden="true">forum</span><strong>No new messages</strong><p>Your seller conversations will appear here.</p></div>',
+                    '<button class="button gold" type="button" data-demo-action="chat">Start a conversation</button>',
+                ],
+                account: [
+                    'Mia Santos',
+                    '<div class="demo-account"><div class="demo-avatar">MS</div><div><strong>mia.santos@example.com</strong><span>Demo buyer account</span></div></div><div class="account-links"><button type="button" data-demo-action="profile"><span class="material-symbols-outlined" aria-hidden="true">person</span>Profile details</button><button type="button" data-demo-action="addresses"><span class="material-symbols-outlined" aria-hidden="true">location_on</span>Saved addresses</button><button type="button" data-demo-action="logout"><span class="material-symbols-outlined" aria-hidden="true">logout</span>Reset demo account</button></div>',
+                    '',
                 ],
                 about: [
                     'A find for everyone',
@@ -466,8 +701,70 @@ function initialize() {
 
             if (copy) {
                 $('info-title').textContent = copy[0];
-                $('info-copy').textContent = copy[1];
+                $('info-copy').innerHTML = copy[1];
+                $('info-actions').innerHTML = copy[2] || '';
                 $('info-dialog').showModal();
+            }
+        }
+
+        const cartLink = event.target.closest('a[href="/cart"]');
+        if (cartLink) {
+            event.preventDefault();
+            setCartOpen(true);
+        }
+
+        const cartClose = event.target.closest('[data-cart-close]');
+        if (cartClose) setCartOpen(false);
+
+        const cart = readPreviewCart();
+        const cartItemKey = event.target.closest('[data-cart-increase], [data-cart-decrease], [data-cart-remove]')?.dataset;
+        if (cartItemKey) {
+            const key = cartItemKey.cartIncrease || cartItemKey.cartDecrease || cartItemKey.cartRemove;
+            const item = cart.find(entry => entry.key === key);
+            if (item) {
+                if (cartItemKey.cartIncrease) item.quantity += 1;
+                if (cartItemKey.cartDecrease) item.quantity = Math.max(1, item.quantity - 1);
+                if (cartItemKey.cartRemove) cart.splice(cart.indexOf(item), 1);
+                writePreviewCart(cart);
+                renderPreviewCart();
+            }
+        }
+
+        if (event.target.closest('[data-cart-clear]')) {
+            writePreviewCart([]);
+            renderPreviewCart();
+        }
+
+        if (event.target.closest('[data-cart-checkout]')) {
+            window.alert('Checkout preview: your cart is ready for the backend integration.');
+        }
+
+        const chatClose = event.target.closest('[data-chat-close]');
+
+        if (chatClose) {
+            setChatOpen(false);
+        }
+
+        const chatConversation = event.target.closest('[data-chat-conversation]');
+
+        if (chatConversation) {
+            renderChatConversation(chatConversation.dataset.chatConversation);
+        }
+
+        const demoAction = event.target.closest('[data-demo-action]');
+
+        if (demoAction) {
+            const messages = {
+                profile: ['Profile details', 'Mia Santos\nmia.santos@example.com\nMobile number: +63 917 000 1048'],
+                addresses: ['Saved addresses', 'Home\nQuezon City, Metro Manila\nDefault delivery address'],
+                chat: ['Chat with sellers', 'This static demo is ready for the real messaging integration.'],
+                logout: ['Demo account reset', 'The static buyer account stays available so you can continue reviewing the homepage functions.'],
+            }[demoAction.dataset.demoAction];
+
+            if (messages) {
+                $('info-title').textContent = messages[0];
+                $('info-copy').textContent = messages[1];
+                $('info-actions').innerHTML = '<button class="button gold" type="button" data-close>Close</button>';
             }
         }
 
@@ -1043,7 +1340,11 @@ function initializeBuyerProductsPage() {
 }
 
 if (typeof document !== 'undefined') {
-    initializeBuyerProductsPage();
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initializeBuyerProductsPage, { once: true });
+    } else {
+        initializeBuyerProductsPage();
+    }
 }
 
 
@@ -1189,11 +1490,16 @@ const price = value =>
         maximumFractionDigits: 0,
     }).format(value);
 
-if (
-    typeof document !== 'undefined' &&
-    document.getElementById('bc-data')
-) {
-    init();
+if (typeof document !== 'undefined') {
+    const bootCategory = () => {
+        if (document.getElementById('bc-data')) init();
+    };
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', bootCategory, { once: true });
+    } else {
+        bootCategory();
+    }
 }
 
 function init() {
@@ -1214,6 +1520,50 @@ function init() {
 
     let limit = 20;
     let saved = [];
+
+    const categoryChatKey = 'bearly-category-chat-v1';
+
+    const setupCategoryChat = () => {
+        const copy = $('bc-info-copy');
+        if (!copy) return;
+
+        const stored = JSON.parse(localStorage.getItem(categoryChatKey) || '[]');
+        copy.innerHTML = `
+            <div class="bc-chat-conversations">
+                <button type="button" class="bc-chat-conversation is-active" data-bc-chat-seller="Greenline Home"><strong>Greenline Home</strong><small>Your desk lamp is on the way.</small></button>
+                <button type="button" class="bc-chat-conversation" data-bc-chat-seller="Sundays Market"><strong>Sundays Market</strong><small>Thanks for your order!</small></button>
+            </div>
+            <div class="bc-chat-thread" data-bc-chat-thread>
+                <p class="bc-chat-message seller">Hi Mia! Your desk lamp has been handed to the courier.</p>
+                <p class="bc-chat-message buyer">Great, thank you for the update!</p>
+                ${stored.map(message => `<p class="bc-chat-message buyer" title="${message.time}">${categoryEscapeHtml(message.text)}</p>`).join('')}
+            </div>
+            <form class="bc-chat-form" data-bc-chat-form><input type="text" placeholder="Write a message..." maxlength="240" aria-label="Message seller"><button class="button gold" type="submit">Send</button></form>
+        `;
+
+        copy.querySelectorAll('[data-bc-chat-seller]').forEach(button => {
+            button.addEventListener('click', () => {
+                copy.querySelectorAll('[data-bc-chat-seller]').forEach(item => item.classList.toggle('is-active', item === button));
+            });
+        });
+
+        copy.querySelector('[data-bc-chat-form]')?.addEventListener('submit', event => {
+            event.preventDefault();
+            const input = event.currentTarget.querySelector('input');
+            const text = input.value.trim();
+            if (!text) return;
+
+            const message = { text, time: new Date().toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' }) };
+            stored.push(message);
+            localStorage.setItem(categoryChatKey, JSON.stringify(stored));
+            const bubble = document.createElement('p');
+            bubble.className = 'bc-chat-message buyer';
+            bubble.textContent = text;
+            bubble.title = message.time;
+            copy.querySelector('[data-bc-chat-thread]').append(bubble);
+            input.value = '';
+        });
+    };
 
     try {
         const stored = JSON.parse(
@@ -3350,11 +3700,11 @@ function init() {
                 const info = {
                     orders: [
                         'Your orders',
-                        'Order tracking will be connected to approved buyer accounts during backend integration. No orders are created in this preview.',
+                        '<div class="bc-order-list"><article><div><strong>Order #BR-1048</strong><small>Wireless headphones · 1 item</small></div><b>On the way</b></article><article><div><strong>Order #BR-1032</strong><small>Desk lamp · 1 item</small></div><b>Delivered</b></article></div>',
                     ],
                     chat: [
                         'Chat with sellers',
-                        'Messaging will be connected to buyer and seller accounts. This preview does not send messages.',
+                        '<span class="bc-chat-placeholder">Seller conversations</span>',
                     ],
                     help: [
                         'Explore Bearly',
@@ -3371,9 +3721,13 @@ function init() {
                         .textContent =
                         info[0];
 
-                    $('bc-info-copy')
-                        .textContent =
-                        info[1];
+                    $('bc-info-copy').innerHTML = info[1];
+                    const infoAction = $('bc-info-dialog').querySelector('a.button');
+                    infoAction.hidden = true;
+
+                    if (button.dataset.info === 'chat') {
+                        setupCategoryChat();
+                    }
 
                     $('bc-info-dialog')
                         .showModal();

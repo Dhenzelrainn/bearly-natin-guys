@@ -1658,6 +1658,12 @@ button:disabled {
     text-align: center;
 }
 
+.demo-message.is-error {
+    border-color: #f1b8ae;
+    background: #fff0ed;
+    color: var(--error);
+}
+
 .demo-message[hidden] {
     display: none;
 }

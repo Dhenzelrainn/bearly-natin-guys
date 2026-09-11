@@ -14,6 +14,9 @@ export default defineConfig({
 
                 'resources/css/seller.css',
                 'resources/js/seller.js',
+                'resources/css/seller-polish.css',
+                'resources/css/seller-legibility.css',
+                'resources/js/seller-polish.js',
 
                 'resources/css/logistics.css',
                 'resources/js/logistics.js',
@@ -27,7 +30,7 @@ export default defineConfig({
 
                 'resources/css/landing.css',
                 'resources/js/landing.js',
-                
+
                 'resources/css/about.css',
                 'resources/css/contact.css',
                 'resources/js/contact.js'

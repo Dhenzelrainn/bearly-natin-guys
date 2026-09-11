@@ -17,6 +17,11 @@ Route::view('/register', 'auth.register')->name('register');
 Route::get('/forgot-password', fn () => redirect()->route('login'))
     ->name('password.request');
 
+Route::view('/', 'landing-page.landingpage')->name('shop.home');
+Route::redirect('/landing', '/')->name('landing');
+Route::view('/about', 'landing-page.about.about')->name('about');
+Route::view('/contact', 'landing-page.contact.contact')->name('contact');
+
 /*
 |--------------------------------------------------------------------------
 | PSGC API Routes

@@ -128,21 +128,63 @@
                 <div class="product-form-section-heading"><span class="product-section-icon"><i data-lucide="boxes"></i></span><div><h3>Inventory and Variations</h3><p>Track stock and define optional product choices.</p></div></div>
                 <div class="product-form-grid product-inventory-grid">
                     <label class="seller-field"><span>SKU</span><input name="sku" value="{{ old('sku', $product['sku']) }}" maxlength="60" placeholder="Automatically generated if empty">@error('sku')<small class="field-error">{{ $message }}</small>@enderror</label>
-                    <label class="seller-field"><span>Total Stock <em>*</em></span><input type="number" name="stock" value="{{ old('stock', $product['stock']) }}" min="0" required>@error('stock')<small class="field-error">{{ $message }}</small>@enderror</label>
+                    <label class="seller-field"><span>Total Stock <em>*</em></span><input type="number" name="stock" value="{{ old('stock', $product['stock']) }}" min="0" data-product-total-stock required>@error('stock')<small class="field-error">{{ $message }}</small>@enderror</label>
                     <label class="seller-field"><span>Low-stock Alert At <em>*</em></span><input type="number" name="low_stock_threshold" value="{{ old('low_stock_threshold', $product['low_stock_threshold']) }}" min="0" required><small>You will be alerted when stock reaches this quantity.</small>@error('low_stock_threshold')<small class="field-error">{{ $message }}</small>@enderror</label>
                 </div>
                 <div class="variation-groups">
                     <div class="variation-group">
                         <div><strong>Option Group 1</strong><small>Example: Size</small></div>
-                        <label class="seller-field"><span>Option Name</span><input name="option_one_name" value="{{ old('option_one_name', $product['option_one_name']) }}" placeholder="e.g. Size"></label>
-                        <label class="seller-field"><span>Available Values</span><input name="option_one_values" value="{{ old('option_one_values', $product['option_one_values']) }}" placeholder="e.g. Small, Medium, Large"><small>Separate each value with a comma.</small></label>
+                        <label class="seller-field"><span>Option Name</span><input name="option_one_name" value="{{ old('option_one_name', $product['option_one_name']) }}" placeholder="e.g. Size" data-variant-option-one-name></label>
+                        <label class="seller-field"><span>Available Values</span><input name="option_one_values" value="{{ old('option_one_values', $product['option_one_values']) }}" placeholder="e.g. Small, Medium, Large" data-variant-option-one-values><small>Separate each value with a comma.</small></label>
                     </div>
                     <div class="variation-group">
                         <div><strong>Option Group 2</strong><small>Example: Color, Material, or Storage</small></div>
-                        <label class="seller-field"><span>Option Name</span><input name="option_two_name" value="{{ old('option_two_name', $product['option_two_name']) }}" placeholder="e.g. Color"></label>
-                        <label class="seller-field"><span>Available Values</span><input name="option_two_values" value="{{ old('option_two_values', $product['option_two_values']) }}" placeholder="e.g. Black, White, Olive"><small>Optional and adaptable to your approved product category.</small></label>
+                        <label class="seller-field"><span>Option Name</span><input name="option_two_name" value="{{ old('option_two_name', $product['option_two_name']) }}" placeholder="e.g. Color" data-variant-option-two-name></label>
+                        <label class="seller-field"><span>Available Values</span><input name="option_two_values" value="{{ old('option_two_values', $product['option_two_values']) }}" placeholder="e.g. Black, White, Olive" data-variant-option-two-values><small>Optional and adaptable to your approved product category.</small></label>
                     </div>
                 </div>
+
+                <section class="variant-matrix-card" data-variant-matrix>
+                    <div class="variant-matrix-heading">
+                        <div>
+                            <span class="section-kicker">Variant inventory</span>
+                            <h4>Stock per variation</h4>
+                            <p>Generate sellable combinations so each size/color can have its own SKU, price, and stock.</p>
+                        </div>
+                        <button class="seller-secondary-button" type="button" data-generate-variants>
+                            <i data-lucide="git-branch-plus"></i> Generate variants
+                        </button>
+                    </div>
+
+                    <div class="variant-matrix-empty" data-variant-empty>
+                        <i data-lucide="rows-3"></i>
+                        <strong>No variant rows yet</strong>
+                        <span>Add option values above, then generate variants. If the product has no variants, keep using Total Stock.</span>
+                    </div>
+
+                    <div class="variant-matrix-table-wrap" data-variant-table-wrap hidden>
+                        <table class="variant-matrix-table">
+                            <thead>
+                                <tr>
+                                    <th>Variation</th>
+                                    <th>Variant SKU</th>
+                                    <th>Price (₱)</th>
+                                    <th>Stock</th>
+                                </tr>
+                            </thead>
+                            <tbody data-variant-rows></tbody>
+                        </table>
+                    </div>
+
+                    <footer class="variant-matrix-footer">
+                        <span><i data-lucide="info"></i> When variants exist, Total Stock is automatically calculated from all variant rows.</span>
+                        <strong data-variant-total>0 units</strong>
+                    </footer>
+                @error('variants')<small class="field-error">{{ $message }}</small>@enderror
+                @error('variants.*.stock')<small class="field-error">{{ $message }}</small>@enderror
+                </section>
+
+                <script type="application/json" data-existing-variants>@json(old('variants', $product['variants'] ?? []))</script>
             </section>
         </div>
 
@@ -155,7 +197,7 @@
                     <span><i data-lucide="circle-check-big"></i>Product information</span>
                     <span><i data-lucide="circle-check-big"></i>Pricing and stock</span>
                     <span><i data-lucide="shield-check"></i>Category matches registered business</span>
-                    <span><i data-lucide="circle"></i>Images and variations are optional</span>
+                    <span><i data-lucide="git-branch"></i>Variant stock is tracked per combination when variations are used</span>
                 </div>
                 <button class="seller-primary-button product-publish-button" type="submit" name="intent" value="publish"><i data-lucide="send"></i>{{ $isEdit ? 'Publish Changes' : 'Publish Product' }}</button>
                 <button class="draft-button product-draft-button" type="submit" name="intent" value="draft"><i data-lucide="save"></i>Save as Draft</button>

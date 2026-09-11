@@ -11,7 +11,7 @@
 <section class="return-role-flow" aria-label="Return case ownership">
     <div><span>1</span><strong>Buyer</strong><small>Submits request & evidence</small></div>
     <i data-lucide="arrow-right"></i>
-    <div class="is-active"><span>2</span><strong>Seller</strong><small>Responds & adds evidence</small></div>
+    <div><span>2</span><strong>Seller</strong><small>Responds & adds evidence</small></div>
     <i data-lucide="arrow-right"></i>
     <div><span>3</span><strong>Platform / Admin</strong><small>Reviews disputes / decision</small></div>
     <i data-lucide="arrow-right"></i>

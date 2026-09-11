@@ -88,6 +88,173 @@ document.addEventListener('DOMContentLoaded', () => {
         updateCommissionPreview();
     }
 
+
+    /* Product variant matrix: SKU / price / stock per option combination. */
+    const variantMatrix = productEditor?.querySelector('[data-variant-matrix]');
+    if (productEditor && variantMatrix) {
+        const optionOneName = productEditor.querySelector('[data-variant-option-one-name]');
+        const optionOneValues = productEditor.querySelector('[data-variant-option-one-values]');
+        const optionTwoName = productEditor.querySelector('[data-variant-option-two-name]');
+        const optionTwoValues = productEditor.querySelector('[data-variant-option-two-values]');
+        const totalStockInput = productEditor.querySelector('[data-product-total-stock]');
+        const basePriceInput = productEditor.querySelector('[data-product-price]');
+        const rowsHost = variantMatrix.querySelector('[data-variant-rows]');
+        const tableWrap = variantMatrix.querySelector('[data-variant-table-wrap]');
+        const emptyState = variantMatrix.querySelector('[data-variant-empty]');
+        const totalNode = variantMatrix.querySelector('[data-variant-total]');
+        const generateButton = variantMatrix.querySelector('[data-generate-variants]');
+        const existingScript = productEditor.querySelector('[data-existing-variants]');
+
+        const splitValues = (input) => (input?.value || '')
+            .split(',')
+            .map((value) => value.trim())
+            .filter(Boolean)
+            .filter((value, index, list) => list.indexOf(value) === index);
+
+        const combinationLabels = () => {
+            const first = splitValues(optionOneValues);
+            const second = splitValues(optionTwoValues);
+
+            if (!first.length && !second.length) return [];
+            if (first.length && !second.length) return first;
+            if (!first.length && second.length) return second;
+
+            return first.flatMap((one) => second.map((two) => `${one} / ${two}`));
+        };
+
+        const slugSku = (label) => label
+            .toUpperCase()
+            .replace(/[^A-Z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '')
+            .slice(0, 28);
+
+        const updateVariantTotal = () => {
+            const stockInputs = [...rowsHost.querySelectorAll('[data-variant-stock]')];
+            const hasVariants = stockInputs.length > 0;
+            const total = stockInputs.reduce((sum, input) => sum + Math.max(0, Number(input.value || 0)), 0);
+
+            if (totalNode) totalNode.textContent = `${total} ${total === 1 ? 'unit' : 'units'}`;
+
+            if (totalStockInput) {
+                if (hasVariants) {
+                    totalStockInput.value = String(total);
+                    totalStockInput.readOnly = true;
+                    totalStockInput.setAttribute('aria-readonly', 'true');
+                    totalStockInput.title = 'Calculated from the variant stock rows below.';
+                } else {
+                    totalStockInput.readOnly = false;
+                    totalStockInput.removeAttribute('aria-readonly');
+                    totalStockInput.removeAttribute('title');
+                }
+            }
+        };
+
+        const renderVariants = (variants) => {
+            rowsHost.replaceChildren();
+
+            variants.forEach((variant, index) => {
+                const row = document.createElement('tr');
+
+                const labelCell = document.createElement('td');
+                const labelStrong = document.createElement('strong');
+                labelStrong.textContent = variant.label || `Variant ${index + 1}`;
+                labelCell.appendChild(labelStrong);
+
+                const hiddenLabel = document.createElement('input');
+                hiddenLabel.type = 'hidden';
+                hiddenLabel.name = `variants[${index}][label]`;
+                hiddenLabel.value = variant.label || `Variant ${index + 1}`;
+                labelCell.appendChild(hiddenLabel);
+
+                const skuCell = document.createElement('td');
+                const skuInput = document.createElement('input');
+                skuInput.type = 'text';
+                skuInput.name = `variants[${index}][sku]`;
+                skuInput.value = variant.sku || `VAR-${slugSku(variant.label || String(index + 1))}`;
+                skuInput.maxLength = 80;
+                skuInput.placeholder = 'Variant SKU';
+                skuCell.appendChild(skuInput);
+
+                const priceCell = document.createElement('td');
+                const priceInput = document.createElement('input');
+                priceInput.type = 'number';
+                priceInput.name = `variants[${index}][price]`;
+                priceInput.min = '0';
+                priceInput.step = '0.01';
+                priceInput.value = variant.price ?? basePriceInput?.value ?? '0';
+                priceInput.placeholder = '0.00';
+                priceCell.appendChild(priceInput);
+
+                const stockCell = document.createElement('td');
+                const stockInput = document.createElement('input');
+                stockInput.type = 'number';
+                stockInput.name = `variants[${index}][stock]`;
+                stockInput.min = '0';
+                stockInput.value = variant.stock ?? 0;
+                stockInput.required = true;
+                stockInput.dataset.variantStock = '';
+                stockInput.addEventListener('input', updateVariantTotal);
+                stockCell.appendChild(stockInput);
+
+                row.append(labelCell, skuCell, priceCell, stockCell);
+                rowsHost.appendChild(row);
+            });
+
+            const hasRows = variants.length > 0;
+            if (tableWrap) tableWrap.hidden = !hasRows;
+            if (emptyState) emptyState.hidden = hasRows;
+            updateVariantTotal();
+
+            if (window.lucide?.createIcons) window.lucide.createIcons();
+        };
+
+        let existingVariants = [];
+        try {
+            existingVariants = JSON.parse(existingScript?.textContent || '[]');
+            if (!Array.isArray(existingVariants)) existingVariants = [];
+        } catch (_) {
+            existingVariants = [];
+        }
+
+        if (existingVariants.length) {
+            renderVariants(existingVariants);
+        } else {
+            updateVariantTotal();
+        }
+
+        generateButton?.addEventListener('click', () => {
+            const labels = combinationLabels();
+            const currentByLabel = new Map(
+                [...rowsHost.querySelectorAll('tr')].map((row) => {
+                    const label = row.querySelector('input[type="hidden"]')?.value || '';
+                    return [label, {
+                        label,
+                        sku: row.querySelector('input[name*="[sku]"]')?.value || '',
+                        price: row.querySelector('input[name*="[price]"]')?.value || '',
+                        stock: row.querySelector('input[name*="[stock]"]')?.value || 0,
+                    }];
+                })
+            );
+
+            const generated = labels.map((label) => currentByLabel.get(label) || {
+                label,
+                sku: `VAR-${slugSku(label)}`,
+                price: basePriceInput?.value || 0,
+                stock: 0,
+            });
+
+            renderVariants(generated);
+        });
+
+        basePriceInput?.addEventListener('change', () => {
+            const price = basePriceInput.value || '0';
+            rowsHost.querySelectorAll('input[name*="[price]"]').forEach((input) => {
+                if (!input.value) input.value = price;
+            });
+        });
+    }
+
+
     /* Rich order modal: use the row as the source of preview details. */
     const orderModal = document.querySelector('[data-modal="order-details"]');
     const fillOrderModal = (trigger) => {

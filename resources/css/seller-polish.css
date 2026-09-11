@@ -392,3 +392,370 @@ a.order-row-action { text-decoration: none; }
 .report-date-range label { display:grid; gap:4px; color:var(--seller-muted); font-size:7px; font-weight:600; }
 .report-date-range input { min-height:39px; padding:0 10px; border:1px solid #ddd4cb; border-radius:8px; color:var(--seller-text); background:#fff; font:inherit; font-size:9px; }
 @media (max-width:600px) { .report-date-range { width:100%; }.report-date-range label { flex:1; }.report-date-range input { width:100%; box-sizing:border-box; } }
+
+
+/* =========================================================
+   Seller Center 10/10 refinements
+   ========================================================= */
+
+/* Workflow ownership should read as status context, not as a decorative cream card. */
+.order-flow-strip > div,
+.return-role-flow > div {
+    background: #faf8f5;
+    border: 1px solid transparent;
+}
+
+.order-flow-strip > div.is-seller {
+    background: #faf8f5;
+    border-color: #e2d3bf;
+    box-shadow: inset 3px 0 0 #b17b35;
+}
+
+.return-role-flow > div.is-active {
+    background: #faf8f5;
+    border-color: #e2d3bf;
+    box-shadow: inset 3px 0 0 #b17b35;
+}
+
+/* Seller health */
+.seller-health-panel {
+    margin-top: 18px;
+    overflow: hidden;
+}
+
+.seller-health-heading {
+    align-items: center;
+}
+
+.seller-health-heading p {
+    margin: 4px 0 0;
+    color: var(--seller-muted);
+}
+
+.seller-health-score {
+    min-width: 132px;
+    padding: 10px 12px;
+    border: 1px solid #dce7d5;
+    border-radius: 12px;
+    text-align: right;
+    background: #f7fbf4;
+}
+
+.seller-health-score span,
+.seller-health-score strong {
+    display: block;
+}
+
+.seller-health-score span {
+    color: #567047;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.seller-health-score strong {
+    margin-top: 3px;
+    color: var(--seller-brown-950);
+    font-size: 20px;
+}
+
+.seller-health-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 16px;
+}
+
+.seller-health-item {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 11px;
+    min-width: 0;
+    padding: 14px;
+    border: 1px solid #eee7df;
+    border-radius: 12px;
+    background: #fff;
+}
+
+.seller-health-icon {
+    display: grid;
+    width: 38px;
+    height: 38px;
+    place-items: center;
+    border-radius: 10px;
+    background: #f4f0eb;
+    color: var(--seller-brown-700);
+}
+
+.seller-health-icon svg {
+    width: 18px;
+    height: 18px;
+}
+
+.seller-health-item > div > span,
+.seller-health-item > div > strong,
+.seller-health-item > div > small {
+    display: block;
+}
+
+.seller-health-item > div > span {
+    color: var(--seller-muted);
+    font-size: 11.5px;
+}
+
+.seller-health-item > div > strong {
+    margin: 3px 0 4px;
+    color: var(--seller-brown-950);
+    font-size: 14px;
+}
+
+.seller-health-item > div > small {
+    color: #817870;
+    font-size: 11px;
+    line-height: 1.45;
+}
+
+.seller-health-item.health-success .seller-health-icon {
+    color: #4e6d40;
+    background: #eef5e9;
+}
+
+.seller-health-item.health-warning .seller-health-icon {
+    color: #8b5b1e;
+    background: #fff2de;
+}
+
+.seller-health-item.health-info .seller-health-icon {
+    color: #4e6d79;
+    background: #edf5f7;
+}
+
+.seller-health-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid #eee7df;
+}
+
+.seller-health-footer > span {
+    display: inline-flex;
+    align-items: flex-start;
+    gap: 7px;
+    color: var(--seller-muted);
+    font-size: 11.5px;
+    line-height: 1.5;
+}
+
+.seller-health-footer > span svg,
+.seller-health-footer a svg {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 auto;
+}
+
+.seller-health-footer a {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex: 0 0 auto;
+    color: var(--seller-brown-700);
+    font-size: 12px;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+/* Variant inventory */
+.variant-matrix-card {
+    margin-top: 16px;
+    padding: 16px;
+    border: 1px solid #e7dfd6;
+    border-radius: 12px;
+    background: #fbfaf8;
+}
+
+.variant-matrix-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 18px;
+}
+
+.variant-matrix-heading h4 {
+    margin: 3px 0;
+    color: var(--seller-brown-950);
+    font-size: 15px;
+}
+
+.variant-matrix-heading p {
+    margin: 0;
+    color: var(--seller-muted);
+    font-size: 11.5px;
+    line-height: 1.5;
+}
+
+.variant-matrix-empty {
+    display: flex;
+    min-height: 120px;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    margin-top: 14px;
+    padding: 18px;
+    border: 1px dashed #d9d0c7;
+    border-radius: 10px;
+    color: var(--seller-muted);
+    text-align: center;
+    background: #fff;
+}
+
+.variant-matrix-empty svg {
+    width: 24px;
+    height: 24px;
+}
+
+.variant-matrix-empty strong {
+    color: var(--seller-brown-950);
+    font-size: 13px;
+}
+
+.variant-matrix-empty span {
+    max-width: 560px;
+    font-size: 11.5px;
+    line-height: 1.5;
+}
+
+.variant-matrix-table-wrap {
+    overflow-x: auto;
+    margin-top: 14px;
+    border: 1px solid #e7dfd6;
+    border-radius: 10px;
+    background: #fff;
+}
+
+.variant-matrix-table {
+    width: 100%;
+    min-width: 720px;
+    border-collapse: collapse;
+}
+
+.variant-matrix-table th {
+    padding: 11px 12px;
+    border-bottom: 1px solid #e7dfd6;
+    color: #665d56;
+    background: #fcfaf7;
+    font-size: 11px;
+    text-align: left;
+}
+
+.variant-matrix-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #eee8e2;
+    vertical-align: middle;
+}
+
+.variant-matrix-table tr:last-child td {
+    border-bottom: 0;
+}
+
+.variant-matrix-table td strong {
+    color: var(--seller-brown-950);
+    font-size: 12.5px;
+}
+
+.variant-matrix-table input {
+    width: 100%;
+    min-height: 38px;
+    padding: 0 10px;
+    border: 1px solid #dcd3ca;
+    border-radius: 8px;
+    color: var(--seller-text);
+    background: #fff;
+    font: inherit;
+    font-size: 12px;
+}
+
+.variant-matrix-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 15px;
+    margin-top: 11px;
+}
+
+.variant-matrix-footer span {
+    display: inline-flex;
+    align-items: flex-start;
+    gap: 6px;
+    color: var(--seller-muted);
+    font-size: 11px;
+    line-height: 1.45;
+}
+
+.variant-matrix-footer span svg {
+    width: 15px;
+    height: 15px;
+    flex: 0 0 auto;
+    color: var(--seller-olive);
+}
+
+.variant-matrix-footer strong {
+    color: var(--seller-brown-950);
+    white-space: nowrap;
+}
+
+/* Report date filters */
+.report-date-form {
+    flex-wrap: wrap;
+}
+
+.report-date-form .seller-secondary-button {
+    align-self: end;
+}
+
+.report-range-preview-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 7px;
+    margin: -8px 0 18px;
+    padding: 10px 12px;
+    border-radius: 9px;
+    color: var(--seller-muted);
+    background: #f8f6f3;
+    font-size: 11.5px;
+    line-height: 1.5;
+}
+
+.report-range-preview-note svg {
+    width: 15px;
+    height: 15px;
+    flex: 0 0 auto;
+    color: var(--seller-olive);
+}
+
+@media (max-width: 1150px) {
+    .seller-health-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 700px) {
+    .seller-health-heading,
+    .seller-health-footer,
+    .variant-matrix-heading,
+    .variant-matrix-footer {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .seller-health-score {
+        width: 100%;
+        text-align: left;
+    }
+
+    .seller-health-grid {
+        grid-template-columns: 1fr;
+    }
+}

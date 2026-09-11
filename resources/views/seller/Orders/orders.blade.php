@@ -16,11 +16,11 @@
 </div>
 
 <section class="order-flow-strip" aria-label="Order lifecycle ownership">
-    <div class="is-seller"><strong>Seller</strong><span>PLACED → CONFIRMED → PREPARING → READY FOR PICKUP</span></div>
+    <div><strong>Seller</strong><span>PLACED → CONFIRMED → PREPARING → READY FOR PICKUP</span></div>
     <i data-lucide="arrow-right"></i>
-    <div><strong>Logistics / Courier</strong><span>PICKED UP → SORTING → RIDER → DELIVERY</span></div>
+    <div><strong>Logistics / Courier</strong><span>PICKED_UP → AT_SORTING_CENTER → SORTED → ASSIGNED_TO_RIDER → OUT_FOR_DELIVERY</span></div>
     <i data-lucide="arrow-right"></i>
-    <div><strong>Buyer</strong><span>DELIVERED → confirms receipt → COMPLETED</span></div>
+    <div><strong>Buyer</strong><span>DELIVERED → buyer confirms receipt → COMPLETED</span></div>
 </section>
 
 <section class="order-queue" aria-label="Orders requiring action">

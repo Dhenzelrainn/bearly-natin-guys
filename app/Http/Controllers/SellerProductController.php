@@ -52,6 +52,7 @@ class SellerProductController extends Controller
             'option_one_values' => '',
             'option_two_name' => '',
             'option_two_values' => '',
+            'variants' => [],
             'status' => 'Draft',
             'previous_status' => 'Active',
             'image' => null,
@@ -77,6 +78,11 @@ class SellerProductController extends Controller
             'option_one_values' => ['nullable', 'string', 'max:250'],
             'option_two_name' => ['nullable', 'string', 'max:40'],
             'option_two_values' => ['nullable', 'string', 'max:250'],
+            'variants' => ['nullable', 'array', 'max:100'],
+            'variants.*.label' => ['required_with:variants', 'string', 'max:120'],
+            'variants.*.sku' => ['nullable', 'string', 'max:80'],
+            'variants.*.price' => ['nullable', 'numeric', 'min:0'],
+            'variants.*.stock' => ['required_with:variants', 'integer', 'min:0'],
             'image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
             'gallery_images' => ['nullable', 'array', 'max:4'],
             'gallery_images.*' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
@@ -84,6 +90,25 @@ class SellerProductController extends Controller
         ], [
             'category.in' => 'Products must match the seller’s approved business category.',
         ]);
+    }
+
+    private function normalizedVariants(array $validated, float $basePrice): array
+    {
+        return collect($validated['variants'] ?? [])
+            ->filter(fn (array $variant) => trim((string) ($variant['label'] ?? '')) !== '')
+            ->values()
+            ->map(function (array $variant, int $index) use ($basePrice) {
+                return [
+                    'label' => trim((string) $variant['label']),
+                    'sku' => trim((string) ($variant['sku'] ?? '')),
+                    'price' => isset($variant['price']) && $variant['price'] !== ''
+                        ? (float) $variant['price']
+                        : $basePrice,
+                    'stock' => max(0, (int) ($variant['stock'] ?? 0)),
+                    'position' => $index + 1,
+                ];
+            })
+            ->all();
     }
 
     public function createProduct(Request $request): View
@@ -103,6 +128,12 @@ class SellerProductController extends Controller
     public function addProduct(Request $request): RedirectResponse
     {
         $validated = $this->validateProduct($request);
+        $basePrice = (float) $validated['price'];
+        $variants = $this->normalizedVariants($validated, $basePrice);
+        $effectiveStock = count($variants) > 0
+            ? collect($variants)->sum('stock')
+            : (int) $validated['stock'];
+
         $products = $request->session()->get('seller.products', []);
         $id = (string) ((int) collect($products)->max(fn ($item) => (int) ($item['id'] ?? 0)) + 1);
 
@@ -117,15 +148,16 @@ class SellerProductController extends Controller
             'category' => $validated['category'],
             'description' => $validated['description'] ?? '',
             'sku' => ($validated['sku'] ?? '') ?: 'BR-'.str_pad($id, 4, '0', STR_PAD_LEFT),
-            'price' => (float) $validated['price'],
+            'price' => $basePrice,
             'discount_percent' => (int) ($validated['discount_percent'] ?? 0),
             'voucher_eligible' => (bool) ($validated['voucher_eligible'] ?? false),
-            'stock' => (int) $validated['stock'],
+            'stock' => $effectiveStock,
             'low_stock_threshold' => (int) $validated['low_stock_threshold'],
             'option_one_name' => $validated['option_one_name'] ?? '',
             'option_one_values' => $validated['option_one_values'] ?? '',
             'option_two_name' => $validated['option_two_name'] ?? '',
             'option_two_values' => $validated['option_two_values'] ?? '',
+            'variants' => $variants,
             'status' => $validated['intent'] === 'publish' ? 'Active' : 'Draft',
             'previous_status' => $validated['intent'] === 'publish' ? 'Active' : 'Draft',
             'image' => $request->hasFile('image')
@@ -170,10 +202,16 @@ class SellerProductController extends Controller
     public function updateProduct(Request $request, string $product): RedirectResponse
     {
         $validated = $this->validateProduct($request);
+        $basePrice = (float) $validated['price'];
+        $variants = $this->normalizedVariants($validated, $basePrice);
+        $effectiveStock = count($variants) > 0
+            ? collect($variants)->sum('stock')
+            : (int) $validated['stock'];
+
         $found = false;
 
         $products = collect($request->session()->get('seller.products', []))
-            ->map(function (array $item) use ($request, $validated, $product, &$found) {
+            ->map(function (array $item) use ($request, $validated, $basePrice, $variants, $effectiveStock, $product, &$found) {
                 if ((string) ($item['id'] ?? '') !== $product) {
                     return $item;
                 }
@@ -195,15 +233,16 @@ class SellerProductController extends Controller
                     'category' => $validated['category'],
                     'description' => $validated['description'] ?? '',
                     'sku' => ($validated['sku'] ?? '') ?: $item['sku'],
-                    'price' => (float) $validated['price'],
+                    'price' => $basePrice,
                     'discount_percent' => (int) ($validated['discount_percent'] ?? 0),
                     'voucher_eligible' => (bool) ($validated['voucher_eligible'] ?? false),
-                    'stock' => (int) $validated['stock'],
+                    'stock' => $effectiveStock,
                     'low_stock_threshold' => (int) $validated['low_stock_threshold'],
                     'option_one_name' => $validated['option_one_name'] ?? '',
                     'option_one_values' => $validated['option_one_values'] ?? '',
                     'option_two_name' => $validated['option_two_name'] ?? '',
                     'option_two_values' => $validated['option_two_values'] ?? '',
+                    'variants' => $variants,
                     'status' => $validated['intent'] === 'publish' ? 'Active' : 'Draft',
                     'previous_status' => $validated['intent'] === 'publish' ? 'Active' : 'Draft',
                     'image' => $request->hasFile('image')

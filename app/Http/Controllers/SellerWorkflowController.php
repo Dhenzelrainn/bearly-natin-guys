@@ -197,19 +197,25 @@ class SellerWorkflowController extends Controller
     public function dashboard(): View
     {
         $finance = $this->financeSnapshot();
+        $orders = collect($this->ordersData());
+
+        $newOrders = $orders->where('status_key', 'new')->count();
+        $toPrepare = $orders->where('status_key', 'to-prepare')->count();
+        $readyPickup = $orders->where('status_key', 'ready-pickup')->count();
+        $waybillToPrint = 1;
 
         return view('seller.Dashboard.dashboard', [
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
             'dashboard' => [
                 'updated_at' => '5:42 PM',
-                'action_count' => 7,
+                'action_count' => $newOrders + $toPrepare + $readyPickup + $waybillToPrint,
                 'pickup_time' => '3:00 PM',
                 'actions' => [
-                    ['count' => 2, 'label' => 'new orders', 'detail' => 'Review and confirm stock', 'action' => 'Review', 'icon' => 'clipboard-list', 'tone' => 'amber', 'target' => route('seller.orders.new')],
-                    ['count' => 2, 'label' => 'orders to prepare', 'detail' => 'Confirmed / preparing', 'action' => 'Prepare', 'icon' => 'package', 'tone' => 'olive', 'target' => route('seller.orders.prepare')],
-                    ['count' => 1, 'label' => 'waybill to print', 'detail' => 'Required before ready for pickup', 'action' => 'Print', 'icon' => 'printer', 'tone' => 'brown', 'target' => route('seller.fulfillment.waybills')],
-                    ['count' => 2, 'label' => 'parcels ready for pickup', 'detail' => 'Submit to logistics', 'action' => 'Arrange pickup', 'icon' => 'truck', 'tone' => 'green', 'target' => route('seller.fulfillment.pickups')],
+                    ['count' => $newOrders, 'label' => 'new orders', 'detail' => 'Review and confirm stock', 'action' => 'Review', 'icon' => 'clipboard-list', 'tone' => 'amber', 'target' => route('seller.orders.new')],
+                    ['count' => $toPrepare, 'label' => 'orders to prepare', 'detail' => 'Confirmed / preparing', 'action' => 'Prepare', 'icon' => 'package', 'tone' => 'olive', 'target' => route('seller.orders.prepare')],
+                    ['count' => $waybillToPrint, 'label' => 'waybill to print', 'detail' => 'Required before ready for pickup', 'action' => 'Print', 'icon' => 'printer', 'tone' => 'brown', 'target' => route('seller.fulfillment.waybills')],
+                    ['count' => $readyPickup, 'label' => 'parcels ready for pickup', 'detail' => 'Submit to logistics', 'action' => 'Arrange pickup', 'icon' => 'truck', 'tone' => 'green', 'target' => route('seller.fulfillment.pickups')],
                 ],
             ],
             'stats' => [
@@ -233,8 +239,19 @@ class SellerWorkflowController extends Controller
             'pickupSummary' => [
                 'time' => '3:00 PM',
                 'date' => 'Today · Laguna route',
-                'ready' => 2,
-                'not_ready' => 3,
+                'ready' => $readyPickup,
+                'not_ready' => $toPrepare + $newOrders,
+            ],
+            'sellerHealth' => [
+                'status' => 'Good standing',
+                'score' => '96 / 100',
+                'summary' => 'No category violations or account warnings. One customer case is still open.',
+                'items' => [
+                    ['label' => 'Product compliance', 'value' => '0 violations', 'note' => 'All active products match the registered business category.', 'tone' => 'success', 'icon' => 'shield-check'],
+                    ['label' => 'Open disputes', 'value' => '1 case', 'note' => 'Respond before the case deadline to protect your seller record.', 'tone' => 'warning', 'icon' => 'messages-square'],
+                    ['label' => 'Response rate', 'value' => '91%', 'note' => 'Buyer messages answered within the expected response window.', 'tone' => 'info', 'icon' => 'message-circle-reply'],
+                    ['label' => 'Fulfillment reliability', 'value' => '96.8%', 'note' => 'Orders prepared and handed over within seller deadlines.', 'tone' => 'success', 'icon' => 'package-check'],
+                ],
             ],
         ]);
     }
@@ -458,9 +475,25 @@ class SellerWorkflowController extends Controller
         ]);
     }
 
-    public function financialReport(): View
+    public function financialReport(Request $request): View
     {
         $finance = $this->financeSnapshot();
+
+        $from = (string) $request->query('from', '2026-08-01');
+        $to = (string) $request->query('to', '2026-08-31');
+
+        if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $from)) {
+            $from = '2026-08-01';
+        }
+
+        if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $to)) {
+            $to = '2026-08-31';
+        }
+
+        if ($from > $to) {
+            [$from, $to] = [$to, $from];
+        }
+
         $commissionPercent = $finance['totalDeductions'] > 0 ? ($finance['netCommission'] / $finance['totalDeductions']) * 100 : 0;
         $discountPercent = $finance['totalDeductions'] > 0 ? ($finance['sellerDiscounts'] / $finance['totalDeductions']) * 100 : 0;
         $refundPercent = $finance['totalDeductions'] > 0 ? ($finance['refunds'] / $finance['totalDeductions']) * 100 : 0;
@@ -468,6 +501,7 @@ class SellerWorkflowController extends Controller
         return view('seller.Reports.financial', [
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
+            'dateRange' => ['from' => $from, 'to' => $to],
             'summary' => [
                 ['label' => 'Gross Sales', 'value' => $this->money($finance['grossSales']), 'note' => 'Before deductions'],
                 ['label' => 'Commissionable Sales', 'value' => $this->money($finance['netCommissionableSales']), 'note' => 'After seller discounts and finalized refunds'],

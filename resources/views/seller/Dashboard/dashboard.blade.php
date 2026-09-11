@@ -98,4 +98,37 @@
         <div class="dashboard-pickup-content"><span class="dashboard-pickup-icon"><img class="seller-ui-icon" src="{{ asset('images/truck.svg') }}" alt="" aria-hidden="true"></span><div><strong>{{ $pickupSummary['time'] }}</strong><span>{{ $pickupSummary['date'] }}</span></div><dl><div><dt>Ready</dt><dd>{{ $pickupSummary['ready'] }}</dd></div><div><dt>Not ready</dt><dd>{{ $pickupSummary['not_ready'] }}</dd></div></dl></div>
     </article>
 </section>
+
+<section class="seller-panel seller-health-panel" aria-labelledby="seller-health-title">
+    <div class="seller-panel-heading seller-health-heading">
+        <div>
+            <span class="section-kicker">Account & compliance</span>
+            <h3 id="seller-health-title">Seller Health</h3>
+            <p>{{ $sellerHealth['summary'] }}</p>
+        </div>
+        <div class="seller-health-score">
+            <span>{{ $sellerHealth['status'] }}</span>
+            <strong>{{ $sellerHealth['score'] }}</strong>
+        </div>
+    </div>
+
+    <div class="seller-health-grid">
+        @foreach ($sellerHealth['items'] as $item)
+            <article class="seller-health-item health-{{ $item['tone'] }}">
+                <span class="seller-health-icon"><i data-lucide="{{ $item['icon'] }}"></i></span>
+                <div>
+                    <span>{{ $item['label'] }}</span>
+                    <strong>{{ $item['value'] }}</strong>
+                    <small>{{ $item['note'] }}</small>
+                </div>
+            </article>
+        @endforeach
+    </div>
+
+    <footer class="seller-health-footer">
+        <span><i data-lucide="info"></i> Seller Health summarizes compliance, customer service, and fulfillment signals. Admin remains the authority for formal warnings or suspensions.</span>
+        <a href="{{ route('seller.settings.account') }}">Review account <i data-lucide="arrow-right"></i></a>
+    </footer>
+</section>
+
 @endsection

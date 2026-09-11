@@ -6,14 +6,17 @@
     <header class="report-statement-header">
         <div><span class="section-kicker">Detailed report</span><h2>Financial Report</h2><p>See how gross completed sales become seller net earnings after discounts, refunds, and platform commission.</p></div>
         <div class="report-header-actions">
-            <div class="report-date-range" aria-label="Financial report date range">
-                <label><span>From</span><input type="date" value="2026-08-01" data-report-date-from></label>
-                <label><span>To</span><input type="date" value="2026-08-31" data-report-date-to></label>
-            </div>
+            <form class="report-date-range report-date-form" method="GET" action="{{ route('seller.reports.financial') }}" aria-label="Financial report date range">
+                <label><span>From</span><input type="date" name="from" value="{{ $dateRange['from'] }}" max="{{ $dateRange['to'] }}"></label>
+                <label><span>To</span><input type="date" name="to" value="{{ $dateRange['to'] }}" min="{{ $dateRange['from'] }}"></label>
+                <button class="seller-secondary-button" type="submit"><i data-lucide="filter"></i>Apply</button>
+            </form>
             <a class="seller-secondary-button" href="{{ route('seller.finance.transactions') }}"><i data-lucide="receipt-text"></i>Transactions</a>
             <button class="seller-secondary-button" type="button" data-report-export><i data-lucide="download"></i>Export statement</button>
         </div>
     </header>
+
+    <p class="report-range-preview-note"><i data-lucide="info"></i> The From/To controls are now wired as real report parameters. While the project is still using preview data, the sample totals remain fixed until the database/report query is connected.</p>
 
     <section class="report-commission-note"><i data-lucide="badge-percent"></i><div><strong>Platform commission is calculated on eligible completed sales.</strong><p>For the current Bearly project, the 10% commission is finalized at <strong>COMPLETED</strong>, cancelled orders have no commission, and finalized full refunds reverse the related commission.</p></div></section>
 
@@ -23,7 +26,7 @@
 
     <section class="financial-statement-lead">
         <article class="financial-current-statement">
-            <div class="report-detail-panel-heading"><div><span class="section-kicker">Current statement</span><h3>August earnings</h3><p>Aug 1–31, 2026 · Philippine Peso</p></div><span class="report-status">Processing</span></div>
+            <div class="report-detail-panel-heading"><div><span class="section-kicker">Current statement</span><h3>Selected-period earnings</h3><p>{{ $dateRange['from'] }} to {{ $dateRange['to'] }} · Philippine Peso</p></div><span class="report-status">Processing</span></div>
             <dl>
                 @foreach ($currentStatement as $index => $item)<div class="{{ $index > 0 ? 'is-deduction' : '' }}"><dt>{{ $item['label'] }}</dt><dd>{{ $item['value'] }}</dd></div>@endforeach
                 <div class="is-net"><dt><span>Net Earnings</span><small>Seller amount after deductions</small></dt><dd>{{ $statementNetEarnings }}</dd></div>

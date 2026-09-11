@@ -1,5 +1,62 @@
 /* Bearly Seller Polish — supplemental frontend behavior. */
 document.addEventListener('DOMContentLoaded', () => {
+    /*
+     * Stable Seller sidebar navigation.
+     * Laravel page navigation reloads the document, which normally resets the
+     * sidebar/nav scroll position. Save the nav's scrollTop in sessionStorage
+     * and restore it on the next Seller page.
+     */
+    const sellerSidebar = document.querySelector('[data-seller-sidebar]');
+    const sellerNav = sellerSidebar?.querySelector('.seller-nav');
+    const sellerNavScrollKey = 'bearlySellerNavScrollTop';
+
+    if (sellerNav) {
+        const saveSellerNavScroll = () => {
+            try {
+                window.sessionStorage.setItem(sellerNavScrollKey, String(sellerNav.scrollTop));
+            } catch (_) {}
+        };
+
+        let restored = false;
+        try {
+            const saved = window.sessionStorage.getItem(sellerNavScrollKey);
+            if (saved !== null) {
+                const scrollTop = Number(saved);
+                if (Number.isFinite(scrollTop)) {
+                    window.requestAnimationFrame(() => {
+                        sellerNav.scrollTop = scrollTop;
+                    });
+                    restored = true;
+                }
+            }
+        } catch (_) {}
+
+        /*
+         * First visit only: keep the active page visible.
+         * On later navigation, preserving the user's exact sidebar position
+         * takes priority so the menu does not jump.
+         */
+        if (!restored) {
+            const activeSellerNavItem = sellerNav.querySelector('.seller-nav-child.is-active, .seller-nav-link.is-active');
+            if (activeSellerNavItem) {
+                window.requestAnimationFrame(() => {
+                    activeSellerNavItem.scrollIntoView({
+                        block: 'nearest',
+                        inline: 'nearest',
+                    });
+                });
+            }
+        }
+
+        sellerNav.addEventListener('scroll', saveSellerNavScroll, { passive: true });
+
+        sellerNav.querySelectorAll('a[href]').forEach((link) => {
+            link.addEventListener('click', saveSellerNavScroll);
+        });
+
+        window.addEventListener('pagehide', saveSellerNavScroll);
+    }
+
     const formatPeso = (value) => `₱${Math.max(0, Number(value || 0)).toLocaleString('en-PH', {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,

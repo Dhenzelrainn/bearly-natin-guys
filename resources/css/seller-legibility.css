@@ -1,552 +1,670 @@
 /*
- * Bearly Seller Legibility Fix
- * Load AFTER seller.css and seller-polish.css.
- *
- * Goal:
- * - Improve readability across every Seller Center page.
- * - Especially tables, badges, controls, helper text, sidebar items and icons.
- * - Preserve the existing layout, spacing language, colors and workflow logic.
- */
+|--------------------------------------------------------------------------
+| Bearly Seller Typography / Legibility V2
+|--------------------------------------------------------------------------
+| REPLACE: resources/css/seller-legibility.css
+|
+| Load order:
+| seller.css -> seller-polish.css -> seller-legibility.css
+|
+| This version intentionally increases typography across the ENTIRE Seller
+| Center, not only tables. It keeps the current Bearly visual design and
+| workflows, while making text/icons readable on normal desktop screens.
+|--------------------------------------------------------------------------
+*/
 
 :root {
-    --seller-readable-body: 13px;
-    --seller-readable-table: 12.5px;
-    --seller-readable-table-head: 11.5px;
-    --seller-readable-small: 10.5px;
-    --seller-readable-control: 12px;
+    --seller-font-body: 14px;
+    --seller-font-body-strong: 14px;
+    --seller-font-secondary: 12px;
+    --seller-font-control: 13px;
+    --seller-font-table: 13.5px;
+    --seller-font-table-head: 12.5px;
+    --seller-font-badge: 11.5px;
+    --seller-font-sidebar: 14px;
+    --seller-font-sidebar-child: 13px;
 }
 
-/* ---------------------------------------------------------
-   GLOBAL SELLER READABILITY
-   --------------------------------------------------------- */
+/* =========================================================
+   1. GLOBAL BASE
+   ========================================================= */
 
-.seller-body {
-    font-size: var(--seller-readable-body);
-    line-height: 1.5;
-}
-
+.seller-body,
+.seller-shell,
+.seller-main,
 .seller-content {
-    font-size: var(--seller-readable-body);
-}
-
-/* Page headings and supporting copy */
-.seller-content .section-kicker {
-    font-size: 11.5px !important;
-    letter-spacing: .08em;
-}
-
-.seller-content h2 {
-    line-height: 1.2;
-}
-
-.seller-content h3 {
-    line-height: 1.25;
-}
-
-.seller-content p {
+    font-size: var(--seller-font-body) !important;
     line-height: 1.55;
 }
 
-/* General secondary/helper text: do not allow unreadable 7–9px copy */
-.seller-content small {
-    font-size: var(--seller-readable-small);
-    line-height: 1.45;
+.seller-content {
+    color: var(--seller-text);
 }
 
-/* Forms / filters / search / buttons */
+/* Raise the floor for normal copy everywhere */
+.seller-content p,
+.seller-content li,
+.seller-content dt,
+.seller-content dd,
+.seller-content label {
+    font-size: 13px !important;
+    line-height: 1.55;
+}
+
+.seller-content small {
+    font-size: var(--seller-font-secondary) !important;
+    line-height: 1.5;
+}
+
+/* Normal interactive text */
 .seller-content button,
 .seller-content input,
 .seller-content select,
-.seller-content textarea {
-    font-size: var(--seller-readable-control) !important;
-}
-
-.seller-content label {
-    font-size: 12px;
+.seller-content textarea,
+.seller-content a {
+    font-size: var(--seller-font-control) !important;
 }
 
 .seller-content input::placeholder,
 .seller-content textarea::placeholder {
-    font-size: 12px;
+    font-size: 12.5px !important;
 }
 
-/* ---------------------------------------------------------
-   SIDEBAR + TOPBAR
-   --------------------------------------------------------- */
+/* =========================================================
+   2. PAGE TITLES / HEADINGS
+   ========================================================= */
 
-.seller-nav-link {
-    min-height: 42px !important;
+.seller-topbar h1 {
+    font-size: 24px !important;
+    line-height: 1.2;
+}
+
+.seller-content .section-kicker {
+    font-size: 12.5px !important;
+    line-height: 1.35;
+    letter-spacing: .08em !important;
+}
+
+.seller-content h1 {
+    font-size: 30px !important;
+    line-height: 1.18;
+}
+
+.seller-content h2 {
+    font-size: 28px !important;
+    line-height: 1.2;
+}
+
+.seller-content h3 {
+    font-size: 18px !important;
+    line-height: 1.3;
+}
+
+.seller-content h4 {
+    font-size: 15px !important;
+    line-height: 1.35;
+}
+
+/* Common page-header supporting text */
+.dashboard-heading p,
+.seller-page-heading p,
+.seller-workspace-heading p,
+.pricing-page-heading p,
+.orders-page-heading p,
+.page-heading p {
     font-size: 13px !important;
 }
 
-.seller-nav-link .seller-ui-icon {
-    width: 20px !important;
-    height: 20px !important;
-    flex-basis: 20px !important;
+/* =========================================================
+   3. SIDEBAR / TOPBAR
+   ========================================================= */
+
+.seller-nav-link,
+.seller-nav-heading {
+    min-height: 45px !important;
+    font-size: var(--seller-font-sidebar) !important;
+    line-height: 1.35;
 }
 
 .seller-nav-heading {
-    min-height: 37px !important;
-    font-size: 12px !important;
-    letter-spacing: .025em !important;
+    font-size: 13.5px !important;
+    letter-spacing: .02em !important;
 }
 
 .seller-nav-child {
-    min-height: 31px !important;
-    padding-block: 5px !important;
-    font-size: 12px !important;
+    min-height: 36px !important;
+    padding-top: 7px !important;
+    padding-bottom: 7px !important;
+    font-size: var(--seller-font-sidebar-child) !important;
+    line-height: 1.45;
+}
+
+.seller-sidebar-footer .seller-nav-link {
+    font-size: 13.5px !important;
+}
+
+.seller-nav-link .seller-ui-icon,
+.seller-nav-heading .seller-ui-icon {
+    width: 21px !important;
+    height: 21px !important;
+    flex: 0 0 21px !important;
+}
+
+.seller-nav-child::before {
+    min-height: 14px;
 }
 
 .seller-profile-button,
 .seller-profile-name {
-    font-size: 13px !important;
+    font-size: 14px !important;
 }
 
-.seller-topbar .seller-ui-icon {
-    width: 20px !important;
-    height: 20px !important;
+.seller-profile-button .seller-ui-icon,
+.seller-topbar .seller-ui-icon,
+.seller-icon-button .seller-ui-icon {
+    width: 21px !important;
+    height: 21px !important;
 }
 
-/* ---------------------------------------------------------
-   ALL SELLER TABLES
-   One global readability floor for Orders, Products,
-   Inventory, Finance, Reports, Fulfillment, Returns, etc.
-   --------------------------------------------------------- */
-
-.seller-content table {
-    font-size: var(--seller-readable-table) !important;
+.seller-popover strong {
+    font-size: 13.5px !important;
 }
 
-.seller-content table th {
-    padding: 14px 14px !important;
-    height: auto !important;
-    color: #5f5650;
-    font-size: var(--seller-readable-table-head) !important;
-    line-height: 1.35;
-    font-weight: 600;
+.seller-popover small,
+.seller-notification-row small {
+    font-size: 11.5px !important;
 }
 
-.seller-content table td {
-    padding: 15px 14px !important;
-    height: auto !important;
-    font-size: var(--seller-readable-table) !important;
-    line-height: 1.45;
-}
-
-.seller-content table td small,
-.seller-content table td .order-item-mini,
-.seller-content table td .canonical-status {
-    font-size: 10.5px !important;
-    line-height: 1.4;
-}
-
-.seller-content table code {
-    font-size: 11px !important;
-}
-
-.seller-content table input[type="checkbox"] {
-    width: 17px !important;
-    height: 17px !important;
-}
-
-/* Common table/action icons */
-.seller-content table svg,
-.seller-content table .seller-ui-icon {
-    min-width: 15px;
-    min-height: 15px;
-}
-
-/* ---------------------------------------------------------
-   ORDER MANAGEMENT
-   --------------------------------------------------------- */
-
-.orders-table {
+.seller-popover a,
+.seller-notification-row {
     font-size: 12.5px !important;
 }
 
-.orders-table th {
-    font-size: 11.5px !important;
+/* =========================================================
+   4. BUTTONS / FILTERS / FORM CONTROLS
+   ========================================================= */
+
+.seller-content button,
+.seller-content select,
+.seller-content input:not([type="checkbox"]):not([type="radio"]),
+.seller-content textarea {
+    min-height: 42px;
 }
 
-.order-id-button,
-.order-customer,
-.payment-label,
-.deadline-label {
-    font-size: 12px !important;
+.seller-content button {
+    line-height: 1.25;
 }
 
-.deadline-label small {
-    font-size: 10.5px !important;
+.seller-content button svg,
+.seller-content a svg,
+.seller-content label svg {
+    min-width: 17px;
+    min-height: 17px;
 }
 
-.order-status-badge {
-    min-height: 28px !important;
-    padding-inline: 10px !important;
-    font-size: 10.5px !important;
-}
-
-.order-row-action {
-    min-width: 112px !important;
-    min-height: 36px !important;
-    padding-inline: 12px !important;
-    font-size: 11.5px !important;
-}
-
-.order-bulk-actions button {
-    min-height: 36px !important;
-    font-size: 11.5px !important;
-}
-
-.orders-table-footer {
-    min-height: 50px !important;
-    font-size: 11px !important;
-}
-
-/* Flow guide */
-.order-flow-strip {
-    padding: 16px 18px;
-}
-
-.order-flow-strip > div {
-    padding: 11px 13px;
-}
-
-.order-flow-strip strong {
-    font-size: 12px !important;
-}
-
-.order-flow-strip span {
-    font-size: 10.5px !important;
-    line-height: 1.5;
-}
-
-.order-flow-strip > svg {
+.seller-content input[type="checkbox"],
+.seller-content input[type="radio"] {
     width: 18px !important;
     height: 18px !important;
 }
 
-.order-bulk-rule {
-    font-size: 10.5px !important;
+/* =========================================================
+   5. ALL TABLES
+   ========================================================= */
+
+.seller-content table,
+.orders-table,
+.fulfillment-table,
+.inventory-management-table,
+.pricing-table,
+.finance-table,
+.workspace-table,
+.stock-history-table {
+    font-size: var(--seller-font-table) !important;
+}
+
+.seller-content table th,
+.orders-table th,
+.fulfillment-table th,
+.inventory-management-table th,
+.pricing-table th,
+.finance-table th,
+.workspace-table th,
+.stock-history-table th {
+    height: auto !important;
+    padding: 15px 15px !important;
+    font-size: var(--seller-font-table-head) !important;
+    line-height: 1.4;
+    font-weight: 600;
+}
+
+.seller-content table td,
+.orders-table td,
+.fulfillment-table td,
+.inventory-management-table td,
+.pricing-table td,
+.finance-table td,
+.workspace-table td,
+.stock-history-table td {
+    height: auto !important;
+    padding: 16px 15px !important;
+    font-size: var(--seller-font-table) !important;
+    line-height: 1.5;
+}
+
+/* Any secondary text inside a table */
+.seller-content table small,
+.seller-content table td small,
+.seller-content table .order-item-mini,
+.seller-content table .canonical-status,
+.pricing-product-cell small,
+.stock-history-table td small,
+.finance-table td small {
+    font-size: 11.5px !important;
+    line-height: 1.45;
+}
+
+.seller-content table strong,
+.order-id-button,
+.order-customer,
+.payment-label,
+.deadline-label,
+.inventory-product-cell strong,
+.pricing-product-cell strong,
+.fulfillment-table td > strong {
+    font-size: 13.5px !important;
+}
+
+.seller-content table code,
+.inventory-management-table code {
+    font-size: 11.5px !important;
+}
+
+.seller-content table svg,
+.seller-content table .seller-ui-icon {
+    min-width: 17px !important;
+    min-height: 17px !important;
+}
+
+/* =========================================================
+   6. BADGES / STATUS PILLS / SMALL ACTIONS
+   ========================================================= */
+
+.order-status-badge,
+.fulfillment-status,
+.inventory-stock-badge,
+.movement-type,
+.pricing-discount-badge,
+.campaign-status,
+.finance-status,
+.workspace-status {
+    min-height: 29px !important;
+    padding: 5px 10px !important;
+    font-size: var(--seller-font-badge) !important;
+    line-height: 1.25;
+}
+
+.order-row-action,
+.fulfillment-row-action,
+.inventory-row-action,
+.pricing-row-action,
+.workspace-row-action,
+.campaign-card > button {
+    min-height: 38px !important;
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+    font-size: 12.5px !important;
+}
+
+/* =========================================================
+   7. ORDERS
+   ========================================================= */
+
+.order-flow-strip {
+    padding: 17px 18px !important;
+}
+
+.order-flow-strip > div {
+    padding: 13px 14px !important;
+}
+
+.order-flow-strip strong {
+    font-size: 13.5px !important;
+}
+
+.order-flow-strip span {
+    font-size: 11.5px !important;
+    line-height: 1.5;
+}
+
+.order-flow-strip > svg {
+    width: 19px !important;
+    height: 19px !important;
+}
+
+.order-bulk-rule,
+.orders-table-footer {
+    font-size: 11.5px !important;
 }
 
 .order-bulk-rule svg {
+    width: 17px !important;
+    height: 17px !important;
+}
+
+.order-bulk-actions,
+.order-bulk-actions button {
+    font-size: 12.5px !important;
+}
+
+.order-detail-grid span,
+.order-responsibility-card small {
+    font-size: 11.5px !important;
+}
+
+.order-detail-grid strong,
+.order-responsibility-card strong {
+    font-size: 13.5px !important;
+}
+
+.order-responsibility-card p {
+    font-size: 12.5px !important;
+}
+
+/* Orders tabs/filter bar */
+.orders-tabs button,
+.orders-tabs a,
+.order-tab,
+.order-filter,
+.orders-filter-bar button,
+.orders-filter-bar select,
+.orders-filter-bar input {
+    font-size: 12.5px !important;
+}
+
+/* =========================================================
+   8. DASHBOARD
+   ========================================================= */
+
+.dashboard-heading h2 {
+    font-size: 30px !important;
+}
+
+.dashboard-heading p,
+.dashboard-action-heading p {
+    font-size: 13px !important;
+}
+
+.dashboard-period select {
+    font-size: 13px !important;
+}
+
+.dashboard-action-heading h3 {
+    font-size: 20px !important;
+}
+
+.dashboard-action-heading p strong {
+    font-size: 16px !important;
+}
+
+.dashboard-action-copy strong {
+    font-size: 14px !important;
+}
+
+.dashboard-action-copy small {
+    font-size: 11.5px !important;
+}
+
+.dashboard-action-link {
+    font-size: 12px !important;
+}
+
+.dashboard-action-link .seller-ui-icon {
     width: 15px !important;
     height: 15px !important;
 }
 
-/* Order workflow modal/detail */
-.order-detail-grid span {
-    font-size: 10.5px !important;
-}
-
-.order-detail-grid strong {
-    font-size: 12px !important;
-}
-
-.order-responsibility-card small {
-    font-size: 10.5px !important;
-}
-
-.order-responsibility-card strong {
+.dashboard-payout-list dt {
     font-size: 12.5px !important;
 }
 
-.order-responsibility-card p {
+.dashboard-payout-list dd {
+    font-size: 14px !important;
+}
+
+.dashboard-pickup-content > div span {
+    font-size: 12px !important;
+}
+
+.dashboard-pickup-content dt {
     font-size: 11.5px !important;
 }
 
-/* ---------------------------------------------------------
-   RETURNS & REFUNDS
-   --------------------------------------------------------- */
+.dashboard-finance-note {
+    font-size: 12px !important;
+}
+
+/* =========================================================
+   9. KPI / SUMMARY CARDS / WORKSPACES
+   ========================================================= */
+
+.workspace-kpi-strip span,
+.pricing-summary-card small,
+.finance-summary-card span {
+    font-size: 12.5px !important;
+}
+
+.workspace-kpi-strip strong,
+.pricing-summary-card strong {
+    line-height: 1.15;
+}
+
+.pricing-summary-card p,
+.finance-summary-card small {
+    font-size: 11.5px !important;
+}
+
+.workspace-search input,
+.workspace-toolbar > button {
+    font-size: 13px !important;
+}
+
+.workspace-footer,
+.workspace-empty span {
+    font-size: 11.5px !important;
+}
+
+/* =========================================================
+   10. RETURNS & REFUNDS
+   ========================================================= */
 
 .return-role-flow > div {
-    grid-template-columns: 32px 1fr !important;
-    column-gap: 10px !important;
-    padding: 10px !important;
+    grid-template-columns: 36px 1fr !important;
+    column-gap: 11px !important;
+    padding: 12px !important;
 }
 
 .return-role-flow > div > span {
-    width: 32px !important;
-    height: 32px !important;
-    font-size: 10px !important;
+    width: 36px !important;
+    height: 36px !important;
+    font-size: 11.5px !important;
 }
 
 .return-role-flow strong {
-    font-size: 11.5px !important;
+    font-size: 13px !important;
 }
 
 .return-role-flow small {
-    font-size: 10px !important;
-    line-height: 1.4;
+    font-size: 11.5px !important;
+    line-height: 1.45;
 }
 
 .return-role-flow > svg {
-    width: 16px !important;
-    height: 16px !important;
+    width: 18px !important;
+    height: 18px !important;
 }
 
 .case-financial-impact small {
-    font-size: 10.5px !important;
+    font-size: 11.5px !important;
 }
 
 .case-financial-impact strong {
-    font-size: 12px !important;
+    font-size: 13.5px !important;
 }
 
 .case-financial-impact > p {
-    font-size: 10.5px !important;
-}
-
-/* ---------------------------------------------------------
-   FULFILLMENT / WAYBILLS / PICKUP / TRACKING
-   --------------------------------------------------------- */
-
-.fulfillment-table {
-    font-size: 12.5px !important;
-}
-
-.fulfillment-table th {
-    font-size: 11.5px !important;
-}
-
-.fulfillment-table td {
-    font-size: 12.5px !important;
-}
-
-.fulfillment-table td > strong {
-    font-size: 12.5px !important;
-}
-
-.fulfillment-table td > small {
-    font-size: 10.5px !important;
-}
-
-.fulfillment-status {
-    min-height: 28px !important;
-    padding-inline: 9px !important;
-    font-size: 10.5px !important;
-}
-
-.fulfillment-row-action {
-    min-height: 35px !important;
-    padding-inline: 11px !important;
-    font-size: 11.5px !important;
-}
-
-.fulfillment-footer {
-    min-height: 50px !important;
-    font-size: 11px !important;
-}
-
-/* ---------------------------------------------------------
-   INVENTORY
-   --------------------------------------------------------- */
-
-.inventory-management-table {
-    font-size: 12.5px !important;
-}
-
-.inventory-management-table th {
-    font-size: 11.5px !important;
-}
-
-.inventory-management-table td {
-    font-size: 12.5px !important;
-}
-
-.inventory-product-cell strong,
-.available-stock {
     font-size: 12px !important;
 }
 
-.inventory-management-table code {
-    font-size: 10.5px !important;
+/* =========================================================
+   11. FULFILLMENT
+   ========================================================= */
+
+.fulfillment-footer {
+    min-height: 52px !important;
+    font-size: 11.5px !important;
 }
 
-.inventory-stock-badge,
-.movement-type {
-    min-height: 27px !important;
-    padding-inline: 9px !important;
-    font-size: 10.5px !important;
+.fulfillment-table td > small {
+    font-size: 11.5px !important;
 }
 
-.inventory-row-action,
+/* =========================================================
+   12. INVENTORY
+   ========================================================= */
+
+.available-stock,
+.inventory-product-cell strong {
+    font-size: 13.5px !important;
+}
+
+.inventory-bulk-bar,
 .inventory-bulk-bar button,
 .stock-history-heading > button {
-    min-height: 35px !important;
-    font-size: 11.5px !important;
+    font-size: 12.5px !important;
 }
 
 .inventory-table-footer,
 .stock-history-table {
-    font-size: 11px !important;
-}
-
-.stock-history-table td small {
-    font-size: 10px !important;
-}
-
-.inventory-pagination button {
-    min-width: 31px !important;
-    height: 31px !important;
-    font-size: 10.5px !important;
-}
-
-/* ---------------------------------------------------------
-   PRICING & PROMOTIONS
-   --------------------------------------------------------- */
-
-.pricing-summary-card small {
-    font-size: 11px !important;
-}
-
-.pricing-summary-card p {
-    font-size: 10.5px !important;
-}
-
-.pricing-tab {
     font-size: 11.5px !important;
 }
 
+.inventory-pagination button {
+    min-width: 34px !important;
+    height: 34px !important;
+    font-size: 11.5px !important;
+}
+
+/* =========================================================
+   13. PRICING & PROMOTIONS
+   ========================================================= */
+
+.pricing-tab {
+    font-size: 13px !important;
+}
+
 .pricing-tab span {
-    font-size: 10px !important;
+    font-size: 11px !important;
 }
 
 .pricing-search input,
 .pricing-toolbar select,
 .pricing-toolbar button {
-    font-size: 11.5px !important;
-}
-
-.pricing-table {
-    font-size: 12.5px !important;
-}
-
-.pricing-table th {
-    font-size: 11.5px !important;
-}
-
-.pricing-table td,
-.pricing-product-cell strong {
-    font-size: 12px !important;
-}
-
-.pricing-product-cell small {
-    font-size: 10px !important;
-}
-
-.pricing-discount-badge,
-.pricing-row-action,
-.campaign-status {
-    font-size: 10.5px !important;
-}
-
-.pricing-row-action {
-    min-height: 35px !important;
+    font-size: 13px !important;
 }
 
 .pricing-footer {
-    font-size: 11px !important;
+    font-size: 11.5px !important;
+}
+
+.promotion-panel-heading h3 {
+    font-size: 17px !important;
 }
 
 .promotion-panel-heading p,
 .campaign-card > p,
 .campaign-card dt,
-.campaign-card > button,
 .pricing-info-pill,
 .pricing-switch,
 .pricing-form-grid label > span,
 .campaign-form label > span,
 .pricing-calculation div,
 .pricing-form-note {
-    font-size: 10.5px !important;
+    font-size: 11.5px !important;
+}
+
+.campaign-card h3 {
+    font-size: 15px !important;
 }
 
 .campaign-card dd {
-    font-size: 11.5px !important;
+    font-size: 13px !important;
 }
 
-/* ---------------------------------------------------------
-   FINANCE / PLATFORM COMMISSION
-   --------------------------------------------------------- */
+.pricing-form-grid input,
+.campaign-form input,
+.campaign-form select {
+    font-size: 12.5px !important;
+}
+
+/* =========================================================
+   14. FINANCE / PLATFORM COMMISSION
+   ========================================================= */
 
 .finance-summary-card span {
-    font-size: 11.5px !important;
+    font-size: 12.5px !important;
 }
 
 .finance-summary-card small {
-    font-size: 10.5px !important;
+    font-size: 11.5px !important;
 }
 
 .earnings-bridge-list dt {
-    font-size: 11.5px !important;
+    font-size: 13px !important;
 }
 
 .earnings-bridge-list dd {
-    font-size: 12px !important;
+    font-size: 14px !important;
 }
 
 .earnings-bridge-list .is-total dt span {
-    font-size: 12.5px !important;
+    font-size: 14px !important;
 }
 
 .earnings-bridge-list .is-total dt small {
-    font-size: 10px !important;
-}
-
-.finance-definition-note,
-.dashboard-finance-note {
-    font-size: 10.5px !important;
-}
-
-.settlement-rule-list li > span {
-    font-size: 10px !important;
-}
-
-.settlement-rule-list strong {
     font-size: 11.5px !important;
 }
 
-.settlement-rule-list p {
-    font-size: 10.5px !important;
-}
-
-.finance-table {
-    font-size: 12.5px !important;
-}
-
-.finance-table th {
-    font-size: 11.5px !important;
-}
-
-.finance-table td {
+.finance-definition-note {
     font-size: 12px !important;
 }
 
-.finance-table td small {
-    font-size: 10px !important;
+.settlement-rule-list li > span {
+    font-size: 11.5px !important;
 }
 
-.finance-status {
-    min-height: 28px !important;
-    padding-inline: 9px !important;
-    font-size: 10.5px !important;
+.settlement-rule-list strong {
+    font-size: 13px !important;
+}
+
+.settlement-rule-list p {
+    font-size: 12px !important;
 }
 
 .finance-ledger-toolbar input,
 .finance-ledger-toolbar select,
 .finance-ledger-toolbar button {
-    font-size: 11.5px !important;
+    font-size: 13px !important;
 }
 
 .finance-ledger-footer,
 .finance-empty span {
-    font-size: 10.5px !important;
+    font-size: 11.5px !important;
 }
 
-/* ---------------------------------------------------------
-   PRODUCT FORM / CATEGORY COMPLIANCE
-   --------------------------------------------------------- */
+/* =========================================================
+   15. PRODUCT MANAGEMENT / PRODUCT FORM
+   ========================================================= */
 
 .category-compliance-banner p,
 .commission-rule-banner p,
@@ -554,89 +672,100 @@
 .delivery-completion-notice p,
 .report-commission-note p,
 .finance-ledger-note p {
-    font-size: 11.5px !important;
+    font-size: 12.5px !important;
 }
 
 .workflow-notice > a,
 .delivery-completion-notice > a {
-    font-size: 11.5px !important;
-}
-
-.locked-category-value strong {
-    font-size: 11.5px !important;
-}
-
-.locked-category-value span {
-    font-size: 10px !important;
-}
-
-.product-commission-preview span {
-    font-size: 10.5px !important;
-}
-
-.product-commission-preview strong {
     font-size: 12.5px !important;
 }
 
+.locked-category-value strong {
+    font-size: 13px !important;
+}
+
+.locked-category-value span {
+    font-size: 11.5px !important;
+}
+
+.product-commission-preview span {
+    font-size: 11.5px !important;
+}
+
+.product-commission-preview strong {
+    font-size: 14px !important;
+}
+
 .product-commission-preview > p {
-    font-size: 10.5px !important;
+    font-size: 12px !important;
 }
 
 .product-publish-card > p,
 .product-readiness-list span,
 .product-cancel-link {
-    font-size: 11.5px !important;
-}
-
-/* ---------------------------------------------------------
-   GENERIC WORKSPACES / REPORTS
-   --------------------------------------------------------- */
-
-.workspace-kpi-strip span {
-    font-size: 12px !important;
-}
-
-.workspace-search input,
-.workspace-toolbar > button {
-    font-size: 12px !important;
-}
-
-.workspace-table {
     font-size: 12.5px !important;
 }
 
-.workspace-table th {
-    font-size: 11.5px !important;
+.product-form label,
+.product-form .form-label,
+.product-form-section label {
+    font-size: 13px !important;
 }
 
-.workspace-status,
-.workspace-row-action {
-    font-size: 10.5px !important;
+.product-form input,
+.product-form select,
+.product-form textarea {
+    font-size: 13px !important;
 }
 
-.workspace-footer,
-.workspace-empty span {
-    font-size: 10.5px !important;
-}
+/* =========================================================
+   16. REPORTS
+   ========================================================= */
 
 .report-date-range label {
-    font-size: 10.5px !important;
+    font-size: 12px !important;
 }
 
 .report-date-range input {
-    min-height: 41px !important;
+    min-height: 43px !important;
+    font-size: 13px !important;
+}
+
+.report-commission-note,
+.report-commission-note p {
+    font-size: 12.5px !important;
+}
+
+/* =========================================================
+   17. MODALS
+   ========================================================= */
+
+.modal-heading h3 {
+    font-size: 19px !important;
+}
+
+.modal-card p,
+.modal-card label,
+.modal-card li,
+.modal-card dt,
+.modal-card dd {
+    font-size: 12.5px !important;
+}
+
+.modal-card small {
     font-size: 11.5px !important;
 }
 
-/* ---------------------------------------------------------
-   ICON READABILITY
-   --------------------------------------------------------- */
-
-.seller-content button svg,
-.seller-content a svg {
-    min-width: 16px;
-    min-height: 16px;
+.modal-card button,
+.modal-card input,
+.modal-card select,
+.modal-card textarea {
+    font-size: 12.5px !important;
 }
+
+/* =========================================================
+   18. ICONS / INFORMATION BANNERS
+   ========================================================= */
 
 .seller-content .workflow-notice svg,
 .seller-content .delivery-completion-notice svg,
@@ -644,49 +773,160 @@
 .seller-content .finance-ledger-note svg,
 .seller-content .commission-rule-banner svg,
 .seller-content .category-compliance-banner svg {
-    width: 20px !important;
-    height: 20px !important;
+    width: 21px !important;
+    height: 21px !important;
+    flex: 0 0 21px !important;
 }
 
-/* ---------------------------------------------------------
-   RESPONSIVE
-   Keep readable sizing on smaller screens; horizontal
-   scrolling is preferable to shrinking table copy.
-   --------------------------------------------------------- */
+/* =========================================================
+   19. BROAD FALLBACKS
+   Catch tiny custom text that still comes from seller.css.
+   These are intentionally near the end.
+   ========================================================= */
 
-@media (max-width: 900px) {
+/* Cards / toolbars / panels commonly use spans as labels */
+.seller-content :where(
+    .dashboard-action-panel,
+    .workspace-card,
+    .pricing-workspace,
+    .finance-workspace,
+    .orders-workspace,
+    .fulfillment-workspace,
+    .inventory-workspace,
+    .returns-workspace,
+    .seller-card
+) span:not(.seller-ui-icon):not(.seller-avatar) {
+    font-size: 12px;
+}
+
+/* Never let "helper/caption" classes stay at old 7-10px values */
+.seller-content :where(
+    .helper-text,
+    .form-help,
+    .field-help,
+    .meta,
+    .caption,
+    .subtext,
+    .secondary-text,
+    .muted-text
+) {
+    font-size: 11.5px !important;
+    line-height: 1.5;
+}
+
+/* =========================================================
+   20. RESPONSIVE
+   Do NOT shrink desktop typography back to tiny values.
+   ========================================================= */
+
+@media (max-width: 1100px) {
     .seller-content table th {
-        font-size: 11px !important;
+        font-size: 12px !important;
     }
 
     .seller-content table td {
-        font-size: 12px !important;
+        font-size: 13px !important;
+    }
+}
+
+@media (max-width: 700px) {
+    .seller-body,
+    .seller-shell,
+    .seller-main,
+    .seller-content {
+        font-size: 13.5px !important;
+    }
+
+    .seller-content table th {
+        font-size: 11.5px !important;
+    }
+
+    .seller-content table td {
+        font-size: 12.5px !important;
     }
 
     .seller-nav-child {
-        font-size: 12px !important;
+        font-size: 12.5px !important;
+    }
+
+    .seller-content h2 {
+        font-size: 25px !important;
     }
 }
 
-@media (max-width: 600px) {
-    .seller-content {
-        font-size: 12.5px;
-    }
-
+@media (max-width: 520px) {
     .seller-content table th {
-        font-size: 10.5px !important;
+        font-size: 11.5px !important;
     }
 
     .seller-content table td {
-        font-size: 11.5px !important;
+        font-size: 12px !important;
     }
 
-    .order-flow-strip strong {
-        font-size: 11.5px !important;
+    .order-flow-strip strong,
+    .return-role-flow strong {
+        font-size: 12.5px !important;
     }
 
     .order-flow-strip span,
     .return-role-flow small {
-        font-size: 10px !important;
+        font-size: 11px !important;
+    }
+}
+
+
+/* =========================================================
+   21. STABLE DESKTOP SIDEBAR
+   Keep the sidebar shell fixed. Only the navigation list
+   scrolls, so the logo/header and footer no longer jump.
+   ========================================================= */
+
+@media (min-width: 821px) {
+    .seller-sidebar {
+        overflow: hidden !important;
+    }
+
+    .seller-sidebar-header {
+        flex: 0 0 auto;
+    }
+
+    .seller-nav {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-x: hidden;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        scrollbar-gutter: stable;
+        padding-right: 4px;
+    }
+
+    .seller-sidebar-footer {
+        flex: 0 0 auto;
+        margin-top: 0 !important;
+        padding-top: 12px;
+        background: transparent;
+    }
+
+    /* Small, unobtrusive scrollbar so navigation does not shift width. */
+    .seller-nav {
+        scrollbar-width: thin;
+        scrollbar-color: rgba(255,255,255,.28) transparent;
+    }
+
+    .seller-nav::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    .seller-nav::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .seller-nav::-webkit-scrollbar-thumb {
+        border-radius: 999px;
+        background: rgba(255,255,255,.24);
+    }
+
+    .seller-nav::-webkit-scrollbar-thumb:hover {
+        background: rgba(255,255,255,.38);
     }
 }

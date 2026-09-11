@@ -49,14 +49,58 @@ Route::prefix('admin')->name('admin.')->group(function () {
     Route::redirect('/', '/admin/dashboard');
 
     Route::get('/dashboard', [AdminController::class, 'dashboard'])->name('dashboard');
+    
     Route::get('/registrations', [AdminController::class, 'registrations'])->name('registrations');
+    Route::get('/registrations/buyers', [AdminController::class, 'buyerApplications'])
+        ->name('registrations.buyers');
+    
+    Route::get('/registrations/sellers', [AdminController::class, 'sellerApplications'])
+        ->name('registrations.sellers');
+    
+    Route::get('/registrations/logistics', [AdminController::class, 'logisticsApplications'])
+        ->name('registrations.logistics');
+    
     Route::get('/users', [AdminController::class, 'users'])->name('users');
-    Route::get('/compliance', [AdminController::class, 'compliance'])->name('compliance');
-    Route::get('/disputes', [AdminController::class, 'disputes'])->name('disputes');
+    Route::get('/users/buyers', [AdminController::class, 'buyerUsers'])
+        ->name('users.buyers');
+
+    Route::get('/users/sellers', [AdminController::class, 'sellerUsers'])
+        ->name('users.sellers');
+
+    Route::get('/users/logistics', [AdminController::class, 'logisticsUsers'])
+        ->name('users.logistics');
+
+    Route::get('/users/riders', [AdminController::class, 'riderUsers'])
+        ->name('users.riders');
+    
+    Route::get('/compliance', [AdminController::class, 'compliance'])
+        ->name('compliance');
+
+    Route::get('/disputes', [AdminController::class, 'disputes'])
+        ->name('disputes');
+    
+    Route::get('/compliance/violations', [AdminController::class, 'productViolations'])
+        ->name('compliance.violations');
+    
+    Route::get('/compliance/returns-refunds', [AdminController::class, 'returnsRefunds'])
+        ->name('compliance.returns-refunds');
+
     Route::get('/commissions', [AdminController::class, 'commissions'])->name('commissions');
     Route::get('/reports', [AdminController::class, 'reports'])->name('reports');
-    Route::get('/settings', [AdminController::class, 'settings'])->name('settings');
-    Route::get('/messages', [AdminController::class, 'messages'])->name('messages');
+    
+    Route::get('/settings', [AdminController::class, 'settings'])
+        ->name('settings');
+    Route::get('/policies', [AdminController::class, 'policies'])
+        ->name('policies');
+    Route::get('/audit-logs', [AdminController::class, 'auditLogs'])
+        ->name('audit-logs');
+
+    Route::get('/messages', [AdminController::class, 'messages'])
+        ->name('messages');
+    
+    Route::get('/announcements', [AdminController::class, 'announcements'])
+        ->name('announcements');
+    
     Route::get('/account', [AdminController::class, 'account'])->name('account');
 });
 

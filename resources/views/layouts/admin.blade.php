@@ -37,17 +37,17 @@ $adminNavGroups = [
             ],
             [
                 'label' => 'Buyer Applications',
-                'route' => null,
+                'route' => 'admin.registrations.buyers',
                 'icon' => 'user-plus',
             ],
             [
                 'label' => 'Seller Applications',
-                'route' => null,
+                'route' => 'admin.registrations.sellers',
                 'icon' => 'store',
             ],
             [
                 'label' => 'Logistics Applications',
-                'route' => null,
+                'route' => 'admin.registrations.logistics',
                 'icon' => 'truck',
             ],
         ],
@@ -63,49 +63,23 @@ $adminNavGroups = [
             ],
             [
                 'label' => 'Buyers',
-                'route' => null,
+                'route' => 'admin.users.buyers',
                 'icon' => 'user',
             ],
             [
                 'label' => 'Sellers',
-                'route' => null,
+                'route' => 'admin.users.sellers',
                 'icon' => 'store',
             ],
             [
                 'label' => 'Logistics Centers',
-                'route' => null,
+                'route' => 'admin.users.logistics',
                 'icon' => 'warehouse',
             ],
             [
                 'label' => 'Riders / Couriers',
-                'route' => null,
+                'route' => 'admin.users.riders',
                 'icon' => 'bike',
-            ],
-        ],
-    ],
-
-    [
-        'label' => 'Marketplace Management',
-        'items' => [
-            [
-                'label' => 'Products',
-                'route' => null,
-                'icon' => 'package',
-            ],
-            [
-                'label' => 'Categories',
-                'route' => null,
-                'icon' => 'layers',
-            ],
-            [
-                'label' => 'Orders',
-                'route' => null,
-                'icon' => 'shopping-cart',
-            ],
-            [
-                'label' => 'Delivery Monitoring',
-                'route' => null,
-                'icon' => 'map-pin',
             ],
         ],
     ],
@@ -125,12 +99,12 @@ $adminNavGroups = [
             ],
             [
                 'label' => 'Product Violations',
-                'route' => null,
-                'icon' => 'triangle-alert',
+                'route' => 'admin.compliance.violations',
+                'icon' => 'shield-alert',
             ],
             [
                 'label' => 'Returns & Refunds',
-                'route' => null,
+                'route' => 'admin.compliance.returns-refunds',
                 'icon' => 'rotate-ccw',
             ],
         ],
@@ -172,7 +146,7 @@ $adminNavGroups = [
             ],
             [
                 'label' => 'Announcements',
-                'route' => null,
+                'route' => 'admin.announcements',
                 'icon' => 'megaphone',
             ],
         ],
@@ -193,13 +167,13 @@ $adminNavGroups = [
             ],
             [
                 'label' => 'Platform Policies',
-                'route' => null,
+                'route' => 'admin.policies',
                 'icon' => 'file-text',
             ],
             [
                 'label' => 'Audit Logs',
-                'route' => null,
-                'icon' => 'history',
+                'route' => 'admin.audit-logs',
+                'icon' => 'scroll-text',
             ],
         ],
     ],

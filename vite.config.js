@@ -14,6 +14,7 @@ export default defineConfig({
                 'resources/js/courier.js',
                 'resources/css/seller.css',
                 'resources/css/seller-polish.css',
+                'resources/css/seller-legibility.css',
                 'resources/js/seller.js',
                 'resources/js/seller-polish.js',
                 'resources/css/landing.css',

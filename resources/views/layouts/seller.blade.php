@@ -11,6 +11,7 @@
     @vite([
         'resources/css/seller.css',
         'resources/css/seller-polish.css',
+        'resources/css/seller-legibility.css',
         'resources/js/seller.js',
         'resources/js/seller-polish.js'
     ])
@@ -96,7 +97,6 @@
             </a>
         </div>
     </aside>
-
     <button class="seller-overlay" type="button" data-seller-overlay aria-label="Close menu"></button>
     <div class="seller-main">
         <header class="seller-topbar">
@@ -140,7 +140,6 @@
         <main class="seller-content">@yield('content')</main>
     </div>
 </div>
-
 <div class="seller-toast" data-seller-toast role="status" aria-live="polite"></div>
 @if (session('success'))
     <div class="seller-toast is-visible" data-server-toast role="status">{{ session('success') }}</div>

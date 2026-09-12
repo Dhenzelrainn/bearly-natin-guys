@@ -321,3 +321,218 @@ body{font-family:'Poppins',Arial,sans-serif;line-height:1.3}
 .model-promo::before{z-index:-1}
 .promo-layout{position:relative;z-index:0}
 @media(max-width:540px){.hero-banner-image{object-position:72% center}.community-banner-image{object-position:65% center}}
+
+
+/* ========================================================================
+   2026-09-12 — SELLER-BACKUP ONE-SHOT LANDING POLISH
+   Final overrides for the screencast review. Keep this block LAST.
+   ======================================================================== */
+
+/* Never show link underlines on the landing CTA/navigation controls. */
+.site-header a,
+.text-link,
+.collection-copy a,
+.site-footer a,
+.site-footer button,
+.button { text-decoration:none !important; }
+.text-link,
+.collection-copy a { border-bottom:0 !important; }
+.text-link:hover,
+.collection-copy a:hover,
+.site-footer a:hover,
+.site-footer button:hover { text-decoration:none !important; }
+
+/* Readability: increase the tiny supporting copy without making the page bulky. */
+.announcement-inner{font-size:13px!important}
+.main-nav a{font-size:14px!important}
+.section-kicker{display:inline-block!important;font-size:12px!important;letter-spacing:.13em!important;margin-bottom:7px!important}
+.section-heading p{font-family:'Poppins',sans-serif!important;font-size:15px!important;line-height:1.55!important}
+.text-link{font-family:'Poppins',sans-serif!important;font-size:14px!important;font-weight:600!important;padding:5px 0!important}
+.benefits-grid strong{font-size:13px!important}.benefits-grid small{font-size:12px!important;line-height:1.35!important}
+.account-cta p{font-size:14px!important;line-height:1.55!important}
+
+/* HERO — full-width HD editorial photography on all three slides. */
+.hero-slide{background:#f2ebe3!important;overflow:hidden}
+.hero-banner-image{
+    position:absolute!important;inset:0!important;width:100%!important;height:100%!important;
+    max-width:none!important;object-fit:cover!important;object-position:center!important;
+    z-index:0!important;filter:none!important;transform:none!important;
+}
+.hero-banner-slide-01{object-position:center!important}
+.hero-banner-slide-02{object-position:center!important}
+.hero-banner-slide-03{object-position:center!important}
+.hero-slide::before{
+    content:''!important;position:absolute!important;inset:0!important;z-index:1!important;
+    background:linear-gradient(90deg,rgba(255,252,247,.97) 0%,rgba(255,252,247,.90) 26%,rgba(255,252,247,.55) 43%,rgba(255,252,247,0) 62%)!important;
+    pointer-events:none!important;
+}
+.hero-layout{position:relative!important;z-index:2!important;grid-template-columns:minmax(0,46%) minmax(0,54%)!important}
+.hero-copy{width:auto!important;max-width:610px!important;padding-left:clamp(10px,1vw,18px)!important}
+.hero-copy .section-kicker{font-size:12px!important}
+.hero-copy p{font-size:clamp(15px,1.15vw,17px)!important;line-height:1.58!important;max-width:540px!important}
+.hero-promise{margin-top:17px!important}
+.hero-promise strong{font-size:14px!important}.hero-promise div>span{display:block!important;font-size:12px!important;line-height:1.4!important}
+.hero-visual-spacer{min-width:0;min-height:1px}
+
+/* CATEGORIES — let the item photography do the work. */
+.category-carousel{
+    grid-auto-columns:minmax(148px,1fr)!important;gap:16px!important;overflow-x:auto!important;
+    padding:3px 2px 9px!important;scroll-snap-type:x proximity!important;
+}
+.category-card{min-width:148px!important}
+.category-image{height:148px!important;aspect-ratio:1!important;border-radius:10px!important;background:#f6f3ef!important}
+.category-image img{width:100%!important;height:100%!important;object-fit:contain!important;padding:3px!important;transform:scale(1.08);mix-blend-mode:multiply}
+.category-card>span:last-child{font-family:'Poppins',sans-serif!important;font-size:13px!important;font-weight:500!important;line-height:1.35!important;padding-top:8px!important}
+
+/* CURATED COLLECTIONS — larger HD cards, cleaner gradient, no underlined CTA. */
+.section-collections{padding-top:28px!important;padding-bottom:30px!important}
+.collection-track{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:14px!important}
+.collection-card{
+    min-height:230px!important;aspect-ratio:16/8.7!important;border-radius:8px!important;
+    border:0!important;overflow:hidden!important;background:#e9e2da!important;
+}
+.collection-banner-image{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;object-fit:cover!important;object-position:center!important;z-index:-2!important;filter:none!important;transform:none!important}
+.collection-card::before{display:block!important;content:''!important;position:absolute!important;inset:0!important;z-index:-1!important;background:linear-gradient(90deg,rgba(23,16,12,.63),rgba(23,16,12,.22) 52%,rgba(23,16,12,.03) 78%)!important}
+.collection-copy{height:100%!important;display:flex!important;flex-direction:column!important;align-items:flex-start!important;justify-content:flex-end!important;padding:22px!important;color:#fff!important}
+.collection-copy>span{display:block!important;font-size:11px!important;font-weight:600!important;letter-spacing:.11em!important;text-transform:uppercase!important;margin-bottom:5px!important;color:#fff4e9!important}
+.collection-copy p{display:none!important}
+.collection-copy h3{font-family:'Poppins',sans-serif!important;font-size:clamp(20px,1.7vw,27px)!important;font-weight:600!important;line-height:1.12!important;margin:0 0 10px!important;color:#fff!important;text-shadow:0 2px 12px rgba(0,0,0,.28)!important}
+.collection-copy a{font-family:'Poppins',sans-serif!important;font-size:13px!important;font-weight:600!important;color:#fff!important;padding:0!important;border:0!important}
+.collection-copy a::after{min-height:0!important}
+
+/* COMMUNITY — richer HD photography + exact Bearly mascot overlay. */
+.model-promo{position:relative!important;min-height:360px!important;margin-top:4px!important;overflow:hidden!important;background:#efe8df!important}
+.community-banner-image{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;max-width:none!important;object-fit:cover!important;object-position:center!important;z-index:0!important;filter:none!important}
+.model-promo::before{content:''!important;position:absolute!important;inset:0!important;z-index:1!important;background:linear-gradient(90deg,rgba(255,252,247,.97) 0%,rgba(255,252,247,.88) 31%,rgba(255,252,247,.35) 49%,rgba(255,252,247,0) 66%)!important;pointer-events:none!important}
+.promo-layout{position:relative!important;z-index:2!important;height:clamp(360px,26vw,430px)!important;max-height:none!important;min-height:360px!important;display:block!important}
+.promo-copy{width:min(43%,570px)!important;height:100%!important;padding:34px 0!important;display:flex!important;justify-content:center!important}
+.promo-copy h2{font-family:Georgia,serif!important;font-size:clamp(34px,3.4vw,52px)!important;line-height:.98!important}
+.promo-copy p{font-family:'Poppins',sans-serif!important;font-size:15px!important;line-height:1.55!important;margin:13px 0 18px!important;max-width:470px!important}
+.promo-copy .button{min-height:42px!important;font-size:13px!important;padding:0 18px!important}
+.promo-models{display:none!important}
+.promo-bear{
+    display:flex!important;position:absolute!important;right:31%!important;bottom:22px!important;width:104px!important;height:104px!important;
+    padding:10px!important;border-radius:50%!important;background:rgba(255,250,244,.94)!important;color:var(--brown-900)!important;
+    box-shadow:0 10px 30px rgba(48,30,19,.18)!important;z-index:3!important;
+}
+.promo-bear img{width:84px!important;height:84px!important;object-fit:contain!important}
+.promo-bear span{display:none!important}
+
+/* FEATURED PRODUCTS — fewer, larger cards in the first viewport. */
+.products-section{padding:30px 0 38px!important}
+.product-track{gap:16px!important;padding:3px 1px 10px!important}
+.product-card{flex:0 0 calc((100% - 64px)/5)!important;min-width:210px!important}
+.product-image-wrap{aspect-ratio:1/1.03!important;min-height:220px!important;border-radius:9px!important;background:#f6f3ef!important}
+.product-image-wrap>img{width:100%!important;height:100%!important;object-fit:contain!important;padding:8px!important;transform:scale(1.06)}
+.product-card:hover .product-image-wrap>img{transform:scale(1.10)!important}
+.product-info{padding:9px 3px 0!important}
+.product-info h3{font-family:'Poppins',sans-serif!important;font-size:14px!important;font-weight:500!important;line-height:1.35!important;min-height:2.7em!important}
+.product-meta strong{font-family:'Poppins',sans-serif!important;font-size:16px!important;font-weight:600!important}
+.product-rating{font-size:13px!important}
+.product-tab{font-family:'Poppins',sans-serif!important;font-size:13px!important;font-weight:500!important}
+.product-badge{font-family:'Poppins',sans-serif!important;font-size:10px!important;padding:4px 7px!important}
+
+/* FOOTER — professional marketplace footer, Bearly palette, IG/FB only. */
+.site-footer{padding:48px 0 0!important;background:#2d1e17!important;color:#f9f2eb!important}
+.footer-grid-professional{grid-template-columns:1.45fr .9fr 1.1fr 1fr 1.25fr!important;gap:clamp(24px,3vw,48px)!important;padding-bottom:38px!important}
+.footer-brand>img{width:158px!important;max-height:none!important;background:#fffaf5!important;padding:8px 12px!important;border-radius:8px!important;object-fit:contain!important;filter:none!important}
+.footer-brand p{max-width:300px!important;margin:17px 0 9px!important;color:#dfd1c6!important;font-family:'Poppins',sans-serif!important;font-size:13px!important;line-height:1.65!important}
+.footer-tagline{display:block;color:#f3b863;font-size:12px;font-weight:600;line-height:1.45}
+.footer-grid h3{margin:2px 0 14px!important;color:#fff!important;font-family:'Poppins',sans-serif!important;font-size:13px!important;font-weight:600!important;letter-spacing:.02em!important}
+.footer-column{display:flex;flex-direction:column;align-items:flex-start}
+.footer-column>a,.footer-column>button{margin:0 0 10px!important;padding:0!important;border:0!important;background:none!important;color:#d7c9be!important;font-family:'Poppins',sans-serif!important;font-size:12.5px!important;line-height:1.45!important;text-align:left!important;cursor:pointer!important}
+.footer-column>a:hover,.footer-column>button:hover{color:#fff!important}
+.footer-social-column{gap:0}
+.social-account{display:grid;grid-template-columns:36px 1fr;align-items:center;gap:10px;width:100%;margin:0 0 12px;color:#eadfd6}
+.social-icon{width:36px;height:36px;display:grid;place-items:center;border:1px solid rgba(255,255,255,.28);border-radius:50%;font-size:11px;font-weight:700;color:#fff}
+.social-account strong,.social-account small{display:block}.social-account strong{font-size:12.5px;font-weight:600;color:#fff}.social-account small{margin-top:2px;font-size:11.5px;color:#cdbfb4}
+.footer-bottom{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:22px!important;padding:18px 0 23px!important;border-top:1px solid rgba(255,255,255,.14)!important;color:#bcaea3!important;font-family:'Poppins',sans-serif!important;font-size:11.5px!important}
+.footer-bottom>div{display:flex;gap:22px}.footer-bottom a{color:#cfc0b5!important}
+
+/* ------------------------------------------------------------------------
+   Shared .bl-* shell restoration for About + Contact.
+   Latest landing redesign uses .site-* classes, while those pages still use
+   the established .bl-* header/footer. These scoped rules stop the logo from
+   expanding to its intrinsic size and restore nav/search alignment.
+   ------------------------------------------------------------------------ */
+body.bl{
+    --bl-paper:#fffdf9;--bl-cream:#f8f4ed;--bl-caramel:#a86725;--bl-caramel-dark:#82501d;
+    --bl-espresso:#2a1d15;--bl-ink:#241a13;--bl-muted:#71675f;--bl-line:rgba(42,29,21,.14);
+    margin:0;background:var(--bl-cream);color:var(--bl-ink);font-family:'Poppins',sans-serif;
+}
+body.bl *,body.bl *::before,body.bl *::after{box-sizing:border-box}
+body.bl img{display:block;max-width:100%}
+body.bl a{color:inherit;text-decoration:none}
+body.bl button,body.bl input,body.bl select,body.bl textarea{font:inherit}
+body.bl button{color:inherit;cursor:pointer}
+body.bl h1,body.bl h2,body.bl h3,body.bl p{margin-top:0}
+body.bl .material-symbols-outlined{font-family:'Material Symbols Outlined';font-weight:300;font-style:normal;font-size:23px;line-height:1;letter-spacing:normal;text-transform:none;white-space:nowrap;word-wrap:normal;direction:ltr;font-feature-settings:'liga';-webkit-font-smoothing:antialiased}
+.bl-sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.bl-skip{position:fixed;z-index:1000;top:-80px;left:16px;padding:10px 16px;background:#fff}.bl-skip:focus{top:12px}
+body.bl .bl-header{
+    position:sticky;z-index:100;top:0;height:78px;min-height:78px;display:grid;
+    grid-template-columns:230px minmax(0,1fr) 230px;align-items:center;
+    padding:12px clamp(22px,4vw,70px);background:rgba(255,253,249,.97);
+    border-bottom:1px solid rgba(42,29,21,.09);backdrop-filter:blur(12px);
+}
+body.bl .bl-logo{display:block!important;width:168px!important;min-width:0!important;max-width:168px!important;height:auto!important}
+body.bl .bl-logo img{display:block!important;width:168px!important;max-width:168px!important;height:54px!important;max-height:54px!important;object-fit:contain!important;object-position:left center!important;margin:0!important}
+body.bl .bl-nav{display:flex;align-items:center;justify-content:center;gap:clamp(24px,3.2vw,54px);font-size:14px;white-space:nowrap}
+body.bl .bl-nav a{position:relative;display:inline-flex;align-items:center;padding:12px 0;text-decoration:none!important}
+body.bl .bl-nav a::after{content:'';position:absolute;left:0;right:100%;bottom:3px;height:2px;background:var(--bl-caramel);transition:right .2s ease}
+body.bl .bl-nav a:hover::after,body.bl .bl-nav a[aria-current]::after{right:0}
+body.bl .bl-nav a[aria-current]{color:var(--bl-caramel-dark)}
+body.bl .bl-actions{display:flex;align-items:center;justify-content:flex-end;gap:18px}
+body.bl .bl-actions a,body.bl .bl-actions button,body.bl .bl-menu{width:38px;height:38px;display:grid;place-items:center;padding:7px;border:0;background:transparent;border-radius:50%}
+body.bl .bl-actions a:hover,body.bl .bl-actions button:hover{background:#eee6db}
+body.bl .bl-menu{display:none}
+body.bl .bl-search{position:absolute;inset:0;z-index:5;display:flex;align-items:center;gap:14px;padding:12px clamp(22px,4vw,70px);background:var(--bl-paper)}
+body.bl .bl-search[hidden]{display:none!important}
+body.bl .bl-search input{flex:1;min-width:0;height:48px;border:0;border-bottom:1px solid var(--bl-ink);outline:0;background:transparent;font-size:16px}
+body.bl .bl-search button{width:40px;height:40px;display:grid;place-items:center;border:0;background:transparent;padding:8px}
+body.bl .bl-footer{padding:54px clamp(24px,5vw,76px) 28px;background:var(--bl-espresso);color:#fffaf3}
+body.bl .bl-footer-grid{display:grid;grid-template-columns:1.6fr .8fr .8fr 1fr;gap:clamp(30px,5vw,86px);padding-bottom:40px}
+body.bl .bl-footer-logo{display:block;width:170px;max-height:64px;object-fit:contain;object-position:left;margin-bottom:20px;background:#fffaf5;padding:7px 10px;border-radius:7px;filter:none}
+body.bl .bl-footer-about p{max-width:320px;color:#e3d9cf;font-size:14px;line-height:1.7}
+body.bl .bl-footer h2{margin-bottom:15px;font-family:'Poppins',sans-serif;font-size:14px;font-weight:600}
+body.bl .bl-footer nav a{display:block;margin:9px 0;color:#ddd2c7;font-size:13px;text-decoration:none!important}
+body.bl .bl-footer nav a:hover{color:#fff;text-decoration:none!important}
+body.bl .bl-social>div{display:flex;gap:13px}.bl-social a{width:38px;height:38px;display:grid;place-items:center;border:1px solid rgba(255,255,255,.25);border-radius:50%;font-weight:600}
+body.bl .bl-footer-bottom{display:flex;justify-content:space-between;gap:30px;padding-top:24px;border-top:1px solid rgba(255,255,255,.22);color:#cfc3b8;font-size:12px}
+
+@media(max-width:1100px){
+    .product-card{flex-basis:calc((100% - 48px)/4)!important}
+    .footer-grid-professional{grid-template-columns:1.35fr 1fr 1fr!important}.footer-social-column{grid-column:auto}.footer-brand{grid-row:span 2}
+    body.bl .bl-header{grid-template-columns:190px minmax(0,1fr) 190px}
+    body.bl .bl-nav{gap:24px}
+}
+@media(max-width:960px){
+    .category-carousel{grid-auto-columns:132px!important}.category-card{min-width:132px!important}.category-image{height:132px!important}
+    .collection-track{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+    .product-card{flex-basis:calc((100% - 32px)/3)!important;min-width:200px!important}
+    .promo-copy{width:50%!important}
+}
+@media(max-width:760px){
+    body.bl .bl-header{height:68px;min-height:68px;grid-template-columns:1fr auto auto;padding:8px 16px}
+    body.bl .bl-logo{width:132px!important;max-width:132px!important}body.bl .bl-logo img{width:132px!important;max-width:132px!important;height:48px!important;max-height:48px!important}
+    body.bl .bl-menu{display:grid}
+    body.bl .bl-nav{position:absolute;top:100%;left:0;right:0;display:none;flex-direction:column;align-items:flex-start;gap:0;padding:12px 22px 24px;background:var(--bl-paper);border-bottom:1px solid var(--bl-line)}
+    body.bl .bl-nav.is-open{display:flex}body.bl .bl-nav a{padding:13px 0}
+    body.bl .bl-actions{gap:3px}body.bl .bl-actions a:nth-child(3){display:none}
+    body.bl .bl-footer-grid{grid-template-columns:1fr 1fr}.bl-footer-about{grid-column:1/-1}
+
+    .hero-slide::before{background:linear-gradient(90deg,rgba(255,252,247,.96) 0%,rgba(255,252,247,.85) 50%,rgba(255,252,247,.25) 100%)!important}
+    .hero-layout{grid-template-columns:1fr!important}
+    .hero-copy{max-width:85%!important}
+    .category-carousel{grid-auto-columns:118px!important}.category-card{min-width:118px!important}.category-image{height:118px!important}
+    .collection-track{grid-template-columns:1fr 1fr!important}.collection-card{min-height:190px!important;aspect-ratio:1.35!important}.collection-copy{padding:14px!important}.collection-copy h3{font-size:18px!important}
+    .model-promo{min-height:310px!important}.promo-layout{height:310px!important;min-height:310px!important}.promo-copy{width:63%!important}.promo-copy h2{font-size:31px!important}.promo-copy p{font-size:13px!important}.promo-bear{right:20px!important;bottom:18px!important;width:76px!important;height:76px!important}.promo-bear img{width:60px!important;height:60px!important}
+    .product-card{flex-basis:calc((100% - 16px)/2.2)!important;min-width:178px!important}.product-image-wrap{min-height:190px!important}
+    .footer-grid-professional{grid-template-columns:1fr 1fr!important}.footer-brand{grid-column:1/-1;grid-row:auto}.footer-social-column{grid-column:1/-1}.footer-bottom{align-items:flex-start!important;flex-direction:column!important}.footer-bottom>div{flex-wrap:wrap;gap:12px 18px}
+}
+@media(max-width:480px){
+    .collection-track{grid-template-columns:1fr!important}.collection-card{min-height:220px!important;aspect-ratio:1.55!important}
+    .product-card{flex-basis:78%!important;min-width:0!important}.product-image-wrap{min-height:220px!important}
+    body.bl .bl-actions a:nth-child(2){display:none}
+    body.bl .bl-footer-grid{grid-template-columns:1fr}.bl-footer-about{grid-column:auto}.bl-footer-bottom{flex-direction:column}
+}

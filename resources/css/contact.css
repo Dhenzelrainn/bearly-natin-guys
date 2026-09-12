@@ -11,8 +11,32 @@ body.contact-page {
 }
 
 body.contact-page .contact-header {
+    height: 78px;
+    min-height: 78px;
+    grid-template-columns: 230px minmax(0, 1fr) 230px;
+    padding: 12px clamp(22px, 4vw, 70px);
     border-bottom: 1px solid #e8e0d7;
     background: #fcfaf7;
+}
+
+body.contact-page .bl-nav {
+    gap: clamp(24px, 3.2vw, 54px);
+    font-size: 14px;
+}
+
+body.contact-page .bl-logo {
+    width: 168px;
+}
+
+body.contact-page .bl-logo img {
+    width: 100%;
+    height: 54px;
+    object-fit: contain;
+    object-position: left center;
+}
+
+body.contact-page .bl-actions {
+    gap: 22px;
 }
 
 body.contact-page .bl-actions a {
@@ -27,11 +51,31 @@ body.contact-page .contact-shell {
 }
 
 body.contact-page .contact-hero {
-    padding: 64px 0 58px;
+    position: relative;
+    overflow: hidden;
+    padding: 76px 0 68px;
     border-bottom: 1px solid #e8e0d7;
     background:
         radial-gradient(circle at 78% 28%, rgba(150, 96, 31, .11), transparent 25%),
         linear-gradient(105deg, #fbf6ef 0%, #f4e8d9 100%);
+}
+
+body.contact-page .contact-hero::after {
+    content: "";
+    position: absolute;
+    top: -110px;
+    right: clamp(30px, 8vw, 140px);
+    width: 280px;
+    height: 280px;
+    border: 1px solid rgba(168, 108, 30, .16);
+    border-radius: 50%;
+    box-shadow: 0 0 0 42px rgba(168, 108, 30, .035), 0 0 0 84px rgba(168, 108, 30, .025);
+    pointer-events: none;
+}
+
+body.contact-page .contact-hero .contact-shell {
+    position: relative;
+    z-index: 1;
 }
 
 body.contact-page .contact-eyebrow,
@@ -112,14 +156,14 @@ body.contact-page .contact-topic-grid {
 }
 
 body.contact-page .contact-topic-card {
-    min-height: 118px;
+    min-height: 138px;
     display: grid;
     grid-template-columns: 46px minmax(0, 1fr) 24px;
     align-items: center;
     gap: 16px;
-    padding: 22px;
+    padding: 24px;
     border: 1px solid #e4dbd2;
-    border-radius: 8px;
+    border-radius: 12px;
     background: #fff;
     color: #302217;
     text-align: left;
@@ -152,14 +196,14 @@ body.contact-page .contact-topic-copy {
 }
 
 body.contact-page .contact-topic-copy strong {
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 600;
 }
 
 body.contact-page .contact-topic-copy small {
     color: #6f655d;
-    font-size: 11px;
-    line-height: 1.5;
+    font-size: 12px;
+    line-height: 1.6;
 }
 
 body.contact-page .contact-topic-arrow {
@@ -192,10 +236,11 @@ body.contact-page .contact-form-heading p:last-child {
 }
 
 body.contact-page .contact-form {
-    padding: 24px;
+    padding: 30px;
     border: 1px solid #e4dbd2;
-    border-radius: 8px;
+    border-radius: 12px;
     background: #fff;
+    box-shadow: 0 14px 40px rgba(70, 44, 25, .055);
 }
 
 body.contact-page .contact-field-row {
@@ -222,7 +267,7 @@ body.contact-page .contact-message-label {
     gap: 12px;
     margin-bottom: 7px;
     color: #38271e;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 500;
 }
 
@@ -255,7 +300,7 @@ body.contact-page .contact-field textarea {
     background: #fff;
     color: #302217;
     font: inherit;
-    font-size: 11px;
+    font-size: 13px;
     outline: none;
     transition:
         border-color .18s ease,
@@ -264,8 +309,8 @@ body.contact-page .contact-field textarea {
 
 body.contact-page .contact-field input,
 body.contact-page .contact-field select {
-    height: 43px;
-    padding: 0 12px;
+    height: 48px;
+    padding: 0 14px;
 }
 
 body.contact-page .contact-field textarea {
@@ -316,7 +361,7 @@ body.contact-page .contact-outline-button {
     padding: 0 20px;
     border-radius: 6px;
     font: inherit;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 500;
     cursor: pointer;
     transition:
@@ -355,21 +400,24 @@ body.contact-page .contact-form-note {
     max-width: 420px;
     margin: 0;
     color: #8a8179;
-    font-size: 9px;
+    font-size: 10px;
     line-height: 1.5;
 }
 
 body.contact-page .contact-reach-column {
-    padding: 26px;
+    position: sticky;
+    top: 102px;
+    padding: 30px;
     border: 1px solid #e4dbd2;
-    border-radius: 8px;
+    border-radius: 12px;
     background: #fff;
+    box-shadow: 0 14px 40px rgba(70, 44, 25, .055);
 }
 
 body.contact-page .contact-reach-intro {
     margin: 10px 0 20px;
     color: #6f655d;
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1.6;
 }
 
@@ -399,14 +447,14 @@ body.contact-page .contact-reach-list .material-symbols-outlined {
 
 body.contact-page .contact-reach-list strong {
     display: block;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
 }
 
 body.contact-page .contact-reach-list p {
     margin: 3px 0 0;
     color: #71675f;
-    font-size: 10px;
+    font-size: 11px;
 }
 
 body.contact-page .contact-tip {
@@ -449,7 +497,7 @@ body.contact-page .contact-shortcut-card {
     gap: 16px;
     padding: 22px;
     border: 1px solid #e4dbd2;
-    border-radius: 8px;
+    border-radius: 12px;
     background: #fff;
 }
 
@@ -467,14 +515,14 @@ body.contact-page .contact-shortcut-icon {
 body.contact-page .contact-shortcut-copy strong {
     display: block;
     color: #302217;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 600;
 }
 
 body.contact-page .contact-shortcut-copy p {
     margin: 5px 0 0;
     color: #766c64;
-    font-size: 10px;
+    font-size: 11px;
     line-height: 1.5;
 }
 
@@ -523,6 +571,7 @@ body.contact-page .contact-toast {
 
     body.contact-page .contact-reach-column {
         max-width: none;
+        position: static;
     }
 
     body.contact-page .contact-shortcut-card {
@@ -620,4 +669,47 @@ body.contact-page .contact-toast {
     body.contact-page .contact-small-button {
         width: 100%;
     }
+}
+
+
+/* ========================================================================
+   2026-09-12 — CONTACT PAGE ALIGNMENT + READABILITY POLISH
+   ======================================================================== */
+body.contact-page .contact-eyebrow,
+body.contact-page .contact-label{font-size:13px!important}
+body.contact-page .contact-hero > .contact-shell > p:last-child{font-size:16px!important;line-height:1.7!important}
+body.contact-page .contact-text-link{font-size:14px!important;text-decoration:none!important}
+body.contact-page .contact-topic-copy strong{font-size:16px!important}
+body.contact-page .contact-topic-copy small{font-size:13px!important;line-height:1.55!important}
+body.contact-page .contact-form-heading p:last-child{font-size:14px!important;line-height:1.6!important}
+
+/* Equal columns + equal control heights in every two-up form row. */
+body.contact-page .contact-field-row{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    gap:18px!important;align-items:start!important;
+}
+body.contact-page .contact-field{min-width:0!important;display:flex!important;flex-direction:column!important}
+body.contact-page .contact-field label,
+body.contact-page .contact-message-label{
+    min-height:35px!important;align-items:flex-end!important;margin-bottom:8px!important;
+    font-size:13px!important;line-height:1.25!important;
+}
+body.contact-page .contact-optional,
+body.contact-page .contact-message-label>span{font-size:11px!important}
+body.contact-page .contact-field input,
+body.contact-page .contact-field select{height:52px!important;min-height:52px!important;padding:0 15px!important;font-size:14px!important}
+body.contact-page .contact-field textarea{min-height:170px!important;padding:14px!important;font-size:14px!important}
+body.contact-page .contact-error{min-height:18px!important;margin-top:5px!important;font-size:10px!important;line-height:1.3!important}
+body.contact-page .contact-primary-button,
+body.contact-page .contact-outline-button{min-height:46px!important;font-size:13px!important}
+body.contact-page .contact-form-note{font-size:12px!important}
+body.contact-page .contact-reach-intro{font-size:13px!important}
+body.contact-page .contact-reach-list p,
+body.contact-page .contact-shortcut-copy p{font-size:12.5px!important}
+body.contact-page .contact-shortcut-copy strong{font-size:15px!important}
+body.contact-page .contact-toast{font-size:12px!important}
+
+@media(max-width:720px){
+    body.contact-page .contact-field-row{grid-template-columns:1fr!important;gap:0!important}
+    body.contact-page .contact-field label,body.contact-page .contact-message-label{min-height:0!important}
 }

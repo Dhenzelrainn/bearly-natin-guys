@@ -54,12 +54,12 @@
     ];
 
     $collections = [
-        ['eyebrow' => 'Tech edit', 'title' => 'For your everyday.', 'copy' => 'Useful tech for study, work, and everything between.', 'tone' => 'cool', 'background' => 'collection-everyday.jpg', 'images' => ['aula-keyboard.jpg','wireless-mouse.jpg','travel-tumbler.jpg']],
-        ['eyebrow' => 'Style edit', 'title' => 'A fresh little upgrade.', 'copy' => 'Easy pieces that make everyday outfits feel more put together.', 'tone' => 'warm', 'background' => 'collection-style.jpg', 'images' => ['cotton-tshirt.jpg','baseball-cap.jpg','canvas-tote.jpg']],
-        ['eyebrow' => 'Home edit', 'title' => 'Refresh your space.', 'copy' => 'Simple home pieces with a clean, calm look.', 'tone' => 'sand', 'background' => 'collection-home.jpg', 'images' => ['dining-chair.jpg','floral-pillow-sham.jpg','reading-journal.jpg']],
-        ['eyebrow' => 'Self-care edit', 'title' => 'Your daily reset.', 'copy' => 'Small routines, thoughtful essentials, better days.', 'tone' => 'rose', 'background' => 'collection-self-care.jpg', 'images' => ['face-serum.jpg','travel-tumbler.jpg','floral-pillow-sham.jpg']],
-        ['eyebrow' => 'Weekend edit', 'title' => 'Ready for the weekend.', 'copy' => 'Grab-and-go finds for errands, trips, and days outside.', 'tone' => 'sage', 'background' => 'collection-weekend.jpg', 'images' => ['canvas-tote.jpg','everyday-sneakers.jpg','travel-tumbler.jpg']],
-        ['eyebrow' => 'Giftable edit', 'title' => 'Good food, good mood.', 'copy' => 'Easy-to-gift favorites for people you actually like.', 'tone' => 'cream', 'background' => 'collection-food.jpg', 'images' => ['classic-watch.jpg','reading-journal.jpg','face-serum.jpg']],
+        ['eyebrow' => 'Tech edit', 'title' => 'For your everyday.', 'copy' => 'Useful tech for study, work, and everything between.', 'tone' => 'cool', 'background' => 'collection-everyday-hd.png', 'images' => ['aula-keyboard.jpg','wireless-mouse.jpg','travel-tumbler.jpg']],
+        ['eyebrow' => 'Style edit', 'title' => 'A fresh little upgrade.', 'copy' => 'Easy pieces that make everyday outfits feel more put together.', 'tone' => 'warm', 'background' => 'collection-style-hd.png', 'images' => ['cotton-tshirt.jpg','baseball-cap.jpg','canvas-tote.jpg']],
+        ['eyebrow' => 'Home edit', 'title' => 'Refresh your space.', 'copy' => 'Simple home pieces with a clean, calm look.', 'tone' => 'sand', 'background' => 'collection-home-hd.png', 'images' => ['dining-chair.jpg','floral-pillow-sham.jpg','reading-journal.jpg']],
+        ['eyebrow' => 'Self-care edit', 'title' => 'Your daily reset.', 'copy' => 'Small routines, thoughtful essentials, better days.', 'tone' => 'rose', 'background' => 'collection-self-care-hd.png', 'images' => ['face-serum.jpg','travel-tumbler.jpg','floral-pillow-sham.jpg']],
+        ['eyebrow' => 'Weekend edit', 'title' => 'Ready for the weekend.', 'copy' => 'Grab-and-go finds for errands, trips, and days outside.', 'tone' => 'sage', 'background' => 'collection-weekend-hd.png', 'images' => ['canvas-tote.jpg','everyday-sneakers.jpg','travel-tumbler.jpg']],
+        ['eyebrow' => 'Giftable edit', 'title' => 'Good food, good mood.', 'copy' => 'Easy-to-gift favorites for people you actually like.', 'tone' => 'cream', 'background' => 'collection-food-hd.png', 'images' => ['classic-watch.jpg','reading-journal.jpg','face-serum.jpg']],
     ];
 @endphp
 
@@ -104,7 +104,7 @@
     <section class="hero" id="home" aria-label="Bearly highlights">
         <div class="hero-slider" id="heroSlider" aria-roledescription="carousel" aria-label="Bearly collections">
             <article class="hero-slide is-active" data-slide="0" role="group" aria-roledescription="slide" aria-label="1 of 3: Welcome to Bearly">
-                <img class="hero-banner-image" src="{{ asset('images/landing-page/hero-banner.jpg') }}" alt="Bearly community member at a desk" fetchpriority="high" width="1024" height="290">
+                <img class="hero-banner-image hero-banner-slide-01" src="{{ asset('images/landing-page/hero-banner-01.png') }}" alt="Bearly shopper browsing products on a laptop in a warm studio" fetchpriority="high" width="1983" height="793">
                 <div class="site-shell hero-layout">
                     <div class="hero-copy reveal-up">
                         <span class="section-kicker">BEARLY MARKETPLACE</span>
@@ -119,16 +119,12 @@
                             <div><strong>Good Things Find You Here.</strong><span>Curated finds, real categories, easier browsing.</span></div>
                         </div>
                     </div>
-                    <div class="hero-media reveal-up">
-                        <div class="model-frame model-one">
-                            <img src="{{ asset('images/landing-page/model-1.png') }}" alt="Bearly model wearing a white top" loading="eager">
-                        </div>
-                        <span class="hero-note">Real people.<br>Real finds.<br>Bearly stressful.</span>
-                    </div>
+                    <div class="hero-visual-spacer" aria-hidden="true"></div>
                 </div>
             </article>
 
             <article class="hero-slide" data-slide="1" role="group" aria-roledescription="slide" aria-label="2 of 3: Style and everyday">
+                <img class="hero-banner-image hero-banner-slide-02" src="{{ asset('images/landing-page/hero-banner-02.png') }}" alt="Bearly model presenting apparel, shoes, and accessories in a boutique-style ecommerce setting" loading="eager" width="1983" height="793">
                 <div class="site-shell hero-layout">
                     <div class="hero-copy">
                         <span class="section-kicker">STYLE + EVERYDAY</span>
@@ -143,16 +139,12 @@
                             <div><strong>Different finds. Same Bearly.</strong><span>One marketplace for different kinds of shoppers.</span></div>
                         </div>
                     </div>
-                    <div class="hero-media">
-                        <div class="model-frame model-two">
-                            <img src="{{ asset('images/landing-page/model-2.png') }}" alt="Bearly model wearing black" loading="lazy">
-                        </div>
-                        <span class="hero-note">THE EVERYDAY EDIT<br><strong>Wear it your way.</strong></span>
-                    </div>
+                    <div class="hero-visual-spacer" aria-hidden="true"></div>
                 </div>
             </article>
 
             <article class="hero-slide" data-slide="2" role="group" aria-roledescription="slide" aria-label="3 of 3: Curated for you">
+                <img class="hero-banner-image hero-banner-slide-03" src="{{ asset('images/landing-page/hero-banner-03.png') }}" alt="Curated Bearly marketplace essentials including headphones, apparel, a bag, drinkware, and books" loading="lazy" width="1983" height="793">
                 <div class="site-shell hero-layout bear-slide-layout">
                     <div class="hero-copy">
                         <span class="section-kicker">CURATED FOR YOU</span>
@@ -164,13 +156,7 @@
                         </div>
                         <div class="hero-promise"><img src="{{ asset('images/landing-page/bear-mascot.png') }}" alt="" aria-hidden="true"><div><strong>Little finds. Big smiles.</strong><span>Something for every part of your day.</span></div></div>
                     </div>
-                    <div class="hero-product-collage" aria-hidden="true">
-                        <span class="curated-label">THE BEARLY EDIT</span>
-                        <img class="hero-bear" src="{{ asset('images/landing-page/bear-mascot.png') }}" alt="">
-                        <img class="collage-product p1" src="{{ asset('images/landing-page/products/aula-keyboard.jpg') }}" alt="">
-                        <img class="collage-product p2" src="{{ asset('images/landing-page/products/canvas-tote.jpg') }}" alt="">
-                        <img class="collage-product p3" src="{{ asset('images/landing-page/products/classic-watch.jpg') }}" alt="">
-                    </div>
+                    <div class="hero-visual-spacer" aria-hidden="true"></div>
                 </div>
             </article>
 
@@ -245,11 +231,11 @@
     </section>
 
     <section class="model-promo reveal-section" aria-label="Bearly community promotion">
-        <img class="community-banner-image" src="{{ asset('images/landing-page/community-banner.jpg') }}" alt="Bearly community members with a teddy bear" loading="lazy" width="1024" height="196">
+        <img class="community-banner-image" src="{{ asset('images/landing-page/community-banner-hd.png') }}" alt="Bearly community members unboxing marketplace finds beside the Bearly bear mascot" loading="lazy" width="1983" height="793">
         <div class="site-shell promo-layout">
             <div class="promo-copy">
                 <span class="section-kicker light-kicker">BEARLY COMMUNITY</span>
-                <h2>A community that shops brighter together.</h2>
+                <h2>A community that shops together.</h2>
                 <p>Real people. Real finds. A kinder, brighter everyday — with you in it.</p>
                 <a class="button button-light" href="#featured-products">Shop with purpose <span class="material-symbols-rounded"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h18m-6-6 6 6-6 6"/></svg></span></a>
             </div>
@@ -334,36 +320,47 @@
 </main>
 
 <footer class="site-footer">
-    <div class="site-shell footer-grid">
+    <div class="site-shell footer-grid footer-grid-professional">
         <div class="footer-brand">
             <img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly">
-            <p>Shopping should be easy. Bearly stressful.</p>
-            <div class="social-row">
-                <a href="#" aria-label="Instagram">IG</a><a href="#" aria-label="Facebook">FB</a><a href="#" aria-label="TikTok">TT</a><a href="#" aria-label="YouTube">YT</a>
-            </div>
+            <p>One marketplace for everyday finds from big brands and independent sellers.</p>
+            <span class="footer-tagline">Shopping made Bearly a hassle.</span>
         </div>
-        <div>
+
+        <div class="footer-column">
             <h3>Shop</h3>
-            <a href="#featured-products">All Products</a>
-            <button type="button" data-open-categories>Categories</button>
-            <a href="#curated-collections">Collections</a>
-            <a href="#featured-products">New Arrivals</a>
+            <a href="#featured-products">Featured Products</a>
+            <button type="button" data-open-categories>Shop by Categories</button>
+            <a href="#curated-collections">Curated Collections</a>
+            <a href="#featured-products">New Finds</a>
         </div>
-        <div>
-            <h3>Help</h3>
+
+        <div class="footer-column">
+            <h3>Customer Care</h3>
+            <a href="{{ url('/contact') }}">Contact Bearly</a>
+            <a href="{{ url('/contact') }}">Orders & Shopping Help</a>
+            <a href="{{ url('/contact') }}">Returns & Support</a>
+            <a href="{{ url('/contact') }}">Account Help</a>
+        </div>
+
+        <div class="footer-column">
+            <h3>About Bearly</h3>
             <a href="{{ url('/about') }}">Our Story</a>
-            <a href="#">Sell on Bearly</a>
-            <a href="#">Shopping & Returns</a>
-            <a href="{{ url('/contact') }}">Contact Us</a>
+            <a href="{{ url('/about') }}">Independent Sellers</a>
+            <a href="{{ url('/about') }}">Why Bearly</a>
+            <a href="{{ url('/contact') }}">Get in Touch</a>
         </div>
-        <div><h3>About</h3><a href="{{ url('/about') }}">Our Story</a><a href="{{ url('/about') }}">Independent Sellers</a><a href="{{ url('/contact') }}">Contact Us</a></div>
-        <div class="newsletter">
-            <h3>Be the first to know.</h3>
-            <p>Get product drops, seller finds, and Bearly updates.</p>
-            <form class="newsletter-form">
-                <input type="email" required placeholder="Your email address" aria-label="Email address">
-                <button type="submit">Subscribe</button>
-            </form>
+
+        <div class="footer-column footer-social-column">
+            <h3>Follow Bearly</h3>
+            <div class="social-account" aria-label="Bearly Instagram account">
+                <span class="social-icon">IG</span>
+                <span><strong>Instagram</strong><small>@bearlymarket</small></span>
+            </div>
+            <div class="social-account" aria-label="Bearly Facebook account">
+                <span class="social-icon">FB</span>
+                <span><strong>Facebook</strong><small>@bearlymarket</small></span>
+            </div>
         </div>
     </div>
     <div class="site-shell footer-bottom">

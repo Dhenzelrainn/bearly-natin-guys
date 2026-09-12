@@ -54,12 +54,12 @@
     ];
 
     $collections = [
-        ['eyebrow' => 'Tech edit', 'title' => 'For your everyday.', 'copy' => 'Useful tech for study, work, and everything between.', 'tone' => 'cool', 'images' => ['aula-keyboard.jpg','wireless-mouse.jpg','travel-tumbler.jpg']],
-        ['eyebrow' => 'Style edit', 'title' => 'A fresh little upgrade.', 'copy' => 'Easy pieces that make everyday outfits feel more put together.', 'tone' => 'warm', 'images' => ['cotton-tshirt.jpg','baseball-cap.jpg','canvas-tote.jpg']],
-        ['eyebrow' => 'Home edit', 'title' => 'Refresh your space.', 'copy' => 'Simple home pieces with a clean, calm look.', 'tone' => 'sand', 'images' => ['dining-chair.jpg','floral-pillow-sham.jpg','reading-journal.jpg']],
-        ['eyebrow' => 'Self-care edit', 'title' => 'Your daily reset.', 'copy' => 'Small routines, thoughtful essentials, better days.', 'tone' => 'rose', 'images' => ['face-serum.jpg','travel-tumbler.jpg','floral-pillow-sham.jpg']],
-        ['eyebrow' => 'Weekend edit', 'title' => 'Ready for the weekend.', 'copy' => 'Grab-and-go finds for errands, trips, and days outside.', 'tone' => 'sage', 'images' => ['canvas-tote.jpg','everyday-sneakers.jpg','travel-tumbler.jpg']],
-        ['eyebrow' => 'Giftable edit', 'title' => 'Good food, good mood.', 'copy' => 'Easy-to-gift favorites for people you actually like.', 'tone' => 'cream', 'images' => ['classic-watch.jpg','reading-journal.jpg','face-serum.jpg']],
+        ['eyebrow' => 'Tech edit', 'title' => 'For your everyday.', 'copy' => 'Useful tech for study, work, and everything between.', 'tone' => 'cool', 'background' => 'collection-everyday.jpg', 'images' => ['aula-keyboard.jpg','wireless-mouse.jpg','travel-tumbler.jpg']],
+        ['eyebrow' => 'Style edit', 'title' => 'A fresh little upgrade.', 'copy' => 'Easy pieces that make everyday outfits feel more put together.', 'tone' => 'warm', 'background' => 'collection-style.jpg', 'images' => ['cotton-tshirt.jpg','baseball-cap.jpg','canvas-tote.jpg']],
+        ['eyebrow' => 'Home edit', 'title' => 'Refresh your space.', 'copy' => 'Simple home pieces with a clean, calm look.', 'tone' => 'sand', 'background' => 'collection-home.jpg', 'images' => ['dining-chair.jpg','floral-pillow-sham.jpg','reading-journal.jpg']],
+        ['eyebrow' => 'Self-care edit', 'title' => 'Your daily reset.', 'copy' => 'Small routines, thoughtful essentials, better days.', 'tone' => 'rose', 'background' => 'collection-self-care.jpg', 'images' => ['face-serum.jpg','travel-tumbler.jpg','floral-pillow-sham.jpg']],
+        ['eyebrow' => 'Weekend edit', 'title' => 'Ready for the weekend.', 'copy' => 'Grab-and-go finds for errands, trips, and days outside.', 'tone' => 'sage', 'background' => 'collection-weekend.jpg', 'images' => ['canvas-tote.jpg','everyday-sneakers.jpg','travel-tumbler.jpg']],
+        ['eyebrow' => 'Giftable edit', 'title' => 'Good food, good mood.', 'copy' => 'Easy-to-gift favorites for people you actually like.', 'tone' => 'cream', 'background' => 'collection-food.jpg', 'images' => ['classic-watch.jpg','reading-journal.jpg','face-serum.jpg']],
     ];
 @endphp
 
@@ -104,6 +104,7 @@
     <section class="hero" id="home" aria-label="Bearly highlights">
         <div class="hero-slider" id="heroSlider" aria-roledescription="carousel" aria-label="Bearly collections">
             <article class="hero-slide is-active" data-slide="0" role="group" aria-roledescription="slide" aria-label="1 of 3: Welcome to Bearly">
+                <img class="hero-banner-image" src="{{ asset('images/landing-page/hero-banner.jpg') }}" alt="Bearly community member at a desk" fetchpriority="high" width="1024" height="290">
                 <div class="site-shell hero-layout">
                     <div class="hero-copy reveal-up">
                         <span class="section-kicker">BEARLY MARKETPLACE</span>
@@ -228,6 +229,7 @@
                 <div class="collection-track" id="collectionTrack">
                     @foreach($collections as $collection)
                         <article class="collection-card tone-{{ $collection['tone'] }}">
+                            <img class="collection-banner-image" src="{{ asset('images/landing-page/' . $collection['background']) }}" alt="" loading="lazy">
                             <div class="collection-copy">
                                 <span>{{ $collection['eyebrow'] }}</span>
                                 <h3>{{ $collection['title'] }}</h3>
@@ -243,6 +245,7 @@
     </section>
 
     <section class="model-promo reveal-section" aria-label="Bearly community promotion">
+        <img class="community-banner-image" src="{{ asset('images/landing-page/community-banner.jpg') }}" alt="Bearly community members with a teddy bear" loading="lazy" width="1024" height="196">
         <div class="site-shell promo-layout">
             <div class="promo-copy">
                 <span class="section-kicker light-kicker">BEARLY COMMUNITY</span>

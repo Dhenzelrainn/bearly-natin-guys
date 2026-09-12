@@ -32,7 +32,9 @@
     const startHero = () => {
         if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || slides.length < 2) return;
         clearInterval(heroTimer);
-        heroTimer = setInterval(() => showHero(heroIndex + 1), 6000);
+        heroTimer = setInterval(() => {
+            if (!document.hidden && !document.body.classList.contains('modal-open')) showHero(heroIndex + 1);
+        }, 7000);
     };
 
     prevHero?.addEventListener('click', () => { showHero(heroIndex - 1); startHero(); });
@@ -43,6 +45,21 @@
     heroSlider?.addEventListener('focusin', () => clearInterval(heroTimer));
     heroSlider?.addEventListener('focusout', startHero);
     startHero();
+    heroSlider?.addEventListener('keydown', event => {
+        if (event.target.matches('input, textarea')) return;
+        if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+            event.preventDefault();
+            showHero(heroIndex + (event.key === 'ArrowRight' ? 1 : -1));
+        }
+    });
+    let touchStartX = null;
+    heroSlider?.addEventListener('touchstart', event => {touchStartX = event.touches[0].clientX;}, {passive: true});
+    heroSlider?.addEventListener('touchend', event => {
+        if(touchStartX === null) return;
+        const distance = event.changedTouches[0].clientX - touchStartX;
+        if(Math.abs(distance) > 65) {showHero(heroIndex + (distance < 0 ? 1 : -1)); startHero();}
+        touchStartX = null;
+    }, {passive: true});
 
     // Horizontal carousels
     const categoryCarousel = qs('#categoryCarousel');
@@ -185,4 +202,41 @@
     } else {
         revealItems.forEach(item => item.classList.add('is-visible'));
     }
+})();
+
+// Accessible front-end interactions; no newsletter or checkout request is sent.
+(() => {
+ const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+ let messageTimer;
+ const notify = message => { const el = $('#interactionStatus'); if (!el) return; el.textContent = message; clearTimeout(messageTimer); messageTimer = setTimeout(() => el.textContent = '', 5000); };
+ $$('.newsletter-form').forEach(form => form.addEventListener('submit', event => {event.preventDefault(); notify('Newsletter signup is coming soon. Your email has not been submitted.');}));
+ const modal = $('#categoryModal'); let opener;
+ $$('[data-open-categories]').forEach(button => button.addEventListener('click', () => {opener = button; document.querySelector('main').inert = true; document.querySelector('header').inert = true;}));
+ const restoreFocus = () => {document.querySelector('main').inert = false; document.querySelector('header').inert = false; opener?.focus();};
+ $$('[data-close-categories]').forEach(el => el.addEventListener('click', restoreFocus));
+ document.addEventListener('keydown', event => {
+   if(event.key === 'Escape' && opener) {restoreFocus(); opener = null;}
+   if(event.key !== 'Tab' || !modal?.classList.contains('is-open')) return;
+   const focusable = [...modal.querySelectorAll('button,input,a[href]')].filter(el => el.getClientRects().length);
+   const first = focusable[0], last = focusable.at(-1);
+   if(event.shiftKey && document.activeElement === first){event.preventDefault();last?.focus();}
+   else if(!event.shiftKey && document.activeElement === last){event.preventDefault();first?.focus();}
+ });
+ $$('.modal-category-card').forEach(card => card.addEventListener('click', () => {
+   const label = card.querySelector('strong')?.textContent.trim();
+   const group = $$('.subcategory-column').find(el => el.querySelector('h4')?.textContent.includes(label));
+   group?.scrollIntoView({behavior:'smooth',block:'start'});
+ }));
+ $$('.subcategory-column a').forEach(link => link.addEventListener('click', event => {event.preventDefault();notify(`Browsing ${link.textContent.trim()} will be available when the catalog is connected.`);}));
+ $('.header-actions button[aria-label="Wishlist"]')?.addEventListener('click', () => {const count = $$('.wishlist-button.is-active').length;notify(count ? `${count} favorite${count === 1 ? '' : 's'} selected on this page.` : 'Tap a heart on a product to save a favorite.');});
+ $('.cart-button')?.addEventListener('click', () => notify('Your bag is empty. Shopping will be available when the catalog is connected.'));
+ const syncState = () => {
+  $$('.wishlist-button').forEach(b => b.setAttribute('aria-pressed',String(b.classList.contains('is-active'))));
+  $$('[data-product-filter]').forEach(b => b.setAttribute('aria-pressed',String(b.classList.contains('is-active'))));
+  $$('[data-hero-dot]').forEach(b => b.setAttribute('aria-current',String(b.classList.contains('is-active'))));
+  $$('.hero-slide').forEach(el => {el.inert = !el.classList.contains('is-active'); el.setAttribute('aria-hidden',String(el.inert));});
+  const empty = $('#noProductResults'); if(empty) empty.hidden = $$('[data-product-card]:not(.is-hidden)').length > 0;
+ };
+ new MutationObserver(syncState).observe(document.querySelector('main'),{subtree:true,attributes:true,attributeFilter:['class']});syncState();
+ $('#menuButton')?.addEventListener('click',event => event.currentTarget.setAttribute('aria-expanded',String($('#siteHeader').classList.contains('menu-open'))));
 })();

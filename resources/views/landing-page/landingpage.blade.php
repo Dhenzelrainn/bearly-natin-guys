@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Bearly - Shopping made Bearly a hassle.">
     <title>Bearly | Shopping made Bearly a hassle</title>
-
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,300..500,0..1,0&display=swap" rel="stylesheet">
@@ -13,6 +12,7 @@
 </head>
 <body>
 <a class="skip-link" href="#featured-products">Skip to products</a>
+
 @php
     $categories = [
         ['name' => "Women's Apparel", 'slug' => 'womens-apparel', 'image' => 'womens-apparel.jpg', 'subs' => ['Dresses & Skirts','Tops & Blouses','Activewear & Yoga Pants','Lingerie & Sleepwear','Jackets & Coats','Shoes & Accessories']],
@@ -54,12 +54,12 @@
     ];
 
     $collections = [
-        ['eyebrow' => 'Tech edit', 'title' => 'For your everyday.', 'copy' => 'Useful tech for study, work, and everything between.', 'tone' => 'cool', 'background' => 'collection-everyday-hd.png', 'images' => ['aula-keyboard.jpg','wireless-mouse.jpg','travel-tumbler.jpg']],
-        ['eyebrow' => 'Style edit', 'title' => 'A fresh little upgrade.', 'copy' => 'Easy pieces that make everyday outfits feel more put together.', 'tone' => 'warm', 'background' => 'collection-style-hd.png', 'images' => ['cotton-tshirt.jpg','baseball-cap.jpg','canvas-tote.jpg']],
-        ['eyebrow' => 'Home edit', 'title' => 'Refresh your space.', 'copy' => 'Simple home pieces with a clean, calm look.', 'tone' => 'sand', 'background' => 'collection-home-hd.png', 'images' => ['dining-chair.jpg','floral-pillow-sham.jpg','reading-journal.jpg']],
-        ['eyebrow' => 'Self-care edit', 'title' => 'Your daily reset.', 'copy' => 'Small routines, thoughtful essentials, better days.', 'tone' => 'rose', 'background' => 'collection-self-care-hd.png', 'images' => ['face-serum.jpg','travel-tumbler.jpg','floral-pillow-sham.jpg']],
-        ['eyebrow' => 'Weekend edit', 'title' => 'Ready for the weekend.', 'copy' => 'Grab-and-go finds for errands, trips, and days outside.', 'tone' => 'sage', 'background' => 'collection-weekend-hd.png', 'images' => ['canvas-tote.jpg','everyday-sneakers.jpg','travel-tumbler.jpg']],
-        ['eyebrow' => 'Giftable edit', 'title' => 'Good food, good mood.', 'copy' => 'Easy-to-gift favorites for people you actually like.', 'tone' => 'cream', 'background' => 'collection-food-hd.png', 'images' => ['classic-watch.jpg','reading-journal.jpg','face-serum.jpg']],
+        ['eyebrow' => 'Tech edit', 'title' => 'For your everyday.', 'copy' => 'Useful tech for study, work, and everything between.', 'tone' => 'cool', 'background' => 'collection-everyday-hd.png'],
+        ['eyebrow' => 'Style edit', 'title' => 'A fresh little upgrade.', 'copy' => 'Easy pieces that make everyday outfits feel more put together.', 'tone' => 'warm', 'background' => 'collection-style-hd.png'],
+        ['eyebrow' => 'Home edit', 'title' => 'Refresh your space.', 'copy' => 'Simple home pieces with a clean, calm look.', 'tone' => 'sand', 'background' => 'collection-home-hd.png'],
+        ['eyebrow' => 'Self-care edit', 'title' => 'Your daily reset.', 'copy' => 'Small routines, thoughtful essentials, better days.', 'tone' => 'rose', 'background' => 'collection-self-care-hd.png'],
+        ['eyebrow' => 'Weekend edit', 'title' => 'Ready for the weekend.', 'copy' => 'Grab-and-go finds for errands, trips, and days outside.', 'tone' => 'sage', 'background' => 'collection-weekend-hd.png'],
+        ['eyebrow' => 'Giftable edit', 'title' => 'Good food, good mood.', 'copy' => 'Easy-to-gift favorites for people you actually like.', 'tone' => 'cream', 'background' => 'collection-food-hd.png'],
     ];
 @endphp
 
@@ -80,7 +80,6 @@
         <nav class="main-nav" aria-label="Main navigation">
             <a class="active" href="#home">Home</a>
             <a href="#featured-products">Shop</a>
-            <a href="#curated-collections">Collections</a>
             <a href="{{ url('/about') }}">About</a>
             <a href="{{ url('/contact') }}">Contact</a>
         </nav>
@@ -131,7 +130,7 @@
                         <h2>Find your<br>everyday,<br>your way.</h2>
                         <p>From apparel to accessories, Bearly keeps the browsing simple and the product choices clear.</p>
                         <div class="hero-actions-row">
-                            <a class="button button-primary" href="#curated-collections">See collections <span class="material-symbols-rounded"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h18m-6-6 6 6-6 6"/></svg></span></a>
+                            <a class="button button-primary" href="#featured-products">Shop now <span class="material-symbols-rounded"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h18m-6-6 6 6-6 6"/></svg></span></a>
                             <button class="button button-outline" type="button" data-open-categories>Shop categories</button>
                         </div>
                         <div class="hero-promise">
@@ -151,10 +150,13 @@
                         <h2>Small upgrades.<br>Better everyday.</h2>
                         <p>Discover useful tech, thoughtful gifts, and everyday essentials from big brands and independent sellers.</p>
                         <div class="hero-actions-row">
-                            <a class="button button-primary" href="#curated-collections">Explore collections <span class="material-symbols-rounded"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h18m-6-6 6 6-6 6"/></svg></span></a>
+                            <a class="button button-primary" href="#featured-products">Shop now <span class="material-symbols-rounded"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h18m-6-6 6 6-6 6"/></svg></span></a>
                             <a class="button button-outline" href="#featured-products">View products</a>
                         </div>
-                        <div class="hero-promise"><img src="{{ asset('images/landing-page/bear-mascot.png') }}" alt="" aria-hidden="true"><div><strong>Little finds. Big smiles.</strong><span>Something for every part of your day.</span></div></div>
+                        <div class="hero-promise">
+                            <img src="{{ asset('images/landing-page/bear-mascot.png') }}" alt="" aria-hidden="true">
+                            <div><strong>Little finds. Big smiles.</strong><span>Something for every part of your day.</span></div>
+                        </div>
                     </div>
                     <div class="hero-visual-spacer" aria-hidden="true"></div>
                 </div>
@@ -162,14 +164,12 @@
 
             <button class="hero-arrow hero-prev" type="button" aria-label="Previous slide"><span class="material-symbols-rounded"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg></span></button>
             <button class="hero-arrow hero-next" type="button" aria-label="Next slide"><span class="material-symbols-rounded"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></span></button>
-
             <div class="hero-dots" role="group" aria-label="Hero slides">
                 <button class="is-active" type="button" data-hero-dot="0" aria-label="Go to slide 1"></button>
                 <button type="button" data-hero-dot="1" aria-label="Go to slide 2"></button>
                 <button type="button" data-hero-dot="2" aria-label="Go to slide 3"></button>
             </div>
         </div>
-
     </section>
 
     <section class="section section-categories reveal-section" id="shop-categories">
@@ -181,7 +181,6 @@
                 </div>
                 <button class="text-link" type="button" data-open-categories>View all categories <span class="material-symbols-rounded"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h18m-6-6 6 6-6 6"/></svg></span></button>
             </div>
-
             <div class="category-carousel-wrap">
                 <button class="carousel-control category-prev" type="button" aria-label="Previous categories"><span class="material-symbols-rounded"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg></span></button>
                 <div class="category-carousel" id="categoryCarousel">
@@ -207,7 +206,6 @@
                 </div>
                 <div class="heading-actions">
                     <a class="text-link" href="#curated-collections">View all collections <span class="material-symbols-rounded"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h18m-6-6 6 6-6 6"/></svg></span></a>
-
                 </div>
             </div>
 
@@ -222,7 +220,6 @@
                                 <p>{{ $collection['copy'] }}</p>
                                 <a href="#featured-products">Shop collection <span class="material-symbols-rounded"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h18m-6-6 6 6-6 6"/></svg></span></a>
                             </div>
-
                         </article>
                     @endforeach
                 </div>
@@ -243,10 +240,6 @@
                 <div class="promo-model promo-model-left"><img src="{{ asset('images/landing-page/model-1.png') }}" alt="Bearly community model"></div>
                 <div class="promo-model promo-model-right"><img src="{{ asset('images/landing-page/model-2.png') }}" alt="Bearly community model"></div>
             </div>
-            <div class="promo-bear">
-                <img src="{{ asset('images/landing-page/bear-mascot.png') }}" alt="Bearly bear mascot">
-                <span>Good things<br>find you here.</span>
-            </div>
         </div>
     </section>
 
@@ -259,7 +252,6 @@
                 </div>
                 <div class="heading-actions">
                     <button class="text-link" type="button" id="showAllProducts">View all products <span class="material-symbols-rounded"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h18m-6-6 6 6-6 6"/></svg></span></button>
-
                 </div>
             </div>
 
@@ -270,6 +262,7 @@
             </div>
 
             <p id="noProductResults" hidden>No matching products. Try another search or category.</p>
+
             <div class="product-viewport">
                 <div class="product-track" id="productTrack">
                     @foreach($products as $product)
@@ -278,7 +271,6 @@
                                 @if($product['badge'])<span class="product-badge">{{ $product['badge'] }}</span>@endif
                                 <button class="wishlist-button" type="button" aria-label="Add {{ $product['name'] }} to wishlist"><span class="material-symbols-rounded"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 4.8a5 5 0 0 0-7.1 0L12 6.2l-1.4-1.4a5 5 0 0 0-7.1 7.1L12 21l8.5-9.1a5 5 0 0 0 0-7.1Z"/></svg></span></button>
                                 <img src="{{ asset('images/landing-page/products/' . $product['image']) }}" alt="{{ $product['name'] }}" loading="lazy">
-                                
                             </div>
                             <div class="product-info">
                                 <span class="product-category">{{ $product['category'] }}</span>
@@ -312,11 +304,15 @@
                 <h2>Make shopping Bearly a hassle.</h2>
                 <p>Join for a simpler, kinder way to shop. Get exclusive offers, new arrivals, and more.</p>
             </div>
-            <form class="newsletter-form cta-form"><input type="email" required aria-label="Email address" placeholder="Your email address"><button type="submit">Subscribe</button></form>
+            <form class="newsletter-form cta-form">
+                <input type="email" required aria-label="Email address" placeholder="Your email address">
+                <button type="submit">Subscribe</button>
+            </form>
             <img src="{{ asset('images/landing-page/bear-mascot.png') }}" alt="" aria-hidden="true">
         </div>
     </section>
-<p class="interaction-status" id="interactionStatus" role="status" aria-live="polite"></p>
+
+    <p class="interaction-status" id="interactionStatus" role="status" aria-live="polite"></p>
 </main>
 
 <footer class="site-footer">
@@ -326,7 +322,6 @@
             <p>One marketplace for everyday finds from big brands and independent sellers.</p>
             <span class="footer-tagline">Shopping made Bearly a hassle.</span>
         </div>
-
         <div class="footer-column">
             <h3>Shop</h3>
             <a href="#featured-products">Featured Products</a>
@@ -334,7 +329,6 @@
             <a href="#curated-collections">Curated Collections</a>
             <a href="#featured-products">New Finds</a>
         </div>
-
         <div class="footer-column">
             <h3>Customer Care</h3>
             <a href="{{ url('/contact') }}">Contact Bearly</a>
@@ -342,7 +336,6 @@
             <a href="{{ url('/contact') }}">Returns & Support</a>
             <a href="{{ url('/contact') }}">Account Help</a>
         </div>
-
         <div class="footer-column">
             <h3>About Bearly</h3>
             <a href="{{ url('/about') }}">Our Story</a>
@@ -350,7 +343,6 @@
             <a href="{{ url('/about') }}">Why Bearly</a>
             <a href="{{ url('/contact') }}">Get in Touch</a>
         </div>
-
         <div class="footer-column footer-social-column">
             <h3>Follow Bearly</h3>
             <div class="social-account" aria-label="Bearly Instagram account">
@@ -377,7 +369,6 @@
             <h2 id="categoryModalTitle">Shop by category</h2>
             <button class="modal-close" type="button" data-close-categories aria-label="Close categories"><span class="material-symbols-rounded"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 5 14 14M5 19 19 5"/></svg></span></button>
         </div>
-
         <div class="modal-search-wrap">
             <label class="modal-search">
                 <span class="material-symbols-rounded"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg></span>
@@ -385,7 +376,6 @@
             </label>
             <div class="trending-searches"><strong>Trending:</strong><button type="button">headphones</button><button type="button">skincare</button><button type="button">coffee</button><button type="button">backpacks</button><button type="button">dog toys</button><button type="button">home decor</button></div>
         </div>
-
         <div class="category-dialog-body" id="categoryDialogBody">
             <div class="modal-category-grid" id="modalCategoryGrid">
                 @foreach($categories as $category)
@@ -428,6 +418,5 @@
         </div>
     </div>
 </div>
-
 </body>
 </html>

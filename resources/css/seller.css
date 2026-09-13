@@ -4496,3 +4496,723 @@ svg {
 @media (max-width:1050px) { .fulfillment-summary { grid-template-columns:1fr 1fr; } }
 @media (max-width:760px) { .fulfillment-heading { align-items:stretch; }.tracking-toolbar { grid-template-columns:1fr 1fr; }.tracking-toolbar label { grid-column:1/-1; }.pickup-ready-banner { grid-template-columns:auto 1fr; }.pickup-ready-banner button { grid-column:2; }.pickup-form-grid { grid-template-columns:1fr; }.pickup-form-grid .is-wide { grid-column:auto; }.fulfillment-footer { align-items:flex-start; flex-direction:column; padding-block:12px; } }
 @media (max-width:520px) { .fulfillment-summary { grid-template-columns:1fr; }.fulfillment-toolbar,.tracking-toolbar { display:grid; grid-template-columns:1fr; }.tracking-toolbar label { grid-column:auto; }.waybill-label dl,.pickup-detail-list,.tracking-overview { grid-template-columns:1fr; }.waybill-label dl div:nth-child(even),.pickup-detail-list div:nth-child(even),.tracking-overview div:nth-child(even) { border-left:0; }.tracking-overview div + div { border-top:1px solid var(--seller-line); }.fulfillment-history article { grid-template-columns:auto 1fr; }.fulfillment-history time { grid-column:2; } }
+
+/* =========================================================
+   ORDER WORKFLOW MODAL
+   Bearly warm gold / cream / brown
+   ========================================================= */
+
+.order-details-modal .order-workflow-modal {
+    width: min(620px, 100%);
+    padding: 22px;
+}
+
+
+/* Header */
+
+.order-workflow-heading {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: flex-start;
+    gap: 13px;
+
+    padding-bottom: 17px;
+    border-bottom: 1px solid var(--seller-line);
+}
+
+
+.order-workflow-icon {
+    display: grid;
+
+    width: 46px;
+    height: 46px;
+
+    flex: 0 0 46px;
+
+    place-items: center;
+
+    border: 1px solid #efdcba;
+    border-radius: 11px;
+
+    color: #a45e08;
+    background: #fff2dc;
+}
+
+
+.order-workflow-icon svg {
+    width: 22px;
+    height: 22px;
+}
+
+
+.order-workflow-heading-copy {
+    min-width: 0;
+}
+
+
+.order-workflow-heading-copy .section-kicker {
+    display: block;
+
+    margin-bottom: 3px;
+
+    color: #a46612;
+
+    font-size: 11px;
+    font-weight: 700;
+
+    letter-spacing: .07em;
+    text-transform: uppercase;
+}
+
+
+.order-workflow-heading-copy h3 {
+    margin: 0;
+
+    color: var(--seller-brown-950);
+
+    font-size: 19px;
+    line-height: 1.3;
+}
+
+
+.order-workflow-heading-copy > p {
+    margin: 4px 0 0;
+
+    color: var(--seller-muted);
+
+    font-size: 13px;
+    line-height: 1.55;
+}
+
+
+.order-workflow-x {
+    display: grid;
+
+    width: 34px;
+    height: 34px;
+
+    place-items: center;
+
+    padding: 0;
+
+    border: 1px solid #ddd4cb;
+    border-radius: 8px;
+
+    color: #675d56;
+    background: #fff;
+
+    cursor: pointer;
+
+    transition:
+        border-color .18s ease,
+        color .18s ease,
+        background .18s ease;
+}
+
+
+.order-workflow-x:hover {
+    border-color: #d4b887;
+
+    color: var(--seller-brown-950);
+    background: #fff8ed;
+}
+
+
+.order-workflow-x svg {
+    width: 16px;
+    height: 16px;
+}
+
+
+/* Header status / deadline */
+
+.order-workflow-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+
+    margin-top: 9px;
+}
+
+
+.order-workflow-status {
+    display: inline-flex;
+
+    min-height: 24px;
+
+    align-items: center;
+
+    padding: 3px 8px;
+
+    border: 1px solid #efd4a3;
+    border-radius: 7px;
+
+    color: #9a5908;
+    background: #fff2dc;
+
+    font-size: 12px;
+    font-weight: 700;
+}
+
+
+.order-workflow-deadline {
+    color: #857a72;
+
+    font-size: 12px;
+}
+
+
+/* Summary */
+
+.order-workflow-summary {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+
+    margin-top: 16px;
+
+    overflow: hidden;
+
+    border: 1px solid var(--seller-line);
+    border-radius: 10px;
+
+    background: #fcfaf7;
+}
+
+
+.order-workflow-summary article {
+    display: flex;
+
+    min-height: 69px;
+
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+
+    padding: 12px 14px;
+}
+
+
+.order-workflow-summary article:nth-child(even) {
+    border-left: 1px solid var(--seller-line);
+}
+
+
+.order-workflow-summary article:nth-child(n + 3) {
+    border-top: 1px solid var(--seller-line);
+}
+
+
+.order-workflow-summary span {
+    color: var(--seller-muted);
+
+    font-size: 12px;
+}
+
+
+.order-workflow-summary strong {
+    color: var(--seller-brown-950);
+
+    font-size: 14px;
+    font-weight: 700;
+
+    line-height: 1.4;
+}
+
+
+/* Section heading */
+
+.order-workflow-section-heading {
+    display: flex;
+
+    align-items: center;
+    justify-content: space-between;
+
+    gap: 12px;
+
+    margin-bottom: 8px;
+}
+
+
+.order-workflow-section-heading h4 {
+    margin: 0;
+
+    color: var(--seller-brown-950);
+
+    font-size: 14px;
+}
+
+
+.order-workflow-section-heading > span {
+    color: var(--seller-muted);
+
+    font-size: 12px;
+}
+
+
+/* Items */
+
+.order-workflow-items {
+    margin-top: 16px;
+}
+
+
+.order-workflow-items-list {
+    overflow: hidden;
+
+    border: 1px solid var(--seller-line);
+    border-radius: 10px;
+
+    background: #fff;
+}
+
+
+.order-workflow-item {
+    display: flex;
+
+    min-height: 62px;
+
+    align-items: center;
+
+    gap: 11px;
+
+    padding: 10px 12px;
+}
+
+
+.order-workflow-item + .order-workflow-item {
+    border-top: 1px solid #eee8e2;
+}
+
+
+.order-workflow-item-icon {
+    display: grid;
+
+    width: 40px;
+    height: 40px;
+
+    flex: 0 0 40px;
+
+    place-items: center;
+
+    border: 1px solid #eee2d4;
+    border-radius: 9px;
+
+    color: #98601d;
+    background: #faf4eb;
+}
+
+
+.order-workflow-item-icon svg {
+    width: 18px;
+    height: 18px;
+}
+
+
+.order-workflow-item > div {
+    min-width: 0;
+}
+
+
+.order-workflow-item strong,
+.order-workflow-item small {
+    display: block;
+}
+
+
+.order-workflow-item strong {
+    color: #463c36;
+
+    font-size: 13px;
+    font-weight: 600;
+
+    line-height: 1.45;
+}
+
+
+.order-workflow-item small {
+    margin-top: 2px;
+
+    color: var(--seller-muted);
+
+    font-size: 11px;
+}
+
+
+/* Gold guidance box — same color family for every action */
+
+.order-workflow-guidance {
+    display: flex;
+
+    align-items: flex-start;
+
+    gap: 10px;
+
+    margin-top: 14px;
+    padding: 12px 13px;
+
+    border: 1px solid #efd8ae;
+    border-radius: 9px;
+
+    color: #75440e;
+    background: #fff7e9;
+}
+
+
+.order-workflow-guidance[hidden] {
+    display: none !important;
+}
+
+
+.order-workflow-guidance-icon {
+    display: grid;
+
+    width: 26px;
+    height: 26px;
+
+    flex: 0 0 26px;
+
+    place-items: center;
+
+    border-radius: 50%;
+
+    color: #a6620d;
+    background: #ffe6b5;
+}
+
+
+.order-workflow-guidance-icon svg {
+    width: 14px;
+    height: 14px;
+}
+
+
+.order-workflow-guidance p {
+    margin: 2px 0 0;
+
+    font-size: 12px;
+    line-height: 1.55;
+}
+
+
+/* Packing checklist */
+
+.order-workflow-checklist {
+    display: grid;
+
+    gap: 0;
+
+    margin: 14px 0 0;
+    padding: 7px 13px;
+
+    border: 1px solid #efd8ae;
+    border-radius: 9px;
+
+    background: #fffaf1;
+
+    list-style: none;
+}
+
+
+.order-workflow-checklist[hidden] {
+    display: none !important;
+}
+
+
+.order-workflow-checklist li {
+    display: flex;
+
+    min-height: 37px;
+
+    align-items: center;
+
+    gap: 10px;
+
+    color: #5e5046;
+
+    font-size: 12px;
+}
+
+
+.order-workflow-checklist li + li {
+    border-top: 1px solid #f0e2cb;
+}
+
+
+.order-workflow-checklist li > span {
+    display: grid;
+
+    width: 20px;
+    height: 20px;
+
+    flex: 0 0 20px;
+
+    place-items: center;
+
+    border-radius: 50%;
+
+    color: #fff;
+    background: var(--seller-gold-dark);
+}
+
+
+.order-workflow-checklist li svg {
+    width: 12px;
+    height: 12px;
+}
+
+
+.order-workflow-checklist strong {
+    font-weight: 500;
+}
+
+
+/* Read-only timeline */
+
+.order-workflow-timeline-panel {
+    margin-top: 15px;
+}
+
+
+.order-workflow-timeline-panel[hidden] {
+    display: none !important;
+}
+
+
+.order-workflow-timeline {
+    margin: 0;
+    padding: 4px 0 0;
+
+    list-style: none;
+}
+
+
+.order-workflow-timeline li {
+    position: relative;
+
+    display: grid;
+    grid-template-columns: 26px minmax(0, 1fr);
+
+    min-height: 43px;
+
+    gap: 10px;
+}
+
+
+.order-workflow-timeline li:not(:last-child)::after {
+    content: "";
+
+    position: absolute;
+
+    top: 23px;
+    bottom: 0;
+    left: 11px;
+
+    width: 2px;
+
+    background: #e8dfd6;
+}
+
+
+.order-workflow-timeline li > span {
+    position: relative;
+    z-index: 1;
+
+    display: grid;
+
+    width: 24px;
+    height: 24px;
+
+    place-items: center;
+
+    border: 2px solid #d8cec5;
+    border-radius: 50%;
+
+    color: #a69b93;
+    background: #fff;
+}
+
+
+.order-workflow-timeline li > span svg {
+    width: 12px;
+    height: 12px;
+}
+
+
+.order-workflow-timeline li.is-done > span {
+    border-color: var(--seller-gold-dark);
+
+    color: #fff;
+    background: var(--seller-gold-dark);
+}
+
+
+.order-workflow-timeline li.is-current > span {
+    border-color: var(--seller-gold-dark);
+
+    color: #a45f09;
+    background: #fff1d4;
+
+    box-shadow: 0 0 0 4px #fff7e8;
+}
+
+
+.order-workflow-timeline li.is-current:not(:last-child)::after,
+.order-workflow-timeline li.is-done:not(:last-child)::after {
+    background: #e9bd70;
+}
+
+
+.order-workflow-timeline strong {
+    display: block;
+
+    margin-top: 2px;
+
+    color: #564b44;
+
+    font-size: 12px;
+    font-weight: 600;
+}
+
+
+.order-workflow-timeline small {
+    display: block;
+
+    margin-top: 2px;
+
+    color: #a36310;
+
+    font-size: 11px;
+}
+
+
+/* Footer actions */
+
+.order-workflow-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+
+    gap: 10px;
+
+    margin-top: 17px;
+    padding-top: 16px;
+
+    border-top: 1px solid var(--seller-line);
+}
+
+
+.order-workflow-actions button {
+    min-height: 42px;
+
+    padding: 0 15px;
+
+    border-radius: 8px;
+
+    font-family: Poppins, sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+
+    cursor: pointer;
+
+    transition:
+        transform .15s ease,
+        background .18s ease,
+        border-color .18s ease,
+        box-shadow .18s ease;
+}
+
+
+.order-workflow-actions button:active {
+    transform: translateY(1px);
+}
+
+
+.order-workflow-close-button {
+    border: 1px solid #dc9128;
+
+    color: #a45d07;
+    background: #fff;
+}
+
+
+.order-workflow-close-button:hover {
+    background: #fff9ef;
+}
+
+
+/* SAME GOLD BUTTON ON EVERY ACTION */
+
+.order-workflow-primary-button {
+    border: 1px solid var(--seller-gold);
+
+    color: #35220e;
+    background: var(--seller-gold);
+
+    box-shadow: 0 4px 12px rgba(216, 139, 18, .16);
+}
+
+
+.order-workflow-primary-button:hover {
+    border-color: var(--seller-gold-dark);
+    background: var(--seller-gold-dark);
+}
+
+
+.order-workflow-primary-button[hidden] {
+    display: none !important;
+}
+
+
+/* Read-only modal = close button takes full width */
+
+.order-workflow-primary-button[hidden]
+    + * {
+    display: none;
+}
+
+
+.order-workflow-actions:has(
+    .order-workflow-primary-button[hidden]
+) {
+    grid-template-columns: 1fr;
+}
+
+
+/* Responsive */
+
+@media (max-width: 620px) {
+
+    .order-details-modal .order-workflow-modal {
+        width: 100%;
+        padding: 18px;
+    }
+
+    .order-workflow-heading {
+        grid-template-columns: 42px minmax(0, 1fr) auto;
+        gap: 10px;
+    }
+
+    .order-workflow-icon {
+        width: 42px;
+        height: 42px;
+
+        flex-basis: 42px;
+    }
+
+    .order-workflow-summary {
+        grid-template-columns: 1fr;
+    }
+
+    .order-workflow-summary article:nth-child(even) {
+        border-left: 0;
+    }
+
+    .order-workflow-summary article + article {
+        border-top: 1px solid var(--seller-line);
+    }
+
+    .order-workflow-actions {
+        grid-template-columns: 1fr;
+    }
+}
+

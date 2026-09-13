@@ -1252,3 +1252,1000 @@ const bootSeller = () => {
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bootSeller);
 else bootSeller();
+
+/* =========================================================
+   ORDER WORKFLOW MODAL
+   ========================================================= */
+
+function initializeOrderWorkflowModal() {
+    const workspace =
+        document.querySelector('[data-orders-workspace]');
+
+    const modal =
+        document.querySelector('[data-order-workflow-modal]');
+
+    if (
+        !workspace ||
+        !modal ||
+        modal.dataset.initialized === 'true'
+    ) {
+        return;
+    }
+
+    modal.dataset.initialized = 'true';
+
+
+    const title =
+        modal.querySelector('[data-order-workflow-title]');
+
+    const subtitle =
+        modal.querySelector('[data-order-workflow-subtitle]');
+
+    const iconWrap =
+        modal.querySelector('[data-order-workflow-icon-wrap]');
+
+    const status =
+        modal.querySelector('[data-order-workflow-status]');
+
+    const deadline =
+        modal.querySelector('[data-order-workflow-deadline]');
+
+    const orderId =
+        modal.querySelector('[data-order-workflow-id]');
+
+    const customer =
+        modal.querySelector('[data-order-workflow-customer]');
+
+    const payment =
+        modal.querySelector('[data-order-workflow-payment]');
+
+    const total =
+        modal.querySelector('[data-order-workflow-total]');
+
+    const itemCount =
+        modal.querySelector('[data-order-workflow-item-count]');
+
+    const itemsList =
+        modal.querySelector(
+            '[data-order-workflow-items-list]'
+        );
+
+    const guidance =
+        modal.querySelector(
+            '[data-order-workflow-guidance]'
+        );
+
+    const guidanceIcon =
+        modal.querySelector(
+            '[data-order-workflow-guidance-icon]'
+        );
+
+    const guidanceText =
+        modal.querySelector(
+            '[data-order-workflow-guidance-text]'
+        );
+
+    const checklist =
+        modal.querySelector(
+            '[data-order-workflow-checklist]'
+        );
+
+    const timelinePanel =
+        modal.querySelector(
+            '[data-order-workflow-timeline-panel]'
+        );
+
+    const timeline =
+        modal.querySelector(
+            '[data-order-workflow-timeline]'
+        );
+
+    const primary =
+        modal.querySelector(
+            '[data-order-workflow-primary]'
+        );
+
+    const closeButton =
+        modal.querySelector('.order-workflow-x');
+
+
+    let lastFocus = null;
+    let currentRow = null;
+    let currentConfig = null;
+
+
+    /*
+     * One modal, different content depending
+     * on the current seller action.
+     */
+    const configs = {
+
+        review: {
+            title: 'Review and Confirm Order',
+
+            subtitle:
+                'Check the order details and confirm if you can fulfill this order.',
+
+            icon: 'clipboard-check',
+
+            primary: 'Confirm Order',
+
+            guidance:
+                'By confirming, you accept this order and will prepare it for pickup.',
+
+            checks: [],
+        },
+
+
+        prepare: {
+            title: 'Start Preparing Order',
+
+            subtitle:
+                'Prepare the correct items and organize them for packing.',
+
+            icon: 'package-check',
+
+            primary: 'Start Preparing',
+
+            guidance:
+                'Before packing, verify the item, variation, and quantity against the order.',
+
+            checks: [],
+        },
+
+
+        packing: {
+            title: 'Continue Packing',
+
+            subtitle:
+                'Finish packing and get the parcel ready for its shipping label.',
+
+            icon: 'package',
+
+            primary: 'Continue Packing',
+
+            guidance: '',
+
+            checks: [
+                'Correct item and variation are packed',
+                'Order quantity is complete',
+                'Parcel is secure and in good condition',
+            ],
+        },
+
+
+        waybill: {
+            title: 'Print Waybill / Label',
+
+            subtitle:
+                'Prepare the shipping label for this packed order.',
+
+            icon: 'printer',
+
+            primary: 'Print Waybill',
+
+            guidance:
+                'Print the waybill and attach it securely to the parcel before marking the order ready for pickup.',
+
+            checks: [],
+        },
+
+
+        ready: {
+            title: 'Mark as Ready for Pickup',
+
+            subtitle:
+                'Confirm that the packed and labeled parcel is ready for rider pickup.',
+
+            icon: 'truck',
+
+            primary: 'Mark as Ready',
+
+            guidance:
+                'Once marked as ready, the parcel can move to Pickup Requests for logistics handover.',
+
+            checks: [],
+        },
+
+
+        details: {
+            title: 'View Order Details',
+
+            subtitle:
+                'View the order information and current delivery status.',
+
+            icon: 'circle-info',
+
+            primary: '',
+
+            guidance: '',
+
+            checks: [],
+
+            readOnly: true,
+        },
+
+    };
+
+
+    const readableStatus = value => ({
+        PLACED: 'Placed',
+        CONFIRMED: 'Confirmed',
+        PREPARING: 'Preparing',
+        PACKED: 'Packed',
+        READY_FOR_PICKUP: 'Ready for Pickup',
+        PICKED_UP: 'Picked Up',
+        AT_SORTING_CENTER: 'At Sorting Center',
+        SORTED: 'Sorted',
+        ASSIGNED_TO_RIDER: 'Rider Assigned',
+        OUT_FOR_DELIVERY: 'Out for Delivery',
+        DELIVERED: 'Delivered',
+        COMPLETED: 'Completed',
+        DELIVERY_FAILED: 'Delivery Failed',
+        RETURNED: 'Returned',
+        CANCELLED: 'Cancelled',
+    }[value] || value.replaceAll('_', ' '));
+
+
+    /*
+     * Determine which modal should be shown
+     * from the actual action label / ERP status.
+     */
+    function configFor(row, mode) {
+
+        if (mode === 'details') {
+            return configs.details;
+        }
+
+
+        const action =
+            (row.dataset.orderAction || '')
+                .trim()
+                .toLowerCase();
+
+
+        const canonical =
+            (row.dataset.orderCanonical || '')
+                .trim()
+                .toUpperCase();
+
+
+        if (
+            action.includes('review') ||
+            action.includes('confirm')
+        ) {
+            return configs.review;
+        }
+
+
+        if (
+            action.includes('start preparing')
+        ) {
+            return configs.prepare;
+        }
+
+
+        if (
+            action.includes('continue packing') ||
+            action.includes('packing')
+        ) {
+            return configs.packing;
+        }
+
+
+        if (
+            action.includes('print waybill') ||
+            action.includes('print label')
+        ) {
+            return configs.waybill;
+        }
+
+
+        if (
+            action.includes('mark as ready')
+        ) {
+            return configs.ready;
+        }
+
+
+        if (
+            action.includes('view') ||
+            action.includes('track')
+        ) {
+            return configs.details;
+        }
+
+
+        /*
+         * Status fallback.
+         */
+        if (canonical === 'PLACED') {
+            return configs.review;
+        }
+
+        if (canonical === 'CONFIRMED') {
+            return configs.prepare;
+        }
+
+        if (canonical === 'PREPARING') {
+            return configs.packing;
+        }
+
+        if (canonical === 'PACKED') {
+            return configs.waybill;
+        }
+
+
+        return configs.details;
+    }
+
+
+    /*
+     * Product / item rows
+     */
+    function renderItems(row) {
+        itemsList.replaceChildren();
+
+
+        const raw =
+            (row.dataset.orderItems || '').trim();
+
+
+        const parts = raw
+            ? raw
+                .split(/\s+\+\s+/)
+                .map(part => part.trim())
+                .filter(Boolean)
+
+            : ['Item details unavailable'];
+
+
+        parts.forEach(part => {
+
+            const article =
+                document.createElement('article');
+
+            article.className =
+                'order-workflow-item';
+
+
+            const iconBox =
+                document.createElement('span');
+
+            iconBox.className =
+                'order-workflow-item-icon';
+
+            iconBox.innerHTML = `
+                <i
+                    data-lucide="package"
+                    aria-hidden="true"
+                ></i>
+            `;
+
+
+            const copy =
+                document.createElement('div');
+
+
+            const strong =
+                document.createElement('strong');
+
+            strong.textContent = part;
+
+
+            const small =
+                document.createElement('small');
+
+            small.textContent =
+                'Order item';
+
+
+            copy.append(
+                strong,
+                small
+            );
+
+
+            article.append(
+                iconBox,
+                copy
+            );
+
+
+            itemsList.append(article);
+
+        });
+    }
+
+
+    /*
+     * Action-specific guidance / checklist
+     */
+    function renderGuidance(config) {
+        checklist.replaceChildren();
+
+
+        if (config.checks.length) {
+
+            guidance.hidden = true;
+            checklist.hidden = false;
+
+
+            config.checks.forEach(text => {
+
+                const li =
+                    document.createElement('li');
+
+
+                li.innerHTML = `
+                    <span>
+                        <i
+                            data-lucide="check"
+                            aria-hidden="true"
+                        ></i>
+                    </span>
+                `;
+
+
+                const copy =
+                    document.createElement('strong');
+
+                copy.textContent = text;
+
+
+                li.append(copy);
+
+                checklist.append(li);
+
+            });
+
+
+            return;
+        }
+
+
+        checklist.hidden = true;
+
+        guidance.hidden =
+            !config.guidance;
+
+
+        guidanceText.textContent =
+            config.guidance || '';
+
+
+        guidanceIcon.innerHTML = `
+            <i
+                data-lucide="info"
+                aria-hidden="true"
+            ></i>
+        `;
+    }
+
+
+    /*
+     * Read-only order status timeline.
+     * Visible names follow the ERP flow,
+     * not database-style underscore names.
+     */
+    function renderTimeline(canonical) {
+        timeline.replaceChildren();
+
+
+        if (canonical === 'CANCELLED') {
+
+            appendTimeline(
+                [
+                    ['PLACED', 'Placed'],
+                    ['CANCELLED', 'Cancelled'],
+                ],
+                canonical
+            );
+
+            return;
+        }
+
+
+        if (canonical === 'RETURNED') {
+
+            appendTimeline(
+                [
+                    ['PLACED', 'Placed'],
+                    ['CONFIRMED', 'Confirmed'],
+                    ['PREPARING', 'Preparing'],
+                    [
+                        'READY_FOR_PICKUP',
+                        'Ready for Pickup'
+                    ],
+                    ['PICKED_UP', 'Picked Up'],
+                    [
+                        'AT_SORTING_CENTER',
+                        'At Sorting Center'
+                    ],
+                    ['SORTED', 'Sorted'],
+                    [
+                        'ASSIGNED_TO_RIDER',
+                        'Rider Assigned'
+                    ],
+                    [
+                        'OUT_FOR_DELIVERY',
+                        'Out for Delivery'
+                    ],
+                    ['RETURNED', 'Returned'],
+                ],
+                canonical
+            );
+
+            return;
+        }
+
+
+        if (canonical === 'DELIVERY_FAILED') {
+
+            appendTimeline(
+                [
+                    ['PLACED', 'Placed'],
+                    ['CONFIRMED', 'Confirmed'],
+                    ['PREPARING', 'Preparing'],
+                    [
+                        'READY_FOR_PICKUP',
+                        'Ready for Pickup'
+                    ],
+                    ['PICKED_UP', 'Picked Up'],
+                    [
+                        'AT_SORTING_CENTER',
+                        'At Sorting Center'
+                    ],
+                    ['SORTED', 'Sorted'],
+                    [
+                        'ASSIGNED_TO_RIDER',
+                        'Rider Assigned'
+                    ],
+                    [
+                        'OUT_FOR_DELIVERY',
+                        'Out for Delivery'
+                    ],
+                    [
+                        'DELIVERY_FAILED',
+                        'Delivery Failed'
+                    ],
+                ],
+                canonical
+            );
+
+            return;
+        }
+
+
+        /*
+         * PACKED is part of the seller's
+         * preparation process.
+         */
+        const normalized =
+            canonical === 'PACKED'
+                ? 'PREPARING'
+                : canonical;
+
+
+        appendTimeline(
+            [
+                ['PLACED', 'Placed'],
+                ['CONFIRMED', 'Confirmed'],
+                ['PREPARING', 'Preparing'],
+                [
+                    'READY_FOR_PICKUP',
+                    'Ready for Pickup'
+                ],
+                ['PICKED_UP', 'Picked Up'],
+                [
+                    'AT_SORTING_CENTER',
+                    'At Sorting Center'
+                ],
+                ['SORTED', 'Sorted'],
+                [
+                    'ASSIGNED_TO_RIDER',
+                    'Rider Assigned'
+                ],
+                [
+                    'OUT_FOR_DELIVERY',
+                    'Out for Delivery'
+                ],
+                ['DELIVERED', 'Delivered'],
+                ['COMPLETED', 'Completed'],
+            ],
+            normalized
+        );
+    }
+
+
+    function appendTimeline(
+        stages,
+        currentStatus
+    ) {
+
+        const currentIndex =
+            Math.max(
+                0,
+                stages.findIndex(
+                    ([key]) =>
+                        key === currentStatus
+                )
+            );
+
+
+        stages.forEach(
+            ([key, label], index) => {
+
+                const li =
+                    document.createElement('li');
+
+
+                li.className =
+                    index < currentIndex
+                        ? 'is-done'
+                        : index === currentIndex
+                            ? 'is-current'
+                            : 'is-upcoming';
+
+
+                const marker =
+                    document.createElement('span');
+
+
+                marker.innerHTML =
+                    index <= currentIndex
+                        ? `
+                            <i
+                                data-lucide="check"
+                                aria-hidden="true"
+                            ></i>
+                        `
+                        : '';
+
+
+                const copy =
+                    document.createElement('div');
+
+
+                const strong =
+                    document.createElement('strong');
+
+                strong.textContent =
+                    label;
+
+
+                copy.append(strong);
+
+
+                if (index === currentIndex) {
+
+                    const small =
+                        document.createElement(
+                            'small'
+                        );
+
+                    small.textContent =
+                        'Current status';
+
+                    copy.append(small);
+
+                }
+
+
+                li.append(
+                    marker,
+                    copy
+                );
+
+
+                timeline.append(li);
+
+            }
+        );
+    }
+
+
+    function openModal(
+        row,
+        mode
+    ) {
+
+        const config =
+            configFor(row, mode);
+
+
+        const canonical =
+            (
+                row.dataset.orderCanonical ||
+                ''
+            )
+                .trim()
+                .toUpperCase();
+
+
+        currentRow = row;
+        currentConfig = config;
+
+        lastFocus =
+            document.activeElement;
+
+
+        title.textContent =
+            config.title;
+
+
+        subtitle.textContent =
+            config.subtitle;
+
+
+        iconWrap.innerHTML = `
+            <i
+                data-lucide="${config.icon}"
+                aria-hidden="true"
+            ></i>
+        `;
+
+
+        status.textContent =
+            row.dataset.orderStatusCopy ||
+            readableStatus(canonical);
+
+
+        if (
+            row.dataset.orderDeadline
+        ) {
+
+            deadline.textContent =
+                `Deadline / Update · ${row.dataset.orderDeadline}`;
+
+            deadline.hidden = false;
+
+        } else {
+
+            deadline.textContent = '';
+
+            deadline.hidden = true;
+
+        }
+
+
+        orderId.textContent =
+            row.dataset.orderId || '—';
+
+
+        customer.textContent =
+            row.dataset.orderCustomer || '—';
+
+
+        payment.textContent =
+            row.dataset.orderPaymentCopy || '—';
+
+
+        total.textContent =
+            row.dataset.orderTotal || '—';
+
+
+        itemCount.textContent =
+            row.dataset.orderItemCount ||
+            'Items';
+
+
+        renderItems(row);
+
+        renderGuidance(config);
+
+
+        timelinePanel.hidden =
+            !config.readOnly;
+
+
+        if (config.readOnly) {
+            renderTimeline(canonical);
+        }
+
+
+        primary.hidden =
+            !config.primary;
+
+
+        primary.textContent =
+            config.primary || '';
+
+
+        modal.hidden = false;
+
+        document.body.classList.add(
+            'modal-open'
+        );
+
+
+        /*
+         * Re-render Lucide icons inserted
+         * dynamically in this modal.
+         */
+        window.lucide?.createIcons();
+
+
+        if (config.primary) {
+            primary.focus();
+        } else {
+            closeButton?.focus();
+        }
+    }
+
+
+    function closeModal() {
+
+        modal.hidden = true;
+
+        document.body.classList.remove(
+            'modal-open'
+        );
+
+
+        currentRow = null;
+        currentConfig = null;
+
+
+        lastFocus?.focus?.();
+    }
+
+
+    function showToast(message) {
+
+        const toast =
+            document.querySelector(
+                '[data-seller-toast]'
+            );
+
+
+        if (!toast) {
+            return;
+        }
+
+
+        toast.textContent = message;
+
+        toast.classList.add(
+            'is-visible'
+        );
+
+
+        clearTimeout(
+            window.orderWorkflowToastTimer
+        );
+
+
+        window.orderWorkflowToastTimer =
+            setTimeout(() => {
+
+                toast.classList.remove(
+                    'is-visible'
+                );
+
+            }, 3500);
+    }
+
+
+    /*
+     * Open modal from:
+     * - Order ID = read-only details
+     * - Action column = action-specific modal
+     */
+    workspace.addEventListener(
+        'click',
+        event => {
+
+            const trigger =
+                event.target.closest(
+                    '[data-order-workflow-open]'
+                );
+
+
+            if (!trigger) {
+                return;
+            }
+
+
+            const row =
+                trigger.closest(
+                    '[data-order-row]'
+                );
+
+
+            if (!row) {
+                return;
+            }
+
+
+            event.preventDefault();
+
+
+            openModal(
+                row,
+                trigger.dataset.workflowMode ||
+                'action'
+            );
+        }
+    );
+
+
+    /*
+     * Close controls
+     */
+    modal
+        .querySelectorAll(
+            '[data-order-workflow-close]'
+        )
+        .forEach(button => {
+
+            button.addEventListener(
+                'click',
+                closeModal
+            );
+
+        });
+
+
+    /*
+     * Front-end-only action.
+     *
+     * Later this is where backend order
+     * status updates can be connected.
+     */
+    primary.addEventListener(
+        'click',
+        () => {
+
+            if (
+                !currentRow ||
+                !currentConfig ||
+                !currentConfig.primary
+            ) {
+                return;
+            }
+
+
+            showToast(
+                `${currentConfig.primary} is a front-end preview. No order status was changed.`
+            );
+
+
+            closeModal();
+        }
+    );
+
+
+    /*
+     * ESC key
+     */
+    document.addEventListener(
+        'keydown',
+        event => {
+
+            if (
+                event.key === 'Escape' &&
+                !modal.hidden
+            ) {
+                closeModal();
+            }
+
+        }
+    );
+}
+
+
+if (
+    document.readyState === 'loading'
+) {
+
+    document.addEventListener(
+        'DOMContentLoaded',
+        initializeOrderWorkflowModal
+    );
+
+} else {
+
+    initializeOrderWorkflowModal();
+
+}

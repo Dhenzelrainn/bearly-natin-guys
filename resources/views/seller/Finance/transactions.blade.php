@@ -10,12 +10,6 @@
     </div>
     <a class="seller-secondary-button" href="{{ route('seller.reports.financial') }}"><i data-lucide="chart-no-axes-combined"></i>Financial Report</a>
 </div>
-
-<section class="finance-ledger-note">
-    <i data-lucide="database"></i>
-    <div><strong>Single source of truth</strong><p>Seller and Admin should read the same order/commission transaction. The seller sees net earnings; Admin later sees the same record from the platform commission side.</p></div>
-</section>
-
 <section class="seller-panel finance-ledger" data-finance-ledger>
     <div class="finance-ledger-toolbar">
         <label><i data-lucide="search"></i><input type="search" placeholder="Search order or status" data-finance-search></label>

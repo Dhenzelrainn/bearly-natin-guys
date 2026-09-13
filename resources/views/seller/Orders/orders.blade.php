@@ -1,5 +1,4 @@
 @extends('layouts.seller')
-
 @section('title', 'Orders')
 @section('page-title', 'Orders')
 @section('content')
@@ -14,15 +13,6 @@
         <i data-lucide="download"></i> Export orders
     </button>
 </div>
-
-<section class="order-flow-strip" aria-label="Order lifecycle ownership">
-    <div><strong>Seller</strong><span>PLACED → CONFIRMED → PREPARING → READY FOR PICKUP</span></div>
-    <i data-lucide="arrow-right"></i>
-    <div><strong>Logistics / Courier</strong><span>PICKED_UP → AT_SORTING_CENTER → SORTED → ASSIGNED_TO_RIDER → OUT_FOR_DELIVERY</span></div>
-    <i data-lucide="arrow-right"></i>
-    <div><strong>Buyer</strong><span>DELIVERED → buyer confirms receipt → COMPLETED</span></div>
-</section>
-
 <section class="order-queue" aria-label="Orders requiring action">
     @foreach ($orderQueue as $queue)
         <article class="order-queue-item queue-{{ $queue['tone'] }}">
@@ -31,7 +21,6 @@
         </article>
     @endforeach
 </section>
-
 <section class="orders-workspace" data-orders-workspace>
     <div class="order-tabs" role="tablist" aria-label="Filter orders by seller-facing status">
         @foreach ($orderTabs as $tab)
@@ -40,23 +29,19 @@
             </button>
         @endforeach
     </div>
-
     <div class="order-toolbar">
         <label class="order-search"><i data-lucide="search"></i><span class="sr-only">Search orders</span><input type="search" placeholder="Search order ID or customer" data-order-search></label>
         <label class="order-select"><i data-lucide="calendar-days"></i><span class="sr-only">Filter by date</span><select data-order-date><option value="">All dates</option><option value="today">Today</option><option value="upcoming">Upcoming / previous</option></select></label>
         <label class="order-select"><i data-lucide="credit-card"></i><span class="sr-only">Filter by payment</span><select data-order-payment><option value="">All payments</option><option value="paid">Paid / Refunded</option><option value="cod">Cash on Delivery</option></select></label>
         <button class="order-filter-reset" type="button" data-order-reset><i data-lucide="list-filter"></i> Reset</button>
     </div>
-
     <div class="order-bulk-bar" data-order-bulk-bar>
         <label class="order-check-all"><input type="checkbox" data-order-check-all><span><strong data-order-selected-count>0</strong> selected</span></label>
         <div class="order-bulk-actions">
             <button type="button" disabled data-order-bulk-action="Print waybill"><i data-lucide="printer"></i>Print waybill</button>
             <button type="button" disabled data-order-bulk-action="Arrange pickup"><i data-lucide="truck"></i>Arrange pickup</button>
         </div>
-        <small class="order-bulk-rule"><i data-lucide="shield-check"></i> Statuses are changed only by valid workflow actions—not by a free-form status control.</small>
     </div>
-
     <div class="orders-table-wrap">
         <table class="orders-table orders-table-polished">
             <thead><tr><th aria-label="Select order"></th><th>Order</th><th>Customer</th><th>Items</th><th>Payment</th><th>Total</th><th>Deadline / Update</th><th>Status</th><th>Action</th></tr></thead>
@@ -86,7 +71,6 @@
                         <td><span class="deadline-label {{ $order['urgent'] ? 'is-urgent' : '' }}">{{ $order['deadline'] }} @if ($order['urgent'])<small>Action required</small>@endif</span></td>
                         <td>
                             <span class="order-status-badge order-status-{{ $order['tone'] }}">{{ $order['status'] }}</span>
-                            <small class="canonical-status">{{ $order['canonical_status'] }}</small>
                         </td>
                         <td>
                             @if ($order['action_url'])
@@ -101,9 +85,8 @@
         </table>
         <div class="orders-no-results" data-orders-no-results hidden><i data-lucide="search-x"></i><strong>No matching orders</strong><span>Try changing the search or filters.</span></div>
     </div>
-    <footer class="orders-table-footer"><span>Showing <strong data-order-visible-count>{{ count($orders) }}</strong> of {{ count($orders) }} preview orders</span><span>UI tabs are simplified buckets; canonical ERP statuses remain visible per order.</span></footer>
+    <footer class="orders-table-footer"><span>Showing <strong data-order-visible-count>{{ count($orders) }}</strong> of {{ count($orders) }} preview orders</span></footer>
 </section>
-
 <section class="orders-handoff-grid">
     <article class="seller-panel handoff-card">
         <span class="handoff-icon"><i data-lucide="printer"></i></span>
@@ -116,7 +99,6 @@
         <a class="seller-secondary-button" href="{{ route('seller.fulfillment.pickups') }}">Open Pickup Requests <i data-lucide="arrow-right"></i></a>
     </article>
 </section>
-
 <div class="seller-modal order-details-modal" data-modal="order-details" hidden>
     <button class="modal-backdrop" type="button" data-modal-close aria-label="Close order details"></button>
     <section class="modal-card order-workflow-modal" role="dialog" aria-modal="true" aria-labelledby="order-details-title">
@@ -130,13 +112,11 @@
             <p><span>Items</span><strong data-order-detail-items>—</strong></p>
             <p><span>Payment</span><strong data-order-detail-payment>—</strong></p>
             <p><span>Total</span><strong data-order-detail-total>—</strong></p>
-            <p><span>Canonical status</span><strong data-order-detail-canonical>—</strong></p>
         </div>
         <section class="order-responsibility-card">
             <span><i data-lucide="user-check"></i></span>
             <div><small>Current responsible role</small><strong data-order-detail-owner>—</strong><p data-order-detail-next>—</p></div>
         </section>
-        <p class="order-detail-note">Seller actions should only move an order through valid seller-owned steps: <strong>PLACED → CONFIRMED → PREPARING → READY_FOR_PICKUP</strong>. Shipment statuses are updated by logistics/courier; <strong>COMPLETED</strong> follows buyer confirmation.</p>
         <div class="modal-actions">
             <button class="draft-button" type="button" data-modal-close>Close</button>
             <button class="seller-primary-button" type="button" data-order-demo="Valid workflow action previewed. Backend state transition will be connected later."><span data-order-modal-action>Continue workflow</span></button>

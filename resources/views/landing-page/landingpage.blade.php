@@ -15,7 +15,7 @@
 
 @php
     $categories = [
-        ['name' => "Women's Apparel", 'slug' => 'womens-apparel', 'image' => 'womens-apparel.jpg', 'subs' => ['Dresses & Skirts','Tops & Blouses','Activewear & Yoga Pants','Lingerie & Sleepwear','Jackets & Coats','Shoes & Accessories']],
+        ['name' => "Women's Apparel", 'slug' => 'womens-apparel', 'image' => 'womens-apparel.jpg', 'image_url' => 'https://image.uniqlo.com/UQ/ST3/ph/imagesgoods/489229/item/phgoods_00_489229_3x4.jpg?width=1200', 'subs' => ['Dresses & Skirts','Tops & Blouses','Activewear & Yoga Pants','Lingerie & Sleepwear','Jackets & Coats','Shoes & Accessories']],
         ['name' => "Men's Apparel", 'slug' => 'mens-apparel', 'image' => 'mens-apparel.jpg', 'subs' => ['Suits & Blazers','Casual Shirts & Pants','Outerwear & Jackets','Activewear & Fitness Gear','Shoes & Accessories','Grooming Products']],
         ['name' => 'Electronics & Gadgets', 'slug' => 'electronics-gadgets', 'image' => 'electronics-gadgets.jpg', 'subs' => ['Mobile Phones & Accessories','Laptops, Desktops & Monitors','Audio & Video Equipment','Smart Home Devices','Cameras & Photography','Wearable Technology']],
         ['name' => 'Health & Beauty', 'slug' => 'health-beauty', 'image' => 'health-beauty.jpg', 'subs' => ['Skincare Products','Haircare Solutions','Makeup & Cosmetics','Personal Care Appliances',"Men's Grooming",'Health Supplements']],
@@ -31,27 +31,27 @@
 
     /* Keep every category visual image-based with individual image files — no sprite/atlas. */
     $extraCategories = [
-        ['name' => 'Toys & Hobbies', 'image' => 'toys-hobbies.jpg', 'subs' => ['Building Sets & Construction','RC Vehicles & Drones','Action Figures & Collectibles','Arts & Crafts','Puzzles & Board Games','Outdoor Play Equipment']],
+        ['name' => 'Toys & Hobbies', 'image' => 'toys-hobbies.jpg', 'image_url' => 'https://www.lego.com/cdn/cs/set/assets/blt2ff311d960ccdd95/11013.jpg?dpr=1&fit=bounds&format=jpg&height=1500&quality=80&width=1500', 'subs' => ['Building Sets & Construction','RC Vehicles & Drones','Action Figures & Collectibles','Arts & Crafts','Puzzles & Board Games','Outdoor Play Equipment']],
         ['name' => 'Stationery & Crafts', 'image' => 'stationery-crafts.jpg', 'subs' => ['Notebooks & Journals','Pens, Pencils & Markers','Art Supplies','Craft Kits & Materials','Office Supplies','Gift Wrapping & Packaging']],
         ['name' => 'Travel & Luggage', 'image' => 'travel-luggage.jpg', 'subs' => ['Suitcases & Luggage','Backpacks & Daypacks','Travel Accessories','Packing Organizers','Travel Pillows & Comfort','Passport Holders & Wallets']],
         ['name' => 'Video Games', 'image' => 'video-games.jpg', 'subs' => ['PlayStation','Xbox','Nintendo Switch','PC Games','Gaming Accessories','Virtual Reality']],
-        ['name' => 'Tools & Hardware', 'image' => 'tools-hardware.jpg', 'subs' => ['Power Tools','Hand Tools','Hardware & Fasteners','Safety & Workwear','Home Improvement Supplies','Automotive Tools & Accessories']],
-        ['name' => 'Party & Occasions', 'image' => 'party-occasions.jpg', 'subs' => ['Party Supplies','Balloons & Decorations','Tableware & Serveware','Gifts & Gift Bags','Seasonal Decorations','Weddings & Special Events']],
+        ['name' => 'Tools & Hardware', 'image' => 'tools-hardware.jpg', 'image_url' => 'https://www.bosch-professional.com/qa/en/ocsmedia/379611-54/application-image/1434x828/cordless-drill-driver-pro-heavy-duty-gsr-12v-30-06019g9002.png', 'subs' => ['Power Tools','Hand Tools','Hardware & Fasteners','Safety & Workwear','Home Improvement Supplies','Automotive Tools & Accessories']],
+        ['name' => 'Party & Occasions', 'image' => 'party-occasions.jpg', 'image_url' => 'https://mypartycentre.com/cdn/shop/files/4304901_771x1000.jpg?v=1719233586&width=1200', 'subs' => ['Party Supplies','Balloons & Decorations','Tableware & Serveware','Gifts & Gift Bags','Seasonal Decorations','Weddings & Special Events']],
     ];
 
     $products = [
-        ['name' => 'Cotton T-Shirt', 'category' => 'Fashion', 'image' => 'cotton-tshirt.jpg', 'price' => '₱599', 'badge' => 'New'],
-        ['name' => 'Aula F2058 Gaming Keyboard', 'category' => 'Tech', 'image' => 'aula-keyboard.jpg', 'price' => '₱1,899', 'badge' => 'Popular'],
-        ['name' => 'Face Serum', 'category' => 'Beauty', 'image' => 'face-serum.jpg', 'price' => '₱499', 'badge' => 'New'],
-        ['name' => 'Canvas Tote Bag', 'category' => 'Accessories', 'image' => 'canvas-tote.jpg', 'price' => '₱799', 'badge' => 'Bestseller'],
-        ['name' => 'Prolink Wireless Mouse', 'category' => 'Tech', 'image' => 'wireless-mouse.jpg', 'price' => '₱649', 'badge' => null],
+        ['name' => 'Cotton T-Shirt', 'category' => 'Fashion', 'image' => 'cotton-tshirt.jpg', 'image_url' => 'https://image.uniqlo.com/UQ/ST3/ph/imagesgoods/483461/item/phgoods_00_483461_3x4.jpg?width=1200', 'price' => '₱599', 'badge' => 'New'],
+        ['name' => 'Aula F2058 Gaming Keyboard', 'category' => 'Tech', 'image' => 'aula-keyboard.jpg', 'image_url' => 'https://www.aulaph.com/cdn/shop/files/aula_keyboard_f2058_0000.jpg?v=1761530452&width=1445', 'price' => '₱1,899', 'badge' => 'Popular'],
+        ['name' => 'Face Serum', 'category' => 'Beauty', 'image' => 'face-serum.jpg', 'image_url' => 'https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dwce8a7cdf/Images/products/The%20Ordinary/rdn-niacinamide-10pct-zinc-1pct-30ml.png?sh=1200&sm=fit&sw=1200', 'price' => '₱499', 'badge' => 'New'],
+        ['name' => 'Canvas Tote Bag', 'category' => 'Accessories', 'image' => 'canvas-tote.jpg', 'image_url' => 'https://cdn.shopify.com/s/files/1/0851/3262/files/cc0e87b1bd8394435fa0db6b52ae523e7b00bdec-1516x1896.jpg?v=1753303965', 'price' => '₱799', 'badge' => 'Bestseller'],
+        ['name' => 'Prolink Wireless Mouse', 'category' => 'Tech', 'image' => 'wireless-mouse.jpg', 'image_url' => 'https://prolink2u.com/cdn/shop/files/GM-2001-Green.png?v=1686821784&width=1100', 'price' => '₱649', 'badge' => null],
         ['name' => 'Everyday Sneakers', 'category' => 'Fashion', 'image' => 'everyday-sneakers.jpg', 'price' => '₱1,299', 'badge' => 'Bestseller'],
-        ['name' => 'Celeste Floral Pillow Sham', 'category' => 'Home', 'image' => 'floral-pillow-sham.jpg', 'price' => '₱1,590', 'badge' => null],
-        ['name' => 'Reading Journal', 'category' => 'Books', 'image' => 'reading-journal.jpg', 'price' => '₱349', 'badge' => 'New'],
-        ['name' => 'Classic Watch', 'category' => 'Accessories', 'image' => 'classic-watch.jpg', 'price' => '₱1,499', 'badge' => 'Popular'],
+        ['name' => 'Celeste Floral Pillow Sham', 'category' => 'Home', 'image' => 'floral-pillow-sham.jpg', 'image_url' => 'https://cb.scene7.com/is/image/Crate/CelesteNvyFlrStndShamSHF24?$web_pdp_main_carousel_med$', 'price' => '₱1,590', 'badge' => null],
+        ['name' => 'Reading Journal', 'category' => 'Books', 'image' => 'reading-journal.jpg', 'image_url' => 'https://www.moleskine.com/dw/image/v2/BFRN_PRD/on/demandware.static/-/Sites-masterCatalog_Moleskine/default/dw3cbe3ab1/images/large-PDP/gtin_8051272895285_01.png?sh=900', 'price' => '₱349', 'badge' => 'New'],
+        ['name' => 'Classic Watch', 'category' => 'Accessories', 'image' => 'classic-watch.jpg', 'image_url' => 'https://www.casio.com/content/dam/casio/product-info/locales/ph/en/timepiece/product/watch/M/MT/MTP/mtp-b115d-1ev/assets/MTP-B115D-1EV.png.transform/main-visual-sp/image.png', 'price' => '₱1,499', 'badge' => 'Popular'],
         ['name' => 'Baseball Cap', 'category' => 'Fashion', 'image' => 'baseball-cap.jpg', 'price' => '₱459', 'badge' => null],
-        ['name' => 'Art Dining Chair', 'category' => 'Home', 'image' => 'dining-chair.jpg', 'price' => '₱2,795', 'badge' => 'Bestseller'],
-        ['name' => 'Travel Tumbler', 'category' => 'Outdoor', 'image' => 'travel-tumbler.jpg', 'price' => '₱699', 'badge' => 'New'],
+        ['name' => 'Art Dining Chair', 'category' => 'Home', 'image' => 'dining-chair.jpg', 'image_url' => 'https://smhome.ph/cdn/shop/files/Art_20Dining_20Chair_20-_2010432390_20-_205_84c24676-f7da-4e70-94d2-fcd8cead6814.jpg?v=1761937323', 'price' => '₱2,795', 'badge' => 'Bestseller'],
+        ['name' => 'Travel Tumbler', 'category' => 'Outdoor', 'image' => 'travel-tumbler.jpg', 'image_url' => 'https://www.stanley1913.com/cdn/shop/files/Web_PNG_Square-TheQuencherH2.0FlowStateTumbler30OZ-RoseQuartzBouquets-Front.png?v=1775504577&width=1200', 'price' => '₱699', 'badge' => 'New'],
     ];
 
     $collections = [
@@ -187,7 +187,7 @@
                 <div class="category-carousel" id="categoryCarousel">
                     @foreach($categories as $category)
                         <button class="category-card" type="button" data-open-categories data-category-name="{{ $category['name'] }}">
-                            <span class="category-image"><img src="{{ asset('images/landing-page/categories/' . $category['image']) }}" alt="{{ $category['name'] }}"></span>
+                            <span class="category-image"><img src="{{ $category['image_url'] ?? asset('images/landing-page/categories/' . $category['image']) }}" alt="{{ $category['name'] }}" loading="eager" decoding="async" referrerpolicy="no-referrer" onerror="this.onerror=null;this.src='{{ asset('images/landing-page/categories/' . $category['image']) }}';"></span>
                             <span>{{ $category['name'] }}</span>
                         </button>
                     @endforeach
@@ -271,7 +271,7 @@
                             <div class="product-image-wrap" aria-label="{{ $product['name'] }}">
                                 @if($product['badge'])<span class="product-badge">{{ $product['badge'] }}</span>@endif
                                 <button class="wishlist-button" type="button" aria-label="Add {{ $product['name'] }} to wishlist"><span class="material-symbols-rounded"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 4.8a5 5 0 0 0-7.1 0L12 6.2l-1.4-1.4a5 5 0 0 0-7.1 7.1L12 21l8.5-9.1a5 5 0 0 0 0-7.1Z"/></svg></span></button>
-                                <img src="{{ asset('images/landing-page/products/' . $product['image']) }}" alt="{{ $product['name'] }}" loading="lazy">
+                                <img src="{{ $product['image_url'] ?? asset('images/landing-page/products/' . $product['image']) }}" alt="{{ $product['name'] }}" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.onerror=null;this.src='{{ asset('images/landing-page/products/' . $product['image']) }}';">
                             </div>
                             <div class="product-info">
                                 <span class="product-category">{{ $product['category'] }}</span>
@@ -381,13 +381,13 @@
             <div class="modal-category-grid" id="modalCategoryGrid">
                 @foreach($categories as $category)
                     <button class="modal-category-card" type="button" data-modal-category data-search-text="{{ strtolower($category['name'] . ' ' . implode(' ', $category['subs'])) }}">
-                        <span><img src="{{ asset('images/landing-page/categories/' . $category['image']) }}" alt=""></span>
+                        <span><img src="{{ $category['image_url'] ?? asset('images/landing-page/categories/' . $category['image']) }}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.onerror=null;this.src='{{ asset('images/landing-page/categories/' . $category['image']) }}';"></span>
                         <strong>{{ $category['name'] }}</strong>
                     </button>
                 @endforeach
                 @foreach($extraCategories as $category)
                     <button class="modal-category-card" type="button" data-modal-category data-search-text="{{ strtolower($category['name'] . ' ' . implode(' ', $category['subs'])) }}">
-                        <span><img src="{{ asset('images/landing-page/categories/' . $category['image']) }}" alt="{{ $category['name'] }}"></span>
+                        <span><img src="{{ $category['image_url'] ?? asset('images/landing-page/categories/' . $category['image']) }}" alt="{{ $category['name'] }}" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.onerror=null;this.src='{{ asset('images/landing-page/categories/' . $category['image']) }}';"></span>
                         <strong>{{ $category['name'] }}</strong>
                     </button>
                 @endforeach

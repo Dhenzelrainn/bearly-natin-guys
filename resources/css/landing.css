@@ -1500,3 +1500,33 @@ body.contact-page .contact-field-row > .contact-field > .contact-error {
 @media (max-width: 520px) {
     .category-carousel { grid-auto-columns: 62%; }
 }
+
+/* ===== 2026-09-13 HD SOURCE RENDERING FINAL =====
+   Preserve the approved card dimensions. Do not enlarge low-resolution pixels.
+   HD URLs in landingpage.blade.php are rendered at their natural aspect ratio. */
+.category-image img,
+.category-card:hover .category-image img,
+.modal-category-card img,
+.modal-category-card:hover img,
+.product-image-wrap > img,
+.product-card:hover .product-image-wrap > img {
+    transform: none !important;
+    filter: none !important;
+    image-rendering: auto !important;
+}
+
+.category-image img,
+.modal-category-card img {
+    object-fit: contain !important;
+    object-position: center !important;
+}
+
+.product-image-wrap > img,
+.product-card:hover .product-image-wrap > img {
+    width: 92% !important;
+    height: 88% !important;
+    max-width: 92% !important;
+    max-height: 88% !important;
+    object-fit: contain !important;
+    object-position: center !important;
+}

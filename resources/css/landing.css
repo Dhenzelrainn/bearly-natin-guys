@@ -1369,3 +1369,134 @@ body.contact-page .contact-field-row > .contact-field > .contact-error {
         margin-top: 18px !important;
     }
 }
+
+/* ===== 2026-09-13 MINIMAL IMAGE + CATEGORY MARQUEE HOTFIX ===== */
+/* Community banner: replacement asset is composed for this wide frame so
+   both people stay inside the banner instead of being cropped vertically. */
+.community-banner-image {
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    object-fit: cover;
+    object-position: right center;
+}
+
+/* Five categories visible on desktop, at the same visual scale as Featured Products. */
+.category-carousel {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: calc((100% - 80px) / 5);
+    gap: 20px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 3px 2px 12px;
+    scroll-snap-type: none;
+    scroll-behavior: auto;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+}
+.category-carousel::-webkit-scrollbar { display: none; }
+
+.category-card {
+    min-width: 0;
+    width: 100%;
+    scroll-snap-align: none;
+}
+
+.category-image {
+    width: 100%;
+    height: auto;
+    min-height: 285px;
+    aspect-ratio: 1 / 1.05;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    border: 1px solid #eee8e2;
+    border-radius: 12px;
+    background: rgb(247,245,242);
+}
+
+.category-image img,
+.category-card:hover .category-image img {
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    object-fit: contain;
+    object-position: center;
+    transform: none;
+    filter: contrast(1.015) saturate(1.01);
+    image-rendering: auto;
+    backface-visibility: hidden;
+}
+
+/* View-all modal: same consistent frame + cleaned local category images. */
+.modal-category-card > span {
+    height: 148px;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    padding: 0;
+    border: 1px solid #eee7e0;
+    background: rgb(247,245,242);
+}
+.modal-category-card img,
+.modal-category-card:hover img {
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    object-fit: contain;
+    object-position: center;
+    transform: none;
+    filter: contrast(1.015) saturate(1.01);
+    image-rendering: auto;
+}
+
+/* Featured product dimensions are intentionally unchanged; only rendering is cleaned up. */
+.product-image-wrap > img,
+.product-card:hover .product-image-wrap > img {
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    object-fit: contain;
+    object-position: center;
+    transform: none;
+    filter: contrast(1.015) saturate(1.01);
+    image-rendering: auto;
+    backface-visibility: hidden;
+}
+
+@media (max-width: 1220px) {
+    .category-carousel {
+        grid-auto-columns: calc((100% - 54px) / 4);
+        gap: 18px;
+    }
+    .category-image { min-height: 250px; }
+}
+
+@media (max-width: 900px) {
+    .category-carousel {
+        grid-auto-columns: calc((100% - 32px) / 3);
+        gap: 16px;
+    }
+    .category-image { min-height: 220px; }
+}
+
+@media (max-width: 760px) {
+    .category-carousel {
+        grid-auto-columns: 46%;
+        gap: 14px;
+    }
+    .category-card { min-width: 0; }
+    .category-image {
+        min-height: 0;
+        height: auto;
+        aspect-ratio: 1 / 1.05;
+    }
+    .modal-category-card > span { height: 132px; }
+    .community-banner-image { object-position: 76% center; }
+}
+
+@media (max-width: 520px) {
+    .category-carousel { grid-auto-columns: 62%; }
+}

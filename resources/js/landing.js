@@ -109,59 +109,115 @@
         start();
     }
 
-    /* ---------------- Auto-moving Shop by Categories ---------------- */
+    /* ---------------- Continuous Shop by Categories marquee ---------------- */
     const categoryCarousel = $('#categoryCarousel');
     if (categoryCarousel) {
         const prev = $('.category-prev');
         const next = $('.category-next');
-        let timer = 0;
+        const originals = $$('.category-card', categoryCarousel);
         let paused = false;
+        let frame = 0;
+        let lastTime = 0;
+        let resumeTimer = 0;
+        let cycleWidth = 0;
+        const speed = 28; // px/sec: calm continuous marquee, not step/jump autoplay.
 
-        const stepSize = () => {
-            const card = $('.category-card', categoryCarousel);
-            if (!card) return Math.max(180, categoryCarousel.clientWidth * .35);
-            const styles = getComputedStyle(categoryCarousel);
-            const gap = parseFloat(styles.columnGap || styles.gap) || 18;
-            return card.getBoundingClientRect().width + gap;
-        };
+        /* Duplicate one complete set so last -> first loops without a visible reset. */
+        originals.forEach(card => {
+            const clone = card.cloneNode(true);
+            clone.dataset.marqueeClone = 'true';
+            clone.setAttribute('aria-hidden', 'true');
+            clone.tabIndex = -1;
+            categoryCarousel.appendChild(clone);
+        });
 
-        const move = (direction = 1, smooth = true) => {
-            const max = categoryCarousel.scrollWidth - categoryCarousel.clientWidth;
-            if (max <= 2) return;
-            const step = stepSize();
-            const atEnd = categoryCarousel.scrollLeft >= max - step * .45;
-            const atStart = categoryCarousel.scrollLeft <= step * .15;
+        const firstClone = $('[data-marquee-clone="true"]', categoryCarousel);
 
-            if (direction > 0 && atEnd) {
-                categoryCarousel.scrollTo({ left: 0, behavior: smooth ? 'smooth' : 'auto' });
-            } else if (direction < 0 && atStart) {
-                categoryCarousel.scrollTo({ left: max, behavior: smooth ? 'smooth' : 'auto' });
-            } else {
-                categoryCarousel.scrollBy({ left: direction * step, behavior: smooth ? 'smooth' : 'auto' });
+        const measure = () => {
+            if (!originals.length || !firstClone) return;
+            cycleWidth = firstClone.offsetLeft - originals[0].offsetLeft;
+            if (cycleWidth > 0 && categoryCarousel.scrollLeft >= cycleWidth) {
+                categoryCarousel.scrollLeft %= cycleWidth;
             }
         };
 
-        const stop = () => { window.clearInterval(timer); timer = 0; };
-        const start = () => {
-            stop();
-            if (reducedMotion.matches || paused || document.hidden) return;
-            timer = window.setInterval(() => move(1, true), 2600);
+        const stepSize = () => {
+            const card = originals[0];
+            if (!card) return Math.max(220, categoryCarousel.clientWidth / 5);
+            const styles = getComputedStyle(categoryCarousel);
+            const gap = parseFloat(styles.columnGap || styles.gap) || 20;
+            return card.getBoundingClientRect().width + gap;
         };
-        const restart = () => { stop(); window.setTimeout(start, 900); };
 
-        prev?.addEventListener('click', () => { move(-1); restart(); });
-        next?.addEventListener('click', () => { move(1); restart(); });
-        categoryCarousel.addEventListener('mouseenter', () => { paused = true; stop(); });
-        categoryCarousel.addEventListener('mouseleave', () => { paused = false; start(); });
-        categoryCarousel.addEventListener('focusin', () => { paused = true; stop(); });
+        const tick = time => {
+            if (!lastTime) lastTime = time;
+            const delta = Math.min(40, time - lastTime);
+            lastTime = time;
+
+            if (!paused && !document.hidden && !reducedMotion.matches && cycleWidth > 0) {
+                categoryCarousel.scrollLeft += speed * (delta / 1000);
+                if (categoryCarousel.scrollLeft >= cycleWidth) {
+                    categoryCarousel.scrollLeft -= cycleWidth;
+                }
+            }
+            frame = window.requestAnimationFrame(tick);
+        };
+
+        const pause = () => { paused = true; };
+        const resume = (delay = 0) => {
+            window.clearTimeout(resumeTimer);
+            if (delay) {
+                resumeTimer = window.setTimeout(() => { paused = false; }, delay);
+            } else {
+                paused = false;
+            }
+        };
+
+        const nudge = direction => {
+            pause();
+            const step = stepSize();
+            if (direction < 0 && cycleWidth > 0 && categoryCarousel.scrollLeft < step * .5) {
+                categoryCarousel.scrollLeft = cycleWidth;
+            }
+            categoryCarousel.scrollBy({
+                left: step * direction,
+                behavior: reducedMotion.matches ? 'auto' : 'smooth'
+            });
+            window.setTimeout(() => {
+                if (cycleWidth > 0) {
+                    while (categoryCarousel.scrollLeft >= cycleWidth) categoryCarousel.scrollLeft -= cycleWidth;
+                }
+                resume(250);
+            }, 520);
+        };
+
+        prev?.addEventListener('click', () => nudge(-1));
+        next?.addEventListener('click', () => nudge(1));
+
+        /* Pause while actively interacting, then continue automatically. */
+        categoryCarousel.addEventListener('mouseenter', pause);
+        categoryCarousel.addEventListener('mouseleave', () => resume());
+        categoryCarousel.addEventListener('focusin', pause);
         categoryCarousel.addEventListener('focusout', event => {
-            if (!categoryCarousel.contains(event.relatedTarget)) { paused = false; start(); }
+            if (!categoryCarousel.contains(event.relatedTarget)) resume();
         });
-        categoryCarousel.addEventListener('pointerdown', () => { paused = true; stop(); }, { passive: true });
-        categoryCarousel.addEventListener('pointerup', () => { paused = false; restart(); }, { passive: true });
-        document.addEventListener('visibilitychange', start);
-        reducedMotion.addEventListener?.('change', start);
-        start();
+        categoryCarousel.addEventListener('pointerdown', pause, { passive: true });
+        categoryCarousel.addEventListener('pointerup', () => resume(450), { passive: true });
+        categoryCarousel.addEventListener('pointercancel', () => resume(450), { passive: true });
+
+        const resizeObserver = 'ResizeObserver' in window ? new ResizeObserver(measure) : null;
+        resizeObserver?.observe(categoryCarousel);
+        window.addEventListener('resize', measure, { passive: true });
+        document.addEventListener('visibilitychange', () => {
+            lastTime = 0;
+            if (!document.hidden) measure();
+        });
+        reducedMotion.addEventListener?.('change', () => { lastTime = 0; });
+
+        window.requestAnimationFrame(() => {
+            measure();
+            frame = window.requestAnimationFrame(tick);
+        });
     }
 
     /* ---------------- View all categories modal ---------------- */

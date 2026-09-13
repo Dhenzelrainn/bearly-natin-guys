@@ -282,7 +282,7 @@ svg { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width: 1
     height: 100%;
     max-width: none;
     object-fit: cover;
-    object-position: center 15%;
+    object-position: center;
     z-index: 0;
 }
 .hero-slide::before {
@@ -1149,4 +1149,223 @@ body.contact-page .contact-field-row > .contact-field > .contact-error {
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
     .reveal-section { opacity: 1; transform: none; }
+}
+
+/* =========================================================
+   ONE-SHOT LANDING / ABOUT / CONTACT FIX — 2026-09-13
+   Fixes source-image whitespace instead of relying on crop-prone CSS zoom.
+   ========================================================= */
+
+/* 1) HERO — one identical frame for all three slides.
+   The replacement hero files are 2640x793 and have extra blank space on the
+   left, so anchoring right keeps the laptop/model/bag fully readable. */
+.hero-slide,
+.hero-layout {
+    height: clamp(520px, 30vw, 620px);
+    min-height: 520px;
+}
+.hero-banner-image,
+.hero-banner-slide-01,
+.hero-banner-slide-02,
+.hero-banner-slide-03 {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: right center;
+}
+
+/* 2-3) SHOP BY CATEGORIES — cleaned individual images, larger visual area,
+   no sprite/atlas and no scale() crop. Autoplay behavior is in landing.js. */
+.category-carousel {
+    grid-auto-columns: minmax(170px, 1fr);
+    scroll-behavior: smooth;
+    overscroll-behavior-inline: contain;
+}
+.category-card { min-width: 170px; }
+.category-image {
+    height: 174px;
+    padding: 0;
+    border: 1px solid #eee8e2;
+    background: rgb(247,245,242);
+}
+.category-image img,
+.category-card:hover .category-image img {
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    object-fit: contain;
+    object-position: center;
+    transform: none;
+    image-rendering: auto;
+}
+.category-card > span:last-child {
+    padding-top: 11px;
+    color: #342a25;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1.35;
+}
+
+/* View All Categories — 18 image cards, readable labels and subcategories. */
+.modal-category-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 20px 16px;
+}
+.modal-category-card > span {
+    height: 132px;
+    padding: 0;
+    border: 1px solid #eee7e0;
+    background: rgb(247,245,242);
+}
+.modal-category-card img,
+.modal-category-card:hover img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    object-position: center;
+    transform: none;
+    image-rendering: auto;
+}
+.modal-category-card strong {
+    display: block;
+    margin-top: 9px;
+    color: #3e322c;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1.35;
+}
+.all-categories-head h3 { font-size: 31px; }
+.all-categories-head span { font-size: 13px; }
+.subcategory-column h4 { font-size: 14px; line-height: 1.4; }
+.subcategory-column a { margin: 7px 0; font-size: 12.75px; line-height: 1.55; }
+.modal-search input { font-size: 14px; }
+.trending-searches,
+.trending-searches button { font-size: 12px; }
+
+/* 6) FEATURED PRODUCTS — source JPGs are trimmed and rebuilt at 1000x1000.
+   Normal contain now makes them large and crisp without cutting products. */
+.product-image-wrap {
+    min-height: 285px;
+    display: grid;
+    place-items: center;
+    border-color: #eee8e2;
+    background: rgb(247,245,242);
+}
+.product-image-wrap > img,
+.product-card:hover .product-image-wrap > img {
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    object-fit: contain;
+    object-position: center;
+    transform: none;
+    image-rendering: auto;
+    backface-visibility: hidden;
+}
+
+/* 7) Landing footer — preserve the colored bear and light footer wordmark. */
+.footer-brand img {
+    width: 158px;
+    height: 53px;
+    max-width: 158px;
+    object-fit: contain;
+    object-position: left center;
+    filter: none !important;
+    opacity: 1 !important;
+}
+
+/* 8 + Contact footer — About/Contact Blade still points at the normal dark
+   wordmark. Paint the dedicated footer logo on the footer anchor itself so
+   browser support does not depend on CSS content:url() for <img>. */
+body.bl .bl-footer .bl-brand {
+    width: 150px !important;
+    height: 50px !important;
+    max-width: 150px !important;
+    display: block !important;
+    flex: 0 0 150px;
+    background: url('/images/bearly-logo-footer.png') left center / contain no-repeat !important;
+}
+body.bl .bl-footer .bl-brand img {
+    width: 100% !important;
+    height: 100% !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    opacity: 0 !important;
+    filter: none !important;
+}
+
+/* 9) CONTACT — every two-up pair starts at exactly the same Y position. */
+body.contact-page .contact-field-row {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 20px !important;
+    align-items: start !important;
+}
+body.contact-page .contact-field-row > .contact-field,
+body.contact-page .contact-field-row > .contact-field + .contact-field {
+    min-width: 0 !important;
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    padding: 0 !important;
+    align-self: start !important;
+    display: grid !important;
+    grid-template-rows: 40px 52px 18px !important;
+    align-content: start !important;
+}
+body.contact-page .contact-field-row > .contact-field > label {
+    width: 100% !important;
+    height: 40px !important;
+    min-height: 40px !important;
+    margin: 0 !important;
+    padding: 0 0 8px !important;
+    display: flex !important;
+    align-items: flex-end !important;
+    justify-content: space-between !important;
+    box-sizing: border-box !important;
+    line-height: 1.25 !important;
+}
+body.contact-page .contact-field-row > .contact-field > input,
+body.contact-page .contact-field-row > .contact-field > select {
+    width: 100% !important;
+    height: 52px !important;
+    min-height: 52px !important;
+    margin: 0 !important;
+    box-sizing: border-box !important;
+    align-self: start !important;
+}
+body.contact-page .contact-field-row > .contact-field > .contact-error {
+    width: 100% !important;
+    height: 18px !important;
+    min-height: 18px !important;
+    margin: 4px 0 0 !important;
+    padding: 0 !important;
+    line-height: 14px !important;
+}
+
+@media (max-width: 1220px) {
+    .modal-category-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .product-image-wrap { min-height: 270px; }
+}
+
+@media (max-width: 760px) {
+    .hero-slide,
+    .hero-layout { height: 610px; min-height: 610px; }
+    .hero-banner-image,
+    .hero-banner-slide-01,
+    .hero-banner-slide-02,
+    .hero-banner-slide-03 { object-position: 72% center; }
+
+    .category-carousel { grid-auto-columns: minmax(158px, 1fr); }
+    .category-card { min-width: 158px; }
+    .category-image { height: 158px; }
+
+    .modal-category-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .modal-category-card > span { height: 122px; }
+
+    .product-image-wrap { min-height: 255px; }
+
+    body.contact-page .contact-field-row { grid-template-columns: 1fr !important; }
+    body.contact-page .contact-field-row > .contact-field + .contact-field {
+        margin-top: 18px !important;
+    }
 }

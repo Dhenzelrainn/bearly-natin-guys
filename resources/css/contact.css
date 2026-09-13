@@ -188,8 +188,7 @@ body.contact-page .contact-field-row {
     align-items: start;
 }
 body.contact-page .contact-field-row + .contact-field-row,
-body.contact-page .contact-field-row + .contact-field,
-body.contact-page .contact-field + .contact-field {
+body.contact-page .contact-field-row + .contact-field {
     margin-top: 18px;
 }
 body.contact-page .contact-field { min-width: 0; }
@@ -551,5 +550,37 @@ body.contact-page .contact-toast {
     }
     body.contact-page .contact-small-button {
         width: 100%;
+    }
+}
+
+/* 2026-09-13 ONE-SHOT: keep the right field aligned with the left field. */
+body.contact-page .contact-field-row > .contact-field + .contact-field {
+    margin-top: 0 !important;
+}
+body.contact-page .contact-field-row > .contact-field {
+    display: grid !important;
+    grid-template-rows: 40px 52px 18px !important;
+    align-content: start !important;
+    align-self: start !important;
+}
+body.contact-page .contact-field-row > .contact-field > label {
+    height: 40px !important;
+    min-height: 40px !important;
+    margin: 0 !important;
+    padding: 0 0 8px !important;
+    display: flex !important;
+    align-items: flex-end !important;
+    box-sizing: border-box !important;
+}
+body.contact-page .contact-field-row > .contact-field > input,
+body.contact-page .contact-field-row > .contact-field > select {
+    height: 52px !important;
+    min-height: 52px !important;
+    margin: 0 !important;
+    box-sizing: border-box !important;
+}
+@media (max-width: 760px) {
+    body.contact-page .contact-field-row > .contact-field + .contact-field {
+        margin-top: 18px !important;
     }
 }

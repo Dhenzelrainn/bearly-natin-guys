@@ -5,8 +5,8 @@
 
 @section('content')
 <section class="page-hero">
-    <div><span class="eyebrow">Module 06</span><h1>Manage platform commission</h1><p>Preview the configured 10% platform fee and review a static commission ledger by seller and transaction date.</p></div>
-    <div class="commission-rate-card"><span>Platform rate</span><strong>{{ $rate }}%</strong><small>Applied to gross order value</small></div>
+    <div><span class="eyebrow">Finance & Reports</span><h1>Manage platform commission</h1><p>Review the configured 10% platform fee and calculate the seller net for each completed transaction.</p></div>
+    <div class="hero-actions"><button class="button button-secondary" type="button" data-finance-export="commissions"><i data-lucide="download"></i> Export commissions</button><div class="commission-rate-card"><span>Platform rate</span><strong>{{ $rate }}%</strong><small>Applied to gross order value</small></div></div>
 </section>
 
 <section class="dashboard-grid dashboard-grid-secondary">
@@ -36,7 +36,7 @@
             </button>
         </div>
     </div>
-    <div class="table-wrap"><table class="admin-table"><thead><tr><th>Date</th><th>Order</th><th>Seller</th><th class="align-right">Gross</th><th class="align-right">10% Commission</th><th class="align-right">Seller Net</th></tr></thead><tbody>
+    <div class="table-wrap"><table class="admin-table" data-finance-table="commissions"><thead><tr><th>Date</th><th>Order</th><th>Seller</th><th class="align-right">Gross</th><th class="align-right">10% Commission</th><th class="align-right">Seller Net</th></tr></thead><tbody>
         @foreach ($ledger as $row)
             <tr data-commission-ledger-row data-commission-date="{{ \Carbon\Carbon::parse($row['date'])->format('Y-m-d') }}"><td>{{ $row['date'] }}</td><td><strong>{{ $row['order'] }}</strong></td><td>{{ $row['seller'] }}</td><td class="align-right">₱{{ number_format($row['gross'], 2) }}</td><td class="align-right commission-value">₱{{ number_format($row['commission'], 2) }}</td><td class="align-right">₱{{ number_format($row['sellerNet'], 2) }}</td></tr>
         @endforeach

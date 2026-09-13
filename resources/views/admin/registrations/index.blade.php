@@ -6,9 +6,9 @@
 @section('content')
 <section class="page-hero">
     <div>
-        <span class="eyebrow">Module 02</span>
+        <span class="eyebrow">Registration Management</span>
         <h1>Manage account registrations</h1>
-        <p>Review Buyer, Seller, and Courier applications, verify submitted requirements, and simulate approval decisions.</p>
+        <p>Review Buyer, Seller, and Logistics applications before granting platform access. Rider applications are approved by the selected Logistics partner.</p>
     </div>
     <div class="hero-summary-card">
         <span class="metric-icon"><i data-lucide="clipboard-check"></i></span>
@@ -25,7 +25,7 @@
         <div class="table-toolbar">
             <label class="field-with-icon compact-field"><i data-lucide="search"></i><input type="search" placeholder="Search applicant..." data-table-search="registration-table"></label>
             <select class="select-field" data-table-filter="registration-table" data-filter-key="role">
-                <option value="">All roles</option><option>Buyer</option><option>Seller</option><option>Courier</option>
+                <option value="">All roles</option><option>Buyer</option><option>Seller</option><option>Logistics</option>
             </select>
             <select class="select-field" data-table-filter="registration-table" data-filter-key="status">
                 <option value="">All statuses</option><option>Pending</option><option>Needs Review</option>

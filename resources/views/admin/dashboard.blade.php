@@ -11,7 +11,7 @@
         <p>Here is a clean snapshot of Bearly's marketplace activity and the items that need admin attention.</p>
     </div>
     <div class="hero-actions">
-        <button class="button button-secondary" type="button" data-mock-action="Dashboard data refreshed.">
+        <button class="button button-secondary" type="button" data-dashboard-refresh>
             <i data-lucide="refresh-cw"></i> Refresh
         </button>
         <a class="button button-primary" href="{{ route('admin.reports') }}">
@@ -29,7 +29,7 @@
             </div>
             <p>{{ $kpi['label'] }}</p>
             <strong>{{ $kpi['value'] }}</strong>
-            <small>Live preview from static mock records</small>
+            <small>Recent platform activity and administrative updates.</small>
         </article>
     @endforeach
 </section>
@@ -43,9 +43,9 @@
                 <p>Monthly gross sales preview for the current year.</p>
             </div>
             <div class="segmented-control">
-                <button type="button" class="is-active">12M</button>
-                <button type="button" data-mock-action="Quarter view selected.">3M</button>
-                <button type="button" data-mock-action="Month view selected.">30D</button>
+                <button type="button" class="is-active" data-dashboard-period="12">12M</button>
+                <button type="button" data-dashboard-period="3">3M</button>
+                <button type="button" data-dashboard-period="1">30D</button>
             </div>
         </div>
 
@@ -54,7 +54,7 @@
             <div class="bar-chart" aria-label="Sales bar chart">
                 @php $months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; @endphp
                 @foreach ($salesByMonth as $index => $height)
-                    <div class="bar-column">
+                    <div class="bar-column" data-dashboard-bar>
                         <div class="bar-track"><span style="height: {{ min(100, $height / 1.45) }}%"></span></div>
                         <small>{{ $months[$index] }}</small>
                     </div>
@@ -93,7 +93,7 @@
                 <span class="eyebrow">Recent activity</span>
                 <h2>Platform timeline</h2>
             </div>
-            <button class="text-button" type="button" data-mock-action="All activity opened.">View all</button>
+            <a class="text-button" href="{{ route('admin.audit-logs') }}">View all</a>
         </div>
         <div class="activity-list">
             @foreach ($activity as $item)
@@ -103,7 +103,7 @@
                         <strong>{{ $item['title'] }}</strong>
                         <small>{{ $item['meta'] }}</small>
                     </div>
-                    <button class="icon-button subtle-icon" type="button" data-mock-action="Activity details opened."><i data-lucide="chevron-right"></i></button>
+                    <a class="icon-button subtle-icon" href="{{ route('admin.audit-logs') }}" aria-label="Open audit logs"><i data-lucide="chevron-right"></i></a>
                 </div>
             @endforeach
         </div>

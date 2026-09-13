@@ -65,7 +65,7 @@
                 <option value="Buyers">Buyers</option>
                 <option value="Sellers">Sellers</option>
                 <option value="Logistics Centers">Logistics Centers</option>
-                <option value="Riders / Couriers">Riders / Couriers</option>
+                <option value="Riders">Riders</option>
             </select>
 
 
@@ -111,7 +111,7 @@
             </thead>
 
 
-            <tbody>
+            <tbody data-record-rows="announcement">
 
                 @foreach ($announcements as $announcement)
 
@@ -399,62 +399,69 @@
         </div>
 
 
-        <div class="review-details">
+        <div class="announcement-form">
 
-            <div class="detail-grid">
+            <div class="form-grid two-column-form">
 
-                <label>
+                <label class="form-field">
                     <span>Announcement title</span>
 
                     <input
                         type="text"
                         class="text-field"
+                        data-record-field="title"
                         placeholder="Enter announcement title"
                     >
                 </label>
 
 
-                <label>
+                <label class="form-field">
                     <span>Audience</span>
 
-                    <select class="select-field">
+                    <select
+                        class="select-field"
+                        data-record-field="audience"
+                    >
                         <option>All Users</option>
                         <option>Buyers</option>
                         <option>Sellers</option>
                         <option>Logistics Centers</option>
-                        <option>Riders / Couriers</option>
+                        <option>Riders</option>
                     </select>
                 </label>
 
 
-                <label>
+                <label class="form-field">
                     <span>Publish date</span>
 
                     <input
                         type="date"
                         class="text-field"
+                        data-record-field="date"
                     >
                 </label>
 
 
-                <label>
+                <label class="form-field">
                     <span>Publish time</span>
 
                     <input
                         type="time"
                         class="text-field"
+                        data-record-field="time"
                     >
                 </label>
 
             </div>
 
 
-            <label class="detail-note">
+            <label class="form-field announcement-message-field">
                 <span>Announcement message</span>
 
                 <textarea
                     class="text-field"
-                    rows="6"
+                    rows="7"
+                    data-record-field="message"
                     placeholder="Write the announcement..."
                 ></textarea>
             </label>
@@ -468,6 +475,8 @@
                 type="button"
                 class="button button-ghost"
                 data-mock-action="Announcement saved as draft."
+                data-save-record="announcement"
+                data-record-status="Draft"
             >
                 <i data-lucide="save"></i>
                 Save Draft
@@ -478,6 +487,8 @@
                 type="button"
                 class="button button-secondary"
                 data-mock-action="Announcement scheduled."
+                data-save-record="announcement"
+                data-record-status="Scheduled"
             >
                 <i data-lucide="clock"></i>
                 Schedule
@@ -488,6 +499,8 @@
                 type="button"
                 class="button button-primary"
                 data-mock-action="Announcement published successfully."
+                data-save-record="announcement"
+                data-record-status="Published"
             >
                 <i data-lucide="send"></i>
                 Publish Now

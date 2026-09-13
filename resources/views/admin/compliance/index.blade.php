@@ -5,7 +5,7 @@
 
     @section('content')
     <section class="page-hero">
-        <div><span class="eyebrow">Module 04</span><h1>Monitor seller compliance</h1><p>Verify whether products belong to registered seller categories, review flagged listings, and simulate warnings or suspensions.</p></div>
+        <div><span class="eyebrow">Compliance & Disputes</span><h1>Monitor seller compliance</h1><p>Verify whether products belong to registered seller categories, review flagged listings, and simulate warnings or suspensions.</p></div>
         <div class="hero-summary-card hero-summary-danger"><span class="metric-icon"><i data-lucide="shield-alert"></i></span><div><strong data-compliance-flag-count>{{ count($flagged) }}</strong><small>Flagged items require review</small></div></div>
     </section>
 

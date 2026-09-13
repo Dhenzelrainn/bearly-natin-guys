@@ -77,7 +77,7 @@ $adminNavGroups = [
                 'icon' => 'warehouse',
             ],
             [
-                'label' => 'Riders / Couriers',
+                'label' => 'Riders',
                 'route' => 'admin.users.riders',
                 'icon' => 'bike',
             ],
@@ -119,19 +119,19 @@ $adminNavGroups = [
                 'icon' => 'percent',
             ],
             [
-                'label' => 'Reports',
-                'route' => 'admin.reports',
-                'icon' => 'chart-column',
-            ],
-            [
                 'label' => 'Transactions',
-                'route' => null,
+                'route' => 'admin.transactions',
                 'icon' => 'receipt',
             ],
             [
-                'label' => 'Payments',
-                'route' => null,
+                'label' => 'Seller Payments',
+                'route' => 'admin.payments',
                 'icon' => 'credit-card',
+            ],
+            [
+                'label' => 'Financial Reports',
+                'route' => 'admin.reports',
+                'icon' => 'chart-column',
             ],
         ],
     ],
@@ -226,6 +226,7 @@ $adminNavGroups = [
             <a
                 href="{{ route('admin.dashboard') }}"
                 class="admin-nav-link {{ request()->routeIs('admin.dashboard') ? 'is-active' : '' }}"
+                title="Dashboard"
             >
 
                 <i class="admin-ui-icon" data-lucide="house"></i>
@@ -261,6 +262,7 @@ $adminNavGroups = [
                                 <a
                                     href="{{ route($item['route']) }}"
                                     class="admin-nav-link {{ $isActive ? 'is-active' : '' }}"
+                                    title="{{ $item['label'] }}"
                                 >
                                     <i
                                         class="admin-ui-icon"

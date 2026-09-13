@@ -10,10 +10,10 @@ class AdminController extends Controller
     {
         return array_merge([
             'admin' => [
-                'name' => 'Alex Rivera',
-                'role' => 'Super Admin',
-                'email' => 'admin@bearly.test',
-                'initials' => 'AR',
+                'name' => 'Christian Joseph Aquino',
+                'role' => 'Admin',
+                'email' => 'admin123@example.com',
+                'initials' => 'CA',
             ],
             'topNotifications' => [
                 ['title' => '4 registrations awaiting review', 'time' => '8 min ago', 'type' => 'warning'],
@@ -52,10 +52,10 @@ class AdminController extends Controller
         return view('admin.registrations.index', $this->base([
             'applications' => [
                 ['id' => 'REG-2041', 'name' => 'Sofia Mendoza', 'role' => 'Seller', 'email' => 'sofia@example.test', 'submitted' => 'Aug 24, 2026', 'status' => 'Pending', 'category' => 'Jewelry & Watches', 'documents' => ['Government ID', 'Business Permit']],
-                ['id' => 'REG-2042', 'name' => 'Noah Santos', 'role' => 'Courier', 'email' => 'noah@example.test', 'submitted' => 'Aug 24, 2026', 'status' => 'Pending', 'category' => 'Motorcycle', 'documents' => ['Driver License', 'OR/CR']],
+                ['id' => 'REG-2042', 'name' => 'Northstar Logistics', 'role' => 'Logistics', 'email' => 'applications@northstar.example.test', 'submitted' => 'Aug 24, 2026', 'status' => 'Pending', 'category' => 'Regional Delivery Partner', 'documents' => ['SEC/DTI Registration', 'Business Permit', 'Service Coverage']],
                 ['id' => 'REG-2043', 'name' => 'Bianca Lim', 'role' => 'Buyer', 'email' => 'bianca@example.test', 'submitted' => 'Aug 23, 2026', 'status' => 'Pending', 'category' => '—', 'documents' => ['Government ID']],
                 ['id' => 'REG-2044', 'name' => 'Ethan Cruz', 'role' => 'Seller', 'email' => 'ethan@example.test', 'submitted' => 'Aug 23, 2026', 'status' => 'Needs Review', 'category' => 'Food & Gourmet', 'documents' => ['Government ID', 'Business Permit']],
-                ['id' => 'REG-2045', 'name' => 'Leah Ramos', 'role' => 'Courier', 'email' => 'leah@example.test', 'submitted' => 'Aug 22, 2026', 'status' => 'Pending', 'category' => 'Sedan', 'documents' => ['Driver License', 'OR/CR']],
+                ['id' => 'REG-2045', 'name' => 'Laguna Express Hub', 'role' => 'Logistics', 'email' => 'onboarding@lagunaexpress.example.test', 'submitted' => 'Aug 22, 2026', 'status' => 'Pending', 'category' => 'Provincial Sorting Center', 'documents' => ['SEC/DTI Registration', 'Business Permit', 'Warehouse Permit']],
             ],
         ]));
     }
@@ -421,7 +421,7 @@ class AdminController extends Controller
             'users' => [
                 ['id' => 'USR-8812', 'name' => 'Andrea Flores', 'email' => 'andrea@example.test', 'role' => 'Buyer', 'joined' => 'Jul 11, 2026', 'status' => 'Active'],
                 ['id' => 'USR-7719', 'name' => 'Mara Home Goods', 'email' => 'mara@example.test', 'role' => 'Seller', 'joined' => 'Jun 28, 2026', 'status' => 'Active'],
-                ['id' => 'USR-6915', 'name' => 'Jared Molina', 'email' => 'jared@example.test', 'role' => 'Courier', 'joined' => 'Jun 18, 2026', 'status' => 'Active'],
+                ['id' => 'USR-6915', 'name' => 'Jared Molina', 'email' => 'jared@example.test', 'role' => 'Rider', 'joined' => 'Jun 18, 2026', 'status' => 'Active'],
                 ['id' => 'USR-6507', 'name' => 'TechVault PH', 'email' => 'techvault@example.test', 'role' => 'Seller', 'joined' => 'Jun 02, 2026', 'status' => 'Suspended'],
                 ['id' => 'USR-6021', 'name' => 'Paolo Reyes', 'email' => 'paolo@example.test', 'role' => 'Buyer', 'joined' => 'May 21, 2026', 'status' => 'Deactivated'],
                 ['id' => 'USR-5418', 'name' => 'Nina Villanueva', 'email' => 'nina@example.test', 'role' => 'Buyer', 'joined' => 'Apr 09, 2026', 'status' => 'Active'],
@@ -632,12 +632,12 @@ class AdminController extends Controller
             'evidence' => [
                 ['label' => 'Buyer photo', 'type' => 'Image', 'meta' => 'damaged-package.jpg • 1.8 MB'],
                 ['label' => 'Order invoice', 'type' => 'Document', 'meta' => 'invoice-1048.pdf • 284 KB'],
-                ['label' => 'Courier proof', 'type' => 'Image', 'meta' => 'delivery-proof.jpg • 1.1 MB'],
+                ['label' => 'Rider proof', 'type' => 'Image', 'meta' => 'delivery-proof.jpg • 1.1 MB'],
             ],
             'timeline' => [
                 ['time' => '9:18 AM', 'text' => 'Buyer submitted complaint and photo evidence.'],
                 ['time' => '9:36 AM', 'text' => 'Seller acknowledged the case and requested parcel photos.'],
-                ['time' => '10:02 AM', 'text' => 'Courier uploaded delivery proof.'],
+                ['time' => '10:02 AM', 'text' => 'Rider uploaded delivery proof.'],
                 ['time' => '10:24 AM', 'text' => 'Admin review started.'],
             ],
         ]));
@@ -783,15 +783,54 @@ class AdminController extends Controller
             return $row;
         }, $ledger);
 
-        return view('admin.commissions', $this->base([
+        return view('admin.finance.commissions', $this->base([
             'rate' => 10,
             'ledger' => $ledger,
         ]));
     }
 
+    public function transactions(): View
+    {
+        $transactions = [
+            ['id' => 'TXN-260824-0192', 'date' => '2026-08-24', 'order' => 'ORD-50192', 'seller' => 'Mara Home Goods', 'buyer' => 'Karen Yu', 'method' => 'GCash', 'gross' => 2480.00, 'refund' => 0.00, 'status' => 'Completed'],
+            ['id' => 'TXN-260824-0188', 'date' => '2026-08-24', 'order' => 'ORD-50188', 'seller' => 'Chrono Alley', 'buyer' => 'Marco Lim', 'method' => 'Card', 'gross' => 6390.00, 'refund' => 0.00, 'status' => 'Completed'],
+            ['id' => 'TXN-260823-0171', 'date' => '2026-08-23', 'order' => 'ORD-50171', 'seller' => 'Everyday Finds', 'buyer' => 'Bianca Lim', 'method' => 'Cash on Delivery', 'gross' => 1299.00, 'refund' => 0.00, 'status' => 'Pending'],
+            ['id' => 'TXN-260823-0154', 'date' => '2026-08-23', 'order' => 'ORD-50154', 'seller' => 'TechVault PH', 'buyer' => 'Paolo Reyes', 'method' => 'Maya', 'gross' => 4299.00, 'refund' => 4299.00, 'status' => 'Refunded'],
+            ['id' => 'TXN-260822-0111', 'date' => '2026-08-22', 'order' => 'ORD-50111', 'seller' => 'Mara Home Goods', 'buyer' => 'Angela Torres', 'method' => 'GCash', 'gross' => 3190.00, 'refund' => 0.00, 'status' => 'Completed'],
+            ['id' => 'TXN-260821-0097', 'date' => '2026-08-21', 'order' => 'ORD-50097', 'seller' => 'Everyday Finds', 'buyer' => 'Carlo Reyes', 'method' => 'Card', 'gross' => 1875.00, 'refund' => 0.00, 'status' => 'Failed'],
+        ];
+
+        $transactions = array_map(function ($row) {
+            $commissionBase = $row['status'] === 'Completed'
+                ? max(0, $row['gross'] - $row['refund'])
+                : 0;
+            $row['commission'] = $commissionBase * 0.10;
+            $row['sellerNet'] = $commissionBase * 0.90;
+            return $row;
+        }, $transactions);
+
+        return view('admin.finance.transactions', $this->base([
+            'rate' => 10,
+            'transactions' => $transactions,
+        ]));
+    }
+
+    public function payments(): View
+    {
+        return view('admin.finance.payments', $this->base([
+            'payments' => [
+                ['id' => 'PAY-2608-041', 'seller' => 'Mara Home Goods', 'period' => 'Aug 16–22, 2026', 'gross' => 184210.00, 'commission' => 18421.00, 'adjustments' => -1250.00, 'net' => 164539.00, 'due' => '2026-08-26', 'paid' => null, 'reference' => '—', 'status' => 'Pending'],
+                ['id' => 'PAY-2608-040', 'seller' => 'Chrono Alley', 'period' => 'Aug 16–22, 2026', 'gross' => 142880.00, 'commission' => 14288.00, 'adjustments' => 0.00, 'net' => 128592.00, 'due' => '2026-08-26', 'paid' => null, 'reference' => '—', 'status' => 'Processing'],
+                ['id' => 'PAY-2608-039', 'seller' => 'Everyday Finds', 'period' => 'Aug 9–15, 2026', 'gross' => 119520.00, 'commission' => 11952.00, 'adjustments' => -640.00, 'net' => 106928.00, 'due' => '2026-08-19', 'paid' => '2026-08-19', 'reference' => 'BNK-849301', 'status' => 'Paid'],
+                ['id' => 'PAY-2608-038', 'seller' => 'TechVault PH', 'period' => 'Aug 9–15, 2026', 'gross' => 96410.00, 'commission' => 9641.00, 'adjustments' => -4299.00, 'net' => 82470.00, 'due' => '2026-08-19', 'paid' => null, 'reference' => '—', 'status' => 'On Hold'],
+                ['id' => 'PAY-2608-037', 'seller' => 'Mara Home Goods', 'period' => 'Aug 9–15, 2026', 'gross' => 156780.00, 'commission' => 15678.00, 'adjustments' => 0.00, 'net' => 141102.00, 'due' => '2026-08-19', 'paid' => '2026-08-18', 'reference' => 'BNK-848775', 'status' => 'Paid'],
+            ],
+        ]));
+    }
+
     public function reports(): View
     {
-        return view('admin.reports', $this->base([
+        return view('admin.finance.reports', $this->base([
             'reportKpis' => [
                 ['label' => 'Net Sales', 'value' => '₱1,154,820', 'note' => '+11.2% vs previous period'],
                 ['label' => 'Orders', 'value' => '8,421', 'note' => '+7.8% vs previous period'],
@@ -805,6 +844,16 @@ class AdminController extends Controller
                 ['seller' => 'Everyday Finds', 'sales' => '₱119,520', 'commission' => '₱11,952'],
                 ['seller' => 'TechVault PH', 'sales' => '₱96,410', 'commission' => '₱9,641'],
             ],
+            'settlementRows' => [
+                ['seller' => 'Mara Home Goods', 'period' => 'Aug 16–22, 2026', 'net' => '₱164,539', 'status' => 'Pending'],
+                ['seller' => 'Chrono Alley', 'period' => 'Aug 16–22, 2026', 'net' => '₱128,592', 'status' => 'Processing'],
+                ['seller' => 'Everyday Finds', 'period' => 'Aug 9–15, 2026', 'net' => '₱106,928', 'status' => 'Paid'],
+            ],
+            'refundRows' => [
+                ['case' => 'REF-2211', 'order' => 'ORD-50154', 'seller' => 'TechVault PH', 'amount' => '₱4,299', 'status' => 'Approved'],
+                ['case' => 'REF-2209', 'order' => 'ORD-50132', 'seller' => 'Everyday Finds', 'amount' => '₱640', 'status' => 'Processing'],
+                ['case' => 'REF-2204', 'order' => 'ORD-50088', 'seller' => 'Mara Home Goods', 'amount' => '₱1,250', 'status' => 'Completed'],
+            ],
         ]));
     }
 
@@ -814,7 +863,7 @@ class AdminController extends Controller
             'conversations' => [
                 ['id' => 1, 'name' => 'Mara Home Goods', 'role' => 'Seller', 'preview' => 'We uploaded the additional photos.', 'time' => '6:42 PM', 'unread' => 2, 'initials' => 'MH'],
                 ['id' => 2, 'name' => 'Karen Yu', 'role' => 'Buyer', 'preview' => 'Thank you for reviewing my complaint.', 'time' => '5:18 PM', 'unread' => 0, 'initials' => 'KY'],
-                ['id' => 3, 'name' => 'Jared Molina', 'role' => 'Courier', 'preview' => 'Delivery proof has been uploaded.', 'time' => '3:11 PM', 'unread' => 0, 'initials' => 'JM'],
+                ['id' => 3, 'name' => 'Jared Molina', 'role' => 'Rider', 'preview' => 'Delivery proof has been uploaded.', 'time' => '3:11 PM', 'unread' => 0, 'initials' => 'JM'],
                 ['id' => 4, 'name' => 'TechVault PH', 'role' => 'Seller', 'preview' => 'Can we clarify the compliance notice?', 'time' => '1:54 PM', 'unread' => 1, 'initials' => 'TV'],
             ],
             'messages' => [
@@ -836,7 +885,7 @@ class AdminController extends Controller
                     'status' => 'Published',
                     'publish_date' => 'Aug 23, 2026',
                     'publish_time' => '9:00 AM',
-                    'author' => 'Admin Team',
+                    'author' => 'Admin',
                     'message' => 'Please expect possible shipping delays this weekend due to scheduled logistics maintenance in selected service areas.',
                 ],
                 [
@@ -846,7 +895,7 @@ class AdminController extends Controller
                     'status' => 'Scheduled',
                     'publish_date' => 'Aug 25, 2026',
                     'publish_time' => '8:00 AM',
-                    'author' => 'Operations Admin',
+                    'author' => 'Admin',
                     'message' => 'Sellers are reminded to keep business permits and registered product categories updated to avoid compliance issues.',
                 ],
                 [
@@ -856,17 +905,17 @@ class AdminController extends Controller
                     'status' => 'Draft',
                     'publish_date' => '—',
                     'publish_time' => '—',
-                    'author' => 'Support Admin',
+                    'author' => 'Admin',
                     'message' => 'Buyers are encouraged to review their account information and avoid sharing verification details with other users.',
                 ],
                 [
                     'id' => 'ANN-1204',
                     'title' => 'Rider Service Area Update',
-                    'audience' => 'Riders / Couriers',
+                    'audience' => 'Riders',
                     'status' => 'Published',
                     'publish_date' => 'Aug 21, 2026',
                     'publish_time' => '2:30 PM',
-                    'author' => 'Admin Team',
+                    'author' => 'Admin',
                     'message' => 'Updated delivery coverage and service-area assignments are now available through participating Logistics Centers.',
                 ],
             ],
@@ -883,25 +932,20 @@ class AdminController extends Controller
             'policy' => [
                 'title' => 'Marketplace Policy',
                 'updated' => 'Aug 18, 2026',
-                'body' => "Bearly connects buyers, sellers, and couriers through a trusted marketplace. Sellers are responsible for accurate listings, compliant products, and timely order fulfillment. Users must keep account information current and use platform communication tools responsibly.",
+                'body' => "Bearly connects buyers, sellers, Logistics partners, and Riders through a trusted marketplace. Sellers are responsible for accurate listings, compliant products, and timely order fulfillment. Users must keep account information current and use platform communication tools responsibly.",
             ],
         ]));
     }
 
     public function account(): View
     {
-        return view('admin.account', $this->base([
+        return view('admin.system.account', $this->base([
             'profile' => [
-                'first_name' => 'Alex',
-                'last_name' => 'Rivera',
-                'email' => 'admin@bearly.test',
+                'first_name' => 'Christian Joseph',
+                'last_name' => 'Aquino',
+                'email' => 'admin123@example.com',
                 'phone' => '+63 917 555 0198',
-                'role' => 'Super Admin',
-            ],
-            'admins' => [
-                ['name' => 'Alex Rivera', 'email' => 'admin@bearly.test', 'role' => 'Super Admin', 'status' => 'Active'],
-                ['name' => 'Mika Santos', 'email' => 'mika.admin@bearly.test', 'role' => 'Operations Admin', 'status' => 'Active'],
-                ['name' => 'Drew Lim', 'email' => 'drew.admin@bearly.test', 'role' => 'Support Admin', 'status' => 'Active'],
+                'role' => 'Admin',
             ],
         ]));
     }
@@ -917,7 +961,7 @@ class AdminController extends Controller
                     'version' => 'v2.4',
                     'status' => 'Active',
                     'updated' => 'Aug 18, 2026',
-                    'updated_by' => 'Admin Team',
+                    'updated_by' => 'Admin',
                     'summary' => 'Defines the general rules and responsibilities of Buyers, Sellers, Logistics Centers, and Riders using Bearly.',
                     'body' => 'Bearly provides a marketplace where Buyers, Sellers, Logistics Centers, and Riders must follow platform rules, maintain accurate account information, and use platform services responsibly.',
                 ],
@@ -928,7 +972,7 @@ class AdminController extends Controller
                     'version' => 'v1.8',
                     'status' => 'Active',
                     'updated' => 'Aug 20, 2026',
-                    'updated_by' => 'Operations Admin',
+                    'updated_by' => 'Admin',
                     'summary' => 'Covers registered seller categories, prohibited products, misleading listings, and compliance enforcement.',
                     'body' => 'Sellers must only offer products permitted under their registered business category. Prohibited, inappropriate, misleading, or non-compliant listings may be removed and may result in warnings, suspension, or account deactivation.',
                 ],
@@ -939,7 +983,7 @@ class AdminController extends Controller
                     'version' => 'v1.5',
                     'status' => 'Active',
                     'updated' => 'Aug 22, 2026',
-                    'updated_by' => 'Support Admin',
+                    'updated_by' => 'Admin',
                     'summary' => 'Establishes rules for return requests, refund reviews, evidence submission, and escalated cases.',
                     'body' => 'Return and refund requests must include a valid reason and appropriate supporting evidence when required. Escalated cases may be reviewed by an Administrator before a final platform decision is issued.',
                 ],
@@ -950,7 +994,7 @@ class AdminController extends Controller
                     'version' => 'v1.2',
                     'status' => 'Draft',
                     'updated' => 'Aug 24, 2026',
-                    'updated_by' => 'Admin Team',
+                    'updated_by' => 'Admin',
                     'summary' => 'Defines expected user conduct, account security responsibilities, and grounds for suspension or deactivation.',
                     'body' => 'Users must maintain accurate account information, protect their login credentials, and avoid abusive, fraudulent, or prohibited activity while using the platform.',
                 ],
@@ -964,8 +1008,8 @@ class AdminController extends Controller
             'logs' => [
                 [
                     'id' => 'LOG-9001',
-                    'admin' => 'Alex Rivera',
-                    'role' => 'Super Admin',
+                    'admin' => 'Christian Joseph Aquino',
+                    'role' => 'Admin',
                     'action' => 'Approved registration',
                     'module' => 'Registration Management',
                     'target' => 'SEL-3101 • Sofia Luxe Finds',
@@ -977,34 +1021,34 @@ class AdminController extends Controller
                 ],
                 [
                     'id' => 'LOG-9002',
-                    'admin' => 'Mika Santos',
-                    'role' => 'Operations Admin',
+                    'admin' => 'Christian Joseph Aquino',
+                    'role' => 'Admin',
                     'action' => 'Issued compliance warning',
                     'module' => 'Compliance & Disputes',
                     'target' => 'Daily Wellness Hub',
                     'description' => 'Issued a warning regarding a product listing outside the Seller\'s registered category.',
                     'date' => 'Aug 26, 2026',
                     'time' => '9:56 AM',
-                    'ip' => '192.168.1.21',
+                    'ip' => '192.168.1.18',
                     'severity' => 'Warning',
                 ],
                 [
                     'id' => 'LOG-9003',
-                    'admin' => 'Drew Lim',
-                    'role' => 'Support Admin',
+                    'admin' => 'Christian Joseph Aquino',
+                    'role' => 'Admin',
                     'action' => 'Resolved dispute',
                     'module' => 'Compliance & Disputes',
                     'target' => 'DSP-1046',
                     'description' => 'Marked complaint case as resolved after reviewing Buyer, Seller, and Rider evidence.',
                     'date' => 'Aug 25, 2026',
                     'time' => '4:31 PM',
-                    'ip' => '192.168.1.24',
+                    'ip' => '192.168.1.18',
                     'severity' => 'Info',
                 ],
                 [
                     'id' => 'LOG-9004',
-                    'admin' => 'Alex Rivera',
-                    'role' => 'Super Admin',
+                    'admin' => 'Christian Joseph Aquino',
+                    'role' => 'Admin',
                     'action' => 'Suspended user account',
                     'module' => 'User Management',
                     'target' => 'SEL-6507 • TechVault PH',
@@ -1016,21 +1060,21 @@ class AdminController extends Controller
                 ],
                 [
                     'id' => 'LOG-9005',
-                    'admin' => 'Mika Santos',
-                    'role' => 'Operations Admin',
+                    'admin' => 'Christian Joseph Aquino',
+                    'role' => 'Admin',
                     'action' => 'Published announcement',
                     'module' => 'Communication',
                     'target' => 'ANN-1201 • Weekend Shipping Advisory',
                     'description' => 'Published a platform-wide shipping advisory for all users.',
                     'date' => 'Aug 23, 2026',
                     'time' => '9:00 AM',
-                    'ip' => '192.168.1.21',
+                    'ip' => '192.168.1.18',
                     'severity' => 'Info',
                 ],
                 [
                     'id' => 'LOG-9006',
-                    'admin' => 'Alex Rivera',
-                    'role' => 'Super Admin',
+                    'admin' => 'Christian Joseph Aquino',
+                    'role' => 'Admin',
                     'action' => 'Updated platform policy',
                     'module' => 'System Management',
                     'target' => 'POL-1001 • Marketplace Policy',

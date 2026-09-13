@@ -1,7 +1,7 @@
 @extends('layouts.admin')
 
-@section('title', 'Riders / Couriers')
-@section('page-title', 'Riders / Couriers')
+@section('title', 'Riders')
+@section('page-title', 'Riders')
 
 @section('content')
 
@@ -9,7 +9,7 @@
 
     <div>
         <span class="eyebrow">User Management</span>
-        <h1>Riders / Couriers</h1>
+        <h1>Riders</h1>
 
         <p>
             View Rider accounts, assigned Logistics Centers,

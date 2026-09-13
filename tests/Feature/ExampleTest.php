@@ -17,10 +17,11 @@ class ExampleTest extends TestCase
         $response->assertStatus(200);
     }
 
-    public function test_admin_routes_require_authentication(): void
+    public function test_admin_frontend_preview_routes_are_available(): void
     {
-        $response = $this->get('/admin/dashboard');
-
-        $response->assertRedirect('/login');
+        $this->get('/admin/dashboard')->assertOk();
+        $this->get('/admin/transactions')->assertOk();
+        $this->get('/admin/payments')->assertOk();
+        $this->get('/admin/reports')->assertOk();
     }
 }

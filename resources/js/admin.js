@@ -23,6 +23,27 @@
             body.classList.add('sidebar-collapsed');
         }
 
+        // Remember Admin sidebar scroll position between page navigations
+        const adminNav = document.querySelector('.admin-nav');
+        const SIDEBAR_SCROLL_KEY = 'bearly-admin-sidebar-scroll';
+
+        if (adminNav) {
+            const savedScrollPosition = sessionStorage.getItem(SIDEBAR_SCROLL_KEY);
+
+            if (savedScrollPosition !== null) {
+                requestAnimationFrame(() => {
+                    adminNav.scrollTop = Number(savedScrollPosition);
+                });
+            }
+
+            adminNav.addEventListener('scroll', () => {
+                sessionStorage.setItem(
+                    SIDEBAR_SCROLL_KEY,
+                    String(adminNav.scrollTop)
+                );
+            });
+        }
+
         const syncMobileMenuAria = () => {
             const isOpen = body.classList.contains('mobile-sidebar-open');
 
@@ -91,6 +112,7 @@
 
         document.querySelectorAll('[data-mock-action]').forEach((element) => {
             element.addEventListener('click', (event) => {
+                if (element.dataset.functionalAction) return;
                 if (element.tagName === 'A') event.preventDefault();
                 showToast(element.dataset.mockAction);
             });
@@ -98,6 +120,27 @@
 
         document.querySelectorAll('[data-dismiss-flash]').forEach((button) => {
             button.addEventListener('click', () => button.closest('.flash-message')?.remove());
+        });
+
+        // Dashboard refresh and chart period controls
+        document.querySelector('[data-dashboard-refresh]')?.addEventListener('click', (event) => {
+            const button = event.currentTarget;
+            button.disabled = true;
+            setTimeout(() => {
+                button.disabled = false;
+                showToast(`Dashboard refreshed at ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.`, 'Dashboard updated');
+            }, 350);
+        });
+        const dashboardBars = [...document.querySelectorAll('[data-dashboard-bar]')];
+        document.querySelectorAll('[data-dashboard-period]').forEach((button) => {
+            button.addEventListener('click', () => {
+                const count = Number(button.dataset.dashboardPeriod || 12);
+                document.querySelectorAll('[data-dashboard-period]').forEach((item) => item.classList.toggle('is-active', item === button));
+                dashboardBars.forEach((bar, index) => {
+                    bar.hidden = index < dashboardBars.length - count;
+                });
+                showToast(`${button.textContent.trim()} sales view selected.`, 'Chart period updated');
+            });
         });
 
 
@@ -156,6 +199,40 @@
         window.addEventListener('resize', () => closeRegistrationMenus());
         window.addEventListener('scroll', () => closeRegistrationMenus(), true);
 
+        const REGISTRATION_STATUS_STORAGE_KEY = 'bearlyAdminRegistrationStatuses';
+        const registrationStatuses = (() => {
+            try {
+                return JSON.parse(localStorage.getItem(REGISTRATION_STATUS_STORAGE_KEY) || '{}');
+            } catch {
+                return {};
+            }
+        })();
+        let pendingRegistrationDecision = null;
+
+        const updateRegistrationRow = (applicationId, status) => {
+            const row = [...document.querySelectorAll('tr[data-table-row]')]
+                .find((item) => (item.dataset.search || '').includes(applicationId.toLowerCase()));
+            const badge = row?.querySelector('.status-badge');
+            if (!row || !badge) return;
+            row.dataset.status = status;
+            badge.textContent = status;
+            badge.className = `status-badge ${status === 'Approved' ? 'badge-success' : status === 'Disapproved' ? 'badge-danger' : status === 'Needs Review' ? 'badge-info' : 'badge-warning'}`;
+            document.querySelectorAll('[data-modal]').forEach((modal) => {
+                if (modal.querySelector('.eyebrow')?.textContent.trim() !== applicationId) return;
+                [...modal.querySelectorAll('.detail-grid > div')].forEach((detail) => {
+                    const label = detail.querySelector('span')?.textContent.trim().toLowerCase() || '';
+                    if (label === 'review status' || label === 'current status') {
+                        const value = detail.querySelector('strong');
+                        if (value) value.textContent = status;
+                    }
+                });
+            });
+        };
+
+        Object.entries(registrationStatuses).forEach(([applicationId, status]) => {
+            updateRegistrationRow(applicationId, status);
+        });
+
         document.querySelectorAll('[data-registration-needs-review]').forEach((button) => {
             button.addEventListener('click', () => {
                 const row = button.closest('tr');
@@ -165,6 +242,8 @@
                 row.dataset.status = 'Needs Review';
                 badge.textContent = 'Needs Review';
                 badge.className = 'status-badge badge-info';
+                registrationStatuses[button.dataset.applicationId] = 'Needs Review';
+                localStorage.setItem(REGISTRATION_STATUS_STORAGE_KEY, JSON.stringify(registrationStatuses));
 
                 closeRegistrationMenus();
                 showToast(
@@ -272,6 +351,15 @@
                 if (!modal) return;
 
                 if (button.dataset.applicant) {
+                    const sourceModal = button.closest('[data-modal]');
+                    const applicationId = sourceModal?.querySelector('.eyebrow')?.textContent.trim()
+                        || button.dataset.applicationId
+                        || '';
+                    pendingRegistrationDecision = {
+                        id: applicationId,
+                        applicant: button.dataset.applicant,
+                        status: button.dataset.decision || 'Reviewed',
+                    };
                     const recipient = modal.querySelector('[data-decision-recipient]');
                     const status = modal.querySelector('[data-decision-status]');
                     const message = modal.querySelector('[data-decision-message]');
@@ -288,8 +376,36 @@
             });
         });
 
+        document.querySelectorAll('[data-mock-action]').forEach((button) => {
+            if (!button.dataset.mockAction.toLowerCase().includes('decision saved')) return;
+            button.dataset.functionalAction = 'registration-decision';
+            button.addEventListener('click', () => {
+                if (!pendingRegistrationDecision?.id) {
+                    showToast('Open an application and choose a decision first.', 'Decision not saved');
+                    return;
+                }
+
+                registrationStatuses[pendingRegistrationDecision.id] = pendingRegistrationDecision.status;
+                localStorage.setItem(REGISTRATION_STATUS_STORAGE_KEY, JSON.stringify(registrationStatuses));
+                updateRegistrationRow(pendingRegistrationDecision.id, pendingRegistrationDecision.status);
+                showToast(
+                    `${pendingRegistrationDecision.id} changed to ${pendingRegistrationDecision.status}. The email is a front-end preview.`,
+                    'Registration decision saved'
+                );
+                pendingRegistrationDecision = null;
+            });
+        });
+
         // Drawer system + compliance data injection
         let activeComplianceCard = null;
+        const COMPLIANCE_STORAGE_KEY = 'bearlyAdminComplianceState';
+        let complianceState = {};
+        try { complianceState = JSON.parse(localStorage.getItem(COMPLIANCE_STORAGE_KEY) || '{}'); } catch {}
+        const saveComplianceState = (id, state) => {
+            if (!id) return;
+            complianceState[id] = state;
+            localStorage.setItem(COMPLIANCE_STORAGE_KEY, JSON.stringify(complianceState));
+        };
 
         const closeDrawer = (drawer) => {
             if (!drawer) return;
@@ -347,6 +463,23 @@
             counter.textContent = remaining;
         };
 
+        document.querySelectorAll('[data-flag-card]').forEach((card) => {
+            const saved = complianceState[card.dataset.flagId];
+            if (!saved) return;
+            card.dataset.adminNotes = saved.notes || '';
+            if (saved.warnings != null) card.dataset.flagWarnings = String(saved.warnings);
+            if (saved.action === 'suspend') card.dataset.sellerSuspended = 'true';
+            if (saved.action === 'compliant') {
+                const badge = findComplianceAuditRow(card.dataset.flagProduct || '')?.querySelector('.js-compliance-status');
+                if (badge) {
+                    badge.textContent = 'Compliant';
+                    badge.className = 'status-badge js-compliance-status badge-success';
+                }
+                card.remove();
+            }
+        });
+        updateComplianceFlagCount();
+
         document.querySelectorAll('[data-compliance-action]').forEach((button) => {
             button.addEventListener('click', () => {
                 const drawer = button.closest('[data-drawer]');
@@ -368,10 +501,12 @@
 
                 const product = activeComplianceCard.dataset.flagProduct || '';
                 const seller = activeComplianceCard.dataset.flagSeller || '';
+                const complianceId = activeComplianceCard.dataset.flagId || '';
                 const auditRow = findComplianceAuditRow(product);
                 const statusBadge = auditRow?.querySelector('.js-compliance-status');
 
                 if (action === 'compliant') {
+                    saveComplianceState(complianceId, { action, notes: noteText });
                     if (statusBadge) {
                         statusBadge.textContent = 'Compliant';
                         statusBadge.className = 'status-badge js-compliance-status badge-success';
@@ -395,6 +530,7 @@
                     const nextWarnings = currentWarnings + 1;
 
                     activeComplianceCard.dataset.flagWarnings = String(nextWarnings);
+                    saveComplianceState(complianceId, { action, notes: noteText, warnings: nextWarnings });
 
                     const drawerWarnings = drawer.querySelector('[data-drawer-warnings]');
                     if (drawerWarnings) drawerWarnings.textContent = String(nextWarnings);
@@ -415,6 +551,7 @@
 
                 if (action === 'suspend') {
                     activeComplianceCard.dataset.sellerSuspended = 'true';
+                    saveComplianceState(complianceId, { action, notes: noteText });
 
                     if (statusBadge) {
                         statusBadge.textContent = 'Flagged';
@@ -514,353 +651,7 @@
         });
 
 
-
-
-
-
-
-        // Manage admin accounts (front-end preview)
-        const ADMIN_ACCOUNTS_STORAGE_KEY = 'bearlyAdminAccountsPreview';
-        const ADMIN_PERMISSIONS_STORAGE_KEY = 'bearlyAdminPermissionsPreview';
-
-        const adminAccountsBody = document.querySelector('[data-admin-accounts-body]');
-        const newAdminModal = document.querySelector('[data-modal="new-admin"]');
-        const permissionsModal = document.querySelector('[data-modal="admin-permissions"]');
-        const removeAdminModal = document.querySelector('[data-modal="remove-admin"]');
-
-        const getStoredJson = (key, fallback) => {
-            try {
-                const value = localStorage.getItem(key);
-                return value ? JSON.parse(value) : fallback;
-            } catch {
-                return fallback;
-            }
-        };
-
-        const setStoredJson = (key, value) => {
-            localStorage.setItem(key, JSON.stringify(value));
-        };
-
-        const getAdminInitials = (name = '') =>
-            name
-                .trim()
-                .split(/\s+/)
-                .filter(Boolean)
-                .slice(0, 2)
-                .map((part) => part.charAt(0).toUpperCase())
-                .join('') || 'AD';
-
-        const escapeAdminHtml = (value = '') => String(value)
-            .replaceAll('&', '&amp;')
-            .replaceAll('<', '&lt;')
-            .replaceAll('>', '&gt;')
-            .replaceAll('"', '&quot;')
-            .replaceAll("'", '&#039;');
-
-        const defaultPermissionsForRole = (role) => {
-            const map = {
-                'Super Admin': ['users', 'registrations', 'compliance', 'reports', 'messages', 'settings'],
-                'Operations Admin': ['users', 'registrations', 'reports'],
-                'Support Admin': ['users', 'messages'],
-                'Compliance Admin': ['registrations', 'compliance', 'messages'],
-            };
-
-            return map[role] || [];
-        };
-
-        const renderPreviewAdminRow = (admin) => {
-            if (!adminAccountsBody) return null;
-
-            const row = document.createElement('tr');
-            row.dataset.adminAccount = '';
-            row.dataset.adminName = admin.name;
-            row.dataset.adminEmail = admin.email;
-            row.dataset.adminRole = admin.role;
-            row.dataset.adminStatus = admin.status || 'Active';
-            row.dataset.previewAdmin = 'true';
-
-            row.innerHTML = `
-                <td>
-                    <div class="identity-cell">
-                        <span class="avatar avatar-soft">${escapeAdminHtml(getAdminInitials(admin.name))}</span>
-                        <div>
-                            <strong>${escapeAdminHtml(admin.name)}</strong>
-                            <small>${escapeAdminHtml(admin.email)}</small>
-                        </div>
-                    </div>
-                </td>
-                <td data-admin-role-cell>${escapeAdminHtml(admin.role)}</td>
-                <td><span class="status-badge badge-success">${escapeAdminHtml(admin.status || 'Active')}</span></td>
-                <td class="align-right">
-                    <div class="row-actions">
-                        <button
-                            class="button button-ghost button-small"
-                            type="button"
-                            data-admin-permissions
-                            data-admin-email="${escapeAdminHtml(admin.email)}"
-                            data-admin-name="${escapeAdminHtml(admin.name)}"
-                        >
-                            <i data-lucide="key-round"></i> Permissions
-                        </button>
-                        <button
-                            class="icon-button danger-icon"
-                            type="button"
-                            data-admin-remove
-                            data-admin-email="${escapeAdminHtml(admin.email)}"
-                            data-admin-name="${escapeAdminHtml(admin.name)}"
-                            aria-label="Remove ${escapeAdminHtml(admin.name)}"
-                        >
-                            <i data-lucide="trash-2"></i>
-                        </button>
-                    </div>
-                </td>
-            `;
-
-            adminAccountsBody.appendChild(row);
-            refreshIcons();
-            return row;
-        };
-
-        const getPreviewAdmins = () =>
-            getStoredJson(ADMIN_ACCOUNTS_STORAGE_KEY, { added: [], removed: [] });
-
-        const savePreviewAdmins = (state) => {
-            setStoredJson(ADMIN_ACCOUNTS_STORAGE_KEY, state);
-        };
-
-        // Re-apply added/removed sub-admins after reload.
-        if (adminAccountsBody) {
-            const previewState = getPreviewAdmins();
-            const removedEmails = new Set(
-                (previewState.removed || []).map((email) => String(email).toLowerCase())
-            );
-
-            adminAccountsBody.querySelectorAll('[data-admin-account]').forEach((row) => {
-                const email = String(row.dataset.adminEmail || '').toLowerCase();
-                if (removedEmails.has(email) && !row.hasAttribute('data-current-admin-row')) {
-                    row.remove();
-                }
-            });
-
-            (previewState.added || []).forEach((admin) => {
-                const alreadyExists = [...adminAccountsBody.querySelectorAll('[data-admin-account]')]
-                    .some((row) =>
-                        String(row.dataset.adminEmail || '').toLowerCase() ===
-                        String(admin.email || '').toLowerCase()
-                    );
-
-                if (!alreadyExists) renderPreviewAdminRow(admin);
-            });
-        }
-
-        document.querySelector('[data-create-admin]')?.addEventListener('click', () => {
-            const firstInput = document.querySelector('[data-new-admin-first]');
-            const lastInput = document.querySelector('[data-new-admin-last]');
-            const emailInput = document.querySelector('[data-new-admin-email]');
-            const roleInput = document.querySelector('[data-new-admin-role]');
-
-            const firstName = firstInput?.value.trim() || '';
-            const lastName = lastInput?.value.trim() || '';
-            const email = emailInput?.value.trim() || '';
-            const role = roleInput?.value || 'Operations Admin';
-
-            if (!firstName || !lastName || !email) {
-                showToast('First name, last name, and email are required.', 'Admin not created');
-                return;
-            }
-
-            if (emailInput && !emailInput.checkValidity()) {
-                showToast('Enter a valid admin email address.', 'Admin not created');
-                emailInput.focus();
-                return;
-            }
-
-            const duplicate = [...document.querySelectorAll('[data-admin-account]')].some(
-                (row) =>
-                    String(row.dataset.adminEmail || '').toLowerCase() === email.toLowerCase()
-            );
-
-            if (duplicate) {
-                showToast('An administrator with that email already exists.', 'Admin not created');
-                emailInput?.focus();
-                return;
-            }
-
-            const admin = {
-                name: `${firstName} ${lastName}`.trim(),
-                email,
-                role,
-                status: 'Active',
-            };
-
-            renderPreviewAdminRow(admin);
-
-            const state = getPreviewAdmins();
-            state.added = [...(state.added || []), admin];
-            state.removed = (state.removed || []).filter(
-                (removedEmail) => String(removedEmail).toLowerCase() !== email.toLowerCase()
-            );
-            savePreviewAdmins(state);
-
-            const permissionState = getStoredJson(ADMIN_PERMISSIONS_STORAGE_KEY, {});
-            permissionState[email.toLowerCase()] = {
-                role,
-                permissions: defaultPermissionsForRole(role),
-            };
-            setStoredJson(ADMIN_PERMISSIONS_STORAGE_KEY, permissionState);
-
-            if (firstInput) firstInput.value = '';
-            if (lastInput) lastInput.value = '';
-            if (emailInput) emailInput.value = '';
-            if (roleInput) roleInput.value = 'Operations Admin';
-
-            closeModal(newAdminModal);
-            showToast(`${admin.name} was added as ${admin.role}.`, 'Admin created');
-        });
-
-        let activePermissionsEmail = '';
-
-        document.addEventListener('click', (event) => {
-            const permissionButton = event.target.closest('[data-admin-permissions]');
-            if (permissionButton) {
-                const email = permissionButton.dataset.adminEmail || '';
-                const name = permissionButton.dataset.adminName || 'Administrator';
-                const row = permissionButton.closest('[data-admin-account]');
-                const currentRole = row?.dataset.adminRole || 'Operations Admin';
-
-                activePermissionsEmail = email.toLowerCase();
-
-                const label = permissionsModal?.querySelector('[data-permissions-admin-label]');
-                const roleSelect = permissionsModal?.querySelector('[data-permissions-role]');
-                const permissionBoxes = [...(permissionsModal?.querySelectorAll('[data-permission-option]') || [])];
-
-                const saved = getStoredJson(ADMIN_PERMISSIONS_STORAGE_KEY, {});
-                const current = saved[activePermissionsEmail] || {
-                    role: currentRole,
-                    permissions: defaultPermissionsForRole(currentRole),
-                };
-
-                if (label) label.textContent = `${name} • ${email}`;
-                if (roleSelect) roleSelect.value = current.role || currentRole;
-
-                permissionBoxes.forEach((box) => {
-                    box.checked = (current.permissions || []).includes(box.value);
-                });
-
-                if (permissionsModal) {
-                    permissionsModal.hidden = false;
-                    refreshIcons();
-                }
-
-                return;
-            }
-
-            const removeButton = event.target.closest('[data-admin-remove]');
-            if (removeButton) {
-                const row = removeButton.closest('[data-admin-account]');
-                if (!row || row.hasAttribute('data-current-admin-row')) return;
-
-                removeAdminModal.dataset.targetEmail = removeButton.dataset.adminEmail || '';
-                removeAdminModal.dataset.targetName = removeButton.dataset.adminName || '';
-
-                const label = removeAdminModal.querySelector('[data-remove-admin-name]');
-                if (label) label.textContent = removeButton.dataset.adminName || 'this sub-admin';
-
-                removeAdminModal.hidden = false;
-                refreshIcons();
-            }
-        });
-
-        permissionsModal?.querySelector('[data-permissions-role]')?.addEventListener('change', (event) => {
-            const defaults = defaultPermissionsForRole(event.target.value);
-            permissionsModal.querySelectorAll('[data-permission-option]').forEach((box) => {
-                box.checked = defaults.includes(box.value);
-            });
-        });
-
-        permissionsModal?.querySelector('[data-save-admin-permissions]')?.addEventListener('click', () => {
-            if (!activePermissionsEmail) return;
-
-            const roleSelect = permissionsModal.querySelector('[data-permissions-role]');
-            const role = roleSelect?.value || 'Operations Admin';
-            const permissions = [...permissionsModal.querySelectorAll('[data-permission-option]:checked')]
-                .map((box) => box.value);
-
-            const state = getStoredJson(ADMIN_PERMISSIONS_STORAGE_KEY, {});
-            state[activePermissionsEmail] = { role, permissions };
-            setStoredJson(ADMIN_PERMISSIONS_STORAGE_KEY, state);
-
-            const row = [...document.querySelectorAll('[data-admin-account]')].find(
-                (item) =>
-                    String(item.dataset.adminEmail || '').toLowerCase() === activePermissionsEmail
-            );
-
-            if (row) {
-                row.dataset.adminRole = role;
-                const roleCell = row.querySelector('[data-admin-role-cell]');
-                if (roleCell) roleCell.textContent = role;
-
-                if (row.dataset.previewAdmin === 'true') {
-                    const previewState = getPreviewAdmins();
-                    previewState.added = (previewState.added || []).map((admin) =>
-                        String(admin.email || '').toLowerCase() === activePermissionsEmail
-                            ? { ...admin, role }
-                            : admin
-                    );
-                    savePreviewAdmins(previewState);
-                }
-            }
-
-            const name = row?.dataset.adminName || 'Administrator';
-            closeModal(permissionsModal);
-            showToast(
-                `${name}'s role and ${permissions.length} permission${permissions.length === 1 ? '' : 's'} were saved.`,
-                'Permissions updated'
-            );
-        });
-
-        removeAdminModal?.querySelector('[data-confirm-admin-remove]')?.addEventListener('click', () => {
-            const email = String(removeAdminModal.dataset.targetEmail || '').trim();
-            const name = String(removeAdminModal.dataset.targetName || 'Sub-admin').trim();
-
-            if (!email) return;
-
-            const row = [...document.querySelectorAll('[data-admin-account]')].find(
-                (item) =>
-                    String(item.dataset.adminEmail || '').toLowerCase() === email.toLowerCase()
-            );
-
-            if (!row || row.hasAttribute('data-current-admin-row')) {
-                closeModal(removeAdminModal);
-                return;
-            }
-
-            const state = getPreviewAdmins();
-            const isPreviewAdmin = row.dataset.previewAdmin === 'true';
-
-            if (isPreviewAdmin) {
-                state.added = (state.added || []).filter(
-                    (admin) =>
-                        String(admin.email || '').toLowerCase() !== email.toLowerCase()
-                );
-            } else if (!(state.removed || []).some(
-                (removedEmail) => String(removedEmail).toLowerCase() === email.toLowerCase()
-            )) {
-                state.removed = [...(state.removed || []), email];
-            }
-
-            savePreviewAdmins(state);
-
-            const permissionState = getStoredJson(ADMIN_PERMISSIONS_STORAGE_KEY, {});
-            delete permissionState[email.toLowerCase()];
-            setStoredJson(ADMIN_PERMISSIONS_STORAGE_KEY, permissionState);
-
-            row.remove();
-            closeModal(removeAdminModal);
-            showToast(`${name} was removed from admin access.`, 'Admin removed');
-        });
-
-        // Change password validation (front-end preview only)
+         // Change password validation (front-end preview only)
         const currentPasswordInput = document.querySelector('[data-password-current]');
         const newPasswordInput = document.querySelector('[data-password-new]');
         const confirmPasswordInput = document.querySelector('[data-password-confirm]');
@@ -1077,14 +868,16 @@
             }
 
             const reportType = reportTypeInput.value;
-            const showSales = reportType === 'Sales Summary';
+            const sectionByType = {
+                'Sales Summary': 'sales',
+                'Commission Report': 'commission',
+                'Seller Settlement Report': 'settlement',
+                'Refund Report': 'refund',
+            };
+            const activeSection = sectionByType[reportType] || 'sales';
 
-            document.querySelectorAll('[data-report-section="sales"]').forEach((section) => {
-                section.hidden = !showSales;
-            });
-
-            document.querySelectorAll('[data-report-section="commission"]').forEach((section) => {
-                section.hidden = showSales;
+            document.querySelectorAll('[data-report-section]').forEach((section) => {
+                section.hidden = section.dataset.reportSection !== activeSection;
             });
 
             if (reportFilterSummary) {
@@ -1094,9 +887,7 @@
             }
 
             showToast(
-                showSales
-                    ? 'Sales Summary view applied for the selected report period.'
-                    : 'Commission Report view applied for the selected report period.',
+                `${reportType} view applied for the selected report period.`,
                 'Report filters applied'
             );
         };
@@ -1113,21 +904,25 @@
                 note: card.querySelector('small')?.textContent?.trim() || '',
             }));
 
-            const sellers = [...document.querySelectorAll('.admin-table tbody tr')].map((row) => {
-                const cells = row.querySelectorAll('td');
-                return {
-                    seller: row.querySelector('.identity-cell strong')?.textContent?.trim() || '',
-                    grossSales: cells[1]?.textContent?.trim() || '',
-                    commission: cells[2]?.textContent?.trim() || '',
-                };
-            });
+            const activeTable = [...document.querySelectorAll('[data-report-section]')]
+                .find((section) => !section.hidden)
+                ?.querySelector('[data-report-export-table]');
+            const tableHeaders = activeTable
+                ? [...activeTable.querySelectorAll('thead th')].map((cell) => cell.textContent.trim())
+                : [];
+            const tableRows = activeTable
+                ? [...activeTable.querySelectorAll('tbody tr')].map((row) =>
+                    [...row.querySelectorAll('td')].map((cell) => cell.textContent.trim().replace(/\s+/g, ' '))
+                )
+                : [];
 
             return {
                 reportType,
                 startDate: reportStartInput?.value || '',
                 endDate: reportEndInput?.value || '',
                 kpis,
-                sellers,
+                tableHeaders,
+                tableRows,
             };
         };
 
@@ -1144,13 +939,9 @@
                 ['Metric', 'Value', 'Note'],
                 ...report.kpis.map((item) => [item.label, item.value, item.note]),
                 [],
-                ['Top Seller Contribution'],
-                ['Seller', 'Gross Sales', 'Platform Commission'],
-                ...report.sellers.map((seller) => [
-                    seller.seller,
-                    seller.grossSales,
-                    seller.commission,
-                ]),
+                ['Report Details'],
+                report.tableHeaders,
+                ...report.tableRows,
             ];
 
             const csv = '\uFEFF' + rows
@@ -1196,12 +987,11 @@
                 </div>
             `).join('');
 
-            const sellerRows = report.sellers.map((seller) => `
-                <tr>
-                    <td>${escapeReportHtml(seller.seller)}</td>
-                    <td>${escapeReportHtml(seller.grossSales)}</td>
-                    <td>${escapeReportHtml(seller.commission)}</td>
-                </tr>
+            const detailHeadings = report.tableHeaders
+                .map((heading) => `<th>${escapeReportHtml(heading)}</th>`)
+                .join('');
+            const detailRows = report.tableRows.map((row) => `
+                <tr>${row.map((cell) => `<td>${escapeReportHtml(cell)}</td>`).join('')}</tr>
             `).join('');
 
             printWindow.document.write(`
@@ -1264,16 +1054,10 @@
                     <h2>Summary Metrics</h2>
                     <div class="metrics">${kpiHtml}</div>
 
-                    <h2>Top Seller Contribution</h2>
+                    <h2>Report Details</h2>
                     <table>
-                        <thead>
-                            <tr>
-                                <th>Seller</th>
-                                <th>Gross Sales</th>
-                                <th>Platform Commission</th>
-                            </tr>
-                        </thead>
-                        <tbody>${sellerRows}</tbody>
+                        <thead><tr>${detailHeadings}</tr></thead>
+                        <tbody>${detailRows}</tbody>
                     </table>
 
                     <footer>Generated from the Bearly Admin reporting interface.</footer>
@@ -1306,18 +1090,400 @@
             });
         });
 
-        // User status mock actions
+        // Finance ledgers and seller payment status
+        const PAYMENT_STATUS_STORAGE_KEY = 'bearlyAdminPaymentStatuses';
+        const paymentStatuses = (() => {
+            try {
+                return JSON.parse(localStorage.getItem(PAYMENT_STATUS_STORAGE_KEY) || '{}');
+            } catch {
+                return {};
+            }
+        })();
+
+        const financeStatusClass = (status) => {
+            if (status === 'Completed' || status === 'Paid') return 'badge-success';
+            if (status === 'Refunded' || status === 'Failed' || status === 'On Hold') return 'badge-danger';
+            if (status === 'Processing') return 'badge-info';
+            return 'badge-warning';
+        };
+
+        const applyFinanceFilters = (module) => {
+            const rows = [...module.querySelectorAll('[data-finance-row]')];
+            const query = module.querySelector('[data-finance-search]')?.value.trim().toLowerCase() || '';
+            const status = module.querySelector('[data-finance-status]')?.value || '';
+            const start = module.querySelector('[data-finance-start]')?.value || '';
+            const end = module.querySelector('[data-finance-end]')?.value || '';
+            let visible = 0;
+
+            rows.forEach((row) => {
+                const matchesQuery = !query || (row.dataset.search || '').includes(query);
+                const matchesStatus = !status || row.dataset.status === status;
+                const rowDate = row.dataset.date || '';
+                const matchesStart = !start || !rowDate || rowDate >= start;
+                const matchesEnd = !end || !rowDate || rowDate <= end;
+                const matches = matchesQuery && matchesStatus && matchesStart && matchesEnd;
+                row.hidden = !matches;
+                if (matches) visible += 1;
+            });
+
+            const visibleCount = module.querySelector('[data-finance-visible]');
+            const empty = module.querySelector('[data-finance-empty]');
+            if (visibleCount) visibleCount.textContent = String(visible);
+            if (empty) empty.hidden = visible !== 0;
+        };
+
+        document.querySelectorAll('[data-finance-module]').forEach((module) => {
+            const filterControls = module.querySelectorAll('[data-finance-search], [data-finance-status], [data-finance-start], [data-finance-end]');
+            filterControls.forEach((control) => {
+                control.addEventListener(control.matches('[type="search"]') ? 'input' : 'change', () => {
+                    const start = module.querySelector('[data-finance-start]')?.value || '';
+                    const end = module.querySelector('[data-finance-end]')?.value || '';
+                    if (start && end && start > end) {
+                        showToast('The start date cannot be later than the end date.', 'Invalid date range');
+                        return;
+                    }
+                    applyFinanceFilters(module);
+                });
+            });
+
+            module.querySelector('[data-finance-reset]')?.addEventListener('click', () => {
+                filterControls.forEach((control) => { control.value = ''; });
+                applyFinanceFilters(module);
+            });
+        });
+
+        document.querySelectorAll('[data-payment-id]').forEach((row) => {
+            const id = row.dataset.paymentId;
+            const select = row.querySelector('[data-payment-status]');
+            const badge = row.querySelector('.js-payment-status');
+            const savedPayment = paymentStatuses[id];
+            const savedStatus = typeof savedPayment === 'string' ? savedPayment : savedPayment?.status;
+            const savedReference = typeof savedPayment === 'object' ? savedPayment?.reference : '';
+            const applyPaymentStatus = (status) => {
+                row.dataset.status = status;
+                if (select) select.value = status;
+                if (badge) {
+                    badge.textContent = status;
+                    badge.className = `status-badge js-payment-status ${financeStatusClass(status)}`;
+                }
+            };
+
+            applyPaymentStatus(savedStatus || row.dataset.status || 'Pending');
+            const reference = row.querySelector('[data-payment-reference]');
+            if (savedReference && reference) reference.textContent = savedReference;
+            select?.addEventListener('change', () => {
+                applyPaymentStatus(select.value);
+                if (select.value === 'Paid' && reference?.textContent.trim() === '—') {
+                    reference.textContent = `DEMO-${Date.now().toString().slice(-6)}`;
+                }
+                paymentStatuses[id] = {
+                    status: select.value,
+                    reference: reference?.textContent.trim() || '—',
+                };
+                localStorage.setItem(PAYMENT_STATUS_STORAGE_KEY, JSON.stringify(paymentStatuses));
+
+                const module = row.closest('[data-finance-module]');
+                if (module) applyFinanceFilters(module);
+                showToast(`${id} changed to ${select.value}.`, 'Payment status saved');
+            });
+        });
+
+        document.querySelectorAll('[data-finance-export]').forEach((button) => {
+            button.addEventListener('click', () => {
+                const table = document.querySelector(`[data-finance-table="${button.dataset.financeExport}"]`);
+                if (!table) return;
+
+                const rows = [
+                    [...table.querySelectorAll('thead th')].map((cell) => cell.textContent.trim()),
+                    ...[...table.querySelectorAll('tbody tr')]
+                        .filter((row) => !row.hidden)
+                        .map((row) => [...row.querySelectorAll('td')].map((cell) => cell.textContent.trim().replace(/\s+/g, ' '))),
+                ];
+                const csv = '\uFEFF' + rows.map((row) => row.map(escapeCsvValue).join(',')).join('\r\n');
+                const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `bearly-${button.dataset.financeExport}-${new Date().toISOString().slice(0, 10)}.csv`;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                URL.revokeObjectURL(url);
+                showToast('The currently visible rows were exported.', 'Finance export ready');
+            });
+        });
+
+        // User account status persistence
+        const USER_STATUS_STORAGE_KEY = 'bearlyAdminUserStatuses';
+        const userStatuses = (() => {
+            try {
+                return JSON.parse(localStorage.getItem(USER_STATUS_STORAGE_KEY) || '{}');
+            } catch {
+                return {};
+            }
+        })();
+        const applyUserStatus = (row, status) => {
+            const badge = row?.querySelector('.js-status-badge, .status-badge');
+            if (!row || !badge) return;
+            row.dataset.status = status;
+            badge.textContent = status;
+            badge.className = 'status-badge js-status-badge ' + (status === 'Active' ? 'badge-success' : status === 'Suspended' ? 'badge-danger' : 'badge-neutral');
+        };
+        const updateUserProfileModal = (userId, status) => {
+            document.querySelectorAll('[data-modal]').forEach((modal) => {
+                if (modal.querySelector('.eyebrow')?.textContent.trim() !== userId) return;
+                [...modal.querySelectorAll('.detail-grid > div')].forEach((detail) => {
+                    if (detail.querySelector('span')?.textContent.trim().toLowerCase() !== 'current status') return;
+                    const value = detail.querySelector('strong');
+                    if (value) value.textContent = status;
+                });
+            });
+        };
+
+        document.querySelectorAll('tr[data-user-id]').forEach((row) => {
+            const savedStatus = userStatuses[row.dataset.userId];
+            if (savedStatus) applyUserStatus(row, savedStatus);
+        });
+        Object.entries(userStatuses).forEach(([userId, status]) => {
+            const row = [...document.querySelectorAll('tr[data-table-row]')]
+                .find((item) => (item.dataset.search || '').includes(userId.toLowerCase()));
+            if (row) {
+                row.dataset.userId = userId;
+                applyUserStatus(row, status);
+            }
+            updateUserProfileModal(userId, status);
+        });
+
         document.querySelectorAll('[data-user-status]').forEach((button) => {
             button.addEventListener('click', () => {
                 const row = button.closest('tr');
-                const badge = row?.querySelector('.js-status-badge');
-                if (!row || !badge) return;
+                if (!row) return;
                 const status = button.dataset.userStatus;
-                row.dataset.status = status;
-                badge.textContent = status;
-                badge.className = 'status-badge js-status-badge ' + (status === 'Active' ? 'badge-success' : status === 'Suspended' ? 'badge-danger' : 'badge-neutral');
-                showToast(`Account status changed to ${status}.`, 'Mock account update');
+                applyUserStatus(row, status);
+                if (row.dataset.userId) {
+                    userStatuses[row.dataset.userId] = status;
+                    localStorage.setItem(USER_STATUS_STORAGE_KEY, JSON.stringify(userStatuses));
+                }
+                showToast(`Account status changed to ${status}.`, 'Account status saved');
             });
+        });
+
+        document.querySelectorAll('[data-mock-action]').forEach((button) => {
+            const action = button.dataset.mockAction.toLowerCase();
+            if (!action.includes('account activated') && !action.includes('account suspended') && !action.includes('account deactivated')) return;
+            button.dataset.functionalAction = 'user-status';
+            button.addEventListener('click', () => {
+                const userId = button.closest('[data-modal]')?.querySelector('.eyebrow')?.textContent.trim();
+                if (!userId) return;
+                const status = action.includes('deactivated') ? 'Deactivated' : action.includes('suspended') ? 'Suspended' : 'Active';
+                const row = [...document.querySelectorAll('tr[data-table-row]')]
+                    .find((item) => (item.dataset.search || '').includes(userId.toLowerCase()));
+                if (row) {
+                    row.dataset.userId = userId;
+                    applyUserStatus(row, status);
+                }
+                updateUserProfileModal(userId, status);
+                userStatuses[userId] = status;
+                localStorage.setItem(USER_STATUS_STORAGE_KEY, JSON.stringify(userStatuses));
+                showToast(`${userId} changed to ${status}.`, 'Account status saved');
+            });
+        });
+
+        // Persist table-based Admin workflow decisions
+        const WORKFLOW_STATUS_STORAGE_KEY = 'bearlyAdminWorkflowStatuses';
+        const workflowStatuses = (() => {
+            try {
+                return JSON.parse(localStorage.getItem(WORKFLOW_STATUS_STORAGE_KEY) || '{}');
+            } catch {
+                return {};
+            }
+        })();
+        const workflowBadgeClass = (status) => {
+            if (['Published', 'Active', 'Approved', 'Completed'].includes(status)) return 'badge-success';
+            if (['Archived', 'Rejected', 'Removal Required', 'Escalated'].includes(status)) return 'badge-danger';
+            if (['Scheduled', 'Awaiting Evidence', 'Warning Issued'].includes(status)) return 'badge-warning';
+            return 'badge-info';
+        };
+        const updateWorkflowRow = (recordId, status) => {
+            const row = [...document.querySelectorAll('tr[data-table-row]')]
+                .find((item) => (item.dataset.search || '').includes(recordId.toLowerCase()));
+            const badge = row?.querySelector('.status-badge');
+            if (!row || !badge) return;
+            row.dataset.status = status;
+            badge.textContent = status;
+            badge.className = `status-badge ${workflowBadgeClass(status)}`;
+            document.querySelectorAll('[data-modal]').forEach((modal) => {
+                if (modal.querySelector('.eyebrow')?.textContent.trim() !== recordId) return;
+                [...modal.querySelectorAll('.detail-grid > div')].forEach((detail) => {
+                    if (detail.querySelector('span')?.textContent.trim().toLowerCase() !== 'current status' && detail.querySelector('span')?.textContent.trim().toLowerCase() !== 'status') return;
+                    const value = detail.querySelector('strong');
+                    if (value) value.textContent = status;
+                });
+            });
+        };
+
+        Object.entries(workflowStatuses).forEach(([recordId, status]) => updateWorkflowRow(recordId, status));
+
+        document.querySelectorAll('[data-mock-action]').forEach((button) => {
+            const action = button.dataset.mockAction.toLowerCase();
+            let status = null;
+            if (action.includes('approved for refund')) status = 'Approved';
+            else if (action.includes('refund request rejected')) status = 'Rejected';
+            else if (action.includes('additional evidence requested')) status = 'Awaiting Evidence';
+            else if (action.includes('warning issued')) status = 'Warning Issued';
+            else if (action.includes('marked for removal')) status = 'Removal Required';
+            else if (action.includes('escalated for account review')) status = 'Escalated';
+            else if (action.endsWith(' published.')) status = 'Published';
+            else if (action.endsWith(' archived.')) status = 'Archived';
+
+            if (!status) return;
+            const recordId = button.closest('[data-modal]')?.querySelector('.eyebrow')?.textContent.trim() || '';
+            if (!/^[A-Z]+-\d+/i.test(recordId)) return;
+
+            button.dataset.functionalAction = 'workflow-status';
+            button.addEventListener('click', () => {
+                workflowStatuses[recordId] = status;
+                localStorage.setItem(WORKFLOW_STATUS_STORAGE_KEY, JSON.stringify(workflowStatuses));
+                updateWorkflowRow(recordId, status);
+                showToast(`${recordId} changed to ${status}.`, 'Workflow status saved');
+            });
+        });
+
+        // Announcement and policy create/edit workflows
+        const MANAGED_RECORDS_STORAGE_KEY = 'bearlyAdminManagedRecords';
+        let managedRecords = (() => {
+            try {
+                return JSON.parse(localStorage.getItem(MANAGED_RECORDS_STORAGE_KEY) || '[]');
+            } catch {
+                return [];
+            }
+        })();
+        const persistManagedRecords = () => {
+            localStorage.setItem(MANAGED_RECORDS_STORAGE_KEY, JSON.stringify(managedRecords));
+        };
+        const recordModal = (type) => document.querySelector(`[data-modal="create-${type === 'announcement' ? 'announcement' : 'policy'}"]`);
+        const setRecordFormValues = (type, record = {}) => {
+            const modal = recordModal(type);
+            if (!modal) return;
+            modal.dataset.editingRecordId = record.id || '';
+            modal.querySelectorAll('[data-record-field]').forEach((field) => {
+                field.value = record[field.dataset.recordField] || '';
+            });
+            const heading = modal.querySelector('.modal-heading h2');
+            if (heading) heading.textContent = `${record.id ? 'Edit' : 'Create'} ${type}`;
+        };
+        const collectRecordForm = (type, status) => {
+            const modal = recordModal(type);
+            if (!modal) return null;
+            const record = { type, status, id: modal.dataset.editingRecordId || '' };
+            modal.querySelectorAll('[data-record-field]').forEach((field) => {
+                record[field.dataset.recordField] = field.value.trim();
+            });
+            return record;
+        };
+        const recordBadge = (status) => `status-badge ${workflowBadgeClass(status)}`;
+        const renderManagedRecord = (record) => {
+            const target = document.querySelector(`[data-record-rows="${record.type}"]`);
+            if (!target) return;
+            let row = [...target.querySelectorAll('tr[data-table-row]')]
+                .find((item) => (item.dataset.search || '').includes(record.id.toLowerCase()));
+
+            if (!row) {
+                row = document.createElement('tr');
+                row.dataset.tableRow = '';
+                target.prepend(row);
+            }
+
+            row.dataset.status = record.status;
+            if (record.type === 'announcement') {
+                row.dataset.audience = record.audience;
+                row.dataset.search = `${record.id} ${record.title} ${record.audience} ${record.message}`.toLowerCase();
+                row.innerHTML = `
+                    <td><div class="identity-cell"><span class="avatar avatar-soft"><i data-lucide="megaphone"></i></span><div><strong>${escapeReportHtml(record.title)}</strong><small>${escapeReportHtml(record.id)}</small></div></div></td>
+                    <td>${escapeReportHtml(record.audience)}</td><td>Current Admin</td><td><strong>${escapeReportHtml(record.date || 'Not scheduled')}</strong><small>${escapeReportHtml(record.time || '')}</small></td>
+                    <td><span class="${recordBadge(record.status)}">${escapeReportHtml(record.status)}</span></td>
+                    <td class="align-right"><div class="row-actions"><button class="button button-ghost button-small" type="button" data-edit-managed-record="${escapeReportHtml(record.id)}">Edit</button><button class="button button-danger-soft button-small" type="button" data-archive-managed-record="${escapeReportHtml(record.id)}">Archive</button></div></td>`;
+            } else {
+                row.dataset.category = record.category;
+                row.dataset.search = `${record.id} ${record.title} ${record.category} ${record.version} ${record.summary}`.toLowerCase();
+                row.innerHTML = `
+                    <td><div class="identity-cell"><span class="avatar avatar-soft"><i data-lucide="file-text"></i></span><div><strong>${escapeReportHtml(record.title)}</strong><small>${escapeReportHtml(record.id)}</small></div></div></td>
+                    <td>${escapeReportHtml(record.category)}</td><td><strong>${escapeReportHtml(record.version || 'v1.0')}</strong></td><td>Current Admin</td><td>${new Date().toLocaleDateString('en-PH')}</td>
+                    <td><span class="${recordBadge(record.status)}">${escapeReportHtml(record.status)}</span></td>
+                    <td class="align-right"><div class="row-actions"><button class="button button-ghost button-small" type="button" data-edit-managed-record="${escapeReportHtml(record.id)}">Edit</button><button class="button button-danger-soft button-small" type="button" data-archive-managed-record="${escapeReportHtml(record.id)}">Archive</button></div></td>`;
+            }
+            refreshIcons();
+        };
+
+        managedRecords.forEach(renderManagedRecord);
+
+        document.querySelectorAll('[data-open-modal="create-announcement"], [data-open-modal="create-policy"]').forEach((button) => {
+            button.addEventListener('click', () => {
+                setRecordFormValues(button.dataset.openModal === 'create-announcement' ? 'announcement' : 'policy');
+            });
+        });
+
+        document.querySelectorAll('[data-mock-action]').forEach((button) => {
+            if (!button.dataset.mockAction.toLowerCase().includes('opened for editing')) return;
+            const sourceModal = button.closest('[data-modal]');
+            const recordId = sourceModal?.querySelector('.eyebrow')?.textContent.trim() || '';
+            const type = recordId.startsWith('ANN-') ? 'announcement' : recordId.startsWith('POL-') ? 'policy' : '';
+            if (!type) return;
+
+            button.dataset.functionalAction = 'record-edit';
+            button.addEventListener('click', () => {
+                const details = Object.fromEntries([...sourceModal.querySelectorAll('.detail-grid > div')].map((item) => [
+                    item.querySelector('span')?.textContent.trim().toLowerCase(),
+                    item.querySelector('strong')?.textContent.trim() || '',
+                ]));
+                const notes = [...sourceModal.querySelectorAll('.detail-note p')].map((item) => item.textContent.trim());
+                const record = type === 'announcement'
+                    ? { id: recordId, title: sourceModal.querySelector('.modal-heading h2')?.textContent.trim(), audience: details.audience, date: '', time: '', message: notes[0] || '' }
+                    : { id: recordId, title: sourceModal.querySelector('.modal-heading h2')?.textContent.trim(), category: details.category, version: details.version, status: details.status, summary: notes[0] || '', body: notes[1] || '' };
+                setRecordFormValues(type, record);
+                sourceModal.hidden = true;
+                const editor = recordModal(type);
+                if (editor) editor.hidden = false;
+            });
+        });
+
+        document.querySelectorAll('[data-save-record]').forEach((button) => {
+            button.dataset.functionalAction = 'record-save';
+            button.addEventListener('click', () => {
+                const type = button.dataset.saveRecord;
+                const record = collectRecordForm(type, button.dataset.recordStatus);
+                if (!record?.title || (type === 'announcement' && !record.message) || (type === 'policy' && !record.body)) {
+                    showToast('Complete the title and main content before saving.', 'Record not saved');
+                    return;
+                }
+                if (!record.id) record.id = `${type === 'announcement' ? 'ANN' : 'POL'}-D${Date.now().toString().slice(-6)}`;
+                managedRecords = managedRecords.filter((item) => item.id !== record.id);
+                managedRecords.push(record);
+                persistManagedRecords();
+                renderManagedRecord(record);
+                closeModal(recordModal(type));
+                showToast(`${record.id} saved as ${record.status}.`, `${type === 'announcement' ? 'Announcement' : 'Policy'} saved`);
+            });
+        });
+
+        document.addEventListener('click', (event) => {
+            const editButton = event.target.closest('[data-edit-managed-record]');
+            const archiveButton = event.target.closest('[data-archive-managed-record]');
+            const id = editButton?.dataset.editManagedRecord || archiveButton?.dataset.archiveManagedRecord;
+            if (!id) return;
+            const record = managedRecords.find((item) => item.id === id);
+            if (!record) return;
+
+            if (editButton) {
+                setRecordFormValues(record.type, record);
+                const modal = recordModal(record.type);
+                if (modal) modal.hidden = false;
+                return;
+            }
+
+            record.status = 'Archived';
+            persistManagedRecords();
+            renderManagedRecord(record);
+            showToast(`${record.id} archived.`, 'Record updated');
         });
 
         // Commission calculator
@@ -1374,319 +1540,289 @@
                 'Commission ledger filtered'
             );
         });
+        
+        // Platform settings configuration + persistence
+        const PLATFORM_CONFIG_STORAGE_KEY = 'bearlyPlatformConfigPreview';
 
-        // Platform settings preview + persistence
-        const SETTINGS_STORAGE_KEY = 'bearlyPlatformSettingsPreview';
+        const marketplaceNameInput = document.querySelector(
+            '[data-setting-marketplace-name]'
+        );
 
-        const announcementTitle = document.querySelector('[data-announcement-title]');
-        const announcementAudience = document.querySelector('[data-announcement-audience]');
-        const announcementBody = document.querySelector('[data-announcement-body]');
-        const recentAnnouncements = document.querySelector('[data-recent-announcements]');
+        const commissionRateInput = document.querySelector(
+            '[data-setting-commission-rate]'
+        );
 
-        const policyTitle = document.querySelector('[data-policy-title]');
-        const policyEditor = document.querySelector('[data-policy-editor]');
-        const policyPreviewTitle = document.querySelector('[data-policy-preview-title]');
-        const policyPreview = document.querySelector('[data-policy-preview]');
-        const policyHistoryModal = document.querySelector('[data-modal="policy-history"]');
-        const policyHistoryList = document.querySelector('[data-policy-history-list]');
+        const marketplaceDescriptionInput = document.querySelector(
+            '[data-setting-marketplace-description]'
+        );
 
-        const SETTINGS_DEFAULTS = {
-            announcement: {
-                title: 'Weekend Shipping Advisory',
-                audience: 'All users',
-                body: 'Courier pickup times may be slightly longer this weekend due to expected order volume. Sellers are encouraged to prepare parcels early.',
+        const platformActiveInput = document.querySelector(
+            '[data-setting-platform-active]'
+        );
+
+        const maintenanceModeInput = document.querySelector(
+            '[data-setting-maintenance-mode]'
+        );
+
+        const registrationInputs = [
+            ...document.querySelectorAll('[data-setting-registration]')
+        ];
+
+        const cancellationHoursInput = document.querySelector(
+            '[data-setting-cancellation-hours]'
+        );
+
+        const settlementPeriodInput = document.querySelector(
+            '[data-setting-settlement-period]'
+        );
+
+        const platformSettingsSaveButton = document.querySelector(
+            '[data-settings-save]'
+        );
+
+        const platformSettingsResetButton = document.querySelector(
+            '[data-settings-reset]'
+        );
+
+        const PLATFORM_CONFIG_DEFAULTS = {
+            marketplaceName: 'Bearly',
+            commissionRate: 10,
+            marketplaceDescription:
+                'Bearly is an e-commerce marketplace connecting Buyers, Sellers, Logistics Centers, and Riders.',
+
+            platformActive: true,
+            maintenanceMode: false,
+
+            registrations: {
+                buyer: true,
+                seller: true,
+                logistics: true,
+                rider: true,
             },
-            drafts: [],
-            publishedAnnouncements: [],
-            policy: {
-                title: policyTitle?.defaultValue || policyTitle?.value || 'Marketplace Policy',
-                body: policyEditor?.defaultValue || policyEditor?.value || '',
-            },
-            policyDraft: null,
-            policyHistory: [],
+
+            cancellationHours: 24,
+            settlementPeriod: '7',
         };
 
-        const getSettingsState = () => {
+        const getPlatformConfig = () => {
             try {
-                const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
-                if (!raw) return structuredClone(SETTINGS_DEFAULTS);
+                const raw = localStorage.getItem(PLATFORM_CONFIG_STORAGE_KEY);
 
-                const parsed = JSON.parse(raw);
+                if (!raw) {
+                    return structuredClone(PLATFORM_CONFIG_DEFAULTS);
+                }
+
+                const saved = JSON.parse(raw);
+
                 return {
-                    ...structuredClone(SETTINGS_DEFAULTS),
-                    ...parsed,
-                    announcement: {
-                        ...SETTINGS_DEFAULTS.announcement,
-                        ...(parsed.announcement || {}),
+                    ...structuredClone(PLATFORM_CONFIG_DEFAULTS),
+                    ...saved,
+
+                    registrations: {
+                        ...PLATFORM_CONFIG_DEFAULTS.registrations,
+                        ...(saved.registrations || {}),
                     },
-                    policy: {
-                        ...SETTINGS_DEFAULTS.policy,
-                        ...(parsed.policy || {}),
-                    },
-                    drafts: parsed.drafts || [],
-                    publishedAnnouncements: parsed.publishedAnnouncements || [],
-                    policyHistory: parsed.policyHistory || [],
                 };
             } catch {
-                return structuredClone(SETTINGS_DEFAULTS);
+                return structuredClone(PLATFORM_CONFIG_DEFAULTS);
             }
         };
 
-        let settingsState = getSettingsState();
-
-        const saveSettingsState = () => {
-            localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settingsState));
-        };
-
-        const formatSettingsTimestamp = () =>
-            new Intl.DateTimeFormat('en-PH', {
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric',
-                hour: 'numeric',
-                minute: '2-digit',
-            }).format(new Date());
-
-        const escapeSettingsHtml = (value = '') => String(value)
-            .replaceAll('&', '&amp;')
-            .replaceAll('<', '&lt;')
-            .replaceAll('>', '&gt;')
-            .replaceAll('"', '&quot;')
-            .replaceAll("'", '&#039;');
-
-        const updateAnnouncement = () => {
-            const title = document.querySelector('[data-preview-title]');
-            const audience = document.querySelector('[data-preview-audience]');
-            const bodyPreview = document.querySelector('[data-preview-body]');
-
-            if (title && announcementTitle) {
-                title.textContent = announcementTitle.value || 'Untitled announcement';
+        const applyPlatformConfig = (config) => {
+            if (marketplaceNameInput) {
+                marketplaceNameInput.value = config.marketplaceName;
             }
 
-            if (audience && announcementAudience) {
-                audience.textContent = announcementAudience.value;
+            if (commissionRateInput) {
+                commissionRateInput.value = config.commissionRate;
             }
 
-            if (bodyPreview && announcementBody) {
-                bodyPreview.textContent = announcementBody.value || 'Announcement message preview.';
-            }
-        };
-
-        const updatePolicyPreview = () => {
-            if (policyPreviewTitle && policyTitle) {
-                policyPreviewTitle.textContent = policyTitle.value || 'Untitled policy';
+            if (marketplaceDescriptionInput) {
+                marketplaceDescriptionInput.value =
+                    config.marketplaceDescription;
             }
 
-            if (policyPreview && policyEditor) {
-                policyPreview.textContent = policyEditor.value || 'Policy content preview.';
+            if (platformActiveInput) {
+                platformActiveInput.checked = Boolean(
+                    config.platformActive
+                );
             }
-        };
 
-        const renderPublishedAnnouncements = () => {
-            if (!recentAnnouncements) return;
+            if (maintenanceModeInput) {
+                maintenanceModeInput.checked = Boolean(
+                    config.maintenanceMode
+                );
+            }
 
-            recentAnnouncements.querySelectorAll('[data-preview-announcement]').forEach((item) => item.remove());
+            registrationInputs.forEach((input) => {
+                const role = input.dataset.settingRegistration;
 
-            settingsState.publishedAnnouncements.forEach((announcement) => {
-                const row = document.createElement('div');
-                row.dataset.previewAnnouncement = '';
-                row.innerHTML = `
-                    <strong>${escapeSettingsHtml(announcement.title)}</strong>
-                    <small>${escapeSettingsHtml(announcement.audience)} • ${escapeSettingsHtml(announcement.date)}</small>
-                    <span class="status-badge badge-success">Published</span>
-                `;
-
-                const label = recentAnnouncements.querySelector('.section-label');
-                if (label?.nextSibling) {
-                    label.after(row);
-                } else {
-                    recentAnnouncements.appendChild(row);
-                }
+                input.checked =
+                    config.registrations?.[role] !== false;
             });
+
+            if (cancellationHoursInput) {
+                cancellationHoursInput.value =
+                    config.cancellationHours;
+            }
+
+            if (settlementPeriodInput) {
+                settlementPeriodInput.value =
+                    String(config.settlementPeriod);
+            }
         };
 
-        const renderPolicyHistory = () => {
-            if (!policyHistoryList) return;
+        const collectPlatformConfig = () => {
+            const registrations = {};
 
-            policyHistoryList.querySelectorAll('[data-policy-history-item]').forEach((item) => item.remove());
+            registrationInputs.forEach((input) => {
+                registrations[input.dataset.settingRegistration] =
+                    input.checked;
+            });
 
-            if (!settingsState.policyHistory.length) {
-                const empty = document.createElement('div');
-                empty.dataset.policyHistoryItem = '';
-                empty.innerHTML = `
-                    <strong>No saved versions yet</strong>
-                    <small>Publish a policy update to create version history.</small>
-                    <span class="status-badge badge-info">Preview</span>
-                `;
-                policyHistoryList.appendChild(empty);
+            return {
+                marketplaceName:
+                    marketplaceNameInput?.value.trim() || 'Bearly',
+
+                commissionRate: Number(
+                    commissionRateInput?.value || 0
+                ),
+
+                marketplaceDescription:
+                    marketplaceDescriptionInput?.value.trim() || '',
+
+                platformActive:
+                    platformActiveInput?.checked ?? true,
+
+                maintenanceMode:
+                    maintenanceModeInput?.checked ?? false,
+
+                registrations,
+
+                cancellationHours: Number(
+                    cancellationHoursInput?.value || 24
+                ),
+
+                settlementPeriod:
+                    settlementPeriodInput?.value || '7',
+            };
+        };
+
+        let platformConfig = getPlatformConfig();
+
+        applyPlatformConfig(platformConfig);
+
+        /* Keep marketplace availability settings consistent */
+        platformActiveInput?.addEventListener('change', () => {
+            if (
+                platformActiveInput.checked &&
+                maintenanceModeInput
+            ) {
+                maintenanceModeInput.checked = false;
+            }
+        });
+
+        maintenanceModeInput?.addEventListener('change', () => {
+            if (
+                maintenanceModeInput.checked &&
+                platformActiveInput
+            ) {
+                platformActiveInput.checked = false;
+            }
+        });
+
+        /* Save settings */
+        platformSettingsSaveButton?.addEventListener('click', () => {
+            const config = collectPlatformConfig();
+
+            if (!config.marketplaceName) {
+                showToast(
+                    'Enter a marketplace name.',
+                    'Settings not saved'
+                );
+                marketplaceNameInput?.focus();
                 return;
             }
 
-            settingsState.policyHistory.forEach((version, index) => {
-                const row = document.createElement('div');
-                row.dataset.policyHistoryItem = '';
-                row.innerHTML = `
-                    <strong>${escapeSettingsHtml(version.title)}</strong>
-                    <small>${escapeSettingsHtml(version.date)}</small>
-                    <span class="status-badge ${index === 0 ? 'badge-success' : 'badge-info'}">${index === 0 ? 'Current' : 'Published'}</span>
-                `;
-                policyHistoryList.appendChild(row);
-            });
-        };
+            if (
+                !Number.isFinite(config.commissionRate) ||
+                config.commissionRate < 0 ||
+                config.commissionRate > 100
+            ) {
+                showToast(
+                    'Commission rate must be between 0% and 100%.',
+                    'Settings not saved'
+                );
+                commissionRateInput?.focus();
+                return;
+            }
 
-        const applySettingsState = () => {
-            if (announcementTitle) announcementTitle.value = settingsState.announcement.title;
-            if (announcementAudience) announcementAudience.value = settingsState.announcement.audience;
-            if (announcementBody) announcementBody.value = settingsState.announcement.body;
+            if (
+                !Number.isFinite(config.cancellationHours) ||
+                config.cancellationHours < 1
+            ) {
+                showToast(
+                    'Cancellation window must be at least 1 hour.',
+                    'Settings not saved'
+                );
+                cancellationHoursInput?.focus();
+                return;
+            }
 
-            if (policyTitle) policyTitle.value = settingsState.policy.title;
-            if (policyEditor) policyEditor.value = settingsState.policy.body;
+            platformConfig = config;
 
-            updateAnnouncement();
-            updatePolicyPreview();
-            renderPublishedAnnouncements();
-        };
+            localStorage.setItem(
+                PLATFORM_CONFIG_STORAGE_KEY,
+                JSON.stringify(platformConfig)
+            );
 
-        applySettingsState();
+            showToast(
+                'Platform configuration was saved.',
+                'Settings updated'
+            );
+        });
 
-        [announcementTitle, announcementAudience, announcementBody].forEach((field) =>
-            field?.addEventListener('input', updateAnnouncement)
+        /* Reset settings */
+        platformSettingsResetButton?.addEventListener(
+            'click',
+            () => {
+                localStorage.removeItem(
+                    PLATFORM_CONFIG_STORAGE_KEY
+                );
+
+                platformConfig = structuredClone(
+                    PLATFORM_CONFIG_DEFAULTS
+                );
+
+                applyPlatformConfig(platformConfig);
+
+                showToast(
+                    'Platform settings were restored to their defaults.',
+                    'Settings reset'
+                );
+            }
         );
-        announcementAudience?.addEventListener('change', updateAnnouncement);
-
-        policyTitle?.addEventListener('input', updatePolicyPreview);
-        policyEditor?.addEventListener('input', updatePolicyPreview);
-
-        document.querySelector('[data-announcement-save-draft]')?.addEventListener('click', () => {
-            const title = announcementTitle?.value.trim() || '';
-            const body = announcementBody?.value.trim() || '';
-
-            if (!title || !body) {
-                showToast('Announcement title and message are required.', 'Draft not saved');
-                return;
-            }
-
-            const draft = {
-                title,
-                audience: announcementAudience?.value || 'All users',
-                body,
-                date: formatSettingsTimestamp(),
-            };
-
-            settingsState.announcement = {
-                title: draft.title,
-                audience: draft.audience,
-                body: draft.body,
-            };
-
-            settingsState.drafts = [draft, ...(settingsState.drafts || [])].slice(0, 10);
-            saveSettingsState();
-
-            showToast('Announcement draft saved in this browser preview.', 'Draft saved');
-        });
-
-        document.querySelector('[data-announcement-publish]')?.addEventListener('click', () => {
-            const title = announcementTitle?.value.trim() || '';
-            const body = announcementBody?.value.trim() || '';
-
-            if (!title || !body) {
-                showToast('Announcement title and message are required.', 'Announcement not published');
-                return;
-            }
-
-            const published = {
-                title,
-                audience: announcementAudience?.value || 'All users',
-                body,
-                date: formatSettingsTimestamp(),
-            };
-
-            settingsState.announcement = {
-                title: published.title,
-                audience: published.audience,
-                body: published.body,
-            };
-
-            settingsState.publishedAnnouncements = [
-                published,
-                ...(settingsState.publishedAnnouncements || []),
-            ].slice(0, 10);
-
-            saveSettingsState();
-            renderPublishedAnnouncements();
-
-            showToast(`${published.title} was published in this preview.`, 'Announcement published');
-        });
-
-        document.querySelector('[data-policy-save-draft]')?.addEventListener('click', () => {
-            const title = policyTitle?.value.trim() || '';
-            const body = policyEditor?.value.trim() || '';
-
-            if (!title || !body) {
-                showToast('Policy title and content are required.', 'Policy draft not saved');
-                return;
-            }
-
-            settingsState.policyDraft = {
-                title,
-                body,
-                date: formatSettingsTimestamp(),
-            };
-
-            saveSettingsState();
-            showToast('Policy draft saved in this browser preview.', 'Policy draft saved');
-        });
-
-        document.querySelector('[data-policy-publish]')?.addEventListener('click', () => {
-            const title = policyTitle?.value.trim() || '';
-            const body = policyEditor?.value.trim() || '';
-
-            if (!title || !body) {
-                showToast('Policy title and content are required.', 'Policy not published');
-                return;
-            }
-
-            const version = {
-                title,
-                body,
-                date: formatSettingsTimestamp(),
-            };
-
-            settingsState.policy = { title, body };
-            settingsState.policyDraft = null;
-            settingsState.policyHistory = [
-                version,
-                ...(settingsState.policyHistory || []),
-            ].slice(0, 20);
-
-            saveSettingsState();
-            updatePolicyPreview();
-
-            showToast(`${title} was published in this preview.`, 'Policy updated');
-        });
-
-        document.querySelector('[data-policy-history-open]')?.addEventListener('click', () => {
-            renderPolicyHistory();
-
-            if (policyHistoryModal) {
-                policyHistoryModal.hidden = false;
-                refreshIcons();
-            }
-        });
-
-        document.querySelector('[data-settings-reset]')?.addEventListener('click', () => {
-            localStorage.removeItem(SETTINGS_STORAGE_KEY);
-            settingsState = structuredClone(SETTINGS_DEFAULTS);
-            applySettingsState();
-
-            showToast('Platform settings were reset to the original preview defaults.', 'Preview reset');
-        });
 
         // Dispute queue search + dynamic master-detail workspace
         const disputeSearch = document.querySelector('[data-dispute-search]');
         const disputeDataNode = document.getElementById('dispute-preview-data');
         let disputeData = {};
         try { disputeData = disputeDataNode ? JSON.parse(disputeDataNode.textContent) : {}; } catch {}
+        const DISPUTE_STORAGE_KEY = 'bearlyAdminDisputeState';
+        let savedDisputeState = {};
+        try { savedDisputeState = JSON.parse(localStorage.getItem(DISPUTE_STORAGE_KEY) || '{}'); } catch {}
+        Object.entries(savedDisputeState).forEach(([id, state]) => {
+            if (disputeData[id]) Object.assign(disputeData[id], state);
+        });
+        const saveDisputeState = (id) => {
+            if (!disputeData[id]) return;
+            savedDisputeState[id] = {
+                status: disputeData[id].status,
+                internalNote: disputeData[id].internalNote || '',
+                resolutionOutcome: disputeData[id].resolutionOutcome || '',
+            };
+            localStorage.setItem(DISPUTE_STORAGE_KEY, JSON.stringify(savedDisputeState));
+        };
 
         const setDisputeText = (selector, value) => {
             const el = document.querySelector(selector);
@@ -1766,8 +1902,23 @@
                 renderDispute(card.dataset.caseId);
             });
         });
+        document.querySelectorAll('[data-case-card]').forEach((card) => {
+            if (disputeData[card.dataset.caseId]?.status === 'Resolved') card.remove();
+        });
+        const remainingDisputeCards = [...document.querySelectorAll('[data-case-card]')];
+        if (remainingDisputeCards.length && !remainingDisputeCards.some((card) => card.classList.contains('is-active'))) {
+            remainingDisputeCards[0].classList.add('is-active');
+        }
+        const restoredOpenCount = document.querySelector('[data-dispute-open-count]');
+        if (restoredOpenCount) restoredOpenCount.textContent = String(remainingDisputeCards.length);
         const getActiveDisputeId = () =>
             document.querySelector('[data-case-card].is-active')?.dataset.caseId || '';
+
+        document.querySelector('[data-dispute-refresh]')?.addEventListener('click', () => {
+            const id = getActiveDisputeId();
+            if (id) renderDispute(id, false);
+            showToast(`${document.querySelectorAll('[data-case-card]').length} open cases loaded.`, 'Dispute queue refreshed');
+        });
 
         document.querySelectorAll('[data-party-message]').forEach((button) => {
             button.addEventListener('click', () => {
@@ -1783,6 +1934,7 @@
             if (!id || !note) return;
 
             disputeData[id].internalNote = note.value.trim();
+            saveDisputeState(id);
             showToast(
                 disputeData[id].internalNote ? `Internal note saved for ${id}.` : `Internal note cleared for ${id}.`,
                 'Resolution note'
@@ -1795,6 +1947,7 @@
 
             const note = document.querySelector('[data-dispute-note]')?.value.trim() || '';
             if (note) disputeData[id].internalNote = note;
+            saveDisputeState(id);
 
             showToast(`Participant update prepared for ${id}.`, 'Case update');
         });
@@ -1838,6 +1991,7 @@
             disputeData[id].status = 'Resolved';
             disputeData[id].resolutionOutcome = outcome;
             disputeData[id].internalNote = note;
+            saveDisputeState(id);
 
             card.remove();
 
@@ -1878,9 +2032,11 @@
 
         // Chat filtering + per-conversation thread state
         const conversationSearch = document.querySelector('[data-conversation-search]');
-        const conversationItems = [...document.querySelectorAll('[data-conversation-item]')];
+        let conversationItems = [...document.querySelectorAll('[data-conversation-item]')];
+        const conversationList = document.querySelector('[data-conversation-list]');
         const messageThread = document.querySelector('[data-message-thread]');
         const messageInput = document.querySelector('[data-message-input]');
+        const CHAT_STORAGE_KEY = 'bearlyAdminChatThreads';
 
         const escapeChatHtml = (value = '') => String(value)
             .replaceAll('&', '&amp;')
@@ -1912,18 +2068,37 @@
             ],
         };
 
-        const chatThreads = {};
+        const chatThreads = (() => {
+            try {
+                return JSON.parse(localStorage.getItem(CHAT_STORAGE_KEY) || '{}');
+            } catch {
+                return {};
+            }
+        })();
+        const saveChatThreads = () => localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(chatThreads));
 
         const getConversationId = (item) =>
             item?.dataset.conversationId ||
             item?.dataset.name?.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') ||
             'conversation';
 
+        (chatThreads.__contacts || []).forEach((contact) => {
+            if (!conversationList || conversationItems.some((item) => getConversationId(item) === contact.conversationId)) return;
+            const item = document.createElement('button');
+            item.type = 'button';
+            item.className = 'conversation-item';
+            item.dataset.conversationItem = '';
+            Object.assign(item.dataset, contact);
+            item.innerHTML = `<span class="avatar avatar-soft">${escapeChatHtml(contact.initials)}</span><span class="conversation-copy"><span><strong>${escapeChatHtml(contact.name)}</strong><time>${escapeChatHtml(contact.time)}</time></span><small>${escapeChatHtml(contact.role)} • ${escapeChatHtml(contact.preview)}</small></span>`;
+            conversationList.prepend(item);
+            conversationItems.push(item);
+        });
+
         conversationItems.forEach((item, index) => {
             const id = getConversationId(item);
             item.dataset.conversationId = id;
 
-            chatThreads[id] = (defaultChatThreads[id] || [
+            chatThreads[id] = chatThreads[id] || (defaultChatThreads[id] || [
                 {
                     from: 'them',
                     text: item.dataset.preview || 'This is the beginning of this support conversation.',
@@ -1938,7 +2113,7 @@
                     time: row.querySelector('span')?.textContent?.trim() || '',
                 })).filter((message) => message.text);
 
-                if (bladeMessages.length) chatThreads[id] = bladeMessages;
+                if (bladeMessages.length && !localStorage.getItem(CHAT_STORAGE_KEY)) chatThreads[id] = bladeMessages;
             }
         });
 
@@ -1988,9 +2163,8 @@
             });
         });
 
-        conversationItems.forEach((item) => {
-            item.addEventListener('click', () => selectConversation(item));
-        });
+        const bindConversation = (item) => item.addEventListener('click', () => selectConversation(item));
+        conversationItems.forEach(bindConversation);
 
         const sendMessage = () => {
             const text = messageInput?.value.trim();
@@ -2006,6 +2180,7 @@
 
             if (!chatThreads[id]) chatThreads[id] = [];
             chatThreads[id].push({ from: 'me', text, time });
+            saveChatThreads();
 
             messageInput.value = '';
             renderChatThread(id);
@@ -2023,6 +2198,83 @@
                 event.preventDefault();
                 sendMessage();
             }
+        });
+
+        document.querySelector('[data-create-conversation]')?.addEventListener('click', () => {
+            const nameInput = document.querySelector('[data-new-chat-name]');
+            const roleInput = document.querySelector('[data-new-chat-role]');
+            const firstMessage = document.querySelector('[data-new-chat-message]');
+            const name = nameInput?.value.trim() || '';
+            const role = roleInput?.value || 'Buyer';
+            const text = firstMessage?.value.trim() || '';
+            if (!name || !text || !conversationList) {
+                showToast('Enter a recipient and a first message.', 'Conversation not started');
+                return;
+            }
+
+            let id = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || `conversation-${Date.now()}`;
+            if (chatThreads[id]) id = `${id}-${Date.now().toString().slice(-4)}`;
+            const initials = name.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
+            const time = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+            const item = document.createElement('button');
+            item.type = 'button';
+            item.className = 'conversation-item';
+            item.dataset.conversationItem = '';
+            item.dataset.conversationId = id;
+            item.dataset.search = `${name} ${role} ${text}`.toLowerCase();
+            item.dataset.name = name;
+            item.dataset.role = role;
+            item.dataset.initials = initials;
+            item.dataset.preview = text;
+            item.dataset.time = time;
+            item.innerHTML = `<span class="avatar avatar-soft">${escapeChatHtml(initials)}</span><span class="conversation-copy"><span><strong>${escapeChatHtml(name)}</strong><time>${escapeChatHtml(time)}</time></span><small>${escapeChatHtml(role)} • ${escapeChatHtml(text)}</small></span>`;
+            conversationList.prepend(item);
+            conversationItems.push(item);
+            bindConversation(item);
+            chatThreads[id] = [{ from: 'me', text, time }];
+            chatThreads.__contacts = [
+                { conversationId: id, search: item.dataset.search, name, role, initials, preview: text, time },
+                ...(chatThreads.__contacts || []).filter((contact) => contact.conversationId !== id),
+            ];
+            saveChatThreads();
+            selectConversation(item);
+            closeModal(document.querySelector('[data-modal="new-conversation"]'));
+            if (nameInput) nameInput.value = '';
+            if (firstMessage) firstMessage.value = '';
+            showToast(`Conversation with ${name} was created.`, 'Conversation started');
+        });
+
+        document.querySelector('[data-chat-attachment-button]')?.addEventListener('click', () => {
+            document.querySelector('[data-chat-attachment]')?.click();
+        });
+        document.querySelector('[data-chat-attachment]')?.addEventListener('change', (event) => {
+            const file = event.target.files?.[0];
+            if (file) showToast(`${file.name} is ready to attach to your next message.`, 'Attachment selected');
+        });
+        document.querySelector('[data-chat-emoji]')?.addEventListener('click', () => {
+            if (!messageInput) return;
+            messageInput.value += '🙂';
+            messageInput.focus();
+        });
+
+        document.querySelector('[data-chat-details]')?.addEventListener('click', () => {
+            const activeItem = document.querySelector('[data-conversation-item].is-active');
+            if (!activeItem) return;
+            const count = (chatThreads[getConversationId(activeItem)] || []).length;
+            showToast(`${activeItem.dataset.name} · ${activeItem.dataset.role} · ${count} messages`, 'Conversation details');
+        });
+
+        document.querySelector('[data-chat-mark-unread]')?.addEventListener('click', () => {
+            const activeItem = document.querySelector('[data-conversation-item].is-active');
+            if (!activeItem) return;
+            let unread = activeItem.querySelector('.unread-count');
+            if (!unread) {
+                unread = document.createElement('span');
+                unread.className = 'unread-count';
+                unread.textContent = '1';
+                activeItem.appendChild(unread);
+            }
+            showToast(`${activeItem.dataset.name}'s conversation was marked unread.`, 'Inbox updated');
         });
 
         const initialConversation = document.querySelector('[data-conversation-item].is-active');

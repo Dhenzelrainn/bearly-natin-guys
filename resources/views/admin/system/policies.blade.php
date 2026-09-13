@@ -103,7 +103,7 @@
                 </tr>
             </thead>
 
-            <tbody>
+            <tbody data-record-rows="policy">
 
                 @foreach ($policies as $policy)
 
@@ -375,24 +375,29 @@
         </div>
 
 
-        <div class="review-details">
+        <div class="policy-form">
 
-            <div class="detail-grid">
+            <div class="form-grid two-column-form">
 
-                <label>
+                <label class="form-field">
                     <span>Policy title</span>
 
                     <input
                         type="text"
                         class="text-field"
+                        data-record-field="title"
                         placeholder="Enter policy title"
                     >
                 </label>
 
-                <label>
+
+                <label class="form-field">
                     <span>Category</span>
 
-                    <select class="select-field">
+                    <select
+                        class="select-field"
+                        data-record-field="category"
+                    >
                         <option>Marketplace</option>
                         <option>Seller Compliance</option>
                         <option>Transactions</option>
@@ -400,20 +405,26 @@
                     </select>
                 </label>
 
-                <label>
+
+                <label class="form-field">
                     <span>Version</span>
 
                     <input
                         type="text"
                         class="text-field"
+                        data-record-field="version"
                         placeholder="e.g. v1.0"
                     >
                 </label>
 
-                <label>
+
+                <label class="form-field">
                     <span>Status</span>
 
-                    <select class="select-field">
+                    <select
+                        class="select-field"
+                        data-record-field="status"
+                    >
                         <option>Draft</option>
                         <option>Active</option>
                     </select>
@@ -422,23 +433,25 @@
             </div>
 
 
-            <label class="detail-note">
+            <label class="form-field policy-summary-field">
                 <span>Summary</span>
 
                 <textarea
                     class="text-field"
-                    rows="3"
+                    rows="4"
+                    data-record-field="summary"
                     placeholder="Briefly describe this policy..."
                 ></textarea>
             </label>
 
 
-            <label class="detail-note">
+            <label class="form-field policy-content-field">
                 <span>Policy content</span>
 
                 <textarea
                     class="text-field"
-                    rows="8"
+                    rows="10"
+                    data-record-field="body"
                     placeholder="Write the complete policy..."
                 ></textarea>
             </label>
@@ -452,6 +465,8 @@
                 type="button"
                 class="button button-ghost"
                 data-mock-action="Policy saved as draft."
+                data-save-record="policy"
+                data-record-status="Draft"
             >
                 <i data-lucide="save"></i>
                 Save Draft
@@ -461,6 +476,8 @@
                 type="button"
                 class="button button-primary"
                 data-mock-action="Platform policy published."
+                data-save-record="policy"
+                data-record-status="Active"
             >
                 <i data-lucide="send"></i>
                 Publish Policy

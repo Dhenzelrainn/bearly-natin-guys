@@ -94,6 +94,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
         ->name('compliance.returns-refunds');
 
     Route::get('/commissions', [AdminController::class, 'commissions'])->name('commissions');
+    Route::get('/transactions', [AdminController::class, 'transactions'])->name('transactions');
+    Route::get('/payments', [AdminController::class, 'payments'])->name('payments');
     Route::get('/reports', [AdminController::class, 'reports'])->name('reports');
     
     Route::get('/settings', [AdminController::class, 'settings'])
@@ -321,4 +323,3 @@ Route::prefix('rider')->name('rider.')->group(function () {
     Route::get('/messages', [RiderController::class, 'messages'])->name('messages');
     Route::get('/account', [RiderController::class, 'account'])->name('account');
 });
-

@@ -5,8 +5,8 @@
 
 @section('content')
 <section class="page-hero">
-    <div><span class="eyebrow">Module 05</span><h1>Manage complaints and disputes</h1><p>Review complaint details and evidence, then coordinate with Buyer, Seller, and Courier from one static resolution workspace.</p></div>
-    <div class="hero-actions"><button class="button button-secondary" type="button" data-mock-action="Dispute queue refreshed."><i data-lucide="refresh-cw"></i> Refresh cases</button></div>
+    <div><span class="eyebrow">Compliance & Disputes</span><h1>Manage complaints and disputes</h1><p>Review complaint details and evidence, then coordinate with Buyer, Seller, Logistics, and Rider from one resolution workspace.</p></div>
+    <div class="hero-actions"><button class="button button-secondary" type="button" data-dispute-refresh><i data-lucide="refresh-cw"></i> Refresh cases</button></div>
 </section>
 
 <section class="dispute-layout">
@@ -32,7 +32,7 @@
                 <div class="row-actions"><span class="status-badge badge-danger" data-dispute-priority>{{ $active['priority'] }} priority</span><button class="button button-primary button-small" type="button" data-dispute-resolve><i data-lucide="circle-check"></i> Resolve case</button></div>
             </div>
             <div class="detail-grid dispute-summary-grid">
-                <div><span>Buyer</span><strong data-dispute-buyer>{{ $active['buyer'] }}</strong></div><div><span>Seller</span><strong data-dispute-seller>{{ $active['seller'] }}</strong></div><div><span>Courier</span><strong data-dispute-courier>{{ $active['courier'] }}</strong></div><div><span>Order value</span><strong data-dispute-amount>{{ $active['amount'] }}</strong></div>
+                <div><span>Buyer</span><strong data-dispute-buyer>{{ $active['buyer'] }}</strong></div><div><span>Seller</span><strong data-dispute-seller>{{ $active['seller'] }}</strong></div><div><span>Rider</span><strong data-dispute-courier>{{ $active['courier'] }}</strong></div><div><span>Order value</span><strong data-dispute-amount>{{ $active['amount'] }}</strong></div>
             </div>
             <div class="complaint-copy"><span class="section-label">Complaint summary</span><p data-dispute-summary>The buyer reported visible package damage and product defects after delivery. The seller requested additional evidence, while the courier submitted delivery proof. This mock workspace shows how the admin can compare evidence before deciding the outcome.</p></div>
         </article>
@@ -71,7 +71,7 @@
                 </div>
                 <div class="party-card">
                     <span class="party-icon"><i data-lucide="bike"></i></span>
-                    <div><small>Courier</small><strong data-party-courier>{{ $active['courier'] }}</strong></div>
+                    <div><small>Rider</small><strong data-party-courier>{{ $active['courier'] }}</strong></div>
                     <button type="button" class="button button-ghost button-small" data-party-message="courier"><i data-lucide="message-circle"></i> Message</button>
                 </div>
             </div>
@@ -107,7 +107,7 @@
                     <option value="Seller favored">Seller favored</option>
                     <option value="Partial refund">Partial refund</option>
                     <option value="Replacement arranged">Replacement arranged</option>
-                    <option value="Courier investigation">Courier investigation</option>
+                    <option value="Rider investigation">Rider investigation</option>
                 </select>
             </label>
             <label class="form-field">
@@ -148,12 +148,12 @@
             'evidence' => [
                 ['label'=>'Delivery status screenshot','meta'=>'delivery-status.jpg • 940 KB','type'=>'Image'],
                 ['label'=>'Order invoice','meta'=>'invoice-1046.pdf • 233 KB','type'=>'Document'],
-                ['label'=>'Courier delivery record','meta'=>'courier-log.pdf • 418 KB','type'=>'Document'],
+                ['label'=>'Rider delivery record','meta'=>'rider-log.pdf • 418 KB','type'=>'Document'],
             ],
             'timeline' => [
                 ['time'=>'11:07 AM','text'=>'Buyer reported that the order was marked delivered too early.'],
                 ['time'=>'11:24 AM','text'=>'Admin requested delivery confirmation from the courier.'],
-                ['time'=>'12:02 PM','text'=>'Courier coordination started and the case remains open.'],
+                ['time'=>'12:02 PM','text'=>'Rider coordination started and the case remains open.'],
             ],
         ],
     ];

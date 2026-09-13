@@ -5,7 +5,7 @@
 
     @section('content')
     <section class="page-hero">
-        <div><span class="eyebrow">Module 03</span><h1>Manage user accounts</h1><p>Search user profiles and simulate account activation, suspension, or deactivation without touching a database.</p></div>
+        <div><span class="eyebrow">User Management</span><h1>Manage user accounts</h1><p>Search user profiles and simulate account activation, suspension, or deactivation without touching a database.</p></div>
         <div class="hero-actions"><button class="button button-secondary" type="button" data-export-users="users-table"><i data-lucide="download"></i> Export list</button></div>
     </section>
 
@@ -21,7 +21,7 @@
             <div><span class="eyebrow">Central directory</span><h2>User profiles</h2></div>
             <div class="table-toolbar">
                 <label class="field-with-icon compact-field"><i data-lucide="search"></i><input type="search" placeholder="Search users..." data-table-search="users-table"></label>
-                <select class="select-field" data-table-filter="users-table" data-filter-key="role"><option value="">All roles</option><option>Buyer</option><option>Seller</option><option>Courier</option></select>
+                <select class="select-field" data-table-filter="users-table" data-filter-key="role"><option value="">All roles</option><option>Buyer</option><option>Seller</option><option>Logistics</option><option>Rider</option></select>
                 <select class="select-field" data-table-filter="users-table" data-filter-key="status"><option value="">All statuses</option><option>Active</option><option>Suspended</option><option>Deactivated</option></select>
             </div>
         </div>

@@ -174,7 +174,7 @@
                     <button data-sub="{{ $sub }}">
                         <span
                             class="photo"
-                            style="--x:{{ ($shortcutPhotos[$i] % 5) * 25 }}%;--y:{{ floor($shortcutPhotos[$i] / 5) * 100 / 3 }}%"
+                            style="--x:{{ ($shortcutPhotos[$i] % 5) * 25 }}%;--y:{{ floor($shortcutPhotos[$i] / 5) * 20 }}%"
                             aria-hidden="true"
                         ></span>
 

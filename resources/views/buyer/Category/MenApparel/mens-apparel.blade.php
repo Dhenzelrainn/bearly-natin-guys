@@ -17,7 +17,7 @@
         <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Material+Symbols+Outlined:wght@400&display=swap" rel="stylesheet">
         @vite(['resources/css/buyer.css', 'resources/js/buyer.js'])
     </head>
-    <body class="bc" style="--catalog-image:url('{{ asset('images/mens-catalog-atlas.png') }}')">
+    <body class="bc" data-catalog-rows="4" style="--catalog-image:url('{{ asset('images/mens-catalog-atlas.png') }}');--catalog-image-height:400%">
         <a href="#bc-main" class="skip">
             Skip to products
         </a>

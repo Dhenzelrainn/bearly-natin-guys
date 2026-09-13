@@ -16,10 +16,10 @@ export function selectProducts(products, { category = '', search = '', sort = 'f
     return selected;
 }
 
-export function photoPosition(index) {
+export function photoPosition(index, columns = 4, rows = 4) {
     return {
-        x: (index % 4) * 100 / 3,
-        y: Math.floor(index / 4) * 100 / 3,
+        x: (index % columns) * 100 / (columns - 1),
+        y: Math.floor(index / columns) * 100 / (rows - 1),
     };
 }
 
@@ -44,25 +44,17 @@ const peso = value =>
     }).format(value);
 
 if (typeof document !== 'undefined') {
-    const bootHomepage = () => {
-        const categoryAccountLink = document.querySelector(
-            'body.bc header nav a[href$="/login"]'
-        );
+    const categoryAccountLink = document.querySelector(
+        'body.bc header nav a[href$="/login"]'
+    );
 
-        if (categoryAccountLink) {
-            categoryAccountLink.href = '/home';
-            categoryAccountLink.innerHTML =
-                '<i class="mi" aria-hidden="true">person</i> Mia Santos';
-        }
-
-        initialize();
-    };
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', bootHomepage, { once: true });
-    } else {
-        bootHomepage();
+    if (categoryAccountLink) {
+        categoryAccountLink.href = '/home';
+        categoryAccountLink.innerHTML =
+            '<i class="mi" aria-hidden="true">person</i> Mia Santos';
     }
+
+    initialize();
 }
 
 function initialize() {
@@ -262,12 +254,14 @@ function initialize() {
         categories.find(category => category.slug === slug)?.name || '';
 
     const photo = product => {
-        const { x, y } = photoPosition(product.photo);
+        const columns = product.atlas_columns || 5;
+        const rows = product.atlas_rows || 6;
+        const { x, y } = photoPosition(product.photo, columns, rows);
 
         return `
             <span
                 class="product-photo"
-                style="--x:${x}%;--y:${y}%;--buyer-product-atlas:url(${escapeHtml(product.atlas || '/images/product-atlas.png')})"
+                style="--x:${x}%;--y:${y}%;--buyer-product-atlas:url('${escapeHtml(product.atlas || '/images/product-atlas.png')}');--buyer-product-columns:${columns};--buyer-product-rows:${rows}"
                 role="img"
                 aria-label="${escapeHtml(product.name)}"
             ></span>
@@ -278,7 +272,7 @@ function initialize() {
         <article class="product-card">
             <button
                 class="product-open"
-                data-product="${escapeHtml(product.id)}"
+                data-product="${product.id}"
                 aria-label="View ${escapeHtml(product.name)}"
             >
                 ${photo(product)}
@@ -588,7 +582,7 @@ function initialize() {
 
         if (productButton) {
             const product = products.find(
-                item => String(item.id) === String(productButton.dataset.product)
+                item => item.id === Number(productButton.dataset.product)
             );
 
             if (!product) return;
@@ -617,7 +611,7 @@ function initialize() {
                         <div class="home-product-actions"><button type="button" class="button outline home-add-cart" data-home-add-cart><span class="material-symbols-outlined" aria-hidden="true">shopping_cart</span>Add to Cart</button><button type="button" class="button gold" data-home-buy-now>Buy Now</button></div>
                         <small class="home-product-note">Preview product · Availability and seller details are illustrative.</small>
                     </section>
-                </article>
+                </div>
             `;
 
             $('product-dialog').showModal();
@@ -1340,11 +1334,7 @@ function initializeBuyerProductsPage() {
 }
 
 if (typeof document !== 'undefined') {
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initializeBuyerProductsPage, { once: true });
-    } else {
-        initializeBuyerProductsPage();
-    }
+    initializeBuyerProductsPage();
 }
 
 
@@ -1490,16 +1480,11 @@ const price = value =>
         maximumFractionDigits: 0,
     }).format(value);
 
-if (typeof document !== 'undefined') {
-    const bootCategory = () => {
-        if (document.getElementById('bc-data')) init();
-    };
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', bootCategory, { once: true });
-    } else {
-        bootCategory();
-    }
+if (
+    typeof document !== 'undefined' &&
+    document.getElementById('bc-data')
+) {
+    init();
 }
 
 function init() {

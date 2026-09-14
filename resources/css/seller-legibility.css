@@ -384,103 +384,496 @@
 
 /* =========================================================
    8. DASHBOARD
+   Orders-aligned typography + simplified inner boxes
    ========================================================= */
 
 .seller-body:has(.dashboard-ref-page) .seller-topbar h1 {
-    font-size: 22px !important;
-    line-height: 1.15;
+    font-size: 24px !important;
+    line-height: 1.2;
 }
 
 .seller-body:has(.dashboard-ref-page) .seller-topbar-subtitle {
-    font-size: 11px !important;
+    font-size: 12px !important;
+    line-height: 1.5;
 }
 
 .seller-body:has(.dashboard-ref-page) .seller-date-control select {
-    font-size: 11px !important;
+    font-size: 13px !important;
 }
 
-.dashboard-ref-page .dashboard-ref-reminder-copy strong {
-    font-size: 15px !important;
+/* Keep the existing major sections. */
+.dashboard-ref-page {
+    gap: 20px;
+    font-size: var(--seller-font-body);
+    line-height: 1.55;
 }
 
-.dashboard-ref-page .dashboard-ref-reminder-copy p {
-    font-size: 11px !important;
+.dashboard-ref-page .dashboard-ref-panel {
+    border-color: #e7dfd6;
+    border-radius: 12px;
+    box-shadow: none;
 }
 
-.dashboard-ref-page .dashboard-ref-reminder-action,
-.dashboard-ref-page .dashboard-ref-view-link {
-    font-size: 10.5px !important;
+.dashboard-ref-page .dashboard-ref-section-header,
+.dashboard-ref-page .dashboard-ref-panel-heading {
+    min-height: 60px;
+    padding: 16px 20px 12px;
+    flex-wrap: wrap;
+    gap: 12px;
 }
 
 .dashboard-ref-page .dashboard-ref-section-header h2,
 .dashboard-ref-page .dashboard-ref-panel-heading h2 {
+    font-size: 18px !important;
+    line-height: 1.35;
+}
+
+.dashboard-ref-page .dashboard-ref-reminder-copy strong {
     font-size: 16px !important;
+    line-height: 1.4;
+}
+
+.dashboard-ref-page .dashboard-ref-reminder-copy p {
+    font-size: 13px !important;
+    line-height: 1.55;
+}
+
+.dashboard-ref-page .dashboard-ref-reminder-action,
+.dashboard-ref-page .dashboard-ref-view-link {
+    font-size: var(--seller-font-control) !important;
+    line-height: 1.45;
+}
+
+.dashboard-ref-page .dashboard-ref-view-link {
+    flex-shrink: 0;
+    text-underline-offset: 3px;
+}
+
+.dashboard-ref-page .dashboard-ref-period-note,
+.dashboard-ref-page .dashboard-ref-sales-total small {
+    font-size: var(--seller-font-secondary) !important;
+    color: #71665e;
+}
+
+/* Action Required: one shared surface, dividers only. */
+.dashboard-ref-page .dashboard-ref-action-grid {
+    gap: 0;
+    padding: 4px 20px 20px;
+}
+
+.dashboard-ref-page .dashboard-ref-action-card {
+    grid-template-columns: 28px minmax(0, 1fr) 18px;
+    gap: 12px;
+    min-height: 112px;
+    padding: 12px 16px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    transition: background-color .15s ease;
+}
+
+.dashboard-ref-page .dashboard-ref-action-card
++ .dashboard-ref-action-card {
+    border-left: 1px solid #e7dfd6;
+}
+
+.dashboard-ref-page .dashboard-ref-action-card:hover {
+    background: #fbf7f1;
+}
+
+.dashboard-ref-page .dashboard-ref-action-card:focus-visible,
+.dashboard-ref-page .dashboard-ref-view-link:focus-visible,
+.dashboard-ref-page .dashboard-ref-reminder-action:focus-visible,
+.dashboard-ref-page select:focus-visible,
+.dashboard-ref-page button:focus-visible {
+    outline: 2px solid #b77a18;
+    outline-offset: 3px;
+}
+
+.dashboard-ref-page .dashboard-ref-action-icon,
+.dashboard-ref-page .dashboard-ref-pickup-icon {
+    display: grid;
+    width: 28px;
+    height: 32px;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    color: #6f4a31;
+    background: transparent;
+    box-shadow: none;
+}
+
+.dashboard-ref-page .dashboard-ref-action-icon svg,
+.dashboard-ref-page .dashboard-ref-pickup-icon svg {
+    width: 24px;
+    height: 24px;
+    stroke-width: 1.8;
+}
+
+/* Attention is not automatically an error. */
+.dashboard-ref-page .dashboard-ref-alert-dot {
+    color: #a66a12;
 }
 
 .dashboard-ref-page .dashboard-ref-action-copy strong {
-    font-size: 20px !important;
+    font-size: 26px !important;
+    line-height: 1.2;
+    font-variant-numeric: tabular-nums;
 }
 
 .dashboard-ref-page .dashboard-ref-action-copy span {
-    font-size: 12px !important;
+    margin-top: 5px;
+    font-size: 13.5px !important;
+    line-height: 1.45;
 }
 
-.dashboard-ref-page .dashboard-ref-action-copy small,
-.dashboard-ref-page .dashboard-ref-period-note,
-.dashboard-ref-page .dashboard-ref-sales-total small {
-    font-size: 9px !important;
+.dashboard-ref-page .dashboard-ref-action-copy small {
+    margin-top: 4px;
+    font-size: var(--seller-font-secondary) !important;
+    line-height: 1.5;
+    color: #71665e;
+}
+
+.dashboard-ref-page .dashboard-ref-action-copy span,
+.dashboard-ref-page .dashboard-ref-action-copy small {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+/* Business Performance: no separate metric boxes. */
+.dashboard-ref-page .dashboard-ref-performance {
+    padding-bottom: 20px;
+}
+
+.dashboard-ref-page .dashboard-ref-performance-grid {
+    gap: 0;
+    padding: 4px 20px 0;
+}
+
+.dashboard-ref-page .dashboard-ref-performance-card {
+    min-height: 100px;
+    padding: 12px 20px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+.dashboard-ref-page .dashboard-ref-performance-card
++ .dashboard-ref-performance-card {
+    border-left: 1px solid #e7dfd6;
 }
 
 .dashboard-ref-page .dashboard-ref-performance-card > strong {
-    font-size: 20px !important;
+    font-size: 26px !important;
+    line-height: 1.25;
+    font-variant-numeric: tabular-nums;
 }
 
-.dashboard-ref-page .dashboard-ref-performance-card span,
+.dashboard-ref-page .dashboard-ref-performance-card > div {
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px 12px;
+    margin-top: 8px;
+}
+
+.dashboard-ref-page .dashboard-ref-performance-card span {
+    overflow: visible;
+    font-size: 13px !important;
+    line-height: 1.5;
+    text-overflow: clip;
+    white-space: normal;
+}
+
 .dashboard-ref-page .dashboard-ref-performance-card small,
 .dashboard-ref-page .dashboard-ref-sales-total > span {
-    font-size: 10px !important;
+    font-size: 12px !important;
+}
+
+/* A higher commission is not inherently a positive result. */
+.dashboard-ref-page .dashboard-ref-performance-card:last-child small {
+    color: #71665e;
+}
+
+/* Sales and products stay side by side on wide screens. */
+.dashboard-ref-page .dashboard-ref-main-grid,
+.dashboard-ref-page .dashboard-ref-bottom-grid {
+    gap: 20px;
+}
+
+.dashboard-ref-page .dashboard-ref-sales-total {
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    line-height: 1.5;
 }
 
 .dashboard-ref-page .dashboard-ref-sales-total > strong {
-    font-size: 22px !important;
+    font-size: 26px !important;
+    line-height: 1.25;
+}
+
+.dashboard-ref-page .dashboard-ref-chart-controls {
+    flex-wrap: wrap;
 }
 
 .dashboard-ref-page .dashboard-ref-chart-controls select {
-    font-size: 9px !important;
+    min-height: 42px;
+    font-size: var(--seller-font-control) !important;
 }
 
-.dashboard-ref-page .dashboard-ref-product-head,
-.dashboard-ref-page .dashboard-ref-product-rank,
-.dashboard-ref-page .dashboard-ref-product-name small,
-.dashboard-ref-page .dashboard-ref-pickup-summary small,
-.dashboard-ref-page .dashboard-ref-pickup-schedule span,
-.dashboard-ref-page .dashboard-ref-pickup-schedule small {
-    font-size: 8px !important;
+.dashboard-ref-page .dashboard-ref-chart {
+    grid-template-columns: 56px minmax(0, 1fr);
+    padding: 20px 20px 28px;
+}
+
+.dashboard-ref-page .dashboard-ref-chart-y {
+    height: 244px;
+    padding: 0;
+    font-size: 12px !important;
+    line-height: 1;
+    color: #71665e;
+}
+
+.dashboard-ref-page .dashboard-ref-chart-days {
+    margin-top: 10px;
+    font-size: 11.5px !important;
+    line-height: 1.4;
+    color: #71665e;
+}
+
+/* Product list uses the Orders page's table text scale. */
+.dashboard-ref-page .dashboard-ref-product-head {
+    grid-template-columns: 24px minmax(0, 1fr) 48px 92px;
+    gap: 10px;
+    padding: 12px 20px;
+    font-size: var(--seller-font-table-head) !important;
+    color: #655c55;
+}
+
+.dashboard-ref-page .dashboard-ref-product-list {
+    padding: 0 20px 8px;
+}
+
+.dashboard-ref-page .dashboard-ref-product-row {
+    grid-template-columns: 24px 42px minmax(0, 1fr) 48px 92px;
+    gap: 10px;
+    min-height: 76px;
+    padding: 12px 0;
 }
 
 .dashboard-ref-page .dashboard-ref-product-name strong,
 .dashboard-ref-page .dashboard-ref-product-sold,
-.dashboard-ref-page .dashboard-ref-product-revenue,
-.dashboard-ref-page .dashboard-ref-earnings-breakdown dt,
-.dashboard-ref-page .dashboard-ref-earnings-breakdown dd,
-.dashboard-ref-page .dashboard-ref-health-row > span:nth-child(2),
-.dashboard-ref-page .dashboard-ref-health-row strong {
-    font-size: 9px !important;
+.dashboard-ref-page .dashboard-ref-product-revenue {
+    font-size: var(--seller-font-table) !important;
+    line-height: 1.5;
+}
+
+.dashboard-ref-page .dashboard-ref-product-rank {
+    font-size: 12.5px !important;
+}
+
+.dashboard-ref-page .dashboard-ref-product-name small {
+    font-size: var(--seller-font-secondary) !important;
+    line-height: 1.5;
+    color: #71665e;
+}
+
+.dashboard-ref-page .dashboard-ref-product-name strong,
+.dashboard-ref-page .dashboard-ref-product-name small {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.dashboard-ref-page .dashboard-ref-product-sold,
+.dashboard-ref-page .dashboard-ref-product-revenue {
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Bottom panels: retain structure, simplify the contents. */
+.dashboard-ref-page .dashboard-ref-earnings-layout {
+    grid-template-columns: 1fr;
+    gap: 16px;
+    padding: 8px 20px 20px;
 }
 
 .dashboard-ref-page .dashboard-ref-earnings-total strong {
-    font-size: 23px !important;
+    font-size: 26px !important;
+    line-height: 1.25;
 }
 
 .dashboard-ref-page .dashboard-ref-earnings-total span,
-.dashboard-ref-page .dashboard-ref-earnings-total small,
 .dashboard-ref-page .dashboard-ref-pickup-summary span,
 .dashboard-ref-page .dashboard-ref-pickup-schedule strong {
-    font-size: 10px !important;
+    font-size: 13px !important;
+    line-height: 1.5;
+}
+
+.dashboard-ref-page .dashboard-ref-earnings-total small {
+    font-size: 12px !important;
+}
+
+.dashboard-ref-page .dashboard-ref-earnings-breakdown {
+    padding: 12px 0 0;
+    border: 0;
+    border-top: 1px solid #e7dfd6;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+.dashboard-ref-page .dashboard-ref-earnings-breakdown > div {
+    min-height: 36px;
+    align-items: baseline;
+    gap: 12px;
+}
+
+.dashboard-ref-page .dashboard-ref-earnings-breakdown dt,
+.dashboard-ref-page .dashboard-ref-earnings-breakdown dd {
+    font-size: 13px !important;
+    line-height: 1.5;
+}
+
+.dashboard-ref-page .dashboard-ref-earnings-breakdown dd {
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.dashboard-ref-page .dashboard-ref-pickup-summary {
+    grid-template-columns: 28px minmax(0, 1fr);
+    gap: 12px;
+    margin: 4px 20px 16px;
+    padding: 8px 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
 }
 
 .dashboard-ref-page .dashboard-ref-pickup-summary strong {
-    font-size: 20px !important;
+    float: none;
+    margin: 0 0 4px;
+    font-size: 26px !important;
+    line-height: 1.2;
+}
+
+.dashboard-ref-page .dashboard-ref-pickup-summary small,
+.dashboard-ref-page .dashboard-ref-pickup-schedule span,
+.dashboard-ref-page .dashboard-ref-pickup-schedule small {
+    font-size: 12px !important;
+    line-height: 1.5;
+    color: #71665e;
+}
+
+.dashboard-ref-page .dashboard-ref-pickup-schedule {
+    margin: 0 20px 20px;
+    padding: 16px 0 0;
+    border-top: 1px solid #e7dfd6;
+    border-radius: 0;
+    background: transparent;
+}
+
+.dashboard-ref-page .dashboard-ref-health-list {
+    gap: 0;
+    padding: 4px 20px 20px;
+}
+
+.dashboard-ref-page .dashboard-ref-health-row {
+    grid-template-columns: 21px minmax(0, 1fr) minmax(70px, auto);
+    min-height: 44px;
+    gap: 8px;
+    padding: 8px 0;
+}
+
+.dashboard-ref-page .dashboard-ref-health-row
++ .dashboard-ref-health-row {
+    border-top: 1px solid #eee8e2;
+}
+
+.dashboard-ref-page .dashboard-ref-health-row > span:nth-child(2),
+.dashboard-ref-page .dashboard-ref-health-row strong {
+    font-size: 13px !important;
+    line-height: 1.5;
+}
+
+.dashboard-ref-page .dashboard-ref-health-row strong {
+    text-align: right;
+}
+
+/* Adapt the layout instead of shrinking the text. */
+@media (max-width: 1180px) {
+    .dashboard-ref-page .dashboard-ref-action-card,
+    .dashboard-ref-page .dashboard-ref-performance-card {
+        border-left: 0;
+    }
+
+    .dashboard-ref-page .dashboard-ref-action-card:nth-child(2n),
+    .dashboard-ref-page .dashboard-ref-performance-card:nth-child(2n) {
+        border-left: 1px solid #e7dfd6;
+    }
+
+    .dashboard-ref-page .dashboard-ref-action-card:nth-child(n + 3),
+    .dashboard-ref-page .dashboard-ref-performance-card:nth-child(n + 3) {
+        border-top: 1px solid #e7dfd6;
+    }
+}
+
+@media (max-width: 620px) {
+    .dashboard-ref-page .dashboard-ref-action-card,
+    .dashboard-ref-page .dashboard-ref-performance-card {
+        padding: 16px 0;
+        border-left: 0;
+    }
+
+    .dashboard-ref-page .dashboard-ref-action-card
+    + .dashboard-ref-action-card,
+    .dashboard-ref-page .dashboard-ref-performance-card
+    + .dashboard-ref-performance-card {
+        border-left: 0;
+        border-top: 1px solid #e7dfd6;
+    }
+
+    .dashboard-ref-page .dashboard-ref-product-row {
+        grid-template-columns: 20px 34px minmax(0, 1fr);
+        gap: 8px;
+    }
+
+    .dashboard-ref-page .dashboard-ref-product-sold {
+        display: block;
+        grid-column: 3;
+        text-align: left;
+    }
+
+    .dashboard-ref-page .dashboard-ref-product-sold::before {
+        content: "Sold: ";
+        font-weight: 400;
+    }
+
+    .dashboard-ref-page .dashboard-ref-product-revenue {
+        grid-column: 3;
+        text-align: left;
+    }
+
+    .dashboard-ref-page .dashboard-ref-product-revenue::before {
+        content: "Revenue: ";
+        font-weight: 400;
+    }
+
+    .dashboard-ref-page .dashboard-ref-chart {
+        grid-template-columns: 48px minmax(0, 1fr);
+        padding-inline: 12px;
+    }
+
+    .dashboard-ref-page .dashboard-ref-chart-days {
+        gap: 0;
+        font-size: 11px !important;
+    }
 }
 
 /* =========================================================

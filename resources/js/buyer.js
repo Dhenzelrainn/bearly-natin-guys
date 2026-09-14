@@ -1503,7 +1503,8 @@ function init() {
         products
     );
 
-    let limit = 20;
+    const initialLimit = products.length;
+    let limit = initialLimit;
     let saved = [];
 
     const categoryChatKey = 'bearly-category-chat-v1';
@@ -1577,7 +1578,10 @@ function init() {
     };
 
     function option(container, key, values) {
-        $(container).innerHTML = values
+        const target = $(container);
+        if (!target) return;
+
+        target.innerHTML = values
             .map(value => {
                 if (key === 'size') {
                     return `
@@ -1625,26 +1629,33 @@ function init() {
             .join('');
     }
 
-    option(
-        'bc-size-options',
-        'size',
-        [...new Set(products.flatMap(product => product.sizes))]
-    );
+    const sizeValues = [...new Set(products.flatMap(product => product.sizes))];
+    if (sizeValues.length) {
+        option(
+            'bc-size-options',
+            'size',
+            sizeValues
+        );
+    }
 
     for (const key of [
         'color',
         'condition',
         'location',
     ]) {
-        option(
-            `bc-${key}-options`,
-            key,
-            [
-                ...new Set(
-                    products.map(product => product[key])
-                ),
-            ]
-        );
+        const values = [
+            ...new Set(
+                products.map(product => product[key])
+            ),
+        ];
+
+        if (values.length) {
+            option(
+                `bc-${key}-options`,
+                key,
+                values
+            );
+        }
     }
 
     function chips() {
@@ -1950,6 +1961,7 @@ function init() {
 
     function writeUrl() {
         const url = new URL(location.href);
+        const currentCategory = new URLSearchParams(location.search).get('category') || 'men-s-apparel';
 
         const keys = [
             'q',
@@ -1974,7 +1986,7 @@ function init() {
 
         url.searchParams.set(
             'category',
-            'men-s-apparel'
+            currentCategory
         );
 
         if (state.search) {
@@ -2058,7 +2070,7 @@ function init() {
     }
 
     function change() {
-        limit = 20;
+        limit = initialLimit;
         syncInputs();
         render();
         writeUrl();

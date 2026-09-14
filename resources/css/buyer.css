@@ -1446,6 +1446,8 @@ body.bc .catalog-grid{
     gap:12px
 }
 body.bc .card{
+    display:flex;
+    flex-direction:column;
     border:1px solid var(--line);
     border-radius:7px;
     background:#fcfaf7;
@@ -1456,6 +1458,7 @@ body.bc .card-image{position:relative}
 body.bc .photo{
     display:block;
     width:100%;
+    min-height:0;
     aspect-ratio:1;
     background-image:var(--catalog-image);
     background-size:500% var(--catalog-image-height,600%);
@@ -1477,21 +1480,34 @@ body.bc .save{
 }
 body.bc .save .mi{font-size:20px}
 body.bc .save[aria-pressed=true]{color:#a64331;background:#ffe8d7}
-body.bc .card-copy{padding:10px}
+body.bc .card-copy{
+    display:flex;
+    flex:1;
+    flex-direction:column;
+    padding:10px
+}
 body.bc .card-copy h2{
     font-size:13px;
     line-height:1.45;
     letter-spacing:-.02em;
     min-height:38px;
+    max-height:38px;
+    overflow:hidden;
     font-weight:600
 }
-body.bc .condition{font-size:11px;color:var(--muted);margin:3px 0}
+body.bc .condition{
+    min-height:16px;
+    font-size:11px;
+    color:var(--muted);
+    margin:3px 0
+}
 body.bc .price-row{
     display:flex;
     align-items:center;
     justify-content:space-between;
     gap:5px;
     flex-wrap:wrap;
+    min-height:29px;
     margin:5px 0 12px
 }
 body.bc .price-row strong{font-size:19px}
@@ -1506,7 +1522,8 @@ body.bc .quick{
     width:100%;
     padding:6px 2px;
     font-size:12px;
-    min-height:35px
+    min-height:35px;
+    margin-top:auto
 }
 body.bc .quick .mi{font-size:17px}
 body.bc .card:hover{box-shadow:0 5px 20px #35251e12}

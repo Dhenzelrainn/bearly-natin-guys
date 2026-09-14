@@ -104,12 +104,21 @@
                 <button class="seller-icon-button seller-mobile-menu-button" type="button" data-seller-mobile-menu aria-label="Open seller navigation" aria-expanded="false" title="Open sidebar">
                     <i class="seller-ui-icon" data-lucide="menu" aria-hidden="true"></i>
                 </button>
-                <h1>@yield('page-title', 'Seller Dashboard')</h1>
+                <div class="seller-topbar-title">
+                    <h1>@yield('page-title', 'Seller Dashboard')</h1>
+                    @hasSection('topbar-subtitle')
+                        <p class="seller-topbar-subtitle">@yield('topbar-subtitle')</p>
+                    @endif
+                </div>
             </div>
             <div class="seller-topbar-actions">
+                @hasSection('topbar-controls')
+                    <div class="seller-topbar-controls">@yield('topbar-controls')</div>
+                    <span class="topbar-divider seller-topbar-controls-divider"></span>
+                @endif
                 <div class="seller-popover-wrap">
                     <button class="seller-icon-button notification-trigger" type="button" data-seller-popover-toggle="notifications" aria-label="Open notifications">
-                        <i class="seller-ui-icon" data-lucide="bell" aria-hidden="true"></i><span></span>
+                        <i class="seller-ui-icon" data-lucide="bell" aria-hidden="true"></i><span>{{ count($notifications ?? []) }}</span>
                     </button>
                     <div class="seller-popover notification-popover" data-seller-popover="notifications" hidden>
                         <div class="seller-popover-heading"><strong>Notifications</strong><small>{{ count($notifications ?? []) }} new</small></div>
@@ -125,7 +134,7 @@
                 <div class="seller-popover-wrap">
                     <button class="seller-profile-button" type="button" data-seller-popover-toggle="profile">
                         <span class="seller-avatar">{{ $seller['initials'] ?? 'BR' }}</span>
-                        <span class="seller-profile-name">{{ $seller['name'] ?? 'Bearly Seller' }}</span>
+                        <span class="seller-profile-name">{{ $seller['store'] ?? ($seller['name'] ?? 'Bearly Seller') }}</span>
                         <i class="seller-ui-icon" data-lucide="chevron-down" aria-hidden="true"></i>
                     </button>
                     <div class="seller-popover profile-popover" data-seller-popover="profile" hidden>

@@ -386,62 +386,101 @@
    8. DASHBOARD
    ========================================================= */
 
-.dashboard-heading h2 {
-    font-size: 30px !important;
+.seller-body:has(.dashboard-ref-page) .seller-topbar h1 {
+    font-size: 22px !important;
+    line-height: 1.15;
 }
 
-.dashboard-heading p,
-.dashboard-action-heading p {
-    font-size: 13px !important;
+.seller-body:has(.dashboard-ref-page) .seller-topbar-subtitle {
+    font-size: 11px !important;
 }
 
-.dashboard-period select {
-    font-size: 13px !important;
+.seller-body:has(.dashboard-ref-page) .seller-date-control select {
+    font-size: 11px !important;
 }
 
-.dashboard-action-heading h3 {
-    font-size: 20px !important;
+.dashboard-ref-page .dashboard-ref-reminder-copy strong {
+    font-size: 15px !important;
 }
 
-.dashboard-action-heading p strong {
+.dashboard-ref-page .dashboard-ref-reminder-copy p {
+    font-size: 11px !important;
+}
+
+.dashboard-ref-page .dashboard-ref-reminder-action,
+.dashboard-ref-page .dashboard-ref-view-link {
+    font-size: 10.5px !important;
+}
+
+.dashboard-ref-page .dashboard-ref-section-header h2,
+.dashboard-ref-page .dashboard-ref-panel-heading h2 {
     font-size: 16px !important;
 }
 
-.dashboard-action-copy strong {
-    font-size: 14px !important;
+.dashboard-ref-page .dashboard-ref-action-copy strong {
+    font-size: 20px !important;
 }
 
-.dashboard-action-copy small {
-    font-size: 11.5px !important;
-}
-
-.dashboard-action-link {
+.dashboard-ref-page .dashboard-ref-action-copy span {
     font-size: 12px !important;
 }
 
-.dashboard-action-link .seller-ui-icon {
-    width: 15px !important;
-    height: 15px !important;
+.dashboard-ref-page .dashboard-ref-action-copy small,
+.dashboard-ref-page .dashboard-ref-period-note,
+.dashboard-ref-page .dashboard-ref-sales-total small {
+    font-size: 9px !important;
 }
 
-.dashboard-payout-list dt {
-    font-size: 12.5px !important;
+.dashboard-ref-page .dashboard-ref-performance-card > strong {
+    font-size: 20px !important;
 }
 
-.dashboard-payout-list dd {
-    font-size: 14px !important;
+.dashboard-ref-page .dashboard-ref-performance-card span,
+.dashboard-ref-page .dashboard-ref-performance-card small,
+.dashboard-ref-page .dashboard-ref-sales-total > span {
+    font-size: 10px !important;
 }
 
-.dashboard-pickup-content > div span {
-    font-size: 12px !important;
+.dashboard-ref-page .dashboard-ref-sales-total > strong {
+    font-size: 22px !important;
 }
 
-.dashboard-pickup-content dt {
-    font-size: 11.5px !important;
+.dashboard-ref-page .dashboard-ref-chart-controls select {
+    font-size: 9px !important;
 }
 
-.dashboard-finance-note {
-    font-size: 12px !important;
+.dashboard-ref-page .dashboard-ref-product-head,
+.dashboard-ref-page .dashboard-ref-product-rank,
+.dashboard-ref-page .dashboard-ref-product-name small,
+.dashboard-ref-page .dashboard-ref-pickup-summary small,
+.dashboard-ref-page .dashboard-ref-pickup-schedule span,
+.dashboard-ref-page .dashboard-ref-pickup-schedule small {
+    font-size: 8px !important;
+}
+
+.dashboard-ref-page .dashboard-ref-product-name strong,
+.dashboard-ref-page .dashboard-ref-product-sold,
+.dashboard-ref-page .dashboard-ref-product-revenue,
+.dashboard-ref-page .dashboard-ref-earnings-breakdown dt,
+.dashboard-ref-page .dashboard-ref-earnings-breakdown dd,
+.dashboard-ref-page .dashboard-ref-health-row > span:nth-child(2),
+.dashboard-ref-page .dashboard-ref-health-row strong {
+    font-size: 9px !important;
+}
+
+.dashboard-ref-page .dashboard-ref-earnings-total strong {
+    font-size: 23px !important;
+}
+
+.dashboard-ref-page .dashboard-ref-earnings-total span,
+.dashboard-ref-page .dashboard-ref-earnings-total small,
+.dashboard-ref-page .dashboard-ref-pickup-summary span,
+.dashboard-ref-page .dashboard-ref-pickup-schedule strong {
+    font-size: 10px !important;
+}
+
+.dashboard-ref-page .dashboard-ref-pickup-summary strong {
+    font-size: 20px !important;
 }
 
 /* =========================================================

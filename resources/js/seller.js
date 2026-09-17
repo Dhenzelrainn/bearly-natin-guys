@@ -2249,3 +2249,735 @@ if (
     initializeOrderWorkflowModal();
 
 }
+
+/* =========================================================
+   MANAGE ORDERS ACTION MODAL
+   Moved out of orders.blade.php
+   Append to resources/js/seller.js
+   ========================================================= */
+
+const setupBearlyOrderActionModal = () => {
+    const modal = document.querySelector('[data-bearly-action-modal]');
+    if (!modal || modal.dataset.bound === '1') return;
+
+    modal.dataset.bound = '1';
+
+    const q = (selector) => modal.querySelector(selector);
+    const title = q('[data-bearly-action-title]');
+    const subtitle = q('[data-bearly-action-subtitle]');
+    const icon = q('[data-bearly-action-icon]');
+    const badge = q('[data-bearly-action-badge]');
+    const orderId = q('[data-bearly-order-id]');
+    const customer = q('[data-bearly-order-customer]');
+    const orderDate = q('[data-bearly-order-date]');
+    const payment = q('[data-bearly-order-payment]');
+    const total = q('[data-bearly-order-total]');
+    const address = q('[data-bearly-order-address]');
+    const addressCell = q('[data-bearly-address-cell]');
+    const addressLabel = q('[data-bearly-address-label]');
+    const itemCount = q('[data-bearly-item-count]');
+    const items = q('[data-bearly-items]');
+    const context = q('[data-bearly-action-context]');
+    const primary = q('[data-bearly-action-primary]');
+    const footer = q('[data-bearly-action-footer]');
+
+    let lastFocus = null;
+    let active = null;
+
+    const statusLabels = {
+        PLACED: 'Placed',
+        CONFIRMED: 'Confirmed',
+        PREPARING: 'Preparing',
+        PACKED: 'Packed',
+        READY_FOR_PICKUP: 'Ready for Pickup',
+        PICKED_UP: 'Picked Up',
+        AT_SORTING_CENTER: 'At Sorting Center',
+        SORTED: 'Sorted',
+        ASSIGNED_TO_RIDER: 'Rider Assigned',
+        OUT_FOR_DELIVERY: 'Out for Delivery',
+        DELIVERED: 'Delivered',
+        COMPLETED: 'Completed',
+        DELIVERY_FAILED: 'Delivery Failed',
+        RETURNED: 'Returned',
+        CANCELLED: 'Cancelled',
+    };
+
+    const flow = [
+        ['PLACED', 'Placed'],
+        ['CONFIRMED', 'Confirmed'],
+        ['PREPARING', 'Preparing'],
+        ['PACKED', 'Packed'],
+        ['READY_FOR_PICKUP', 'Ready for Pickup'],
+        ['PICKED_UP', 'Picked Up'],
+        ['AT_SORTING_CENTER', 'At Sorting Center'],
+        ['SORTED', 'Sorted'],
+        ['ASSIGNED_TO_RIDER', 'Rider Assigned'],
+        ['OUT_FOR_DELIVERY', 'Out for Delivery'],
+        ['DELIVERED', 'Delivered'],
+        ['COMPLETED', 'Completed'],
+    ];
+
+    const configFor = (row, mode) => {
+        const status = (row.dataset.orderCanonical || '').toUpperCase();
+        const action = (row.dataset.orderAction || '').toLowerCase();
+
+        if (mode === 'details' || action.includes('view detail') || action.includes('track')) {
+            return {
+                type: 'details',
+                title: 'Order Details',
+                subtitle: 'View the complete details and current status of this order.',
+                icon: 'info',
+                button: null,
+            };
+        }
+
+        if (action.includes('review') || action.includes('confirm') || status === 'PLACED') {
+            return {
+                type: 'review',
+                title: 'Review and Confirm Order',
+                subtitle: 'Check the order details and confirm if you can fulfill this order.',
+                icon: 'clipboard-check',
+                button: 'Confirm Order',
+            };
+        }
+
+        if (action.includes('start preparing') || status === 'CONFIRMED') {
+            return {
+                type: 'prepare',
+                title: 'Start Preparing Order',
+                subtitle: 'Prepare the correct items and organize them for packing.',
+                icon: 'package-check',
+                button: 'Start Preparing',
+            };
+        }
+
+        if (action.includes('continue packing') || action.includes('packing') || status === 'PREPARING') {
+            return {
+                type: 'packing',
+                title: 'Continue Packing',
+                subtitle: 'Finish packing and get the parcel ready for its shipping label.',
+                icon: 'package',
+                button: 'Continue Packing',
+            };
+        }
+
+        if (action.includes('waybill') || action.includes('label') || status === 'PACKED') {
+            return {
+                type: 'waybill',
+                title: 'Print Waybill / Label',
+                subtitle: 'Generate and print the shipping label for this order.',
+                icon: 'printer',
+                button: 'Print Waybill',
+            };
+        }
+
+        if (action.includes('ready') || action.includes('pickup') || status === 'READY_FOR_PICKUP') {
+            return {
+                type: 'ready',
+                title: 'Mark as Ready for Pickup',
+                subtitle: 'Confirm that the parcel is packed, labeled, and ready for pickup.',
+                icon: 'truck',
+                button: 'Mark as Ready',
+            };
+        }
+
+        return {
+            type: 'details',
+            title: 'Order Details',
+            subtitle: 'View the complete details and current status of this order.',
+            icon: 'info',
+            button: null,
+        };
+    };
+
+    const productIcon = (text) => {
+        const value = text.toLowerCase();
+        if (value.includes('shirt') || value.includes('dress') || value.includes('top')) return 'shirt';
+        if (value.includes('bag') || value.includes('tote')) return 'shopping-bag';
+        if (value.includes('shoe') || value.includes('sneaker')) return 'footprints';
+        if (value.includes('watch')) return 'watch';
+        return 'package';
+    };
+
+    const paymentText = (row) => {
+        const raw = (row.dataset.orderPaymentCopy || '').trim();
+        const key = (row.dataset.orderPaymentKey || row.dataset.payment || '').trim().toLowerCase();
+        const canonical = (row.dataset.orderCanonical || '').trim().toLowerCase();
+        const statusCopy = (row.dataset.orderStatusCopy || '').trim().toLowerCase();
+
+        const badValues = new Set([
+            'cancelled',
+            'returned',
+            'completed',
+            'delivered',
+            'preparing',
+            'confirmed',
+            'placed',
+            'packed',
+            'ready for pickup',
+            'delivery failed',
+        ]);
+
+        if (
+            raw &&
+            !badValues.has(raw.toLowerCase()) &&
+            raw.toLowerCase() !== canonical &&
+            raw.toLowerCase() !== statusCopy
+        ) {
+            return raw;
+        }
+
+        if (key === 'cod') return 'Cash on Delivery';
+        if (key === 'paid') return 'Paid';
+        return 'Payment details unavailable';
+    };
+
+    const formatOrderDate = (rawValue) => {
+        const raw = String(rawValue || '').trim();
+        if (!raw) return 'Not available in preview';
+
+        const lower = raw.toLowerCase();
+
+        if (lower === 'today') {
+            return new Intl.DateTimeFormat('en-PH', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+            }).format(new Date());
+        }
+
+        if (['upcoming', 'previous', 'upcoming / previous'].includes(lower)) {
+            return 'Not available in preview';
+        }
+
+        const parsed = new Date(raw);
+
+        if (!Number.isNaN(parsed.getTime())) {
+            const hasTime = /\d{1,2}:\d{2}|t\d{2}:\d{2}/i.test(raw);
+            const options = {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+            };
+
+            if (hasTime) {
+                Object.assign(options, {
+                    hour: 'numeric',
+                    minute: '2-digit',
+                });
+            }
+
+            return new Intl.DateTimeFormat('en-PH', options).format(parsed);
+        }
+
+        return raw;
+    };
+
+    const parseItemsJson = (row) => {
+        const raw = (row.dataset.orderItemsJson || '').trim();
+        if (!raw) return [];
+
+        try {
+            const value = JSON.parse(raw);
+            return Array.isArray(value) ? value : [];
+        } catch (_) {
+            return [];
+        }
+    };
+
+    const itemImage = (item) =>
+        item.image || item.product_image || item.image_url || item.thumbnail || '';
+
+    const itemName = (item) =>
+        item.name || item.product_name || item.title || 'Order item';
+
+    const itemVariant = (item) =>
+        item.variant || item.variation || item.option || '';
+
+    const itemSku = (item) =>
+        item.sku || item.product_sku || '';
+
+    const itemQty = (item) =>
+        Number(item.qty ?? item.quantity ?? 1) || 1;
+
+    const itemPriceText = (item) => {
+        const value = item.unit_price ?? item.price ?? item.amount ?? null;
+        if (value === null || value === '') return '';
+
+        if (typeof value === 'number' || /^\d+(\.\d+)?$/.test(String(value))) {
+            return new Intl.NumberFormat('en-PH', {
+                style: 'currency',
+                currency: 'PHP',
+                maximumFractionDigits: 2,
+            }).format(Number(value));
+        }
+
+        return String(value);
+    };
+
+    const renderItems = (row) => {
+        items.replaceChildren();
+
+        const databaseItems = parseItemsJson(row);
+
+        if (databaseItems.length) {
+            databaseItems.forEach((item) => {
+                const nameText = itemName(item);
+                const article = document.createElement('article');
+                article.className = 'bearly-action-item';
+
+                const thumb = document.createElement('span');
+                thumb.className = 'bearly-action-thumb';
+
+                const image = itemImage(item);
+
+                if (image) {
+                    const img = document.createElement('img');
+                    img.src = image;
+                    img.alt = nameText;
+                    img.loading = 'lazy';
+
+                    img.addEventListener(
+                        'error',
+                        () => {
+                            thumb.replaceChildren();
+                            thumb.innerHTML = `<i data-lucide="${productIcon(nameText)}" aria-hidden="true"></i>`;
+                            window.lucide?.createIcons();
+                        },
+                        { once: true },
+                    );
+
+                    thumb.append(img);
+                } else {
+                    thumb.innerHTML = `<i data-lucide="${productIcon(nameText)}" aria-hidden="true"></i>`;
+                }
+
+                const copy = document.createElement('div');
+                copy.className = 'bearly-action-item-copy';
+
+                const name = document.createElement('strong');
+                name.textContent = [nameText, itemVariant(item)].filter(Boolean).join(' · ');
+
+                const meta = document.createElement('small');
+                const skuText = itemSku(item);
+                meta.textContent = skuText ? `SKU: ${skuText}` : 'Order item';
+
+                copy.append(name, meta);
+
+                const side = document.createElement('span');
+                side.className = 'bearly-action-item-side';
+
+                const price = itemPriceText(item);
+                side.textContent = price
+                    ? `${price} × ${itemQty(item)}`
+                    : `Qty ${itemQty(item)}`;
+
+                article.append(thumb, copy, side);
+                items.append(article);
+            });
+
+            const totalItems = databaseItems.reduce(
+                (sum, item) => sum + itemQty(item),
+                0,
+            );
+
+            itemCount.textContent = `(${totalItems} ${totalItems === 1 ? 'item' : 'items'})`;
+            return;
+        }
+
+        const raw = (row.dataset.orderItems || '').trim();
+        const parts = raw
+            ? raw.split(/\s*\+\s*/).filter(Boolean)
+            : ['Order item'];
+
+        const sku = (row.dataset.orderSku || '').trim();
+        const image = (row.dataset.orderProductImage || '').trim();
+
+        parts.forEach((part, index) => {
+            const article = document.createElement('article');
+            article.className = 'bearly-action-item';
+
+            const thumb = document.createElement('span');
+            thumb.className = 'bearly-action-thumb';
+
+            if (image && index === 0) {
+                const img = document.createElement('img');
+                img.src = image;
+                img.alt = part.trim();
+                img.loading = 'lazy';
+
+                img.addEventListener(
+                    'error',
+                    () => {
+                        thumb.replaceChildren();
+                        thumb.innerHTML = `<i data-lucide="${productIcon(part)}" aria-hidden="true"></i>`;
+                        window.lucide?.createIcons();
+                    },
+                    { once: true },
+                );
+
+                thumb.append(img);
+            } else {
+                thumb.innerHTML = `<i data-lucide="${productIcon(part)}" aria-hidden="true"></i>`;
+            }
+
+            const copy = document.createElement('div');
+            copy.className = 'bearly-action-item-copy';
+
+            const name = document.createElement('strong');
+            name.textContent = part.trim();
+
+            const meta = document.createElement('small');
+            meta.textContent = sku && index === 0 ? `SKU: ${sku}` : 'Order item';
+
+            copy.append(name, meta);
+
+            const side = document.createElement('span');
+            side.className = 'bearly-action-item-side';
+            side.textContent =
+                parts.length === 1
+                    ? row.dataset.orderTotal || ''
+                    : `Item ${index + 1}`;
+
+            article.append(thumb, copy, side);
+            items.append(article);
+        });
+
+        itemCount.textContent = `(${row.dataset.orderItemCount || parts.length})`;
+    };
+
+    const notice = (iconName, text) =>
+        `<section class="bearly-action-notice"><span><i data-lucide="${iconName}"></i></span><p>${text}</p></section>`;
+
+    const escapeHtml = (value) =>
+        String(value ?? '').replace(
+            /[&<>"']/g,
+            (character) =>
+                ({
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    '"': '&quot;',
+                    "'": '&#39;',
+                })[character],
+        );
+
+    const renderContext = (row, config) => {
+        context.innerHTML = '';
+
+        if (config.type === 'review') {
+            context.innerHTML = notice(
+                'info',
+                'By confirming, you accept this order and will prepare it for pickup.',
+            );
+        } else if (config.type === 'prepare') {
+            context.innerHTML = `
+                <section class="bearly-action-next">
+                    <span><i data-lucide="package-check"></i></span>
+                    <div>
+                        <small>Before packing</small>
+                        <strong>Verify the item, variation, quantity, and condition against the order.</strong>
+                    </div>
+                </section>
+            `;
+        } else if (config.type === 'packing') {
+            context.innerHTML = `
+                <section class="bearly-action-check-card">
+                    <div class="bearly-action-check-head">
+                        <strong>Packing Checklist</strong>
+                        <span data-bearly-check-count>0/3 Completed</span>
+                    </div>
+                    <label class="bearly-action-check">
+                        <input type="checkbox" data-bearly-pack-check>
+                        <span>Correct item and variation are packed</span>
+                    </label>
+                    <label class="bearly-action-check">
+                        <input type="checkbox" data-bearly-pack-check>
+                        <span>Order quantity is complete</span>
+                    </label>
+                    <label class="bearly-action-check">
+                        <input type="checkbox" data-bearly-pack-check>
+                        <span>Parcel is secure and in good condition</span>
+                    </label>
+                </section>
+            `;
+
+            const checks = [...context.querySelectorAll('[data-bearly-pack-check]')];
+            const counter = context.querySelector('[data-bearly-check-count]');
+
+            primary.disabled = true;
+
+            checks.forEach((check) => {
+                check.addEventListener('change', () => {
+                    const done = checks.filter((item) => item.checked).length;
+                    counter.textContent = `${done}/3 Completed`;
+                    primary.disabled = done !== checks.length;
+                });
+            });
+        } else if (config.type === 'waybill') {
+            const ship =
+                row.dataset.orderAddress ||
+                'Shipping address will appear here when connected to order data.';
+
+            context.innerHTML = `
+                <section class="bearly-action-shipping">
+                    <h4>Shipping Details</h4>
+                    <div class="bearly-action-address-box">
+                        <i data-lucide="map-pin"></i>
+                        <div>
+                            <strong>Delivery Address</strong>
+                            <small></small>
+                        </div>
+                    </div>
+
+                    <div class="bearly-action-waybill-preview">
+                        <div class="bearly-action-barcode" aria-hidden="true"></div>
+                        <div>
+                            <strong>Order ${escapeHtml(row.dataset.orderId || '')}</strong>
+                            <small>Shipping label preview with recipient and order details.</small>
+                        </div>
+                        <span class="bearly-action-print-pill">
+                            <i data-lucide="printer"></i>
+                            Print Preview
+                        </span>
+                    </div>
+
+                    ${notice(
+                        'printer',
+                        'Print the waybill and attach it securely to the package.',
+                    )}
+                </section>
+            `;
+
+            context.querySelector('.bearly-action-address-box small').textContent = ship;
+        } else if (config.type === 'ready') {
+            context.innerHTML = notice(
+                'truck',
+                'Once marked as ready, this parcel can proceed to logistics pickup. No delivery agency is assigned here.',
+            );
+        } else {
+            const current = (row.dataset.orderCanonical || '').toUpperCase();
+
+            let timelineFlow = flow;
+
+            if (current === 'CANCELLED') {
+                timelineFlow = [
+                    ['PLACED', 'Placed'],
+                    ['CANCELLED', 'Cancelled'],
+                ];
+            }
+
+            if (current === 'RETURNED') {
+                timelineFlow = [...flow.slice(0, 10), ['RETURNED', 'Returned']];
+            }
+
+            if (current === 'DELIVERY_FAILED') {
+                timelineFlow = [
+                    ...flow.slice(0, 10),
+                    ['DELIVERY_FAILED', 'Delivery Failed'],
+                ];
+            }
+
+            let currentIndex = timelineFlow.findIndex(([key]) => key === current);
+            if (currentIndex < 0) currentIndex = 0;
+
+            const wrap = document.createElement('section');
+            wrap.className = 'bearly-action-status-layout';
+
+            const left = document.createElement('div');
+
+            const heading = document.createElement('h4');
+            heading.className = 'bearly-action-status-title';
+            heading.textContent = 'Current Order Status';
+            left.append(heading);
+
+            const summary = document.createElement('div');
+            summary.className = 'bearly-action-next';
+            summary.innerHTML =
+                '<span><i data-lucide="info"></i></span><div><small>Next update</small><strong></strong></div>';
+
+            summary.querySelector('strong').textContent =
+                current === 'CANCELLED'
+                    ? 'This order is cancelled. No further seller fulfillment action is required.'
+                    : row.dataset.orderNext ||
+                      'No seller action is required right now.';
+
+            left.append(summary);
+
+            const timeline = document.createElement('ol');
+            timeline.className = 'bearly-action-timeline';
+
+            timelineFlow.forEach(([key, label], index) => {
+                const item = document.createElement('li');
+
+                item.className =
+                    index < currentIndex
+                        ? 'is-done'
+                        : index === currentIndex
+                          ? 'is-current'
+                          : '';
+
+                const marker = document.createElement('span');
+                marker.className = 'bearly-action-timeline-marker';
+
+                if (index <= currentIndex) {
+                    marker.innerHTML = '<i data-lucide="check"></i>';
+                }
+
+                const copy = document.createElement('div');
+                copy.className = 'bearly-action-timeline-copy';
+
+                const strong = document.createElement('strong');
+                strong.textContent = label;
+                copy.append(strong);
+
+                if (index === currentIndex) {
+                    const small = document.createElement('small');
+                    small.textContent = 'Current status';
+                    copy.append(small);
+                }
+
+                item.append(marker, copy);
+                timeline.append(item);
+            });
+
+            wrap.append(left, timeline);
+            context.append(wrap);
+        }
+    };
+
+    const open = (row, mode, trigger) => {
+        active = { row, mode, trigger };
+        lastFocus = trigger;
+
+        const config = configFor(row, mode);
+
+        title.textContent = config.title;
+        subtitle.textContent = config.subtitle;
+        icon.innerHTML = `<i data-lucide="${config.icon}"></i>`;
+
+        const canonical = (row.dataset.orderCanonical || '').toUpperCase();
+
+        badge.textContent =
+            row.dataset.orderStatusCopy ||
+            statusLabels[canonical] ||
+            'Order';
+
+        orderId.textContent =
+            row.dataset.orderId ||
+            trigger.dataset.orderDetails ||
+            '—';
+
+        customer.textContent =
+            row.dataset.orderCustomer || '—';
+
+        orderDate.textContent =
+            formatOrderDate(row.dataset.orderDateCopy || row.dataset.date);
+
+        payment.textContent = paymentText(row);
+        total.textContent = row.dataset.orderTotal || '—';
+
+        const shippingAddress = (row.dataset.orderAddress || '').trim();
+
+        if (['review', 'prepare', 'packing'].includes(config.type)) {
+            addressLabel.textContent = 'Order Status';
+            address.textContent =
+                row.dataset.orderStatusCopy ||
+                statusLabels[canonical] ||
+                '—';
+        } else {
+            addressLabel.textContent = 'Shipping Address';
+            address.textContent =
+                shippingAddress || 'Not available in preview';
+        }
+
+        addressCell.hidden = false;
+
+        renderItems(row);
+
+        primary.disabled = false;
+        primary.hidden = !config.button;
+        primary.textContent = config.button || '';
+
+        footer.classList.toggle('is-read-only', !config.button);
+
+        renderContext(row, config);
+
+        modal.hidden = false;
+        document.body.classList.add('modal-open');
+
+        window.lucide?.createIcons();
+
+        (config.button ? primary : q('.bearly-action-x'))?.focus();
+    };
+
+    const close = () => {
+        modal.hidden = true;
+        document.body.classList.remove('modal-open');
+        lastFocus?.focus?.();
+        active = null;
+    };
+
+    const showToast = (message) => {
+        const toast = document.querySelector('[data-seller-toast]');
+        if (!toast) return;
+
+        toast.textContent = message;
+        toast.classList.add('is-visible');
+
+        clearTimeout(window.__bearlyActionToast);
+
+        window.__bearlyActionToast = setTimeout(
+            () => toast.classList.remove('is-visible'),
+            3000,
+        );
+    };
+
+    document.addEventListener(
+        'click',
+        (event) => {
+            const trigger = event.target.closest('[data-bearly-action-open]');
+            if (!trigger) return;
+
+            const row = trigger.closest('[data-order-row]');
+            if (!row) return;
+
+            event.preventDefault();
+            event.stopPropagation();
+            event.stopImmediatePropagation();
+
+            open(
+                row,
+                trigger.dataset.bearlyActionMode || 'action',
+                trigger,
+            );
+        },
+        true,
+    );
+
+    modal
+        .querySelectorAll('[data-bearly-action-close]')
+        .forEach((button) => button.addEventListener('click', close));
+
+    primary.addEventListener('click', () => {
+        if (!active) return;
+
+        const config = configFor(active.row, active.mode);
+
+        showToast(
+            `${config.button} previewed. Backend status change is not connected yet.`,
+        );
+
+        close();
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && !modal.hidden) close();
+    });
+};
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', setupBearlyOrderActionModal);
+} else {
+    setupBearlyOrderActionModal();
+}

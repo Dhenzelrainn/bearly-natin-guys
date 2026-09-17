@@ -45,11 +45,6 @@
                     Reprint Required <span>{{ $waybillCounts['reprint'] }}</span>
                 </button>
             </div>
-
-            <p class="waybill-eligibility-note">
-                <i data-lucide="shield-check" aria-hidden="true"></i>
-                Packed and verified orders only
-            </p>
         </div>
 
         <div class="fulfillment-toolbar waybill-toolbar">
@@ -233,30 +228,4 @@
     </div>
 </div>
 
-<style>
-/* Waybill row actions use the same visual language as Manage Orders. */
-.waybills-page .fulfillment-row-action {
-    min-width:104px;
-    min-height:32px;
-    padding:0 10px;
-    border:1px solid #dfa130;
-    border-radius:7px;
-    color:#a65e00;
-    background:#fff;
-    font-weight:600;
-    white-space:nowrap;
-    box-shadow:none;
-}
-.waybills-page .fulfillment-row-action:hover,
-.waybills-page .fulfillment-row-action.is-primary:hover {
-    color:#fff;
-    border-color:var(--seller-gold-dark,#d88b12);
-    background:var(--seller-gold-dark,#d88b12);
-}
-.waybills-page .fulfillment-row-action.is-primary {
-    border-color:#dfa130;
-    color:#a65e00;
-    background:#fff;
-}
-</style>
 @endsection

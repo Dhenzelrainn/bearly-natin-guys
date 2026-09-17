@@ -122,11 +122,14 @@
 .returns-refined .return-action,
 .returns-refined .returns-export {
     display:inline-flex; align-items:center; justify-content:center;
-    min-height:38px; border:1px solid #80624f; border-radius:7px;
-    color:#4b3428; background:#fff; box-shadow:none; white-space:nowrap;
+    min-height:38px; border:1px solid #dfa130; border-radius:7px;
+    color:#a65e00; background:#fff; box-shadow:none; white-space:nowrap;
 }
 .returns-refined .return-action:hover,
-.returns-refined .returns-export:hover { background:#fbf7f1; border-color:#4b3428; }
+.returns-refined .returns-export:hover {
+    color:#fff; background:var(--seller-gold-dark,#d88b12);
+    border-color:var(--seller-gold-dark,#d88b12);
+}
 .returns-refined .returns-table-wrap { overflow-x:auto; }
 .returns-refined .returns-table { font-size:var(--seller-font-table,13.5px); }
 .returns-refined .returns-table th,

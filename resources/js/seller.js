@@ -864,13 +864,14 @@ const bootSeller = () => {
         const count = workspace.querySelector(countSelector);
         const empty = workspace.querySelector(emptySelector);
         const status = statusSelector ? workspace.querySelector(statusSelector) : null;
+        const pickupDate = workspace.querySelector('[data-pickup-date]');
         let active = 'all';
         const apply = () => {
             const query = search?.value.trim().toLowerCase() ?? '';
             const selected = status?.value ?? '';
             let visible = 0;
             rows.forEach((row) => {
-                const match = (active === 'all' || row.dataset.status === active) && (!selected || row.dataset.status === selected) && (!query || row.dataset.search.includes(query));
+                const match = (active === 'all' || row.dataset.status === active) && (!selected || row.dataset.status === selected) && (!query || row.dataset.search.includes(query)) && (!pickupDate?.value || row.dataset.date === pickupDate.value);
                 row.hidden = !match;
                 if (match) visible += 1;
             });
@@ -879,16 +880,23 @@ const bootSeller = () => {
         };
         workspace.querySelectorAll(tabSelector).forEach((tab) => tab.addEventListener('click', () => {
             active = tab.dataset.waybillTab || tab.dataset.pickupTab || tab.dataset.trackingTab || 'all';
-            workspace.querySelectorAll(tabSelector).forEach((item) => item.classList.toggle('is-active', item === tab));
+            workspace.querySelectorAll(tabSelector).forEach((item) => {
+                item.classList.toggle('is-active', item === tab);
+                if (item.hasAttribute('aria-pressed')) item.setAttribute('aria-pressed', String(item === tab));
+            });
             apply();
         }));
         search?.addEventListener('input', apply);
         status?.addEventListener('change', apply);
+        pickupDate?.addEventListener('change', apply);
         if (resetSelector) workspace.querySelector(resetSelector)?.addEventListener('click', () => {
             if (search) search.value = '';
             if (status) status.value = '';
             active = 'all';
-            workspace.querySelectorAll(tabSelector).forEach((tab, index) => tab.classList.toggle('is-active', index === 0));
+            workspace.querySelectorAll(tabSelector).forEach((tab, index) => {
+                tab.classList.toggle('is-active', index === 0);
+                if (tab.hasAttribute('aria-pressed')) tab.setAttribute('aria-pressed', String(index === 0));
+            });
             apply();
         });
         apply();
@@ -931,6 +939,14 @@ const bootSeller = () => {
         modal.hidden = false; document.body.style.overflow = 'hidden';
     }));
     document.querySelectorAll('[data-pickup-cancel],[data-pickup-confirm]').forEach((button) => button.addEventListener('click', () => { button.closest('[data-modal]').hidden = true; document.body.style.overflow = ''; if (toast) { toast.textContent = button.hasAttribute('data-pickup-confirm') ? 'Parcel handover confirmed and orders moved to In Transit.' : 'Pending pickup request cancelled.'; toast.classList.add('is-visible'); } }));
+
+    document.querySelector('[data-tracking-attention]')?.addEventListener('click', () => {
+        const search = document.querySelector('[data-tracking-search]');
+        if (search) { search.value = ''; search.dispatchEvent(new Event('input')); }
+        const tab = document.querySelector('[data-tracking-tab="failed"]');
+        tab?.click();
+        tab?.focus();
+    });
 
     document.querySelectorAll('[data-tracking-view]').forEach((button) => button.addEventListener('click', () => {
         const item = JSON.parse(button.dataset.shipment); const modal = document.querySelector('[data-modal="tracking-details"]'); if (!modal) return;

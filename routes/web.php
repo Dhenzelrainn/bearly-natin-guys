@@ -113,6 +113,7 @@ Route::prefix('seller')->name('seller.')->group(function () {
     Route::get('/products', [SellerController::class, 'products'])->name('products');
     Route::get('/inventory', [SellerController::class, 'inventory'])->name('inventory');
     Route::get('/products/pricing', [SellerController::class, 'pricing'])->name('products.pricing');
+    Route::get('/products/pricing/create', [SellerController::class, 'createPromotion'])->name('products.pricing.create');
     Route::get('/products/create', [SellerProductController::class, 'createProduct'])->name('products.create');
     Route::post('/products', [SellerProductController::class, 'addProduct'])->name('products.add');
     Route::get('/products/{product}/edit', [SellerProductController::class, 'editProduct'])->name('products.edit');

@@ -695,6 +695,26 @@ class SellerController extends Controller
         ]);
     }
 
+
+    public function createPromotion(Request $request): View
+    {
+        $storedProducts = collect($request->session()->get('seller.products', []))
+            ->map(fn (array $product) => $this->normalizeProduct($product));
+
+        $products = $storedProducts->isNotEmpty() ? $storedProducts : collect([
+            ['id' => 'demo-1', 'name' => 'Classic Linen Shirt', 'sku' => 'CLS-LINEN-SHIRT', 'category' => 'Fashion and Apparel', 'price' => 1299, 'discount_percent' => 10, 'voucher_eligible' => true, 'stock' => 42, 'status' => 'Active', 'image' => null],
+            ['id' => 'demo-2', 'name' => 'Canvas Tote Bag', 'sku' => 'CNV-TOTE-BAG', 'category' => 'Fashion and Apparel', 'price' => 899, 'discount_percent' => 0, 'voucher_eligible' => true, 'stock' => 31, 'status' => 'Active', 'image' => null],
+            ['id' => 'demo-3', 'name' => 'Everyday Sneakers', 'sku' => 'EV-SNKRS-WHT', 'category' => 'Fashion and Apparel', 'price' => 1780, 'discount_percent' => 15, 'voucher_eligible' => false, 'stock' => 18, 'status' => 'Active', 'image' => null],
+            ['id' => 'demo-4', 'name' => 'Minimalist Crossbody Bag', 'sku' => 'MCB-BRN-01', 'category' => 'Fashion and Apparel', 'price' => 1050, 'discount_percent' => 0, 'voucher_eligible' => false, 'stock' => 24, 'status' => 'Draft', 'image' => null],
+        ])->map(fn (array $product) => $this->normalizeProduct($product));
+
+        return view('seller.Products.promotion-form', [
+            'seller' => $this->seller(),
+            'notifications' => $this->notifications(),
+            'products' => $products->where('status', '!=', 'Archived')->values(),
+        ]);
+    }
+
     public function createProduct(): View
     {
         return view('seller.Products.product-form', [

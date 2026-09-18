@@ -999,6 +999,18 @@ const bootSeller = () => {
         }));
     }
 
+    const pricingParams = new URLSearchParams(window.location.search);
+    const requestedPricingTab = pricingParams.get('tab');
+    if (pricingWorkspace && requestedPricingTab) {
+        pricingWorkspace.querySelector('[data-pricing-tab="' + requestedPricingTab + '"]')?.click();
+    }
+    if (pricingParams.get('created') === '1' && toast) {
+        toast.textContent = 'Promotion created for this frontend preview.';
+        toast.classList.add('is-visible');
+        window.clearTimeout(window.sellerToastTimer);
+        window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3200);
+    }
+
     const priceModal = document.querySelector('[data-modal="pricing-price"]');
     const campaignModal = document.querySelector('[data-modal="pricing-campaign"]');
     const calculatePrice = () => {
@@ -1060,6 +1072,75 @@ const bootSeller = () => {
         window.clearTimeout(window.sellerToastTimer);
         window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3000);
     }));
+
+    const promotionForm = document.querySelector('[data-promotion-form]');
+    if (promotionForm) {
+        const type = promotionForm.querySelector('[data-promotion-type]');
+        const value = promotionForm.querySelector('[data-promotion-value]');
+        const valueLabel = promotionForm.querySelector('[data-promotion-value-label]');
+        const valueSuffix = promotionForm.querySelector('[data-promotion-value-suffix]');
+        const name = promotionForm.querySelector('[data-promotion-name]');
+        const start = promotionForm.querySelector('[data-promotion-start]');
+        const end = promotionForm.querySelector('[data-promotion-end]');
+        const checks = [...promotionForm.querySelectorAll('[data-promotion-product]')];
+        const selectAll = promotionForm.querySelector('[data-promotion-select-all]');
+
+        const syncPromotionSummary = () => {
+            const currentType = type?.value || 'Product Discount';
+            const currentValue = Math.max(0, Number(value?.value || 0));
+            const selected = checks.filter((check) => check.checked).length;
+            const summaryName = promotionForm.querySelector('[data-promotion-summary-name]');
+            const summaryType = promotionForm.querySelector('[data-promotion-summary-type]');
+            const summaryValue = promotionForm.querySelector('[data-promotion-summary-value]');
+            const summaryProducts = promotionForm.querySelector('[data-promotion-summary-products]');
+            const summarySchedule = promotionForm.querySelector('[data-promotion-summary-schedule]');
+
+            if (summaryName) summaryName.textContent = name?.value.trim() || 'Untitled promotion';
+            if (summaryType) summaryType.textContent = currentType;
+            if (summaryValue) summaryValue.textContent = currentType === 'Store Voucher' ? '₱' + currentValue.toLocaleString('en-PH') + ' voucher' : currentValue + '% off';
+            if (summaryProducts) summaryProducts.textContent = selected + ' selected';
+            if (summarySchedule) summarySchedule.textContent = start?.value && end?.value ? start.value + ' to ' + end.value : 'Not set';
+
+            if (valueLabel) valueLabel.textContent = currentType === 'Store Voucher' ? 'Voucher amount' : 'Discount percentage';
+            if (valueSuffix) valueSuffix.textContent = currentType === 'Store Voucher' ? '₱' : '%';
+            if (value) {
+                if (currentType === 'Store Voucher') value.removeAttribute('max');
+                else value.setAttribute('max', '90');
+            }
+            if (selectAll) {
+                selectAll.checked = checks.length > 0 && selected === checks.length;
+                selectAll.indeterminate = selected > 0 && selected < checks.length;
+            }
+        };
+
+        [type, value, name, start, end].forEach((field) => {
+            field?.addEventListener('input', syncPromotionSummary);
+            field?.addEventListener('change', syncPromotionSummary);
+        });
+        checks.forEach((check) => check.addEventListener('change', syncPromotionSummary));
+        selectAll?.addEventListener('change', () => {
+            checks.forEach((check) => { check.checked = selectAll.checked; });
+            syncPromotionSummary();
+        });
+
+        promotionForm.addEventListener('submit', (event) => {
+            event.preventDefault();
+            if (!promotionForm.reportValidity()) return;
+            if (!checks.some((check) => check.checked)) {
+                if (toast) {
+                    toast.textContent = 'Select at least one eligible product.';
+                    toast.classList.add('is-visible');
+                    window.clearTimeout(window.sellerToastTimer);
+                    window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3000);
+                }
+                checks[0]?.focus();
+                return;
+            }
+            window.location.href = promotionForm.dataset.successUrl || '/seller/products/pricing';
+        });
+
+        syncPromotionSummary();
+    }
 
     /* Customer Service — frontend-only seller inbox. */
     const messageWorkspace = document.querySelector('[data-message-workspace]');

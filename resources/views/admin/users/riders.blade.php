@@ -18,14 +18,14 @@
     </div>
 
 
-    <div class="hero-summary-card">
-        <span class="metric-icon">
+    <div class="hero-context-stat">
+        <span class="hero-context-icon">
             <i data-lucide="bike"></i>
         </span>
 
         <div>
             <strong>{{ count($users) }}</strong>
-            <small>Rider accounts</small>
+            <span>Rider accounts</span>
         </div>
     </div>
 
@@ -94,6 +94,7 @@
 
                     <tr
                         data-table-row
+                        data-user-id="{{ $user['id'] }}"
                         data-status="{{ $user['status'] }}"
                         data-search="{{
                             strtolower(
@@ -155,8 +156,10 @@
 
 
                         <td>
-                            <strong>{{ $user['deliveries'] }}</strong>
-                            <small>Completed</small>
+                            <div class="table-primary-secondary">
+                                <strong>{{ $user['deliveries'] }}</strong>
+                                <small>Completed</small>
+                            </div>
                         </td>
 
 
@@ -168,13 +171,13 @@
                                     $user['status'] === 'Active'
                                         ? 'badge-success'
                                         : ($user['status'] === 'Suspended'
-                                            ? 'badge-warning'
-                                            : 'badge-danger')
+                                            ? 'badge-danger'
+                                            : 'badge-neutral')
                                 }}"
                             >
                                 {{ $user['status'] }}
                             </span>
-
+                                
                         </td>
 
 
@@ -330,31 +333,36 @@
         </div>
 
 
-        <div class="modal-footer decision-footer">
+        <div
+            class="modal-footer decision-footer user-profile-actions"
+            data-user-modal-actions
+            data-user-id="{{ $user['id'] }}"
+        >
 
             <button
                 type="button"
-                class="button button-secondary"
+                class="button button-primary"
+                data-modal-user-status="Active"
                 data-mock-action="{{ $user['name'] }} account activated."
             >
                 <i data-lucide="circle-check"></i>
                 Activate
             </button>
 
-
             <button
                 type="button"
                 class="button button-danger-soft"
+                data-modal-user-status="Suspended"
                 data-mock-action="{{ $user['name'] }} account suspended."
             >
                 <i data-lucide="pause-circle"></i>
                 Suspend
             </button>
 
-
             <button
                 type="button"
                 class="button button-danger"
+                data-modal-user-status="Deactivated"
                 data-mock-action="{{ $user['name'] }} account deactivated."
             >
                 <i data-lucide="user-x"></i>

@@ -18,14 +18,14 @@
     </div>
 
 
-    <div class="hero-summary-card">
-        <span class="metric-icon">
+    <div class="hero-context-stat">
+        <span class="hero-context-icon">
             <i data-lucide="rotate-ccw"></i>
         </span>
 
         <div>
             <strong>{{ count($cases) }}</strong>
-            <small>Return & refund cases</small>
+            <span>Return & refund cases</span>
         </div>
     </div>
 
@@ -76,6 +76,9 @@
                 <option value="Escalated">Escalated</option>
                 <option value="Under Review">Under Review</option>
                 <option value="Awaiting Seller">Awaiting Seller</option>
+                <option value="Awaiting Evidence">Awaiting Evidence</option>
+                <option value="Approved">Approved</option>
+                <option value="Rejected">Rejected</option>
                 <option value="Resolved">Resolved</option>
             </select>
 
@@ -107,6 +110,7 @@
 
                     <tr
                         data-table-row
+                        data-return-id="{{ $case['id'] }}"
                         data-type="{{ $case['type'] }}"
                         data-status="{{ $case['status'] }}"
                         data-search="{{
@@ -121,10 +125,12 @@
                     >
 
                         <td>
-                            <strong>{{ $case['id'] }}</strong>
-                            <small>
-                                {{ $case['order'] }} • {{ $case['requested'] }}
-                            </small>
+                            <div class="table-primary-secondary">
+                                <strong>{{ $case['id'] }}</strong>
+                                <small>
+                                    {{ $case['order'] }} • {{ $case['requested'] }}
+                                </small>
+                            </div>
                         </td>
 
                         <td>
@@ -136,8 +142,10 @@
                         </td>
 
                         <td>
-                            <strong>{{ $case['type'] }}</strong>
-                            <small>{{ $case['reason'] }}</small>
+                            <div class="table-primary-secondary">
+                                <strong>{{ $case['type'] }}</strong>
+                                <small>{{ $case['reason'] }}</small>
+                            </div>
                         </td>
 
                         <td>
@@ -150,9 +158,13 @@
                                 {{
                                     $case['status'] === 'Resolved'
                                         ? 'badge-success'
-                                        : ($case['status'] === 'Escalated'
+                                        : (in_array($case['status'], ['Escalated', 'Rejected'])
                                             ? 'badge-danger'
-                                            : 'badge-warning')
+                                            : ($case['status'] === 'Under Review'
+                                                ? 'badge-info'
+                                                : ($case['status'] === 'Approved'
+                                                    ? 'badge-success'
+                                                    : 'badge-warning')))
                                 }}"
                             >
                                 {{ $case['status'] }}
@@ -201,6 +213,8 @@
 <div
     class="modal-shell"
     data-modal="return-case-{{ $loop->index }}"
+    data-return-modal
+    data-return-id="{{ $case['id'] }}"
     hidden
 >
 
@@ -286,7 +300,9 @@
 
                 <div>
                     <span>Current status</span>
-                    <strong>{{ $case['status'] }}</strong>
+                    <strong data-return-modal-status>
+                        {{ $case['status'] }}
+                    </strong>
                 </div>
 
             </div>
@@ -306,11 +322,16 @@
         </div>
 
 
-        <div class="modal-footer decision-footer">
+        <div
+            class="modal-footer decision-footer"
+            data-return-actions
+        >
 
             <button
                 type="button"
-                class="button button-secondary"
+                class="button button-primary"
+                data-return-action="approve"
+                data-return-button="approve"
                 data-mock-action="{{ $case['id'] }} approved for refund."
             >
                 <i data-lucide="circle-check"></i>
@@ -321,6 +342,8 @@
             <button
                 type="button"
                 class="button button-danger-soft"
+                data-return-action="reject"
+                data-return-button="reject"
                 data-mock-action="{{ $case['id'] }} refund request rejected."
             >
                 <i data-lucide="circle-x"></i>
@@ -331,10 +354,27 @@
             <button
                 type="button"
                 class="button button-ghost"
+                data-return-action="evidence"
+                data-return-button="evidence"
                 data-mock-action="Additional evidence requested for {{ $case['id'] }}."
             >
                 <i data-lucide="file-search"></i>
                 Request Evidence
+            </button>
+
+
+            <button
+                type="button"
+                class="button button-secondary"
+                data-return-state-indicator
+                hidden
+                disabled
+            >
+                <i data-lucide="circle-check"></i>
+
+                <span data-return-state-label>
+                    Status updated
+                </span>
             </button>
 
         </div>

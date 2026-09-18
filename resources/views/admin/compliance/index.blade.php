@@ -6,7 +6,16 @@
     @section('content')
     <section class="page-hero">
         <div><span class="eyebrow">Compliance & Disputes</span><h1>Monitor seller compliance</h1><p>Verify whether products belong to registered seller categories, review flagged listings, and simulate warnings or suspensions.</p></div>
-        <div class="hero-summary-card hero-summary-danger"><span class="metric-icon"><i data-lucide="shield-alert"></i></span><div><strong data-compliance-flag-count>{{ count($flagged) }}</strong><small>Flagged items require review</small></div></div>
+        <div class="hero-context-stat">
+            <span class="hero-context-icon">
+                <i data-lucide="shield-alert"></i>
+            </span>
+
+            <div>
+                <strong data-compliance-flag-count>{{ count($flagged) }}</strong>
+                <span>Flagged items require review</span>
+            </div>
+        </div>
     </section>
 
     <section class="dashboard-grid dashboard-grid-main compliance-grid">
@@ -25,10 +34,47 @@
                             data-search="{{ strtolower($audit['product'].' '.$audit['seller'].' '.$audit['id']) }}"
                             data-compliance-product="{{ $audit['product'] }}"
                         >
-                            <td><strong>{{ $audit['product'] }}</strong><small class="table-subtext">{{ $audit['id'] }}</small></td>
-                            <td>{{ $audit['seller'] }}</td><td>{{ $audit['registered'] }}</td><td>{{ $audit['listed'] }}</td>
-                            <td><span class="risk-badge risk-{{ strtolower($audit['risk']) }}">{{ $audit['risk'] }}</span></td>
-                            <td><span class="status-badge js-compliance-status {{ $audit['status'] === 'Compliant' ? 'badge-success' : ($audit['status'] === 'Flagged' ? 'badge-danger' : 'badge-warning') }}">{{ $audit['status'] }}</span></td>
+
+                            <td>
+                                <div class="table-primary-secondary">
+                                    <strong>{{ $audit['product'] }}</strong>
+                                    <small>{{ $audit['id'] }}</small>
+                                </div>
+                            </td>
+
+                            <td>
+                                {{ $audit['seller'] }}
+                            </td>
+
+                            <td>
+                                {{ $audit['registered'] }}
+                            </td>
+
+                            <td>
+                                {{ $audit['listed'] }}
+                            </td>
+
+                            <td>
+                                <span class="risk-badge risk-{{ strtolower($audit['risk']) }}">
+                                    {{ $audit['risk'] }}
+                                </span>
+                            </td>
+
+                            <td>
+                                <span
+                                    class="status-badge js-compliance-status
+                                    {{
+                                        $audit['status'] === 'Compliant'
+                                            ? 'badge-success'
+                                            : ($audit['status'] === 'Flagged'
+                                                ? 'badge-danger'
+                                                : 'badge-warning')
+                                    }}"
+                                >
+                                    {{ $audit['status'] }}
+                                </span>
+                            </td>
+
                         </tr>
                     @endforeach
                     </tbody>
@@ -38,9 +84,24 @@
         </article>
 
         <aside class="panel flagged-panel">
-            <div class="panel-heading"><div><span class="eyebrow">Manual review</span><h2>Flagged items</h2></div><span class="status-badge badge-danger">High priority</span></div>
+
+            <div class="panel-heading">
+
+                <div>
+                    <span class="eyebrow">Manual review</span>
+                    <h2>Flagged items</h2>
+                </div>
+
+                <span class="status-badge badge-neutral">
+                    {{ count($flagged) }} items
+                </span>
+
+            </div>
+
             <div class="flagged-list">
+
                 @foreach ($flagged as $item)
+
                     <button
                         type="button"
                         class="flag-card"
@@ -53,12 +114,33 @@
                         data-flag-risk="{{ $item['risk'] }}"
                         data-flag-warnings="{{ $item['warnings'] }}"
                     >
-                        <span class="flag-icon"><i data-lucide="triangle-alert"></i></span>
-                        <span class="flag-copy"><strong>{{ $item['product'] }}</strong><small>{{ $item['seller'] }} • {{ $item['id'] }}</small><em>{{ $item['reason'] }}</em></span>
-                        <span class="risk-badge risk-{{ strtolower($item['risk']) }}">{{ $item['risk'] }}</span>
+
+                        <span class="flag-icon">
+                            <i data-lucide="triangle-alert"></i>
+                        </span>
+
+                        <span class="flag-copy">
+                            <strong>{{ $item['product'] }}</strong>
+
+                            <small>
+                                {{ $item['seller'] }} • {{ $item['id'] }}
+                            </small>
+
+                            <em>
+                                {{ $item['reason'] }}
+                            </em>
+                        </span>
+
+                        <span class="risk-badge risk-{{ strtolower($item['risk']) }}">
+                            {{ $item['risk'] }}
+                        </span>
+
                     </button>
+
                 @endforeach
+
             </div>
+
         </aside>
     </section>
 

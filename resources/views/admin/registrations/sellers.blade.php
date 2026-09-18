@@ -17,14 +17,14 @@
         </p>
     </div>
 
-    <div class="hero-summary-card">
-        <span class="metric-icon">
+    <div class="hero-context-stat">
+        <span class="hero-context-icon">
             <i data-lucide="store"></i>
         </span>
 
         <div>
             <strong>{{ count($applications) }}</strong>
-            <small>Seller applications</small>
+            <span>Seller applications</span>
         </div>
     </div>
 </section>
@@ -152,14 +152,15 @@
 
 
                         <td>
-                            <strong>{{ $application['business_name'] }}</strong>
+                            <div class="table-primary-secondary">
+                                <strong>{{ $application['business_name'] }}</strong>
 
-                            <small>
-                                {{ $application['municipality'] }},
-                                {{ $application['province'] }}
-                            </small>
+                                <small>
+                                    {{ $application['municipality'] }},
+                                    {{ $application['province'] }}
+                                </small>
+                            </div>
                         </td>
-
 
                         <td>
                             {{ $application['business_category'] }}
@@ -167,8 +168,10 @@
 
 
                         <td>
-                            <strong>{{ $application['contact'] }}</strong>
-                            <small>Age {{ $application['age'] }}</small>
+                            <div class="table-primary-secondary">
+                                <strong>{{ $application['contact'] }}</strong>
+                                <small>Age {{ $application['age'] }}</small>
+                            </div>
                         </td>
 
 
@@ -339,14 +342,11 @@
                     }}
                 </span>
 
+                <h3>{{ $application['business_name'] }}</h3>
 
-                <h3>
-                    {{ $application['name'] }}
-                </h3>
+                <p>{{ $application['name'] }}</p>
 
-                <p>
-                    {{ $application['email'] }}
-                </p>
+                <small>{{ $application['email'] }}</small>
 
                 <span class="role-badge role-seller">
                     Seller
@@ -411,7 +411,6 @@
                     Business information
                 </h3>
 
-
                 <div class="detail-grid">
 
                     <div>
@@ -423,6 +422,19 @@
                         <span>Line of business</span>
                         <strong>{{ $application['business_category'] }}</strong>
                     </div>
+
+                    <div>
+                        <span>Application submitted</span>
+                        <strong>{{ $application['submitted'] }}</strong>
+                    </div>
+
+                </div>
+
+                <h3 class="section-subtitle">
+                    Business address
+                </h3>
+
+                <div class="detail-grid">
 
                     <div>
                         <span>Province</span>
@@ -447,11 +459,6 @@
                     <div>
                         <span>House number</span>
                         <strong>{{ $application['house_number'] }}</strong>
-                    </div>
-
-                    <div>
-                        <span>Application submitted</span>
-                        <strong>{{ $application['submitted'] }}</strong>
                     </div>
 
                 </div>

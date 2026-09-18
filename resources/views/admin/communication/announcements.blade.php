@@ -9,6 +9,7 @@
 
     <div>
         <span class="eyebrow">Communication</span>
+
         <h1>Platform announcements</h1>
 
         <p>
@@ -18,15 +19,22 @@
     </div>
 
 
-    <div class="hero-summary-card">
-        <span class="metric-icon">
+    <div class="hero-context-stat">
+
+        <span class="hero-context-icon">
             <i data-lucide="megaphone"></i>
         </span>
 
         <div>
-            <strong>{{ count($announcements) }}</strong>
-            <small>Announcement records</small>
+            <strong>
+                {{ count($announcements) }}
+            </strong>
+
+            <span>
+                Announcement records
+            </span>
         </div>
+
     </div>
 
 </section>
@@ -37,8 +45,13 @@
     <div class="panel-heading panel-heading-wrap">
 
         <div>
-            <span class="eyebrow">Announcement management</span>
-            <h2>Published & scheduled notices</h2>
+            <span class="eyebrow">
+                Announcement management
+            </span>
+
+            <h2>
+                Announcement records
+            </h2>
         </div>
 
 
@@ -60,12 +73,29 @@
                 data-table-filter="announcements-table"
                 data-filter-key="audience"
             >
-                <option value="">All audiences</option>
-                <option value="All Users">All Users</option>
-                <option value="Buyers">Buyers</option>
-                <option value="Sellers">Sellers</option>
-                <option value="Logistics Centers">Logistics Centers</option>
-                <option value="Riders">Riders</option>
+                <option value="">
+                    All audiences
+                </option>
+
+                <option value="All Users">
+                    All Users
+                </option>
+
+                <option value="Buyers">
+                    Buyers
+                </option>
+
+                <option value="Sellers">
+                    Sellers
+                </option>
+
+                <option value="Logistics Centers">
+                    Logistics Centers
+                </option>
+
+                <option value="Riders">
+                    Riders
+                </option>
             </select>
 
 
@@ -74,10 +104,25 @@
                 data-table-filter="announcements-table"
                 data-filter-key="status"
             >
-                <option value="">All statuses</option>
-                <option value="Published">Published</option>
-                <option value="Scheduled">Scheduled</option>
-                <option value="Draft">Draft</option>
+                <option value="">
+                    All statuses
+                </option>
+
+                <option value="Published">
+                    Published
+                </option>
+
+                <option value="Scheduled">
+                    Scheduled
+                </option>
+
+                <option value="Draft">
+                    Draft
+                </option>
+
+                <option value="Archived">
+                    Archived
+                </option>
             </select>
 
 
@@ -97,7 +142,10 @@
 
     <div class="table-wrap">
 
-        <table class="admin-table" id="announcements-table">
+        <table
+            class="admin-table"
+            id="announcements-table"
+        >
 
             <thead>
                 <tr>
@@ -106,7 +154,10 @@
                     <th>Author</th>
                     <th>Publish Date</th>
                     <th>Status</th>
-                    <th class="align-right">Actions</th>
+
+                    <th class="align-right">
+                        Actions
+                    </th>
                 </tr>
             </thead>
 
@@ -139,12 +190,16 @@
                                 </span>
 
 
-                                <div>
-                                    <strong>{{ $announcement['title'] }}</strong>
+                                <div class="table-primary-secondary">
+
+                                    <strong>
+                                        {{ $announcement['title'] }}
+                                    </strong>
 
                                     <small>
                                         {{ $announcement['id'] }}
                                     </small>
+
                                 </div>
 
                             </div>
@@ -164,11 +219,19 @@
 
                         <td>
 
-                            <strong>{{ $announcement['publish_date'] }}</strong>
+                            <div class="table-primary-secondary">
 
-                            @if ($announcement['publish_time'] !== '—')
-                                <small>{{ $announcement['publish_time'] }}</small>
-                            @endif
+                                <strong>
+                                    {{ $announcement['publish_date'] }}
+                                </strong>
+
+                                @if ($announcement['publish_time'] !== '—')
+                                    <small>
+                                        {{ $announcement['publish_time'] }}
+                                    </small>
+                                @endif
+
+                            </div>
 
                         </td>
 
@@ -182,7 +245,9 @@
                                         ? 'badge-success'
                                         : ($announcement['status'] === 'Scheduled'
                                             ? 'badge-warning'
-                                            : '')
+                                            : ($announcement['status'] === 'Archived'
+                                                ? 'badge-neutral'
+                                                : 'badge-info'))
                                 }}"
                             >
                                 {{ $announcement['status'] }}
@@ -219,8 +284,14 @@
             hidden
         >
             <i data-lucide="search-x"></i>
-            <strong>No announcements found</strong>
-            <span>Try another search or filter.</span>
+
+            <strong>
+                No announcements found
+            </strong>
+
+            <span>
+                No announcement records match the current search or filters.
+            </span>
         </div>
 
     </div>
@@ -228,11 +299,14 @@
 </section>
 
 
+{{-- Existing announcement review modals --}}
 @foreach ($announcements as $announcement)
 
 <div
     class="modal-shell"
     data-modal="announcement-{{ $loop->index }}"
+    data-announcement-modal
+    data-announcement-id="{{ $announcement['id'] }}"
     hidden
 >
 
@@ -240,6 +314,7 @@
         type="button"
         class="modal-backdrop"
         data-close-modal
+        aria-label="Close announcement"
     ></button>
 
 
@@ -247,13 +322,24 @@
         class="modal-card modal-wide"
         role="dialog"
         aria-modal="true"
+        aria-labelledby="announcement-title-{{ $loop->index }}"
     >
 
         <div class="modal-heading">
 
             <div>
-                <span class="eyebrow">{{ $announcement['id'] }}</span>
-                <h2>{{ $announcement['title'] }}</h2>
+
+                <span class="eyebrow">
+                    {{ $announcement['id'] }}
+                </span>
+
+                <h2
+                    id="announcement-title-{{ $loop->index }}"
+                    data-announcement-title
+                >
+                    {{ $announcement['title'] }}
+                </h2>
+
             </div>
 
 
@@ -261,6 +347,7 @@
                 type="button"
                 class="icon-button"
                 data-close-modal
+                aria-label="Close"
             >
                 <i data-lucide="x"></i>
             </button>
@@ -279,62 +366,86 @@
 
                 <div>
                     <span>Audience</span>
-                    <strong>{{ $announcement['audience'] }}</strong>
+
+                    <strong data-announcement-audience>
+                        {{ $announcement['audience'] }}
+                    </strong>
                 </div>
+
 
                 <div>
                     <span>Status</span>
-                    <strong>{{ $announcement['status'] }}</strong>
+
+                    <strong data-announcement-status>
+                        {{ $announcement['status'] }}
+                    </strong>
                 </div>
+
 
                 <div>
                     <span>Author</span>
-                    <strong>{{ $announcement['author'] }}</strong>
+
+                    <strong data-announcement-author>
+                        {{ $announcement['author'] }}
+                    </strong>
                 </div>
+
 
                 <div>
                     <span>Publish date</span>
-                    <strong>{{ $announcement['publish_date'] }}</strong>
+
+                    <strong data-announcement-date>
+                        {{ $announcement['publish_date'] }}
+                    </strong>
                 </div>
+
 
                 <div>
                     <span>Publish time</span>
-                    <strong>{{ $announcement['publish_time'] }}</strong>
+
+                    <strong data-announcement-time>
+                        {{ $announcement['publish_time'] }}
+                    </strong>
                 </div>
 
             </div>
 
 
             <div class="detail-note">
-                <span>Announcement message</span>
 
-                <p>
+                <span>
+                    Announcement message
+                </span>
+
+                <p data-announcement-message>
                     {{ $announcement['message'] }}
                 </p>
+
             </div>
 
         </div>
 
 
-        <div class="modal-footer decision-footer">
+        <div
+            class="modal-footer decision-footer"
+            data-announcement-actions
+        >
 
-            @if ($announcement['status'] !== 'Published')
-
-                <button
-                    type="button"
-                    class="button button-secondary"
-                    data-mock-action="{{ $announcement['title'] }} published."
-                >
-                    <i data-lucide="send"></i>
-                    Publish Now
-                </button>
-
-            @endif
+            <button
+                type="button"
+                class="button button-primary"
+                data-announcement-action="publish"
+                data-mock-action="{{ $announcement['title'] }} published."
+            >
+                <i data-lucide="send"></i>
+                Publish Now
+            </button>
 
 
             <button
                 type="button"
-                class="button button-ghost"
+                class="button button-secondary"
+                data-announcement-action="edit"
                 data-mock-action="{{ $announcement['title'] }} opened for editing."
             >
                 <i data-lucide="pencil"></i>
@@ -345,10 +456,26 @@
             <button
                 type="button"
                 class="button button-danger-soft"
+                data-announcement-action="archive"
                 data-mock-action="{{ $announcement['title'] }} archived."
             >
                 <i data-lucide="archive"></i>
                 Archive
+            </button>
+
+
+            <button
+                type="button"
+                class="button button-secondary"
+                data-announcement-state-indicator
+                hidden
+                disabled
+            >
+                <i data-lucide="circle-check"></i>
+
+                <span data-announcement-state-label>
+                    Status updated
+                </span>
             </button>
 
         </div>
@@ -360,7 +487,7 @@
 @endforeach
 
 
-
+{{-- Create / edit announcement modal --}}
 <div
     class="modal-shell"
     data-modal="create-announcement"
@@ -371,6 +498,7 @@
         type="button"
         class="modal-backdrop"
         data-close-modal
+        aria-label="Close announcement editor"
     ></button>
 
 
@@ -378,13 +506,21 @@
         class="modal-card modal-wide"
         role="dialog"
         aria-modal="true"
+        aria-labelledby="announcement-editor-title"
     >
 
         <div class="modal-heading">
 
             <div>
-                <span class="eyebrow">Communication</span>
-                <h2>Create announcement</h2>
+
+                <span class="eyebrow">
+                    Communication
+                </span>
+
+                <h2 id="announcement-editor-title">
+                    Create announcement
+                </h2>
+
             </div>
 
 
@@ -392,6 +528,7 @@
                 type="button"
                 class="icon-button"
                 data-close-modal
+                aria-label="Close"
             >
                 <i data-lucide="x"></i>
             </button>
@@ -404,7 +541,10 @@
             <div class="form-grid two-column-form">
 
                 <label class="form-field">
-                    <span>Announcement title</span>
+
+                    <span>
+                        Announcement title
+                    </span>
 
                     <input
                         type="text"
@@ -412,51 +552,81 @@
                         data-record-field="title"
                         placeholder="Enter announcement title"
                     >
+
                 </label>
 
 
                 <label class="form-field">
-                    <span>Audience</span>
+
+                    <span>
+                        Audience
+                    </span>
 
                     <select
                         class="select-field"
                         data-record-field="audience"
                     >
-                        <option>All Users</option>
-                        <option>Buyers</option>
-                        <option>Sellers</option>
-                        <option>Logistics Centers</option>
-                        <option>Riders</option>
+                        <option value="All Users">
+                            All Users
+                        </option>
+
+                        <option value="Buyers">
+                            Buyers
+                        </option>
+
+                        <option value="Sellers">
+                            Sellers
+                        </option>
+
+                        <option value="Logistics Centers">
+                            Logistics Centers
+                        </option>
+
+                        <option value="Riders">
+                            Riders
+                        </option>
                     </select>
+
                 </label>
 
 
                 <label class="form-field">
-                    <span>Publish date</span>
+
+                    <span>
+                        Publish date
+                    </span>
 
                     <input
                         type="date"
                         class="text-field"
                         data-record-field="date"
                     >
+
                 </label>
 
 
                 <label class="form-field">
-                    <span>Publish time</span>
+
+                    <span>
+                        Publish time
+                    </span>
 
                     <input
                         type="time"
                         class="text-field"
                         data-record-field="time"
                     >
+
                 </label>
 
             </div>
 
 
             <label class="form-field announcement-message-field">
-                <span>Announcement message</span>
+
+                <span>
+                    Announcement message
+                </span>
 
                 <textarea
                     class="text-field"
@@ -464,6 +634,7 @@
                     data-record-field="message"
                     placeholder="Write the announcement..."
                 ></textarea>
+
             </label>
 
         </div>

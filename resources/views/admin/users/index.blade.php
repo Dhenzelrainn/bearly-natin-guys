@@ -44,11 +44,71 @@
                         <td><span class="role-badge role-{{ strtolower($user['role']) }}">{{ $user['role'] }}</span></td>
                         <td>{{ $user['joined'] }}</td>
                         <td><span class="status-badge js-status-badge {{ $user['status'] === 'Active' ? 'badge-success' : ($user['status'] === 'Suspended' ? 'badge-danger' : 'badge-neutral') }}">{{ $user['status'] }}</span></td>
-                        <td class="align-right"><div class="row-actions account-action-group" data-account-actions>
-                            <button type="button" class="action-chip action-activate" data-user-status="Active">Activate</button>
-                            <button type="button" class="action-chip action-suspend" data-user-status="Suspended">Suspend</button>
-                            <button type="button" class="action-chip action-deactivate" data-user-status="Deactivated">Deactivate</button>
-                        </div></td>
+                        <td class="align-right">
+
+                            <div class="row-actions account-action-group" data-account-actions>
+
+                                {{-- Dynamic primary action --}}
+                                <button
+                                    type="button"
+                                    class="button button-ghost button-small"
+                                    data-user-primary-action
+                                >
+                                    <i data-lucide="pause-circle"></i>
+                                    <span>Suspend</span>
+                                </button>
+
+
+                                {{-- More actions --}}
+                                <button
+                                    type="button"
+                                    class="icon-button table-more"
+                                    data-registration-menu-toggle="user-menu-{{ $loop->index }}"
+                                    aria-label="More account actions for {{ $user['name'] }}"
+                                    aria-expanded="false"
+                                >
+                                    <i data-lucide="ellipsis"></i>
+                                </button>
+
+
+                                <div
+                                    class="registration-action-menu user-account-menu"
+                                    data-registration-menu="user-menu-{{ $loop->index }}"
+                                    hidden
+                                >
+
+                                    <button
+                                        type="button"
+                                        data-user-status="Active"
+                                        data-user-menu-action="Active"
+                                    >
+                                        <i data-lucide="circle-check-big"></i>
+                                        <span>Activate account</span>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        data-user-status="Suspended"
+                                        data-user-menu-action="Suspended"
+                                    >
+                                        <i data-lucide="pause-circle"></i>
+                                        <span>Suspend account</span>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        data-user-status="Deactivated"
+                                        data-user-menu-action="Deactivated"
+                                    >
+                                        <i data-lucide="user-x"></i>
+                                        <span>Deactivate account</span>
+                                    </button>
+
+                                </div>
+
+                            </div>
+
+                        </td>
                     </tr>
                 @endforeach
                 </tbody>

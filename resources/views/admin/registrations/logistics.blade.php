@@ -19,17 +19,15 @@
     </div>
 
 
-    <div class="hero-summary-card">
-
-        <span class="metric-icon">
+    <div class="hero-context-stat">
+        <span class="hero-context-icon">
             <i data-lucide="warehouse"></i>
         </span>
 
         <div>
             <strong>{{ count($applications) }}</strong>
-            <small>Logistics applications</small>
+            <span>Logistics applications</span>
         </div>
-
     </div>
 
 </section>
@@ -153,41 +151,26 @@
 
 
                         <td>
-
-                            <strong>
-                                {{ $application['business_name'] }}
-                            </strong>
-
-                            <small>
-                                Sorting Center / Logistics
-                            </small>
-
+                            <div class="table-primary-secondary">
+                                <strong>{{ $application['business_name'] }}</strong>
+                                <small>Sorting Center / Logistics</small>
+                            </div>
                         </td>
 
 
                         <td>
-
-                            <strong>
-                                {{ $application['municipality'] }}
-                            </strong>
-
-                            <small>
-                                {{ $application['province'] }}
-                            </small>
-
+                            <div class="table-primary-secondary">
+                                <strong>{{ $application['municipality'] }}</strong>
+                                <small>{{ $application['province'] }}</small>
+                            </div>
                         </td>
 
 
                         <td>
-
-                            <strong>
-                                {{ $application['contact'] }}
-                            </strong>
-
-                            <small>
-                                Age {{ $application['age'] }}
-                            </small>
-
+                            <div class="table-primary-secondary">
+                                <strong>{{ $application['contact'] }}</strong>
+                                <small>Age {{ $application['age'] }}</small>
+                            </div>
                         </td>
 
 
@@ -358,16 +341,11 @@
                     }}
                 </span>
 
+                <h3>{{ $application['business_name'] }}</h3>
 
-                <h3>
-                    {{ $application['name'] }}
-                </h3>
+                <p>{{ $application['name'] }}</p>
 
-
-                <p>
-                    {{ $application['email'] }}
-                </p>
-
+                <small>{{ $application['email'] }}</small>
 
                 <span class="role-badge">
                     Logistics Center
@@ -432,13 +410,25 @@
                     Logistics center information
                 </h3>
 
-
                 <div class="detail-grid">
 
                     <div>
-                        <span>Business name</span>
+                        <span>Center / business name</span>
                         <strong>{{ $application['business_name'] }}</strong>
                     </div>
+
+                    <div>
+                        <span>Application submitted</span>
+                        <strong>{{ $application['submitted'] }}</strong>
+                    </div>
+
+                </div>
+
+                <h3 class="section-subtitle">
+                    Center address
+                </h3>
+
+                <div class="detail-grid">
 
                     <div>
                         <span>Province</span>
@@ -461,13 +451,8 @@
                     </div>
 
                     <div>
-                        <span>House number</span>
+                        <span>House / Building number</span>
                         <strong>{{ $application['house_number'] }}</strong>
-                    </div>
-
-                    <div>
-                        <span>Application submitted</span>
-                        <strong>{{ $application['submitted'] }}</strong>
                     </div>
 
                 </div>

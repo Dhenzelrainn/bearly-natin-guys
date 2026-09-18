@@ -18,14 +18,14 @@
     </div>
 
 
-    <div class="hero-summary-card">
-        <span class="metric-icon">
+    <div class="hero-context-stat">
+        <span class="hero-context-icon">
             <i data-lucide="warehouse"></i>
         </span>
 
         <div>
             <strong>{{ count($users) }}</strong>
-            <small>Logistics Centers</small>
+            <span>Logistics Centers</span>
         </div>
     </div>
 
@@ -94,6 +94,7 @@
 
                     <tr
                         data-table-row
+                        data-user-id="{{ $user['id'] }}"
                         data-status="{{ $user['status'] }}"
                         data-search="{{
                             strtolower(
@@ -148,8 +149,10 @@
 
 
                         <td>
-                            <strong>{{ $user['riders'] }}</strong>
-                            <small>Assigned riders</small>
+                            <div class="table-primary-secondary">
+                                <strong>{{ $user['riders'] }}</strong>
+                                <small>Assigned riders</small>
+                            </div>
                         </td>
 
 
@@ -166,8 +169,8 @@
                                     $user['status'] === 'Active'
                                         ? 'badge-success'
                                         : ($user['status'] === 'Suspended'
-                                            ? 'badge-warning'
-                                            : 'badge-danger')
+                                            ? 'badge-danger'
+                                            : 'badge-neutral')
                                 }}"
                             >
                                 {{ $user['status'] }}
@@ -258,7 +261,12 @@
             <div class="review-profile">
 
                 <span class="avatar avatar-large avatar-warm">
-                    LC
+                    {{
+                        collect(explode(' ', $user['name']))
+                            ->map(fn($part) => strtoupper(substr($part, 0, 1)))
+                            ->take(2)
+                            ->implode('')
+                    }}
                 </span>
 
                 <h3>{{ $user['name'] }}</h3>
@@ -323,31 +331,36 @@
         </div>
 
 
-        <div class="modal-footer decision-footer">
+        <div
+            class="modal-footer decision-footer user-profile-actions"
+            data-user-modal-actions
+            data-user-id="{{ $user['id'] }}"
+        >
 
             <button
                 type="button"
-                class="button button-secondary"
+                class="button button-primary"
+                data-modal-user-status="Active"
                 data-mock-action="{{ $user['name'] }} account activated."
             >
                 <i data-lucide="circle-check"></i>
                 Activate
             </button>
 
-
             <button
                 type="button"
                 class="button button-danger-soft"
+                data-modal-user-status="Suspended"
                 data-mock-action="{{ $user['name'] }} account suspended."
             >
                 <i data-lucide="pause-circle"></i>
                 Suspend
             </button>
 
-
             <button
                 type="button"
                 class="button button-danger"
+                data-modal-user-status="Deactivated"
                 data-mock-action="{{ $user['name'] }} account deactivated."
             >
                 <i data-lucide="building-x"></i>

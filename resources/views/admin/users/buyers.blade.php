@@ -15,14 +15,14 @@
         </p>
     </div>
 
-    <div class="hero-summary-card">
-        <span class="metric-icon">
+    <div class="hero-context-stat">
+        <span class="hero-context-icon">
             <i data-lucide="users"></i>
         </span>
 
         <div>
             <strong>{{ count($users) }}</strong>
-            <small>Buyer accounts</small>
+            <span>Buyer accounts</span>
         </div>
     </div>
 </section>
@@ -90,6 +90,7 @@
 
                     <tr
                         data-table-row
+                        data-user-id="{{ $user['id'] }}"
                         data-status="{{ $user['status'] }}"
                         data-search="{{
                             strtolower(
@@ -141,8 +142,10 @@
 
 
                         <td>
-                            <strong>{{ $user['orders'] }}</strong>
-                            <small>Total orders</small>
+                            <div class="table-primary-secondary">
+                                <strong>{{ $user['orders'] }}</strong>
+                                <small>Total orders</small>
+                            </div>
                         </td>
 
 
@@ -314,11 +317,16 @@
         </div>
 
 
-        <div class="modal-footer decision-footer">
+        <div
+            class="modal-footer decision-footer user-profile-actions"
+            data-user-modal-actions
+            data-user-id="{{ $user['id'] }}"
+        >
 
             <button
                 type="button"
-                class="button button-secondary"
+                class="button button-primary"
+                data-modal-user-status="Active"
                 data-mock-action="{{ $user['name'] }} account activated."
             >
                 <i data-lucide="circle-check"></i>
@@ -328,6 +336,7 @@
             <button
                 type="button"
                 class="button button-danger-soft"
+                data-modal-user-status="Suspended"
                 data-mock-action="{{ $user['name'] }} account suspended."
             >
                 <i data-lucide="pause-circle"></i>
@@ -337,6 +346,7 @@
             <button
                 type="button"
                 class="button button-danger"
+                data-modal-user-status="Deactivated"
                 data-mock-action="{{ $user['name'] }} account deactivated."
             >
                 <i data-lucide="user-x"></i>

@@ -111,6 +111,7 @@
         };
 
         document.querySelectorAll('[data-mock-action]').forEach((element) => {
+
             element.addEventListener('click', (event) => {
                 if (element.dataset.functionalAction) return;
                 if (element.tagName === 'A') event.preventDefault();
@@ -1221,13 +1222,198 @@
                 return {};
             }
         })();
+
+        const syncUserProfileModalActions = (userId, status) => {
+            if (!userId) return;
+
+            document
+                .querySelectorAll(
+                    `[data-user-modal-actions][data-user-id="${userId}"]`
+                )
+                .forEach((actions) => {
+
+                    actions
+                        .querySelectorAll('[data-modal-user-status]')
+                        .forEach((button) => {
+
+                            const targetStatus =
+                                button.dataset.modalUserStatus;
+
+                            if (status === 'Active') {
+                                button.hidden =
+                                    targetStatus === 'Active';
+                            }
+
+                            else if (status === 'Suspended') {
+                                button.hidden =
+                                    targetStatus === 'Suspended';
+                            }
+
+                            else if (status === 'Deactivated') {
+                                button.hidden =
+                                    targetStatus !== 'Active';
+                            }
+
+                        });
+
+                });
+        };
+
+
+        const syncUserAccountControls = (row, status) => {
+            if (!row) return;
+
+            const primaryButton =
+                row.querySelector('[data-user-primary-action]');
+
+            const primaryIcon =
+                primaryButton?.querySelector('i');
+
+            const primaryLabel =
+                primaryButton?.querySelector('span');
+
+
+            if (primaryButton) {
+
+                if (status === 'Active') {
+
+                    primaryButton.dataset.userStatus =
+                        'Suspended';
+
+                    if (primaryIcon) {
+                        primaryIcon.setAttribute(
+                            'data-lucide',
+                            'pause-circle'
+                        );
+                    }
+
+                    if (primaryLabel) {
+                        primaryLabel.textContent =
+                            'Suspend';
+                    }
+
+                }
+
+                else {
+
+                    primaryButton.dataset.userStatus =
+                        'Active';
+
+                    if (primaryIcon) {
+                        primaryIcon.setAttribute(
+                            'data-lucide',
+                            'circle-check-big'
+                        );
+                    }
+
+                    if (primaryLabel) {
+                        primaryLabel.textContent =
+                            'Activate';
+                    }
+
+                }
+
+            }
+
+
+            row
+                .querySelectorAll('[data-user-menu-action]')
+                .forEach((button) => {
+
+                    const targetStatus =
+                        button.dataset.userMenuAction;
+
+                    const primaryTarget =
+                        primaryButton?.dataset.userStatus || '';
+
+                    button.hidden =
+                        targetStatus === status ||
+                        targetStatus === primaryTarget;
+
+                });
+
+
+            refreshIcons();
+        };
+
+
         const applyUserStatus = (row, status) => {
             const badge = row?.querySelector('.js-status-badge, .status-badge');
+
             if (!row || !badge) return;
+
             row.dataset.status = status;
+
             badge.textContent = status;
-            badge.className = 'status-badge js-status-badge ' + (status === 'Active' ? 'badge-success' : status === 'Suspended' ? 'badge-danger' : 'badge-neutral');
+
+            badge.className =
+                'status-badge js-status-badge ' +
+                (
+                    status === 'Active'
+                        ? 'badge-success'
+                        : status === 'Suspended'
+                            ? 'badge-danger'
+                            : 'badge-neutral'
+                );
+
+            syncUserAccountControls(row, status);
+
+            if (row.dataset.userId) {
+                syncUserProfileModalActions(
+                    row.dataset.userId,
+                    status
+                );
+            }
         };
+
+        document
+            .querySelectorAll('[data-modal-user-status]')
+            .forEach((button) => {
+
+                button.dataset.functionalAction = 'user-status';
+
+                button.addEventListener('click', () => {
+
+                    const modal = button.closest('[data-modal]');
+                    const userId =
+                        modal
+                            ?.querySelector('.eyebrow')
+                            ?.textContent
+                            .trim();
+
+                    if (!userId) return;
+
+                    const status =
+                        button.dataset.modalUserStatus;
+
+                    const row = document.querySelector(
+                        `tr[data-user-id="${userId}"]`
+                    );
+
+                    if (row) {
+                        applyUserStatus(row, status);
+                    }
+
+                    updateUserProfileModal(
+                        userId,
+                        status
+                    );
+
+                    userStatuses[userId] = status;
+
+                    localStorage.setItem(
+                        USER_STATUS_STORAGE_KEY,
+                        JSON.stringify(userStatuses)
+                    );
+
+                    showToast(
+                        `${userId} changed to ${status}.`,
+                        'Account status saved'
+                    );
+                });
+
+            });
+
         const updateUserProfileModal = (userId, status) => {
             document.querySelectorAll('[data-modal]').forEach((modal) => {
                 if (modal.querySelector('.eyebrow')?.textContent.trim() !== userId) return;
@@ -1241,7 +1427,14 @@
 
         document.querySelectorAll('tr[data-user-id]').forEach((row) => {
             const savedStatus = userStatuses[row.dataset.userId];
-            if (savedStatus) applyUserStatus(row, savedStatus);
+
+            const initialStatus =
+                savedStatus ||
+                row.dataset.status ||
+                row.querySelector('.js-status-badge')?.textContent.trim() ||
+                'Active';
+
+            applyUserStatus(row, initialStatus);
         });
         Object.entries(userStatuses).forEach(([userId, status]) => {
             const row = [...document.querySelectorAll('tr[data-table-row]')]
@@ -1255,38 +1448,488 @@
 
         document.querySelectorAll('[data-user-status]').forEach((button) => {
             button.addEventListener('click', () => {
-                const row = button.closest('tr');
+                const row = button.closest('tr[data-user-id]');
+
                 if (!row) return;
+
                 const status = button.dataset.userStatus;
+
+                if (!status) return;
+
                 applyUserStatus(row, status);
+
                 if (row.dataset.userId) {
                     userStatuses[row.dataset.userId] = status;
-                    localStorage.setItem(USER_STATUS_STORAGE_KEY, JSON.stringify(userStatuses));
+
+                    localStorage.setItem(
+                        USER_STATUS_STORAGE_KEY,
+                        JSON.stringify(userStatuses)
+                    );
                 }
-                showToast(`Account status changed to ${status}.`, 'Account status saved');
+
+                closeRegistrationMenus();
+
+                showToast(
+                    `Account status changed to ${status}.`,
+                    'Account status saved'
+                );
             });
         });
 
-        document.querySelectorAll('[data-mock-action]').forEach((button) => {
-            const action = button.dataset.mockAction.toLowerCase();
-            if (!action.includes('account activated') && !action.includes('account suspended') && !action.includes('account deactivated')) return;
-            button.dataset.functionalAction = 'user-status';
-            button.addEventListener('click', () => {
-                const userId = button.closest('[data-modal]')?.querySelector('.eyebrow')?.textContent.trim();
-                if (!userId) return;
-                const status = action.includes('deactivated') ? 'Deactivated' : action.includes('suspended') ? 'Suspended' : 'Active';
-                const row = [...document.querySelectorAll('tr[data-table-row]')]
-                    .find((item) => (item.dataset.search || '').includes(userId.toLowerCase()));
-                if (row) {
-                    row.dataset.userId = userId;
-                    applyUserStatus(row, status);
-                }
-                updateUserProfileModal(userId, status);
-                userStatuses[userId] = status;
-                localStorage.setItem(USER_STATUS_STORAGE_KEY, JSON.stringify(userStatuses));
-                showToast(`${userId} changed to ${status}.`, 'Account status saved');
+        document
+            .querySelectorAll(
+                '[data-mock-action]:not([data-modal-user-status])'
+            )
+            .forEach((button) => {
+
+                const action =
+                    button.dataset.mockAction.toLowerCase();
+
+                if (
+                    !action.includes('account activated') &&
+                    !action.includes('account suspended') &&
+                    !action.includes('account deactivated')
+                ) return;
+
+                button.dataset.functionalAction =
+                    'user-status';
+
+                button.addEventListener('click', () => {
+
+                    const userId =
+                        button
+                            .closest('[data-modal]')
+                            ?.querySelector('.eyebrow')
+                            ?.textContent
+                            .trim();
+
+                    if (!userId) return;
+
+                    const status =
+                        action.includes('deactivated')
+                            ? 'Deactivated'
+                            : action.includes('suspended')
+                                ? 'Suspended'
+                                : 'Active';
+
+                    const row = [
+                        ...document.querySelectorAll(
+                            'tr[data-table-row]'
+                        )
+                    ].find((item) =>
+                        (item.dataset.search || '')
+                            .includes(userId.toLowerCase())
+                    );
+
+                    if (row) {
+                        row.dataset.userId = userId;
+                        applyUserStatus(row, status);
+                    }
+
+                    updateUserProfileModal(
+                        userId,
+                        status
+                    );
+
+                    userStatuses[userId] = status;
+
+                    localStorage.setItem(
+                        USER_STATUS_STORAGE_KEY,
+                        JSON.stringify(userStatuses)
+                    );
+
+                    showToast(
+                        `${userId} changed to ${status}.`,
+                        'Account status saved'
+                    );
+
+                });
+
             });
-        });
+        
+        // Product violation enforcement state + persistence
+        const VIOLATION_STATE_STORAGE_KEY = 'bearlyAdminViolationStates';
+
+        const violationStates = (() => {
+            try {
+                return JSON.parse(
+                    localStorage.getItem(VIOLATION_STATE_STORAGE_KEY) || '{}'
+                );
+            } catch {
+                return {};
+            }
+        })();
+
+        const saveViolationStates = () => {
+            localStorage.setItem(
+                VIOLATION_STATE_STORAGE_KEY,
+                JSON.stringify(violationStates)
+            );
+        };
+
+        const violationStatusClass = (status) => {
+            if (status === 'Resolved') {
+                return 'badge-success';
+            }
+
+            if (
+                status === 'Escalated' ||
+                status === 'Removal Required'
+            ) {
+                return 'badge-danger';
+            }
+
+            if (status === 'Pending Review') {
+                return 'badge-warning';
+            }
+
+            return 'badge-info';
+        };
+
+        const syncViolationActions = (modal, status) => {
+            if (!modal) return;
+
+            const warningButton = modal.querySelector(
+                '[data-violation-button="warning"]'
+            );
+
+            const removalButton = modal.querySelector(
+                '[data-violation-button="removal"]'
+            );
+
+            const escalateButton = modal.querySelector(
+                '[data-violation-button="escalate"]'
+            );
+
+            const indicator = modal.querySelector(
+                '[data-violation-state-indicator]'
+            );
+
+            const indicatorLabel = modal.querySelector(
+                '[data-violation-state-label]'
+            );
+
+            /*
+            * Default state:
+            * Pending Review / Under Review
+            *
+            * Show all enforcement actions.
+            */
+            if (
+                status === 'Pending Review' ||
+                status === 'Under Review'
+            ) {
+                if (warningButton) warningButton.hidden = false;
+                if (removalButton) removalButton.hidden = false;
+                if (escalateButton) escalateButton.hidden = false;
+
+                if (indicator) indicator.hidden = true;
+
+                return;
+            }
+
+            /*
+            * Removal Required:
+            *
+            * The removal action has already happened,
+            * so only escalation remains available.
+            */
+            if (status === 'Removal Required') {
+                if (warningButton) warningButton.hidden = true;
+                if (removalButton) removalButton.hidden = true;
+                if (escalateButton) escalateButton.hidden = false;
+
+                if (indicator) indicator.hidden = false;
+
+                if (indicatorLabel) {
+                    indicatorLabel.textContent = 'Removal required';
+                }
+
+                return;
+            }
+
+            /*
+            * Escalated:
+            *
+            * No further enforcement actions are shown.
+            */
+            if (status === 'Escalated') {
+                if (warningButton) warningButton.hidden = true;
+                if (removalButton) removalButton.hidden = true;
+                if (escalateButton) escalateButton.hidden = true;
+
+                if (indicator) indicator.hidden = false;
+
+                if (indicatorLabel) {
+                    indicatorLabel.textContent = 'Seller escalated';
+                }
+
+                return;
+            }
+
+            /*
+            * Resolved:
+            *
+            * Record is already complete.
+            */
+            if (status === 'Resolved') {
+                if (warningButton) warningButton.hidden = true;
+                if (removalButton) removalButton.hidden = true;
+                if (escalateButton) escalateButton.hidden = true;
+
+                if (indicator) indicator.hidden = false;
+
+                if (indicatorLabel) {
+                    indicatorLabel.textContent = 'Violation resolved';
+                }
+            }
+        };
+
+        const syncViolationState = (violationId) => {
+            if (!violationId) return;
+
+            const row = document.querySelector(
+                `tr[data-violation-id="${violationId}"]`
+            );
+
+            if (!row) return;
+
+            const saved = violationStates[violationId] || {};
+
+            const status =
+                saved.status ||
+                row.dataset.status ||
+                'Under Review';
+
+            const warnings =
+                saved.warnings !== undefined
+                    ? Number(saved.warnings)
+                    : Number(row.dataset.warnings || 0);
+
+            /*
+            * Keep the row's data attributes updated.
+            * This is important because the reusable filters
+            * read data-status directly.
+            */
+            row.dataset.status = status;
+            row.dataset.warnings = String(warnings);
+
+            /*
+            * Update warning count in the table.
+            */
+            const warningCount = row.querySelector(
+                '[data-violation-warning-count]'
+            );
+
+            if (warningCount) {
+                warningCount.textContent = String(warnings);
+            }
+
+            /*
+            * Update status badge in the table.
+            */
+            const statusBadge = row.querySelector(
+                '.js-violation-status'
+            );
+
+            if (statusBadge) {
+                statusBadge.textContent = status;
+
+                statusBadge.className =
+                    `status-badge js-violation-status ${violationStatusClass(status)}`;
+            }
+
+            /*
+            * Update matching review modal.
+            */
+            const modal = document.querySelector(
+                `[data-violation-modal][data-violation-id="${violationId}"]`
+            );
+
+            if (modal) {
+                const modalWarnings = modal.querySelector(
+                    '[data-modal-violation-warnings]'
+                );
+
+                const modalStatus = modal.querySelector(
+                    '[data-modal-violation-status]'
+                );
+
+                if (modalWarnings) {
+                    modalWarnings.textContent = String(warnings);
+                }
+
+                if (modalStatus) {
+                    modalStatus.textContent = status;
+                }
+
+                syncViolationActions(
+                    modal,
+                    status
+                );
+            }
+
+            /*
+            * Re-run the Product Violations filters after
+            * a status changes.
+            */
+            runTableFilter('violations-table');
+
+            refreshIcons();
+        };
+
+        /*
+        * Initialize Product Violations state.
+        *
+        * If no saved state exists yet, use the values
+        * rendered by Laravel as the starting state.
+        */
+        document
+            .querySelectorAll('tr[data-violation-id]')
+            .forEach((row) => {
+                const violationId = row.dataset.violationId;
+
+                if (!violationId) return;
+
+                if (!violationStates[violationId]) {
+                    violationStates[violationId] = {
+                        status:
+                            row.dataset.status ||
+                            'Under Review',
+
+                        warnings:
+                            Number(row.dataset.warnings || 0),
+                    };
+                }
+
+                syncViolationState(violationId);
+            });
+
+        saveViolationStates();
+
+
+        /*
+        * Product violation enforcement actions
+        */
+        document
+            .querySelectorAll('[data-violation-action]')
+            .forEach((button) => {
+
+                /*
+                * This prevents the generic data-mock-action
+                * handler near the top of admin.js from also
+                * firing for these buttons.
+                */
+                button.dataset.functionalAction =
+                    'product-violation';
+
+                button.addEventListener('click', () => {
+
+                    const modal = button.closest(
+                        '[data-violation-modal]'
+                    );
+
+                    const violationId =
+                        modal?.dataset.violationId;
+
+                    if (!violationId) return;
+
+                    const row = document.querySelector(
+                        `tr[data-violation-id="${violationId}"]`
+                    );
+
+                    if (!row) return;
+
+                    const current =
+                        violationStates[violationId] || {
+                            status:
+                                row.dataset.status ||
+                                'Under Review',
+
+                            warnings:
+                                Number(row.dataset.warnings || 0),
+                        };
+
+                    const action =
+                        button.dataset.violationAction;
+
+
+                    /*
+                    * ISSUE WARNING
+                    *
+                    * Warning count increases.
+                    * Status stays in its current review state.
+                    */
+                    if (action === 'warning') {
+                        current.warnings =
+                            Number(current.warnings || 0) + 1;
+
+                        violationStates[violationId] =
+                            current;
+
+                        saveViolationStates();
+
+                        syncViolationState(
+                            violationId
+                        );
+
+                        showToast(
+                            `${violationId} now has ${current.warnings} warning${current.warnings === 1 ? '' : 's'}.`,
+                            'Warning issued'
+                        );
+
+                        return;
+                    }
+
+
+                    /*
+                    * REQUIRE REMOVAL
+                    */
+                    if (action === 'removal') {
+                        current.status =
+                            'Removal Required';
+
+                        violationStates[violationId] =
+                            current;
+
+                        saveViolationStates();
+
+                        syncViolationState(
+                            violationId
+                        );
+
+                        showToast(
+                            `${violationId} was marked for product removal.`,
+                            'Removal required'
+                        );
+
+                        return;
+                    }
+
+
+                    /*
+                    * ESCALATE SELLER
+                    */
+                    if (action === 'escalate') {
+                        current.status =
+                            'Escalated';
+
+                        violationStates[violationId] =
+                            current;
+
+                        saveViolationStates();
+
+                        syncViolationState(
+                            violationId
+                        );
+
+                        showToast(
+                            `${violationId} was escalated for seller account review.`,
+                            'Seller escalated'
+                        );
+                    }
+                });
+            });
 
         // Persist table-based Admin workflow decisions
         const WORKFLOW_STATUS_STORAGE_KEY = 'bearlyAdminWorkflowStatuses';
@@ -1298,33 +1941,546 @@
             }
         })();
         const workflowBadgeClass = (status) => {
-            if (['Published', 'Active', 'Approved', 'Completed'].includes(status)) return 'badge-success';
+            if (['Published', 'Active', 'Approved', 'Completed', 'Resolved'].includes(status)) return 'badge-success';
             if (['Archived', 'Rejected', 'Removal Required', 'Escalated'].includes(status)) return 'badge-danger';
-            if (['Scheduled', 'Awaiting Evidence', 'Warning Issued'].includes(status)) return 'badge-warning';
+            if (['Scheduled', 'Awaiting Evidence', 'Awaiting Seller', 'Warning Issued'].includes(status)) return 'badge-warning';
             return 'badge-info';
         };
-        const updateWorkflowRow = (recordId, status) => {
-            const row = [...document.querySelectorAll('tr[data-table-row]')]
-                .find((item) => (item.dataset.search || '').includes(recordId.toLowerCase()));
-            const badge = row?.querySelector('.status-badge');
-            if (!row || !badge) return;
-            row.dataset.status = status;
-            badge.textContent = status;
-            badge.className = `status-badge ${workflowBadgeClass(status)}`;
-            document.querySelectorAll('[data-modal]').forEach((modal) => {
-                if (modal.querySelector('.eyebrow')?.textContent.trim() !== recordId) return;
-                [...modal.querySelectorAll('.detail-grid > div')].forEach((detail) => {
-                    if (detail.querySelector('span')?.textContent.trim().toLowerCase() !== 'current status' && detail.querySelector('span')?.textContent.trim().toLowerCase() !== 'status') return;
-                    const value = detail.querySelector('strong');
-                    if (value) value.textContent = status;
-                });
-            });
+
+        // Announcement modal + workflow synchronization
+        const syncAnnouncementActions = (modal, status) => {
+            if (!modal) return;
+
+            const publishButton = modal.querySelector(
+                '[data-announcement-action="publish"]'
+            );
+
+            const editButton = modal.querySelector(
+                '[data-announcement-action="edit"]'
+            );
+
+            const archiveButton = modal.querySelector(
+                '[data-announcement-action="archive"]'
+            );
+
+            const indicator = modal.querySelector(
+                '[data-announcement-state-indicator]'
+            );
+
+            const indicatorLabel = modal.querySelector(
+                '[data-announcement-state-label]'
+            );
+
+
+            if (
+                status === 'Draft' ||
+                status === 'Scheduled'
+            ) {
+                if (publishButton) publishButton.hidden = false;
+                if (editButton) editButton.hidden = false;
+                if (archiveButton) archiveButton.hidden = false;
+
+                if (indicator) indicator.hidden = true;
+
+                return;
+            }
+
+
+            if (status === 'Published') {
+                if (publishButton) publishButton.hidden = true;
+                if (editButton) editButton.hidden = false;
+                if (archiveButton) archiveButton.hidden = false;
+
+                if (indicator) indicator.hidden = true;
+
+                return;
+            }
+
+
+            if (status === 'Archived') {
+                if (publishButton) publishButton.hidden = true;
+                if (editButton) editButton.hidden = true;
+                if (archiveButton) archiveButton.hidden = true;
+
+                if (indicator) {
+                    indicator.hidden = false;
+                }
+
+                if (indicatorLabel) {
+                    indicatorLabel.textContent =
+                        'Announcement archived';
+                }
+            }
         };
 
-        Object.entries(workflowStatuses).forEach(([recordId, status]) => updateWorkflowRow(recordId, status));
+
+        const findAnnouncementModal = (announcementId) => {
+            return [
+                ...document.querySelectorAll(
+                    '[data-announcement-modal]'
+                )
+            ].find(
+                (modal) =>
+                    modal.dataset.announcementId ===
+                    announcementId
+            ) || null;
+        };
+
+
+        const syncAnnouncementModal = (
+            announcementId,
+            record = {}
+        ) => {
+            const modal =
+                findAnnouncementModal(
+                    announcementId
+                );
+
+            if (!modal) return;
+
+
+            const title =
+                modal.querySelector(
+                    '[data-announcement-title]'
+                );
+
+            const audience =
+                modal.querySelector(
+                    '[data-announcement-audience]'
+                );
+
+            const status =
+                modal.querySelector(
+                    '[data-announcement-status]'
+                );
+
+            const author =
+                modal.querySelector(
+                    '[data-announcement-author]'
+                );
+
+            const date =
+                modal.querySelector(
+                    '[data-announcement-date]'
+                );
+
+            const time =
+                modal.querySelector(
+                    '[data-announcement-time]'
+                );
+
+            const message =
+                modal.querySelector(
+                    '[data-announcement-message]'
+                );
+
+
+            if (
+                record.title !== undefined &&
+                title
+            ) {
+                title.textContent =
+                    record.title;
+            }
+
+
+            if (
+                record.audience !== undefined &&
+                audience
+            ) {
+                audience.textContent =
+                    record.audience;
+            }
+
+
+            if (
+                record.status !== undefined &&
+                status
+            ) {
+                status.textContent =
+                    record.status;
+            }
+
+
+            if (
+                record.author !== undefined &&
+                author
+            ) {
+                author.textContent =
+                    record.author;
+            }
+
+
+            if (
+                record.date !== undefined &&
+                date
+            ) {
+                date.textContent =
+                    record.date || '—';
+            }
+
+
+            if (
+                record.time !== undefined &&
+                time
+            ) {
+                time.textContent =
+                    record.time || '—';
+            }
+
+
+            if (
+                record.message !== undefined &&
+                message
+            ) {
+                message.textContent =
+                    record.message;
+            }
+
+
+            if (record.status) {
+                syncAnnouncementActions(
+                    modal,
+                    record.status
+                );
+            }
+        };
+        // Returns & Refunds modal action visibility
+        const syncReturnActions = (modal, status) => {
+            if (!modal) return;
+
+            const approveButton = modal.querySelector(
+                '[data-return-button="approve"]'
+            );
+
+            const rejectButton = modal.querySelector(
+                '[data-return-button="reject"]'
+            );
+
+            const evidenceButton = modal.querySelector(
+                '[data-return-button="evidence"]'
+            );
+
+            const indicator = modal.querySelector(
+                '[data-return-state-indicator]'
+            );
+
+            const indicatorLabel = modal.querySelector(
+                '[data-return-state-label]'
+            );
+
+            const showNormalActions = () => {
+                if (approveButton) approveButton.hidden = false;
+                if (rejectButton) rejectButton.hidden = false;
+                if (evidenceButton) evidenceButton.hidden = false;
+
+                if (indicator) indicator.hidden = true;
+            };
+
+
+            /*
+            * Cases that still require an Admin decision.
+            */
+            if (
+                status === 'Escalated' ||
+                status === 'Under Review' ||
+                status === 'Awaiting Seller'
+            ) {
+                showNormalActions();
+                return;
+            }
+
+
+            /*
+            * Evidence has already been requested.
+            */
+            if (status === 'Awaiting Evidence') {
+                if (approveButton) approveButton.hidden = true;
+                if (rejectButton) rejectButton.hidden = true;
+                if (evidenceButton) evidenceButton.hidden = true;
+
+                if (indicator) indicator.hidden = false;
+
+                if (indicatorLabel) {
+                    indicatorLabel.textContent =
+                        'Evidence requested';
+                }
+
+                return;
+            }
+
+
+            /*
+            * Refund approved.
+            */
+            if (status === 'Approved') {
+                if (approveButton) approveButton.hidden = true;
+                if (rejectButton) rejectButton.hidden = true;
+                if (evidenceButton) evidenceButton.hidden = true;
+
+                if (indicator) indicator.hidden = false;
+
+                if (indicatorLabel) {
+                    indicatorLabel.textContent =
+                        'Refund approved';
+                }
+
+                return;
+            }
+
+
+            /*
+            * Refund rejected.
+            */
+            if (status === 'Rejected') {
+                if (approveButton) approveButton.hidden = true;
+                if (rejectButton) rejectButton.hidden = true;
+                if (evidenceButton) evidenceButton.hidden = true;
+
+                if (indicator) indicator.hidden = false;
+
+                if (indicatorLabel) {
+                    indicatorLabel.textContent =
+                        'Request rejected';
+                }
+
+                return;
+            }
+
+
+            /*
+            * Already completed.
+            */
+            if (status === 'Resolved') {
+                if (approveButton) approveButton.hidden = true;
+                if (rejectButton) rejectButton.hidden = true;
+                if (evidenceButton) evidenceButton.hidden = true;
+
+                if (indicator) indicator.hidden = false;
+
+                if (indicatorLabel) {
+                    indicatorLabel.textContent =
+                        'Case resolved';
+                }
+            }
+        };
+        const updateWorkflowRow = (recordId, status) => {
+            const row = [
+                ...document.querySelectorAll(
+                    'tr[data-table-row]'
+                )
+            ].find((item) =>
+                (item.dataset.search || '')
+                    .includes(recordId.toLowerCase())
+            );
+
+            const badge =
+                row?.querySelector('.status-badge');
+
+            if (!row || !badge) return;
+
+
+            /*
+            * Update table row state.
+            */
+            row.dataset.status = status;
+
+            badge.textContent = status;
+
+            badge.className =
+                `status-badge ${workflowBadgeClass(status)}`;
+
+
+            /*
+            * Update matching modal.
+            */
+            document
+                .querySelectorAll('[data-modal]')
+                .forEach((modal) => {
+
+                    if (
+                        modal
+                            .querySelector('.eyebrow')
+                            ?.textContent
+                            .trim() !== recordId
+                    ) {
+                        return;
+                    }
+
+                    [
+                        ...modal.querySelectorAll(
+                            '.detail-grid > div'
+                        )
+                    ].forEach((detail) => {
+
+                        const label =
+                            detail
+                                .querySelector('span')
+                                ?.textContent
+                                .trim()
+                                .toLowerCase();
+
+                        if (
+                            label !== 'current status' &&
+                            label !== 'status'
+                        ) {
+                            return;
+                        }
+
+                        const value =
+                            detail.querySelector('strong');
+
+                        if (value) {
+                            value.textContent = status;
+                        }
+                    });
+
+
+                    /*
+                    * Returns & Refunds footer state.
+                    */
+                    if (modal.matches('[data-return-modal]')) {
+                        const modalStatus =
+                            modal.querySelector(
+                                '[data-return-modal-status]'
+                            );
+
+                        if (modalStatus) {
+                            modalStatus.textContent =
+                                status;
+                        }
+
+                        syncReturnActions(
+                            modal,
+                            status
+                        );
+                    }
+
+                    /*
+                    * Announcement modal state.
+                    */
+                    if (
+                        recordId.startsWith('ANN-') &&
+                        modal.matches('[data-announcement-modal]')
+                    ) {
+                        const announcementStatus =
+                            modal.querySelector(
+                                '[data-announcement-status]'
+                            );
+
+                        if (announcementStatus) {
+                            announcementStatus.textContent =
+                                status;
+                        }
+
+                        syncAnnouncementActions(
+                            modal,
+                            status
+                        );
+                    }
+                });
+
+
+            /*
+            * Keep Returns & Refunds filter results
+            * synchronized after a decision.
+            */
+            if (recordId.startsWith('REF-')) {
+                runTableFilter('returns-table');
+            }
+
+            refreshIcons();
+        };
+
+        Object.entries(workflowStatuses).forEach(([recordId, status]) => {
+
+            // Product Violations are now handled separately.
+            if (recordId.startsWith('VIO-')) {
+                return;
+            }
+
+            updateWorkflowRow(recordId, status);
+        });
+
+        // Initialize server-rendered Announcement modal actions
+        document
+            .querySelectorAll(
+                '[data-announcement-modal]'
+            )
+            .forEach((modal) => {
+
+                const announcementId =
+                    modal.dataset.announcementId;
+
+                if (!announcementId) return;
+
+
+                const savedStatus =
+                    workflowStatuses[
+                        announcementId
+                    ];
+
+
+                const initialStatus =
+                    savedStatus ||
+                    modal
+                        .querySelector(
+                            '[data-announcement-status]'
+                        )
+                        ?.textContent
+                        .trim() ||
+                    'Draft';
+
+
+                syncAnnouncementActions(
+                    modal,
+                    initialStatus
+                );
+            });
+
+        // Initialize Returns & Refunds modal controls
+        document
+            .querySelectorAll('[data-return-modal]')
+            .forEach((modal) => {
+
+                const returnId =
+                    modal.dataset.returnId;
+
+                if (!returnId) return;
+
+                const row = document.querySelector(
+                    `tr[data-return-id="${returnId}"]`
+                );
+
+                const savedStatus =
+                    workflowStatuses[returnId];
+
+                const initialStatus =
+                    savedStatus ||
+                    row?.dataset.status ||
+                    modal
+                        .querySelector(
+                            '[data-return-modal-status]'
+                        )
+                        ?.textContent
+                        .trim() ||
+                    'Under Review';
+
+                syncReturnActions(
+                    modal,
+                    initialStatus
+                );
+            });
 
         document.querySelectorAll('[data-mock-action]').forEach((button) => {
+
+            // Product Violations use their own dedicated state system.
+            if (button.dataset.violationAction) {
+                return;
+            }
+
             const action = button.dataset.mockAction.toLowerCase();
+
             let status = null;
             if (action.includes('approved for refund')) status = 'Approved';
             else if (action.includes('refund request rejected')) status = 'Rejected';
@@ -1380,39 +2536,615 @@
             });
             return record;
         };
-        const recordBadge = (status) => `status-badge ${workflowBadgeClass(status)}`;
+        const ensureManagedAnnouncementModal = (record) => {
+            if (record.type !== 'announcement') return null;
+
+            const modalId =
+                `managed-announcement-${record.id}`;
+
+            let modal = document.querySelector(
+                `[data-modal="${modalId}"]`
+            );
+
+
+            if (!modal) {
+                modal = document.createElement('div');
+
+                modal.className = 'modal-shell';
+
+                modal.dataset.modal = modalId;
+                modal.dataset.announcementModal = '';
+                modal.dataset.announcementId = record.id;
+
+                modal.hidden = true;
+
+
+                modal.innerHTML = `
+                    <button
+                        type="button"
+                        class="modal-backdrop"
+                        data-close-modal
+                        aria-label="Close announcement"
+                    ></button>
+
+
+                    <section
+                        class="modal-card modal-wide"
+                        role="dialog"
+                        aria-modal="true"
+                    >
+
+                        <div class="modal-heading">
+
+                            <div>
+
+                                <span class="eyebrow">
+                                    ${escapeReportHtml(record.id)}
+                                </span>
+
+                                <h2 data-announcement-title></h2>
+
+                            </div>
+
+
+                            <button
+                                type="button"
+                                class="icon-button"
+                                data-close-modal
+                                aria-label="Close"
+                            >
+                                <i data-lucide="x"></i>
+                            </button>
+
+                        </div>
+
+
+                        <div class="review-details">
+
+                            <h3 class="section-subtitle">
+                                Announcement information
+                            </h3>
+
+
+                            <div class="detail-grid">
+
+                                <div>
+                                    <span>Audience</span>
+                                    <strong data-announcement-audience></strong>
+                                </div>
+
+
+                                <div>
+                                    <span>Status</span>
+                                    <strong data-announcement-status></strong>
+                                </div>
+
+
+                                <div>
+                                    <span>Author</span>
+                                    <strong data-announcement-author></strong>
+                                </div>
+
+
+                                <div>
+                                    <span>Publish date</span>
+                                    <strong data-announcement-date></strong>
+                                </div>
+
+
+                                <div>
+                                    <span>Publish time</span>
+                                    <strong data-announcement-time></strong>
+                                </div>
+
+                            </div>
+
+
+                            <div class="detail-note">
+
+                                <span>
+                                    Announcement message
+                                </span>
+
+                                <p data-announcement-message></p>
+
+                            </div>
+
+                        </div>
+
+
+                        <div
+                            class="modal-footer decision-footer"
+                            data-announcement-actions
+                        >
+
+                            <button
+                                type="button"
+                                class="button button-primary"
+                                data-announcement-action="publish"
+                            >
+                                <i data-lucide="send"></i>
+                                Publish Now
+                            </button>
+
+
+                            <button
+                                type="button"
+                                class="button button-secondary"
+                                data-announcement-action="edit"
+                            >
+                                <i data-lucide="pencil"></i>
+                                Edit
+                            </button>
+
+
+                            <button
+                                type="button"
+                                class="button button-danger-soft"
+                                data-announcement-action="archive"
+                            >
+                                <i data-lucide="archive"></i>
+                                Archive
+                            </button>
+
+
+                            <button
+                                type="button"
+                                class="button button-secondary"
+                                data-announcement-state-indicator
+                                hidden
+                                disabled
+                            >
+                                <i data-lucide="circle-check"></i>
+
+                                <span data-announcement-state-label>
+                                    Status updated
+                                </span>
+                            </button>
+
+                        </div>
+
+                    </section>
+                `;
+
+
+                document.body.appendChild(modal);
+
+
+                /*
+                * Dynamic modal close controls.
+                */
+                modal
+                    .querySelectorAll('[data-close-modal]')
+                    .forEach((button) => {
+
+                        button.addEventListener(
+                            'click',
+                            () => {
+                                modal.hidden = true;
+                            }
+                        );
+
+                    });
+
+
+                /*
+                * Edit latest version of this announcement.
+                */
+                modal
+                    .querySelector(
+                        '[data-announcement-action="edit"]'
+                    )
+                    ?.addEventListener('click', () => {
+
+                        const currentRecord =
+                            managedRecords.find(
+                                (item) =>
+                                    item.id ===
+                                    modal.dataset.announcementId
+                            );
+
+                        if (!currentRecord) return;
+
+
+                        setRecordFormValues(
+                            'announcement',
+                            currentRecord
+                        );
+
+
+                        modal.hidden = true;
+
+
+                        const editor =
+                            recordModal(
+                                'announcement'
+                            );
+
+                        if (editor) {
+                            editor.hidden = false;
+                        }
+                    });
+
+
+                /*
+                * Publish latest version.
+                */
+                modal
+                    .querySelector(
+                        '[data-announcement-action="publish"]'
+                    )
+                    ?.addEventListener('click', () => {
+
+                        const currentRecord =
+                            managedRecords.find(
+                                (item) =>
+                                    item.id ===
+                                    modal.dataset.announcementId
+                            );
+
+                        if (!currentRecord) return;
+
+
+                        currentRecord.status =
+                            'Published';
+
+
+                        persistManagedRecords();
+
+                        renderManagedRecord(
+                            currentRecord
+                        );
+
+
+                        showToast(
+                            `${currentRecord.id} changed to Published.`,
+                            'Announcement published'
+                        );
+                    });
+
+
+                /*
+                * Archive latest version.
+                */
+                modal
+                    .querySelector(
+                        '[data-announcement-action="archive"]'
+                    )
+                    ?.addEventListener('click', () => {
+
+                        const currentRecord =
+                            managedRecords.find(
+                                (item) =>
+                                    item.id ===
+                                    modal.dataset.announcementId
+                            );
+
+                        if (!currentRecord) return;
+
+
+                        currentRecord.status =
+                            'Archived';
+
+
+                        persistManagedRecords();
+
+                        renderManagedRecord(
+                            currentRecord
+                        );
+
+
+                        showToast(
+                            `${currentRecord.id} changed to Archived.`,
+                            'Announcement archived'
+                        );
+                    });
+            }
+
+
+            return modal;
+        };
+        const recordBadge = (status) =>
+            `status-badge ${workflowBadgeClass(status)}`;
+
+
         const renderManagedRecord = (record) => {
-            const target = document.querySelector(`[data-record-rows="${record.type}"]`);
+            const target = document.querySelector(
+                `[data-record-rows="${record.type}"]`
+            );
+
             if (!target) return;
-            let row = [...target.querySelectorAll('tr[data-table-row]')]
-                .find((item) => (item.dataset.search || '').includes(record.id.toLowerCase()));
+
+
+            let row = [
+                ...target.querySelectorAll(
+                    'tr[data-table-row]'
+                )
+            ].find((item) =>
+                (item.dataset.search || '')
+                    .includes(
+                        record.id.toLowerCase()
+                    )
+            );
+
 
             if (!row) {
                 row = document.createElement('tr');
                 row.dataset.tableRow = '';
+
                 target.prepend(row);
             }
 
-            row.dataset.status = record.status;
+
+            row.dataset.status =
+                record.status;
+
+
             if (record.type === 'announcement') {
-                row.dataset.audience = record.audience;
-                row.dataset.search = `${record.id} ${record.title} ${record.audience} ${record.message}`.toLowerCase();
+
+                row.dataset.audience =
+                    record.audience;
+
+                row.dataset.search =
+                    `${record.id} ${record.title} ${record.audience} ${record.message}`
+                        .toLowerCase();
+
+
                 row.innerHTML = `
-                    <td><div class="identity-cell"><span class="avatar avatar-soft"><i data-lucide="megaphone"></i></span><div><strong>${escapeReportHtml(record.title)}</strong><small>${escapeReportHtml(record.id)}</small></div></div></td>
-                    <td>${escapeReportHtml(record.audience)}</td><td>Current Admin</td><td><strong>${escapeReportHtml(record.date || 'Not scheduled')}</strong><small>${escapeReportHtml(record.time || '')}</small></td>
-                    <td><span class="${recordBadge(record.status)}">${escapeReportHtml(record.status)}</span></td>
-                    <td class="align-right"><div class="row-actions"><button class="button button-ghost button-small" type="button" data-edit-managed-record="${escapeReportHtml(record.id)}">Edit</button><button class="button button-danger-soft button-small" type="button" data-archive-managed-record="${escapeReportHtml(record.id)}">Archive</button></div></td>`;
+                    <td>
+
+                        <div class="identity-cell">
+
+                            <span class="avatar avatar-soft">
+                                <i data-lucide="megaphone"></i>
+                            </span>
+
+                            <div class="table-primary-secondary">
+
+                                <strong>
+                                    ${escapeReportHtml(record.title)}
+                                </strong>
+
+                                <small>
+                                    ${escapeReportHtml(record.id)}
+                                </small>
+
+                            </div>
+
+                        </div>
+
+                    </td>
+
+
+                    <td>
+                        ${escapeReportHtml(record.audience)}
+                    </td>
+
+
+                    <td>
+                        Current Admin
+                    </td>
+
+
+                    <td>
+
+                        <div class="table-primary-secondary">
+
+                            <strong>
+                                ${escapeReportHtml(
+                                    record.date ||
+                                    'Not scheduled'
+                                )}
+                            </strong>
+
+                            ${
+                                record.time
+                                    ? `
+                                        <small>
+                                            ${escapeReportHtml(record.time)}
+                                        </small>
+                                    `
+                                    : ''
+                            }
+
+                        </div>
+
+                    </td>
+
+
+                    <td>
+
+                        <span class="${recordBadge(record.status)}">
+                            ${escapeReportHtml(record.status)}
+                        </span>
+
+                    </td>
+
+
+                    <td class="align-right">
+
+                        <button
+                            class="button button-ghost button-small"
+                            type="button"
+                            data-open-managed-announcement="${escapeReportHtml(record.id)}"
+                        >
+                            <i data-lucide="eye"></i>
+                            View
+                        </button>
+
+                    </td>
+                `;
+
+
+                /*
+                * Create the View modal if this is
+                * a newly created announcement.
+                */
+                ensureManagedAnnouncementModal(
+                    record
+                );
+
+
+                /*
+                * Synchronize the latest announcement
+                * information into its View modal.
+                */
+                syncAnnouncementModal(
+                    record.id,
+                    {
+                        title:
+                            record.title,
+
+                        audience:
+                            record.audience,
+
+                        status:
+                            record.status,
+
+                        author:
+                            'Current Admin',
+
+                        date:
+                            record.date || '—',
+
+                        time:
+                            record.time || '—',
+
+                        message:
+                            record.message,
+                    }
+                );
+
             } else {
-                row.dataset.category = record.category;
-                row.dataset.search = `${record.id} ${record.title} ${record.category} ${record.version} ${record.summary}`.toLowerCase();
+
+                row.dataset.category =
+                    record.category;
+
+                row.dataset.search =
+                    `${record.id} ${record.title} ${record.category} ${record.version} ${record.summary}`
+                        .toLowerCase();
+
+
                 row.innerHTML = `
-                    <td><div class="identity-cell"><span class="avatar avatar-soft"><i data-lucide="file-text"></i></span><div><strong>${escapeReportHtml(record.title)}</strong><small>${escapeReportHtml(record.id)}</small></div></div></td>
-                    <td>${escapeReportHtml(record.category)}</td><td><strong>${escapeReportHtml(record.version || 'v1.0')}</strong></td><td>Current Admin</td><td>${new Date().toLocaleDateString('en-PH')}</td>
-                    <td><span class="${recordBadge(record.status)}">${escapeReportHtml(record.status)}</span></td>
-                    <td class="align-right"><div class="row-actions"><button class="button button-ghost button-small" type="button" data-edit-managed-record="${escapeReportHtml(record.id)}">Edit</button><button class="button button-danger-soft button-small" type="button" data-archive-managed-record="${escapeReportHtml(record.id)}">Archive</button></div></td>`;
+                    <td>
+
+                        <div class="identity-cell">
+
+                            <span class="avatar avatar-soft">
+                                <i data-lucide="file-text"></i>
+                            </span>
+
+                            <div>
+
+                                <strong>
+                                    ${escapeReportHtml(record.title)}
+                                </strong>
+
+                                <small>
+                                    ${escapeReportHtml(record.id)}
+                                </small>
+
+                            </div>
+
+                        </div>
+
+                    </td>
+
+                    <td>
+                        ${escapeReportHtml(record.category)}
+                    </td>
+
+                    <td>
+                        <strong>
+                            ${escapeReportHtml(
+                                record.version || 'v1.0'
+                            )}
+                        </strong>
+                    </td>
+
+                    <td>
+                        Current Admin
+                    </td>
+
+                    <td>
+                        ${
+                            new Date()
+                                .toLocaleDateString('en-PH')
+                        }
+                    </td>
+
+                    <td>
+
+                        <span class="${recordBadge(record.status)}">
+                            ${escapeReportHtml(record.status)}
+                        </span>
+
+                    </td>
+
+                    <td class="align-right">
+
+                        <div class="row-actions">
+
+                            <button
+                                class="button button-ghost button-small"
+                                type="button"
+                                data-edit-managed-record="${escapeReportHtml(record.id)}"
+                            >
+                                Edit
+                            </button>
+
+                            <button
+                                class="button button-danger-soft button-small"
+                                type="button"
+                                data-archive-managed-record="${escapeReportHtml(record.id)}"
+                            >
+                                Archive
+                            </button>
+
+                        </div>
+
+                    </td>
+                `;
             }
+
+
             refreshIcons();
         };
+
+        /*
+        * Open dynamically created Announcement View modal.
+        */
+        document.addEventListener(
+            'click',
+            (event) => {
+
+                const button =
+                    event.target.closest(
+                        '[data-open-managed-announcement]'
+                    );
+
+                if (!button) return;
+
+
+                const recordId =
+                    button.dataset
+                        .openManagedAnnouncement;
+
+
+                const modal =
+                    document.querySelector(
+                        `[data-announcement-modal][data-announcement-id="${recordId}"]`
+                    );
+
+
+                if (!modal) return;
+
+
+                modal.hidden = false;
+
+                refreshIcons();
+            }
+        );
 
         managedRecords.forEach(renderManagedRecord);
 
@@ -1424,25 +3156,129 @@
 
         document.querySelectorAll('[data-mock-action]').forEach((button) => {
             if (!button.dataset.mockAction.toLowerCase().includes('opened for editing')) return;
+
             const sourceModal = button.closest('[data-modal]');
-            const recordId = sourceModal?.querySelector('.eyebrow')?.textContent.trim() || '';
-            const type = recordId.startsWith('ANN-') ? 'announcement' : recordId.startsWith('POL-') ? 'policy' : '';
+
+            const recordId =
+                sourceModal?.querySelector('.eyebrow')
+                    ?.textContent
+                    .trim() || '';
+
+            const type =
+                recordId.startsWith('ANN-')
+                    ? 'announcement'
+                    : recordId.startsWith('POL-')
+                        ? 'policy'
+                        : '';
+
             if (!type) return;
 
-            button.dataset.functionalAction = 'record-edit';
+            button.dataset.functionalAction =
+                'record-edit';
+
             button.addEventListener('click', () => {
-                const details = Object.fromEntries([...sourceModal.querySelectorAll('.detail-grid > div')].map((item) => [
-                    item.querySelector('span')?.textContent.trim().toLowerCase(),
-                    item.querySelector('strong')?.textContent.trim() || '',
-                ]));
-                const notes = [...sourceModal.querySelectorAll('.detail-note p')].map((item) => item.textContent.trim());
-                const record = type === 'announcement'
-                    ? { id: recordId, title: sourceModal.querySelector('.modal-heading h2')?.textContent.trim(), audience: details.audience, date: '', time: '', message: notes[0] || '' }
-                    : { id: recordId, title: sourceModal.querySelector('.modal-heading h2')?.textContent.trim(), category: details.category, version: details.version, status: details.status, summary: notes[0] || '', body: notes[1] || '' };
-                setRecordFormValues(type, record);
-                sourceModal.hidden = true;
-                const editor = recordModal(type);
-                if (editor) editor.hidden = false;
+
+                const details =
+                    Object.fromEntries(
+                        [...sourceModal.querySelectorAll('.detail-grid > div')]
+                            .map((item) => [
+                                item.querySelector('span')
+                                    ?.textContent
+                                    .trim()
+                                    .toLowerCase(),
+
+                                item.querySelector('strong')
+                                    ?.textContent
+                                    .trim() || '',
+                            ])
+                    );
+
+                const notes =
+                    [...sourceModal.querySelectorAll('.detail-note p')]
+                        .map((item) =>
+                            item.textContent.trim()
+                        );
+
+
+                // REPLACE FROM HERE
+                const record =
+                    type === 'announcement'
+                        ? {
+                            id: recordId,
+
+                            title:
+                                sourceModal
+                                    .querySelector('[data-announcement-title]')
+                                    ?.textContent
+                                    .trim() || '',
+
+                            audience:
+                                sourceModal
+                                    .querySelector('[data-announcement-audience]')
+                                    ?.textContent
+                                    .trim() || 'All Users',
+
+                            date:
+                                sourceModal
+                                    .querySelector('[data-announcement-date]')
+                                    ?.textContent
+                                    .trim() || '',
+
+                            time:
+                                sourceModal
+                                    .querySelector('[data-announcement-time]')
+                                    ?.textContent
+                                    .trim() || '',
+
+                            message:
+                                sourceModal
+                                    .querySelector('[data-announcement-message]')
+                                    ?.textContent
+                                    .trim() || '',
+                        }
+
+                        : {
+                            id: recordId,
+
+                            title:
+                                sourceModal
+                                    .querySelector('.modal-heading h2')
+                                    ?.textContent
+                                    .trim(),
+
+                            category:
+                                details.category,
+
+                            version:
+                                details.version,
+
+                            status:
+                                details.status,
+
+                            summary:
+                                notes[0] || '',
+
+                            body:
+                                notes[1] || '',
+                        };
+                // REPLACE UNTIL HERE
+
+
+                setRecordFormValues(
+                    type,
+                    record
+                );
+
+                sourceModal.hidden =
+                    true;
+
+                const editor =
+                    recordModal(type);
+
+                if (editor) {
+                    editor.hidden =
+                        false;
+                }
             });
         });
 
@@ -2030,160 +3866,597 @@
         const initialDispute = document.querySelector('[data-case-card].is-active')?.dataset.caseId;
         if (initialDispute) renderDispute(initialDispute, false);
 
-        // Chat filtering + per-conversation thread state
+        /// Chat filtering + per-conversation thread state
         const conversationSearch = document.querySelector('[data-conversation-search]');
         let conversationItems = [...document.querySelectorAll('[data-conversation-item]')];
+
         const conversationList = document.querySelector('[data-conversation-list]');
         const messageThread = document.querySelector('[data-message-thread]');
         const messageInput = document.querySelector('[data-message-input]');
+        const attachmentInput = document.querySelector('[data-chat-attachment]');
+        const attachmentName = document.querySelector('[data-chat-attachment-name]');
+        const unreadSummary = document.querySelector('[data-unread-summary]');
+
         const CHAT_STORAGE_KEY = 'bearlyAdminChatThreads';
 
-        const escapeChatHtml = (value = '') => String(value)
-            .replaceAll('&', '&amp;')
-            .replaceAll('<', '&lt;')
-            .replaceAll('>', '&gt;')
-            .replaceAll('"', '&quot;')
-            .replaceAll("'", '&#039;');
+
+        const escapeChatHtml = (value = '') =>
+            String(value)
+                .replaceAll('&', '&amp;')
+                .replaceAll('<', '&lt;')
+                .replaceAll('>', '&gt;')
+                .replaceAll('"', '&quot;')
+                .replaceAll("'", '&#039;');
+
 
         const defaultChatThreads = {
             'mara-home-goods': [
-                { from: 'them', text: 'Good afternoon. We uploaded the additional photos requested for case DSP-1048.', time: '6:34 PM' },
-                { from: 'me', text: 'Received. We are reviewing the evidence from all parties now.', time: '6:36 PM' },
-                { from: 'them', text: 'Thank you. Please let us know if you need a clearer copy of the packing photo.', time: '6:42 PM' },
+                {
+                    from: 'them',
+                    text: 'Good afternoon. We uploaded the additional photos requested for case DSP-1048.',
+                    time: '6:34 PM',
+                },
+                {
+                    from: 'me',
+                    text: 'Received. We are reviewing the evidence from all parties now.',
+                    time: '6:36 PM',
+                },
+                {
+                    from: 'them',
+                    text: 'Thank you. Please let us know if you need a clearer copy of the packing photo.',
+                    time: '6:42 PM',
+                },
             ],
+
             'karen-yu': [
-                { from: 'them', text: 'Hello. I wanted to follow up regarding the complaint I submitted for my recent order.', time: '5:12 PM' },
-                { from: 'me', text: 'Hi Karen. Your complaint is currently under review. We will update you once the seller response has been checked.', time: '5:16 PM' },
-                { from: 'them', text: 'Thank you for reviewing my complaint.', time: '5:18 PM' },
+                {
+                    from: 'them',
+                    text: 'Hello. I wanted to follow up regarding the complaint I submitted for my recent order.',
+                    time: '5:12 PM',
+                },
+                {
+                    from: 'me',
+                    text: 'Hi Karen. Your complaint is currently under review. We will update you once the seller response has been checked.',
+                    time: '5:16 PM',
+                },
+                {
+                    from: 'them',
+                    text: 'Thank you for reviewing my complaint.',
+                    time: '5:18 PM',
+                },
             ],
+
             'jared-molina': [
-                { from: 'them', text: 'Hi Admin, the delivery proof for the completed order has been uploaded.', time: '3:27 PM' },
-                { from: 'me', text: 'Thanks, Jared. We received the delivery proof and added it to the order review.', time: '3:29 PM' },
-                { from: 'them', text: 'Delivery proof has been uploaded.', time: '3:31 PM' },
+                {
+                    from: 'them',
+                    text: 'Hi Admin, the delivery proof for the completed order has been uploaded.',
+                    time: '3:27 PM',
+                },
+                {
+                    from: 'me',
+                    text: 'Thanks, Jared. We received the delivery proof and added it to the order review.',
+                    time: '3:29 PM',
+                },
+                {
+                    from: 'them',
+                    text: 'Delivery proof has been uploaded.',
+                    time: '3:31 PM',
+                },
             ],
+
             'techvault-ph': [
-                { from: 'them', text: 'Good afternoon. We received a compliance notice for one of our listings.', time: '1:48 PM' },
-                { from: 'me', text: 'The notice was triggered by a listing detail that requires manual verification.', time: '1:51 PM' },
-                { from: 'them', text: 'Can we clarify the compliance notice?', time: '1:54 PM' },
+                {
+                    from: 'them',
+                    text: 'Good afternoon. We received a compliance notice for one of our listings.',
+                    time: '1:48 PM',
+                },
+                {
+                    from: 'me',
+                    text: 'The notice was triggered by a listing detail that requires manual verification.',
+                    time: '1:51 PM',
+                },
+                {
+                    from: 'them',
+                    text: 'Can we clarify the compliance notice?',
+                    time: '1:54 PM',
+                },
             ],
         };
 
+
         const chatThreads = (() => {
             try {
-                return JSON.parse(localStorage.getItem(CHAT_STORAGE_KEY) || '{}');
+                return JSON.parse(
+                    localStorage.getItem(CHAT_STORAGE_KEY) || '{}'
+                );
             } catch {
                 return {};
             }
         })();
-        const saveChatThreads = () => localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(chatThreads));
+
+
+        const saveChatThreads = () => {
+            localStorage.setItem(
+                CHAT_STORAGE_KEY,
+                JSON.stringify(chatThreads)
+            );
+        };
+
 
         const getConversationId = (item) =>
             item?.dataset.conversationId ||
-            item?.dataset.name?.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') ||
+            item?.dataset.name
+                ?.trim()
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/^-|-$/g, '') ||
             'conversation';
 
+
+        const updateUnreadSummary = () => {
+            if (!unreadSummary) return;
+
+            const totalUnread = [
+                ...document.querySelectorAll(
+                    '[data-conversation-item] .unread-count'
+                )
+            ].reduce((total, badge) => {
+                return total + Number(
+                    badge.textContent?.trim() || 0
+                );
+            }, 0);
+
+            unreadSummary.textContent =
+                `${totalUnread} unread`;
+
+            unreadSummary.hidden =
+                totalUnread === 0;
+        };
+
+
+        const updateConversationPreview = (
+            item,
+            text,
+            time
+        ) => {
+            if (!item) return;
+
+            item.dataset.preview = text;
+            item.dataset.time = time;
+
+            const preview = item.querySelector(
+                '.conversation-preview span:last-child'
+            );
+
+            const timeElement = item.querySelector(
+                '.conversation-meta time'
+            );
+
+            if (preview) {
+                preview.textContent = text;
+            }
+
+            if (timeElement) {
+                timeElement.textContent = time;
+            }
+
+            item.dataset.search =
+                `${item.dataset.name || ''} ` +
+                `${item.dataset.role || ''} ` +
+                `${text}`.toLowerCase();
+        };
+
+
+        /*
+        * Restore conversations created during
+        * previous front-end preview sessions.
+        */
         (chatThreads.__contacts || []).forEach((contact) => {
-            if (!conversationList || conversationItems.some((item) => getConversationId(item) === contact.conversationId)) return;
-            const item = document.createElement('button');
+
+            if (!conversationList) return;
+
+            const alreadyExists =
+                conversationItems.some(
+                    (item) =>
+                        getConversationId(item) ===
+                        contact.conversationId
+                );
+
+            if (alreadyExists) return;
+
+
+            const item =
+                document.createElement('button');
+
             item.type = 'button';
             item.className = 'conversation-item';
+
             item.dataset.conversationItem = '';
-            Object.assign(item.dataset, contact);
-            item.innerHTML = `<span class="avatar avatar-soft">${escapeChatHtml(contact.initials)}</span><span class="conversation-copy"><span><strong>${escapeChatHtml(contact.name)}</strong><time>${escapeChatHtml(contact.time)}</time></span><small>${escapeChatHtml(contact.role)} • ${escapeChatHtml(contact.preview)}</small></span>`;
+            item.dataset.conversationId =
+                contact.conversationId;
+
+            item.dataset.search =
+                contact.search || '';
+
+            item.dataset.name =
+                contact.name || '';
+
+            item.dataset.role =
+                contact.role || '';
+
+            item.dataset.initials =
+                contact.initials || '';
+
+            item.dataset.preview =
+                contact.preview || '';
+
+            item.dataset.time =
+                contact.time || '';
+
+
+            item.innerHTML = `
+                <span class="avatar avatar-soft">
+                    ${escapeChatHtml(contact.initials)}
+                </span>
+
+                <span class="conversation-copy">
+
+                    <span class="conversation-meta">
+                        <strong>
+                            ${escapeChatHtml(contact.name)}
+                        </strong>
+
+                        <time>
+                            ${escapeChatHtml(contact.time)}
+                        </time>
+                    </span>
+
+                    <small class="conversation-preview">
+                        <span class="conversation-role">
+                            ${escapeChatHtml(contact.role)}
+                        </span>
+
+                        <span aria-hidden="true">•</span>
+
+                        <span>
+                            ${escapeChatHtml(contact.preview)}
+                        </span>
+                    </small>
+
+                </span>
+            `;
+
             conversationList.prepend(item);
+
             conversationItems.push(item);
         });
 
+
+        /*
+        * Create thread data for every
+        * visible conversation.
+        */
         conversationItems.forEach((item, index) => {
-            const id = getConversationId(item);
-            item.dataset.conversationId = id;
 
-            chatThreads[id] = chatThreads[id] || (defaultChatThreads[id] || [
-                {
-                    from: 'them',
-                    text: item.dataset.preview || 'This is the beginning of this support conversation.',
-                    time: item.dataset.time || '',
-                },
-            ]).map((message) => ({ ...message }));
+            const id =
+                getConversationId(item);
 
-            if (index === 0 && messageThread) {
-                const bladeMessages = [...messageThread.querySelectorAll('.message-row')].map((row) => ({
-                    from: row.classList.contains('message-me') ? 'me' : 'them',
-                    text: row.querySelector('p')?.textContent?.trim() || '',
-                    time: row.querySelector('span')?.textContent?.trim() || '',
-                })).filter((message) => message.text);
+            item.dataset.conversationId =
+                id;
 
-                if (bladeMessages.length && !localStorage.getItem(CHAT_STORAGE_KEY)) chatThreads[id] = bladeMessages;
+
+            chatThreads[id] =
+                chatThreads[id] ||
+                (
+                    defaultChatThreads[id] ||
+                    [
+                        {
+                            from: 'them',
+                            text:
+                                item.dataset.preview ||
+                                'This is the beginning of this support conversation.',
+                            time:
+                                item.dataset.time || '',
+                        },
+                    ]
+                ).map((message) => ({
+                    ...message,
+                }));
+
+
+            /*
+            * Preserve the first Blade-rendered thread
+            * the first time the chat preview is used.
+            */
+            if (
+                index === 0 &&
+                messageThread &&
+                !localStorage.getItem(CHAT_STORAGE_KEY)
+            ) {
+                const bladeMessages = [
+                    ...messageThread.querySelectorAll(
+                        '.message-row'
+                    )
+                ]
+                    .map((row) => ({
+                        from:
+                            row.classList.contains('message-me')
+                                ? 'me'
+                                : 'them',
+
+                        text:
+                            row
+                                .querySelector('p')
+                                ?.textContent
+                                ?.trim() || '',
+
+                        time:
+                            row
+                                .querySelector('span')
+                                ?.textContent
+                                ?.trim() || '',
+                    }))
+                    .filter((message) =>
+                        message.text
+                    );
+
+
+                if (bladeMessages.length) {
+                    chatThreads[id] =
+                        bladeMessages;
+                }
             }
         });
+
+
+        saveChatThreads();
+
 
         const renderChatThread = (id) => {
             if (!messageThread) return;
 
-            const messages = chatThreads[id] || [];
+            const messages =
+                chatThreads[id] || [];
+
+
             messageThread.innerHTML = `
-                <div class="thread-date">Today</div>
-                ${messages.map((message) => `
-                    <div class="message-row message-${message.from === 'me' ? 'me' : 'them'}">
-                        <div class="message-bubble">
-                            <p>${escapeChatHtml(message.text)}</p>
-                            <span>${escapeChatHtml(message.time)}</span>
+                <div class="thread-date">
+                    Today
+                </div>
+
+                ${messages
+                    .map((message) => `
+                        <div
+                            class="message-row
+                            message-${message.from === 'me' ? 'me' : 'them'}"
+                        >
+                            <div class="message-bubble">
+
+                                <p>
+                                    ${escapeChatHtml(message.text)}
+                                </p>
+
+                                <span>
+                                    ${escapeChatHtml(message.time)}
+                                </span>
+
+                            </div>
                         </div>
-                    </div>
-                `).join('')}
+                    `)
+                    .join('')}
             `;
-            messageThread.scrollTop = messageThread.scrollHeight;
+
+
+            messageThread.scrollTop =
+                messageThread.scrollHeight;
         };
+
+
+        const clearAttachmentPreview = () => {
+            if (attachmentInput) {
+                attachmentInput.value = '';
+            }
+
+            if (attachmentName) {
+                attachmentName.textContent = '';
+                attachmentName.hidden = true;
+            }
+        };
+
 
         const selectConversation = (item) => {
             if (!item) return;
 
-            conversationItems.forEach((other) => other.classList.remove('is-active'));
+
+            conversationItems.forEach(
+                (other) =>
+                    other.classList.remove('is-active')
+            );
+
             item.classList.add('is-active');
 
-            const name = document.querySelector('[data-chat-name]');
-            const role = document.querySelector('[data-chat-role]');
-            const avatar = document.querySelector('[data-chat-avatar]');
 
-            if (name) name.textContent = item.dataset.name || '';
-            if (role) role.textContent = item.dataset.role || '';
-            if (avatar) avatar.textContent = item.dataset.initials || '';
+            const name =
+                document.querySelector(
+                    '[data-chat-name]'
+                );
 
-            const unread = item.querySelector('.unread-count');
-            if (unread) unread.remove();
+            const role =
+                document.querySelector(
+                    '[data-chat-role]'
+                );
 
-            renderChatThread(getConversationId(item));
+            const avatar =
+                document.querySelector(
+                    '[data-chat-avatar]'
+                );
+
+
+            if (name) {
+                name.textContent =
+                    item.dataset.name || '';
+            }
+
+            if (role) {
+                role.textContent =
+                    item.dataset.role || '';
+            }
+
+            if (avatar) {
+                avatar.textContent =
+                    item.dataset.initials || '';
+            }
+
+
+            /*
+            * Opening the conversation marks
+            * its unread messages as read.
+            */
+            const unread =
+                item.querySelector(
+                    '.unread-count'
+                );
+
+            if (unread) {
+                unread.remove();
+            }
+
+            updateUnreadSummary();
+
+
+            clearAttachmentPreview();
+
+            renderChatThread(
+                getConversationId(item)
+            );
         };
 
-        conversationSearch?.addEventListener('input', () => {
-            const query = conversationSearch.value.trim().toLowerCase();
 
-            conversationItems.forEach((item) => {
-                item.hidden = !!query && !(item.dataset.search || '').includes(query);
-            });
-        });
+        conversationSearch?.addEventListener(
+            'input',
+            () => {
 
-        const bindConversation = (item) => item.addEventListener('click', () => selectConversation(item));
-        conversationItems.forEach(bindConversation);
+                const query =
+                    conversationSearch.value
+                        .trim()
+                        .toLowerCase();
 
+
+                conversationItems.forEach(
+                    (item) => {
+
+                        item.hidden =
+                            Boolean(query) &&
+                            !(
+                                item.dataset.search || ''
+                            ).includes(query);
+
+                    }
+                );
+            }
+        );
+
+
+        const bindConversation = (item) => {
+            item.addEventListener(
+                'click',
+                () =>
+                    selectConversation(item)
+            );
+        };
+
+
+        conversationItems.forEach(
+            bindConversation
+        );
+
+
+        /*
+        * Send message
+        */
         const sendMessage = () => {
-            const text = messageInput?.value.trim();
-            const activeItem = document.querySelector('[data-conversation-item].is-active');
 
-            if (!text || !activeItem || !messageThread) return;
+            const text =
+                messageInput?.value.trim();
 
-            const id = getConversationId(activeItem);
-            const time = new Date().toLocaleTimeString([], {
-                hour: 'numeric',
-                minute: '2-digit',
+            const activeItem =
+                document.querySelector(
+                    '[data-conversation-item].is-active'
+                );
+
+
+            if (
+                !text ||
+                !activeItem ||
+                !messageThread
+            ) {
+                return;
+            }
+
+
+            const id =
+                getConversationId(activeItem);
+
+            const time =
+                new Date()
+                    .toLocaleTimeString(
+                        [],
+                        {
+                            hour: 'numeric',
+                            minute: '2-digit',
+                        }
+                    );
+
+
+            if (!chatThreads[id]) {
+                chatThreads[id] = [];
+            }
+
+
+            chatThreads[id].push({
+                from: 'me',
+                text,
+                time,
             });
 
-            if (!chatThreads[id]) chatThreads[id] = [];
-            chatThreads[id].push({ from: 'me', text, time });
+
+            updateConversationPreview(
+                activeItem,
+                text,
+                time
+            );
+
+
+            const storedContact =
+                (chatThreads.__contacts || [])
+                    .find(
+                        (contact) =>
+                            contact.conversationId === id
+                    );
+
+            if (storedContact) {
+                storedContact.preview =
+                    text;
+
+                storedContact.time =
+                    time;
+
+                storedContact.search =
+                    `${activeItem.dataset.name || ''} ` +
+                    `${activeItem.dataset.role || ''} ` +
+                    `${text}`.toLowerCase();
+            }
+
+
             saveChatThreads();
 
+
             messageInput.value = '';
+
+            clearAttachmentPreview();
+
             renderChatThread(id);
+
 
             showToast(
                 `Message added to ${activeItem.dataset.name}'s conversation preview.`,
@@ -2191,94 +4464,481 @@
             );
         };
 
-        document.querySelector('[data-send-message]')?.addEventListener('click', sendMessage);
 
-        messageInput?.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault();
-                sendMessage();
+        document
+            .querySelector('[data-send-message]')
+            ?.addEventListener(
+                'click',
+                sendMessage
+            );
+
+
+        messageInput?.addEventListener(
+            'keydown',
+            (event) => {
+
+                if (
+                    event.key === 'Enter' &&
+                    !event.shiftKey
+                ) {
+                    event.preventDefault();
+                    sendMessage();
+                }
             }
-        });
+        );
 
-        document.querySelector('[data-create-conversation]')?.addEventListener('click', () => {
-            const nameInput = document.querySelector('[data-new-chat-name]');
-            const roleInput = document.querySelector('[data-new-chat-role]');
-            const firstMessage = document.querySelector('[data-new-chat-message]');
-            const name = nameInput?.value.trim() || '';
-            const role = roleInput?.value || 'Buyer';
-            const text = firstMessage?.value.trim() || '';
-            if (!name || !text || !conversationList) {
-                showToast('Enter a recipient and a first message.', 'Conversation not started');
-                return;
+
+        /*
+        * Create new conversation
+        */
+        document
+            .querySelector(
+                '[data-create-conversation]'
+            )
+            ?.addEventListener(
+                'click',
+                () => {
+
+                    const nameInput =
+                        document.querySelector(
+                            '[data-new-chat-name]'
+                        );
+
+                    const roleInput =
+                        document.querySelector(
+                            '[data-new-chat-role]'
+                        );
+
+                    const firstMessage =
+                        document.querySelector(
+                            '[data-new-chat-message]'
+                        );
+
+
+                    const name =
+                        nameInput?.value
+                            .trim() || '';
+
+                    const role =
+                        roleInput?.value ||
+                        'Buyer';
+
+                    const text =
+                        firstMessage?.value
+                            .trim() || '';
+
+
+                    if (
+                        !name ||
+                        !text ||
+                        !conversationList
+                    ) {
+                        showToast(
+                            'Enter a recipient and a first message.',
+                            'Conversation not started'
+                        );
+
+                        return;
+                    }
+
+
+                    let id =
+                        name
+                            .toLowerCase()
+                            .replace(
+                                /[^a-z0-9]+/g,
+                                '-'
+                            )
+                            .replace(
+                                /^-|-$/g,
+                                ''
+                            ) ||
+                        `conversation-${Date.now()}`;
+
+
+                    if (chatThreads[id]) {
+                        id =
+                            `${id}-${Date.now()
+                                .toString()
+                                .slice(-4)}`;
+                    }
+
+
+                    const initials =
+                        name
+                            .split(/\s+/)
+                            .map(
+                                (part) =>
+                                    part[0]
+                            )
+                            .join('')
+                            .slice(0, 2)
+                            .toUpperCase();
+
+
+                    const time =
+                        new Date()
+                            .toLocaleTimeString(
+                                [],
+                                {
+                                    hour: 'numeric',
+                                    minute: '2-digit',
+                                }
+                            );
+
+
+                    const item =
+                        document.createElement(
+                            'button'
+                        );
+
+
+                    item.type = 'button';
+
+                    item.className =
+                        'conversation-item';
+
+                    item.dataset.conversationItem =
+                        '';
+
+                    item.dataset.conversationId =
+                        id;
+
+                    item.dataset.search =
+                        `${name} ${role} ${text}`
+                            .toLowerCase();
+
+                    item.dataset.name =
+                        name;
+
+                    item.dataset.role =
+                        role;
+
+                    item.dataset.initials =
+                        initials;
+
+                    item.dataset.preview =
+                        text;
+
+                    item.dataset.time =
+                        time;
+
+
+                    item.innerHTML = `
+                        <span class="avatar avatar-soft">
+                            ${escapeChatHtml(initials)}
+                        </span>
+
+                        <span class="conversation-copy">
+
+                            <span class="conversation-meta">
+
+                                <strong>
+                                    ${escapeChatHtml(name)}
+                                </strong>
+
+                                <time>
+                                    ${escapeChatHtml(time)}
+                                </time>
+
+                            </span>
+
+                            <small class="conversation-preview">
+
+                                <span class="conversation-role">
+                                    ${escapeChatHtml(role)}
+                                </span>
+
+                                <span aria-hidden="true">
+                                    •
+                                </span>
+
+                                <span>
+                                    ${escapeChatHtml(text)}
+                                </span>
+
+                            </small>
+
+                        </span>
+                    `;
+
+
+                    conversationList.prepend(
+                        item
+                    );
+
+
+                    conversationItems.push(
+                        item
+                    );
+
+
+                    bindConversation(
+                        item
+                    );
+
+
+                    chatThreads[id] = [
+                        {
+                            from: 'me',
+                            text,
+                            time,
+                        },
+                    ];
+
+
+                    chatThreads.__contacts = [
+                        {
+                            conversationId:
+                                id,
+
+                            search:
+                                item.dataset.search,
+
+                            name,
+                            role,
+                            initials,
+
+                            preview:
+                                text,
+
+                            time,
+                        },
+
+                        ...(
+                            chatThreads.__contacts ||
+                            []
+                        ).filter(
+                            (contact) =>
+                                contact.conversationId !==
+                                id
+                        ),
+                    ];
+
+
+                    saveChatThreads();
+
+
+                    selectConversation(
+                        item
+                    );
+
+
+                    closeModal(
+                        document.querySelector(
+                            '[data-modal="new-conversation"]'
+                        )
+                    );
+
+
+                    if (nameInput) {
+                        nameInput.value = '';
+                    }
+
+                    if (roleInput) {
+                        roleInput.value = 'Buyer';
+                    }
+
+                    if (firstMessage) {
+                        firstMessage.value = '';
+                    }
+
+
+                    showToast(
+                        `Conversation with ${name} was created.`,
+                        'Conversation started'
+                    );
+                }
+            );
+
+
+        /*
+        * Attachment preview
+        */
+        document
+            .querySelector(
+                '[data-chat-attachment-button]'
+            )
+            ?.addEventListener(
+                'click',
+                () => {
+                    attachmentInput?.click();
+                }
+            );
+
+
+        attachmentInput?.addEventListener(
+            'change',
+            (event) => {
+
+                const file =
+                    event.target.files?.[0];
+
+
+                if (!file) {
+                    clearAttachmentPreview();
+                    return;
+                }
+
+
+                if (attachmentName) {
+                    attachmentName.textContent =
+                        `Attached: ${file.name}`;
+
+                    attachmentName.hidden =
+                        false;
+                }
+
+
+                showToast(
+                    `${file.name} is ready to attach to your next message.`,
+                    'Attachment selected'
+                );
             }
+        );
 
-            let id = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || `conversation-${Date.now()}`;
-            if (chatThreads[id]) id = `${id}-${Date.now().toString().slice(-4)}`;
-            const initials = name.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
-            const time = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-            const item = document.createElement('button');
-            item.type = 'button';
-            item.className = 'conversation-item';
-            item.dataset.conversationItem = '';
-            item.dataset.conversationId = id;
-            item.dataset.search = `${name} ${role} ${text}`.toLowerCase();
-            item.dataset.name = name;
-            item.dataset.role = role;
-            item.dataset.initials = initials;
-            item.dataset.preview = text;
-            item.dataset.time = time;
-            item.innerHTML = `<span class="avatar avatar-soft">${escapeChatHtml(initials)}</span><span class="conversation-copy"><span><strong>${escapeChatHtml(name)}</strong><time>${escapeChatHtml(time)}</time></span><small>${escapeChatHtml(role)} • ${escapeChatHtml(text)}</small></span>`;
-            conversationList.prepend(item);
-            conversationItems.push(item);
-            bindConversation(item);
-            chatThreads[id] = [{ from: 'me', text, time }];
-            chatThreads.__contacts = [
-                { conversationId: id, search: item.dataset.search, name, role, initials, preview: text, time },
-                ...(chatThreads.__contacts || []).filter((contact) => contact.conversationId !== id),
-            ];
-            saveChatThreads();
-            selectConversation(item);
-            closeModal(document.querySelector('[data-modal="new-conversation"]'));
-            if (nameInput) nameInput.value = '';
-            if (firstMessage) firstMessage.value = '';
-            showToast(`Conversation with ${name} was created.`, 'Conversation started');
-        });
 
-        document.querySelector('[data-chat-attachment-button]')?.addEventListener('click', () => {
-            document.querySelector('[data-chat-attachment]')?.click();
-        });
-        document.querySelector('[data-chat-attachment]')?.addEventListener('change', (event) => {
-            const file = event.target.files?.[0];
-            if (file) showToast(`${file.name} is ready to attach to your next message.`, 'Attachment selected');
-        });
-        document.querySelector('[data-chat-emoji]')?.addEventListener('click', () => {
-            if (!messageInput) return;
-            messageInput.value += '🙂';
-            messageInput.focus();
-        });
+        /*
+        * Emoji shortcut
+        */
+        document
+            .querySelector(
+                '[data-chat-emoji]'
+            )
+            ?.addEventListener(
+                'click',
+                () => {
 
-        document.querySelector('[data-chat-details]')?.addEventListener('click', () => {
-            const activeItem = document.querySelector('[data-conversation-item].is-active');
-            if (!activeItem) return;
-            const count = (chatThreads[getConversationId(activeItem)] || []).length;
-            showToast(`${activeItem.dataset.name} · ${activeItem.dataset.role} · ${count} messages`, 'Conversation details');
-        });
+                    if (!messageInput) return;
 
-        document.querySelector('[data-chat-mark-unread]')?.addEventListener('click', () => {
-            const activeItem = document.querySelector('[data-conversation-item].is-active');
-            if (!activeItem) return;
-            let unread = activeItem.querySelector('.unread-count');
-            if (!unread) {
-                unread = document.createElement('span');
-                unread.className = 'unread-count';
-                unread.textContent = '1';
-                activeItem.appendChild(unread);
-            }
-            showToast(`${activeItem.dataset.name}'s conversation was marked unread.`, 'Inbox updated');
-        });
+                    messageInput.value += '🙂';
 
-        const initialConversation = document.querySelector('[data-conversation-item].is-active');
+                    messageInput.focus();
+                }
+            );
+
+
+        /*
+        * Conversation details
+        */
+        document
+            .querySelector(
+                '[data-chat-details]'
+            )
+            ?.addEventListener(
+                'click',
+                () => {
+
+                    const activeItem =
+                        document.querySelector(
+                            '[data-conversation-item].is-active'
+                        );
+
+
+                    if (!activeItem) return;
+
+
+                    const count =
+                        (
+                            chatThreads[
+                                getConversationId(
+                                    activeItem
+                                )
+                            ] || []
+                        ).length;
+
+
+                    showToast(
+                        `${activeItem.dataset.name} · ${activeItem.dataset.role} · ${count} messages`,
+                        'Conversation details'
+                    );
+                }
+            );
+
+
+        /*
+        * Mark current conversation unread
+        */
+        document
+            .querySelector(
+                '[data-chat-mark-unread]'
+            )
+            ?.addEventListener(
+                'click',
+                () => {
+
+                    const activeItem =
+                        document.querySelector(
+                            '[data-conversation-item].is-active'
+                        );
+
+
+                    if (!activeItem) return;
+
+
+                    let unread =
+                        activeItem.querySelector(
+                            '.unread-count'
+                        );
+
+
+                    if (!unread) {
+                        unread =
+                            document.createElement(
+                                'span'
+                            );
+
+                        unread.className =
+                            'unread-count';
+
+                        unread.textContent =
+                            '1';
+
+                        activeItem.appendChild(
+                            unread
+                        );
+                    } else {
+                        unread.textContent =
+                            String(
+                                Number(
+                                    unread.textContent ||
+                                    0
+                                ) + 1
+                            );
+                    }
+
+
+                    updateUnreadSummary();
+
+
+                    showToast(
+                        `${activeItem.dataset.name}'s conversation was marked unread.`,
+                        'Inbox updated'
+                    );
+                }
+            );
+
+
+        /*
+        * Initial unread counter.
+        */
+        updateUnreadSummary();
+
+
+        /*
+        * Render initial active thread.
+        */
+        const initialConversation =
+            document.querySelector(
+                '[data-conversation-item].is-active'
+            );
+
+
         if (initialConversation) {
-            renderChatThread(getConversationId(initialConversation));
+            renderChatThread(
+                getConversationId(
+                    initialConversation
+                )
+            );
         }
     });

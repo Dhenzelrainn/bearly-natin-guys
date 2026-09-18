@@ -19,15 +19,15 @@
         </p>
     </div>
 
-    <div class="hero-summary-card">
+    <div class="hero-context-stat">
 
-        <span class="metric-icon">
+        <span class="hero-context-icon">
             <i data-lucide="user-plus"></i>
         </span>
 
         <div>
             <strong>{{ count($applications) }}</strong>
-            <small>Buyer applications</small>
+            <span>Buyer applications</span>
         </div>
 
     </div>
@@ -182,26 +182,34 @@
 
                         <td>
 
-                            <strong>
-                                {{ $application['contact'] }}
-                            </strong>
+                            <div class="table-primary-secondary">
 
-                            <small>
-                                Age {{ $application['age'] }}
-                            </small>
+                                <strong>
+                                    {{ $application['contact'] }}
+                                </strong>
+
+                                <small>
+                                    Age {{ $application['age'] }}
+                                </small>
+
+                            </div>
 
                         </td>
 
 
                         <td>
 
-                            <strong>
-                                {{ $application['municipality'] }}
-                            </strong>
+                            <div class="table-primary-secondary">
 
-                            <small>
-                                {{ $application['province'] }}
-                            </small>
+                                <strong>
+                                    {{ $application['municipality'] }}
+                                </strong>
+
+                                <small>
+                                    {{ $application['province'] }}
+                                </small>
+
+                            </div>
 
                         </td>
 

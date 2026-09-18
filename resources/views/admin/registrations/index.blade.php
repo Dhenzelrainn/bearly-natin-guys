@@ -10,10 +10,16 @@
         <h1>Manage account registrations</h1>
         <p>Review Buyer, Seller, and Logistics applications before granting platform access. Rider applications are approved by the selected Logistics partner.</p>
     </div>
-    <div class="hero-summary-card">
-        <span class="metric-icon"><i data-lucide="clipboard-check"></i></span>
-        <div><strong>{{ count($applications) }}</strong><small>Applications in mock queue</small></div>
+    <div class="hero-context-stat">
+    <span class="hero-context-icon">
+        <i data-lucide="clipboard-check"></i>
+    </span>
+
+    <div>
+        <strong>{{ count($applications) }}</strong>
+        <span>Applications in mock queue</span>
     </div>
+</div>
 </section>
 
 <section class="panel">

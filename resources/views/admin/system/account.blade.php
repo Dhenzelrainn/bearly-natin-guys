@@ -31,20 +31,41 @@
 
 <section class="account-grid">
     <article class="panel profile-edit-panel">
-        <div class="panel-heading">
+        <div class="panel-heading panel-heading-wrap">
+
             <div>
                 <span class="eyebrow">Admin profile</span>
                 <h2>View / edit profile</h2>
             </div>
 
-            <button
-                class="button button-secondary button-small"
-                type="button"
-                data-profile-edit
-            >
-                <i data-lucide="pencil"></i>
-                Edit
-            </button>
+            <div class="profile-heading-actions">
+
+                <div
+                    class="profile-save-state"
+                    data-profile-state
+                    data-state="saved"
+                >
+                    <i
+                        data-lucide="circle-check"
+                        data-profile-state-icon
+                    ></i>
+
+                    <span data-profile-state-label>
+                        Profile saved
+                    </span>
+                </div>
+
+                <button
+                    class="button button-secondary button-small"
+                    type="button"
+                    data-profile-edit
+                >
+                    <i data-lucide="pencil"></i>
+                    Edit
+                </button>
+
+            </div>
+
         </div>
 
         <div class="profile-banner">
@@ -171,21 +192,38 @@
         </label>
 
         <div class="password-rules">
-            <span>
-                <i data-lucide="check"></i>
+
+            <span
+                data-password-rule="length"
+                data-valid="false"
+            >
+                <i data-lucide="circle"></i>
                 8+ characters
             </span>
 
-            <span>
-                <i data-lucide="check"></i>
+            <span
+                data-password-rule="mixed"
+                data-valid="false"
+            >
+                <i data-lucide="circle"></i>
                 Mix letters and numbers
             </span>
+
+            <span
+                data-password-rule="match"
+                data-valid="false"
+            >
+                <i data-lucide="circle"></i>
+                Passwords match
+            </span>
+
         </div>
 
         <button
             class="button button-primary full-button"
             type="button"
             data-password-update
+            disabled
         >
             Update password
         </button>

@@ -16,14 +16,19 @@
         </p>
     </div>
 
-    <div class="hero-summary-card">
-        <span class="metric-icon">
+    <div class="hero-context-card policy-hero-stat">
+        <span class="hero-context-icon">
             <i data-lucide="file-text"></i>
         </span>
 
-        <div>
-            <strong>{{ count($policies) }}</strong>
+        <div class="hero-context-copy">
             <small>Policy records</small>
+
+            <strong data-policy-record-count>
+                {{ count($policies) }}
+            </strong>
+
+            <span>Managed platform policies</span>
         </div>
     </div>
 </section>
@@ -165,7 +170,7 @@
                                         ? 'badge-success'
                                         : ($policy['status'] === 'Draft'
                                             ? 'badge-warning'
-                                            : '')
+                                            : 'badge-neutral')
                                 }}"
                             >
                                 {{ $policy['status'] }}
@@ -215,6 +220,8 @@
 <div
     class="modal-shell"
     data-modal="policy-{{ $loop->index }}"
+    data-policy-modal
+    data-policy-id="{{ $policy['id'] }}"
     hidden
 >
 
@@ -234,7 +241,9 @@
 
             <div>
                 <span class="eyebrow">{{ $policy['id'] }}</span>
-                <h2>{{ $policy['title'] }}</h2>
+                <h2 data-policy-title>
+                    {{ $policy['title'] }}
+                </h2>
             </div>
 
             <button
@@ -258,27 +267,37 @@
 
                 <div>
                     <span>Category</span>
-                    <strong>{{ $policy['category'] }}</strong>
+                    <strong data-policy-category>
+                        {{ $policy['category'] }}
+                    </strong>
                 </div>
 
                 <div>
                     <span>Version</span>
-                    <strong>{{ $policy['version'] }}</strong>
+                    <strong data-policy-version>
+                        {{ $policy['version'] }}
+                    </strong>
                 </div>
 
                 <div>
                     <span>Status</span>
-                    <strong>{{ $policy['status'] }}</strong>
+                    <strong data-policy-status>
+                        {{ $policy['status'] }}
+                    </strong>
                 </div>
 
                 <div>
                     <span>Last updated</span>
-                    <strong>{{ $policy['updated'] }}</strong>
+                    <strong data-policy-updated>
+                        {{ $policy['updated'] }}
+                    </strong>
                 </div>
 
                 <div>
                     <span>Updated by</span>
-                    <strong>{{ $policy['updated_by'] }}</strong>
+                    <strong data-policy-author>
+                        {{ $policy['updated_by'] }}
+                    </strong>
                 </div>
 
             </div>
@@ -286,48 +305,73 @@
 
             <div class="detail-note">
                 <span>Summary</span>
-                <p>{{ $policy['summary'] }}</p>
+
+                <p data-policy-summary>
+                    {{ $policy['summary'] }}
+                </p>
             </div>
 
             <div class="detail-note">
                 <span>Policy content</span>
-                <p>{{ $policy['body'] }}</p>
+
+                <p data-policy-body>
+                    {{ $policy['body'] }}
+                </p>
             </div>
 
         </div>
 
 
-        <div class="modal-footer decision-footer">
+        <div
+            class="modal-footer decision-footer"
+            data-policy-actions
+        >
 
             <button
                 type="button"
                 class="button button-secondary"
+                data-policy-action="edit"
                 data-mock-action="{{ $policy['title'] }} opened for editing."
             >
                 <i data-lucide="pencil"></i>
                 Edit Policy
             </button>
 
-            @if ($policy['status'] === 'Draft')
 
-                <button
-                    type="button"
-                    class="button button-primary"
-                    data-mock-action="{{ $policy['title'] }} published."
-                >
-                    <i data-lucide="send"></i>
-                    Publish
-                </button>
+            <button
+                type="button"
+                class="button button-primary"
+                data-policy-action="publish"
+                data-mock-action="{{ $policy['title'] }} published."
+            >
+                <i data-lucide="send"></i>
+                Publish
+            </button>
 
-            @endif
 
             <button
                 type="button"
                 class="button button-danger-soft"
+                data-policy-action="archive"
                 data-mock-action="{{ $policy['title'] }} archived."
             >
                 <i data-lucide="archive"></i>
                 Archive
+            </button>
+
+
+            <button
+                type="button"
+                class="button button-secondary"
+                data-policy-state-indicator
+                hidden
+                disabled
+            >
+                <i data-lucide="circle-check"></i>
+
+                <span data-policy-state-label>
+                    Policy updated
+                </span>
             </button>
 
         </div>

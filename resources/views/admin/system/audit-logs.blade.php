@@ -9,6 +9,7 @@
 
     <div>
         <span class="eyebrow">System Management</span>
+
         <h1>Audit logs</h1>
 
         <p>
@@ -19,18 +20,33 @@
     </div>
 
 
-    <div class="hero-summary-card">
-        <span class="metric-icon">
+    <div class="hero-context-card audit-hero-stat">
+
+        <span class="hero-context-icon">
             <i data-lucide="scroll-text"></i>
         </span>
 
-        <div>
-            <strong>{{ count($logs) }}</strong>
-            <small>Recorded activities</small>
+
+        <div class="hero-context-copy">
+
+            <small>
+                Recorded activities
+            </small>
+
+            <strong>
+                {{ count($logs) }}
+            </strong>
+
+            <span>
+                Administrative events logged
+            </span>
+
         </div>
+
     </div>
 
 </section>
+
 
 
 <section class="panel">
@@ -38,14 +54,20 @@
     <div class="panel-heading panel-heading-wrap">
 
         <div>
-            <span class="eyebrow">Administrative activity</span>
-            <h2>System activity history</h2>
+            <span class="eyebrow">
+                Administrative activity
+            </span>
+
+            <h2>
+                System activity history
+            </h2>
         </div>
 
 
         <div class="table-toolbar">
 
             <label class="field-with-icon compact-field">
+
                 <i data-lucide="search"></i>
 
                 <input
@@ -53,6 +75,7 @@
                     placeholder="Search logs..."
                     data-table-search="audit-logs-table"
                 >
+
             </label>
 
 
@@ -61,12 +84,31 @@
                 data-table-filter="audit-logs-table"
                 data-filter-key="module"
             >
-                <option value="">All modules</option>
-                <option value="Registration Management">Registration Management</option>
-                <option value="User Management">User Management</option>
-                <option value="Compliance & Disputes">Compliance & Disputes</option>
-                <option value="Communication">Communication</option>
-                <option value="System Management">System Management</option>
+
+                <option value="">
+                    All modules
+                </option>
+
+                <option value="Registration Management">
+                    Registration Management
+                </option>
+
+                <option value="User Management">
+                    User Management
+                </option>
+
+                <option value="Compliance & Disputes">
+                    Compliance & Disputes
+                </option>
+
+                <option value="Communication">
+                    Communication
+                </option>
+
+                <option value="System Management">
+                    System Management
+                </option>
+
             </select>
 
 
@@ -75,10 +117,23 @@
                 data-table-filter="audit-logs-table"
                 data-filter-key="severity"
             >
-                <option value="">All severities</option>
-                <option value="Info">Info</option>
-                <option value="Warning">Warning</option>
-                <option value="Critical">Critical</option>
+
+                <option value="">
+                    All severities
+                </option>
+
+                <option value="Info">
+                    Info
+                </option>
+
+                <option value="Warning">
+                    Warning
+                </option>
+
+                <option value="Critical">
+                    Critical
+                </option>
+
             </select>
 
         </div>
@@ -86,11 +141,16 @@
     </div>
 
 
+
     <div class="table-wrap">
 
-        <table class="admin-table" id="audit-logs-table">
+        <table
+            class="admin-table"
+            id="audit-logs-table"
+        >
 
             <thead>
+
                 <tr>
                     <th>Activity</th>
                     <th>Administrator</th>
@@ -98,8 +158,11 @@
                     <th>Target</th>
                     <th>Date & Time</th>
                     <th>Severity</th>
-                    <th class="align-right">Details</th>
+                    <th class="align-right">
+                        Details
+                    </th>
                 </tr>
+
             </thead>
 
 
@@ -125,6 +188,7 @@
                         }}"
                     >
 
+                        {{-- Activity --}}
                         <td>
 
                             <div class="identity-cell">
@@ -133,9 +197,17 @@
                                     <i data-lucide="activity"></i>
                                 </span>
 
-                                <div>
-                                    <strong>{{ $log['action'] }}</strong>
-                                    <small>{{ $log['id'] }}</small>
+
+                                <div class="table-primary-secondary">
+
+                                    <strong>
+                                        {{ $log['action'] }}
+                                    </strong>
+
+                                    <small>
+                                        {{ $log['id'] }}
+                                    </small>
+
                                 </div>
 
                             </div>
@@ -143,28 +215,55 @@
                         </td>
 
 
+                        {{-- Administrator --}}
                         <td>
-                            <strong>{{ $log['admin'] }}</strong>
-                            <small>{{ $log['role'] }}</small>
+
+                            <div class="table-primary-secondary">
+
+                                <strong>
+                                    {{ $log['admin'] }}
+                                </strong>
+
+                                <small>
+                                    {{ $log['role'] }}
+                                </small>
+
+                            </div>
+
                         </td>
 
 
+                        {{-- Module --}}
                         <td>
                             {{ $log['module'] }}
                         </td>
 
 
+                        {{-- Target --}}
                         <td>
                             {{ $log['target'] }}
                         </td>
 
 
+                        {{-- Date & Time --}}
                         <td>
-                            <strong>{{ $log['date'] }}</strong>
-                            <small>{{ $log['time'] }}</small>
+
+                            <div class="table-primary-secondary">
+
+                                <strong>
+                                    {{ $log['date'] }}
+                                </strong>
+
+                                <small>
+                                    {{ $log['time'] }}
+                                </small>
+
+                            </div>
+
                         </td>
 
 
+                        {{-- Severity --}}
                         <td>
 
                             <span
@@ -174,7 +273,7 @@
                                         ? 'badge-danger'
                                         : ($log['severity'] === 'Warning'
                                             ? 'badge-warning'
-                                            : 'badge-success')
+                                            : 'badge-info')
                                 }}"
                             >
                                 {{ $log['severity'] }}
@@ -183,6 +282,7 @@
                         </td>
 
 
+                        {{-- Details --}}
                         <td class="align-right">
 
                             <button
@@ -205,20 +305,34 @@
         </table>
 
 
+
         <div
             class="table-empty"
             data-table-empty="audit-logs-table"
             hidden
         >
+
             <i data-lucide="search-x"></i>
-            <strong>No audit records found</strong>
-            <span>Try another search or filter.</span>
+
+            <strong>
+                No audit records found
+            </strong>
+
+            <span>
+                Try another search or filter.
+            </span>
+
         </div>
 
     </div>
 
 </section>
 
+
+
+{{-- =========================================================
+     Audit Log Detail Modals
+     ========================================================= --}}
 
 @foreach ($logs as $log)
 
@@ -232,6 +346,7 @@
         type="button"
         class="modal-backdrop"
         data-close-modal
+        aria-label="Close audit log"
     ></button>
 
 
@@ -244,8 +359,15 @@
         <div class="modal-heading">
 
             <div>
-                <span class="eyebrow">{{ $log['id'] }}</span>
-                <h2>Audit log details</h2>
+
+                <span class="eyebrow">
+                    {{ $log['id'] }}
+                </span>
+
+                <h2>
+                    Audit log details
+                </h2>
+
             </div>
 
 
@@ -253,11 +375,13 @@
                 type="button"
                 class="icon-button"
                 data-close-modal
+                aria-label="Close"
             >
                 <i data-lucide="x"></i>
             </button>
 
         </div>
+
 
 
         <div class="review-details">
@@ -269,71 +393,174 @@
 
             <div class="detail-grid">
 
+                {{-- Action --}}
                 <div>
-                    <span>Action</span>
-                    <strong>{{ $log['action'] }}</strong>
+
+                    <span>
+                        Action
+                    </span>
+
+                    <strong>
+                        {{ $log['action'] }}
+                    </strong>
+
                 </div>
 
+
+                {{-- Administrator --}}
                 <div>
-                    <span>Administrator</span>
-                    <strong>{{ $log['admin'] }}</strong>
+
+                    <span>
+                        Administrator
+                    </span>
+
+                    <strong>
+                        {{ $log['admin'] }}
+                    </strong>
+
                 </div>
 
+
+                {{-- Administrator Role --}}
                 <div>
-                    <span>Administrator role</span>
-                    <strong>{{ $log['role'] }}</strong>
+
+                    <span>
+                        Administrator role
+                    </span>
+
+                    <strong>
+                        {{ $log['role'] }}
+                    </strong>
+
                 </div>
 
+
+                {{-- Module --}}
                 <div>
-                    <span>Module</span>
-                    <strong>{{ $log['module'] }}</strong>
+
+                    <span>
+                        Module
+                    </span>
+
+                    <strong>
+                        {{ $log['module'] }}
+                    </strong>
+
                 </div>
 
+
+                {{-- Target --}}
                 <div>
-                    <span>Target</span>
-                    <strong>{{ $log['target'] }}</strong>
+
+                    <span>
+                        Target
+                    </span>
+
+                    <strong>
+                        {{ $log['target'] }}
+                    </strong>
+
                 </div>
 
+
+                {{-- Severity --}}
                 <div>
-                    <span>Severity</span>
-                    <strong>{{ $log['severity'] }}</strong>
+
+                    <span>
+                        Severity
+                    </span>
+
+
+                    <strong>
+
+                        <span
+                            class="status-badge
+                            {{
+                                $log['severity'] === 'Critical'
+                                    ? 'badge-danger'
+                                    : ($log['severity'] === 'Warning'
+                                        ? 'badge-warning'
+                                        : 'badge-info')
+                            }}"
+                        >
+                            {{ $log['severity'] }}
+                        </span>
+
+                    </strong>
+
                 </div>
 
+
+                {{-- Date --}}
                 <div>
-                    <span>Date</span>
-                    <strong>{{ $log['date'] }}</strong>
+
+                    <span>
+                        Date
+                    </span>
+
+                    <strong>
+                        {{ $log['date'] }}
+                    </strong>
+
                 </div>
 
+
+                {{-- Time --}}
                 <div>
-                    <span>Time</span>
-                    <strong>{{ $log['time'] }}</strong>
+
+                    <span>
+                        Time
+                    </span>
+
+                    <strong>
+                        {{ $log['time'] }}
+                    </strong>
+
                 </div>
 
+
+                {{-- IP Address --}}
                 <div>
-                    <span>IP Address</span>
-                    <strong>{{ $log['ip'] }}</strong>
+
+                    <span>
+                        IP Address
+                    </span>
+
+                    <strong>
+                        {{ $log['ip'] }}
+                    </strong>
+
                 </div>
 
             </div>
 
 
+
             <div class="detail-note">
-                <span>Activity description</span>
+
+                <span>
+                    Activity description
+                </span>
 
                 <p>
                     {{ $log['description'] }}
                 </p>
+
             </div>
 
 
             <div class="detail-note">
-                <span>Audit record</span>
+
+                <span>
+                    Audit record
+                </span>
 
                 <p>
                     This record is read-only and represents an administrative
                     action recorded by the platform for accountability and
                     system monitoring.
                 </p>
+
             </div>
 
         </div>
@@ -343,5 +570,6 @@
 </div>
 
 @endforeach
+
 
 @endsection

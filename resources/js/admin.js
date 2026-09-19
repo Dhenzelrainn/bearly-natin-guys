@@ -652,59 +652,242 @@
         });
 
 
-         // Change password validation (front-end preview only)
-        const currentPasswordInput = document.querySelector('[data-password-current]');
-        const newPasswordInput = document.querySelector('[data-password-new]');
-        const confirmPasswordInput = document.querySelector('[data-password-confirm]');
-        const passwordUpdateButton = document.querySelector('[data-password-update]');
+        // Change password validation (front-end preview only)
+        const currentPasswordInput =
+            document.querySelector('[data-password-current]');
+
+        const newPasswordInput =
+            document.querySelector('[data-password-new]');
+
+        const confirmPasswordInput =
+            document.querySelector('[data-password-confirm]');
+
+        const passwordUpdateButton =
+            document.querySelector('[data-password-update]');
+
+        const passwordLengthRule =
+            document.querySelector('[data-password-rule="length"]');
+
+        const passwordMixedRule =
+            document.querySelector('[data-password-rule="mixed"]');
+
+        const passwordMatchRule =
+            document.querySelector('[data-password-rule="match"]');
+
 
         const isMixedPassword = (value) =>
-            /[A-Za-z]/.test(value) && /\d/.test(value);
+            /[A-Za-z]/.test(value) &&
+            /\d/.test(value);
 
-        passwordUpdateButton?.addEventListener('click', () => {
-            const currentPassword = currentPasswordInput?.value || '';
-            const newPassword = newPasswordInput?.value || '';
-            const confirmPassword = confirmPasswordInput?.value || '';
 
-            if (!currentPassword) {
-                showToast('Enter your current password first.', 'Password not updated');
-                currentPasswordInput?.focus();
-                return;
+        const setPasswordRuleState = (
+            rule,
+            valid
+        ) => {
+            if (!rule) return;
+
+            rule.dataset.valid =
+                valid ? 'true' : 'false';
+
+
+            /*
+            * Lucide converts the original <i>
+            * into an <svg>, so replace whichever
+            * icon element currently exists.
+            */
+            const currentIcon =
+                rule.querySelector('i, svg');
+
+            if (currentIcon) {
+                const nextIcon =
+                    document.createElement('i');
+
+                nextIcon.setAttribute(
+                    'data-lucide',
+                    valid
+                        ? 'circle-check'
+                        : 'circle'
+                );
+
+                currentIcon.replaceWith(
+                    nextIcon
+                );
             }
 
-            if (newPassword.length < 8) {
-                showToast('New password must be at least 8 characters.', 'Password not updated');
-                newPasswordInput?.focus();
-                return;
-            }
 
-            if (!isMixedPassword(newPassword)) {
-                showToast('New password must contain both letters and numbers.', 'Password not updated');
-                newPasswordInput?.focus();
-                return;
-            }
+            refreshIcons();
+        };
 
-            if (newPassword !== confirmPassword) {
-                showToast('New password and confirmation do not match.', 'Password not updated');
-                confirmPasswordInput?.focus();
-                return;
-            }
 
-            if (newPassword === currentPassword) {
-                showToast('Choose a new password that is different from the current password.', 'Password not updated');
-                newPasswordInput?.focus();
-                return;
-            }
+        const syncPasswordValidation = () => {
+            const currentPassword =
+                currentPasswordInput?.value || '';
 
-            // Front-end prototype only: do not store real passwords anywhere.
-            newPasswordInput.value = '';
-            confirmPasswordInput.value = '';
+            const newPassword =
+                newPasswordInput?.value || '';
 
-            showToast(
-                'Password validation passed. Backend authentication can handle the real update later.',
-                'Password check passed'
+            const confirmPassword =
+                confirmPasswordInput?.value || '';
+
+
+            const validLength =
+                newPassword.length >= 8;
+
+            const validMixed =
+                isMixedPassword(newPassword);
+
+            /*
+            * Keep this false while both fields
+            * are empty so the page starts neutral.
+            */
+            const validMatch =
+                Boolean(newPassword) &&
+                Boolean(confirmPassword) &&
+                newPassword === confirmPassword;
+
+
+            setPasswordRuleState(
+                passwordLengthRule,
+                validLength
             );
-        });
+
+            setPasswordRuleState(
+                passwordMixedRule,
+                validMixed
+            );
+
+            setPasswordRuleState(
+                passwordMatchRule,
+                validMatch
+            );
+
+
+            if (passwordUpdateButton) {
+                passwordUpdateButton.disabled =
+                    !currentPassword ||
+                    !validLength ||
+                    !validMixed ||
+                    !validMatch;
+            }
+
+
+        };
+
+
+        [
+            currentPasswordInput,
+            newPasswordInput,
+            confirmPasswordInput,
+        ]
+            .filter(Boolean)
+            .forEach((input) => {
+                input.addEventListener(
+                    'input',
+                    syncPasswordValidation
+                );
+            });
+
+
+        passwordUpdateButton
+            ?.addEventListener(
+                'click',
+                () => {
+
+                    const currentPassword =
+                        currentPasswordInput?.value || '';
+
+                    const newPassword =
+                        newPasswordInput?.value || '';
+
+                    const confirmPassword =
+                        confirmPasswordInput?.value || '';
+
+
+                    if (!currentPassword) {
+                        showToast(
+                            'Enter your current password first.',
+                            'Password not updated'
+                        );
+
+                        currentPasswordInput?.focus();
+                        return;
+                    }
+
+
+                    if (newPassword.length < 8) {
+                        showToast(
+                            'New password must be at least 8 characters.',
+                            'Password not updated'
+                        );
+
+                        newPasswordInput?.focus();
+                        return;
+                    }
+
+
+                    if (!isMixedPassword(newPassword)) {
+                        showToast(
+                            'New password must contain both letters and numbers.',
+                            'Password not updated'
+                        );
+
+                        newPasswordInput?.focus();
+                        return;
+                    }
+
+
+                    if (
+                        newPassword !==
+                        confirmPassword
+                    ) {
+                        showToast(
+                            'New password and confirmation do not match.',
+                            'Password not updated'
+                        );
+
+                        confirmPasswordInput?.focus();
+                        return;
+                    }
+
+
+                    if (
+                        newPassword ===
+                        currentPassword
+                    ) {
+                        showToast(
+                            'Choose a new password that is different from the current password.',
+                            'Password not updated'
+                        );
+
+                        newPasswordInput?.focus();
+                        return;
+                    }
+
+
+                    /*
+                    * Front-end prototype only.
+                    * Never persist real password values.
+                    */
+                    currentPasswordInput.value = '';
+                    newPasswordInput.value = '';
+                    confirmPasswordInput.value = '';
+
+
+                    syncPasswordValidation();
+
+
+                    showToast(
+                        'Password validation passed. Backend authentication can handle the real update later.',
+                        'Password check passed'
+                    );
+                }
+            );
+
+
+        /*
+        * Initialize password controls.
+        */
+        syncPasswordValidation();
 
         // Current admin identity sync across Admin pages
         const ADMIN_PROFILE_STORAGE_KEY = 'bearlyAdminProfilePreview';
@@ -760,81 +943,373 @@
         }
 
         // Account profile edit / save preview
-        const profileEditButton = document.querySelector('[data-profile-edit]');
-        const profileSaveButton = document.querySelector('[data-profile-save]');
-        const profileFields = [...document.querySelectorAll('[data-profile-field]')];
+        const profileEditButton =
+            document.querySelector(
+                '[data-profile-edit]'
+            );
 
-        const setProfileEditMode = (editing) => {
-            profileFields.forEach((field) => {
-                field.readOnly = !editing;
+        const profileSaveButton =
+            document.querySelector(
+                '[data-profile-save]'
+            );
+
+        const profileFields = [
+            ...document.querySelectorAll(
+                '[data-profile-field]'
+            ),
+        ];
+
+        const profileState =
+            document.querySelector(
+                '[data-profile-state]'
+            );
+
+        const profileStateIcon =
+            document.querySelector(
+                '[data-profile-state-icon]'
+            );
+
+        const profileStateLabel =
+            document.querySelector(
+                '[data-profile-state-label]'
+            );
+
+
+        let profileSnapshot = {};
+
+
+        /*
+        * Read the current profile form.
+        */
+        const collectProfileValues = () =>
+            Object.fromEntries(
+                profileFields.map(
+                    (field) => [
+                        field.dataset.profileField,
+                        field.value.trim(),
+                    ]
+                )
+            );
+
+
+        const profileSignature = (
+            profile
+        ) =>
+            JSON.stringify({
+                first_name:
+                    profile.first_name || '',
+
+                last_name:
+                    profile.last_name || '',
+
+                email:
+                    profile.email || '',
+
+                phone:
+                    profile.phone || '',
             });
 
-            if (profileSaveButton) {
-                profileSaveButton.disabled = !editing;
+
+        const setProfileState = (
+            state
+        ) => {
+            if (profileState) {
+                profileState.dataset.state =
+                    state;
             }
 
-            if (profileEditButton) {
-                profileEditButton.innerHTML = editing
-                    ? '<i data-lucide="x"></i> Cancel'
-                    : '<i data-lucide="pencil"></i> Edit';
+
+            if (state === 'dirty') {
+                if (profileStateLabel) {
+                    profileStateLabel.textContent =
+                        'Unsaved changes';
+                }
+
+                if (profileStateIcon) {
+                    profileStateIcon.setAttribute(
+                        'data-lucide',
+                        'circle-alert'
+                    );
+                }
+
+                refreshIcons();
+                return;
+            }
+
+
+            if (profileStateLabel) {
+                profileStateLabel.textContent =
+                    'Profile saved';
+            }
+
+            if (profileStateIcon) {
+                profileStateIcon.setAttribute(
+                    'data-lucide',
+                    'circle-check'
+                );
             }
 
             refreshIcons();
         };
 
-        let profileSnapshot = {};
 
-        profileEditButton?.addEventListener('click', () => {
-            const currentlyEditing = profileFields.some((field) => !field.readOnly);
-
-            if (!currentlyEditing) {
-                profileSnapshot = Object.fromEntries(
-                    profileFields.map((field) => [field.dataset.profileField, field.value])
-                );
-                setProfileEditMode(true);
-                profileFields[0]?.focus();
-                showToast('Profile fields are now editable.', 'Edit mode enabled');
-                return;
-            }
-
-            profileFields.forEach((field) => {
-                const key = field.dataset.profileField;
-                if (Object.prototype.hasOwnProperty.call(profileSnapshot, key)) {
-                    field.value = profileSnapshot[key];
+        const setProfileEditMode = (
+            editing
+        ) => {
+            profileFields.forEach(
+                (field) => {
+                    field.readOnly =
+                        !editing;
                 }
-            });
-
-            setProfileEditMode(false);
-            showToast('Unsaved profile changes were discarded.', 'Changes cancelled');
-        });
-
-        profileSaveButton?.addEventListener('click', () => {
-            const values = Object.fromEntries(
-                profileFields.map((field) => [
-                    field.dataset.profileField,
-                    field.value.trim(),
-                ])
             );
 
-            if (!values.first_name || !values.last_name || !values.email) {
-                showToast('First name, last name, and email are required.', 'Profile not saved');
-                return;
+
+            if (!editing && profileSaveButton) {
+                profileSaveButton.disabled =
+                    true;
             }
 
-            const emailField = profileFields.find((field) => field.dataset.profileField === 'email');
-            if (emailField && !emailField.checkValidity()) {
-                showToast('Enter a valid email address before saving.', 'Profile not saved');
-                emailField.focus();
-                return;
+
+            if (profileEditButton) {
+                profileEditButton.innerHTML =
+                    editing
+                        ? `
+                            <i data-lucide="x"></i>
+                            Cancel
+                        `
+                        : `
+                            <i data-lucide="pencil"></i>
+                            Edit
+                        `;
             }
 
-            localStorage.setItem(ADMIN_PROFILE_STORAGE_KEY, JSON.stringify(values));
-            applyCurrentAdminIdentity(values);
 
-            profileSnapshot = values;
-            setProfileEditMode(false);
-            showToast('Admin profile changes were saved in this preview.', 'Profile updated');
-        });
+            refreshIcons();
+        };
+
+
+        /*
+        * Check whether an editable field
+        * actually differs from the snapshot.
+        */
+        const syncProfileDirtyState = () => {
+            const current =
+                collectProfileValues();
+
+            const changed =
+                profileSignature(current) !==
+                profileSignature(
+                    profileSnapshot
+                );
+
+
+            if (profileSaveButton) {
+                profileSaveButton.disabled =
+                    !changed;
+            }
+
+
+            setProfileState(
+                changed
+                    ? 'dirty'
+                    : 'saved'
+            );
+        };
+
+
+        profileFields.forEach(
+            (field) => {
+                field.addEventListener(
+                    'input',
+                    syncProfileDirtyState
+                );
+            }
+        );
+
+
+        profileEditButton
+            ?.addEventListener(
+                'click',
+                () => {
+
+                    const currentlyEditing =
+                        profileFields.some(
+                            (field) =>
+                                !field.readOnly
+                        );
+
+
+                    /*
+                    * Enter edit mode.
+                    */
+                    if (!currentlyEditing) {
+
+                        profileSnapshot =
+                            collectProfileValues();
+
+
+                        setProfileEditMode(
+                            true
+                        );
+
+
+                        setProfileState(
+                            'saved'
+                        );
+
+
+                        if (profileSaveButton) {
+                            profileSaveButton.disabled =
+                                true;
+                        }
+
+
+                        profileFields[0]
+                            ?.focus();
+
+
+                        return;
+                    }
+
+
+                    /*
+                    * Cancel edit mode.
+                    * Restore original field values.
+                    */
+                    profileFields.forEach(
+                        (field) => {
+
+                            const key =
+                                field.dataset
+                                    .profileField;
+
+                            if (
+                                Object.prototype
+                                    .hasOwnProperty
+                                    .call(
+                                        profileSnapshot,
+                                        key
+                                    )
+                            ) {
+                                field.value =
+                                    profileSnapshot[key];
+                            }
+
+                        }
+                    );
+
+
+                    setProfileEditMode(
+                        false
+                    );
+
+
+                    setProfileState(
+                        'saved'
+                    );
+
+
+                    showToast(
+                        'Unsaved profile changes were discarded.',
+                        'Changes cancelled'
+                    );
+                }
+            );
+
+
+        profileSaveButton
+            ?.addEventListener(
+                'click',
+                () => {
+
+                    const values =
+                        collectProfileValues();
+
+
+                    if (
+                        !values.first_name ||
+                        !values.last_name ||
+                        !values.email
+                    ) {
+                        showToast(
+                            'First name, last name, and email are required.',
+                            'Profile not saved'
+                        );
+
+                        return;
+                    }
+
+
+                    const emailField =
+                        profileFields.find(
+                            (field) =>
+                                field.dataset
+                                    .profileField ===
+                                'email'
+                        );
+
+
+                    if (
+                        emailField &&
+                        !emailField.checkValidity()
+                    ) {
+                        showToast(
+                            'Enter a valid email address before saving.',
+                            'Profile not saved'
+                        );
+
+                        emailField.focus();
+                        return;
+                    }
+
+
+                    localStorage.setItem(
+                        ADMIN_PROFILE_STORAGE_KEY,
+                        JSON.stringify(values)
+                    );
+
+
+                    applyCurrentAdminIdentity(
+                        values
+                    );
+
+
+                    profileSnapshot = {
+                        ...values,
+                    };
+
+
+                    setProfileEditMode(
+                        false
+                    );
+
+
+                    setProfileState(
+                        'saved'
+                    );
+
+
+                    showToast(
+                        'Admin profile changes were saved in this preview.',
+                        'Profile updated'
+                    );
+                }
+            );
+
+
+        /*
+        * Initial Account page state.
+        */
+        profileSnapshot =
+            collectProfileValues();
+
+        setProfileEditMode(
+            false
+        );
+
+        setProfileState(
+            'saved'
+        );
 
         // Report filters
         const reportStartInput = document.querySelector('[data-report-start]');
@@ -2145,6 +2620,149 @@
                 );
             }
         };
+
+        // Platform Policy modal + workflow synchronization
+        const syncPolicyActions = (modal, status) => {
+            if (!modal) return;
+
+            const editButton =
+                modal.querySelector('[data-policy-action="edit"]');
+
+            const publishButton =
+                modal.querySelector('[data-policy-action="publish"]');
+
+            const archiveButton =
+                modal.querySelector('[data-policy-action="archive"]');
+
+            const indicator =
+                modal.querySelector('[data-policy-state-indicator]');
+
+            const indicatorLabel =
+                modal.querySelector('[data-policy-state-label]');
+
+
+            if (status === 'Draft') {
+                if (editButton) editButton.hidden = false;
+                if (publishButton) publishButton.hidden = false;
+                if (archiveButton) archiveButton.hidden = false;
+                if (indicator) indicator.hidden = true;
+                return;
+            }
+
+
+            if (status === 'Active') {
+                if (editButton) editButton.hidden = false;
+                if (publishButton) publishButton.hidden = true;
+                if (archiveButton) archiveButton.hidden = false;
+                if (indicator) indicator.hidden = true;
+                return;
+            }
+
+
+            if (status === 'Archived') {
+                if (editButton) editButton.hidden = true;
+                if (publishButton) publishButton.hidden = true;
+                if (archiveButton) archiveButton.hidden = true;
+
+                if (indicator) {
+                    indicator.hidden = false;
+                }
+
+                if (indicatorLabel) {
+                    indicatorLabel.textContent =
+                        'Policy archived';
+                }
+            }
+        };
+
+
+        const findPolicyModal = (policyId) =>
+            [
+                ...document.querySelectorAll(
+                    '[data-policy-modal]'
+                ),
+            ].find(
+                (modal) =>
+                    modal.dataset.policyId === policyId
+            ) || null;
+
+
+        const syncPolicyModal = (
+            policyId,
+            record = {}
+        ) => {
+            const modal =
+                findPolicyModal(policyId);
+
+            if (!modal) return;
+
+
+            const title =
+                modal.querySelector('[data-policy-title]');
+
+            const category =
+                modal.querySelector('[data-policy-category]');
+
+            const version =
+                modal.querySelector('[data-policy-version]');
+
+            const status =
+                modal.querySelector('[data-policy-status]');
+
+            const updated =
+                modal.querySelector('[data-policy-updated]');
+
+            const author =
+                modal.querySelector('[data-policy-author]');
+
+            const summary =
+                modal.querySelector('[data-policy-summary]');
+
+            const body =
+                modal.querySelector('[data-policy-body]');
+
+
+            if (record.title !== undefined && title) {
+                title.textContent = record.title;
+            }
+
+            if (record.category !== undefined && category) {
+                category.textContent = record.category;
+            }
+
+            if (record.version !== undefined && version) {
+                version.textContent = record.version;
+            }
+
+            if (record.status !== undefined && status) {
+                status.textContent = record.status;
+            }
+
+            if (record.updated !== undefined && updated) {
+                updated.textContent = record.updated;
+            }
+
+            if (record.author !== undefined && author) {
+                author.textContent = record.author;
+            }
+
+            if (record.summary !== undefined && summary) {
+                summary.textContent = record.summary;
+            }
+
+            if (record.body !== undefined && body) {
+                body.textContent = record.body;
+            }
+
+
+            if (record.status) {
+                syncPolicyActions(
+                    modal,
+                    record.status
+                );
+            }
+        };            
+
         // Returns & Refunds modal action visibility
         const syncReturnActions = (modal, status) => {
             if (!modal) return;
@@ -2378,9 +2996,33 @@
                             status
                         );
                     }
+                    
+                    /*
+                    * Platform Policy modal state.
+                    */
+                    if (
+                        recordId.startsWith('POL-') &&
+                        modal.matches('[data-policy-modal]')
+                    ) {
+                        const policyStatus =
+                            modal.querySelector(
+                                '[data-policy-status]'
+                            );
+
+                        if (policyStatus) {
+                            policyStatus.textContent =
+                                status;
+                        }
+
+                        syncPolicyActions(
+                            modal,
+                            status
+                        );
+                    }
+                    
                 });
 
-
+                
             /*
             * Keep Returns & Refunds filter results
             * synchronized after a decision.
@@ -2388,6 +3030,16 @@
             if (recordId.startsWith('REF-')) {
                 runTableFilter('returns-table');
             }
+
+
+            /*
+            * Keep Platform Policies filters
+            * synchronized after a status change.
+            */
+            if (recordId.startsWith('POL-')) {
+                runTableFilter('policies-table');
+            }
+
 
             refreshIcons();
         };
@@ -2438,6 +3090,42 @@
                 );
             });
 
+        // Initialize server-rendered Platform Policy modal actions
+        document
+            .querySelectorAll(
+                '[data-policy-modal]'
+            )
+            .forEach((modal) => {
+
+                const policyId =
+                    modal.dataset.policyId;
+
+                if (!policyId) return;
+
+
+                const savedStatus =
+                    workflowStatuses[
+                        policyId
+                    ];
+
+
+                const initialStatus =
+                    savedStatus ||
+                    modal
+                        .querySelector(
+                            '[data-policy-status]'
+                        )
+                        ?.textContent
+                        .trim() ||
+                    'Draft';
+
+
+                syncPolicyActions(
+                    modal,
+                    initialStatus
+                );
+            });
+
         // Initialize Returns & Refunds modal controls
         document
             .querySelectorAll('[data-return-modal]')
@@ -2482,17 +3170,53 @@
             const action = button.dataset.mockAction.toLowerCase();
 
             let status = null;
-            if (action.includes('approved for refund')) status = 'Approved';
-            else if (action.includes('refund request rejected')) status = 'Rejected';
-            else if (action.includes('additional evidence requested')) status = 'Awaiting Evidence';
-            else if (action.includes('warning issued')) status = 'Warning Issued';
-            else if (action.includes('marked for removal')) status = 'Removal Required';
-            else if (action.includes('escalated for account review')) status = 'Escalated';
-            else if (action.endsWith(' published.')) status = 'Published';
-            else if (action.endsWith(' archived.')) status = 'Archived';
+
+            if (action.includes('approved for refund')) {
+                status = 'Approved';
+            }
+
+            else if (action.includes('refund request rejected')) {
+                status = 'Rejected';
+            }
+
+            else if (action.includes('additional evidence requested')) {
+                status = 'Awaiting Evidence';
+            }
+
+            else if (action.includes('warning issued')) {
+                status = 'Warning Issued';
+            }
+
+            else if (action.includes('marked for removal')) {
+                status = 'Removal Required';
+            }
+
+            else if (action.includes('escalated for account review')) {
+                status = 'Escalated';
+            }
+
+
+            const recordId =
+                button
+                    .closest('[data-modal]')
+                    ?.querySelector('.eyebrow')
+                    ?.textContent
+                    .trim() || '';
+
+
+            if (action.endsWith(' published.')) {
+                status =
+                    recordId.startsWith('POL-')
+                        ? 'Active'
+                        : 'Published';
+            }
+
+            else if (action.endsWith(' archived.')) {
+                status = 'Archived';
+            }
+
 
             if (!status) return;
-            const recordId = button.closest('[data-modal]')?.querySelector('.eyebrow')?.textContent.trim() || '';
             if (!/^[A-Z]+-\d+/i.test(recordId)) return;
 
             button.dataset.functionalAction = 'workflow-status';
@@ -2529,11 +3253,49 @@
         };
         const collectRecordForm = (type, status) => {
             const modal = recordModal(type);
+
             if (!modal) return null;
-            const record = { type, status, id: modal.dataset.editingRecordId || '' };
-            modal.querySelectorAll('[data-record-field]').forEach((field) => {
-                record[field.dataset.recordField] = field.value.trim();
-            });
+
+
+            const record = {
+                type,
+                status,
+                id:
+                    modal.dataset.editingRecordId ||
+                    '',
+            };
+
+
+            modal
+                .querySelectorAll(
+                    '[data-record-field]'
+                )
+                .forEach((field) => {
+
+                    const key =
+                        field.dataset.recordField;
+
+
+                    /*
+                    * The save button controls
+                    * the final workflow status.
+                    *
+                    * Save Draft     → Draft
+                    * Publish Policy → Active
+                    */
+                    if (
+                        key === 'status' &&
+                        status
+                    ) {
+                        return;
+                    }
+
+
+                    record[key] =
+                        field.value.trim();
+                });
+
+
             return record;
         };
         const ensureManagedAnnouncementModal = (record) => {
@@ -2844,6 +3606,333 @@
 
             return modal;
         };
+
+        const ensureManagedPolicyModal = (record) => {
+            if (record.type !== 'policy') return null;
+
+            const modalId =
+                `managed-policy-${record.id}`;
+
+            let modal =
+                document.querySelector(
+                    `[data-modal="${modalId}"]`
+                );
+
+
+            if (!modal) {
+                modal =
+                    document.createElement('div');
+
+                modal.className =
+                    'modal-shell';
+
+                modal.dataset.modal =
+                    modalId;
+
+                modal.dataset.policyModal =
+                    '';
+
+                modal.dataset.policyId =
+                    record.id;
+
+                modal.hidden =
+                    true;
+
+
+                modal.innerHTML = `
+                    <button
+                        type="button"
+                        class="modal-backdrop"
+                        data-close-modal
+                        aria-label="Close policy"
+                    ></button>
+
+                    <section
+                        class="modal-card modal-wide"
+                        role="dialog"
+                        aria-modal="true"
+                    >
+
+                        <div class="modal-heading">
+
+                            <div>
+                                <span class="eyebrow">
+                                    ${escapeReportHtml(record.id)}
+                                </span>
+
+                                <h2 data-policy-title></h2>
+                            </div>
+
+                            <button
+                                type="button"
+                                class="icon-button"
+                                data-close-modal
+                                aria-label="Close"
+                            >
+                                <i data-lucide="x"></i>
+                            </button>
+
+                        </div>
+
+
+                        <div class="review-details">
+
+                            <h3 class="section-subtitle">
+                                Policy information
+                            </h3>
+
+
+                            <div class="detail-grid">
+
+                                <div>
+                                    <span>Category</span>
+                                    <strong data-policy-category></strong>
+                                </div>
+
+                                <div>
+                                    <span>Version</span>
+                                    <strong data-policy-version></strong>
+                                </div>
+
+                                <div>
+                                    <span>Status</span>
+                                    <strong data-policy-status></strong>
+                                </div>
+
+                                <div>
+                                    <span>Last updated</span>
+                                    <strong data-policy-updated></strong>
+                                </div>
+
+                                <div>
+                                    <span>Updated by</span>
+                                    <strong data-policy-author></strong>
+                                </div>
+
+                            </div>
+
+
+                            <div class="detail-note">
+                                <span>Summary</span>
+                                <p data-policy-summary></p>
+                            </div>
+
+
+                            <div class="detail-note">
+                                <span>Policy content</span>
+                                <p data-policy-body></p>
+                            </div>
+
+                        </div>
+
+
+                        <div
+                            class="modal-footer decision-footer"
+                            data-policy-actions
+                        >
+
+                            <button
+                                type="button"
+                                class="button button-secondary"
+                                data-policy-action="edit"
+                            >
+                                <i data-lucide="pencil"></i>
+                                Edit Policy
+                            </button>
+
+
+                            <button
+                                type="button"
+                                class="button button-primary"
+                                data-policy-action="publish"
+                            >
+                                <i data-lucide="send"></i>
+                                Publish
+                            </button>
+
+
+                            <button
+                                type="button"
+                                class="button button-danger-soft"
+                                data-policy-action="archive"
+                            >
+                                <i data-lucide="archive"></i>
+                                Archive
+                            </button>
+
+
+                            <button
+                                type="button"
+                                class="button button-secondary"
+                                data-policy-state-indicator
+                                hidden
+                                disabled
+                            >
+                                <i data-lucide="circle-check"></i>
+
+                                <span data-policy-state-label>
+                                    Policy updated
+                                </span>
+                            </button>
+
+                        </div>
+
+                    </section>
+                `;
+
+
+                document.body.appendChild(
+                    modal
+                );
+
+
+                /*
+                * Dynamic modal close controls
+                */
+                modal
+                    .querySelectorAll(
+                        '[data-close-modal]'
+                    )
+                    .forEach((button) => {
+
+                        button.addEventListener(
+                            'click',
+                            () => {
+                                modal.hidden =
+                                    true;
+                            }
+                        );
+
+                    });
+
+
+                /*
+                * Edit policy
+                */
+                modal
+                    .querySelector(
+                        '[data-policy-action="edit"]'
+                    )
+                    ?.addEventListener(
+                        'click',
+                        () => {
+
+                            const currentRecord =
+                                managedRecords.find(
+                                    (item) =>
+                                        item.id ===
+                                        modal.dataset.policyId
+                                );
+
+                            if (!currentRecord) return;
+
+
+                            setRecordFormValues(
+                                'policy',
+                                currentRecord
+                            );
+
+
+                            modal.hidden =
+                                true;
+
+
+                            const editor =
+                                recordModal(
+                                    'policy'
+                                );
+
+                            if (editor) {
+                                editor.hidden =
+                                    false;
+                            }
+                        }
+                    );
+
+
+                /*
+                * Publish policy
+                */
+                modal
+                    .querySelector(
+                        '[data-policy-action="publish"]'
+                    )
+                    ?.addEventListener(
+                        'click',
+                        () => {
+
+                            const currentRecord =
+                                managedRecords.find(
+                                    (item) =>
+                                        item.id ===
+                                        modal.dataset.policyId
+                                );
+
+                            if (!currentRecord) return;
+
+
+                            currentRecord.status =
+                                'Active';
+
+
+                            persistManagedRecords();
+
+                            renderManagedRecord(
+                                currentRecord
+                            );
+
+
+                            showToast(
+                                `${currentRecord.id} changed to Active.`,
+                                'Policy published'
+                            );
+                        }
+                    );
+
+
+                /*
+                * Archive policy
+                */
+                modal
+                    .querySelector(
+                        '[data-policy-action="archive"]'
+                    )
+                    ?.addEventListener(
+                        'click',
+                        () => {
+
+                            const currentRecord =
+                                managedRecords.find(
+                                    (item) =>
+                                        item.id ===
+                                        modal.dataset.policyId
+                                );
+
+                            if (!currentRecord) return;
+
+
+                            currentRecord.status =
+                                'Archived';
+
+
+                            persistManagedRecords();
+
+                            renderManagedRecord(
+                                currentRecord
+                            );
+
+
+                            showToast(
+                                `${currentRecord.id} archived.`,
+                                'Policy archived'
+                            );
+                        }
+                    );
+            }
+
+
+            return modal;
+        };
         const recordBadge = (status) =>
             `status-badge ${workflowBadgeClass(status)}`;
 
@@ -3025,6 +4114,18 @@
                         .toLowerCase();
 
 
+                const updatedDate =
+                    record.updated ||
+                    new Date().toLocaleDateString(
+                        'en-PH',
+                        {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric',
+                        }
+                    );
+
+
                 row.innerHTML = `
                     <td>
 
@@ -3034,7 +4135,7 @@
                                 <i data-lucide="file-text"></i>
                             </span>
 
-                            <div>
+                            <div class="table-primary-secondary">
 
                                 <strong>
                                     ${escapeReportHtml(record.title)}
@@ -3050,9 +4151,11 @@
 
                     </td>
 
+
                     <td>
                         ${escapeReportHtml(record.category)}
                     </td>
+
 
                     <td>
                         <strong>
@@ -3062,49 +4165,72 @@
                         </strong>
                     </td>
 
+
                     <td>
                         Current Admin
                     </td>
 
+
                     <td>
-                        ${
-                            new Date()
-                                .toLocaleDateString('en-PH')
-                        }
+                        ${escapeReportHtml(updatedDate)}
                     </td>
 
-                    <td>
 
+                    <td>
                         <span class="${recordBadge(record.status)}">
                             ${escapeReportHtml(record.status)}
                         </span>
-
                     </td>
+
 
                     <td class="align-right">
 
-                        <div class="row-actions">
-
-                            <button
-                                class="button button-ghost button-small"
-                                type="button"
-                                data-edit-managed-record="${escapeReportHtml(record.id)}"
-                            >
-                                Edit
-                            </button>
-
-                            <button
-                                class="button button-danger-soft button-small"
-                                type="button"
-                                data-archive-managed-record="${escapeReportHtml(record.id)}"
-                            >
-                                Archive
-                            </button>
-
-                        </div>
+                        <button
+                            class="button button-ghost button-small"
+                            type="button"
+                            data-open-managed-policy="${escapeReportHtml(record.id)}"
+                        >
+                            <i data-lucide="eye"></i>
+                            View
+                        </button>
 
                     </td>
                 `;
+
+
+                ensureManagedPolicyModal(
+                    record
+                );
+
+
+                syncPolicyModal(
+                    record.id,
+                    {
+                        title:
+                            record.title,
+
+                        category:
+                            record.category,
+
+                        version:
+                            record.version || 'v1.0',
+
+                        status:
+                            record.status,
+
+                        updated:
+                            updatedDate,
+
+                        author:
+                            'Current Admin',
+
+                        summary:
+                            record.summary,
+
+                        body:
+                            record.body,
+                    }
+                );
             }
 
 
@@ -3146,6 +4272,41 @@
             }
         );
 
+        /*
+        * Open dynamically created Policy View modal.
+        */
+        document.addEventListener(
+            'click',
+            (event) => {
+
+                const button =
+                    event.target.closest(
+                        '[data-open-managed-policy]'
+                    );
+
+                if (!button) return;
+
+
+                const recordId =
+                    button.dataset
+                        .openManagedPolicy;
+
+
+                const modal =
+                    document.querySelector(
+                        `[data-policy-modal][data-policy-id="${recordId}"]`
+                    );
+
+
+                if (!modal) return;
+
+
+                modal.hidden = false;
+
+                refreshIcons();
+            }
+        );
+
         managedRecords.forEach(renderManagedRecord);
 
         document.querySelectorAll('[data-open-modal="create-announcement"], [data-open-modal="create-policy"]').forEach((button) => {
@@ -3153,6 +4314,27 @@
                 setRecordFormValues(button.dataset.openModal === 'create-announcement' ? 'announcement' : 'policy');
             });
         });
+
+        const syncPolicyRecordCount = () => {
+            const counter =
+                document.querySelector(
+                    '[data-policy-record-count]'
+                );
+
+            const table =
+                document.getElementById(
+                    'policies-table'
+                );
+
+            if (!counter || !table) return;
+
+            counter.textContent =
+                table.querySelectorAll(
+                    'tbody tr[data-table-row]'
+                ).length;
+        };
+
+        syncPolicyRecordCount();
 
         document.querySelectorAll('[data-mock-action]').forEach((button) => {
             if (!button.dataset.mockAction.toLowerCase().includes('opened for editing')) return;
@@ -3296,6 +4478,7 @@
                 managedRecords.push(record);
                 persistManagedRecords();
                 renderManagedRecord(record);
+                syncPolicyRecordCount();
                 closeModal(recordModal(type));
                 showToast(`${record.id} saved as ${record.status}.`, `${type === 'announcement' ? 'Announcement' : 'Policy'} saved`);
             });
@@ -3378,56 +4561,120 @@
         });
         
         // Platform settings configuration + persistence
-        const PLATFORM_CONFIG_STORAGE_KEY = 'bearlyPlatformConfigPreview';
+        const PLATFORM_CONFIG_STORAGE_KEY =
+            'bearlyPlatformConfigPreview';
 
-        const marketplaceNameInput = document.querySelector(
-            '[data-setting-marketplace-name]'
-        );
 
-        const commissionRateInput = document.querySelector(
-            '[data-setting-commission-rate]'
-        );
+        const marketplaceNameInput =
+            document.querySelector(
+                '[data-setting-marketplace-name]'
+            );
 
-        const marketplaceDescriptionInput = document.querySelector(
-            '[data-setting-marketplace-description]'
-        );
+        const commissionRateInput =
+            document.querySelector(
+                '[data-setting-commission-rate]'
+            );
 
-        const platformActiveInput = document.querySelector(
-            '[data-setting-platform-active]'
-        );
+        const marketplaceDescriptionInput =
+            document.querySelector(
+                '[data-setting-marketplace-description]'
+            );
 
-        const maintenanceModeInput = document.querySelector(
-            '[data-setting-maintenance-mode]'
-        );
+        const platformActiveInput =
+            document.querySelector(
+                '[data-setting-platform-active]'
+            );
+
+        const maintenanceModeInput =
+            document.querySelector(
+                '[data-setting-maintenance-mode]'
+            );
 
         const registrationInputs = [
-            ...document.querySelectorAll('[data-setting-registration]')
+            ...document.querySelectorAll(
+                '[data-setting-registration]'
+            ),
         ];
 
-        const cancellationHoursInput = document.querySelector(
-            '[data-setting-cancellation-hours]'
-        );
+        const cancellationHoursInput =
+            document.querySelector(
+                '[data-setting-cancellation-hours]'
+            );
 
-        const settlementPeriodInput = document.querySelector(
-            '[data-setting-settlement-period]'
-        );
+        const settlementPeriodInput =
+            document.querySelector(
+                '[data-setting-settlement-period]'
+            );
 
-        const platformSettingsSaveButton = document.querySelector(
-            '[data-settings-save]'
-        );
+        const platformSettingsSaveButton =
+            document.querySelector(
+                '[data-settings-save]'
+            );
 
-        const platformSettingsResetButton = document.querySelector(
-            '[data-settings-reset]'
-        );
+        const platformSettingsResetConfirmButton =
+            document.querySelector(
+                '[data-settings-reset-confirm]'
+            );
+
+
+        /*
+        * Settings status UI
+        */
+        const settingsState =
+            document.querySelector(
+                '[data-settings-state]'
+            );
+
+        const settingsStateTitle =
+            document.querySelector(
+                '[data-settings-state-title]'
+            );
+
+        const settingsStateMessage =
+            document.querySelector(
+                '[data-settings-state-message]'
+            );
+
+        const settingsStateIcon =
+            settingsState?.querySelector(
+                '.settings-save-state-icon i'
+            );
+
+
+        /*
+        * Platform availability UI
+        */
+        const availabilityState =
+            document.querySelector(
+                '[data-platform-availability-state]'
+            );
+
+        const availabilityMessage =
+            document.querySelector(
+                '[data-platform-availability-message]'
+            );
+
+        const availabilityIcon =
+            document.querySelector(
+                '[data-platform-availability-icon]'
+            );
+
 
         const PLATFORM_CONFIG_DEFAULTS = {
-            marketplaceName: 'Bearly',
-            commissionRate: 10,
+            marketplaceName:
+                'Bearly',
+
+            commissionRate:
+                10,
+
             marketplaceDescription:
                 'Bearly is an e-commerce marketplace connecting Buyers, Sellers, Logistics Centers, and Riders.',
 
-            platformActive: true,
-            maintenanceMode: false,
+            platformActive:
+                true,
+
+            maintenanceMode:
+                false,
 
             registrations: {
                 buyer: true,
@@ -3436,66 +4683,108 @@
                 rider: true,
             },
 
-            cancellationHours: 24,
-            settlementPeriod: '7',
+            cancellationHours:
+                24,
+
+            settlementPeriod:
+                '7',
         };
+
+
+        /*
+        * Safely clone the default object.
+        */
+        const clonePlatformDefaults = () =>
+            JSON.parse(
+                JSON.stringify(
+                    PLATFORM_CONFIG_DEFAULTS
+                )
+            );
+
 
         const getPlatformConfig = () => {
             try {
-                const raw = localStorage.getItem(PLATFORM_CONFIG_STORAGE_KEY);
+                const raw =
+                    localStorage.getItem(
+                        PLATFORM_CONFIG_STORAGE_KEY
+                    );
 
                 if (!raw) {
-                    return structuredClone(PLATFORM_CONFIG_DEFAULTS);
+                    return clonePlatformDefaults();
                 }
 
-                const saved = JSON.parse(raw);
+                const saved =
+                    JSON.parse(raw);
 
                 return {
-                    ...structuredClone(PLATFORM_CONFIG_DEFAULTS),
+                    ...clonePlatformDefaults(),
                     ...saved,
 
                     registrations: {
-                        ...PLATFORM_CONFIG_DEFAULTS.registrations,
-                        ...(saved.registrations || {}),
+                        ...PLATFORM_CONFIG_DEFAULTS
+                            .registrations,
+
+                        ...(
+                            saved.registrations ||
+                            {}
+                        ),
                     },
                 };
             } catch {
-                return structuredClone(PLATFORM_CONFIG_DEFAULTS);
+                return clonePlatformDefaults();
             }
         };
 
-        const applyPlatformConfig = (config) => {
+
+        const applyPlatformConfig = (
+            config
+        ) => {
             if (marketplaceNameInput) {
-                marketplaceNameInput.value = config.marketplaceName;
+                marketplaceNameInput.value =
+                    config.marketplaceName;
             }
 
             if (commissionRateInput) {
-                commissionRateInput.value = config.commissionRate;
+                commissionRateInput.value =
+                    config.commissionRate;
             }
 
-            if (marketplaceDescriptionInput) {
+            if (
+                marketplaceDescriptionInput
+            ) {
                 marketplaceDescriptionInput.value =
                     config.marketplaceDescription;
             }
 
             if (platformActiveInput) {
-                platformActiveInput.checked = Boolean(
-                    config.platformActive
-                );
+                platformActiveInput.checked =
+                    Boolean(
+                        config.platformActive
+                    );
             }
 
             if (maintenanceModeInput) {
-                maintenanceModeInput.checked = Boolean(
-                    config.maintenanceMode
-                );
+                maintenanceModeInput.checked =
+                    Boolean(
+                        config.maintenanceMode
+                    );
             }
 
-            registrationInputs.forEach((input) => {
-                const role = input.dataset.settingRegistration;
 
-                input.checked =
-                    config.registrations?.[role] !== false;
-            });
+            registrationInputs.forEach(
+                (input) => {
+
+                    const role =
+                        input.dataset
+                            .settingRegistration;
+
+                    input.checked =
+                        config.registrations?.[
+                            role
+                        ] !== false;
+                }
+            );
+
 
             if (cancellationHoursInput) {
                 cancellationHoursInput.value =
@@ -3504,140 +4793,602 @@
 
             if (settlementPeriodInput) {
                 settlementPeriodInput.value =
-                    String(config.settlementPeriod);
+                    String(
+                        config.settlementPeriod
+                    );
             }
         };
+
 
         const collectPlatformConfig = () => {
             const registrations = {};
 
-            registrationInputs.forEach((input) => {
-                registrations[input.dataset.settingRegistration] =
-                    input.checked;
-            });
+            registrationInputs.forEach(
+                (input) => {
+
+                    registrations[
+                        input.dataset
+                            .settingRegistration
+                    ] =
+                        input.checked;
+                }
+            );
+
 
             return {
                 marketplaceName:
-                    marketplaceNameInput?.value.trim() || 'Bearly',
+                    marketplaceNameInput
+                        ?.value
+                        .trim() ||
+                    '',
 
-                commissionRate: Number(
-                    commissionRateInput?.value || 0
-                ),
+                commissionRate:
+                    Number(
+                        commissionRateInput
+                            ?.value ||
+                        0
+                    ),
 
                 marketplaceDescription:
-                    marketplaceDescriptionInput?.value.trim() || '',
+                    marketplaceDescriptionInput
+                        ?.value
+                        .trim() ||
+                    '',
 
                 platformActive:
-                    platformActiveInput?.checked ?? true,
+                    platformActiveInput
+                        ?.checked ??
+                    true,
 
                 maintenanceMode:
-                    maintenanceModeInput?.checked ?? false,
+                    maintenanceModeInput
+                        ?.checked ??
+                    false,
 
                 registrations,
 
-                cancellationHours: Number(
-                    cancellationHoursInput?.value || 24
-                ),
+                cancellationHours:
+                    Number(
+                        cancellationHoursInput
+                            ?.value ||
+                        24
+                    ),
 
                 settlementPeriod:
-                    settlementPeriodInput?.value || '7',
+                    settlementPeriodInput
+                        ?.value ||
+                    '7',
             };
         };
 
-        let platformConfig = getPlatformConfig();
 
-        applyPlatformConfig(platformConfig);
+        /*
+        * Creates a predictable comparison
+        * value for dirty-state detection.
+        */
+        const platformConfigSignature = (
+            config
+        ) =>
+            JSON.stringify({
+                marketplaceName:
+                    config.marketplaceName,
 
-        /* Keep marketplace availability settings consistent */
-        platformActiveInput?.addEventListener('change', () => {
+                commissionRate:
+                    Number(
+                        config.commissionRate
+                    ),
+
+                marketplaceDescription:
+                    config.marketplaceDescription,
+
+                platformActive:
+                    Boolean(
+                        config.platformActive
+                    ),
+
+                maintenanceMode:
+                    Boolean(
+                        config.maintenanceMode
+                    ),
+
+                registrations: {
+                    buyer:
+                        Boolean(
+                            config.registrations
+                                ?.buyer
+                        ),
+
+                    seller:
+                        Boolean(
+                            config.registrations
+                                ?.seller
+                        ),
+
+                    logistics:
+                        Boolean(
+                            config.registrations
+                                ?.logistics
+                        ),
+
+                    rider:
+                        Boolean(
+                            config.registrations
+                                ?.rider
+                        ),
+                },
+
+                cancellationHours:
+                    Number(
+                        config.cancellationHours
+                    ),
+
+                settlementPeriod:
+                    String(
+                        config.settlementPeriod
+                    ),
+            });
+
+
+        /*
+        * Configuration state indicator
+        *
+        * saved
+        * dirty
+        * default
+        */
+        const setPlatformSettingsState = (
+            state
+        ) => {
+            if (settingsState) {
+                settingsState.dataset.state =
+                    state;
+            }
+
+
+            if (state === 'dirty') {
+                if (settingsStateTitle) {
+                    settingsStateTitle.textContent =
+                        'Unsaved changes';
+                }
+
+                if (settingsStateMessage) {
+                    settingsStateMessage.textContent =
+                        'Save your changes before leaving this page.';
+                }
+
+                if (settingsStateIcon) {
+                    settingsStateIcon.setAttribute(
+                        'data-lucide',
+                        'circle-alert'
+                    );
+                }
+
+                refreshIcons();
+
+                return;
+            }
+
+
+            if (state === 'default') {
+                if (settingsStateTitle) {
+                    settingsStateTitle.textContent =
+                        'Defaults restored';
+                }
+
+                if (settingsStateMessage) {
+                    settingsStateMessage.textContent =
+                        'Platform settings were restored to their default configuration.';
+                }
+
+                if (settingsStateIcon) {
+                    settingsStateIcon.setAttribute(
+                        'data-lucide',
+                        'rotate-ccw'
+                    );
+                }
+
+                refreshIcons();
+
+                return;
+            }
+
+
+            if (settingsStateTitle) {
+                settingsStateTitle.textContent =
+                    'Configuration saved';
+            }
+
+            if (settingsStateMessage) {
+                settingsStateMessage.textContent =
+                    'Current settings match the saved platform configuration.';
+            }
+
+            if (settingsStateIcon) {
+                settingsStateIcon.setAttribute(
+                    'data-lucide',
+                    'circle-check'
+                );
+            }
+
+            refreshIcons();
+        };
+
+
+        /*
+        * Live marketplace availability
+        * feedback.
+        */
+        const syncPlatformAvailability = () => {
             if (
-                platformActiveInput.checked &&
+                !availabilityState ||
+                !availabilityMessage
+            ) {
+                return;
+            }
+
+
+            /*
+            * Maintenance takes precedence.
+            */
+            if (
                 maintenanceModeInput
+                    ?.checked
             ) {
-                maintenanceModeInput.checked = false;
-            }
-        });
+                availabilityState.dataset.state =
+                    'maintenance';
 
-        maintenanceModeInput?.addEventListener('change', () => {
-            if (
-                maintenanceModeInput.checked &&
-                platformActiveInput
-            ) {
-                platformActiveInput.checked = false;
-            }
-        });
+                availabilityMessage.textContent =
+                    'Marketplace access is restricted by Maintenance Mode.';
 
-        /* Save settings */
-        platformSettingsSaveButton?.addEventListener('click', () => {
-            const config = collectPlatformConfig();
+                if (availabilityIcon) {
+                    availabilityIcon.setAttribute(
+                        'data-lucide',
+                        'triangle-alert'
+                    );
+                }
 
-            if (!config.marketplaceName) {
-                showToast(
-                    'Enter a marketplace name.',
-                    'Settings not saved'
-                );
-                marketplaceNameInput?.focus();
+                refreshIcons();
+
                 return;
             }
 
+
+            /*
+            * Marketplace manually disabled.
+            */
             if (
-                !Number.isFinite(config.commissionRate) ||
-                config.commissionRate < 0 ||
-                config.commissionRate > 100
+                platformActiveInput &&
+                !platformActiveInput.checked
             ) {
-                showToast(
-                    'Commission rate must be between 0% and 100%.',
-                    'Settings not saved'
-                );
-                commissionRateInput?.focus();
+                availabilityState.dataset.state =
+                    'inactive';
+
+                availabilityMessage.textContent =
+                    'Marketplace operations are currently disabled.';
+
+                if (availabilityIcon) {
+                    availabilityIcon.setAttribute(
+                        'data-lucide',
+                        'circle-off'
+                    );
+                }
+
+                refreshIcons();
+
                 return;
             }
 
-            if (
-                !Number.isFinite(config.cancellationHours) ||
-                config.cancellationHours < 1
-            ) {
-                showToast(
-                    'Cancellation window must be at least 1 hour.',
-                    'Settings not saved'
+
+            /*
+            * Normal operations.
+            */
+            availabilityState.dataset.state =
+                'active';
+
+            availabilityMessage.textContent =
+                'Marketplace is available to users.';
+
+            if (availabilityIcon) {
+                availabilityIcon.setAttribute(
+                    'data-lucide',
+                    'circle-check'
                 );
-                cancellationHoursInput?.focus();
+            }
+
+            refreshIcons();
+        };
+
+
+        let platformConfig =
+            getPlatformConfig();
+
+        let platformSettingsStateMode =
+            'saved';
+
+
+        applyPlatformConfig(
+            platformConfig
+        );
+
+        syncPlatformAvailability();
+
+        setPlatformSettingsState(
+            'saved'
+        );
+
+
+        /*
+        * Dirty-state detection
+        */
+        const syncPlatformDirtyState = () => {
+            const current =
+                collectPlatformConfig();
+
+            const isDirty =
+                platformConfigSignature(
+                    current
+                ) !==
+                platformConfigSignature(
+                    platformConfig
+                );
+
+
+            if (isDirty) {
+                platformSettingsStateMode =
+                    'dirty';
+
+                setPlatformSettingsState(
+                    'dirty'
+                );
+
                 return;
             }
 
-            platformConfig = config;
 
-            localStorage.setItem(
-                PLATFORM_CONFIG_STORAGE_KEY,
-                JSON.stringify(platformConfig)
+            /*
+            * Preserve "Defaults restored"
+            * when reset was the latest action.
+            */
+            setPlatformSettingsState(
+                platformSettingsStateMode ===
+                    'default'
+                    ? 'default'
+                    : 'saved'
             );
+        };
 
-            showToast(
-                'Platform configuration was saved.',
-                'Settings updated'
-            );
-        });
 
-        /* Reset settings */
-        platformSettingsResetButton?.addEventListener(
-            'click',
-            () => {
-                localStorage.removeItem(
-                    PLATFORM_CONFIG_STORAGE_KEY
+        /*
+        * Text / number inputs
+        */
+        [
+            marketplaceNameInput,
+            commissionRateInput,
+            marketplaceDescriptionInput,
+            cancellationHoursInput,
+        ]
+            .filter(Boolean)
+            .forEach((input) => {
+
+                input.addEventListener(
+                    'input',
+                    syncPlatformDirtyState
                 );
 
-                platformConfig = structuredClone(
-                    PLATFORM_CONFIG_DEFAULTS
+            });
+
+
+        /*
+        * Registration toggles
+        */
+        registrationInputs.forEach(
+            (input) => {
+
+                input.addEventListener(
+                    'change',
+                    syncPlatformDirtyState
                 );
 
-                applyPlatformConfig(platformConfig);
-
-                showToast(
-                    'Platform settings were restored to their defaults.',
-                    'Settings reset'
-                );
             }
         );
+
+
+        /*
+        * Settlement period
+        */
+        settlementPeriodInput
+            ?.addEventListener(
+                'change',
+                syncPlatformDirtyState
+            );
+
+
+        /*
+        * Marketplace operations and
+        * Maintenance Mode should never
+        * both be enabled.
+        */
+        platformActiveInput
+            ?.addEventListener(
+                'change',
+                () => {
+
+                    if (
+                        platformActiveInput.checked &&
+                        maintenanceModeInput
+                    ) {
+                        maintenanceModeInput.checked =
+                            false;
+                    }
+
+
+                    syncPlatformAvailability();
+
+                    syncPlatformDirtyState();
+                }
+            );
+
+
+        maintenanceModeInput
+            ?.addEventListener(
+                'change',
+                () => {
+
+                    if (
+                        maintenanceModeInput.checked &&
+                        platformActiveInput
+                    ) {
+                        platformActiveInput.checked =
+                            false;
+                    }
+
+
+                    syncPlatformAvailability();
+
+                    syncPlatformDirtyState();
+                }
+            );
+
+
+        /*
+        * Save settings
+        */
+        platformSettingsSaveButton
+            ?.addEventListener(
+                'click',
+                () => {
+
+                    const config =
+                        collectPlatformConfig();
+
+
+                    if (!config.marketplaceName) {
+                        showToast(
+                            'Enter a marketplace name.',
+                            'Settings not saved'
+                        );
+
+                        marketplaceNameInput
+                            ?.focus();
+
+                        return;
+                    }
+
+
+                    if (
+                        !Number.isFinite(
+                            config.commissionRate
+                        ) ||
+                        config.commissionRate < 0 ||
+                        config.commissionRate > 100
+                    ) {
+                        showToast(
+                            'Commission rate must be between 0% and 100%.',
+                            'Settings not saved'
+                        );
+
+                        commissionRateInput
+                            ?.focus();
+
+                        return;
+                    }
+
+
+                    if (
+                        !Number.isFinite(
+                            config.cancellationHours
+                        ) ||
+                        config.cancellationHours < 1
+                    ) {
+                        showToast(
+                            'Cancellation window must be at least 1 hour.',
+                            'Settings not saved'
+                        );
+
+                        cancellationHoursInput
+                            ?.focus();
+
+                        return;
+                    }
+
+
+                    platformConfig =
+                        config;
+
+                    platformSettingsStateMode =
+                        'saved';
+
+
+                    localStorage.setItem(
+                        PLATFORM_CONFIG_STORAGE_KEY,
+                        JSON.stringify(
+                            platformConfig
+                        )
+                    );
+
+
+                    syncPlatformAvailability();
+
+                    setPlatformSettingsState(
+                        'saved'
+                    );
+
+
+                    showToast(
+                        'Platform configuration was saved.',
+                        'Settings updated'
+                    );
+                }
+            );
+
+
+        /*
+        * Confirm reset to defaults.
+        */
+        platformSettingsResetConfirmButton
+            ?.addEventListener(
+                'click',
+                () => {
+
+                    localStorage.removeItem(
+                        PLATFORM_CONFIG_STORAGE_KEY
+                    );
+
+
+                    platformConfig =
+                        clonePlatformDefaults();
+
+
+                    platformSettingsStateMode =
+                        'default';
+
+
+                    applyPlatformConfig(
+                        platformConfig
+                    );
+
+
+                    syncPlatformAvailability();
+
+                    setPlatformSettingsState(
+                        'default'
+                    );
+
+
+                    closeModal(
+                        document.querySelector(
+                            '[data-modal="reset-platform-settings"]'
+                        )
+                    );
+
+
+                    showToast(
+                        'Platform settings were restored to their defaults.',
+                        'Settings reset'
+                    );
+                }
+            );
+       
 
         // Dispute queue search + dynamic master-detail workspace
         const disputeSearch = document.querySelector('[data-dispute-search]');

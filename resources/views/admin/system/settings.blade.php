@@ -101,6 +101,23 @@
             </label>
 
         </div>
+
+        <div
+            class="settings-availability-state"
+            data-platform-availability-state
+        >
+
+            <i
+                data-lucide="circle-check"
+                data-platform-availability-icon
+            ></i>
+
+            <span data-platform-availability-message>
+                Marketplace is available to users.
+            </span>
+
+        </div>
+
     </aside>
 
 </section>
@@ -224,26 +241,61 @@
     </div>
 </section>
 
-<section class="panel">
-    <div class="panel-heading">
+<section class="panel settings-save-panel">
+
+    <div class="panel-heading panel-heading-wrap">
+
         <div>
-            <span class="eyebrow">Administrative Controls</span>
-            <h2>Save platform configuration</h2>
+            <span class="eyebrow">
+                Administrative Controls
+            </span>
+
+            <h2>
+                Save platform configuration
+            </h2>
+
             <p>
-                Review the configuration before applying changes to platform operations.
+                Review and apply marketplace-wide configuration changes.
             </p>
         </div>
+
+
+        <div
+            class="settings-save-state"
+            data-settings-state
+            data-state="saved"
+        >
+
+            <span class="settings-save-state-icon">
+                <i data-lucide="circle-check"></i>
+            </span>
+
+            <div>
+                <strong data-settings-state-title>
+                    Configuration saved
+                </strong>
+
+                <small data-settings-state-message>
+                    Current settings match the saved platform configuration.
+                </small>
+            </div>
+
+        </div>
+
     </div>
 
+
     <div class="panel-footer-actions">
+
         <button
             class="button button-secondary"
             type="button"
-            data-settings-reset
+            data-open-modal="reset-platform-settings"
         >
             <i data-lucide="rotate-ccw"></i>
             Reset settings
         </button>
+
 
         <button
             class="button button-primary"
@@ -253,7 +305,100 @@
             <i data-lucide="save"></i>
             Save settings
         </button>
+
     </div>
+
 </section>
+
+<div
+    class="modal-shell"
+    data-modal="reset-platform-settings"
+    hidden
+>
+
+    <button
+        type="button"
+        class="modal-backdrop"
+        data-close-modal
+        aria-label="Close reset confirmation"
+    ></button>
+
+
+    <section
+        class="modal-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="reset-platform-settings-title"
+    >
+
+        <div class="modal-heading">
+
+            <div>
+                <span class="eyebrow">
+                    Platform Settings
+                </span>
+
+                <h2 id="reset-platform-settings-title">
+                    Reset platform settings?
+                </h2>
+            </div>
+
+
+            <button
+                type="button"
+                class="icon-button"
+                data-close-modal
+                aria-label="Close"
+            >
+                <i data-lucide="x"></i>
+            </button>
+
+        </div>
+
+
+        <div class="review-details">
+
+            <div class="detail-note">
+
+                <span>
+                    Restore default configuration
+                </span>
+
+                <p>
+                    This will restore marketplace settings,
+                    registration availability, transaction defaults,
+                    and platform availability controls to their default values.
+                </p>
+
+            </div>
+
+        </div>
+
+
+        <div class="modal-footer decision-footer">
+
+            <button
+                type="button"
+                class="button button-secondary"
+                data-close-modal
+            >
+                Cancel
+            </button>
+
+
+            <button
+                type="button"
+                class="button button-danger-soft"
+                data-settings-reset-confirm
+            >
+                <i data-lucide="rotate-ccw"></i>
+                Reset settings
+            </button>
+
+        </div>
+
+    </section>
+
+</div>
 
 @endsection

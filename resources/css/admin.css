@@ -5641,3 +5641,384 @@ table {
         max-width: 88%;
     }
 }
+
+
+/* =========================================================
+   Platform Settings — status feedback
+   ========================================================= */
+
+.settings-save-panel .panel-heading-wrap {
+    align-items: center;
+    gap: 24px;
+}
+
+.settings-save-state {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+
+    min-width: 320px;
+    max-width: 420px;
+
+    padding: 12px 14px;
+
+    border: 1px solid var(--admin-border-soft);
+    border-radius: 10px;
+
+    background: #fffaf5;
+}
+
+.settings-save-state-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    flex: 0 0 auto;
+
+    width: 34px;
+    height: 34px;
+
+    border-radius: 50%;
+
+    background: #eef7ed;
+    color: #477a45;
+}
+
+.settings-save-state-icon svg {
+    width: 18px;
+    height: 18px;
+}
+
+.settings-save-state > div:last-child {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+
+    min-width: 0;
+}
+
+.settings-save-state strong {
+    display: block;
+
+    font-size: 0.88rem;
+    line-height: 1.3;
+
+    color: var(--admin-text, #2f211b);
+}
+
+.settings-save-state small {
+    display: block;
+
+    font-size: 0.76rem;
+    line-height: 1.45;
+
+    color: var(--admin-muted, #7d7069);
+}
+
+
+/* Unsaved state */
+
+.settings-save-state[data-state="dirty"] {
+    border-color: #ead3aa;
+    background: #fff9ed;
+}
+
+.settings-save-state[data-state="dirty"]
+.settings-save-state-icon {
+    background: #fff0cc;
+    color: #a66b00;
+}
+
+
+/* Restored defaults state */
+
+.settings-save-state[data-state="default"] {
+    border-color: #ddd3ca;
+    background: #faf8f6;
+}
+
+.settings-save-state[data-state="default"]
+.settings-save-state-icon {
+    background: #eee9e4;
+    color: #715f55;
+}
+
+
+/* Platform availability message */
+
+.settings-availability-state {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    margin-top: 14px;
+    padding-top: 14px;
+
+    border-top: 1px solid var(--admin-border-soft);
+
+    font-size: 0.8rem;
+    line-height: 1.4;
+
+    color: #477a45;
+}
+
+.settings-availability-state svg {
+    flex: 0 0 auto;
+
+    width: 17px;
+    height: 17px;
+}
+
+
+/* Maintenance / unavailable state */
+
+.settings-availability-state[data-state="maintenance"] {
+    color: #a66b00;
+}
+
+.settings-availability-state[data-state="inactive"] {
+    color: #a0443e;
+}
+
+
+/* Administrative footer */
+
+.settings-save-panel .panel-footer-actions {
+    padding-top: 14px;
+    margin-top: 4px;
+}
+
+
+/* Responsive */
+
+@media (max-width: 980px) {
+    .settings-save-panel .panel-heading-wrap {
+        align-items: stretch;
+    }
+
+    .settings-save-state {
+        width: 100%;
+        max-width: none;
+        min-width: 0;
+    }
+}
+
+/* Keep the two top Platform Settings panels aligned */
+.settings-grid {
+    align-items: stretch;
+}
+
+.settings-grid > .panel {
+    margin-top: 0;
+    align-self: stretch;
+    height: 100%;
+}
+
+/* =========================================================
+   Account — live password validation
+   ========================================================= */
+
+.password-rules span {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+
+    color: var(--admin-muted, #7d7069);
+
+    transition:
+        color 0.18s ease,
+        opacity 0.18s ease;
+}
+
+.password-rules span svg {
+    width: 14px;
+    height: 14px;
+    flex: 0 0 auto;
+}
+
+
+/* Requirement not yet met */
+
+.password-rules span[data-valid="false"] {
+    color: var(--admin-muted, #8a7d76);
+}
+
+.password-rules span[data-valid="false"] svg {
+    opacity: 0.7;
+}
+
+
+/* Requirement passed */
+
+.password-rules span[data-valid="true"] {
+    color: #4f8a52;
+    font-weight: 600;
+}
+
+.password-rules span[data-valid="true"] svg {
+    opacity: 1;
+}
+
+
+/* Disabled password button */
+
+[data-password-update]:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+/* Account profile heading actions */
+.profile-heading-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.profile-save-state {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+
+    font-size: 0.78rem;
+    color: #4f8a52;
+    white-space: nowrap;
+}
+
+.profile-save-state svg {
+    width: 15px;
+    height: 15px;
+    flex: 0 0 auto;
+}
+
+.profile-save-state[data-state="dirty"] {
+    color: #a66b00;
+}
+
+/* =========================================================
+   Platform Policies — hero stat
+   ========================================================= */
+
+.policy-hero-stat {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+
+    min-width: 220px;
+    padding: 14px 16px;
+
+    border: 1px solid var(--admin-border-soft);
+    border-radius: 12px;
+
+    background: #fff;
+
+    box-shadow: none;
+}
+
+.policy-hero-stat .hero-context-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    width: 42px;
+    height: 42px;
+
+    flex: 0 0 auto;
+
+    border: 1px solid #efd6bd;
+    border-radius: 10px;
+
+    background: #fff6ed;
+    color: #a6542b;
+}
+
+.policy-hero-stat .hero-context-icon svg {
+    width: 19px;
+    height: 19px;
+}
+
+.policy-hero-stat .hero-context-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.policy-hero-stat .hero-context-copy small {
+    font-size: 0.72rem;
+    line-height: 1.2;
+
+    color: var(--admin-muted, #7d7069);
+}
+
+.policy-hero-stat .hero-context-copy strong {
+    font-size: 1.35rem;
+    line-height: 1.15;
+
+    color: var(--admin-text, #2f211b);
+}
+
+.policy-hero-stat .hero-context-copy span {
+    font-size: 0.72rem;
+    line-height: 1.3;
+
+    color: var(--admin-muted, #7d7069);
+}
+
+/* =========================================================
+   Audit Logs — hero stat
+   ========================================================= */
+
+.audit-hero-stat {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+
+    min-width: 220px;
+    padding: 14px 16px;
+
+    border: 1px solid var(--admin-border-soft);
+    border-radius: 12px;
+
+    background: #fff;
+    box-shadow: none;
+}
+
+.audit-hero-stat .hero-context-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    width: 42px;
+    height: 42px;
+
+    flex: 0 0 auto;
+
+    border: 1px solid #efd6bd;
+    border-radius: 10px;
+
+    background: #fff6ed;
+    color: #a6542b;
+}
+
+.audit-hero-stat .hero-context-icon svg {
+    width: 19px;
+    height: 19px;
+}
+
+.audit-hero-stat .hero-context-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.audit-hero-stat .hero-context-copy small,
+.audit-hero-stat .hero-context-copy span {
+    font-size: 0.72rem;
+    color: var(--admin-muted, #7d7069);
+}
+
+.audit-hero-stat .hero-context-copy strong {
+    font-size: 1.35rem;
+    line-height: 1.15;
+    color: var(--admin-text, #2f211b);
+}

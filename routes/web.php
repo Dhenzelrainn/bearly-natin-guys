@@ -286,6 +286,7 @@ Route::prefix('logistics')->name('logistics.')->group(function () {
     Route::get('/dashboard', [LogisticsController::class, 'dashboard'])->name('dashboard');
     Route::get('/riders', [LogisticsController::class, 'riders'])->name('riders');
     Route::get('/pickups', [LogisticsController::class, 'pickups'])->name('pickups');
+    Route::get('/incoming', [LogisticsController::class, 'incoming'])->name('incoming');
     Route::get('/sorting', [LogisticsController::class, 'sorting'])->name('sorting');
     Route::get('/dispatch', [LogisticsController::class, 'dispatch'])->name('dispatch');
     Route::get('/monitoring', [LogisticsController::class, 'monitoring'])->name('monitoring');

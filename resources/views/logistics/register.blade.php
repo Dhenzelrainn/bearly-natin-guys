@@ -1,61 +1,24 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Apply as Logistics | Bearly</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-
-<style>
-:root{--brown:#4b2e1f;--brown2:#6b4226;--orange:#e9822c;--cream:#fffaf3;--line:#eadfd2;--text:#2e211a;--muted:#75665d;--white:#fff;--green:#2d7a4f}
-*{box-sizing:border-box}body{margin:0;font-family:Poppins,Arial,sans-serif;background:linear-gradient(145deg,#fffaf3,#f7eee4);color:var(--text)}
-a{text-decoration:none;color:inherit}.shell{min-height:100vh;display:grid;grid-template-columns:1.05fr .95fr}
-.hero{padding:64px clamp(28px,6vw,90px);background:linear-gradient(145deg,var(--brown),#2f1c13);color:white;display:flex;flex-direction:column;justify-content:space-between}
-.brand{font-weight:800;font-size:24px;letter-spacing:-.5px}.eyebrow{color:#ffc28a;font-weight:700;text-transform:uppercase;letter-spacing:.12em;font-size:12px}
-.hero h1{font-size:clamp(38px,5vw,68px);line-height:1.02;margin:14px 0 18px;max-width:700px}.hero p{max-width:660px;color:#eaded6;line-height:1.7}
-.panel{padding:48px clamp(24px,5vw,72px);display:flex;align-items:center}.card{width:min(100%,620px);margin:auto;background:white;border:1px solid var(--line);border-radius:24px;padding:30px;box-shadow:0 18px 50px rgba(62,39,25,.09)}
-.card h2{margin:0 0 8px}.muted{color:var(--muted)}.actions{display:grid;gap:12px;margin-top:24px}.btn{border:0;border-radius:12px;padding:14px 18px;font:inherit;font-weight:700;cursor:pointer;text-align:center}.btn-primary{background:var(--orange);color:white}.btn-secondary{background:#f6eee7;color:var(--brown);border:1px solid var(--line)}
-.feature{display:flex;gap:12px;margin-top:22px}.feature b{display:block}.dot{width:34px;height:34px;min-width:34px;border-radius:10px;background:#fff1e5;color:var(--orange);display:grid;place-items:center;font-weight:800}
-.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.full{grid-column:1/-1}.field label{display:block;font-size:13px;font-weight:700;margin-bottom:7px}.field input,.field select{width:100%;padding:12px 13px;border:1px solid #dbcdbf;border-radius:10px;font:inherit;background:white}.field input:focus,.field select:focus{outline:2px solid rgba(233,130,44,.18);border-color:var(--orange)}
-.notice{padding:14px 16px;border-radius:12px;background:#fff2df;border:1px solid #f1c995;color:#71471f;margin:16px 0}.success{background:#edf8f1;border-color:#b9dfc7;color:#255f3f}
-.toplink{display:inline-block;margin-bottom:18px;color:var(--brown);font-weight:700}.small{font-size:13px}.divider{height:1px;background:var(--line);margin:22px 0}
-@media(max-width:880px){.shell{grid-template-columns:1fr}.hero{min-height:auto;padding:38px 24px}.panel{padding:28px 18px}.form-grid{grid-template-columns:1fr}.full{grid-column:auto}}
-</style>
-
-</head><body>
-<div class="shell">
-<section class="hero"><div class="brand">Bearly</div><div><div class="eyebrow">Logistics Partner Application</div><h1>Apply directly to Bearly Admin.</h1><p>Your company or sorting center submits business credentials to Bearly. The Administrator reviews the application before your Logistics account is activated.</p></div><p class="small">Approval authority: Bearly Administrator</p></section>
-<section class="panel"><div class="card">
-<a class="toplink" href="{{ route('logistics.landing') }}">← Back to Logistics Portal</a>
-<h2>Logistics Registration</h2>
-<p class="muted">Complete the application below.</p>
-@if (session('registration_pending'))
-<div class="notice success"><b>Application submitted.</b><br>Your Logistics application is now pending Administrator approval. You will be able to sign in after approval.</div>
-@endif
-@if ($errors->any())<div class="notice">{{ $errors->first() }}</div>@endif
-<form method="POST" action="{{ route('logistics.register.submit') }}" enctype="multipart/form-data">
-@csrf
-<div class="form-grid">
-<div class="field full"><label>Business / Logistics Name</label><input name="business_name" value="{{ old('business_name') }}" placeholder="e.g. J&T Express - Laguna Sorting Center" required></div>
-<div class="field"><label>Representative Name</label><input name="representative_name" value="{{ old('representative_name') }}" required></div>
-<div class="field"><label>Sex</label><select name="sex" required><option value="">Select</option><option>Male</option><option>Female</option><option>Prefer not to say</option></select></div>
-<div class="field"><label>Email</label><input type="email" name="email" value="{{ old('email') }}" required></div>
-<div class="field"><label>Contact Number</label><input name="contact_number" value="{{ old('contact_number') }}" required></div>
-<div class="field"><label>Birthday</label><input type="date" name="birthday" id="logBirthday" value="{{ old('birthday') }}" required></div>
-<div class="field"><label>Age</label><input id="logAge" readonly placeholder="Auto-calculated"></div>
-<div class="field"><label>Province</label><input name="province" value="{{ old('province') }}" required></div>
-<div class="field"><label>Municipality / City</label><input name="municipality" value="{{ old('municipality') }}" required></div>
-<div class="field"><label>Barangay</label><input name="barangay" value="{{ old('barangay') }}" required></div>
-<div class="field full"><label>Street / Building / Sorting Center Address</label><input name="street" value="{{ old('street') }}" required></div>
-<div class="field"><label>Representative Valid ID</label><input type="file" name="valid_id" accept=".jpg,.jpeg,.png,.pdf" required></div>
-<div class="field"><label>Business / DTI Permit</label><input type="file" name="business_permit" accept=".jpg,.jpeg,.png,.pdf" required></div>
-<div class="full"><div class="notice">After submission, status will be <b>Pending Administrator Approval</b>.</div></div>
-<div class="full"><button class="btn btn-primary" style="width:100%" type="submit">Submit Logistics Application</button></div>
-</div></form>
-</div></section></div>
-<script>
-const b=document.getElementById('logBirthday'),a=document.getElementById('logAge');
-function calc(){if(!b.value)return a.value='';const d=new Date(b.value),t=new Date();let y=t.getFullYear()-d.getFullYear();const m=t.getMonth()-d.getMonth();if(m<0||(m===0&&t.getDate()<d.getDate()))y--;a.value=y>=0?y:'';}
-b.addEventListener('change',calc);calc();
-</script>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><meta name="csrf-token" content="{{ csrf_token() }}"><title>Apply as a Logistics Partner | Bearly Marketplace</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">@vite(['resources/css/logistics.css','resources/js/logistics.js'])</head>
+<body class="registration-body" data-module="logistics">
+<main class="registration-shell">
+    <a class="registration-brand" href="{{ route('logistics.landing') }}"><img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly Marketplace"><span><strong>Bearly Marketplace</strong><br><small>Logistics partner application</small></span></a>
+    @if(session('registration_pending') || session('logistics_application'))
+    <section class="registration-card" style="display:block"><div class="pending-state"><span class="metric-icon"><i data-lucide="clock-3"></i></span><p class="page-kicker">Application submitted</p><h2>Pending Administrator Approval</h2><p>Your Logistics partner application has been received. Bearly Admin will review your identity and business documents before your dashboard access is activated.</p><div class="detail-list" style="max-width:560px;margin:22px auto;text-align:left"><div class="detail-item"><small>Business</small><strong>{{ session('logistics_application.business_name','Submitted logistics facility') }}</strong></div><div class="detail-item"><small>Status</small><strong>Pending Administrator Approval</strong></div></div><a class="button button-primary" href="{{ route('login') }}">Return to main login</a></div></section>
+    @else
+    <section class="registration-card">
+        <aside class="registration-aside"><span class="status-badge is-warning">Partner onboarding</span><h1>Operate a Bearly sorting center</h1><p>Complete the application below. Your account remains locked until Bearly Admin approves the submitted credentials.</p><div class="step-list"><div class="step-marker is-active" data-step-marker="1"><span>1</span><span><strong>Representative</strong><small>Personal details</small></span></div><div class="step-marker" data-step-marker="2"><span>2</span><span><strong>Facility</strong><small>Address and business</small></span></div><div class="step-marker" data-step-marker="3"><span>3</span><span><strong>Documents</strong><small>Identity and permit</small></span></div></div></aside>
+        <div class="registration-main"><h2>Logistics application</h2><p>All required fields must be completed before submission.</p>
+            @if($errors->any())<div class="flash-banner is-danger"><i data-lucide="circle-alert"></i><span>{{ $errors->first() }}</span></div>@endif
+            <form action="{{ route('logistics.register.submit') }}" method="POST" enctype="multipart/form-data" data-registration-form>@csrf
+                <section class="form-step" data-form-step="1"><div class="field-grid three"><div class="field"><label>First name <span>*</span></label><input name="first_name" value="{{ old('first_name') }}" required></div><div class="field"><label>Middle initial</label><input name="middle_initial" maxlength="5" value="{{ old('middle_initial') }}"></div><div class="field"><label>Last name <span>*</span></label><input name="last_name" value="{{ old('last_name') }}" required></div><div class="field"><label>Sex <span>*</span></label><select name="sex" required><option value="">Select</option>@foreach(['Male','Female','Prefer not to say'] as $sex)<option @selected(old('sex')===$sex)>{{ $sex }}</option>@endforeach</select></div><div class="field"><label>Birthday <span>*</span></label><input type="date" name="birthday" max="{{ now()->subDay()->format('Y-m-d') }}" value="{{ old('birthday') }}" required></div><div class="field"><label>Age</label><input data-age readonly placeholder="Calculated automatically"></div><div class="field"><label>Email address <span>*</span></label><input type="email" name="email" value="{{ old('email') }}" required></div><div class="field"><label>Contact number <span>*</span></label><input name="contact_number" value="{{ old('contact_number') }}" pattern="[0-9+() -]{7,20}" required></div></div><div class="form-actions"><a class="button" href="{{ route('logistics.landing') }}">Cancel</a><button class="button button-primary" type="button" data-step-next>Continue to facility</button></div></section>
+                <section class="form-step" data-form-step="2" hidden><div class="field-grid"><div class="field span-2"><label>Business / sorting facility name <span>*</span></label><input name="business_name" value="{{ old('business_name') }}" required></div><div class="field"><label>Province <span>*</span></label><select name="province" data-province required><option value="">Loading provinces…</option></select></div><div class="field"><label>Municipality / City <span>*</span></label><select name="municipality" data-city required disabled><option value="">Select province first</option></select></div><div class="field"><label>Barangay <span>*</span></label><select name="barangay" data-barangay required disabled><option value="">Select city first</option></select></div><div class="field"><label>Street <span>*</span></label><input name="street" value="{{ old('street') }}" required></div><div class="field"><label>House / Building number <span>*</span></label><input name="house_number" value="{{ old('house_number') }}" required></div></div><div class="form-actions"><button class="button" type="button" data-step-back>Back</button><button class="button button-primary" type="button" data-step-next>Continue to documents</button></div></section>
+                <section class="form-step" data-form-step="3" hidden><div class="field-grid"><div class="field"><label>Valid government ID <span>*</span></label><label class="upload-field"><input type="file" name="valid_id" accept=".jpg,.jpeg,.png,.pdf" required><i data-lucide="upload-cloud"></i><strong>Upload a valid ID</strong><small data-file-name>Choose a JPG, PNG, or PDF up to 5 MB</small></label></div><div class="field"><label>Business / DTI permit <span>*</span></label><label class="upload-field"><input type="file" name="business_permit" accept=".jpg,.jpeg,.png,.pdf" required><i data-lucide="file-check-2"></i><strong>Upload business permit</strong><small data-file-name>Choose a JPG, PNG, or PDF up to 5 MB</small></label></div></div><label class="toggle-row"><span class="toggle-copy"><strong>I certify that the submitted details are accurate.</strong><small>This preview demonstrates the Admin approval workflow.</small></span><span class="switch"><input type="checkbox" required><span></span></span></label><div class="form-actions"><button class="button" type="button" data-step-back>Back</button><button class="button button-primary" type="submit"><i data-lucide="send"></i>Submit application</button></div></section>
+            </form>
+        </div>
+    </section>
+    @endif
+</main>
+<div class="toast-stack" data-toast-stack></div><script src="https://unpkg.com/lucide@latest"></script>
 </body></html>

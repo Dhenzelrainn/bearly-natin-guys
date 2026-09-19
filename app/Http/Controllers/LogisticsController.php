@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\View\View;
 
 class LogisticsController extends Controller
 {
@@ -73,7 +74,9 @@ class LogisticsController extends Controller
     {
         $validated = $request->validate([
             'business_name' => ['required', 'string', 'max:120'],
-            'representative_name' => ['required', 'string', 'max:120'],
+            'first_name' => ['required', 'string', 'max:80'],
+            'middle_initial' => ['nullable', 'string', 'max:5'],
+            'last_name' => ['required', 'string', 'max:80'],
             'sex' => ['required', 'in:Male,Female,Prefer not to say'],
             'email' => ['required', 'email'],
             'contact_number' => ['required', 'string', 'max:20'],
@@ -82,6 +85,7 @@ class LogisticsController extends Controller
             'municipality' => ['required', 'string', 'max:120'],
             'barangay' => ['required', 'string', 'max:120'],
             'street' => ['required', 'string', 'max:180'],
+            'house_number' => ['required', 'string', 'max:40'],
             'valid_id' => [
                 'required',
                 'file',
@@ -101,7 +105,7 @@ class LogisticsController extends Controller
         session([
             'logistics_application' => [
                 'business_name' => $validated['business_name'],
-                'representative_name' => $validated['representative_name'],
+                'representative_name' => trim($validated['first_name'].' '.($validated['middle_initial'] ?? '').' '.$validated['last_name']),
                 'email' => $validated['email'],
                 'status' => 'Pending Administrator Approval',
             ],
@@ -123,19 +127,19 @@ class LogisticsController extends Controller
                     'trend' => '3 added today',
                 ],
                 [
-                    'label' => 'Parcels in Sorting Center',
+                    'label' => 'Incoming Parcels',
                     'value' => 146,
                     'icon' => 'package-open',
                     'trend' => '+18 since 8 AM',
                 ],
                 [
-                    'label' => 'Active Deliveries',
+                    'label' => 'Active Sorting Queue',
                     'value' => 39,
                     'icon' => 'truck',
                     'trend' => '31 on schedule',
                 ],
                 [
-                    'label' => 'Unassigned Shipments',
+                    'label' => 'Dispatched Shipments',
                     'value' => 17,
                     'icon' => 'route',
                     'trend' => 'Needs dispatch',
@@ -285,6 +289,18 @@ class LogisticsController extends Controller
         ]);
     }
 
+    public function incoming(): View
+    {
+        return view('logistics.incoming', $this->shared() + [
+            'incomingParcels' => [
+                ['waybill' => 'BRL-983428', 'order' => 'ORD-50214', 'seller' => 'Mara Home Goods', 'rider' => 'Nico Flores', 'received' => 'Sep 20, 2026 · 2:28 PM', 'pieces' => 2, 'weight' => '3.4 kg', 'destination' => 'San Pablo North', 'status' => 'AT_SORTING_CENTER'],
+                ['waybill' => 'BRL-983427', 'order' => 'ORD-50211', 'seller' => 'TechVault PH', 'rider' => 'Anne Cruz', 'received' => 'Sep 20, 2026 · 2:19 PM', 'pieces' => 1, 'weight' => '0.8 kg', 'destination' => 'Calauan / Bay', 'status' => 'AT_SORTING_CENTER'],
+                ['waybill' => 'BRL-983426', 'order' => 'ORD-50208', 'seller' => 'Everyday Finds', 'rider' => 'Nico Flores', 'received' => 'Sep 20, 2026 · 1:54 PM', 'pieces' => 4, 'weight' => '6.1 kg', 'destination' => 'Pila / Sta. Cruz', 'status' => 'Logged'],
+                ['waybill' => 'BRL-983425', 'order' => 'ORD-50202', 'seller' => 'Little Sprout', 'rider' => 'Marco Lim', 'received' => 'Sep 20, 2026 · 1:37 PM', 'pieces' => 1, 'weight' => '1.2 kg', 'destination' => 'San Pablo South', 'status' => 'Exception'],
+            ],
+        ]);
+    }
+
     public function sorting()
     {
         return view('logistics.sorting', $this->shared() + [
@@ -369,7 +385,7 @@ class LogisticsController extends Controller
                     'zone' => 'SP-N1',
                     'parcels' => 8,
                     'progress' => 72,
-                    'status' => 'In Transit',
+                    'status' => 'OUT_FOR_DELIVERY',
                     'last' => 'Brgy. San Lucas • 2:02 PM',
                 ],
                 [
@@ -378,7 +394,7 @@ class LogisticsController extends Controller
                     'zone' => 'SP-S2',
                     'parcels' => 6,
                     'progress' => 100,
-                    'status' => 'Delivered',
+                    'status' => 'DELIVERED',
                     'last' => 'Completed • 1:48 PM',
                 ],
                 [
@@ -387,7 +403,7 @@ class LogisticsController extends Controller
                     'zone' => 'PILA-1',
                     'parcels' => 5,
                     'progress' => 20,
-                    'status' => 'Assigned',
+                    'status' => 'ASSIGNED_TO_RIDER',
                     'last' => 'Sorting Center • 1:31 PM',
                 ],
                 [
@@ -396,7 +412,7 @@ class LogisticsController extends Controller
                     'zone' => 'CAL-1',
                     'parcels' => 4,
                     'progress' => 55,
-                    'status' => 'Failed',
+                    'status' => 'DELIVERY_FAILED',
                     'last' => 'Customer unavailable • 12:54 PM',
                 ],
             ],
@@ -435,6 +451,13 @@ class LogisticsController extends Controller
                     'rate' => '92.1%',
                 ],
             ],
+            'dailyVolumes' => [118, 136, 129, 151, 164, 143, 158],
+            'statusBreakdown' => [
+                ['label' => 'Delivered', 'value' => 1176, 'share' => 91.6],
+                ['label' => 'Out for Delivery', 'value' => 61, 'share' => 4.8],
+                ['label' => 'Delivery Failed', 'value' => 29, 'share' => 2.3],
+                ['label' => 'Returned', 'value' => 18, 'share' => 1.3],
+            ],
         ]);
     }
 
@@ -443,6 +466,7 @@ class LogisticsController extends Controller
         return view('logistics.messages', $this->shared() + [
             'conversations' => [
                 [
+                    'id' => 'techvault-ph',
                     'name' => 'TechVault PH',
                     'role' => 'Seller',
                     'initials' => 'TP',
@@ -450,6 +474,7 @@ class LogisticsController extends Controller
                     'time' => '2:07 PM',
                 ],
                 [
+                    'id' => 'nico-flores',
                     'name' => 'Nico Flores',
                     'role' => 'Rider',
                     'initials' => 'NF',
@@ -457,6 +482,7 @@ class LogisticsController extends Controller
                     'time' => '1:51 PM',
                 ],
                 [
+                    'id' => 'bearly-admin',
                     'name' => 'Bearly Admin',
                     'role' => 'Administrator',
                     'initials' => 'BA',
@@ -469,6 +495,14 @@ class LogisticsController extends Controller
 
     public function account()
     {
-        return view('logistics.account', $this->shared());
+        return view('logistics.account', $this->shared() + [
+            'facility' => [
+                'business_name' => 'Laguna Central Logistics',
+                'contact' => '0917 555 0182',
+                'address' => 'Pedro Guevara Avenue, Santa Cruz, Laguna',
+                'operating_hours' => '08:00–18:00',
+                'daily_capacity' => 650,
+            ],
+        ]);
     }
 }

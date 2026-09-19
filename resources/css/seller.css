@@ -25,400 +25,789 @@
     --seller-icon-blue: brightness(0) saturate(100%) invert(46%) sepia(42%) saturate(899%) hue-rotate(159deg) brightness(91%) contrast(88%);
 }
 
-/* Pricing & Promotions — lean commerce workspace */
-.pricing-commandbar {
+/* =========================================================
+   PRICING & PROMOTIONS — APPROVED MOCKUP MATCH
+   Replaces the previous Pricing & Promotions workspace styles
+   ========================================================= */
+
+.seller-content .pricing-page {
+    --pricing-ink: #321c15;
+    --pricing-brown: #41251b;
+    --pricing-brown-soft: #704833;
+    --pricing-muted: #756d68;
+    --pricing-line: #ddd7d2;
+    --pricing-line-soft: #ebe6e2;
+    --pricing-gold: #e8a51c;
+    --pricing-gold-deep: #bd6b0b;
+    --pricing-gold-soft: #fff7e9;
+    --pricing-green: #4e7b42;
+    --pricing-green-dot: #58c34e;
+    --pricing-gray-dot: #90959b;
+    width: 100%;
+    max-width: none;
+    color: var(--pricing-ink);
+}
+
+/* Summary row */
+.seller-content .pricing-page .pricing-summary-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 24px;
-    margin-bottom: 16px;
+    gap: 36px;
+    min-height: 72px;
+    margin: 2px 0 22px;
 }
-.pricing-command-copy { min-width: 0; }
-.pricing-command-copy strong {
-    display: block;
-    color: var(--seller-brown-950);
-    font-size: 15px;
-    font-weight: 650;
-}
-.pricing-command-copy p {
-    margin: 4px 0 0;
-    color: var(--seller-muted);
-    font-size: 12.5px;
-    line-height: 1.55;
-}
-.pricing-create-button,
-.promotion-create-page .seller-primary-button {
-    min-height: 42px;
-    flex: 0 0 auto;
-    justify-content: center;
-    border: 1px solid #d88b12;
-    border-radius: 8px;
-    color: #2b1d16;
-    background: #e9a72f;
-    box-shadow: none;
-    text-decoration: none;
-    transform: none;
-}
-.pricing-create-button:hover,
-.promotion-create-page .seller-primary-button:hover {
-    border-color: #c47c0c;
-    background: #d88b12;
-    box-shadow: none;
-    transform: none;
-}
-.pricing-create-button svg,
-.promotion-create-page .seller-primary-button svg { width: 17px; height: 17px; }
 
-.pricing-overview-strip {
+.seller-content .pricing-page .pricing-summary-metrics {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    margin-bottom: 18px;
-    overflow: hidden;
-    border: 1px solid var(--seller-line);
-    border-radius: 10px;
-    background: #fff;
+    grid-template-columns: repeat(3, minmax(190px, 1fr));
+    width: min(760px, 100%);
+    min-width: 0;
 }
-.pricing-overview-metric { min-width: 0; padding: 15px 18px; }
-.pricing-overview-metric + .pricing-overview-metric { border-left: 1px solid var(--seller-line); }
-.pricing-overview-metric > span,
-.pricing-overview-metric small { display: block; color: #80766f; }
-.pricing-overview-metric > span { font-size: 11.5px; font-weight: 500; }
-.pricing-overview-metric strong {
-    display: block;
-    margin-top: 5px;
-    color: var(--seller-brown-950);
-    font-size: 21px;
-    line-height: 1.1;
-    letter-spacing: -.02em;
-}
-.pricing-overview-metric small { margin-top: 4px; font-size: 10.5px; line-height: 1.35; }
 
-.pricing-workspace { min-width: 0; }
-.pricing-tabs {
-    display: flex;
-    gap: 28px;
-    overflow-x: auto;
-    margin: 0;
-    padding: 0 2px;
-    border-bottom: 1px solid #ddd6cf;
-    background: transparent;
-    scrollbar-width: thin;
+.seller-content .pricing-page .pricing-summary-metric {
+    min-width: 0;
+    padding: 2px 44px;
 }
-.pricing-tab {
-    position: relative;
+
+.seller-content .pricing-page .pricing-summary-metric:first-child {
+    padding-left: 0;
+}
+
+.seller-content .pricing-page .pricing-summary-metric + .pricing-summary-metric {
+    border-left: 1px solid #d8d1cc;
+}
+
+.seller-content .pricing-page .pricing-summary-metric strong {
+    display: block;
+    margin: 0 0 4px;
+    color: var(--pricing-brown);
+    font-size: 27px !important;
+    font-weight: 700;
+    line-height: 1.05;
+    letter-spacing: -0.025em;
+}
+
+.seller-content .pricing-page .pricing-summary-metric span {
+    display: block;
+    color: #66605c;
+    font-size: 14px !important;
+    font-weight: 400;
+    line-height: 1.35;
+    white-space: nowrap;
+}
+
+.seller-content .pricing-page .pricing-create-button {
     display: inline-flex;
-    min-height: 46px;
+    min-width: 220px;
+    min-height: 52px;
     flex: 0 0 auto;
     align-items: center;
-    gap: 7px;
-    padding: 0 1px;
-    border: 0;
-    color: #776e68;
-    background: transparent;
-    font: 500 12.5px/1 Poppins, sans-serif;
+    justify-content: center;
+    gap: 11px;
+    padding: 0 24px;
+    border: 1px solid #3d2118;
+    border-radius: 8px;
+    color: #fff;
+    background: #3d2118;
+    box-shadow: none;
+    font-size: 14px !important;
+    font-weight: 600;
+    line-height: 1;
+    text-decoration: none;
+    transition: background-color .16s ease, border-color .16s ease;
+}
+
+.seller-content .pricing-page .pricing-create-button:hover {
+    border-color: #4b2a1f;
+    color: #fff;
+    background: #4b2a1f;
+    transform: none;
+    box-shadow: none;
+}
+
+.seller-content .pricing-page .pricing-create-button svg {
+    width: 20px;
+    height: 20px;
+    stroke-width: 1.8;
+}
+
+/* Ending-soon notice */
+.seller-content .pricing-page .pricing-ending-notice {
+    display: flex;
+    min-height: 48px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 0 18px;
+    border: 1px solid #edc16e;
+    border-radius: 8px;
+    color: #9e5206;
+    background: #fff9ef;
+}
+
+.seller-content .pricing-page .pricing-ending-copy,
+.seller-content .pricing-page .pricing-ending-notice > a {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.seller-content .pricing-page .pricing-ending-copy svg {
+    width: 21px;
+    height: 21px;
+    flex: 0 0 21px;
+    stroke-width: 1.8;
+}
+
+.seller-content .pricing-page .pricing-ending-copy strong {
+    font-size: 13.5px !important;
+    font-weight: 600;
+    line-height: 1.35;
+}
+
+.seller-content .pricing-page .pricing-ending-notice > a {
+    color: #a94e00;
+    font-size: 13px !important;
+    font-weight: 600;
+    text-decoration: none;
     white-space: nowrap;
+}
+
+.seller-content .pricing-page .pricing-ending-notice > a:hover {
+    color: #7d3d00;
+}
+
+.seller-content .pricing-page .pricing-ending-notice > a svg {
+    width: 18px;
+    height: 18px;
+}
+
+/* Tabs */
+.seller-content .pricing-page .pricing-workspace {
+    min-width: 0;
+    margin-top: 23px;
+}
+
+.seller-content .pricing-page .pricing-tabs {
+    display: flex;
+    gap: 38px;
+    align-items: flex-end;
+    min-height: 48px;
+    margin: 0;
+    padding: 0;
+    overflow-x: auto;
+    border-bottom: 1px solid #ded8d3;
+    scrollbar-width: thin;
+}
+
+.seller-content .pricing-page .pricing-tab {
+    position: relative;
+    display: inline-flex;
+    min-height: 48px;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 8px;
+    padding: 0 0 12px;
+    border: 0;
+    color: #625b57;
+    background: transparent;
+    font-size: 14px !important;
+    font-weight: 500;
+    line-height: 1;
     cursor: pointer;
 }
-.pricing-tab::after {
+
+.seller-content .pricing-page .pricing-tab::after {
     content: "";
     position: absolute;
     right: 0;
     bottom: -1px;
     left: 0;
-    height: 2px;
+    height: 3px;
+    border-radius: 2px 2px 0 0;
     background: transparent;
 }
-.pricing-tab > span { color: #9a6a25; font-size: 10.5px; font-weight: 650; }
-.pricing-tab:hover,
-.pricing-tab.is-active { color: var(--seller-brown-950); }
-.pricing-tab.is-active { font-weight: 650; }
-.pricing-tab.is-active::after { background: var(--seller-gold); }
 
-.pricing-panel-surface {
+.seller-content .pricing-page .pricing-tab:hover,
+.seller-content .pricing-page .pricing-tab.is-active {
+    color: #2d211c;
+}
+
+.seller-content .pricing-page .pricing-tab.is-active {
+    font-weight: 650;
+}
+
+.seller-content .pricing-page .pricing-tab.is-active::after {
+    background: #e4a61e;
+}
+
+.seller-content .pricing-page .pricing-tab-count {
+    display: inline-grid;
+    min-width: 23px;
+    height: 23px;
+    place-items: center;
+    padding: 0 6px;
+    border-radius: 7px;
+    color: #8a5a23;
+    background: #f2eadf;
+    font-size: 11px !important;
+    font-weight: 600;
+    line-height: 1;
+}
+
+/* Main product pricing surface */
+.seller-content .pricing-page .pricing-products-panel {
+    padding-top: 8px;
+}
+
+.seller-content .pricing-page .pricing-panel-surface {
     overflow: hidden;
-    border: 1px solid #ddd6cf;
-    border-top: 0;
-    border-radius: 0 0 10px 10px;
+    border: 1px solid #dcd6d1;
+    border-radius: 8px;
     background: #fff;
+    box-shadow: none;
 }
-.pricing-toolbar {
+
+.seller-content .pricing-page .pricing-toolbar {
     display: grid;
-    grid-template-columns: minmax(280px, 1fr) 190px auto;
-    gap: 10px;
+    grid-template-columns: minmax(360px, 1fr) 205px 76px;
+    gap: 14px;
     align-items: center;
-    padding: 12px 15px;
-    border-bottom: 1px solid #e7e1db;
+    min-height: 78px;
+    padding: 16px 18px;
+    border-bottom: 1px solid #e5e0dc;
     background: #fff;
 }
-.pricing-search,
-.pricing-status-filter {
+
+.seller-content .pricing-page .pricing-search,
+.seller-content .pricing-page .pricing-status-filter {
     display: flex;
     min-width: 0;
-    height: 40px;
+    height: 46px;
     align-items: center;
-    border: 1px solid #d9d2cb;
-    border-radius: 7px;
+    border: 1px solid #d7d1cd;
+    border-radius: 8px;
     background: #fff;
 }
-.pricing-search { gap: 9px; padding: 0 11px; }
-.pricing-search:focus-within,
-.pricing-status-filter:focus-within {
-    border-color: #b18158;
-    box-shadow: 0 0 0 3px rgba(101, 57, 29, .05);
+
+.seller-content .pricing-page .pricing-search {
+    gap: 11px;
+    padding: 0 14px;
 }
-.pricing-search svg { width: 16px; height: 16px; flex: 0 0 16px; color: #756d67; }
-.pricing-search input,
-.pricing-status-filter select {
+
+.seller-content .pricing-page .pricing-search:focus-within,
+.seller-content .pricing-page .pricing-status-filter:focus-within {
+    border-color: #a97952;
+    box-shadow: 0 0 0 3px rgba(83, 48, 31, .055);
+}
+
+.seller-content .pricing-page .pricing-search svg {
+    width: 19px;
+    height: 19px;
+    flex: 0 0 19px;
+    color: #65605d;
+    stroke-width: 1.8;
+}
+
+.seller-content .pricing-page .pricing-search input,
+.seller-content .pricing-page .pricing-status-filter select {
     width: 100%;
     height: 100%;
     border: 0;
     outline: 0;
-    color: var(--seller-text);
+    color: #49413d;
     background: transparent;
-    font: 400 12px/1.2 Poppins, sans-serif;
+    font: 400 13px/1.2 Poppins, sans-serif !important;
 }
-.pricing-status-filter { padding: 0 9px; }
-.pricing-reset {
-    display: inline-flex;
-    min-height: 40px;
-    align-items: center;
-    justify-content: center;
-    gap: 7px;
+
+.seller-content .pricing-page .pricing-search input::placeholder {
+    color: #7e7874;
+    opacity: 1;
+}
+
+.seller-content .pricing-page .pricing-status-filter {
     padding: 0 12px;
-    border: 1px solid #d8d1ca;
-    border-radius: 7px;
-    color: #5b514a;
-    background: #fff;
-    font: 600 11.5px/1 Poppins, sans-serif;
+}
+
+.seller-content .pricing-page .pricing-status-filter select {
+    padding: 0 2px;
     cursor: pointer;
 }
-.pricing-reset:hover { border-color: #d69a37; color: #714417; background: #fffaf1; }
-.pricing-reset svg { width: 15px; height: 15px; }
 
-.pricing-table-wrap,
-.promotion-table-wrap,
-.voucher-table-wrap { position: relative; overflow-x: auto; }
-.pricing-table,
-.promotion-table,
-.voucher-table { width: 100%; border-collapse: collapse; }
-.pricing-table { min-width: 1050px; }
-.promotion-table { min-width: 980px; }
-.voucher-table { min-width: 760px; }
-.pricing-table th,
-.pricing-table td,
-.promotion-table th,
-.promotion-table td,
-.voucher-table th,
-.voucher-table td {
-    padding: 14px 15px;
-    border-bottom: 1px solid #ece6e1;
+.seller-content .pricing-page .pricing-reset {
+    display: inline-flex;
+    min-height: 42px !important;
+    align-items: center;
+    justify-content: center;
+    padding: 0 !important;
+    border: 0;
+    color: #4f4743;
+    background: transparent;
+    box-shadow: none;
+    font-size: 13px !important;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.seller-content .pricing-page .pricing-reset:hover {
+    color: #2f211a;
+    background: transparent;
+}
+
+/* Pricing table */
+.seller-content .pricing-page .pricing-table-wrap,
+.seller-content .pricing-page .promotion-table-wrap,
+.seller-content .pricing-page .voucher-table-wrap {
+    position: relative;
+    overflow-x: auto;
+}
+
+.seller-content .pricing-page .pricing-table,
+.seller-content .pricing-page .promotion-table,
+.seller-content .pricing-page .voucher-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #fff;
+}
+
+.seller-content .pricing-page .pricing-table {
+    min-width: 1080px;
+}
+
+.seller-content .pricing-page .pricing-table th:nth-child(1) { width: 30%; }
+.seller-content .pricing-page .pricing-table th:nth-child(2) { width: 13%; }
+.seller-content .pricing-page .pricing-table th:nth-child(3) { width: 13%; }
+.seller-content .pricing-page .pricing-table th:nth-child(4) { width: 10%; }
+.seller-content .pricing-page .pricing-table th:nth-child(5) { width: 15%; }
+.seller-content .pricing-page .pricing-table th:nth-child(6) { width: 10%; }
+.seller-content .pricing-page .pricing-table th:nth-child(7) { width: 11%; }
+
+.seller-content .pricing-page .pricing-table th,
+.seller-content .pricing-page .pricing-table td,
+.seller-content .pricing-page .promotion-table th,
+.seller-content .pricing-page .promotion-table td,
+.seller-content .pricing-page .voucher-table th,
+.seller-content .pricing-page .voucher-table td {
+    border-bottom: 1px solid #e8e3df;
     text-align: left;
     vertical-align: middle;
 }
-.pricing-table th,
-.promotion-table th,
-.voucher-table th {
-    color: #756d67;
-    background: #fbfaf8;
-    font-size: 11.5px;
+
+.seller-content .pricing-page .pricing-table th,
+.seller-content .pricing-page .promotion-table th,
+.seller-content .pricing-page .voucher-table th {
+    height: 52px !important;
+    padding: 13px 18px !important;
+    color: #645f5b;
+    background: #fbfaf9;
+    font-size: 12px !important;
     font-weight: 600;
+    line-height: 1.35;
     white-space: nowrap;
 }
-.pricing-table td,
-.promotion-table td,
-.voucher-table td { color: #544b45; font-size: 12.5px; }
-.pricing-table tbody tr:hover,
-.promotion-table tbody tr:hover,
-.voucher-table tbody tr:hover { background: #fffdfa; }
 
-.pricing-product-cell { display: flex; min-width: 220px; align-items: center; gap: 10px; }
-.pricing-product-image {
-    display: grid;
-    width: 42px;
-    height: 42px;
-    flex: 0 0 42px;
-    place-items: center;
-    overflow: hidden;
-    border: 1px solid #e2dcd6;
-    border-radius: 8px;
-    color: #806349;
-    background: #f7f3ef;
-}
-.pricing-product-image img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.pricing-product-image svg { width: 18px; height: 18px; }
-.pricing-product-copy { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
-.pricing-product-copy strong { color: #3f3732; font-size: 13px; font-weight: 600; white-space: normal; }
-.pricing-product-copy small { color: #8b817b; font-size: 11px; }
-
-.pricing-regular-value,
-.pricing-sale-value { font-size: 12.5px; font-weight: 600; }
-.pricing-sale-value { color: #a66512; }
-.pricing-discount-badge,
-.pricing-voucher-state,
-.pricing-margin-safe,
-.campaign-status {
-    display: inline-flex;
-    min-height: 26px;
-    align-items: center;
-    gap: 5px;
-    padding: 0 8px;
-    border-radius: 6px;
-    font-size: 10.5px;
-    font-weight: 600;
-}
-.pricing-discount-badge { color: #9a5f0c; background: #fff2db; }
-.pricing-voucher-state { color: #756d67; background: #f4f1ee; }
-.pricing-voucher-state.is-eligible,
-.campaign-status.is-active { color: #4f6f43; background: #edf5e9; }
-.pricing-margin-safe { color: #5b6f52; background: transparent; padding-inline: 0; }
-.pricing-margin-safe svg { width: 14px; height: 14px; }
-.pricing-muted { color: #9d948e; }
-
-.pricing-row-action,
-.promotion-row-action {
-    display: inline-flex;
-    min-height: 36px;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    padding: 0 11px;
-    border: 1px solid #d88b12;
-    border-radius: 7px;
-    color: #a36508;
+.seller-content .pricing-page .pricing-table td,
+.seller-content .pricing-page .promotion-table td,
+.seller-content .pricing-page .voucher-table td {
+    height: 78px !important;
+    padding: 11px 18px !important;
+    color: #3f3935;
     background: #fff;
-    font: 600 11.5px/1 Poppins, sans-serif;
-    cursor: pointer;
-    text-decoration: none;
+    font-size: 13px !important;
+    line-height: 1.4;
 }
-.pricing-row-action:hover,
-.promotion-row-action:hover { color: #74460a; background: #fff8e9; }
-.pricing-row-action svg,
-.promotion-row-action svg { width: 14px; height: 14px; }
 
-.pricing-empty {
+.seller-content .pricing-page .pricing-table tbody tr:last-child td,
+.seller-content .pricing-page .promotion-table tbody tr:last-child td,
+.seller-content .pricing-page .voucher-table tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+.seller-content .pricing-page .pricing-table tbody tr:hover td,
+.seller-content .pricing-page .promotion-table tbody tr:hover td,
+.seller-content .pricing-page .voucher-table tbody tr:hover td {
+    background: #fffdf9;
+}
+
+.seller-content .pricing-page .pricing-product-cell {
+    display: flex;
+    min-width: 255px;
+    align-items: center;
+    gap: 15px;
+}
+
+.seller-content .pricing-page .pricing-product-image {
+    display: grid;
+    width: 56px;
+    height: 56px;
+    flex: 0 0 56px;
+    overflow: hidden;
+    place-items: center;
+    border: 1px solid #ebe5df;
+    border-radius: 8px;
+    color: #846b59;
+    background: #f5f1ed;
+}
+
+.seller-content .pricing-page .pricing-product-image img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.seller-content .pricing-page .pricing-product-image svg {
+    width: 22px !important;
+    height: 22px !important;
+    min-width: 22px !important;
+    min-height: 22px !important;
+    stroke-width: 1.7;
+}
+
+.seller-content .pricing-page .pricing-product-copy {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.seller-content .pricing-page .pricing-product-copy strong {
+    color: #211c19;
+    font-size: 14.5px !important;
+    font-weight: 600;
+    line-height: 1.25;
+}
+
+.seller-content .pricing-page .pricing-product-copy small {
+    color: #7e7772;
+    font-size: 11.5px !important;
+    font-weight: 400;
+    line-height: 1.35;
+}
+
+.seller-content .pricing-page .pricing-money,
+.seller-content .pricing-page .pricing-sale-value {
+    color: #2d2723;
+    font-size: 13px !important;
+    line-height: 1.3;
+    white-space: nowrap;
+}
+
+.seller-content .pricing-page .pricing-money {
+    font-weight: 500;
+}
+
+.seller-content .pricing-page .pricing-sale-value {
+    color: #271712;
+    font-weight: 700 !important;
+}
+
+.seller-content .pricing-page .pricing-discount-text {
+    color: #764a35;
+    font-size: 13px !important;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.seller-content .pricing-page .pricing-muted {
+    color: #8f8985;
+    font-size: 13px !important;
+}
+
+.seller-content .pricing-page .pricing-voucher-state,
+.seller-content .pricing-page .pricing-status-state {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    font-size: 13px !important;
+    font-weight: 500;
+    line-height: 1.25;
+    white-space: nowrap;
+}
+
+.seller-content .pricing-page .pricing-voucher-state svg {
+    width: 19px !important;
+    height: 19px !important;
+    min-width: 19px !important;
+    min-height: 19px !important;
+    stroke-width: 1.8;
+}
+
+.seller-content .pricing-page .pricing-voucher-state.is-eligible {
+    color: #4a7541;
+}
+
+.seller-content .pricing-page .pricing-voucher-state.is-ineligible {
+    color: #72787e;
+}
+
+.seller-content .pricing-page .pricing-status-state > i {
+    width: 10px;
+    height: 10px;
+    flex: 0 0 10px;
+    border-radius: 999px;
+    background: var(--pricing-gray-dot);
+}
+
+.seller-content .pricing-page .pricing-status-state.is-active {
+    color: #4a7541;
+}
+
+.seller-content .pricing-page .pricing-status-state.is-active > i {
+    background: var(--pricing-green-dot);
+}
+
+.seller-content .pricing-page .pricing-status-state.is-draft {
+    color: #656a70;
+}
+
+.seller-content .pricing-page .pricing-row-action,
+.seller-content .pricing-page .promotion-row-action {
+    display: inline-flex;
+    min-height: 36px !important;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 8px;
+    padding: 0 !important;
+    border: 0;
+    border-radius: 0;
+    color: #5d311f;
+    background: transparent;
+    box-shadow: none;
+    font-size: 13px !important;
+    font-weight: 500;
+    line-height: 1;
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.seller-content .pricing-page .pricing-row-action:hover,
+.seller-content .pricing-page .promotion-row-action:hover {
+    color: #8a4a1b;
+    background: transparent;
+}
+
+.seller-content .pricing-page .pricing-row-action svg,
+.seller-content .pricing-page .promotion-row-action svg {
+    width: 18px !important;
+    height: 18px !important;
+    min-width: 18px !important;
+    min-height: 18px !important;
+    stroke-width: 1.7;
+}
+
+.seller-content .pricing-page .pricing-empty {
     display: flex;
     min-height: 230px;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 6px;
-    color: var(--seller-muted);
+    gap: 7px;
+    color: #837c77;
+    background: #fff;
     text-align: center;
 }
-.pricing-empty svg { width: 30px; height: 30px; }
-.pricing-empty strong { color: var(--seller-text); font-size: 13px; }
-.pricing-empty span { font-size: 11.5px; }
-.pricing-footer {
+
+.seller-content .pricing-page .pricing-empty svg {
+    width: 30px;
+    height: 30px;
+}
+
+.seller-content .pricing-page .pricing-empty strong {
+    color: #3b332e;
+    font-size: 13.5px !important;
+}
+
+.seller-content .pricing-page .pricing-empty span {
+    font-size: 12px !important;
+}
+
+.seller-content .pricing-page .pricing-footer {
     display: flex;
-    min-height: 46px;
+    min-height: 52px;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
-    padding: 0 15px;
-    color: #847a73;
-    background: #fbfaf8;
-    font-size: 11px;
+    gap: 14px;
+    padding: 0 20px;
+    border-top: 1px solid #e8e3df;
+    color: #77716d;
+    background: #fff;
+    font-size: 12px !important;
 }
-.pricing-footer strong { color: var(--seller-text); }
 
-.promotion-panel-heading {
+.seller-content .pricing-page .pricing-footer strong {
+    color: #2f2926;
+    font-size: 12px !important;
+    font-weight: 600;
+}
+
+.seller-content .pricing-page .pricing-workspace-note {
+    margin: 13px 0 0;
+    color: #766f6a;
+    font-size: 12.5px !important;
+    line-height: 1.45;
+}
+
+/* Promotion and voucher tabs retain the same clean operational shell. */
+.seller-content .pricing-page .pricing-secondary-panel {
+    margin-top: 8px;
+}
+
+.seller-content .pricing-page .promotion-panel-heading {
     display: flex;
     align-items: flex-end;
     justify-content: space-between;
     gap: 20px;
-    padding: 18px 18px 14px;
-    border-bottom: 1px solid #e7e1db;
-}
-.promotion-panel-heading h3 { margin: 0; color: var(--seller-brown-950); font-size: 16px; }
-.promotion-panel-heading p { margin: 4px 0 0; color: var(--seller-muted); font-size: 11.5px; line-height: 1.5; }
-.promotion-panel-heading .promotion-row-action { flex: 0 0 auto; }
-.campaign-name strong,
-.campaign-name small { display: block; }
-.campaign-name strong { color: #423933; font-size: 12.5px; }
-.campaign-name small { margin-top: 3px; color: #8c827b; font-size: 10.5px; }
-.campaign-status.is-ended { color: #756d67; background: #f1efed; }
-
-.voucher-table .pricing-switch { justify-content: flex-start; }
-.pricing-switch { display: inline-flex; align-items: center; gap: 8px; color: #5f5650; font-size: 11.5px; cursor: pointer; }
-.pricing-switch input { position: absolute; opacity: 0; pointer-events: none; }
-.pricing-switch i {
-    position: relative;
-    display: inline-block;
-    width: 36px;
-    height: 20px;
-    flex: 0 0 36px;
-    border: 1px solid #d8d0c9;
-    border-radius: 999px;
-    background: #ebe7e3;
-    transition: .18s ease;
-}
-.pricing-switch i::after {
-    content: "";
-    position: absolute;
-    top: 2px;
-    left: 2px;
-    width: 14px;
-    height: 14px;
-    border-radius: 50%;
+    padding: 20px 20px 16px;
+    border-bottom: 1px solid #e7e1dc;
     background: #fff;
-    box-shadow: 0 1px 3px rgba(52, 37, 29, .18);
-    transition: .18s ease;
 }
-.pricing-switch input:checked + i { border-color: #d3a04a; background: #e9a72f; }
-.pricing-switch input:checked + i::after { transform: translateX(16px); }
-.pricing-switch input:disabled + i,
-.pricing-switch input:disabled ~ span { opacity: .45; cursor: not-allowed; }
 
-/* Price editor modal */
-.pricing-modal .modal-card { width: min(540px, calc(100vw - 32px)); }
-.pricing-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-.pricing-form-grid > label > span {
-    display: block;
-    margin-bottom: 7px;
-    color: #514842;
-    font-size: 11.5px;
+.seller-content .pricing-page .promotion-panel-heading h3 {
+    margin: 0;
+    color: #2d201a;
+    font-size: 16px !important;
     font-weight: 600;
 }
-.pricing-form-grid > label > div {
-    display: flex;
-    min-height: 42px;
-    align-items: center;
-    border: 1px solid #d9d2cb;
-    border-radius: 7px;
-    background: #fff;
-}
-.pricing-form-grid b { padding: 0 10px; color: #7b716a; font-size: 12px; font-weight: 500; }
-.pricing-form-grid input {
-    width: 100%;
-    height: 40px;
-    border: 0;
-    outline: 0;
-    background: transparent;
-    font: 500 13px/1 Poppins, sans-serif;
-}
-.pricing-calculation { margin-top: 16px; border-top: 1px solid #e8e2dc; border-bottom: 1px solid #e8e2dc; }
-.pricing-calculation > div {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    padding: 11px 0;
-    color: #6d645e;
-    font-size: 11.5px;
-}
-.pricing-calculation > div + div { border-top: 1px solid #efeae6; }
-.pricing-calculation strong { color: #443b36; font-size: 12.5px; }
-.pricing-calculation .is-net strong { color: #4f6f43; }
-.pricing-form-note {
-    display: flex;
-    align-items: flex-start;
-    gap: 7px;
-    margin: 13px 0 0;
-    color: #756c66;
-    font-size: 10.5px;
+
+.seller-content .pricing-page .promotion-panel-heading p {
+    margin: 4px 0 0;
+    color: #77706b;
+    font-size: 12px !important;
     line-height: 1.5;
 }
-.pricing-form-note svg { width: 15px; height: 15px; flex: 0 0 15px; color: #a46a1d; }
+
+.seller-content .pricing-page .promotion-table {
+    min-width: 980px;
+}
+
+.seller-content .pricing-page .voucher-table {
+    min-width: 760px;
+}
+
+.seller-content .pricing-page .campaign-name strong,
+.seller-content .pricing-page .campaign-name small {
+    display: block;
+}
+
+.seller-content .pricing-page .campaign-name strong {
+    color: #342a25;
+    font-size: 13.5px !important;
+    font-weight: 600;
+}
+
+.seller-content .pricing-page .campaign-name small {
+    margin-top: 3px;
+    color: #817973;
+    font-size: 11.5px !important;
+}
+
+.seller-content .pricing-page .campaign-status {
+    display: inline-flex;
+    min-height: 28px !important;
+    align-items: center;
+    padding: 4px 9px !important;
+    border-radius: 999px;
+    font-size: 11.5px !important;
+    font-weight: 600;
+}
+
+.seller-content .pricing-page .campaign-status.is-active {
+    color: #4d7344;
+    background: #edf5e9;
+}
+
+.seller-content .pricing-page .campaign-status.is-ended {
+    color: #736d68;
+    background: #f1efed;
+}
+
+.seller-content .pricing-page .pricing-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    color: #5f5853;
+    font-size: 12.5px !important;
+}
+
+/* Keep the existing modal logic, but match this page's quieter controls. */
+.seller-content + .pricing-modal .modal-card,
+.pricing-modal .modal-card {
+    border-radius: 12px;
+}
+
+/* Responsive */
+@media (max-width: 1120px) {
+    .seller-content .pricing-page .pricing-summary-row {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .seller-content .pricing-page .pricing-summary-metrics {
+        width: 100%;
+    }
+
+    .seller-content .pricing-page .pricing-create-button {
+        align-self: flex-end;
+    }
+}
+
+@media (max-width: 820px) {
+    .seller-content .pricing-page .pricing-summary-metrics {
+        grid-template-columns: 1fr;
+    }
+
+    .seller-content .pricing-page .pricing-summary-metric,
+    .seller-content .pricing-page .pricing-summary-metric:first-child {
+        padding: 13px 0;
+    }
+
+    .seller-content .pricing-page .pricing-summary-metric + .pricing-summary-metric {
+        border-top: 1px solid #ddd6d1;
+        border-left: 0;
+    }
+
+    .seller-content .pricing-page .pricing-summary-metric span {
+        white-space: normal;
+    }
+
+    .seller-content .pricing-page .pricing-create-button {
+        width: 100%;
+        align-self: stretch;
+    }
+
+    .seller-content .pricing-page .pricing-ending-notice {
+        align-items: flex-start;
+        flex-direction: column;
+        padding: 13px 15px;
+    }
+
+    .seller-content .pricing-page .pricing-toolbar {
+        grid-template-columns: 1fr;
+    }
+
+    .seller-content .pricing-page .pricing-reset {
+        justify-content: flex-start;
+    }
+
+    .seller-content .pricing-page .pricing-footer {
+        align-items: flex-start;
+        flex-direction: column;
+        padding-block: 13px;
+    }
+
+    .seller-content .pricing-page .promotion-panel-heading {
+        align-items: stretch;
+        flex-direction: column;
+    }
+}
 
 /* Dedicated Create Promotion page */
 .promotion-create-page { max-width: 1240px; }
@@ -7102,12 +7491,10 @@ svg {
 .tracking-page .fulfillment-empty span { font-size:13px; }
 .tracking-completion-note { display:flex; align-items:center; gap:8px; margin:14px 0 0; color:#736b65; font-size:12px; line-height:1.6; }
 .tracking-completion-note svg { width:18px; height:18px; flex-shrink:0; color:#54703f; }
-.tracking-page [hidden] { display:none !important; }
-.tracking-page button:focus-visible, .tracking-page .fulfillment-table-wrap:focus-visible { outline:2px solid #d88b12; outline-offset:3px; }
+.tracking-page [hidden] { display:none !important; ꡗng-page button:focus-visible, .tracking-page .fulfillment-table-wrap:focus-visible { outline:2px solid #d88b12; outline-offset:3px; }
 .tracking-page .tracking-toolbar label:focus-within { outline:2px solid #d88b12; outline-offset:2px; }
 .tracking-page .seller-primary-button { background:#e9a72f; border:1px solid #d88b12; color:#2b1d16; box-shadow:none; }
-.tracking-page .seller-primary-button:hover { background:#d88b12; }
-.tracking-page .modal-card { border-radius:12px; }
+.tracking-page .seller-primary-button:hover { background:#d88b12; ꡗng-page .modal-card { border-radius:12px; }
 .tracking-page .tracking-overview strong, .tracking-page .shipment-timeline strong { font-size:14px; }
 .tracking-page .tracking-overview span, .tracking-page .shipment-timeline small,
 .tracking-page .shipment-report-form label > span { font-size:13px; }
@@ -7128,8 +7515,7 @@ svg {
 }
 
 /* Match the approved tracking composition; override global typography only here. */
-.seller-body:has(.tracking-page) .seller-content { padding:32px 36px; }
-.tracking-page .tracking-table { table-layout:fixed; }
+.seller-body:has(.tracking-page) .seller-content { padding:32px 36px; ꡗng-page .tracking-table { table-layout:fixed; }
 .tracking-page .tracking-table th:nth-child(5) { width:10%; }
 .tracking-page .tracking-table th:nth-child(6) { width:12%; }
 .tracking-page .tracking-table th:nth-child(7) { width:112px; }
@@ -7415,8 +7801,7 @@ svg {
 .tracking-col-rider { width: 14%; }
 .tracking-col-update { width: 27%; }
 .tracking-col-eta { width: 10%; }
-.tracking-col-status { width: 12%; }
-.tracking-col-action { width: 7%; }
+.tracking-col-status { width: 12%; ꡗng-col-action { width: 7%; }
 
 .tracking-table th {
     padding: 13px 18px !important;
@@ -8006,3 +8391,7 @@ svg {
     }
 }
 
+}
+}
+}
+}

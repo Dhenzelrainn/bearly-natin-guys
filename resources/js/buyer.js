@@ -1359,6 +1359,38 @@ export const defaults = () => ({
     view: 'grid',
 });
 
+function subcategoryMatches(productSubcategory, selectedSubcategory) {
+    if (!productSubcategory || !selectedSubcategory) return false;
+
+    const normalize = value =>
+        value
+            .toLowerCase()
+            .replace(/[’']/g, '')
+            .replace(/[^a-z0-9]+/g, ' ')
+            .trim();
+
+    const productValue = normalize(productSubcategory);
+    const selectedValue = normalize(selectedSubcategory);
+
+    if (productValue === selectedValue) return true;
+
+    const groupedSubcategories = {
+        'fashion jewelry': ['necklaces', 'earrings', 'bracelets', 'rings'],
+    };
+
+    if (groupedSubcategories[selectedValue]) {
+        return groupedSubcategories[selectedValue].some(term =>
+            productValue.includes(term)
+        );
+    }
+
+    const selectedTerms = selectedValue
+        .split(' ')
+        .filter(term => term.length > 2 && !['and', 'for', 'the'].includes(term));
+
+    return selectedTerms.some(term => productValue.includes(term));
+}
+
 export function filterCatalog(products, state, savedIds = []) {
     const search = state.search.trim().toLowerCase();
 
@@ -1366,7 +1398,7 @@ export function filterCatalog(products, state, savedIds = []) {
         product =>
             (!search || product.name.toLowerCase().includes(search)) &&
             (!state.subcategory ||
-                product.subcategory === state.subcategory) &&
+                subcategoryMatches(product.subcategory, state.subcategory)) &&
             product.price >= state.min &&
             product.price <= state.max &&
             (!state.size.length ||
@@ -1403,7 +1435,7 @@ export function readState(params, products) {
     state.search = (params.get('q') || '').slice(0, 120);
 
     state.subcategory = products.some(
-        product => product.subcategory === params.get('sub')
+        product => subcategoryMatches(product.subcategory, params.get('sub'))
     )
         ? params.get('sub')
         : '';

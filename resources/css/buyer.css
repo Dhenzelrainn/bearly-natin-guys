@@ -469,6 +469,92 @@ body:not(.bc) .chat-button{
     box-shadow:0 4px 12px #35251e25
 }
 body:not(.bc) .chat-button .material-symbols-outlined{font-size:20px}
+
+/* Homepage reference layout: compact marketplace chrome and dense discovery. */
+body:not(.bc).bh{
+    --header:68px;
+    --sidebar:182px;
+    background:#f8f7f4;
+    font-family:Poppins,sans-serif
+}
+body:not(.bc) .header{
+    min-height:var(--header);
+    padding:10px 22px;
+    gap:24px;
+    background:#3a2418;
+    border-bottom:0;
+    color:#fff
+}
+body:not(.bc) .brand{flex-basis:125px}
+body:not(.bc) .brand img{width:125px}
+body:not(.bc) .search{height:38px;border:0;border-radius:6px}
+body:not(.bc) .search select{max-width:112px;padding:0 10px;font-size:11px}
+body:not(.bc) .search input{padding:0 12px;font-size:12px}
+body:not(.bc) .search button{width:40px}
+body:not(.bc) .search button .material-symbols-outlined{font-size:20px}
+body:not(.bc) .header-actions{gap:16px}
+body:not(.bc) .header-actions a,
+body:not(.bc) .header-actions button{min-width:34px;gap:2px;color:#fff;font-size:10px}
+body:not(.bc) .header-actions .material-symbols-outlined{font-size:20px}
+body:not(.bc) .shell{max-width:none}
+body:not(.bc) .sidebar{
+    padding:14px 10px;
+    background:#fbfaf8;
+    border-right:1px solid #e5e0d9
+}
+body:not(.bc) .sidebar-title{gap:8px;padding:0 9px 12px;font-size:12px}
+body:not(.bc) .sidebar-title .material-symbols-outlined{font-size:18px}
+body:not(.bc) .category-button{gap:9px;padding:8px 9px;margin:1px 0;border-radius:5px;font-size:10px;line-height:1.25;min-height:34px}
+body:not(.bc) .category-button>.material-symbols-outlined{font-size:18px}
+body:not(.bc) .category-button .chevron{font-size:14px}
+body:not(.bc) .seller-link{padding:16px 8px;margin-top:12px;font-size:11px;gap:7px}
+body:not(.bc) main{padding:16px 16px 26px}
+body:not(.bc) .promos{gap:10px;margin:10px 0 14px}
+body:not(.bc) .promo{min-height:114px;padding:16px;border-radius:8px}
+body:not(.bc) .promo h2{font-size:18px}
+body:not(.bc) .promo p{font-size:11px;margin:4px 0 8px}
+body:not(.bc) .promo strong{font-size:10px}
+body:not(.bc) .promo .product-photo{width:135px}
+body:not(.bc) .section-heading{margin:12px 0 7px}
+body:not(.bc) .section-heading p{font-size:10px;margin-top:2px}
+body:not(.bc) h2{font-size:25px}
+body:not(.bc) .text-button{font-size:11px}
+body:not(.bc) .preview-note{font-size:9px;margin:0 0 7px}
+body:not(.bc) .product-grid{grid-template-columns:repeat(6,minmax(0,1fr));gap:10px}
+body:not(.bc) .product-card{border-radius:6px}
+body:not(.bc) .product-copy{padding:9px}
+body:not(.bc) .product-copy h3{font-size:10px;line-height:1.25;min-height:26px}
+body:not(.bc) .product-category{display:none}
+body:not(.bc) .product-price{font-size:11px;line-height:1.3}
+body:not(.bc) .view-product{display:none}
+body:not(.bc) .footer{padding:14px 32px 18px;gap:16px;background:#3a2418;color:#fff;border-top:0}
+body:not(.bc) .footer p,
+body:not(.bc) .footer>span{color:#d8c8bb;font-size:10px}
+body:not(.bc) .footer nav{gap:16px}
+body:not(.bc) .footer button{font-size:10px;color:#fff}
+body:not(.bc) .chat-button{left:18px;bottom:16px;padding:10px 16px;font-size:11px}
+
+@media (min-width:721px) and (max-width:1200px){
+    body:not(.bc) .header{
+        display:flex;
+        min-height:68px;
+        padding:10px 18px;
+        gap:16px
+    }
+    body:not(.bc) .brand{flex:0 0 125px}
+    body:not(.bc) .brand img{width:125px}
+    body:not(.bc) .header-actions{gap:12px}
+    body:not(.bc) .header-actions a,
+    body:not(.bc) .header-actions button{font-size:9px}
+    body:not(.bc) .shell{grid-template-columns:182px minmax(0,1fr)}
+    body:not(.bc) main{padding:16px}
+    body:not(.bc) .product-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:9px}
+}
+
+@media (min-width:721px){
+    body:not(.bc) .sidebar{display:flex;flex-direction:column}
+    body:not(.bc) #category-nav{flex:1;display:flex;flex-direction:column;justify-content:space-evenly}
+}
 body:not(.bc).chat-open{overflow:hidden}
 body:not(.bc).cart-open{overflow:hidden}
 body:not(.bc) .chat-drawer-backdrop{position:fixed;inset:0;z-index:44;background:#2b1d1670;backdrop-filter:blur(2px)}

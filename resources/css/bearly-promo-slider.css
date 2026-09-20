@@ -636,6 +636,16 @@ body:not(.bc) .bearly-promo-slider.is-running .bearly-slider-progress span {
     }
 }
 
+@media (min-width:721px){
+    body:not(.bc) .bearly-promo-slider,
+    body:not(.bc) .bearly-promo-slide{min-height:270px}
+    body:not(.bc) .bearly-promo-copy{padding:28px;width:min(560px,58%)}
+    body:not(.bc) .bearly-promo-copy h1,
+    body:not(.bc) .bearly-promo-copy h2{font-size:38px}
+    body:not(.bc) .bearly-promo-copy > p:not(.eyebrow){font-size:12px;margin-top:10px}
+    body:not(.bc) .bearly-slider-dots{left:28px;bottom:14px}
+}
+
 @media (prefers-reduced-motion: reduce) {
     body:not(.bc) .bearly-promo-slide {
         transition: none;

@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Controllers\AdminController;
+use App\Http\Controllers\AccountApprovalController;
+use App\Http\Controllers\Auth\BearlyAuthController;
 use App\Http\Controllers\PsgcController;
 use App\Http\Controllers\SellerController;
 use App\Http\Controllers\LogisticsController;
@@ -10,9 +12,18 @@ use App\Http\Controllers\SellerWorkflowController;
 use App\Http\Controllers\SellerProductController;
 use Illuminate\Support\Facades\Route;
 
-Route::view('/', 'auth.login')->name('shop.home');
-Route::view('/login', 'auth.login')->name('login');
-Route::view('/register', 'auth.register')->name('register');
+Route::middleware('guest')->group(function () {
+    Route::get('/login', [BearlyAuthController::class, 'showLogin'])->name('login');
+    Route::post('/login', [BearlyAuthController::class, 'login'])->name('login.submit');
+    Route::get('/register', [BearlyAuthController::class, 'showRegister'])->name('register');
+    Route::post('/register', [BearlyAuthController::class, 'register'])->name('register.submit');
+});
+
+Route::post('/logout', [BearlyAuthController::class, 'logout'])
+    ->middleware('auth')
+    ->name('logout');
+
+Route::view('/application/pending', 'auth.pending')->name('application.pending');
 
 Route::get('/forgot-password', fn () => redirect()->route('login'))
     ->name('password.request');
@@ -112,6 +123,13 @@ Route::prefix('admin')->name('admin.')->group(function () {
         ->name('announcements');
     
     Route::get('/account', [AdminController::class, 'account'])->name('account');
+
+    Route::middleware(['auth', 'role:admin'])->group(function () {
+        Route::post('/applications/{user}/approve', [AccountApprovalController::class, 'approveByAdmin'])
+            ->name('applications.approve');
+        Route::post('/applications/{user}/reject', [AccountApprovalController::class, 'rejectByAdmin'])
+            ->name('applications.reject');
+    });
 });
 
 /*
@@ -280,19 +298,26 @@ Route::prefix('logistics')->name('logistics.')->group(function () {
     Route::get('/register', [LogisticsController::class, 'register'])->name('register');
     Route::post('/register', [LogisticsController::class, 'submitRegistration'])->name('register.submit');
 
-    Route::get('/login', [LogisticsController::class, 'login'])->name('login');
-    Route::post('/login', [LogisticsController::class, 'submitLogin'])->name('login.submit');
+    Route::redirect('/login', '/login')->name('login');
 
     Route::get('/dashboard', [LogisticsController::class, 'dashboard'])->name('dashboard');
-    Route::get('/riders', [LogisticsController::class, 'riders'])->name('riders');
-    Route::get('/pickups', [LogisticsController::class, 'pickups'])->name('pickups');
-    Route::get('/incoming', [LogisticsController::class, 'incoming'])->name('incoming');
-    Route::get('/sorting', [LogisticsController::class, 'sorting'])->name('sorting');
-    Route::get('/dispatch', [LogisticsController::class, 'dispatch'])->name('dispatch');
-    Route::get('/monitoring', [LogisticsController::class, 'monitoring'])->name('monitoring');
-    Route::get('/reports', [LogisticsController::class, 'reports'])->name('reports');
-    Route::get('/messages', [LogisticsController::class, 'messages'])->name('messages');
-    Route::get('/account', [LogisticsController::class, 'account'])->name('account');
+    Route::get('/riders', [LogisticsController::class, 'riders'])->name('riders.index');
+    Route::get('/riders/{id}', [LogisticsController::class, 'showRider'])->name('riders.show');
+    Route::get('/pickups', [LogisticsController::class, 'pickups'])->name('pickups.index');
+    Route::get('/incoming', [LogisticsController::class, 'incoming'])->name('sorting.incoming');
+    Route::get('/sorting', [LogisticsController::class, 'sorting'])->name('sorting.center');
+    Route::get('/dispatch', [LogisticsController::class, 'dispatch'])->name('dispatch.index');
+    Route::get('/monitoring', [LogisticsController::class, 'monitoring'])->name('dispatch.monitoring');
+    Route::get('/reports', [LogisticsController::class, 'reports'])->name('reports.index');
+    Route::get('/messages', [LogisticsController::class, 'messages'])->name('messages.index');
+    Route::get('/account', [LogisticsController::class, 'account'])->name('profile.index');
+
+    Route::middleware(['auth', 'role:logistics'])->group(function () {
+        Route::post('/riders/{user}/approve', [AccountApprovalController::class, 'approveRider'])
+            ->name('riders.approve');
+        Route::post('/riders/{user}/reject', [AccountApprovalController::class, 'rejectRider'])
+            ->name('riders.reject');
+    });
 });
 
 /*
@@ -307,20 +332,19 @@ Route::prefix('rider')->name('rider.')->group(function () {
     Route::get('/register', [RiderController::class, 'register'])->name('register');
     Route::post('/register', [RiderController::class, 'submitRegistration'])->name('register.submit');
 
-    Route::get('/login', [RiderController::class, 'login'])->name('login');
-    Route::post('/login', [RiderController::class, 'submitLogin'])->name('login.submit');
+    Route::redirect('/login', '/login')->name('login');
 
     Route::get('/dashboard/pickups', [RiderController::class, 'pickupsDashboard'])->name('dashboard.pickups');
     Route::get('/dashboard/deliveries', [RiderController::class, 'deliveriesDashboard'])->name('dashboard.deliveries');
 
-    Route::get('/pickup/{id}', [RiderController::class, 'pickup'])->name('pickup');
-    Route::post('/pickup/{id}/confirm', [RiderController::class, 'confirmPickup'])->name('pickup.confirm');
+    Route::get('/pickup/{id}', [RiderController::class, 'pickup'])->name('orders.pickup');
+    Route::post('/pickup/{id}/confirm', [RiderController::class, 'confirmPickup'])->name('orders.pickup.confirm');
 
-    Route::get('/deliver/{id}', [RiderController::class, 'deliver'])->name('deliver');
-    Route::post('/deliver/{id}/confirm', [RiderController::class, 'confirmDelivery'])->name('deliver.confirm');
+    Route::get('/deliver/{id}', [RiderController::class, 'deliver'])->name('orders.delivery');
+    Route::post('/deliver/{id}/confirm', [RiderController::class, 'confirmDelivery'])->name('orders.delivery.confirm');
 
-    Route::get('/earnings', [RiderController::class, 'earnings'])->name('earnings');
-    Route::get('/history', [RiderController::class, 'history'])->name('history');
-    Route::get('/messages', [RiderController::class, 'messages'])->name('messages');
-    Route::get('/account', [RiderController::class, 'account'])->name('account');
+    Route::get('/earnings', [RiderController::class, 'earnings'])->name('earnings.index');
+    Route::get('/history', [RiderController::class, 'history'])->name('history.index');
+    Route::get('/messages', [RiderController::class, 'messages'])->name('messages.index');
+    Route::get('/account', [RiderController::class, 'account'])->name('profile.index');
 });

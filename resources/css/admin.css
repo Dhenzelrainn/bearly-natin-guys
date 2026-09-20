@@ -609,12 +609,16 @@ body.sidebar-collapsed .sidebar-logout { justify-content: center; }
 }
 
 .admin-sidebar-footer .admin-nav-link {
+    width: 100%;
     min-height: 40px;
     margin: 0;
     padding: 0 18px;
     border-radius: 10px;
     color: rgba(255, 255, 255, .8);
     font-size: 12px;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
 }
 
 .admin-sidebar-footer .admin-nav-link:hover {
@@ -905,7 +909,9 @@ body.sidebar-collapsed .sidebar-logout { justify-content: center; }
     white-space: nowrap;
 }
 
-.admin-profile-popover > a {
+.admin-profile-popover > a,
+.admin-profile-popover > form > button {
+    width: 100%;
     display: flex;
     align-items: center;
     gap: 9px;
@@ -914,14 +920,19 @@ body.sidebar-collapsed .sidebar-logout { justify-content: center; }
     color: var(--text);
     font-size: 10.5px;
     text-decoration: none;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
 }
 
-.admin-profile-popover > a:hover {
+.admin-profile-popover > a:hover,
+.admin-profile-popover > form > button:hover {
     color: var(--brown-900);
     background: #fff8ef;
 }
 
-.admin-profile-popover > a .admin-ui-icon {
+.admin-profile-popover > a .admin-ui-icon,
+.admin-profile-popover > form > button .admin-ui-icon {
     width: 16px;
     height: 16px;
 }

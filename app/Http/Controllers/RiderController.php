@@ -2,7 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\AccountStatus;
+use App\Enums\UserRole;
+use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\View\View;
 
 class RiderController extends Controller
 {
@@ -39,67 +45,43 @@ class RiderController extends Controller
 
     public function landing()
     {
-        return view('rider.landing');
+        return view('rider.landing.index');
     }
 
-    public function login()
+    public function register(): View
     {
-        return view('rider.login');
-    }
+        $logisticsPartners = Schema::hasTable('users')
+            ? User::query()
+                ->where('role', UserRole::Logistics->value)
+                ->where('status', AccountStatus::Active->value)
+                ->orderBy('business_name')
+                ->get()
+                ->map(fn (User $user) => [
+                    'id' => (string) $user->id,
+                    'name' => $user->business_name ?: $user->name,
+                ])
+                ->all()
+            : [];
 
-    public function submitLogin(Request $request)
-    {
-        $validated = $request->validate([
-            'email' => ['required', 'email'],
-            'password' => ['required', 'string', 'min:6'],
-        ]);
-
-        // Front-end preview only.
-        // Replace with real authentication later.
-        session([
-            'rider_preview_authenticated' => true,
-            'rider_preview_email' => $validated['email'],
-        ]);
-
-        return redirect()
-            ->route('rider.dashboard.deliveries')
-            ->with('success', 'Welcome back, Rider.');
-    }
-
-    public function register()
-    {
-        // Preview list only.
-        // Later this should come from approved Logistics accounts in the database.
-        $logisticsPartners = [
-            [
-                'id' => 'jnt-laguna',
-                'name' => 'J&T Express - Laguna Sorting Center',
-            ],
-            [
-                'id' => 'spx-laguna',
-                'name' => 'SPX Express - Laguna Hub',
-            ],
-            [
-                'id' => 'flash-laguna',
-                'name' => 'Flash Express - Laguna Hub',
-            ],
-        ];
-
-        return view('rider.register', compact('logisticsPartners'));
+        return view('rider.applications.create', compact('logisticsPartners'));
     }
 
     public function submitRegistration(Request $request)
     {
         $validated = $request->validate([
-            'logistics_partner' => ['required', 'string', 'max:120'],
-            'full_name' => ['required', 'string', 'max:120'],
-            'email' => ['required', 'email'],
+            'logistics_partner' => ['required', 'integer', 'exists:users,id'],
+            'first_name' => ['required', 'string', 'max:80'],
+            'middle_initial' => ['nullable', 'string', 'max:5'],
+            'last_name' => ['required', 'string', 'max:80'],
+            'sex' => ['required', 'in:Male,Female,Prefer not to say'],
+            'email' => ['required', 'email', 'unique:users,email'],
             'contact_number' => ['required', 'string', 'max:20'],
             'birthday' => ['required', 'date', 'before:today'],
             'province' => ['required', 'string', 'max:120'],
             'municipality' => ['required', 'string', 'max:120'],
             'barangay' => ['required', 'string', 'max:120'],
             'street' => ['required', 'string', 'max:180'],
+            'house_number' => ['required', 'string', 'max:40'],
             'vehicle_type' => ['required', 'string', 'max:80'],
             'plate_number' => ['required', 'string', 'max:30'],
             'or_cr' => [
@@ -114,16 +96,47 @@ class RiderController extends Controller
                 'mimes:jpg,jpeg,png,pdf',
                 'max:5120',
             ],
+            'password' => ['required', 'confirmed', 'min:8', 'regex:/[a-z]/', 'regex:/[A-Z]/', 'regex:/[0-9]/'],
         ]);
 
-        // Front-end preview only.
-        // Later: associate the Rider with a logistics_id
-        // and notify the selected Logistics account.
+        $logistics = User::query()
+            ->whereKey($validated['logistics_partner'])
+            ->where('role', UserRole::Logistics->value)
+            ->where('status', AccountStatus::Active->value)
+            ->firstOrFail();
+
+        $user = User::create([
+            'name' => trim($validated['first_name'].' '.($validated['middle_initial'] ?? '').' '.$validated['last_name']),
+            'first_name' => $validated['first_name'],
+            'middle_initial' => $validated['middle_initial'] ?? null,
+            'last_name' => $validated['last_name'],
+            'sex' => match ($validated['sex']) {
+                'Male' => 'male',
+                'Female' => 'female',
+                default => 'prefer_not_to_say',
+            },
+            'birthday' => $validated['birthday'],
+            'email' => $validated['email'],
+            'contact_number' => $validated['contact_number'],
+            'role' => UserRole::Rider->value,
+            'status' => AccountStatus::Pending->value,
+            'logistics_id' => $logistics->id,
+            'province' => $validated['province'],
+            'city' => $validated['municipality'],
+            'barangay' => $validated['barangay'],
+            'street_address' => trim($validated['house_number'].' '.$validated['street']),
+            'vehicle_type' => $validated['vehicle_type'],
+            'plate_number' => strtoupper($validated['plate_number']),
+            'or_cr_path' => $request->file('or_cr')->store('registration-documents/riders/or-cr', 'local'),
+            'driver_license_path' => $request->file('driver_license')->store('registration-documents/riders/licenses', 'local'),
+            'password' => Hash::make($validated['password']),
+        ]);
+
         session([
             'rider_application' => [
-                'full_name' => $validated['full_name'],
-                'email' => $validated['email'],
-                'logistics_partner' => $validated['logistics_partner'],
+                'full_name' => $user->name,
+                'email' => $user->email,
+                'logistics_partner' => $logistics->business_name ?: $logistics->name,
                 'status' => 'Awaiting Logistics Approval',
             ],
         ]);
@@ -135,7 +148,7 @@ class RiderController extends Controller
 
     public function pickupsDashboard()
     {
-        return view('rider.dashboard-pickups', $this->shared() + [
+        return view('rider.dashboard.pickups', $this->shared() + [
             'pickups' => [
                 [
                     'id' => 'PU-24091',
@@ -165,12 +178,17 @@ class RiderController extends Controller
                     'status' => 'Available',
                 ],
             ],
+            'alerts' => [
+                ['time' => '2 min ago', 'title' => 'New nearby pickup', 'detail' => 'Mara Home Goods · 4 parcels · 4.1 km'],
+                ['time' => '18 min ago', 'title' => 'Pickup window updated', 'detail' => 'TechVault PH is ready from 2:30–3:30 PM'],
+                ['time' => '35 min ago', 'title' => 'Sorting center reminder', 'detail' => 'Return collected parcels to Intake Bay 2'],
+            ],
         ]);
     }
 
     public function deliveriesDashboard()
     {
-        return view('rider.dashboard-deliveries', $this->shared() + [
+        return view('rider.dashboard.deliveries', $this->shared() + [
             'deliveries' => [
                 [
                     'id' => 'DL-8412',
@@ -200,18 +218,24 @@ class RiderController extends Controller
                     'status' => 'Assigned',
                 ],
             ],
+            'availablePickups' => [
+                ['id' => 'PU-24094', 'seller' => 'Mara Home Goods', 'area' => 'San Pablo South', 'parcels' => 4, 'distance' => '4.1 km'],
+                ['id' => 'PU-24095', 'seller' => 'Tiny Tails Pet Co.', 'area' => 'San Pablo North', 'parcels' => 3, 'distance' => '5.7 km'],
+            ],
         ]);
     }
 
     public function pickup(string $id)
     {
-        return view('rider.pickup', $this->shared() + [
+        return view('rider.orders.pickup', $this->shared() + [
             'job' => [
                 'id' => $id,
                 'seller' => 'TechVault PH',
                 'contact' => '0917 555 0148',
                 'address' => 'Unit 4, San Rafael Commercial Arcade, Brgy. San Rafael, San Pablo City',
                 'window' => '2:30–3:30 PM',
+                'distance' => '2.3 km',
+                'instructions' => 'Use the loading entrance beside the pharmacy. Ask for the seller operations desk.',
                 'manifest' => [
                     [
                         'waybill' => 'BRL-983410',
@@ -243,7 +267,7 @@ class RiderController extends Controller
 
     public function deliver(string $id)
     {
-        return view('rider.deliver', $this->shared() + [
+        return view('rider.orders.delivery', $this->shared() + [
             'job' => [
                 'id' => $id,
                 'waybill' => 'BRL-983410',
@@ -253,6 +277,9 @@ class RiderController extends Controller
                 'payment' => 'Cash on Delivery',
                 'amount' => '₱1,290',
                 'notes' => 'Call upon arrival. Brown gate beside the pharmacy.',
+                'distance' => '3.8 km',
+                'estimated_time' => '14 minutes',
+                'coordinates' => '14.0717° N, 121.3256° E',
             ],
         ]);
     }
@@ -267,13 +294,16 @@ class RiderController extends Controller
 
     public function earnings()
     {
-        return view('rider.earnings', $this->shared() + [
+        return view('rider.earnings.index', $this->shared() + [
             'earnings' => [
                 'today' => 420,
                 'week' => 2840,
                 'month' => 11260,
                 'pending' => 780,
                 'completed_jobs' => 63,
+                'tips' => 640,
+                'incentives' => 1200,
+                'deductions' => 360,
             ],
             'logs' => [
                 [
@@ -310,7 +340,7 @@ class RiderController extends Controller
 
     public function history()
     {
-        return view('rider.history', $this->shared() + [
+        return view('rider.history.index', $this->shared() + [
             'history' => [
                 [
                     'date' => 'Sep 6, 2026',
@@ -344,15 +374,24 @@ class RiderController extends Controller
                     'status' => 'Delivered',
                     'earning' => '₱70',
                 ],
+                [
+                    'date' => 'Sep 4, 2026',
+                    'id' => 'DL-8378',
+                    'customer' => 'Elena Sy',
+                    'area' => 'Calauan / Bay',
+                    'status' => 'Canceled',
+                    'earning' => '₱0',
+                ],
             ],
         ]);
     }
 
     public function messages()
     {
-        return view('rider.messages', $this->shared() + [
+        return view('rider.messages.index', $this->shared() + [
             'conversations' => [
                 [
+                    'id' => 'sorting-center',
                     'name' => 'Bearly Sorting Center',
                     'role' => 'Logistics',
                     'initials' => 'BS',
@@ -360,6 +399,7 @@ class RiderController extends Controller
                     'time' => '2:10 PM',
                 ],
                 [
+                    'id' => 'karen-yu',
                     'name' => 'Karen Yu',
                     'role' => 'Buyer',
                     'initials' => 'KY',
@@ -367,6 +407,7 @@ class RiderController extends Controller
                     'time' => '1:55 PM',
                 ],
                 [
+                    'id' => 'techvault-ph',
                     'name' => 'TechVault PH',
                     'role' => 'Seller',
                     'initials' => 'TP',
@@ -379,6 +420,14 @@ class RiderController extends Controller
 
     public function account()
     {
-        return view('rider.account', $this->shared());
+        return view('rider.profile.index', $this->shared() + [
+            'profile' => [
+                'contact' => '0917 440 8821',
+                'birthday' => '1998-05-14',
+                'sex' => 'Male',
+                'address' => 'Blk 3 Lot 8, Brgy. San Rafael, San Pablo City, Laguna',
+                'emergency_contact' => 'Maya Flores · 0917 444 0188',
+            ],
+        ]);
     }
 }

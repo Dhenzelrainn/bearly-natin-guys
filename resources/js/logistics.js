@@ -37,6 +37,9 @@ function setupShell() {
     document.querySelector('[data-mobile-menu]')?.addEventListener('click', () => body.classList.add('sidebar-open'));
     document.querySelector('[data-overlay]')?.addEventListener('click', closeMobile);
     document.querySelectorAll('[data-dismiss]').forEach((button) => button.addEventListener('click', () => button.closest('.flash-banner')?.remove()));
+    document.querySelectorAll('[data-preview-action]').forEach((button) => button.addEventListener('click', () => {
+        toast(button.dataset.success || 'Action completed in this front-end preview.');
+    }));
 
     document.querySelectorAll('[data-popover-toggle]').forEach((button) => button.addEventListener('click', (event) => {
         event.stopPropagation();

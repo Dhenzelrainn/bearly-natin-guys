@@ -2,6 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\AccountStatus;
+use App\Enums\UserRole;
+use App\Models\User;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 
 class AdminController extends Controller
@@ -49,14 +53,41 @@ class AdminController extends Controller
 
     public function registrations(): View
     {
+        $applications = [
+            ['id' => 'REG-2041', 'name' => 'Sofia Mendoza', 'role' => 'Seller', 'email' => 'sofia@example.test', 'submitted' => 'Aug 24, 2026', 'status' => 'Pending', 'category' => 'Jewelry & Watches', 'documents' => ['Government ID', 'Business Permit']],
+            ['id' => 'REG-2042', 'name' => 'Northstar Logistics', 'role' => 'Logistics', 'email' => 'applications@northstar.example.test', 'submitted' => 'Aug 24, 2026', 'status' => 'Pending', 'category' => 'Regional Delivery Partner', 'documents' => ['SEC/DTI Registration', 'Business Permit', 'Service Coverage']],
+            ['id' => 'REG-2043', 'name' => 'Bianca Lim', 'role' => 'Buyer', 'email' => 'bianca@example.test', 'submitted' => 'Aug 23, 2026', 'status' => 'Pending', 'category' => '—', 'documents' => ['Government ID']],
+            ['id' => 'REG-2044', 'name' => 'Ethan Cruz', 'role' => 'Seller', 'email' => 'ethan@example.test', 'submitted' => 'Aug 23, 2026', 'status' => 'Needs Review', 'category' => 'Food & Gourmet', 'documents' => ['Government ID', 'Business Permit']],
+            ['id' => 'REG-2045', 'name' => 'Laguna Express Hub', 'role' => 'Logistics', 'email' => 'onboarding@lagunaexpress.example.test', 'submitted' => 'Aug 22, 2026', 'status' => 'Pending', 'category' => 'Provincial Sorting Center', 'documents' => ['SEC/DTI Registration', 'Business Permit', 'Warehouse Permit']],
+        ];
+
+        if (Schema::hasTable('users')) {
+            $databaseApplications = User::query()
+                ->whereIn('role', UserRole::adminApproved())
+                ->whereIn('status', [AccountStatus::Pending->value, AccountStatus::NeedsRevision->value])
+                ->latest()
+                ->get()
+                ->map(fn (User $user) => [
+                    'id' => 'DB-'.$user->id,
+                    'database_id' => $user->id,
+                    'name' => $user->business_name ?: $user->name,
+                    'role' => ucfirst($user->role),
+                    'email' => $user->email,
+                    'submitted' => $user->created_at?->format('M j, Y') ?? 'Recently',
+                    'status' => $user->status === AccountStatus::NeedsRevision->value ? 'Needs Review' : 'Pending',
+                    'category' => $user->business_category ?: '—',
+                    'documents' => array_values(array_filter([
+                        $user->valid_id_path ? 'Government ID' : null,
+                        $user->business_permit_path ? 'Business Permit' : null,
+                    ])),
+                ])
+                ->all();
+
+            $applications = [...$databaseApplications, ...$applications];
+        }
+
         return view('admin.registrations.index', $this->base([
-            'applications' => [
-                ['id' => 'REG-2041', 'name' => 'Sofia Mendoza', 'role' => 'Seller', 'email' => 'sofia@example.test', 'submitted' => 'Aug 24, 2026', 'status' => 'Pending', 'category' => 'Jewelry & Watches', 'documents' => ['Government ID', 'Business Permit']],
-                ['id' => 'REG-2042', 'name' => 'Northstar Logistics', 'role' => 'Logistics', 'email' => 'applications@northstar.example.test', 'submitted' => 'Aug 24, 2026', 'status' => 'Pending', 'category' => 'Regional Delivery Partner', 'documents' => ['SEC/DTI Registration', 'Business Permit', 'Service Coverage']],
-                ['id' => 'REG-2043', 'name' => 'Bianca Lim', 'role' => 'Buyer', 'email' => 'bianca@example.test', 'submitted' => 'Aug 23, 2026', 'status' => 'Pending', 'category' => '—', 'documents' => ['Government ID']],
-                ['id' => 'REG-2044', 'name' => 'Ethan Cruz', 'role' => 'Seller', 'email' => 'ethan@example.test', 'submitted' => 'Aug 23, 2026', 'status' => 'Needs Review', 'category' => 'Food & Gourmet', 'documents' => ['Government ID', 'Business Permit']],
-                ['id' => 'REG-2045', 'name' => 'Laguna Express Hub', 'role' => 'Logistics', 'email' => 'onboarding@lagunaexpress.example.test', 'submitted' => 'Aug 22, 2026', 'status' => 'Pending', 'category' => 'Provincial Sorting Center', 'documents' => ['SEC/DTI Registration', 'Business Permit', 'Warehouse Permit']],
-            ],
+            'applications' => $applications,
         ]));
     }
 
@@ -780,6 +811,7 @@ class AdminController extends Controller
         $ledger = array_map(function ($row) {
             $row['commission'] = $row['gross'] * 0.10;
             $row['sellerNet'] = $row['gross'] * 0.90;
+
             return $row;
         }, $ledger);
 
@@ -806,6 +838,7 @@ class AdminController extends Controller
                 : 0;
             $row['commission'] = $commissionBase * 0.10;
             $row['sellerNet'] = $commissionBase * 0.90;
+
             return $row;
         }, $transactions);
 
@@ -932,7 +965,7 @@ class AdminController extends Controller
             'policy' => [
                 'title' => 'Marketplace Policy',
                 'updated' => 'Aug 18, 2026',
-                'body' => "Bearly connects buyers, sellers, Logistics partners, and Riders through a trusted marketplace. Sellers are responsible for accurate listings, compliant products, and timely order fulfillment. Users must keep account information current and use platform communication tools responsibly.",
+                'body' => 'Bearly connects buyers, sellers, Logistics partners, and Riders through a trusted marketplace. Sellers are responsible for accurate listings, compliant products, and timely order fulfillment. Users must keep account information current and use platform communication tools responsibly.',
             ],
         ]));
     }

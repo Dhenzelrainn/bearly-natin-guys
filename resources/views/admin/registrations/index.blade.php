@@ -125,8 +125,13 @@
             </div>
         </div>
         <div class="modal-footer decision-footer">
+            @if(isset($application['database_id']))
+            <form method="POST" action="{{ route('admin.applications.reject', $application['database_id']) }}">@csrf<input type="hidden" name="reason" value="Application requirements were not approved by the administrator."><button type="submit" class="button button-danger-soft"><i data-lucide="circle-x"></i> Disapprove</button></form>
+            <form method="POST" action="{{ route('admin.applications.approve', $application['database_id']) }}">@csrf<button type="submit" class="button button-primary"><i data-lucide="circle-check"></i> Approve application</button></form>
+            @else
             <button type="button" class="button button-danger-soft" data-close-modal data-open-modal="email-decision" data-decision="Disapproved" data-applicant="{{ $application['name'] }}"><i data-lucide="circle-x"></i> Disapprove</button>
             <button type="button" class="button button-primary" data-close-modal data-open-modal="email-decision" data-decision="Approved" data-applicant="{{ $application['name'] }}"><i data-lucide="circle-check"></i> Approve application</button>
+            @endif
         </div>
     </section>
 </div>

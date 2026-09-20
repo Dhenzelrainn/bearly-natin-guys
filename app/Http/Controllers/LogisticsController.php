@@ -2,7 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\AccountStatus;
+use App\Enums\UserRole;
+use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 
 class LogisticsController extends Controller
@@ -38,36 +44,12 @@ class LogisticsController extends Controller
 
     public function landing()
     {
-        return view('logistics.landing');
-    }
-
-    public function login()
-    {
-        return view('logistics.login');
-    }
-
-    public function submitLogin(Request $request)
-    {
-        $validated = $request->validate([
-            'email' => ['required', 'email'],
-            'password' => ['required', 'string', 'min:6'],
-        ]);
-
-        // Front-end preview only.
-        // Replace with real authentication later.
-        session([
-            'logistics_preview_authenticated' => true,
-            'logistics_preview_email' => $validated['email'],
-        ]);
-
-        return redirect()
-            ->route('logistics.dashboard')
-            ->with('success', 'Welcome back to the Logistics Center.');
+        return view('logistics.landing.index');
     }
 
     public function register()
     {
-        return view('logistics.register');
+        return view('logistics.applications.create');
     }
 
     public function submitRegistration(Request $request)
@@ -78,7 +60,7 @@ class LogisticsController extends Controller
             'middle_initial' => ['nullable', 'string', 'max:5'],
             'last_name' => ['required', 'string', 'max:80'],
             'sex' => ['required', 'in:Male,Female,Prefer not to say'],
-            'email' => ['required', 'email'],
+            'email' => ['required', 'email', 'unique:users,email'],
             'contact_number' => ['required', 'string', 'max:20'],
             'birthday' => ['required', 'date', 'before:today'],
             'province' => ['required', 'string', 'max:120'],
@@ -98,15 +80,39 @@ class LogisticsController extends Controller
                 'mimes:jpg,jpeg,png,pdf',
                 'max:5120',
             ],
+            'password' => ['required', 'confirmed', 'min:8', 'regex:/[a-z]/', 'regex:/[A-Z]/', 'regex:/[0-9]/'],
         ]);
 
-        // Front-end preview only.
-        // Later: save application to database and notify Bearly Admin.
+        $user = User::create([
+            'name' => trim($validated['first_name'].' '.($validated['middle_initial'] ?? '').' '.$validated['last_name']),
+            'first_name' => $validated['first_name'],
+            'middle_initial' => $validated['middle_initial'] ?? null,
+            'last_name' => $validated['last_name'],
+            'sex' => match ($validated['sex']) {
+                'Male' => 'male',
+                'Female' => 'female',
+                default => 'prefer_not_to_say',
+            },
+            'birthday' => $validated['birthday'],
+            'email' => $validated['email'],
+            'contact_number' => $validated['contact_number'],
+            'role' => UserRole::Logistics->value,
+            'status' => AccountStatus::Pending->value,
+            'province' => $validated['province'],
+            'city' => $validated['municipality'],
+            'barangay' => $validated['barangay'],
+            'street_address' => trim($validated['house_number'].' '.$validated['street']),
+            'business_name' => $validated['business_name'],
+            'valid_id_path' => $request->file('valid_id')->store('registration-documents/logistics/valid-ids', 'local'),
+            'business_permit_path' => $request->file('business_permit')->store('registration-documents/logistics/permits', 'local'),
+            'password' => Hash::make($validated['password']),
+        ]);
+
         session([
             'logistics_application' => [
-                'business_name' => $validated['business_name'],
-                'representative_name' => trim($validated['first_name'].' '.($validated['middle_initial'] ?? '').' '.$validated['last_name']),
-                'email' => $validated['email'],
+                'business_name' => $user->business_name,
+                'representative_name' => $user->name,
+                'email' => $user->email,
                 'status' => 'Pending Administrator Approval',
             ],
         ]);
@@ -118,7 +124,7 @@ class LogisticsController extends Controller
 
     public function dashboard()
     {
-        return view('logistics.dashboard', $this->shared() + [
+        return view('logistics.dashboard.index', $this->shared() + [
             'metrics' => [
                 [
                     'label' => 'Pending Rider Applications',
@@ -198,8 +204,31 @@ class LogisticsController extends Controller
 
     public function riders()
     {
-        return view('logistics.riders', $this->shared() + [
+        $databaseApplications = [];
+
+        if (Auth::check() && Auth::user()->role === UserRole::Logistics->value && Schema::hasTable('users')) {
+            $databaseApplications = User::query()
+                ->where('role', UserRole::Rider->value)
+                ->where('logistics_id', Auth::id())
+                ->whereIn('status', [AccountStatus::Pending->value, AccountStatus::NeedsRevision->value])
+                ->latest()
+                ->get()
+                ->map(fn (User $user) => [
+                    'id' => 'RIDER-'.$user->id,
+                    'user_id' => $user->id,
+                    'name' => $user->name,
+                    'vehicle' => $user->vehicle_type ?: 'Not specified',
+                    'plate' => $user->plate_number ?: '—',
+                    'area' => $user->city,
+                    'submitted' => $user->created_at?->format('M j, Y') ?? 'Recently',
+                    'status' => $user->status === AccountStatus::NeedsRevision->value ? 'Needs Review' : 'Pending',
+                ])
+                ->all();
+        }
+
+        return view('logistics.riders.index', $this->shared() + [
             'applications' => [
+                ...$databaseApplications,
                 [
                     'id' => 'RA-1048',
                     'name' => 'Jared Molina',
@@ -257,9 +286,79 @@ class LogisticsController extends Controller
         ]);
     }
 
+    public function showRider(string $id): View
+    {
+        if (ctype_digit($id)) {
+            abort_unless(Auth::check() && Auth::user()->role === UserRole::Logistics->value, 403);
+
+            $user = User::query()
+                ->whereKey($id)
+                ->where('role', UserRole::Rider->value)
+                ->where('logistics_id', Auth::id())
+                ->firstOrFail();
+
+            return view('logistics.riders.show', $this->shared() + [
+                'application' => [
+                    'id' => 'RIDER-'.$user->id,
+                    'user_id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'contact' => $user->contact_number,
+                    'birthday' => $user->birthday?->format('F j, Y') ?? 'Not provided',
+                    'sex' => ucfirst(str_replace('_', ' ', $user->sex)),
+                    'address' => "{$user->street_address}, {$user->barangay}, {$user->city}, {$user->province}",
+                    'vehicle' => $user->vehicle_type ?: 'Not specified',
+                    'plate' => $user->plate_number ?: '—',
+                    'area' => $user->city,
+                    'submitted' => $user->created_at?->format('M j, Y') ?? 'Recently',
+                    'status' => ucfirst(str_replace('_', ' ', $user->status)),
+                    'documents' => [
+                        ['label' => "Driver's License / ID", 'filename' => basename((string) $user->driver_license_path), 'status' => 'For review'],
+                        ['label' => 'Vehicle OR/CR', 'filename' => basename((string) $user->or_cr_path), 'status' => 'For review'],
+                    ],
+                ],
+            ]);
+        }
+
+        $applications = [
+            'RA-1048' => [
+                'id' => 'RA-1048', 'name' => 'Jared Molina', 'email' => 'jared.molina@example.test',
+                'contact' => '0917 841 2048', 'birthday' => 'May 18, 1998', 'sex' => 'Male',
+                'address' => 'Brgy. San Lucas 1, San Pablo City, Laguna', 'vehicle' => 'Motorcycle',
+                'plate' => 'ABC 1234', 'area' => 'San Pablo North', 'submitted' => 'Sep 6, 2026',
+                'status' => 'Pending',
+            ],
+            'RA-1047' => [
+                'id' => 'RA-1047', 'name' => 'Lara Mendoza', 'email' => 'lara.mendoza@example.test',
+                'contact' => '0918 506 1047', 'birthday' => 'January 9, 1997', 'sex' => 'Female',
+                'address' => 'Brgy. Bagong Pook, Pila, Laguna', 'vehicle' => 'Motorcycle',
+                'plate' => 'NCD 8831', 'area' => 'Pila / Sta. Cruz', 'submitted' => 'Sep 6, 2026',
+                'status' => 'Pending',
+            ],
+            'RA-1045' => [
+                'id' => 'RA-1045', 'name' => 'Paolo Reyes', 'email' => 'paolo.reyes@example.test',
+                'contact' => '0920 775 1045', 'birthday' => 'October 23, 2000', 'sex' => 'Male',
+                'address' => 'Brgy. San Roque, San Pablo City, Laguna', 'vehicle' => 'E-bike',
+                'plate' => 'Not required', 'area' => 'San Pablo South', 'submitted' => 'Sep 5, 2026',
+                'status' => 'Needs Review',
+            ],
+        ];
+
+        abort_unless(isset($applications[$id]), 404);
+
+        return view('logistics.riders.show', $this->shared() + [
+            'application' => $applications[$id] + [
+                'documents' => [
+                    ['label' => "Driver's License / ID", 'filename' => 'drivers-license.pdf', 'status' => 'Verified'],
+                    ['label' => 'Vehicle OR/CR', 'filename' => 'vehicle-orcr.pdf', 'status' => 'For review'],
+                ],
+            ],
+        ]);
+    }
+
     public function pickups()
     {
-        return view('logistics.pickups', $this->shared() + [
+        return view('logistics.pickups.index', $this->shared() + [
             'pickups' => [
                 [
                     'id' => 'PU-24091',
@@ -291,7 +390,7 @@ class LogisticsController extends Controller
 
     public function incoming(): View
     {
-        return view('logistics.incoming', $this->shared() + [
+        return view('logistics.sorting.incoming', $this->shared() + [
             'incomingParcels' => [
                 ['waybill' => 'BRL-983428', 'order' => 'ORD-50214', 'seller' => 'Mara Home Goods', 'rider' => 'Nico Flores', 'received' => 'Sep 20, 2026 · 2:28 PM', 'pieces' => 2, 'weight' => '3.4 kg', 'destination' => 'San Pablo North', 'status' => 'AT_SORTING_CENTER'],
                 ['waybill' => 'BRL-983427', 'order' => 'ORD-50211', 'seller' => 'TechVault PH', 'rider' => 'Anne Cruz', 'received' => 'Sep 20, 2026 · 2:19 PM', 'pieces' => 1, 'weight' => '0.8 kg', 'destination' => 'Calauan / Bay', 'status' => 'AT_SORTING_CENTER'],
@@ -303,7 +402,7 @@ class LogisticsController extends Controller
 
     public function sorting()
     {
-        return view('logistics.sorting', $this->shared() + [
+        return view('logistics.sorting.center', $this->shared() + [
             'parcels' => [
                 [
                     'waybill' => 'BRL-983410',
@@ -351,7 +450,7 @@ class LogisticsController extends Controller
 
     public function dispatch()
     {
-        return view('logistics.dispatch', $this->shared() + [
+        return view('logistics.dispatch.index', $this->shared() + [
             'zones' => [
                 [
                     'zone' => 'SP-N1',
@@ -377,7 +476,7 @@ class LogisticsController extends Controller
 
     public function monitoring()
     {
-        return view('logistics.monitoring', $this->shared() + [
+        return view('logistics.dispatch.monitoring', $this->shared() + [
             'deliveries' => [
                 [
                     'id' => 'DL-8412',
@@ -421,7 +520,7 @@ class LogisticsController extends Controller
 
     public function reports()
     {
-        return view('logistics.reports', $this->shared() + [
+        return view('logistics.reports.index', $this->shared() + [
             'summary' => [
                 'throughput' => 1284,
                 'delivered' => 1176,
@@ -463,7 +562,7 @@ class LogisticsController extends Controller
 
     public function messages()
     {
-        return view('logistics.messages', $this->shared() + [
+        return view('logistics.messages.index', $this->shared() + [
             'conversations' => [
                 [
                     'id' => 'techvault-ph',
@@ -495,7 +594,7 @@ class LogisticsController extends Controller
 
     public function account()
     {
-        return view('logistics.account', $this->shared() + [
+        return view('logistics.profile.index', $this->shared() + [
             'facility' => [
                 'business_name' => 'Laguna Central Logistics',
                 'contact' => '0917 555 0182',

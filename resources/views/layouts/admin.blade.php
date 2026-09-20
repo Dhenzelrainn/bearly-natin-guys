@@ -305,10 +305,13 @@ $adminNavGroups = [
         <div class="admin-sidebar-footer">
 
 
-            <a
-                href="{{ route('login') }}"
-                class="admin-nav-link admin-logout"
-            >
+            <form method="POST" action="{{ route('logout') }}" style="display: contents">
+                @csrf
+
+                <button
+                    type="submit"
+                    class="admin-nav-link admin-logout"
+                >
 
                 <i
                     class="admin-ui-icon"
@@ -321,7 +324,8 @@ $adminNavGroups = [
                 </span>
 
 
-            </a>
+                </button>
+            </form>
 
 
         </div>
@@ -538,10 +542,13 @@ $adminNavGroups = [
                 </a>
 
 
-                <a
-                    href="{{ route('login') }}"
-                    class="admin-profile-logout"
-                >
+                <form method="POST" action="{{ route('logout') }}" style="display: contents">
+                    @csrf
+
+                    <button
+                        type="submit"
+                        class="admin-profile-logout"
+                    >
 
                     <i
                         class="admin-ui-icon"
@@ -550,7 +557,8 @@ $adminNavGroups = [
 
                     <span>Logout</span>
 
-                </a>
+                    </button>
+                </form>
 
             </div>
 

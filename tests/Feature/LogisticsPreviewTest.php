@@ -10,23 +10,28 @@ class LogisticsPreviewTest extends TestCase
     {
         $routes = [
             'logistics.landing',
-            'logistics.login',
             'logistics.register',
             'logistics.dashboard',
-            'logistics.riders',
-            'logistics.pickups',
-            'logistics.incoming',
-            'logistics.sorting',
-            'logistics.dispatch',
-            'logistics.monitoring',
-            'logistics.reports',
-            'logistics.messages',
-            'logistics.account',
+            'logistics.riders.index',
+            'logistics.pickups.index',
+            'logistics.sorting.incoming',
+            'logistics.sorting.center',
+            'logistics.dispatch.index',
+            'logistics.dispatch.monitoring',
+            'logistics.reports.index',
+            'logistics.messages.index',
+            'logistics.profile.index',
         ];
 
         foreach ($routes as $route) {
             $this->get(route($route))->assertOk();
         }
+
+        $this->get(route('logistics.login'))->assertRedirect(route('login'));
+
+        $this->get(route('logistics.riders.show', 'RA-1048'))
+            ->assertOk()
+            ->assertSee('Jared Molina');
     }
 
     public function test_logistics_registration_requires_the_erp_fields(): void

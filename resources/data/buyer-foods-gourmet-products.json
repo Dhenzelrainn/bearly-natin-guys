@@ -1,0 +1,517 @@
+[
+  {
+    "id": 1,
+    "name": "Premium Jasmine Rice",
+    "price": 349,
+    "subcategory": "Pantry Staples",
+    "photo": 0,
+    "color": "White",
+    "sizes": [
+      "2 kg",
+      "5 kg"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.7,
+    "description": "Premium Jasmine Rice sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 2,
+    "name": "Classic Spaghetti Pasta",
+    "price": 149,
+    "subcategory": "Pantry Staples",
+    "photo": 1,
+    "color": "Blue",
+    "sizes": [
+      "500 g"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.4,
+    "description": "Classic Spaghetti Pasta sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 3,
+    "name": "Traditional Pasta Sauce",
+    "price": 229,
+    "subcategory": "Pantry Staples",
+    "photo": 2,
+    "color": "Brown",
+    "sizes": [
+      "500 g"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.8,
+    "description": "Traditional Pasta Sauce sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 4,
+    "name": "Canned Tuna Flakes",
+    "price": 129,
+    "subcategory": "Canned & Packaged Food",
+    "photo": 3,
+    "color": "White",
+    "sizes": [
+      "180 g"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.5,
+    "description": "Canned Tuna Flakes sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 5,
+    "name": "Extra Virgin Olive Oil",
+    "price": 599,
+    "subcategory": "Cooking Essentials",
+    "photo": 4,
+    "color": "Blue",
+    "sizes": [
+      "500 ml",
+      "1 L"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.9,
+    "description": "Extra Virgin Olive Oil sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 6,
+    "name": "Premium Soy Sauce",
+    "price": 199,
+    "subcategory": "Cooking Essentials",
+    "photo": 5,
+    "color": "Black",
+    "sizes": [
+      "500 ml"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.6,
+    "description": "Premium Soy Sauce sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 7,
+    "name": "Classic Instant Coffee",
+    "price": 299,
+    "subcategory": "Coffee & Tea",
+    "photo": 6,
+    "color": "Brown",
+    "sizes": [
+      "100 g",
+      "200 g"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.3,
+    "description": "Classic Instant Coffee sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 8,
+    "name": "Yellow Label Tea Bags",
+    "price": 249,
+    "subcategory": "Coffee & Tea",
+    "photo": 7,
+    "color": "Gold",
+    "sizes": [
+      "50 bags",
+      "100 bags"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.7,
+    "description": "Yellow Label Tea Bags sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 9,
+    "name": "Chocolate Malt Drink",
+    "price": 349,
+    "subcategory": "Beverages",
+    "photo": 8,
+    "color": "Blue",
+    "sizes": [
+      "500 g"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.4,
+    "description": "Chocolate Malt Drink sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 10,
+    "name": "Non-Fat Milk",
+    "price": 159,
+    "subcategory": "Milk & Dairy",
+    "photo": 9,
+    "color": "Blue",
+    "sizes": [
+      "1 L"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.8,
+    "description": "Non-Fat Milk sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 11,
+    "name": "Corn Flakes Cereal",
+    "price": 249,
+    "subcategory": "Breakfast & Cereals",
+    "photo": 10,
+    "color": "Brown",
+    "sizes": [
+      "500 g"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.5,
+    "description": "Corn Flakes Cereal sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 12,
+    "name": "Instant Oatmeal",
+    "price": 199,
+    "subcategory": "Breakfast & Cereals",
+    "photo": 11,
+    "color": "White",
+    "sizes": [
+      "400 g"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.9,
+    "description": "Instant Oatmeal sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 13,
+    "name": "Classic Potato Chips",
+    "price": 129,
+    "subcategory": "Snacks",
+    "photo": 12,
+    "color": "Brown",
+    "sizes": [
+      "170 g"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.6,
+    "description": "Classic Potato Chips sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 14,
+    "name": "Chocolate Sandwich Cookies",
+    "price": 119,
+    "subcategory": "Snacks",
+    "photo": 13,
+    "color": "Blue",
+    "sizes": [
+      "133 g"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.3,
+    "description": "Chocolate Sandwich Cookies sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 15,
+    "name": "Milk Chocolate Bar",
+    "price": 149,
+    "subcategory": "Chocolates & Sweets",
+    "photo": 14,
+    "color": "Black",
+    "sizes": [
+      "100 g"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.7,
+    "description": "Milk Chocolate Bar sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 16,
+    "name": "Pineapple Juice",
+    "price": 169,
+    "subcategory": "Beverages",
+    "photo": 15,
+    "color": "Blue",
+    "sizes": [
+      "1 L"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.4,
+    "description": "Pineapple Juice sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 17,
+    "name": "Dried Mangoes",
+    "price": 249,
+    "subcategory": "Dried Fruits & Nuts",
+    "photo": 16,
+    "color": "Gold",
+    "sizes": [
+      "200 g"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.8,
+    "description": "Dried Mangoes sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 18,
+    "name": "Mixed Nuts",
+    "price": 349,
+    "subcategory": "Dried Fruits & Nuts",
+    "photo": 17,
+    "color": "Brown",
+    "sizes": [
+      "250 g"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.5,
+    "description": "Mixed Nuts sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 19,
+    "name": "Pure Honey",
+    "price": 299,
+    "subcategory": "Honey & Spreads",
+    "photo": 18,
+    "color": "Gold",
+    "sizes": [
+      "250 ml",
+      "500 ml"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.9,
+    "description": "Pure Honey sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 20,
+    "name": "Hazelnut Cocoa Spread",
+    "price": 299,
+    "subcategory": "Honey & Spreads",
+    "photo": 19,
+    "color": "Brown",
+    "sizes": [
+      "350 g"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.6,
+    "description": "Hazelnut Cocoa Spread sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 21,
+    "name": "Sparkling Fruit Drink Pack",
+    "price": 249,
+    "subcategory": "Beverages",
+    "photo": 20,
+    "color": "Brown",
+    "sizes": [
+      "6 Pack"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.3,
+    "description": "Sparkling Fruit Drink Pack sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 22,
+    "name": "Cola Soft Drink Pack",
+    "price": 199,
+    "subcategory": "Beverages",
+    "photo": 21,
+    "color": "Brown",
+    "sizes": [
+      "6 Pack"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.7,
+    "description": "Cola Soft Drink Pack sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 23,
+    "name": "Chicken Flavor Instant Noodles",
+    "price": 119,
+    "subcategory": "Instant Meals",
+    "photo": 22,
+    "color": "Gold",
+    "sizes": [
+      "5 Pack"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.4,
+    "description": "Chicken Flavor Instant Noodles sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 24,
+    "name": "Soup Seasoning Mix",
+    "price": 79,
+    "subcategory": "Cooking Essentials",
+    "photo": 23,
+    "color": "Blue",
+    "sizes": [
+      "40 g"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.8,
+    "description": "Soup Seasoning Mix sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 25,
+    "name": "Refined White Sugar",
+    "price": 109,
+    "subcategory": "Baking Ingredients",
+    "photo": 24,
+    "color": "White",
+    "sizes": [
+      "1 kg"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.5,
+    "description": "Refined White Sugar sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 26,
+    "name": "All-Purpose Flour",
+    "price": 89,
+    "subcategory": "Baking Ingredients",
+    "photo": 25,
+    "color": "White",
+    "sizes": [
+      "1 kg"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.9,
+    "description": "All-Purpose Flour sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 27,
+    "name": "Black Pepper Grinder",
+    "price": 199,
+    "subcategory": "Spices & Seasoning",
+    "photo": 26,
+    "color": "Black",
+    "sizes": [
+      "50 g"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.6,
+    "description": "Black Pepper Grinder sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 28,
+    "name": "Tomato Ketchup",
+    "price": 179,
+    "subcategory": "Sauces & Condiments",
+    "photo": 27,
+    "color": "Brown",
+    "sizes": [
+      "500 g"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.3,
+    "description": "Tomato Ketchup sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 29,
+    "name": "Himalayan Pink Salt",
+    "price": 249,
+    "subcategory": "Spices & Seasoning",
+    "photo": 28,
+    "color": "Gold",
+    "sizes": [
+      "400 g"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.7,
+    "description": "Himalayan Pink Salt sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 30,
+    "name": "Gourmet Gift Basket",
+    "price": 1499,
+    "subcategory": "Gift Sets",
+    "photo": 29,
+    "color": "Brown",
+    "sizes": [
+      "Set"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.4,
+    "description": "Gourmet Gift Basket sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  }
+]

@@ -1,0 +1,218 @@
+[
+    {
+        "id": "cotton-tee",
+        "name": "Everyday Cotton T-Shirt",
+        "shop": "Sample item",
+        "group": "Fashion",
+        "cell": 0,
+        "atlas": "mixed",
+        "source": null
+    },
+    {
+        "id": "aula-keyboard",
+        "name": "Aula F2058 Gaming Keyboard",
+        "shop": "Office Warehouse",
+        "group": "Tech",
+        "cell": 1,
+        "atlas": "mixed",
+        "source": "https://www.officewarehouse.com.ph/product/28167/"
+    },
+    {
+        "id": "face-serum",
+        "name": "Hydrating Face Serum",
+        "shop": "Sample item",
+        "group": "Beauty",
+        "cell": 2,
+        "atlas": "mixed",
+        "source": null
+    },
+    {
+        "id": "canvas-tote",
+        "name": "Canvas Tote Bag",
+        "shop": "Sample item",
+        "group": "Accessories",
+        "cell": 3,
+        "atlas": "mixed",
+        "source": null
+    },
+    {
+        "id": "prolink-mouse",
+        "name": "Prolink Maca Wireless Mouse",
+        "shop": "Office Warehouse",
+        "group": "Tech",
+        "cell": 4,
+        "atlas": "mixed",
+        "source": "https://www.officewarehouse.com.ph/product/28234/"
+    },
+    {
+        "id": "white-sneakers",
+        "name": "Everyday Sneakers",
+        "shop": "Sample item",
+        "group": "Fashion",
+        "cell": 5,
+        "atlas": "mixed",
+        "source": null
+    },
+    {
+        "id": "celeste-sham",
+        "name": "Celeste Floral Pillow Sham",
+        "shop": "Crate & Barrel",
+        "group": "Home",
+        "cell": 6,
+        "atlas": "mixed",
+        "source": "https://crateandbarrel.com.ph/products/celeste-organic-cotton-midnight-navy-floral-standard-bed-pillow-sham-1"
+    },
+    {
+        "id": "reading-journal",
+        "name": "Everyday Reading Journal",
+        "shop": "Sample item",
+        "group": "Books",
+        "cell": 7,
+        "atlas": "mixed",
+        "source": null
+    },
+    {
+        "id": "classic-watch",
+        "name": "Classic Everyday Watch",
+        "shop": "Sample item",
+        "group": "Accessories",
+        "cell": 8,
+        "atlas": "mixed",
+        "source": null
+    },
+    {
+        "id": "baseball-cap",
+        "name": "Everyday Baseball Cap",
+        "shop": "Sample item",
+        "group": "Fashion",
+        "cell": 9,
+        "atlas": "mixed",
+        "source": null
+    },
+    {
+        "id": "art-chair",
+        "name": "Art Dining Chair",
+        "shop": "SM Home",
+        "group": "Home",
+        "cell": 10,
+        "atlas": "mixed",
+        "source": "https://smhome.ph/products/sm-home-art-dining-chair"
+    },
+    {
+        "id": "travel-tumbler",
+        "name": "Insulated Travel Tumbler",
+        "shop": "Sample item",
+        "group": "Home",
+        "cell": 11,
+        "atlas": "mixed",
+        "source": null
+    },
+    {
+        "id": "headphones",
+        "name": "Wireless Over-Ear Headphones",
+        "shop": "Sample item",
+        "group": "Tech",
+        "cell": 1,
+        "atlas": "existing",
+        "source": null
+    },
+    {
+        "id": "linen-blouse",
+        "name": "Linen Blend Blouse",
+        "shop": "Sample item",
+        "group": "Fashion",
+        "cell": 2,
+        "atlas": "existing",
+        "source": null
+    },
+    {
+        "id": "daily-lotion",
+        "name": "Daily Body Lotion",
+        "shop": "Sample item",
+        "group": "Beauty",
+        "cell": 7,
+        "atlas": "existing",
+        "source": null
+    },
+    {
+        "id": "linen-journal",
+        "name": "Linen Hardcover Journal",
+        "shop": "Sample item",
+        "group": "Books",
+        "cell": 8,
+        "atlas": "existing",
+        "source": null
+    },
+    {
+        "id": "navy-polo",
+        "name": "Classic Cotton Polo",
+        "shop": "Sample item",
+        "group": "Fashion",
+        "cell": 3,
+        "atlas": "existing",
+        "source": null
+    },
+    {
+        "id": "electric-kettle",
+        "name": "Everyday Electric Kettle",
+        "shop": "Sample item",
+        "group": "Home",
+        "cell": 5,
+        "atlas": "existing",
+        "source": null
+    },
+    {
+        "id": "leather-watch",
+        "name": "Leather-Strap Watch",
+        "shop": "Sample item",
+        "group": "Accessories",
+        "cell": 11,
+        "atlas": "existing",
+        "source": null
+    },
+    {
+        "id": "yoga-mat",
+        "name": "Everyday Yoga Mat",
+        "shop": "Sample item",
+        "group": "Sports",
+        "cell": 6,
+        "atlas": "existing",
+        "source": null
+    },
+    {
+        "id": "denim-jacket",
+        "name": "Classic Denim Jacket",
+        "shop": "Sample item",
+        "group": "Fashion",
+        "cell": 14,
+        "atlas": "existing",
+        "source": null
+    },
+    {
+        "id": "blue-shirt",
+        "name": "Oxford Cotton Shirt",
+        "shop": "Sample item",
+        "group": "Fashion",
+        "cell": 13,
+        "atlas": "existing",
+        "source": null
+    },
+    {
+        "id": "pet-bowl",
+        "name": "Stainless Steel Pet Bowl",
+        "shop": "Sample item",
+        "group": "Pets",
+        "cell": 0,
+        "atlas": "existing",
+        "source": null
+    },
+    {
+        "id": "blue-hoodie",
+        "name": "Everyday Pullover Hoodie",
+        "shop": "Sample item",
+        "group": "Fashion",
+        "cell": 15,
+        "atlas": "existing",
+        "source": null
+    }
+]

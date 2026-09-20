@@ -1,0 +1,521 @@
+[
+  {
+    "id": 1,
+    "name": "Decorative Indoor Plant",
+    "price": 599,
+    "subcategory": "Garden & Plants",
+    "photo": 0,
+    "color": "Blue",
+    "sizes": [
+      "Small",
+      "Medium"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.8,
+    "description": "Decorative Indoor Plant sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 2,
+    "name": "Ceramic Plant Pot Set",
+    "price": 749,
+    "subcategory": "Garden & Plants",
+    "photo": 1,
+    "color": "White",
+    "sizes": [
+      "Set of 3"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.6,
+    "description": "Ceramic Plant Pot Set sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 3,
+    "name": "3-Piece Gardening Tool Set",
+    "price": 699,
+    "subcategory": "Garden & Plants",
+    "photo": 2,
+    "color": "Blue",
+    "sizes": [
+      "3 pcs"
+    ],
+    "condition": "New with tags",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.4,
+    "description": "3-Piece Gardening Tool Set sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 4,
+    "name": "Classic Watering Can",
+    "price": 549,
+    "subcategory": "Garden & Plants",
+    "photo": 3,
+    "color": "Blue",
+    "sizes": [
+      "2 L"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.9,
+    "description": "Classic Watering Can sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 5,
+    "name": "All-Purpose Potting Soil",
+    "price": 399,
+    "subcategory": "Garden & Plants",
+    "photo": 4,
+    "color": "Brown",
+    "sizes": [
+      "8 L"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.7,
+    "description": "All-Purpose Potting Soil sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 6,
+    "name": "All-Purpose Plant Fertilizer",
+    "price": 349,
+    "subcategory": "Garden & Plants",
+    "photo": 5,
+    "color": "Blue",
+    "sizes": [
+      "1 kg"
+    ],
+    "condition": "New with tags",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.5,
+    "description": "All-Purpose Plant Fertilizer sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 7,
+    "name": "Protective Garden Gloves",
+    "price": 299,
+    "subcategory": "Garden & Plants",
+    "photo": 6,
+    "color": "Blue",
+    "sizes": [
+      "S",
+      "M",
+      "L"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.3,
+    "description": "Protective Garden Gloves sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 8,
+    "name": "Flexible Garden Hose",
+    "price": 999,
+    "subcategory": "Garden & Plants",
+    "photo": 7,
+    "color": "Blue",
+    "sizes": [
+      "15 m",
+      "20 m"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.8,
+    "description": "Flexible Garden Hose sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 9,
+    "name": "Solar Garden Path Light",
+    "price": 449,
+    "subcategory": "Outdoor & Garden",
+    "photo": 8,
+    "color": "Black",
+    "sizes": [
+      "1 pc",
+      "4 pcs"
+    ],
+    "condition": "New with tags",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.6,
+    "description": "Solar Garden Path Light sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 10,
+    "name": "5-Tier Plant Shelf",
+    "price": 1499,
+    "subcategory": "Outdoor & Garden",
+    "photo": 9,
+    "color": "Black",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.4,
+    "description": "5-Tier Plant Shelf sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 11,
+    "name": "Modern Dining Table Set",
+    "price": 6999,
+    "subcategory": "Furniture",
+    "photo": 10,
+    "color": "Brown",
+    "sizes": [
+      "4 Seater"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.9,
+    "description": "Modern Dining Table Set sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 12,
+    "name": "Compact Fabric Sofa",
+    "price": 7499,
+    "subcategory": "Furniture",
+    "photo": 11,
+    "color": "Black",
+    "sizes": [
+      "2 Seater"
+    ],
+    "condition": "New with tags",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.7,
+    "description": "Compact Fabric Sofa sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 13,
+    "name": "Industrial Coffee Table",
+    "price": 2499,
+    "subcategory": "Furniture",
+    "photo": 12,
+    "color": "Brown",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.5,
+    "description": "Industrial Coffee Table sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 14,
+    "name": "Wooden TV Stand",
+    "price": 3999,
+    "subcategory": "Furniture",
+    "photo": 13,
+    "color": "Brown",
+    "sizes": [
+      "120 cm"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.3,
+    "description": "Wooden TV Stand sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 15,
+    "name": "Wooden Bookshelf",
+    "price": 3299,
+    "subcategory": "Furniture",
+    "photo": 14,
+    "color": "Brown",
+    "sizes": [
+      "5 Tier"
+    ],
+    "condition": "New with tags",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.8,
+    "description": "Wooden Bookshelf sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 16,
+    "name": "Wooden Table Lamp",
+    "price": 899,
+    "subcategory": "Home Decor",
+    "photo": 15,
+    "color": "Brown",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.6,
+    "description": "Wooden Table Lamp sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 17,
+    "name": "Blackout Curtain Pair",
+    "price": 1199,
+    "subcategory": "Home Decor",
+    "photo": 16,
+    "color": "Brown",
+    "sizes": [
+      "140×220 cm"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.4,
+    "description": "Blackout Curtain Pair sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 18,
+    "name": "Soft Cotton Bed Sheet Set",
+    "price": 1299,
+    "subcategory": "Bedding",
+    "photo": 17,
+    "color": "Blue",
+    "sizes": [
+      "Single",
+      "Double",
+      "Queen"
+    ],
+    "condition": "New with tags",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.9,
+    "description": "Soft Cotton Bed Sheet Set sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 19,
+    "name": "Foldable Laundry Basket",
+    "price": 699,
+    "subcategory": "Laundry & Storage",
+    "photo": 18,
+    "color": "Black",
+    "sizes": [
+      "Large"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.7,
+    "description": "Foldable Laundry Basket sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 20,
+    "name": "Foldable Clothes Drying Rack",
+    "price": 1499,
+    "subcategory": "Laundry & Storage",
+    "photo": 19,
+    "color": "White",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.5,
+    "description": "Foldable Clothes Drying Rack sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 21,
+    "name": "Fabric Storage Box",
+    "price": 449,
+    "subcategory": "Storage & Organization",
+    "photo": 20,
+    "color": "Brown",
+    "sizes": [
+      "Medium",
+      "Large"
+    ],
+    "condition": "New with tags",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.3,
+    "description": "Fabric Storage Box sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 22,
+    "name": "Food Storage Container Set",
+    "price": 799,
+    "subcategory": "Kitchen & Storage",
+    "photo": 21,
+    "color": "Blue",
+    "sizes": [
+      "3 pcs"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.8,
+    "description": "Food Storage Container Set sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 23,
+    "name": "4-Tier Shoe Rack",
+    "price": 1099,
+    "subcategory": "Storage & Organization",
+    "photo": 22,
+    "color": "Black",
+    "sizes": [
+      "4 Tier"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.6,
+    "description": "4-Tier Shoe Rack sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 24,
+    "name": "Minimalist Wall Clock",
+    "price": 649,
+    "subcategory": "Home Decor",
+    "photo": 23,
+    "color": "White",
+    "sizes": [
+      "30 cm"
+    ],
+    "condition": "New with tags",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.4,
+    "description": "Minimalist Wall Clock sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 25,
+    "name": "Geometric Area Rug",
+    "price": 1799,
+    "subcategory": "Home Decor",
+    "photo": 24,
+    "color": "Black",
+    "sizes": [
+      "120×160 cm",
+      "160×230 cm"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.9,
+    "description": "Geometric Area Rug sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 26,
+    "name": "Spin Mop and Bucket Set",
+    "price": 1499,
+    "subcategory": "Cleaning Supplies",
+    "photo": 25,
+    "color": "Blue",
+    "sizes": [
+      "Set"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.7,
+    "description": "Spin Mop and Bucket Set sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 27,
+    "name": "Compact Vacuum Cleaner",
+    "price": 3499,
+    "subcategory": "Cleaning Supplies",
+    "photo": 26,
+    "color": "Black",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New with tags",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.5,
+    "description": "Compact Vacuum Cleaner sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 28,
+    "name": "Stainless Steel Trash Bin",
+    "price": 1299,
+    "subcategory": "Cleaning Supplies",
+    "photo": 27,
+    "color": "White",
+    "sizes": [
+      "20 L"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.3,
+    "description": "Stainless Steel Trash Bin sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 29,
+    "name": "Heavy-Duty Toolbox",
+    "price": 999,
+    "subcategory": "Tools & Home Improvement",
+    "photo": 28,
+    "color": "Black",
+    "sizes": [
+      "Medium"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.8,
+    "description": "Heavy-Duty Toolbox sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 30,
+    "name": "Outdoor Patio Table Set",
+    "price": 7999,
+    "subcategory": "Outdoor & Garden",
+    "photo": 29,
+    "color": "Brown",
+    "sizes": [
+      "2 Seater"
+    ],
+    "condition": "New with tags",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.6,
+    "description": "Outdoor Patio Table Set sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  }
+]

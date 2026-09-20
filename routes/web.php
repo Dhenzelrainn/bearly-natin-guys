@@ -1,6 +1,11 @@
 <?php
 
+use App\Http\Controllers\AccountApprovalController;
+use App\Http\Controllers\AdminController;
+use App\Http\Controllers\BuyerController;
+use App\Http\Controllers\LogisticsController;
 use App\Http\Controllers\PsgcController;
+use App\Http\Controllers\RiderController;
 use App\Http\Controllers\SellerController;
 use App\Http\Controllers\SellerProductController;
 use App\Http\Controllers\SellerWorkflowController;
@@ -8,16 +13,50 @@ use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
-| Authentication
+| Landing
 |--------------------------------------------------------------------------
 */
 
-Route::view('/', 'auth.login')->name('shop.home');
-Route::view('/login', 'auth.login')->name('login');
-Route::view('/register', 'auth.register')->name('register');
+Route::view('/', 'landing-page.landingpage')->name('shop.home');
+
+Route::redirect('/landing', '/')->name('landing');
+
+Route::view('/about', 'landing-page.about.about')
+    ->name('about');
+
+Route::view('/contact', 'landing-page.contact.contact')
+    ->name('contact');
+
+/*
+|--------------------------------------------------------------------------
+| Authentication
+|--------------------------------------------------------------------------
+| Front-end integration stage.
+| Keep login/register simple while the full auth backend is being integrated.
+*/
+
+Route::view('/login', 'auth.login')
+    ->name('login');
+
+Route::view('/register', 'auth.register')
+    ->name('register');
 
 Route::get('/forgot-password', fn () => redirect()->route('login'))
     ->name('password.request');
+
+Route::view('/application/pending', 'auth.pending')
+    ->name('application.pending');
+
+/*
+|--------------------------------------------------------------------------
+| Temporary Logout Route
+|--------------------------------------------------------------------------
+| Keeps Admin / Logistics / Rider layouts working during front-end compilation.
+*/
+
+Route::post('/logout', function () {
+    return redirect()->route('login');
+})->name('logout');
 
 /*
 |--------------------------------------------------------------------------
@@ -37,6 +76,135 @@ Route::prefix('api/psgc')
         Route::get('/cities/{cityCode}/barangays', [PsgcController::class, 'barangays'])
             ->name('psgc.barangays');
     });
+
+    /*
+|--------------------------------------------------------------------------
+| Buyer
+|--------------------------------------------------------------------------
+*/
+
+Route::get('/home', [BuyerController::class, 'home'])
+    ->name('home');
+
+Route::get('/products', [BuyerController::class, 'products'])
+    ->name('products.index');
+
+Route::get('/wishlist', [BuyerController::class, 'wishlist'])
+    ->name('wishlist.index');
+
+Route::post('/wishlist/toggle', [BuyerController::class, 'toggleWishlist'])
+    ->name('wishlist.toggle');
+
+Route::get('/cart', [BuyerController::class, 'cart'])
+    ->name('cart.view');
+
+Route::post('/cart/add', [BuyerController::class, 'addToCart'])
+    ->name('cart.add');
+
+Route::patch('/cart/{cartItem}', [BuyerController::class, 'updateCart'])
+    ->name('cart.update');
+
+Route::delete('/cart/{cartItem}', [BuyerController::class, 'removeFromCart'])
+    ->name('cart.remove');
+
+Route::delete('/cart', [BuyerController::class, 'clearCart'])
+    ->name('cart.clear');
+
+/*
+|--------------------------------------------------------------------------
+| Admin
+|--------------------------------------------------------------------------
+*/
+
+Route::prefix('admin')->name('admin.')->group(function () {
+    Route::redirect('/', '/admin/dashboard');
+
+    Route::get('/dashboard', [AdminController::class, 'dashboard'])
+        ->name('dashboard');
+
+    Route::get('/registrations', [AdminController::class, 'registrations'])
+        ->name('registrations');
+
+    Route::get('/registrations/buyers', [AdminController::class, 'buyerApplications'])
+        ->name('registrations.buyers');
+
+    Route::get('/registrations/sellers', [AdminController::class, 'sellerApplications'])
+        ->name('registrations.sellers');
+
+    Route::get('/registrations/logistics', [AdminController::class, 'logisticsApplications'])
+        ->name('registrations.logistics');
+
+    Route::get('/users', [AdminController::class, 'users'])
+        ->name('users');
+
+    Route::get('/users/buyers', [AdminController::class, 'buyerUsers'])
+        ->name('users.buyers');
+
+    Route::get('/users/sellers', [AdminController::class, 'sellerUsers'])
+        ->name('users.sellers');
+
+    Route::get('/users/logistics', [AdminController::class, 'logisticsUsers'])
+        ->name('users.logistics');
+
+    Route::get('/users/riders', [AdminController::class, 'riderUsers'])
+        ->name('users.riders');
+
+    Route::get('/compliance', [AdminController::class, 'compliance'])
+        ->name('compliance');
+
+    Route::get('/disputes', [AdminController::class, 'disputes'])
+        ->name('disputes');
+
+    Route::get('/compliance/violations', [AdminController::class, 'productViolations'])
+        ->name('compliance.violations');
+
+    Route::get('/compliance/returns-refunds', [AdminController::class, 'returnsRefunds'])
+        ->name('compliance.returns-refunds');
+
+    Route::get('/commissions', [AdminController::class, 'commissions'])
+        ->name('commissions');
+
+    Route::get('/transactions', [AdminController::class, 'transactions'])
+        ->name('transactions');
+
+    Route::get('/payments', [AdminController::class, 'payments'])
+        ->name('payments');
+
+    Route::get('/reports', [AdminController::class, 'reports'])
+        ->name('reports');
+
+    Route::get('/settings', [AdminController::class, 'settings'])
+        ->name('settings');
+
+    Route::get('/policies', [AdminController::class, 'policies'])
+        ->name('policies');
+
+    Route::get('/audit-logs', [AdminController::class, 'auditLogs'])
+        ->name('audit-logs');
+
+    Route::get('/messages', [AdminController::class, 'messages'])
+        ->name('messages');
+
+    Route::get('/announcements', [AdminController::class, 'announcements'])
+        ->name('announcements');
+
+    Route::get('/account', [AdminController::class, 'account'])
+        ->name('account');
+
+    /*
+    |--------------------------------------------------------------------------
+    | Admin approval actions
+    |--------------------------------------------------------------------------
+    */
+
+    Route::middleware(['auth', 'role:admin'])->group(function () {
+        Route::post('/applications/{user}/approve', [AccountApprovalController::class, 'approveByAdmin'])
+            ->name('applications.approve');
+
+        Route::post('/applications/{user}/reject', [AccountApprovalController::class, 'rejectByAdmin'])
+            ->name('applications.reject');
+    });
+});
 
 /*
 |--------------------------------------------------------------------------
@@ -148,4 +316,115 @@ Route::prefix('seller')->name('seller.')->group(function () {
 
     Route::get('/settings/notifications', [SellerController::class, 'notificationSettings'])
         ->name('settings.notifications');
+});
+
+/*
+|--------------------------------------------------------------------------
+| Logistics
+|--------------------------------------------------------------------------
+*/
+
+Route::prefix('logistics')->name('logistics.')->group(function () {
+    Route::get('/', [LogisticsController::class, 'landing'])
+        ->name('landing');
+
+    Route::get('/register', [LogisticsController::class, 'register'])
+        ->name('register');
+
+    Route::post('/register', [LogisticsController::class, 'submitRegistration'])
+        ->name('register.submit');
+
+    Route::redirect('/login', '/login')
+        ->name('login');
+
+    Route::get('/dashboard', [LogisticsController::class, 'dashboard'])
+        ->name('dashboard');
+
+    Route::get('/riders', [LogisticsController::class, 'riders'])
+        ->name('riders.index');
+
+    Route::get('/riders/{id}', [LogisticsController::class, 'showRider'])
+        ->name('riders.show');
+
+    Route::get('/pickups', [LogisticsController::class, 'pickups'])
+        ->name('pickups.index');
+
+    Route::get('/incoming', [LogisticsController::class, 'incoming'])
+        ->name('sorting.incoming');
+
+    Route::get('/sorting', [LogisticsController::class, 'sorting'])
+        ->name('sorting.center');
+
+    Route::get('/dispatch', [LogisticsController::class, 'dispatch'])
+        ->name('dispatch.index');
+
+    Route::get('/monitoring', [LogisticsController::class, 'monitoring'])
+        ->name('dispatch.monitoring');
+
+    Route::get('/reports', [LogisticsController::class, 'reports'])
+        ->name('reports.index');
+
+    Route::get('/messages', [LogisticsController::class, 'messages'])
+        ->name('messages.index');
+
+    Route::get('/account', [LogisticsController::class, 'account'])
+        ->name('profile.index');
+
+    Route::middleware(['auth', 'role:logistics'])->group(function () {
+        Route::post('/riders/{user}/approve', [AccountApprovalController::class, 'approveRider'])
+            ->name('riders.approve');
+
+        Route::post('/riders/{user}/reject', [AccountApprovalController::class, 'rejectRider'])
+            ->name('riders.reject');
+    });
+});
+
+/*
+|--------------------------------------------------------------------------
+| Rider
+|--------------------------------------------------------------------------
+*/
+
+Route::prefix('rider')->name('rider.')->group(function () {
+    Route::get('/', [RiderController::class, 'landing'])
+        ->name('landing');
+
+    Route::get('/register', [RiderController::class, 'register'])
+        ->name('register');
+
+    Route::post('/register', [RiderController::class, 'submitRegistration'])
+        ->name('register.submit');
+
+    Route::redirect('/login', '/login')
+        ->name('login');
+
+    Route::get('/dashboard/pickups', [RiderController::class, 'pickupsDashboard'])
+        ->name('dashboard.pickups');
+
+    Route::get('/dashboard/deliveries', [RiderController::class, 'deliveriesDashboard'])
+        ->name('dashboard.deliveries');
+
+    Route::get('/pickup/{id}', [RiderController::class, 'pickup'])
+        ->name('orders.pickup');
+
+    Route::post('/pickup/{id}/confirm', [RiderController::class, 'confirmPickup'])
+        ->name('orders.pickup.confirm');
+
+    Route::get('/deliver/{id}', [RiderController::class, 'deliver'])
+        ->name('orders.delivery');
+
+    Route::post('/deliver/{id}/confirm', [RiderController::class, 'confirmDelivery'])
+        ->name('orders.delivery.confirm');
+
+    Route::get('/earnings', [RiderController::class, 'earnings'])
+        ->name('earnings.index');
+
+    Route::get('/history', [RiderController::class, 'history'])
+        ->name('history.index');
+
+    Route::get('/messages', [RiderController::class, 'messages'])
+        ->name('messages.index');
+
+    Route::get('/account', [RiderController::class, 'account'])
+        ->name('profile.index');
 });

@@ -1,0 +1,516 @@
+[
+  {
+    "id": 1,
+    "name": "Gentle Facial Cleanser",
+    "price": 499,
+    "subcategory": "Skin Care",
+    "photo": 0,
+    "color": "White",
+    "sizes": [
+      "250 ml",
+      "500 ml"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.7,
+    "description": "Gentle Facial Cleanser sample listing for the Bearly Health & Beauty frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 2,
+    "name": "Daily Moisturizing Cream",
+    "price": 549,
+    "subcategory": "Skin Care",
+    "photo": 1,
+    "color": "White",
+    "sizes": [
+      "50 ml",
+      "100 ml"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.4,
+    "description": "Daily Moisturizing Cream sample listing for the Bearly Health & Beauty frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 3,
+    "name": "SPF 50+ Face Sunscreen",
+    "price": 599,
+    "subcategory": "Skin Care",
+    "photo": 2,
+    "color": "Blue",
+    "sizes": [
+      "50 ml"
+    ],
+    "condition": "New with tags",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.8,
+    "description": "SPF 50+ Face Sunscreen sample listing for the Bearly Health & Beauty frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 4,
+    "name": "Niacinamide Face Serum",
+    "price": 449,
+    "subcategory": "Skin Care",
+    "photo": 3,
+    "color": "White",
+    "sizes": [
+      "30 ml"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.5,
+    "description": "Niacinamide Face Serum sample listing for the Bearly Health & Beauty frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 5,
+    "name": "Alcohol-Free Facial Toner",
+    "price": 499,
+    "subcategory": "Skin Care",
+    "photo": 4,
+    "color": "White",
+    "sizes": [
+      "355 ml"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.9,
+    "description": "Alcohol-Free Facial Toner sample listing for the Bearly Health & Beauty frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 6,
+    "name": "Micellar Cleansing Water",
+    "price": 399,
+    "subcategory": "Skin Care",
+    "photo": 5,
+    "color": "Gold",
+    "sizes": [
+      "400 ml"
+    ],
+    "condition": "New with tags",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.6,
+    "description": "Micellar Cleansing Water sample listing for the Bearly Health & Beauty frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 7,
+    "name": "Hydrating Sheet Face Mask",
+    "price": 149,
+    "subcategory": "Skin Care",
+    "photo": 6,
+    "color": "Blue",
+    "sizes": [
+      "1 pc",
+      "5 pcs"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.3,
+    "description": "Hydrating Sheet Face Mask sample listing for the Bearly Health & Beauty frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 8,
+    "name": "Essential Care Lip Balm",
+    "price": 199,
+    "subcategory": "Skin Care",
+    "photo": 7,
+    "color": "Blue",
+    "sizes": [
+      "4.8 g"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.7,
+    "description": "Essential Care Lip Balm sample listing for the Bearly Health & Beauty frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 9,
+    "name": "Fresh Mint Toothpaste",
+    "price": 199,
+    "subcategory": "Oral Care",
+    "photo": 8,
+    "color": "White",
+    "sizes": [
+      "150 ml"
+    ],
+    "condition": "New with tags",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.4,
+    "description": "Fresh Mint Toothpaste sample listing for the Bearly Health & Beauty frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 10,
+    "name": "Soft Bristle Toothbrush",
+    "price": 149,
+    "subcategory": "Oral Care",
+    "photo": 9,
+    "color": "Blue",
+    "sizes": [
+      "1 pc",
+      "2 pcs"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.8,
+    "description": "Soft Bristle Toothbrush sample listing for the Bearly Health & Beauty frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 11,
+    "name": "Keratin Smooth Shampoo",
+    "price": 449,
+    "subcategory": "Hair Care",
+    "photo": 10,
+    "color": "Brown",
+    "sizes": [
+      "340 ml"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.5,
+    "description": "Keratin Smooth Shampoo sample listing for the Bearly Health & Beauty frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 12,
+    "name": "Keratin Smooth Conditioner",
+    "price": 449,
+    "subcategory": "Hair Care",
+    "photo": 11,
+    "color": "White",
+    "sizes": [
+      "340 ml"
+    ],
+    "condition": "New with tags",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.9,
+    "description": "Keratin Smooth Conditioner sample listing for the Bearly Health & Beauty frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 13,
+    "name": "Repairing Hair Treatment Mask",
+    "price": 549,
+    "subcategory": "Hair Care",
+    "photo": 12,
+    "color": "White",
+    "sizes": [
+      "300 ml"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.6,
+    "description": "Repairing Hair Treatment Mask sample listing for the Bearly Health & Beauty frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 14,
+    "name": "Nourishing Hair Oil",
+    "price": 499,
+    "subcategory": "Hair Care",
+    "photo": 13,
+    "color": "Gold",
+    "sizes": [
+      "100 ml"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.3,
+    "description": "Nourishing Hair Oil sample listing for the Bearly Health & Beauty frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 15,
+    "name": "Fresh Roll-On Deodorant",
+    "price": 249,
+    "subcategory": "Personal Care",
+    "photo": 14,
+    "color": "Blue",
+    "sizes": [
+      "50 ml"
+    ],
+    "condition": "New with tags",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.7,
+    "description": "Fresh Roll-On Deodorant sample listing for the Bearly Health & Beauty frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 16,
+    "name": "Floral Eau de Parfum",
+    "price": 1299,
+    "subcategory": "Fragrance",
+    "photo": 15,
+    "color": "Gold",
+    "sizes": [
+      "50 ml"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.4,
+    "description": "Floral Eau de Parfum sample listing for the Bearly Health & Beauty frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 17,
+    "name": "Matte Liquid Foundation",
+    "price": 699,
+    "subcategory": "Makeup",
+    "photo": 16,
+    "color": "Brown",
+    "sizes": [
+      "30 ml"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.8,
+    "description": "Matte Liquid Foundation sample listing for the Bearly Health & Beauty frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 18,
+    "name": "Classic Matte Lipstick",
+    "price": 399,
+    "subcategory": "Makeup",
+    "photo": 17,
+    "color": "Brown",
+    "sizes": [
+      "3.5 g"
+    ],
+    "condition": "New with tags",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.5,
+    "description": "Classic Matte Lipstick sample listing for the Bearly Health & Beauty frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 19,
+    "name": "Lengthening Mascara",
+    "price": 499,
+    "subcategory": "Makeup",
+    "photo": 18,
+    "color": "Black",
+    "sizes": [
+      "10 ml"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.9,
+    "description": "Lengthening Mascara sample listing for the Bearly Health & Beauty frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 20,
+    "name": "Neutral Eyeshadow Palette",
+    "price": 799,
+    "subcategory": "Makeup",
+    "photo": 19,
+    "color": "Brown",
+    "sizes": [
+      "12 Shades"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.6,
+    "description": "Neutral Eyeshadow Palette sample listing for the Bearly Health & Beauty frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 21,
+    "name": "Classic Nail Polish",
+    "price": 249,
+    "subcategory": "Nail Care",
+    "photo": 20,
+    "color": "Gold",
+    "sizes": [
+      "13.5 ml"
+    ],
+    "condition": "New with tags",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.3,
+    "description": "Classic Nail Polish sample listing for the Bearly Health & Beauty frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 22,
+    "name": "Nail Care Tool Set",
+    "price": 349,
+    "subcategory": "Nail Care",
+    "photo": 21,
+    "color": "White",
+    "sizes": [
+      "4 pcs"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.7,
+    "description": "Nail Care Tool Set sample listing for the Bearly Health & Beauty frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 23,
+    "name": "Soft Cotton Pads",
+    "price": 149,
+    "subcategory": "Personal Care",
+    "photo": 22,
+    "color": "White",
+    "sizes": [
+      "100 pcs"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.4,
+    "description": "Soft Cotton Pads sample listing for the Bearly Health & Beauty frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 24,
+    "name": "Cotton Swabs",
+    "price": 129,
+    "subcategory": "Personal Care",
+    "photo": 23,
+    "color": "White",
+    "sizes": [
+      "300 pcs"
+    ],
+    "condition": "New with tags",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.8,
+    "description": "Cotton Swabs sample listing for the Bearly Health & Beauty frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 25,
+    "name": "Hand Sanitizer",
+    "price": 199,
+    "subcategory": "Personal Care",
+    "photo": 24,
+    "color": "Blue",
+    "sizes": [
+      "250 ml"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.5,
+    "description": "Hand Sanitizer sample listing for the Bearly Health & Beauty frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 26,
+    "name": "Home First Aid Kit",
+    "price": 899,
+    "subcategory": "Wellness & First Aid",
+    "photo": 25,
+    "color": "Brown",
+    "sizes": [
+      "Set"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.9,
+    "description": "Home First Aid Kit sample listing for the Bearly Health & Beauty frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 27,
+    "name": "Daily Multivitamin Tablets",
+    "price": 699,
+    "subcategory": "Wellness & First Aid",
+    "photo": 26,
+    "color": "White",
+    "sizes": [
+      "100 tablets"
+    ],
+    "condition": "New with tags",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.6,
+    "description": "Daily Multivitamin Tablets sample listing for the Bearly Health & Beauty frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 28,
+    "name": "Digital Thermometer",
+    "price": 399,
+    "subcategory": "Wellness & First Aid",
+    "photo": 27,
+    "color": "White",
+    "sizes": [
+      "1 pc"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.3,
+    "description": "Digital Thermometer sample listing for the Bearly Health & Beauty frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 29,
+    "name": "Soft Sleep Eye Mask",
+    "price": 249,
+    "subcategory": "Wellness & First Aid",
+    "photo": 28,
+    "color": "Black",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.7,
+    "description": "Soft Sleep Eye Mask sample listing for the Bearly Health & Beauty frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 30,
+    "name": "Bath & Body Accessory Set",
+    "price": 399,
+    "subcategory": "Bath & Body",
+    "photo": 29,
+    "color": "Gold",
+    "sizes": [
+      "3 pcs"
+    ],
+    "condition": "New with tags",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.4,
+    "description": "Bath & Body Accessory Set sample listing for the Bearly Health & Beauty frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  }
+]

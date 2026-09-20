@@ -1,0 +1,516 @@
+[
+  {
+    "id": 1,
+    "name": "Modern Fabric Sofa",
+    "price": 8999,
+    "subcategory": "Home Furniture",
+    "photo": 0,
+    "color": "Black",
+    "sizes": [
+      "2 Seater",
+      "3 Seater"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.8,
+    "description": "Modern Fabric Sofa sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 2,
+    "name": "Upholstered Bed Frame",
+    "price": 9999,
+    "subcategory": "Home Furniture",
+    "photo": 1,
+    "color": "Black",
+    "sizes": [
+      "Single",
+      "Double",
+      "Queen"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.6,
+    "description": "Upholstered Bed Frame sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 3,
+    "name": "Wooden Dining Table Set",
+    "price": 7999,
+    "subcategory": "Home Furniture",
+    "photo": 2,
+    "color": "Brown",
+    "sizes": [
+      "4 Seater",
+      "6 Seater"
+    ],
+    "condition": "New with tags",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.4,
+    "description": "Wooden Dining Table Set sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 4,
+    "name": "Industrial Coffee Table",
+    "price": 2499,
+    "subcategory": "Home Furniture",
+    "photo": 3,
+    "color": "Brown",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.9,
+    "description": "Industrial Coffee Table sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 5,
+    "name": "Wooden TV Stand",
+    "price": 3999,
+    "subcategory": "Home Furniture",
+    "photo": 4,
+    "color": "Brown",
+    "sizes": [
+      "120 cm"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.7,
+    "description": "Wooden TV Stand sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 6,
+    "name": "5-Tier Bookshelf",
+    "price": 3299,
+    "subcategory": "Home Furniture",
+    "photo": 5,
+    "color": "Brown",
+    "sizes": [
+      "5 Tier"
+    ],
+    "condition": "New with tags",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.5,
+    "description": "5-Tier Bookshelf sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 7,
+    "name": "Wooden Wardrobe",
+    "price": 7499,
+    "subcategory": "Home Furniture",
+    "photo": 6,
+    "color": "Brown",
+    "sizes": [
+      "3 Door"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.3,
+    "description": "Wooden Wardrobe sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 8,
+    "name": "Ergonomic Office Chair",
+    "price": 5499,
+    "subcategory": "Office Furniture",
+    "photo": 7,
+    "color": "Black",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.8,
+    "description": "Ergonomic Office Chair sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 9,
+    "name": "Minimalist Study Desk",
+    "price": 3499,
+    "subcategory": "Office Furniture",
+    "photo": 8,
+    "color": "Brown",
+    "sizes": [
+      "120 cm"
+    ],
+    "condition": "New with tags",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.6,
+    "description": "Minimalist Study Desk sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 10,
+    "name": "Steel Filing Cabinet",
+    "price": 4999,
+    "subcategory": "Office Furniture",
+    "photo": 9,
+    "color": "White",
+    "sizes": [
+      "4 Drawer"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.4,
+    "description": "Steel Filing Cabinet sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 11,
+    "name": "High-Back Gaming Chair",
+    "price": 6999,
+    "subcategory": "Office Furniture",
+    "photo": 10,
+    "color": "Black",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.9,
+    "description": "High-Back Gaming Chair sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 12,
+    "name": "Padded Visitor Chair",
+    "price": 2499,
+    "subcategory": "Office Furniture",
+    "photo": 11,
+    "color": "Black",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New with tags",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.7,
+    "description": "Padded Visitor Chair sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 13,
+    "name": "Conference Table Set",
+    "price": 11999,
+    "subcategory": "Office Furniture",
+    "photo": 12,
+    "color": "Brown",
+    "sizes": [
+      "6 Seater"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.5,
+    "description": "Conference Table Set sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 14,
+    "name": "Height Adjustable Standing Desk",
+    "price": 8999,
+    "subcategory": "Office Furniture",
+    "photo": 13,
+    "color": "Brown",
+    "sizes": [
+      "120 cm"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.3,
+    "description": "Height Adjustable Standing Desk sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 15,
+    "name": "Desktop Organizer Shelf",
+    "price": 1499,
+    "subcategory": "Office Accessories",
+    "photo": 14,
+    "color": "Brown",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New with tags",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.8,
+    "description": "Desktop Organizer Shelf sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 16,
+    "name": "Adjustable Desk Lamp",
+    "price": 899,
+    "subcategory": "Office Accessories",
+    "photo": 15,
+    "color": "White",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.6,
+    "description": "Adjustable Desk Lamp sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 17,
+    "name": "Wooden Tripod Floor Lamp",
+    "price": 1799,
+    "subcategory": "Office Accessories",
+    "photo": 16,
+    "color": "Brown",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.4,
+    "description": "Wooden Tripod Floor Lamp sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 18,
+    "name": "Floating Wall Shelf Set",
+    "price": 1299,
+    "subcategory": "Storage & Organization",
+    "photo": 17,
+    "color": "Brown",
+    "sizes": [
+      "2 pcs"
+    ],
+    "condition": "New with tags",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.9,
+    "description": "Floating Wall Shelf Set sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 19,
+    "name": "Metal Storage Cabinet",
+    "price": 5999,
+    "subcategory": "Storage & Organization",
+    "photo": 18,
+    "color": "Black",
+    "sizes": [
+      "2 Door"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.7,
+    "description": "Metal Storage Cabinet sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 20,
+    "name": "3-Tier Utility Cart",
+    "price": 1999,
+    "subcategory": "Storage & Organization",
+    "photo": 19,
+    "color": "Black",
+    "sizes": [
+      "3 Tier"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.5,
+    "description": "3-Tier Utility Cart sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 21,
+    "name": "Office Laptop",
+    "price": 24999,
+    "subcategory": "Office Equipment",
+    "photo": 20,
+    "color": "Black",
+    "sizes": [
+      "14 inch"
+    ],
+    "condition": "New with tags",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.3,
+    "description": "Office Laptop sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 22,
+    "name": "Desktop Computer Set",
+    "price": 29999,
+    "subcategory": "Office Equipment",
+    "photo": 21,
+    "color": "Black",
+    "sizes": [
+      "Complete Set"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.8,
+    "description": "Desktop Computer Set sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 23,
+    "name": "Color Inkjet Printer",
+    "price": 7999,
+    "subcategory": "Office Equipment",
+    "photo": 22,
+    "color": "Black",
+    "sizes": [
+      "A4"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.6,
+    "description": "Color Inkjet Printer sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 24,
+    "name": "Multifunction Photocopier",
+    "price": 39999,
+    "subcategory": "Office Equipment",
+    "photo": 23,
+    "color": "White",
+    "sizes": [
+      "A3/A4"
+    ],
+    "condition": "New with tags",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.4,
+    "description": "Multifunction Photocopier sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 25,
+    "name": "24-Inch Office Monitor",
+    "price": 8999,
+    "subcategory": "Office Equipment",
+    "photo": 24,
+    "color": "Black",
+    "sizes": [
+      "24 inch"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.9,
+    "description": "24-Inch Office Monitor sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 26,
+    "name": "Keyboard & Mouse Combo",
+    "price": 1499,
+    "subcategory": "Office Equipment",
+    "photo": 25,
+    "color": "Black",
+    "sizes": [
+      "Set"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.7,
+    "description": "Keyboard & Mouse Combo sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 27,
+    "name": "Backup UPS Power Supply",
+    "price": 4999,
+    "subcategory": "Office Equipment",
+    "photo": 26,
+    "color": "Black",
+    "sizes": [
+      "1000 VA"
+    ],
+    "condition": "New with tags",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.5,
+    "description": "Backup UPS Power Supply sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 28,
+    "name": "Office Paper Shredder",
+    "price": 5999,
+    "subcategory": "Office Equipment",
+    "photo": 27,
+    "color": "Black",
+    "sizes": [
+      "12 Sheet"
+    ],
+    "condition": "New",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.3,
+    "description": "Office Paper Shredder sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 29,
+    "name": "Mobile Office Whiteboard",
+    "price": 3999,
+    "subcategory": "Office Accessories",
+    "photo": 28,
+    "color": "White",
+    "sizes": [
+      "90×120 cm"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.8,
+    "description": "Mobile Office Whiteboard sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 30,
+    "name": "Cork Bulletin Board",
+    "price": 1499,
+    "subcategory": "Office Accessories",
+    "photo": 29,
+    "color": "Brown",
+    "sizes": [
+      "60×90 cm"
+    ],
+    "condition": "New with tags",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.6,
+    "description": "Cork Bulletin Board sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  }
+]

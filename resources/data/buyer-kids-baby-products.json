@@ -1,0 +1,544 @@
+[
+  {
+    "id": 1,
+    "name": "Bear Print Baby Onesie",
+    "price": 349,
+    "subcategory": "Baby Clothing",
+    "photo": 0,
+    "color": "White",
+    "sizes": [
+      "0-3M",
+      "3-6M",
+      "6-12M"
+    ],
+    "condition": "New with tags",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.6,
+    "description": "Bear Print Baby Onesie sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 2,
+    "name": "Floral Baby Dress",
+    "price": 499,
+    "subcategory": "Baby Clothing",
+    "photo": 1,
+    "color": "Gold",
+    "sizes": [
+      "6-12M",
+      "12-18M",
+      "18-24M"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.9,
+    "description": "Floral Baby Dress sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 3,
+    "name": "Little Explorer Kids T-Shirt",
+    "price": 399,
+    "subcategory": "Kids Clothing",
+    "photo": 2,
+    "color": "Blue",
+    "sizes": [
+      "2Y",
+      "3Y",
+      "4Y",
+      "5Y"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.5,
+    "description": "Little Explorer Kids T-Shirt sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 4,
+    "name": "Cotton Kids Shorts",
+    "price": 349,
+    "subcategory": "Kids Clothing",
+    "photo": 3,
+    "color": "Brown",
+    "sizes": [
+      "2Y",
+      "3Y",
+      "4Y",
+      "5Y"
+    ],
+    "condition": "New with tags",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.8,
+    "description": "Cotton Kids Shorts sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 5,
+    "name": "Bear Kids Hoodie",
+    "price": 599,
+    "subcategory": "Kids Clothing",
+    "photo": 4,
+    "color": "Blue",
+    "sizes": [
+      "3Y",
+      "4Y",
+      "5Y",
+      "6Y"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.4,
+    "description": "Bear Kids Hoodie sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 6,
+    "name": "Denim Kids Overalls",
+    "price": 649,
+    "subcategory": "Kids Clothing",
+    "photo": 5,
+    "color": "Blue",
+    "sizes": [
+      "2Y",
+      "3Y",
+      "4Y"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.7,
+    "description": "Denim Kids Overalls sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 7,
+    "name": "Printed Baby Pajama Set",
+    "price": 499,
+    "subcategory": "Baby Clothing",
+    "photo": 6,
+    "color": "White",
+    "sizes": [
+      "6-12M",
+      "12-18M",
+      "18-24M"
+    ],
+    "condition": "New with tags",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.3,
+    "description": "Printed Baby Pajama Set sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 8,
+    "name": "Knitted Kids Cardigan",
+    "price": 549,
+    "subcategory": "Kids Clothing",
+    "photo": 7,
+    "color": "Gold",
+    "sizes": [
+      "3Y",
+      "4Y",
+      "5Y"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.6,
+    "description": "Knitted Kids Cardigan sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 9,
+    "name": "Velcro Kids Sneakers",
+    "price": 699,
+    "subcategory": "Kids Footwear",
+    "photo": 8,
+    "color": "White",
+    "sizes": [
+      "25",
+      "26",
+      "27",
+      "28"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.9,
+    "description": "Velcro Kids Sneakers sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 10,
+    "name": "Bear Kids Sandals",
+    "price": 499,
+    "subcategory": "Kids Footwear",
+    "photo": 9,
+    "color": "Blue",
+    "sizes": [
+      "25",
+      "26",
+      "27",
+      "28"
+    ],
+    "condition": "New with tags",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.5,
+    "description": "Bear Kids Sandals sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 11,
+    "name": "Baby Diapers Pack",
+    "price": 699,
+    "subcategory": "Diapers & Care",
+    "photo": 10,
+    "color": "Blue",
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.8,
+    "description": "Baby Diapers Pack sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 12,
+    "name": "Gentle Baby Wipes",
+    "price": 249,
+    "subcategory": "Diapers & Care",
+    "photo": 11,
+    "color": "White",
+    "sizes": [
+      "80 pcs",
+      "160 pcs"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.4,
+    "description": "Gentle Baby Wipes sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 13,
+    "name": "Infant Formula",
+    "price": 999,
+    "subcategory": "Feeding",
+    "photo": 12,
+    "color": "Gold",
+    "sizes": [
+      "400 g",
+      "900 g"
+    ],
+    "condition": "New with tags",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.7,
+    "description": "Infant Formula sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 14,
+    "name": "Anti-Colic Baby Bottle",
+    "price": 449,
+    "subcategory": "Feeding",
+    "photo": 13,
+    "color": "White",
+    "sizes": [
+      "125 ml",
+      "260 ml"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.3,
+    "description": "Anti-Colic Baby Bottle sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 15,
+    "name": "Bunny Sippy Cup",
+    "price": 349,
+    "subcategory": "Feeding",
+    "photo": 14,
+    "color": "Gold",
+    "sizes": [
+      "250 ml"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.6,
+    "description": "Bunny Sippy Cup sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 16,
+    "name": "Silicone Feeding Set",
+    "price": 599,
+    "subcategory": "Feeding",
+    "photo": 15,
+    "color": "Green",
+    "sizes": [
+      "6 pcs"
+    ],
+    "condition": "New with tags",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.9,
+    "description": "Silicone Feeding Set sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 17,
+    "name": "Adjustable Baby High Chair",
+    "price": 2499,
+    "subcategory": "Nursery & Gear",
+    "photo": 16,
+    "color": "Brown",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.5,
+    "description": "Adjustable Baby High Chair sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 18,
+    "name": "Compact Baby Stroller",
+    "price": 3999,
+    "subcategory": "Nursery & Gear",
+    "photo": 17,
+    "color": "Black",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.8,
+    "description": "Compact Baby Stroller sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 19,
+    "name": "Infant Car Seat",
+    "price": 4499,
+    "subcategory": "Nursery & Gear",
+    "photo": 18,
+    "color": "Black",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New with tags",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.4,
+    "description": "Infant Car Seat sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 20,
+    "name": "Portable Baby Playpen",
+    "price": 2999,
+    "subcategory": "Nursery & Gear",
+    "photo": 19,
+    "color": "Black",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.7,
+    "description": "Portable Baby Playpen sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 21,
+    "name": "Wooden Baby Crib",
+    "price": 4999,
+    "subcategory": "Nursery & Gear",
+    "photo": 20,
+    "color": "White",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.3,
+    "description": "Wooden Baby Crib sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 22,
+    "name": "Nursing Support Pillow",
+    "price": 699,
+    "subcategory": "Nursery & Gear",
+    "photo": 21,
+    "color": "White",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New with tags",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.6,
+    "description": "Nursing Support Pillow sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 23,
+    "name": "Multi-Pocket Diaper Bag",
+    "price": 899,
+    "subcategory": "Nursery & Gear",
+    "photo": 22,
+    "color": "Black",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.9,
+    "description": "Multi-Pocket Diaper Bag sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 24,
+    "name": "Soft Baby Blanket",
+    "price": 649,
+    "subcategory": "Nursery & Gear",
+    "photo": 23,
+    "color": "Blue",
+    "sizes": [
+      "80\u00d7100 cm"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.5,
+    "description": "Soft Baby Blanket sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 25,
+    "name": "Baby Activity Play Mat",
+    "price": 899,
+    "subcategory": "Toys & Learning",
+    "photo": 24,
+    "color": "Blue",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New with tags",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.8,
+    "description": "Baby Activity Play Mat sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 26,
+    "name": "Wooden Stacking Toy",
+    "price": 399,
+    "subcategory": "Toys & Learning",
+    "photo": 25,
+    "color": "Brown",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.4,
+    "description": "Wooden Stacking Toy sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 27,
+    "name": "First Words Kids Book",
+    "price": 299,
+    "subcategory": "Books & Art",
+    "photo": 26,
+    "color": "Blue",
+    "sizes": [
+      "Board Book"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.7,
+    "description": "First Words Kids Book sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 28,
+    "name": "Washable Marker Set",
+    "price": 249,
+    "subcategory": "Books & Art",
+    "photo": 27,
+    "color": "Blue",
+    "sizes": [
+      "10 Colors"
+    ],
+    "condition": "New with tags",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.3,
+    "description": "Washable Marker Set sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 29,
+    "name": "Kids Balance Bicycle",
+    "price": 2499,
+    "subcategory": "Outdoor & Ride-On",
+    "photo": 28,
+    "color": "Blue",
+    "sizes": [
+      "12 inch"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.6,
+    "description": "Kids Balance Bicycle sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 30,
+    "name": "Kids Safety Helmet",
+    "price": 699,
+    "subcategory": "Outdoor & Ride-On",
+    "photo": 29,
+    "color": "Blue",
+    "sizes": [
+      "S",
+      "M"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.9,
+    "description": "Kids Safety Helmet sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  }
+]

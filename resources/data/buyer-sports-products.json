@@ -1,0 +1,520 @@
+[
+  {
+    "id": 1,
+    "name": "Official Basketball",
+    "price": 899,
+    "subcategory": "Team Sports",
+    "photo": 0,
+    "color": "Brown",
+    "sizes": [
+      "Size 7"
+    ],
+    "condition": "New with tags",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.8,
+    "description": "Official Basketball sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 2,
+    "name": "Competition Volleyball",
+    "price": 749,
+    "subcategory": "Team Sports",
+    "photo": 1,
+    "color": "Blue",
+    "sizes": [
+      "Size 5"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.6,
+    "description": "Competition Volleyball sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 3,
+    "name": "Training Soccer Ball",
+    "price": 699,
+    "subcategory": "Team Sports",
+    "photo": 2,
+    "color": "White",
+    "sizes": [
+      "Size 5"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.4,
+    "description": "Training Soccer Ball sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 4,
+    "name": "Tennis Ball 3-Pack",
+    "price": 299,
+    "subcategory": "Racquet Sports",
+    "photo": 3,
+    "color": "Green",
+    "sizes": [
+      "3 pcs"
+    ],
+    "condition": "New with tags",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.9,
+    "description": "Tennis Ball 3-Pack sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 5,
+    "name": "Carbon Badminton Racket",
+    "price": 999,
+    "subcategory": "Racquet Sports",
+    "photo": 4,
+    "color": "Blue",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.7,
+    "description": "Carbon Badminton Racket sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 6,
+    "name": "Table Tennis Paddle Set",
+    "price": 599,
+    "subcategory": "Racquet Sports",
+    "photo": 5,
+    "color": "Black",
+    "sizes": [
+      "2 Paddles"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.5,
+    "description": "Table Tennis Paddle Set sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 7,
+    "name": "Cycling Safety Helmet",
+    "price": 1199,
+    "subcategory": "Cycling",
+    "photo": 6,
+    "color": "White",
+    "sizes": [
+      "M",
+      "L"
+    ],
+    "condition": "New with tags",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.3,
+    "description": "Cycling Safety Helmet sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 8,
+    "name": "Sports Water Bottle",
+    "price": 399,
+    "subcategory": "Fitness & Training",
+    "photo": 7,
+    "color": "Black",
+    "sizes": [
+      "750 ml"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.8,
+    "description": "Sports Water Bottle sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 9,
+    "name": "Duffel Gym Bag",
+    "price": 899,
+    "subcategory": "Fitness & Training",
+    "photo": 8,
+    "color": "Black",
+    "sizes": [
+      "Medium"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.6,
+    "description": "Duffel Gym Bag sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 10,
+    "name": "Non-Slip Yoga Mat",
+    "price": 649,
+    "subcategory": "Fitness & Training",
+    "photo": 9,
+    "color": "Black",
+    "sizes": [
+      "6 mm"
+    ],
+    "condition": "New with tags",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.4,
+    "description": "Non-Slip Yoga Mat sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 11,
+    "name": "Resistance Band Set",
+    "price": 499,
+    "subcategory": "Fitness & Training",
+    "photo": 10,
+    "color": "Blue",
+    "sizes": [
+      "5 pcs"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.9,
+    "description": "Resistance Band Set sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 12,
+    "name": "Hex Dumbbell Pair",
+    "price": 1299,
+    "subcategory": "Fitness & Training",
+    "photo": 11,
+    "color": "Black",
+    "sizes": [
+      "5 kg pair"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.7,
+    "description": "Hex Dumbbell Pair sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 13,
+    "name": "Speed Jump Rope",
+    "price": 299,
+    "subcategory": "Fitness & Training",
+    "photo": 12,
+    "color": "Black",
+    "sizes": [
+      "Adjustable"
+    ],
+    "condition": "New with tags",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.5,
+    "description": "Speed Jump Rope sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 14,
+    "name": "Push-Up Bar Pair",
+    "price": 449,
+    "subcategory": "Fitness & Training",
+    "photo": 13,
+    "color": "Black",
+    "sizes": [
+      "Pair"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.3,
+    "description": "Push-Up Bar Pair sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 15,
+    "name": "Adjustable Workout Bench",
+    "price": 2499,
+    "subcategory": "Fitness & Training",
+    "photo": 14,
+    "color": "Black",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.8,
+    "description": "Adjustable Workout Bench sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 16,
+    "name": "Compact Folding Treadmill",
+    "price": 6999,
+    "subcategory": "Fitness & Training",
+    "photo": 15,
+    "color": "Black",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New with tags",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.6,
+    "description": "Compact Folding Treadmill sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 17,
+    "name": "Portable Sleeping Bag",
+    "price": 1299,
+    "subcategory": "Camping & Hiking",
+    "photo": 16,
+    "color": "Gray",
+    "sizes": [
+      "Single"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.4,
+    "description": "Portable Sleeping Bag sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 18,
+    "name": "Waterproof Camping Tent",
+    "price": 2499,
+    "subcategory": "Camping & Hiking",
+    "photo": 17,
+    "color": "Green",
+    "sizes": [
+      "2 Person"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.9,
+    "description": "Waterproof Camping Tent sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 19,
+    "name": "Folding Camping Chair",
+    "price": 899,
+    "subcategory": "Camping & Hiking",
+    "photo": 18,
+    "color": "Blue",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New with tags",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.7,
+    "description": "Folding Camping Chair sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 20,
+    "name": "Insulated Cooler Box",
+    "price": 1599,
+    "subcategory": "Camping & Hiking",
+    "photo": 19,
+    "color": "Blue",
+    "sizes": [
+      "20 L"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.5,
+    "description": "Insulated Cooler Box sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 21,
+    "name": "Hiking Backpack",
+    "price": 1499,
+    "subcategory": "Camping & Hiking",
+    "photo": 20,
+    "color": "Green",
+    "sizes": [
+      "35 L"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.3,
+    "description": "Hiking Backpack sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 22,
+    "name": "Hiking Shoes",
+    "price": 1899,
+    "subcategory": "Camping & Hiking",
+    "photo": 21,
+    "color": "Brown",
+    "sizes": [
+      "38",
+      "39",
+      "40",
+      "41",
+      "42"
+    ],
+    "condition": "New with tags",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.8,
+    "description": "Hiking Shoes sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 23,
+    "name": "Adjustable Trekking Pole",
+    "price": 699,
+    "subcategory": "Camping & Hiking",
+    "photo": 22,
+    "color": "Black",
+    "sizes": [
+      "1 pc"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.6,
+    "description": "Adjustable Trekking Pole sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 24,
+    "name": "Polarized Sports Sunglasses",
+    "price": 799,
+    "subcategory": "Sports Accessories",
+    "photo": 23,
+    "color": "Black",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.4,
+    "description": "Polarized Sports Sunglasses sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 25,
+    "name": "GPS Sports Watch",
+    "price": 2499,
+    "subcategory": "Sports Accessories",
+    "photo": 24,
+    "color": "Black",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New with tags",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.9,
+    "description": "GPS Sports Watch sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 26,
+    "name": "Rechargeable Headlamp",
+    "price": 649,
+    "subcategory": "Camping & Hiking",
+    "photo": 25,
+    "color": "Black",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.7,
+    "description": "Rechargeable Headlamp sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 27,
+    "name": "High-Density Foam Roller",
+    "price": 749,
+    "subcategory": "Recovery & Support",
+    "photo": 26,
+    "color": "Black",
+    "sizes": [
+      "33 cm"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.5,
+    "description": "High-Density Foam Roller sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 28,
+    "name": "Compression Knee Support",
+    "price": 499,
+    "subcategory": "Recovery & Support",
+    "photo": 27,
+    "color": "Black",
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "condition": "New with tags",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.3,
+    "description": "Compression Knee Support sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 29,
+    "name": "Climbing Carabiner Set",
+    "price": 699,
+    "subcategory": "Camping & Hiking",
+    "photo": 28,
+    "color": "Blue",
+    "sizes": [
+      "3 pcs"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.8,
+    "description": "Climbing Carabiner Set sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 30,
+    "name": "Portable Camping Stove",
+    "price": 1099,
+    "subcategory": "Camping & Hiking",
+    "photo": 29,
+    "color": "Green",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.6,
+    "description": "Portable Camping Stove sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  }
+]

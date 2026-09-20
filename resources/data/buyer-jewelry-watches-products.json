@@ -1,0 +1,537 @@
+[
+  {
+    "id": 1,
+    "name": "Gold Clover Pendant Necklace",
+    "price": 899,
+    "subcategory": "Necklaces",
+    "photo": 0,
+    "color": "Gold",
+    "sizes": [
+      "40 cm",
+      "45 cm"
+    ],
+    "condition": "New with tags",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.7,
+    "description": "Gold Clover Pendant Necklace sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 2,
+    "name": "Silver Solitaire Necklace",
+    "price": 799,
+    "subcategory": "Necklaces",
+    "photo": 1,
+    "color": "Silver",
+    "sizes": [
+      "40 cm",
+      "45 cm"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.4,
+    "description": "Silver Solitaire Necklace sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 3,
+    "name": "Classic Pearl Necklace",
+    "price": 1099,
+    "subcategory": "Necklaces",
+    "photo": 2,
+    "color": "White",
+    "sizes": [
+      "42 cm"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.8,
+    "description": "Classic Pearl Necklace sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 4,
+    "name": "Gold Chain Necklace",
+    "price": 999,
+    "subcategory": "Necklaces",
+    "photo": 3,
+    "color": "Gold",
+    "sizes": [
+      "45 cm",
+      "50 cm"
+    ],
+    "condition": "New with tags",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.5,
+    "description": "Gold Chain Necklace sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 5,
+    "name": "Pink Heart Pendant Necklace",
+    "price": 849,
+    "subcategory": "Necklaces",
+    "photo": 4,
+    "color": "Gold",
+    "sizes": [
+      "45 cm"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.9,
+    "description": "Pink Heart Pendant Necklace sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 6,
+    "name": "Crystal Stud Earrings",
+    "price": 599,
+    "subcategory": "Earrings",
+    "photo": 5,
+    "color": "Silver",
+    "sizes": [
+      "Pair"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.6,
+    "description": "Crystal Stud Earrings sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 7,
+    "name": "Pearl Stud Earrings",
+    "price": 549,
+    "subcategory": "Earrings",
+    "photo": 6,
+    "color": "White",
+    "sizes": [
+      "Pair"
+    ],
+    "condition": "New with tags",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.3,
+    "description": "Pearl Stud Earrings sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 8,
+    "name": "Classic Gold Hoop Earrings",
+    "price": 699,
+    "subcategory": "Earrings",
+    "photo": 7,
+    "color": "Gold",
+    "sizes": [
+      "Small",
+      "Medium"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.7,
+    "description": "Classic Gold Hoop Earrings sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 9,
+    "name": "Black Clover Drop Earrings",
+    "price": 749,
+    "subcategory": "Earrings",
+    "photo": 8,
+    "color": "Black",
+    "sizes": [
+      "Pair"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.4,
+    "description": "Black Clover Drop Earrings sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 10,
+    "name": "Crystal Huggie Earrings",
+    "price": 799,
+    "subcategory": "Earrings",
+    "photo": 9,
+    "color": "Gold",
+    "sizes": [
+      "Pair"
+    ],
+    "condition": "New with tags",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.8,
+    "description": "Crystal Huggie Earrings sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 11,
+    "name": "Gold Charm Bracelet",
+    "price": 849,
+    "subcategory": "Bracelets",
+    "photo": 10,
+    "color": "Gold",
+    "sizes": [
+      "16 cm",
+      "18 cm"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.5,
+    "description": "Gold Charm Bracelet sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 12,
+    "name": "Silver Bangle Bracelet",
+    "price": 899,
+    "subcategory": "Bracelets",
+    "photo": 11,
+    "color": "Silver",
+    "sizes": [
+      "S",
+      "M"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.9,
+    "description": "Silver Bangle Bracelet sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 13,
+    "name": "Crystal Tennis Bracelet",
+    "price": 1199,
+    "subcategory": "Bracelets",
+    "photo": 12,
+    "color": "Silver",
+    "sizes": [
+      "16 cm",
+      "18 cm"
+    ],
+    "condition": "New with tags",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.6,
+    "description": "Crystal Tennis Bracelet sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 14,
+    "name": "Black Beaded Bracelet",
+    "price": 499,
+    "subcategory": "Bracelets",
+    "photo": 13,
+    "color": "Black",
+    "sizes": [
+      "S",
+      "M",
+      "L"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.3,
+    "description": "Black Beaded Bracelet sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 15,
+    "name": "Chunky Gold Chain Bracelet",
+    "price": 949,
+    "subcategory": "Bracelets",
+    "photo": 14,
+    "color": "Gold",
+    "sizes": [
+      "17 cm",
+      "19 cm"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.7,
+    "description": "Chunky Gold Chain Bracelet sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 16,
+    "name": "Solitaire Engagement Ring",
+    "price": 1499,
+    "subcategory": "Rings",
+    "photo": 15,
+    "color": "Gold",
+    "sizes": [
+      "5",
+      "6",
+      "7",
+      "8"
+    ],
+    "condition": "New with tags",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.4,
+    "description": "Solitaire Engagement Ring sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 17,
+    "name": "Crystal Wedding Band",
+    "price": 1199,
+    "subcategory": "Rings",
+    "photo": 16,
+    "color": "Gold",
+    "sizes": [
+      "5",
+      "6",
+      "7",
+      "8"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.8,
+    "description": "Crystal Wedding Band sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 18,
+    "name": "Rose Gold Stacking Rings",
+    "price": 999,
+    "subcategory": "Rings",
+    "photo": 17,
+    "color": "Gold",
+    "sizes": [
+      "5",
+      "6",
+      "7",
+      "8"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.5,
+    "description": "Rose Gold Stacking Rings sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 19,
+    "name": "Black Stone Signet Ring",
+    "price": 899,
+    "subcategory": "Rings",
+    "photo": 18,
+    "color": "Gold",
+    "sizes": [
+      "6",
+      "7",
+      "8",
+      "9"
+    ],
+    "condition": "New with tags",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.9,
+    "description": "Black Stone Signet Ring sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 20,
+    "name": "Crystal Eternity Ring",
+    "price": 1299,
+    "subcategory": "Rings",
+    "photo": 19,
+    "color": "Silver",
+    "sizes": [
+      "5",
+      "6",
+      "7",
+      "8"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.6,
+    "description": "Crystal Eternity Ring sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 21,
+    "name": "Men's Silver Classic Watch",
+    "price": 1799,
+    "subcategory": "Men's Watches",
+    "photo": 20,
+    "color": "Silver",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.3,
+    "description": "Men's Silver Classic Watch sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 22,
+    "name": "Men's Black Sport Watch",
+    "price": 1599,
+    "subcategory": "Men's Watches",
+    "photo": 21,
+    "color": "Black",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New with tags",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.7,
+    "description": "Men's Black Sport Watch sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 23,
+    "name": "Men's Gold Dress Watch",
+    "price": 1899,
+    "subcategory": "Men's Watches",
+    "photo": 22,
+    "color": "Gold",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.4,
+    "description": "Men's Gold Dress Watch sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 24,
+    "name": "Men's Blue Dial Watch",
+    "price": 1799,
+    "subcategory": "Men's Watches",
+    "photo": 23,
+    "color": "Blue",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.8,
+    "description": "Men's Blue Dial Watch sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 25,
+    "name": "Black Leather Strap Watch",
+    "price": 1499,
+    "subcategory": "Men's Watches",
+    "photo": 24,
+    "color": "Black",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New with tags",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.5,
+    "description": "Black Leather Strap Watch sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 26,
+    "name": "Brown Leather Classic Watch",
+    "price": 1599,
+    "subcategory": "Men's Watches",
+    "photo": 25,
+    "color": "Brown",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.9,
+    "description": "Brown Leather Classic Watch sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 27,
+    "name": "Chronograph Leather Watch",
+    "price": 1999,
+    "subcategory": "Men's Watches",
+    "photo": 26,
+    "color": "Black",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": false,
+    "rating": 4.6,
+    "description": "Chronograph Leather Watch sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 28,
+    "name": "Digital Sports Watch",
+    "price": 1299,
+    "subcategory": "Digital Watches",
+    "photo": 27,
+    "color": "Black",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New with tags",
+    "location": "Laguna",
+    "free_shipping": true,
+    "voucher": true,
+    "rating": 4.3,
+    "description": "Digital Sports Watch sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 29,
+    "name": "Rose Gold Women's Watch",
+    "price": 1699,
+    "subcategory": "Women's Watches",
+    "photo": 28,
+    "color": "Gold",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New",
+    "location": "Metro Manila",
+    "free_shipping": true,
+    "voucher": false,
+    "rating": 4.7,
+    "description": "Rose Gold Women's Watch sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  },
+  {
+    "id": 30,
+    "name": "Two-Tone Women's Watch",
+    "price": 1799,
+    "subcategory": "Women's Watches",
+    "photo": 29,
+    "color": "Silver",
+    "sizes": [
+      "Standard"
+    ],
+    "condition": "New",
+    "location": "Cavite",
+    "free_shipping": false,
+    "voucher": true,
+    "rating": 4.4,
+    "description": "Two-Tone Women's Watch sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+  }
+]

@@ -508,7 +508,11 @@ svg {
 }
 
 .seller-logout {
+    width: 100%;
     min-height: 46px;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
 }
 
 .seller-overlay {
@@ -774,7 +778,9 @@ svg {
     font-size: 10px;
 }
 
-.profile-popover a {
+.profile-popover a,
+.profile-popover > form > button {
+    width: 100%;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -783,13 +789,18 @@ svg {
 
     border-radius: 8px;
     font-size: 11px;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
 }
 
-.profile-popover a:hover {
+.profile-popover a:hover,
+.profile-popover > form > button:hover {
     background: #fff8ee;
 }
 
-.profile-popover a .seller-ui-icon {
+.profile-popover a .seller-ui-icon,
+.profile-popover > form > button .seller-ui-icon {
     width: 16px;
     height: 16px;
 }

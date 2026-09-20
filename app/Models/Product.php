@@ -5,42 +5,47 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Product extends Model
 {
+    use SoftDeletes;
+
     protected $fillable = [
-        'shop_id',
+        'seller_id',
+        'category_id',
         'name',
+        'slug',
         'description',
-        'category',
-        'price',
-        'original_price',
-        'discount_percentage',
-        'image',
-        'images',
-        'rating',
-        'sold_count',
-        'stock',
-        'free_shipping',
-        'location',
-        'badge',
-        'is_featured',
+        'is_active',
     ];
 
-    protected $casts = [
-        'images' => 'array',
-        'is_featured' => 'boolean',
-        'free_shipping' => 'boolean',
-    ];
-
-    public function shop(): BelongsTo
+    protected function casts(): array
     {
-        return $this->belongsTo(Shop::class);
+        return [
+            'is_active' => 'boolean',
+        ];
     }
 
-    public function cartItems(): HasMany
+    public function seller(): BelongsTo
     {
-        return $this->hasMany(CartItem::class);
+        return $this->belongsTo(Seller::class);
+    }
+
+    public function category(): BelongsTo
+    {
+        return $this->belongsTo(Category::class);
+    }
+
+    public function variants(): HasMany
+    {
+        return $this->hasMany(ProductVariant::class);
+    }
+
+    public function images(): HasMany
+    {
+        return $this->hasMany(ProductImage::class)
+            ->orderBy('position');
     }
 
     public function orderItems(): HasMany
@@ -48,16 +53,8 @@ class Product extends Model
         return $this->hasMany(OrderItem::class);
     }
 
-    public function wishlistItems()
+    public function wishlistItems(): HasMany
     {
         return $this->hasMany(Wishlist::class);
-    }
-
-    public function getDiscountedPriceAttribute()
-    {
-        if ($this->discount_percentage) {
-            return $this->price - ($this->price * $this->discount_percentage / 100);
-        }
-        return $this->price;
     }
 }

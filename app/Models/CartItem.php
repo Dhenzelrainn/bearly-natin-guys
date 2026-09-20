@@ -8,25 +8,27 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class CartItem extends Model
 {
     protected $fillable = [
-        'session_id',
-        'user_id',
-        'product_id',
+        'cart_id',
+        'product_variant_id',
         'quantity',
-        'price',
+        'selected',
     ];
 
-    public function product(): BelongsTo
+    protected function casts(): array
     {
-        return $this->belongsTo(Product::class);
+        return [
+            'quantity' => 'integer',
+            'selected' => 'boolean',
+        ];
     }
 
-    public function user(): BelongsTo
+    public function cart(): BelongsTo
     {
-        return $this->belongsTo(User::class);
+        return $this->belongsTo(Cart::class);
     }
 
-    public function getTotalAttribute()
+    public function productVariant(): BelongsTo
     {
-        return $this->quantity * $this->price;
+        return $this->belongsTo(ProductVariant::class);
     }
 }

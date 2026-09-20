@@ -737,12 +737,6 @@
     font-size: 12.5px !important;
 }
 
-/* Keep the existing modal logic, but match this page's quieter controls. */
-.seller-content + .pricing-modal .modal-card,
-.pricing-modal .modal-card {
-    border-radius: 12px;
-}
-
 /* Responsive */
 @media (max-width: 1120px) {
     .seller-content .pricing-page .pricing-summary-row {
@@ -810,7 +804,11 @@
 }
 
 /* Dedicated Create Promotion page */
-.promotion-create-page { max-width: 1240px; }
+.promotion-create-page {
+    width: 100%;
+    max-width: none;
+    margin: 0;
+}
 .promotion-create-toolbar {
     display: flex;
     align-items: center;
@@ -2223,6 +2221,205 @@
     background: var(--seller-gold-dark);
     box-shadow: none;
     transform: none;
+}
+
+/* =========================================================
+   PRICING & PROMOTIONS — PRICE EDITOR MODAL
+   This is the single source of truth for the price editor.
+   Keep it after the shared modal rules so it can specialize
+   the pricing dialog without changing other seller modals.
+   ========================================================= */
+
+.pricing-modal .modal-card {
+    width: min(620px, calc(100vw - 56px));
+    padding: 24px;
+    border-radius: 12px;
+}
+
+.pricing-modal .pricing-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+    margin-top: 2px;
+}
+
+.pricing-modal .pricing-form-grid > label {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0;
+}
+
+.pricing-modal .pricing-form-grid > label > span {
+    display: block;
+    margin: 0;
+    color: #625a55;
+    font-size: 12.5px !important;
+    font-weight: 500;
+    line-height: 1.4;
+}
+
+.pricing-modal .pricing-input-shell {
+    display: flex;
+    width: 100%;
+    min-height: 46px;
+    align-items: center;
+    overflow: hidden;
+    border: 1px solid #d8d0ca;
+    border-radius: 8px;
+    background: #fff;
+    transition: border-color .16s ease, box-shadow .16s ease;
+}
+
+.pricing-modal .pricing-input-shell:focus-within {
+    border-color: #a87956;
+    box-shadow: 0 0 0 3px rgba(74, 43, 29, .06);
+}
+
+.pricing-modal .pricing-input-affix {
+    display: inline-flex;
+    min-width: 42px;
+    height: 44px;
+    flex: 0 0 42px;
+    align-items: center;
+    justify-content: center;
+    color: #635a54;
+    background: #faf8f5;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1;
+}
+
+.pricing-modal .pricing-input-affix.is-prefix {
+    border-right: 1px solid #e4ddd7;
+}
+
+.pricing-modal .pricing-input-affix.is-suffix {
+    border-left: 1px solid #e4ddd7;
+}
+
+.pricing-modal .pricing-form-grid input {
+    width: 100%;
+    min-width: 0;
+    height: 44px;
+    padding: 0 13px;
+    border: 0;
+    outline: 0;
+    color: #2f2723;
+    background: transparent;
+    box-shadow: none;
+    font: 500 13px/1 Poppins, sans-serif !important;
+}
+
+.pricing-modal .pricing-form-grid input::-webkit-outer-spin-button,
+.pricing-modal .pricing-form-grid input::-webkit-inner-spin-button {
+    margin: 0;
+    -webkit-appearance: none;
+}
+
+.pricing-modal .pricing-form-grid input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+.pricing-modal .pricing-calculation {
+    margin-top: 22px;
+    padding: 14px 16px;
+    border: 1px solid #e6dfd9;
+    border-radius: 9px;
+    background: #fbfaf8;
+}
+
+.pricing-modal .pricing-calculation > div {
+    display: flex;
+    min-height: 32px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    color: #706761;
+    font-size: 12.5px !important;
+    line-height: 1.4;
+}
+
+.pricing-modal .pricing-calculation > div + div {
+    margin-top: 3px;
+}
+
+.pricing-modal .pricing-calculation span {
+    min-width: 0;
+}
+
+.pricing-modal .pricing-calculation strong {
+    flex: 0 0 auto;
+    color: #342821;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.pricing-modal .pricing-calculation .is-net {
+    min-height: 40px;
+    margin-top: 8px;
+    padding-top: 10px;
+    border-top: 1px solid #e4ddd7;
+}
+
+.pricing-modal .pricing-calculation .is-net span {
+    color: #3e332d;
+    font-weight: 600;
+}
+
+.pricing-modal .pricing-calculation .is-net strong {
+    color: #49291e;
+    font-size: 15px;
+    font-weight: 700;
+}
+
+.pricing-modal .pricing-form-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    margin: 15px 0 0;
+    color: #706760;
+    font-size: 12px !important;
+    line-height: 1.5;
+}
+
+.pricing-modal .pricing-form-note svg {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 18px;
+    margin-top: 1px;
+    color: #71503c;
+    stroke-width: 1.8;
+}
+
+.pricing-modal .modal-actions {
+    margin-top: 22px;
+    padding-top: 18px;
+}
+
+.pricing-modal .modal-actions > button {
+    width: auto;
+    min-width: 118px;
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+@media (max-width: 620px) {
+    .pricing-modal .modal-card {
+        width: 100%;
+        padding: 20px;
+    }
+
+    .pricing-modal .pricing-form-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .pricing-modal .modal-actions > button {
+        width: 100%;
+    }
 }
 
 .fulfillment-modal .modal-card {
@@ -9202,4 +9399,3 @@ svg {
         gap: 1px;
     }
 }
-

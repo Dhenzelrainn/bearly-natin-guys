@@ -300,11 +300,17 @@
         <div class="pricing-form-grid">
             <label>
                 <span>Regular price</span>
-                <div><b>₱</b><input type="number" min="0" step="0.01" data-price-regular></div>
+                <div class="pricing-input-shell">
+                    <span class="pricing-input-affix is-prefix" aria-hidden="true">₱</span>
+                    <input type="number" min="0" step="0.01" inputmode="decimal" aria-label="Regular price" data-price-regular>
+                </div>
             </label>
             <label>
                 <span>Discount</span>
-                <div><input type="number" min="0" max="90" step="1" data-price-discount><b>%</b></div>
+                <div class="pricing-input-shell">
+                    <input type="number" min="0" max="90" step="1" inputmode="numeric" aria-label="Discount percentage" data-price-discount>
+                    <span class="pricing-input-affix is-suffix" aria-hidden="true">%</span>
+                </div>
             </label>
         </div>
 

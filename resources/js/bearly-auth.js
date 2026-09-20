@@ -279,12 +279,14 @@ document.addEventListener('DOMContentLoaded', () => {
             'business_category',
             'business_permit',
         ],
-        courier: [
+        rider: [
             'vehicle_type',
-            'vehicle_model',
             'plate_number',
-            'drivers_license_number',
             'or_cr',
+        ],
+        logistics: [
+            'logistics_business_name',
+            'business_permit',
         ],
     };
 
@@ -293,28 +295,46 @@ document.addEventListener('DOMContentLoaded', () => {
         const stepLabel = registration.querySelector('[data-role-step-label]');
         const idLabel = registration.querySelector('[data-valid-id-label]');
         const idHelp = registration.querySelector('[data-valid-id-help]');
+        const businessDocumentTitle = registration.querySelector('[data-business-document-title]');
+        const businessDocumentHelp = registration.querySelector('[data-business-document-help]');
 
         if (stepLabel) {
             stepLabel.textContent =
                 role === 'seller'
                     ? 'Business Details'
-                    : role === 'courier'
+                    : role === 'rider'
                         ? 'Vehicle Details'
-                        : 'Buyer Details';
+                        : role === 'logistics'
+                            ? 'Logistics Details'
+                            : 'Buyer Details';
         }
 
         if (idLabel) {
             idLabel.textContent =
-                role === 'courier'
+                role === 'rider'
                     ? 'Valid ID or driver’s license'
                     : 'Valid government ID';
         }
 
         if (idHelp) {
             idHelp.textContent =
-                role === 'courier'
-                    ? 'Upload a government ID or a valid driver’s license.'
+                role === 'rider'
+                    ? 'Upload a government-issued ID or a valid driver’s license.'
                     : 'Passport, driver’s license, national ID, or another government-issued ID.';
+        }
+
+        if (businessDocumentTitle) {
+            businessDocumentTitle.textContent =
+                role === 'logistics'
+                    ? 'Business / DTI permit'
+                    : 'Business permit';
+        }
+
+        if (businessDocumentHelp) {
+            businessDocumentHelp.textContent =
+                role === 'logistics'
+                    ? 'Upload a clear copy of your Logistics / Sorting Center business or DTI permit.'
+                    : 'Upload a clear and current copy of your business permit.';
         }
 
         registration.querySelectorAll('.role-card').forEach((card) => {
@@ -325,16 +345,16 @@ document.addEventListener('DOMContentLoaded', () => {
             group.classList.toggle('active', group.dataset.roleFields === role);
         });
 
-        registration.querySelectorAll('[data-seller-document]').forEach((element) => {
-            const inactive = role !== 'seller';
+        registration.querySelectorAll('[data-business-document]').forEach((element) => {
+            const inactive = !['seller', 'logistics'].includes(role);
             element.hidden = inactive;
             element.querySelectorAll('input').forEach((input) => {
                 input.disabled = inactive;
             });
         });
 
-        registration.querySelectorAll('[data-courier-document]').forEach((element) => {
-            const inactive = role !== 'courier';
+        registration.querySelectorAll('[data-rider-document]').forEach((element) => {
+            const inactive = role !== 'rider';
             element.hidden = inactive;
             element.querySelectorAll('input').forEach((input) => {
                 input.disabled = inactive;
@@ -366,12 +386,19 @@ document.addEventListener('DOMContentLoaded', () => {
             .filter(Boolean)
             .join(' ');
 
+        const roleLabels = {
+            buyer: 'Buyer',
+            seller: 'Seller',
+            rider: 'Rider',
+            logistics: 'Logistics / Sorting Center',
+        };
+
         const groups = [
             {
                 title: 'Account',
                 editStep: 1,
                 fields: [
-                    ['Account type', role.charAt(0).toUpperCase() + role.slice(1)],
+                    ['Account type', roleLabels[role] || role],
                     ['Name', fullName],
                     ['Email', valueOf('email')],
                     ['Contact', valueOf('contact_number')],
@@ -401,15 +428,23 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
-        if (role === 'courier') {
+        if (role === 'rider') {
             groups.push({
                 title: 'Vehicle',
                 editStep: 3,
                 fields: [
                     ['Vehicle type', valueOf('vehicle_type')],
-                    ['Vehicle model', valueOf('vehicle_model')],
                     ['Plate number', valueOf('plate_number')],
-                    ['License number', valueOf('drivers_license_number')],
+                ],
+            });
+        }
+
+        if (role === 'logistics') {
+            groups.push({
+                title: 'Logistics center',
+                editStep: 3,
+                fields: [
+                    ['Business / center name', valueOf('logistics_business_name')],
                 ],
             });
         }
@@ -448,8 +483,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (approvalNotice) {
             approvalNotice.textContent =
-                `An administrator will review your ${role} application. ` +
-                'We’ll email the decision to your registered email address.';
+                role === 'rider'
+                    ? 'A Logistics / Sorting Center will review your Rider application. We’ll email the decision to your registered email address.'
+                    : `An administrator will review your ${roleLabels[role] || role} application. We’ll email the decision to your registered email address.`;
         }
     }
 
@@ -951,6 +987,21 @@ return result;
         const message = form.querySelector('[data-register-message]');
         if (message) message.hidden = false;
     });
+
+    const requestedRole = new URLSearchParams(window.location.search).get('role');
+    const allowedRoles = ['buyer', 'seller', 'rider', 'logistics'];
+
+    if (allowedRoles.includes(requestedRole)) {
+        const requestedRoleInput = form.querySelector(
+            `input[name="role"][value="${requestedRole}"]`
+        );
+
+        if (requestedRoleInput) {
+            form.querySelectorAll('input[name="role"]').forEach((input) => {
+                input.checked = input === requestedRoleInput;
+            });
+        }
+    }
 
     showStep(1);
     loadProvinces();

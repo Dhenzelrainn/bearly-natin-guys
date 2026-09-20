@@ -15,7 +15,7 @@
             class="register-bear"
         >
         <h1>Create your<br>Bearly account</h1>
-        <p>Join thousands of happy users shopping, selling, and delivering with Bearly.</p>
+        <p>Join Bearly as a buyer, seller, rider, or logistics partner.</p>
 
         <ol class="step-list" aria-label="Registration progress">
             <li class="active" data-step-marker="1"><span>1</span><b>Personal Information</b></li>
@@ -31,7 +31,7 @@
 
         <section class="form-step active" data-step="1">
             <h2>Choose how you'll use Bearly</h2>
-            <div class="role-grid">
+            <div class="role-grid" aria-label="Choose account type">
                 <label class="role-card">
                     <input type="radio" name="role" value="buyer">
                     <span class="role-check">✓</span>
@@ -44,6 +44,7 @@
                     <strong>Buyer</strong>
                     <small>Shop products from<br>trusted sellers</small>
                 </label>
+
                 <label class="role-card selected">
                     <input type="radio" name="role" value="seller" checked>
                     <span class="role-check">✓</span>
@@ -54,10 +55,11 @@
                         aria-hidden="true"
                     >
                     <strong>Seller</strong>
-                    <small>Grow your business<br>on Bearly</small>
+                    <small>Manage products, orders,<br>and your store</small>
                 </label>
+
                 <label class="role-card">
-                    <input type="radio" name="role" value="courier">
+                    <input type="radio" name="role" value="rider">
                     <span class="role-check">✓</span>
                     <img
                         src="{{ asset('images/icon-courier.png') }}"
@@ -65,8 +67,23 @@
                         class="role-icon"
                         aria-hidden="true"
                     >
-                    <strong>Courier</strong>
-                    <small>Deliver orders<br>and earn</small>
+                    <strong>Rider</strong>
+                    <small>Pick up parcels<br>and complete deliveries</small>
+                </label>
+
+                <label class="role-card">
+                    <input type="radio" name="role" value="logistics">
+                    <span class="role-check">✓</span>
+                    <svg
+                        class="role-icon logistics-role-icon"
+                        viewBox="0 0 48 48"
+                        aria-hidden="true"
+                    >
+                        <path d="M7 20 24 10l17 10v19H7V20Z"/>
+                        <path d="M12 22h24M14 28h10v11H14V28Zm15 0h6v6h-6v-6Z"/>
+                    </svg>
+                    <strong>Logistics</strong>
+                    <small>Sort parcels and<br>manage rider operations</small>
                 </label>
             </div>
 
@@ -134,7 +151,7 @@
                         <input
                             name="business_name"
                             value="{{ old('business_name') }}"
-                            pattern="[A-Za-zÀ-ÿ&.,' -]+"
+                            pattern="[A-Za-zÀ-ÿ0-9&.,' -]+"
                             placeholder="Enter your registered business name"
                         >
                     </label>
@@ -164,16 +181,54 @@
                 </div>
             </div>
 
-            <div data-role-fields="courier" class="role-fields">
+            <div data-role-fields="rider" class="role-fields">
                 <div class="section-heading compact-heading">
                     <h2>Vehicle details</h2>
-                    <p>Provide the vehicle information used for deliveries.</p>
+                    <p>Provide the vehicle information used for parcel pickup and delivery.</p>
                 </div>
+
                 <div class="form-grid two">
-                    <label>Vehicle type<select name="vehicle_type"><option value="">Select vehicle</option><option>Motorcycle</option><option>Car</option><option>Van</option><option>Truck</option></select></label>
-                    <label>Vehicle model<input name="vehicle_model" value="{{ old('vehicle_model') }}"></label><label>Plate number<input name="plate_number" value="{{ old('plate_number') }}" data-uppercase placeholder="ABC 1234"></label><label>Driver’s license number<input name="drivers_license_number" value="{{ old('drivers_license_number') }}"></label>
+                    <label>
+                        Vehicle type
+                        <select name="vehicle_type">
+                            <option value="">Select vehicle</option>
+                            <option>Motorcycle</option>
+                            <option>Car</option>
+                            <option>Van</option>
+                            <option>Truck</option>
+                        </select>
+                    </label>
+                    <label>Plate number<input name="plate_number" value="{{ old('plate_number') }}" data-uppercase placeholder="ABC 1234"></label>
                 </div>
-                <div class="info-box compact-info-box">Your application will be reviewed before delivery access is enabled.</div>
+
+                <div class="info-box compact-info-box">
+                    <strong>Logistics review required.</strong>
+                    Your Rider application will be reviewed by a Logistics / Sorting Center before delivery access is enabled.
+                </div>
+            </div>
+
+            <div data-role-fields="logistics" class="role-fields">
+                <div class="section-heading compact-heading">
+                    <h2>Logistics center details</h2>
+                    <p>Provide the registered business information for your Logistics / Sorting Center.</p>
+                </div>
+
+                <div class="form-grid one">
+                    <label>
+                        Business / logistics center name
+                        <input
+                            name="logistics_business_name"
+                            value="{{ old('logistics_business_name') }}"
+                            pattern="[A-Za-zÀ-ÿ0-9&.,' -]+"
+                            placeholder="Enter your registered business or center name"
+                        >
+                    </label>
+                </div>
+
+                <div class="info-box compact-info-box">
+                    <strong>Admin review required.</strong>
+                    Your Logistics / Sorting Center application will be reviewed before dashboard access is enabled.
+                </div>
             </div>
         </section>
 
@@ -220,15 +275,15 @@
                     </div>
                 </article>
 
-                <article class="document-upload" data-upload-card data-seller-document>
+                <article class="document-upload" data-upload-card data-business-document>
                     <div class="document-upload__header">
                         <span class="document-icon" aria-hidden="true">
                             <img src="{{ asset('images/permit.png') }}" alt="">
                         </span>
                         <div>
                             <span class="required-badge">Required</span>
-                            <h3>Business permit</h3>
-                            <p>Upload a clear and current copy of your business permit.</p>
+                            <h3 data-business-document-title>Business permit</h3>
+                            <p data-business-document-help>Upload a clear and current copy of your business permit.</p>
                             <small>PNG, JPG, or PDF · Max 5 MB</small>
                         </div>
                     </div>
@@ -250,7 +305,7 @@
                     </div>
                 </article>
 
-                <article class="document-upload" data-upload-card data-courier-document>
+                <article class="document-upload" data-upload-card data-rider-document>
                     <div class="document-upload__header">
                         <span class="document-icon" aria-hidden="true">
                             <img src="{{ asset('images/permit.png') }}" alt="">

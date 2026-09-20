@@ -77,7 +77,7 @@ Route::prefix('api/psgc')
             ->name('psgc.barangays');
     });
 
-    /*
+/*
 |--------------------------------------------------------------------------
 | Buyer
 |--------------------------------------------------------------------------
@@ -190,12 +190,6 @@ Route::prefix('admin')->name('admin.')->group(function () {
 
     Route::get('/account', [AdminController::class, 'account'])
         ->name('account');
-
-    /*
-    |--------------------------------------------------------------------------
-    | Admin approval actions
-    |--------------------------------------------------------------------------
-    */
 
     Route::middleware(['auth', 'role:admin'])->group(function () {
         Route::post('/applications/{user}/approve', [AccountApprovalController::class, 'approveByAdmin'])
@@ -328,8 +322,9 @@ Route::prefix('logistics')->name('logistics.')->group(function () {
     Route::get('/', [LogisticsController::class, 'landing'])
         ->name('landing');
 
-    Route::get('/register', [LogisticsController::class, 'register'])
-        ->name('register');
+    Route::get('/register', function () {
+        return redirect('/register?role=logistics');
+    })->name('register');
 
     Route::post('/register', [LogisticsController::class, 'submitRegistration'])
         ->name('register.submit');
@@ -389,14 +384,18 @@ Route::prefix('rider')->name('rider.')->group(function () {
     Route::get('/', [RiderController::class, 'landing'])
         ->name('landing');
 
-    Route::get('/register', [RiderController::class, 'register'])
-        ->name('register');
+    Route::get('/register', function () {
+        return redirect('/register?role=rider');
+    })->name('register');
 
     Route::post('/register', [RiderController::class, 'submitRegistration'])
         ->name('register.submit');
 
     Route::redirect('/login', '/login')
         ->name('login');
+
+    Route::redirect('/dashboard', '/rider/dashboard/pickups')
+        ->name('dashboard');
 
     Route::get('/dashboard/pickups', [RiderController::class, 'pickupsDashboard'])
         ->name('dashboard.pickups');

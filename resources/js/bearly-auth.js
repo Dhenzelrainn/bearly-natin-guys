@@ -12,19 +12,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    const demoLogin = document.querySelector('[data-demo-login]');
-    demoLogin?.addEventListener('submit', (event) => {
-        event.preventDefault();
-
-        if (!demoLogin.checkValidity()) {
-            demoLogin.reportValidity();
-            return;
-        }
-
-        const message = demoLogin.querySelector('[data-login-message]');
-        if (message) message.hidden = false;
-    });
-
     const registration = document.querySelector('[data-registration]');
     if (!registration) return;
 
@@ -279,13 +266,6 @@ document.addEventListener('DOMContentLoaded', () => {
             'business_category',
             'business_permit',
         ],
-        courier: [
-            'vehicle_type',
-            'vehicle_model',
-            'plate_number',
-            'drivers_license_number',
-            'or_cr',
-        ],
     };
 
     function updateRoleUI() {
@@ -295,30 +275,20 @@ document.addEventListener('DOMContentLoaded', () => {
         const idHelp = registration.querySelector('[data-valid-id-help]');
 
         if (stepLabel) {
-            stepLabel.textContent =
-                role === 'seller'
-                    ? 'Business Details'
-                    : role === 'courier'
-                        ? 'Vehicle Details'
-                        : 'Buyer Details';
+            stepLabel.textContent = role === 'seller' ? 'Business Details' : 'Buyer Details';
         }
 
         if (idLabel) {
-            idLabel.textContent =
-                role === 'courier'
-                    ? 'Valid ID or driver’s license'
-                    : 'Valid government ID';
+            idLabel.textContent = 'Valid government ID';
         }
 
         if (idHelp) {
-            idHelp.textContent =
-                role === 'courier'
-                    ? 'Upload a government ID or a valid driver’s license.'
-                    : 'Passport, driver’s license, national ID, or another government-issued ID.';
+            idHelp.textContent = 'Passport, driver’s license, national ID, or another government-issued ID.';
         }
 
         registration.querySelectorAll('.role-card').forEach((card) => {
-            card.classList.toggle('selected', card.querySelector('input').checked);
+            const input = card.querySelector('input[name="role"]');
+            card.classList.toggle('selected', Boolean(input?.checked));
         });
 
         registration.querySelectorAll('[data-role-fields]').forEach((group) => {
@@ -327,14 +297,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         registration.querySelectorAll('[data-seller-document]').forEach((element) => {
             const inactive = role !== 'seller';
-            element.hidden = inactive;
-            element.querySelectorAll('input').forEach((input) => {
-                input.disabled = inactive;
-            });
-        });
-
-        registration.querySelectorAll('[data-courier-document]').forEach((element) => {
-            const inactive = role !== 'courier';
             element.hidden = inactive;
             element.querySelectorAll('input').forEach((input) => {
                 input.disabled = inactive;
@@ -397,19 +359,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 fields: [
                     ['Business name', valueOf('business_name')],
                     ['Line of business', valueOf('business_category')],
-                ],
-            });
-        }
-
-        if (role === 'courier') {
-            groups.push({
-                title: 'Vehicle',
-                editStep: 3,
-                fields: [
-                    ['Vehicle type', valueOf('vehicle_type')],
-                    ['Vehicle model', valueOf('vehicle_model')],
-                    ['Plate number', valueOf('plate_number')],
-                    ['License number', valueOf('drivers_license_number')],
                 ],
             });
         }
@@ -948,8 +897,7 @@ return result;
 
     submit.addEventListener('click', () => {
         if (!validateStep()) return;
-        const message = form.querySelector('[data-register-message]');
-        if (message) message.hidden = false;
+        form.requestSubmit();
     });
 
     showStep(1);

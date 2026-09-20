@@ -3,7 +3,7 @@
 @section('title', 'Sign In | Bearly')
 
 @section('header-action')
-    <a href="{{ route('home') }}" class="header-link">
+    <a href="{{ route('shop.home') }}" class="header-link">
         <span aria-hidden="true">←</span>
         <span>Back to shop</span>
     </a>
@@ -26,9 +26,13 @@
         {{-- Login form --}}
         <form
             class="login-form"
-            data-demo-login
-            novalidate
+            method="POST"
+            action="{{ route('login.submit') }}"
         >
+            @csrf
+            @if($errors->any())
+                <div class="demo-message" role="alert">{{ $errors->first() }}</div>
+            @endif
             <div class="access-bar">
 
                 {{-- Email --}}
@@ -47,6 +51,7 @@
                     <input
                         type="email"
                         name="email"
+                        value="{{ old('email') }}"
                         placeholder="Email address"
                         autocomplete="email"
                         required
@@ -156,15 +161,6 @@
                 </a>
             </p>
 
-            {{-- Frontend-only preview message --}}
-            <div
-                class="demo-message"
-                data-login-message
-                hidden
-                role="status"
-            >
-                Login UI is working. Database connection will be added later.
-            </div>
         </form>
 
         {{-- Bottom e-commerce illustration --}}

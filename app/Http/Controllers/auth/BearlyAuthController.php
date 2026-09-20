@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Auth;
 
+use App\Enums\AccountStatus;
+use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
@@ -38,17 +40,23 @@ class BearlyAuthController extends Controller
         $request->session()->regenerate();
         $user = $request->user();
 
-        if ($user->status !== 'active') {
+        if ($user->status !== AccountStatus::Active->value) {
+            Auth::logout();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+
             return $this->redirectForStatus($user->status);
         }
 
         $user->forceFill(['last_login_at' => now()])->save();
 
         $routes = [
-            'admin' => 'admin.dashboard',
-            'buyer' => 'buyer.home',
-            'seller' => 'seller.dashboard',
-            'courier' => 'courier.dashboard',
+            UserRole::Admin->value => 'admin.dashboard',
+            UserRole::Buyer->value => 'home',
+            UserRole::Seller->value => 'seller.dashboard',
+            UserRole::Logistics->value => 'logistics.dashboard',
+            UserRole::Rider->value => 'rider.dashboard.deliveries',
+            UserRole::Guest->value => 'shop.home',
         ];
 
         $route = $routes[$user->role] ?? null;
@@ -61,7 +69,7 @@ class BearlyAuthController extends Controller
     public function register(Request $request): RedirectResponse
     {
         $data = $request->validate([
-            'role' => ['required', Rule::in(['buyer', 'seller', 'courier'])],
+            'role' => ['required', Rule::in([UserRole::Buyer->value, UserRole::Seller->value])],
             'first_name' => ['required', 'string', 'max:60', 'regex:/^[\pL\s\'\-]+$/u'],
             'last_name' => ['required', 'string', 'max:60', 'regex:/^[\pL\s\'\-]+$/u'],
             'middle_initial' => ['nullable', 'string', 'max:2', 'regex:/^[\pL\.]+$/u'],
@@ -72,22 +80,19 @@ class BearlyAuthController extends Controller
             'province' => ['required', 'string', 'max:100'],
             'city' => ['required', 'string', 'max:100'],
             'barangay' => ['required', 'string', 'max:100'],
-            'street_address' => ['required', 'string', 'max:255'],
+            'street_name' => ['required', 'string', 'max:180'],
+            'house_number' => ['required', 'string', 'max:40'],
+            'postal_code' => ['required', 'digits:4'],
             'business_name' => ['required_if:role,seller', 'nullable', 'string', 'max:150', 'regex:/^[\pL\pN\s&\'\.\-]+$/u'],
             'business_category' => ['required_if:role,seller', 'nullable', 'string', 'max:100'],
-            'vehicle_type' => ['required_if:role,courier', 'nullable', 'string', 'max:80'],
-            'plate_number' => ['required_if:role,courier', 'nullable', 'string', 'max:20'],
             'valid_id' => ['required', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:5120'],
             'business_permit' => ['required_if:role,seller', 'nullable', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:5120'],
-            'courier_documents' => ['required_if:role,courier', 'nullable', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:5120'],
             'password' => ['required', 'confirmed', 'min:8', 'regex:/[a-z]/', 'regex:/[A-Z]/', 'regex:/[0-9]/'],
             'terms' => ['accepted'],
         ]);
 
-        $status = $data['role'] === 'buyer' ? 'active' : 'pending';
-        $validIdPath = $request->file('valid_id')->store('registration-documents/valid-ids', 'private');
-        $businessPermitPath = $request->file('business_permit')?->store('registration-documents/business-permits', 'private');
-        $courierDocumentsPath = $request->file('courier_documents')?->store('registration-documents/courier', 'private');
+        $validIdPath = $request->file('valid_id')->store('registration-documents/valid-ids', 'local');
+        $businessPermitPath = $request->file('business_permit')?->store('registration-documents/business-permits', 'local');
 
         $user = User::create([
             'name' => trim($data['first_name'].' '.$data['last_name']),
@@ -99,27 +104,28 @@ class BearlyAuthController extends Controller
             'email' => $data['email'],
             'contact_number' => $data['contact_number'],
             'role' => $data['role'],
-            'status' => $status,
+            'status' => AccountStatus::Pending->value,
             'province' => $data['province'],
             'city' => $data['city'],
             'barangay' => $data['barangay'],
-            'street_address' => $data['street_address'],
+            'street_address' => trim($data['house_number'].' '.$data['street_name']).', '.$data['postal_code'],
             'business_name' => $data['business_name'] ?? null,
             'business_category' => $data['business_category'] ?? null,
-            'vehicle_type' => $data['vehicle_type'] ?? null,
-            'plate_number' => isset($data['plate_number']) ? strtoupper($data['plate_number']) : null,
             'valid_id_path' => $validIdPath,
             'business_permit_path' => $businessPermitPath,
-            'courier_documents_path' => $courierDocumentsPath,
             'password' => Hash::make($data['password']),
         ]);
 
-        Auth::login($user);
-        $request->session()->regenerate();
+        session([
+            'marketplace_application' => [
+                'name' => $user->name,
+                'role' => $user->role,
+                'status' => $user->status,
+                'approval_authority' => 'Bearly Administrator',
+            ],
+        ]);
 
-        return $status === 'pending'
-            ? redirect()->route('application.pending')
-            : redirect('/')->with('success', 'Your Bearly account has been created.');
+        return redirect()->route('application.pending');
     }
 
     public function logout(Request $request): RedirectResponse
@@ -136,8 +142,6 @@ class BearlyAuthController extends Controller
         if (in_array($status, ['pending', 'needs_revision'], true)) {
             return redirect()->route('application.pending');
         }
-
-        Auth::logout();
 
         $messages = [
             'rejected' => 'Your application was not approved. Please contact Bearly support.',

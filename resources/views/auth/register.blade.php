@@ -25,7 +25,11 @@
         </ol>
     </aside>
 
-    <form class="register-form" data-demo-register novalidate>
+    <form class="register-form" method="POST" action="{{ route('register.submit') }}" enctype="multipart/form-data" novalidate>
+        @csrf
+        @if($errors->any())
+            <div class="demo-message" role="alert">{{ $errors->first() }}</div>
+        @endif
 
         <div class="mobile-progress"><span data-mobile-step>Step 1 of 4</span><div><i data-progress-bar></i></div></div>
 
@@ -56,18 +60,17 @@
                     <strong>Seller</strong>
                     <small>Grow your business<br>on Bearly</small>
                 </label>
-                <label class="role-card">
-                    <input type="radio" name="role" value="courier">
-                    <span class="role-check">✓</span>
+                <a class="role-card" href="{{ route('logistics.register') }}">
+                    <span class="role-check">→</span>
                     <img
                         src="{{ asset('images/icon-courier.png') }}"
                         alt=""
                         class="role-icon"
                         aria-hidden="true"
                     >
-                    <strong>Courier</strong>
-                    <small>Deliver orders<br>and earn</small>
-                </label>
+                    <strong>Logistics</strong>
+                    <small>Apply to operate<br>a sorting center</small>
+                </a>
             </div>
 
             <div class="section-heading"><h3>Personal Information</h3><p>Tell us a little about yourself</p></div>
@@ -164,17 +167,6 @@
                 </div>
             </div>
 
-            <div data-role-fields="courier" class="role-fields">
-                <div class="section-heading compact-heading">
-                    <h2>Vehicle details</h2>
-                    <p>Provide the vehicle information used for deliveries.</p>
-                </div>
-                <div class="form-grid two">
-                    <label>Vehicle type<select name="vehicle_type"><option value="">Select vehicle</option><option>Motorcycle</option><option>Car</option><option>Van</option><option>Truck</option></select></label>
-                    <label>Vehicle model<input name="vehicle_model" value="{{ old('vehicle_model') }}"></label><label>Plate number<input name="plate_number" value="{{ old('plate_number') }}" data-uppercase placeholder="ABC 1234"></label><label>Driver’s license number<input name="drivers_license_number" value="{{ old('drivers_license_number') }}"></label>
-                </div>
-                <div class="info-box compact-info-box">Your application will be reviewed before delivery access is enabled.</div>
-            </div>
         </section>
 
         <section class="form-step documents-step" data-step="4">
@@ -250,35 +242,6 @@
                     </div>
                 </article>
 
-                <article class="document-upload" data-upload-card data-courier-document>
-                    <div class="document-upload__header">
-                        <span class="document-icon" aria-hidden="true">
-                            <img src="{{ asset('images/permit.png') }}" alt="">
-                        </span>
-                        <div>
-                            <span class="required-badge">Required</span>
-                            <h3>OR / CR</h3>
-                            <p>Upload a clear copy of the vehicle’s current OR and CR.</p>
-                            <small>PNG, JPG, or PDF · Max 5 MB</small>
-                        </div>
-                    </div>
-
-                    <label class="upload-dropzone" data-drop-zone>
-                        <input name="or_cr" type="file" accept=".png,.jpg,.jpeg,.pdf" data-file-preview>
-                        <img src="{{ asset('images/cloud.png') }}" alt="" class="upload-icon" aria-hidden="true">
-                        <span><strong>Choose file</strong> or drag and drop</span>
-                    </label>
-
-                    <div class="file-status" data-file-status hidden>
-                        <span class="file-status__icon" aria-hidden="true">✓</span>
-                        <span class="file-status__details"><strong data-file-name></strong><small data-file-meta></small></span>
-                        <div class="file-status__actions">
-                            <button type="button" data-file-action="preview">Preview</button>
-                            <button type="button" data-file-action="replace">Replace</button>
-                            <button type="button" data-file-action="remove">Remove</button>
-                        </div>
-                    </div>
-                </article>
             </div>
 
             <section class="application-summary" aria-labelledby="application-summary-title">
@@ -305,7 +268,6 @@
             <button type="button" class="primary-button" data-next>Continue</button>
             <button type="button" class="primary-button" data-submit>Submit application <span aria-hidden="true">→</span></button>
         </div>
-        <div class="demo-message" data-register-message hidden role="status">Registration preview completed. No information was saved.</div>
     </form>
 </section>
 @endsection

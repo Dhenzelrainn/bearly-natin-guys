@@ -22,8 +22,12 @@ return new class extends Migration
             $table->string('email')->unique();
             $table->timestamp('email_verified_at')->nullable();
             $table->string('contact_number');
-            $table->enum('role', ['buyer', 'seller', 'courier', 'admin']);
+            $table->string('role', 32);
             $table->enum('status', ['active', 'pending', 'needs_revision', 'rejected', 'suspended', 'deactivated', 'banned'])->default('pending');
+            $table->foreignId('logistics_id')->nullable()->constrained('users')->nullOnDelete();
+            $table->foreignId('approved_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->timestamp('approved_at')->nullable();
+            $table->text('rejection_reason')->nullable();
             $table->string('province');
             $table->string('city');
             $table->string('barangay');
@@ -34,7 +38,8 @@ return new class extends Migration
             $table->string('plate_number')->nullable();
             $table->string('valid_id_path')->nullable();
             $table->string('business_permit_path')->nullable();
-            $table->string('courier_documents_path')->nullable();
+            $table->string('or_cr_path')->nullable();
+            $table->string('driver_license_path')->nullable();
             $table->string('password');
             $table->rememberToken();
             $table->timestamp('last_login_at')->nullable();

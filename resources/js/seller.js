@@ -1,0 +1,3080 @@
+const bootSeller = () => {
+    window.lucide?.createIcons();
+
+    const shell = document.querySelector('[data-seller-shell]');
+    const menuButton = document.querySelector('[data-seller-menu]');
+    const mobileMenuButton = document.querySelector('[data-seller-mobile-menu]');
+    const mobileSidebar = window.matchMedia('(max-width: 820px)');
+    const setSidebarCollapsed = (collapsed, remember = true) => {
+        if (!shell || mobileSidebar.matches) return;
+        shell.classList.toggle('sidebar-collapsed', collapsed);
+        menuButton?.setAttribute('aria-expanded', String(!collapsed));
+        menuButton?.setAttribute('aria-label', collapsed ? 'Expand seller navigation' : 'Collapse seller navigation');
+        if (remember) {
+            try { window.localStorage.setItem('bearlySellerSidebarCollapsed', String(collapsed)); } catch (_) {}
+        }
+    };
+    if (!mobileSidebar.matches) {
+        try { setSidebarCollapsed(window.localStorage.getItem('bearlySellerSidebarCollapsed') === 'true', false); } catch (_) {}
+    } else {
+        mobileMenuButton?.setAttribute('aria-expanded', 'false');
+    }
+    menuButton?.addEventListener('click', () => {
+        if (mobileSidebar.matches) shell?.classList.remove('menu-open');
+        else setSidebarCollapsed(!shell?.classList.contains('sidebar-collapsed'));
+    });
+    mobileMenuButton?.addEventListener('click', () => {
+        const opened = shell?.classList.toggle('menu-open') ?? false;
+        mobileMenuButton.setAttribute('aria-expanded', String(opened));
+        mobileMenuButton.setAttribute('aria-label', opened ? 'Close seller navigation' : 'Open seller navigation');
+    });
+    document.querySelector('[data-seller-overlay]')?.addEventListener('click', () => {
+        shell?.classList.remove('menu-open');
+        mobileMenuButton?.setAttribute('aria-expanded', 'false');
+        mobileMenuButton?.setAttribute('aria-label', 'Open seller navigation');
+    });
+    mobileSidebar.addEventListener('change', (event) => {
+        shell?.classList.remove('menu-open');
+        if (event.matches) {
+            shell?.classList.remove('sidebar-collapsed');
+            mobileMenuButton?.setAttribute('aria-expanded', 'false');
+            mobileMenuButton?.setAttribute('aria-label', 'Open seller navigation');
+        } else {
+            try { setSidebarCollapsed(window.localStorage.getItem('bearlySellerSidebarCollapsed') === 'true', false); } catch (_) { setSidebarCollapsed(false, false); }
+        }
+    });
+
+    const closePopovers = (except = null) => {
+        document.querySelectorAll('[data-seller-popover]').forEach((popover) => {
+            if (popover !== except) popover.hidden = true;
+        });
+    };
+
+    document.querySelectorAll('[data-seller-popover-toggle]').forEach((button) => {
+        button.addEventListener('click', (event) => {
+            event.stopPropagation();
+            const popover = document.querySelector(`[data-seller-popover="${button.dataset.sellerPopoverToggle}"]`);
+            if (!popover) return;
+            const shouldOpen = popover.hidden;
+            closePopovers(popover);
+            popover.hidden = !shouldOpen;
+        });
+    });
+
+    document.addEventListener('click', () => closePopovers());
+    document.querySelectorAll('[data-seller-popover]').forEach((popover) => popover.addEventListener('click', (event) => event.stopPropagation()));
+
+    const toast = document.querySelector('[data-seller-toast]');
+    document.querySelectorAll('[data-preview-link]').forEach((link) => {
+        link.addEventListener('click', (event) => {
+            event.preventDefault();
+            if (!toast) return;
+            toast.textContent = `${link.dataset.previewLink} page will be built after the dashboard.`;
+            toast.classList.add('is-visible');
+            window.clearTimeout(window.sellerToastTimer);
+            window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 2600);
+        });
+    });
+
+    document.querySelectorAll('[data-modal-open]').forEach((button) => {
+        button.addEventListener('click', () => {
+            const modal = document.querySelector(`[data-modal="${button.dataset.modalOpen}"]`);
+            if (!modal) return;
+            modal.hidden = false;
+            document.body.style.overflow = 'hidden';
+            modal.querySelector('input:not([type="hidden"])')?.focus();
+        });
+    });
+
+    document.querySelectorAll('[data-modal-close]').forEach((button) => {
+        button.addEventListener('click', () => {
+            button.closest('[data-modal]').hidden = true;
+            document.body.style.overflow = '';
+        });
+    });
+
+    const description = document.querySelector('[data-description]');
+    const descriptionCount = document.querySelector('[data-description-count]');
+    description?.addEventListener('input', () => {
+        if (descriptionCount) descriptionCount.textContent = description.value.length;
+    });
+
+    const productDescription = document.querySelector('[data-product-description]');
+    const productDescriptionCount = document.querySelector('[data-product-description-count]');
+    productDescription?.addEventListener('input', () => {
+        if (productDescriptionCount) productDescriptionCount.textContent = productDescription.value.length;
+    });
+
+    const productPrice = document.querySelector('[data-product-price]');
+    const productDiscount = document.querySelector('[data-product-discount]');
+    const productSalePrice = document.querySelector('[data-sale-price]');
+    const updateSalePrice = () => {
+        if (!productSalePrice) return;
+        const price = Math.max(0, Number(productPrice?.value || 0));
+        const discount = Math.min(90, Math.max(0, Number(productDiscount?.value || 0)));
+        const salePrice = price * (1 - (discount / 100));
+        productSalePrice.textContent = `₱${salePrice.toLocaleString('en-PH', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        })}`;
+    };
+    productPrice?.addEventListener('input', updateSalePrice);
+    productDiscount?.addEventListener('input', updateSalePrice);
+
+    const productImageInput = document.querySelector('[data-product-image-input]');
+    productImageInput?.addEventListener('change', () => {
+        const file = productImageInput.files?.[0];
+        const preview = document.querySelector('[data-product-image-preview]');
+        if (!file || !preview) return;
+        const image = document.createElement('img');
+        image.alt = 'Selected product preview';
+        image.src = URL.createObjectURL(file);
+        image.addEventListener('load', () => URL.revokeObjectURL(image.src), { once: true });
+        preview.replaceChildren(image);
+    });
+
+    const galleryInput = document.querySelector('input[name="gallery_images[]"]');
+    galleryInput?.addEventListener('change', () => {
+        const exceedsLimit = (galleryInput.files?.length ?? 0) > 4;
+        galleryInput.setCustomValidity(exceedsLimit ? 'Choose up to four gallery images only.' : '');
+        if (exceedsLimit) galleryInput.reportValidity();
+    });
+
+    document.querySelectorAll('[data-photo-input]').forEach((input) => {
+        input.addEventListener('change', () => {
+            const file = input.files?.[0];
+            const box = input.closest('[data-photo-upload]')?.querySelector('.upload-box');
+            if (!file || !box) return;
+            let preview = box.querySelector('[data-photo-preview]');
+            if (!preview) {
+                preview = document.createElement('img');
+                preview.dataset.photoPreview = '';
+                box.prepend(preview);
+                box.querySelector('svg')?.remove();
+            }
+            preview.src = URL.createObjectURL(file);
+        });
+    });
+
+    const applyProductFilters = () => {
+        const search = document.querySelector('[data-product-search]')?.value.trim().toLowerCase() ?? '';
+        const category = document.querySelector('[data-product-category]')?.value ?? '';
+        const status = document.querySelector('[data-product-status]')?.value ?? '';
+        let visible = 0;
+        document.querySelectorAll('[data-product-row]').forEach((row) => {
+            const matches = (!search || row.dataset.name.includes(search))
+                && (!category || row.dataset.category === category)
+                && (!status || row.dataset.status === status);
+            row.hidden = !matches;
+            if (matches) visible += 1;
+        });
+        const noResults = document.querySelector('[data-no-results]');
+        if (noResults) noResults.hidden = visible > 0;
+    };
+    document.querySelector('[data-product-search]')?.addEventListener('input', applyProductFilters);
+    document.querySelectorAll('[data-product-category],[data-product-status]').forEach((select) => select.addEventListener('change', applyProductFilters));
+
+    /* Orders page: frontend-only filtering, selection, and preview actions. */
+    const orderWorkspace = document.querySelector('[data-orders-workspace]');
+
+    if (orderWorkspace) {
+        const defaultStatusNode = document.querySelector('[data-default-order-status]');
+        let activeOrderStatus = defaultStatusNode
+            ? JSON.parse(defaultStatusNode.textContent)
+            : 'all';
+        const orderRows = [...orderWorkspace.querySelectorAll('[data-order-row]')];
+        const orderSearch = orderWorkspace.querySelector('[data-order-search]');
+        const orderDate = orderWorkspace.querySelector('[data-order-date]');
+        const orderPayment = orderWorkspace.querySelector('[data-order-payment]');
+        const orderCheckAll = orderWorkspace.querySelector('[data-order-check-all]');
+        const selectedCount = orderWorkspace.querySelector('[data-order-selected-count]');
+        const visibleCount = orderWorkspace.querySelector('[data-order-visible-count]');
+        const noResults = orderWorkspace.querySelector('[data-orders-no-results]');
+        const bulkButtons = [...orderWorkspace.querySelectorAll('[data-order-bulk-action]')];
+
+        const updateOrderSelection = () => {
+            const visibleChecks = orderRows
+                .filter((row) => !row.hidden)
+                .map((row) => row.querySelector('[data-order-check]'));
+            const checked = orderRows.filter((row) => row.querySelector('[data-order-check]')?.checked).length;
+
+            if (selectedCount) selectedCount.textContent = checked;
+            bulkButtons.forEach((button) => { button.disabled = checked === 0; });
+
+            if (orderCheckAll) {
+                orderCheckAll.checked = visibleChecks.length > 0 && visibleChecks.every((check) => check?.checked);
+                orderCheckAll.indeterminate = visibleChecks.some((check) => check?.checked) && !orderCheckAll.checked;
+            }
+        };
+
+        const applyOrderFilters = () => {
+            const search = orderSearch?.value.trim().toLowerCase() ?? '';
+            const date = orderDate?.value ?? '';
+            const payment = orderPayment?.value ?? '';
+            let visible = 0;
+
+            orderRows.forEach((row) => {
+                const statusMatches = activeOrderStatus === 'all'
+                    || row.dataset.status === activeOrderStatus
+                    || (activeOrderStatus === 'history' && row.dataset.history === 'true');
+                const matches = statusMatches
+                    && (!search || row.dataset.search.includes(search))
+                    && (!date || row.dataset.date === date)
+                    && (!payment || row.dataset.payment === payment);
+
+                row.hidden = !matches;
+                if (matches) visible += 1;
+            });
+
+            if (visibleCount) visibleCount.textContent = visible;
+            if (noResults) noResults.hidden = visible > 0;
+            updateOrderSelection();
+        };
+
+        orderWorkspace.querySelectorAll('[data-order-tab]').forEach((tab) => {
+            tab.addEventListener('click', () => {
+                activeOrderStatus = tab.dataset.orderTab;
+                orderWorkspace.querySelectorAll('[data-order-tab]').forEach((item) => {
+                    const active = item === tab;
+                    item.classList.toggle('is-active', active);
+                    item.setAttribute('aria-selected', String(active));
+                });
+                applyOrderFilters();
+            });
+        });
+
+        const requestedOrderStatus = new URLSearchParams(window.location.search).get('status') || activeOrderStatus;
+        const requestedOrderTab = requestedOrderStatus
+            ? orderWorkspace.querySelector(`[data-order-tab="${CSS.escape(requestedOrderStatus)}"]`)
+            : null;
+
+        if (requestedOrderTab) {
+            activeOrderStatus = requestedOrderStatus;
+            orderWorkspace.querySelectorAll('[data-order-tab]').forEach((tab) => {
+                const active = tab === requestedOrderTab;
+                tab.classList.toggle('is-active', active);
+                tab.setAttribute('aria-selected', String(active));
+            });
+            applyOrderFilters();
+        }
+
+        orderSearch?.addEventListener('input', applyOrderFilters);
+        orderDate?.addEventListener('change', applyOrderFilters);
+        orderPayment?.addEventListener('change', applyOrderFilters);
+
+        orderWorkspace.querySelector('[data-order-reset]')?.addEventListener('click', () => {
+            if (orderSearch) orderSearch.value = '';
+            if (orderDate) orderDate.value = '';
+            if (orderPayment) orderPayment.value = '';
+            activeOrderStatus = 'all';
+            orderWorkspace.querySelectorAll('[data-order-tab]').forEach((tab) => {
+                const active = tab.dataset.orderTab === 'all';
+                tab.classList.toggle('is-active', active);
+                tab.setAttribute('aria-selected', String(active));
+            });
+            applyOrderFilters();
+        });
+
+        orderCheckAll?.addEventListener('change', () => {
+            orderRows.filter((row) => !row.hidden).forEach((row) => {
+                const checkbox = row.querySelector('[data-order-check]');
+                if (checkbox) checkbox.checked = orderCheckAll.checked;
+            });
+            updateOrderSelection();
+        });
+
+        orderRows.forEach((row) => row.querySelector('[data-order-check]')?.addEventListener('change', updateOrderSelection));
+
+        bulkButtons.forEach((button) => button.addEventListener('click', () => {
+            const count = Number(selectedCount?.textContent ?? 0);
+            if (!toast || count === 0) return;
+            toast.textContent = `${button.dataset.orderBulkAction} is ready for ${count} selected order${count === 1 ? '' : 's'} (preview only).`;
+            toast.classList.add('is-visible');
+            window.clearTimeout(window.sellerToastTimer);
+            window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3000);
+        }));
+
+        applyOrderFilters();
+    }
+
+    document.querySelectorAll('[data-order-demo]').forEach((button) => {
+        button.addEventListener('click', () => {
+            if (!toast) return;
+            toast.textContent = `${button.dataset.orderDemo} Frontend preview only.`;
+            toast.classList.add('is-visible');
+            window.clearTimeout(window.sellerToastTimer);
+            window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3000);
+        });
+    });
+
+    document.querySelectorAll('[data-order-details]').forEach((button) => {
+        button.addEventListener('click', () => {
+            const modal = document.querySelector('[data-modal="order-details"]');
+            if (!modal) return;
+            const orderId = modal.querySelector('[data-order-detail-id]');
+            if (orderId) orderId.textContent = button.dataset.orderDetails;
+            modal.hidden = false;
+            document.body.style.overflow = 'hidden';
+        });
+    });
+
+
+    /* Inventory page — frontend-only controls and non-persistent stock preview. */
+    const inventoryWorkspace = document.querySelector('[data-inventory-workspace]');
+
+    if (inventoryWorkspace) {
+        let activeInventoryStatus = 'all';
+        const inventoryRows = [...inventoryWorkspace.querySelectorAll('[data-inventory-row]')];
+        const inventorySearch = inventoryWorkspace.querySelector('[data-inventory-search]');
+        const inventoryCategory = inventoryWorkspace.querySelector('[data-inventory-category]');
+        const inventoryStatus = inventoryWorkspace.querySelector('[data-inventory-status]');
+        const showVariations = inventoryWorkspace.querySelector('[data-inventory-variations]');
+        const checkAll = inventoryWorkspace.querySelector('[data-inventory-check-all]');
+        const selectedCount = inventoryWorkspace.querySelector('[data-inventory-selected-count]');
+        const visibleCount = inventoryWorkspace.querySelector('[data-inventory-visible-count]');
+        const noResults = inventoryWorkspace.querySelector('[data-inventory-no-results]');
+        const bulkButtons = [...inventoryWorkspace.querySelectorAll('[data-inventory-bulk]')];
+
+        const updateInventorySelection = () => {
+            const visibleChecks = inventoryRows
+                .filter((row) => !row.hidden)
+                .map((row) => row.querySelector('[data-inventory-check]'));
+            const checked = inventoryRows.filter((row) => row.querySelector('[data-inventory-check]')?.checked).length;
+
+            if (selectedCount) selectedCount.textContent = checked;
+            bulkButtons.forEach((button) => { button.disabled = checked === 0; });
+
+            if (checkAll) {
+                checkAll.checked = visibleChecks.length > 0 && visibleChecks.every((checkbox) => checkbox?.checked);
+                checkAll.indeterminate = visibleChecks.some((checkbox) => checkbox?.checked) && !checkAll.checked;
+            }
+        };
+
+        const applyInventoryFilters = () => {
+            const search = inventorySearch?.value.trim().toLowerCase() ?? '';
+            const category = inventoryCategory?.value ?? '';
+            const selectedStatus = inventoryStatus?.value ?? '';
+            const variationsVisible = showVariations?.checked ?? true;
+            let visible = 0;
+
+            inventoryRows.forEach((row) => {
+                const matches = (activeInventoryStatus === 'all' || row.dataset.status === activeInventoryStatus)
+                    && (!selectedStatus || row.dataset.status === selectedStatus)
+                    && (!search || row.dataset.search.includes(search))
+                    && (!category || row.dataset.category === category)
+                    && (variationsVisible || row.dataset.variationRow !== 'true');
+
+                row.hidden = !matches;
+                if (matches) visible += 1;
+            });
+
+            if (visibleCount) visibleCount.textContent = visible;
+            if (noResults) noResults.hidden = visible > 0;
+            updateInventorySelection();
+        };
+
+        inventoryWorkspace.querySelectorAll('[data-inventory-tab]').forEach((tab) => {
+            tab.addEventListener('click', () => {
+                activeInventoryStatus = tab.dataset.inventoryTab;
+                inventoryWorkspace.querySelectorAll('[data-inventory-tab]').forEach((item) => {
+                    const active = item === tab;
+                    item.classList.toggle('is-active', active);
+                    item.setAttribute('aria-selected', String(active));
+                });
+                applyInventoryFilters();
+            });
+        });
+
+        inventorySearch?.addEventListener('input', applyInventoryFilters);
+        inventoryCategory?.addEventListener('change', applyInventoryFilters);
+        inventoryStatus?.addEventListener('change', applyInventoryFilters);
+        showVariations?.addEventListener('change', applyInventoryFilters);
+
+        inventoryWorkspace.querySelector('[data-inventory-reset]')?.addEventListener('click', () => {
+            if (inventorySearch) inventorySearch.value = '';
+            if (inventoryCategory) inventoryCategory.value = '';
+            if (inventoryStatus) inventoryStatus.value = '';
+            if (showVariations) showVariations.checked = true;
+            activeInventoryStatus = 'all';
+
+            inventoryWorkspace.querySelectorAll('[data-inventory-tab]').forEach((tab) => {
+                const active = tab.dataset.inventoryTab === 'all';
+                tab.classList.toggle('is-active', active);
+                tab.setAttribute('aria-selected', String(active));
+            });
+
+            applyInventoryFilters();
+        });
+
+        checkAll?.addEventListener('change', () => {
+            inventoryRows.filter((row) => !row.hidden).forEach((row) => {
+                const checkbox = row.querySelector('[data-inventory-check]');
+                if (checkbox) checkbox.checked = checkAll.checked;
+            });
+            updateInventorySelection();
+        });
+
+        inventoryRows.forEach((row) => row.querySelector('[data-inventory-check]')?.addEventListener('change', updateInventorySelection));
+
+        bulkButtons.forEach((button) => button.addEventListener('click', () => {
+            const count = Number(selectedCount?.textContent ?? 0);
+            if (!toast || count === 0) return;
+            toast.textContent = `${button.dataset.inventoryBulk} selected for ${count} inventory item${count === 1 ? '' : 's'} (preview only).`;
+            toast.classList.add('is-visible');
+            window.clearTimeout(window.sellerToastTimer);
+            window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3000);
+        }));
+
+        applyInventoryFilters();
+    }
+
+    const adjustModal = document.querySelector('[data-modal="inventory-adjust"]');
+    const adjustItemId = adjustModal?.querySelector('[data-adjust-item-id]');
+    const adjustItemLabel = adjustModal?.querySelector('[data-adjust-item-label]');
+    const adjustCurrent = adjustModal?.querySelector('[data-adjust-current]');
+    const adjustMode = adjustModal?.querySelector('[data-adjust-mode]');
+    const adjustQuantity = adjustModal?.querySelector('[data-adjust-quantity]');
+
+    document.querySelectorAll('[data-adjust-stock]').forEach((button) => {
+        button.addEventListener('click', () => {
+            const row = button.closest('[data-inventory-row]');
+            if (!adjustModal || !row) return;
+            if (adjustItemId) adjustItemId.value = button.dataset.itemId;
+            if (adjustItemLabel) adjustItemLabel.textContent = button.dataset.itemLabel;
+            if (adjustCurrent) adjustCurrent.textContent = row.dataset.onHand;
+            if (adjustMode) adjustMode.value = 'add';
+            if (adjustQuantity) adjustQuantity.value = '1';
+            adjustModal.hidden = false;
+            document.body.style.overflow = 'hidden';
+            adjustQuantity?.focus();
+        });
+    });
+
+    adjustModal?.querySelector('[data-apply-stock-adjustment]')?.addEventListener('click', () => {
+        const row = document.querySelector(`[data-inventory-row][data-id="${adjustItemId?.value}"]`);
+        if (!row) return;
+
+        const current = Math.max(0, Number(row.dataset.onHand || 0));
+        const reserved = Math.max(0, Number(row.dataset.reserved || 0));
+        const threshold = Math.max(0, Number(row.dataset.threshold || 0));
+        const quantity = Math.max(0, Math.floor(Number(adjustQuantity?.value || 0)));
+        let next = current;
+
+        if (adjustMode?.value === 'add') next = current + quantity;
+        if (adjustMode?.value === 'remove') next = Math.max(0, current - quantity);
+        if (adjustMode?.value === 'set') next = quantity;
+
+        const available = Math.max(0, next - reserved);
+        const statusKey = available === 0 ? 'out-of-stock' : available <= threshold ? 'low-stock' : 'in-stock';
+        const statusLabel = statusKey === 'out-of-stock' ? 'Out of Stock' : statusKey === 'low-stock' ? 'Low Stock' : 'In Stock';
+        const status = row.querySelector('[data-stock-status]');
+        const availableCell = row.querySelector('[data-stock-available]');
+
+        row.dataset.onHand = String(next);
+        row.dataset.status = statusKey;
+        if (row.querySelector('[data-stock-on-hand]')) row.querySelector('[data-stock-on-hand]').textContent = next;
+        if (availableCell) {
+            availableCell.textContent = available;
+            availableCell.classList.toggle('is-empty', available === 0);
+        }
+        if (status) {
+            status.textContent = statusLabel;
+            status.className = `inventory-stock-badge stock-${statusKey}`;
+        }
+
+        const action = row.querySelector('[data-adjust-stock]');
+        if (action) action.textContent = available === 0 ? 'Restock' : 'Adjust Stock';
+        if (adjustModal) adjustModal.hidden = true;
+        document.body.style.overflow = '';
+
+        if (toast) {
+            toast.textContent = `Stock preview updated to ${next}. Refreshing the page will reset this change.`;
+            toast.classList.add('is-visible');
+            window.clearTimeout(window.sellerToastTimer);
+            window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3400);
+        }
+
+        inventoryWorkspace?.querySelector('[data-inventory-search]')?.dispatchEvent(new Event('input'));
+    });
+
+    document.querySelector('[data-inventory-alerts]')?.addEventListener('click', () => {
+        document.querySelector('[data-inventory-tab="low-stock"]')?.click();
+        document.querySelector('[data-inventory-workspace]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+
+    document.querySelectorAll('[data-inventory-demo]').forEach((button) => {
+        button.addEventListener('click', () => {
+            if (!toast) return;
+            toast.textContent = `${button.dataset.inventoryDemo} Frontend preview only.`;
+            toast.classList.add('is-visible');
+            window.clearTimeout(window.sellerToastTimer);
+            window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3000);
+        });
+    });
+
+    /* Returns & refunds: Shopee-style case filtering and ERP resolution preview. */
+    const returnsWorkspace = document.querySelector('[data-returns-workspace]');
+    if (returnsWorkspace) {
+        let activeReturnStatus = 'all';
+        const rows = [...returnsWorkspace.querySelectorAll('[data-return-row]')];
+        const search = returnsWorkspace.querySelector('[data-return-search]');
+        const type = returnsWorkspace.querySelector('[data-return-type]');
+        const count = returnsWorkspace.querySelector('[data-return-count]');
+        const empty = returnsWorkspace.querySelector('[data-returns-empty]');
+
+        const applyReturnFilters = () => {
+            const query = search?.value.trim().toLowerCase() ?? '';
+            const requestType = type?.value ?? '';
+            let visible = 0;
+            rows.forEach((row) => {
+                const matches = (activeReturnStatus === 'all' || row.dataset.status === activeReturnStatus)
+                    && (!requestType || row.dataset.type === requestType)
+                    && (!query || row.dataset.search.includes(query));
+                row.hidden = !matches;
+                if (matches) visible += 1;
+            });
+            if (count) count.textContent = visible;
+            if (empty) empty.hidden = visible > 0;
+        };
+
+        returnsWorkspace.querySelectorAll('[data-return-tab]').forEach((tab) => {
+            tab.addEventListener('click', () => {
+                activeReturnStatus = tab.dataset.returnTab;
+                returnsWorkspace.querySelectorAll('[data-return-tab]').forEach((item) => {
+                    const active = item === tab;
+                    item.classList.toggle('is-active', active);
+                    item.setAttribute('aria-selected', String(active));
+                });
+                applyReturnFilters();
+            });
+        });
+        search?.addEventListener('input', applyReturnFilters);
+        type?.addEventListener('change', applyReturnFilters);
+        returnsWorkspace.querySelector('[data-return-reset]')?.addEventListener('click', () => {
+            if (search) search.value = '';
+            if (type) type.value = '';
+            activeReturnStatus = 'all';
+            returnsWorkspace.querySelectorAll('[data-return-tab]').forEach((tab) => {
+                const active = tab.dataset.returnTab === 'all';
+                tab.classList.toggle('is-active', active);
+                tab.setAttribute('aria-selected', String(active));
+            });
+            applyReturnFilters();
+        });
+        returnsWorkspace.querySelector('[data-return-export]')?.addEventListener('click', () => {
+            const visibleRows = rows.filter((row) => !row.hidden);
+            const headings = [...returnsWorkspace.querySelectorAll('.returns-table thead th')]
+                .slice(0, -1)
+                .map((cell) => cell.textContent.trim());
+            const records = visibleRows.map((row) => [...row.querySelectorAll('td')]
+                .slice(0, -1)
+                .map((cell) => cell.innerText.replace(/\s+/g, ' ').trim()));
+            const escapeCsv = (value) => `"${String(value).replaceAll('"', '""')}"`;
+            const csv = [headings, ...records].map((record) => record.map(escapeCsv).join(',')).join('\n');
+            const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' }));
+            const download = document.createElement('a');
+            download.href = url;
+            download.download = `returns-refunds-${new Date().toISOString().slice(0, 10)}.csv`;
+            download.click();
+            URL.revokeObjectURL(url);
+            if (toast) {
+                toast.textContent = `${visibleRows.length} return and refund case${visibleRows.length === 1 ? '' : 's'} exported.`;
+                toast.classList.add('is-visible');
+                window.clearTimeout(window.sellerToastTimer);
+                window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3200);
+            }
+        });
+        applyReturnFilters();
+    }
+
+    document.querySelectorAll('[data-case-preview]').forEach((button) => {
+        button.addEventListener('click', () => {
+            if (!toast) return;
+            toast.textContent = `${button.dataset.casePreview} opened. Frontend preview only.`;
+            toast.classList.add('is-visible');
+            window.clearTimeout(window.sellerToastTimer);
+            window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3200);
+        });
+    });
+
+    const caseResponse = document.querySelector('[data-case-response]');
+    const caseCharacterCount = document.querySelector('[data-case-character-count]');
+    caseResponse?.addEventListener('input', () => {
+        if (caseCharacterCount) caseCharacterCount.textContent = caseResponse.value.length;
+    });
+
+    document.querySelector('[data-case-evidence-input]')?.addEventListener('change', (event) => {
+        const files = [...event.target.files];
+        const label = document.querySelector('[data-case-evidence-name]');
+        if (!label) return;
+        label.textContent = files.length ? `${files.length} file${files.length > 1 ? 's' : ''} selected` : 'Images, video, or PDF · Maximum 10 MB per file';
+    });
+
+    const caseConfirmModal = document.querySelector('[data-modal="case-confirm"]');
+    let pendingCaseAction = null;
+    document.querySelectorAll('[data-case-action]').forEach((button) => {
+        button.addEventListener('click', () => {
+            if (!caseConfirmModal) return;
+            const responseText = caseResponse?.value.trim() ?? '';
+            if (!responseText) {
+                caseResponse?.focus();
+                if (toast) {
+                    toast.textContent = 'Add a clear seller response before submitting your decision.';
+                    toast.classList.add('is-visible');
+                    window.clearTimeout(window.sellerToastTimer);
+                    window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3200);
+                }
+                return;
+            }
+
+            pendingCaseAction = button.dataset.caseAction;
+            const accept = pendingCaseAction === 'accept';
+            const title = caseConfirmModal.querySelector('[data-case-confirm-title]');
+            const message = caseConfirmModal.querySelector('[data-case-confirm-message]');
+            const confirm = caseConfirmModal.querySelector('[data-case-confirm]');
+            if (title) title.textContent = accept ? 'Accept buyer request?' : 'Submit case dispute?';
+            if (message) message.textContent = accept
+                ? 'This sends the request for return or refund processing. Review the amount and response before confirming.'
+                : 'This sends your response and evidence to Bearly for platform review. Clearly explain why you dispute the request.';
+            if (confirm) {
+                confirm.textContent = accept ? 'Accept request' : 'Submit dispute';
+                confirm.classList.toggle('is-danger', !accept);
+            }
+            caseConfirmModal.hidden = false;
+            document.body.style.overflow = 'hidden';
+        });
+    });
+
+    caseConfirmModal?.querySelector('[data-case-confirm]')?.addEventListener('click', () => {
+        caseConfirmModal.hidden = true;
+        document.body.style.overflow = '';
+        if (!toast) return;
+        toast.textContent = pendingCaseAction === 'accept'
+            ? 'Request accepted and queued for platform processing. Frontend preview only.'
+            : 'Dispute submitted for platform review. Frontend preview only.';
+        toast.classList.add('is-visible');
+        window.clearTimeout(window.sellerToastTimer);
+        window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3600);
+    });
+
+    const sellerWorkspace = document.querySelector('[data-seller-workspace]');
+    const workspaceSearch = sellerWorkspace?.querySelector('[data-workspace-search]');
+    workspaceSearch?.addEventListener('input', () => {
+        const query = workspaceSearch.value.trim().toLowerCase();
+        let visible = 0;
+        sellerWorkspace.querySelectorAll('[data-workspace-row]').forEach((row) => {
+            const matches = !query || row.dataset.search.includes(query);
+            row.hidden = !matches;
+            if (matches) visible += 1;
+        });
+        const count = sellerWorkspace.querySelector('[data-workspace-count]');
+        const empty = sellerWorkspace.querySelector('[data-workspace-empty]');
+        if (count) count.textContent = visible;
+        if (empty) empty.hidden = visible > 0;
+    });
+
+    document.querySelectorAll('[data-workspace-demo]').forEach((button) => {
+        button.addEventListener('click', () => {
+            if (!toast) return;
+            toast.textContent = `${button.dataset.workspaceDemo} Frontend preview only.`;
+            toast.classList.add('is-visible');
+            window.clearTimeout(window.sellerToastTimer);
+            window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3000);
+        });
+    });
+
+    /* Seller account page — frontend-only edit and photo preview. */
+    const accountForm = document.querySelector('[data-account-form]');
+    const accountEdit = document.querySelector('[data-account-edit]');
+    const accountCancel = document.querySelector('[data-account-cancel]');
+    const accountActions = document.querySelector('[data-account-actions]');
+    const accountEditState = document.querySelector('[data-account-edit-state]');
+    const accountEditableFields = [...document.querySelectorAll('[data-account-editable]')];
+    const originalAccountValues = new Map(accountEditableFields.map((field) => [field, field.value]));
+
+    const setAccountEditing = (editing) => {
+        accountEditableFields.forEach((field) => { field.disabled = !editing; });
+        if (accountActions) accountActions.hidden = !editing;
+        if (accountEdit) {
+            accountEdit.disabled = editing;
+            accountEdit.querySelector('span').textContent = editing ? 'Editing profile' : 'Edit profile';
+        }
+        if (accountEditState) accountEditState.textContent = editing ? 'Editing' : 'View only';
+        if (editing) accountEditableFields[0]?.focus();
+    };
+
+    accountEdit?.addEventListener('click', () => setAccountEditing(true));
+    accountCancel?.addEventListener('click', () => {
+        originalAccountValues.forEach((value, field) => { field.value = value; });
+        setAccountEditing(false);
+    });
+    accountForm?.addEventListener('submit', (event) => {
+        event.preventDefault();
+        accountEditableFields.forEach((field) => originalAccountValues.set(field, field.value));
+        setAccountEditing(false);
+        if (!toast) return;
+        toast.textContent = 'Profile preview updated. Changes will reset after refreshing the page.';
+        toast.classList.add('is-visible');
+        window.clearTimeout(window.sellerToastTimer);
+        window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3400);
+    });
+
+    document.querySelector('[data-account-photo]')?.addEventListener('change', (event) => {
+        const file = event.currentTarget.files?.[0];
+        const avatar = document.querySelector('[data-account-avatar]');
+        if (!file || !avatar) return;
+        const image = document.createElement('img');
+        image.alt = 'Seller profile preview';
+        image.src = URL.createObjectURL(file);
+        image.addEventListener('load', () => URL.revokeObjectURL(image.src), { once: true });
+        avatar.replaceChildren(image);
+    });
+
+    document.querySelector('[data-password-form]')?.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const form = event.currentTarget;
+        const password = form.querySelector('[data-new-password]');
+        const confirmation = form.querySelector('[data-confirm-password]');
+        if (password?.value !== confirmation?.value) {
+            confirmation?.setCustomValidity('Passwords do not match.');
+            confirmation?.reportValidity();
+            return;
+        }
+        confirmation?.setCustomValidity('');
+        form.reset();
+        if (!toast) return;
+        toast.textContent = 'Password update validated. Backend saving will be connected later.';
+        toast.classList.add('is-visible');
+        window.clearTimeout(window.sellerToastTimer);
+        window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3400);
+    });
+
+    document.querySelector('[data-confirm-password]')?.addEventListener('input', (event) => event.currentTarget.setCustomValidity(''));
+    document.querySelector('[data-two-factor-toggle]')?.addEventListener('change', (event) => {
+        const label = document.querySelector('[data-two-factor-label]');
+        if (label) label.textContent = event.currentTarget.checked ? 'Enabled (preview)' : 'Not enabled';
+    });
+    document.querySelectorAll('[data-security-demo]').forEach((button) => button.addEventListener('click', () => {
+        if (!toast) return;
+        toast.textContent = `${button.dataset.securityDemo} Frontend preview only.`;
+        toast.classList.add('is-visible');
+        window.clearTimeout(window.sellerToastTimer);
+        window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3000);
+    }));
+
+    document.querySelector('[data-save-notifications]')?.addEventListener('click', () => {
+        if (!toast) return;
+        toast.textContent = 'Notification preferences updated for this preview. They will reset after refresh.';
+        toast.classList.add('is-visible');
+        window.clearTimeout(window.sellerToastTimer);
+        window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3400);
+    });
+
+    /* Store appearance — frontend-only image, description, and buyer preview. */
+    const appearance = document.querySelector('[data-storefront-appearance]');
+    if (appearance) {
+        const description = appearance.querySelector('[data-storefront-description]');
+        const count = appearance.querySelector('[data-storefront-description-count]');
+        const previewDescription = appearance.querySelector('[data-storefront-preview-description]');
+
+        description?.addEventListener('input', () => {
+            if (count) count.textContent = description.value.length;
+            if (previewDescription) previewDescription.textContent = description.value.trim() || 'Your store description will appear here.';
+        });
+
+        appearance.querySelectorAll('[data-storefront-image]').forEach((input) => {
+            input.addEventListener('change', () => {
+                const file = input.files?.[0];
+                if (!file) return;
+
+                const maximum = input.dataset.storefrontImage === 'cover' ? 10 : 5;
+                if (file.size > maximum * 1024 * 1024) {
+                    input.value = '';
+                    if (toast) {
+                        toast.textContent = `${input.dataset.storefrontImage === 'cover' ? 'Cover' : 'Profile'} image must be ${maximum}MB or smaller.`;
+                        toast.classList.add('is-visible');
+                    }
+                    return;
+                }
+
+                const reader = new FileReader();
+                reader.addEventListener('load', () => {
+                    const createPreview = () => {
+                        const image = document.createElement('img');
+                        image.alt = `${input.dataset.storefrontImage} preview`;
+                        image.src = reader.result;
+                        return image;
+                    };
+                    if (input.dataset.storefrontImage === 'profile') {
+                        appearance.querySelector('[data-storefront-profile-placeholder]')?.replaceChildren(createPreview());
+                        appearance.querySelector('[data-storefront-preview-profile]')?.replaceChildren(createPreview());
+                    } else {
+                        appearance.querySelector('[data-storefront-cover-placeholder]')?.replaceChildren(createPreview());
+                        appearance.querySelector('[data-storefront-preview-cover]')?.replaceChildren(createPreview());
+                    }
+                });
+                reader.readAsDataURL(file);
+            });
+        });
+    }
+
+    document.querySelector('[data-storefront-preview-toggle]')?.addEventListener('click', () => {
+        document.querySelector('.storefront-preview-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    document.querySelector('[data-save-appearance]')?.addEventListener('click', () => {
+        if (!toast) return;
+        toast.textContent = 'Store appearance saved for this preview. It will reset after refresh.';
+        toast.classList.add('is-visible');
+        window.clearTimeout(window.sellerToastTimer);
+        window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3400);
+    });
+
+    /* Publication settings — frontend-only visibility preview. */
+    document.querySelector('[data-publication-toggle]')?.addEventListener('click', (event) => {
+        const button = event.currentTarget;
+        const nextPublished = button.dataset.published !== 'true';
+        button.dataset.published = String(nextPublished);
+        button.querySelector('span').textContent = nextPublished ? 'Unpublish Store' : 'Publish Store';
+
+        const title = document.querySelector('[data-publication-title]');
+        const copy = document.querySelector('[data-publication-copy]');
+        const badge = document.querySelector('[data-publication-badge]');
+        const visibility = document.querySelector('[data-publication-visibility]');
+        if (title) title.textContent = nextPublished ? 'Store Published' : 'Store Not Published';
+        if (copy) copy.textContent = nextPublished ? 'Your storefront is currently visible to buyers.' : 'Your storefront is hidden from buyers.';
+        if (badge) {
+            badge.classList.toggle('is-live', nextPublished);
+            badge.lastChild.textContent = nextPublished ? 'Published' : 'Draft';
+        }
+        if (visibility) visibility.textContent = nextPublished ? 'Visible to buyers' : 'Hidden from buyers';
+        if (!toast) return;
+        toast.textContent = `${nextPublished ? 'Publish' : 'Unpublish'} action previewed. Backend confirmation will be connected later.`;
+        toast.classList.add('is-visible');
+        window.clearTimeout(window.sellerToastTimer);
+        window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3400);
+    });
+
+
+    /* Fulfillment workspaces. */
+    const setupFulfillmentFilter = (workspaceSelector, rowSelector, tabSelector, searchSelector, countSelector, emptySelector, resetSelector = null, statusSelector = null) => {
+        const workspace = document.querySelector(workspaceSelector);
+        if (!workspace) return;
+        const rows = [...workspace.querySelectorAll(rowSelector)];
+        const search = workspace.querySelector(searchSelector);
+        const count = workspace.querySelector(countSelector);
+        const empty = workspace.querySelector(emptySelector);
+        const status = statusSelector ? workspace.querySelector(statusSelector) : null;
+        const pickupDate = workspace.querySelector('[data-pickup-date]');
+        let active = 'all';
+        const apply = () => {
+            const query = search?.value.trim().toLowerCase() ?? '';
+            const selected = status?.value ?? '';
+            let visible = 0;
+            rows.forEach((row) => {
+                const match = (active === 'all' || row.dataset.status === active) && (!selected || row.dataset.status === selected) && (!query || row.dataset.search.includes(query)) && (!pickupDate?.value || row.dataset.date === pickupDate.value);
+                row.hidden = !match;
+                if (match) visible += 1;
+            });
+            if (count) count.textContent = visible;
+            if (empty) empty.hidden = visible > 0;
+        };
+        workspace.querySelectorAll(tabSelector).forEach((tab) => tab.addEventListener('click', () => {
+            active = tab.dataset.waybillTab || tab.dataset.pickupTab || tab.dataset.trackingTab || 'all';
+            workspace.querySelectorAll(tabSelector).forEach((item) => {
+                item.classList.toggle('is-active', item === tab);
+                if (item.hasAttribute('aria-pressed')) item.setAttribute('aria-pressed', String(item === tab));
+            });
+            apply();
+        }));
+        search?.addEventListener('input', apply);
+        status?.addEventListener('change', apply);
+        pickupDate?.addEventListener('change', apply);
+        if (resetSelector) workspace.querySelector(resetSelector)?.addEventListener('click', () => {
+            if (search) search.value = '';
+            if (status) status.value = '';
+            active = 'all';
+            workspace.querySelectorAll(tabSelector).forEach((tab, index) => {
+                tab.classList.toggle('is-active', index === 0);
+                if (tab.hasAttribute('aria-pressed')) tab.setAttribute('aria-pressed', String(index === 0));
+            });
+            apply();
+        });
+        apply();
+    };
+    setupFulfillmentFilter('[data-waybill-workspace]', '[data-waybill-row]', '[data-waybill-tab]', '[data-waybill-search]', '[data-waybill-count]', '[data-waybill-empty]');
+    setupFulfillmentFilter('[data-pickup-workspace]', '[data-pickup-row]', '[data-pickup-tab]', '[data-pickup-search]', '[data-pickup-count]', '[data-pickup-empty]');
+    setupFulfillmentFilter('[data-tracking-workspace]', '[data-tracking-row]', '[data-tracking-tab]', '[data-tracking-search]', '[data-tracking-count]', '[data-tracking-empty]', '[data-tracking-reset]', '[data-tracking-status]');
+
+    const waybillChecks = [...document.querySelectorAll('[data-waybill-check]:not(:disabled)')];
+    const waybillBulk = document.querySelector('[data-waybill-bulk]');
+    const updateWaybillBulk = () => {
+        const selected = waybillChecks.filter((check) => check.checked).length;
+        if (waybillBulk) { waybillBulk.disabled = selected === 0; waybillBulk.innerHTML = `<i data-lucide="printer"></i>Print Selected${selected ? ` (${selected})` : ''}`; window.lucide?.createIcons(); }
+    };
+    waybillChecks.forEach((check) => check.addEventListener('change', updateWaybillBulk));
+    document.querySelector('[data-waybill-check-all]')?.addEventListener('change', (event) => { waybillChecks.forEach((check) => { check.checked = event.currentTarget.checked; }); updateWaybillBulk(); });
+    waybillBulk?.addEventListener('click', () => { if (toast) { toast.textContent = `${waybillChecks.filter((check) => check.checked).length} waybills prepared for printing.`; toast.classList.add('is-visible'); } });
+    document.querySelector('[data-waybill-history]')?.addEventListener('click', () => { const modal = document.querySelector('[data-modal="waybill-history"]'); if (modal) { modal.hidden = false; document.body.style.overflow = 'hidden'; } });
+    document.querySelectorAll('[data-waybill-action]').forEach((button) => button.addEventListener('click', () => {
+        const item = JSON.parse(button.dataset.waybill); const modal = document.querySelector('[data-modal="waybill-preview"]'); if (!modal) return;
+        const set = (selector, value) => { const node = modal.querySelector(selector); if (node) node.textContent = value; };
+        set('[data-waybill-modal-order]', `${item.action} · ${item.order}`); set('[data-waybill-modal-tracking]', item.tracking); set('[data-waybill-modal-customer]', item.customer); set('[data-waybill-modal-destination]', item.destination); set('[data-waybill-modal-courier]', item.courier); set('[data-waybill-modal-parcel]', `${item.packages} package(s) · ${item.weight} · ${item.size}`);
+        modal.hidden = false; document.body.style.overflow = 'hidden';
+    }));
+    document.querySelector('[data-waybill-print]')?.addEventListener('click', () => { if (toast) { toast.textContent = 'Waybill sent to the print dialog.'; toast.classList.add('is-visible'); } window.print(); });
+
+    document.querySelector('[data-pickup-form]')?.addEventListener('submit', (event) => {
+        event.preventDefault();
+        if (!event.currentTarget.querySelector('[data-pickup-order]:checked')) { if (toast) { toast.textContent = 'Select at least one labeled parcel.'; toast.classList.add('is-visible'); } return; }
+        event.currentTarget.closest('[data-modal]').hidden = true; document.body.style.overflow = '';
+        if (toast) { toast.textContent = 'Pickup request submitted to logistics for approval.'; toast.classList.add('is-visible'); }
+    });
+    document.querySelectorAll('[data-pickup-view]').forEach((button) => button.addEventListener('click', () => {
+        const item = JSON.parse(button.dataset.pickup); const modal = document.querySelector('[data-modal="pickup-details"]'); if (!modal) return;
+        const set = (selector, value) => { const node = modal.querySelector(selector); if (node) node.textContent = value; };
+        set('[data-pickup-id]', item.id); set('[data-pickup-status]', item.status); set('[data-pickup-orders]', `${item.orders} · ${item.packages} parcels`); set('[data-pickup-schedule]', item.schedule); set('[data-pickup-rider]', item.rider); set('[data-pickup-address]', item.address);
+        const actions = modal.querySelector('[data-pickup-actions]'); if (actions) actions.hidden = !['pending', 'assigned'].includes(item.status_key);
+        const cancel = modal.querySelector('[data-pickup-cancel]'); if (cancel) cancel.hidden = item.status_key !== 'pending';
+        const confirm = modal.querySelector('[data-pickup-confirm]'); if (confirm) confirm.hidden = item.status_key !== 'assigned';
+        modal.hidden = false; document.body.style.overflow = 'hidden';
+    }));
+    document.querySelectorAll('[data-pickup-cancel],[data-pickup-confirm]').forEach((button) => button.addEventListener('click', () => { button.closest('[data-modal]').hidden = true; document.body.style.overflow = ''; if (toast) { toast.textContent = button.hasAttribute('data-pickup-confirm') ? 'Parcel handover confirmed and orders moved to In Transit.' : 'Pending pickup request cancelled.'; toast.classList.add('is-visible'); } }));
+
+    document.querySelector('[data-tracking-attention]')?.addEventListener('click', () => {
+        const search = document.querySelector('[data-tracking-search]');
+        if (search) { search.value = ''; search.dispatchEvent(new Event('input')); }
+        const tab = document.querySelector('[data-tracking-tab="failed"]');
+        tab?.click();
+        tab?.focus();
+    });
+
+    document.querySelectorAll('[data-tracking-view]').forEach((button) => button.addEventListener('click', () => {
+        const item = JSON.parse(button.dataset.shipment); const modal = document.querySelector('[data-modal="tracking-details"]'); if (!modal) return;
+        const set = (selector, value) => { const node = modal.querySelector(selector); if (node) node.textContent = value; };
+        set('[data-tracking-number]', item.tracking); set('[data-tracking-order]', item.order); set('[data-tracking-customer]', item.customer); set('[data-tracking-destination]', item.destination); set('[data-tracking-eta]', item.eta); set('[data-tracking-latest]', item.latest); set('[data-tracking-updated]', item.updated);
+        const proof = modal.querySelector('[data-delivery-proof]'); if (proof) proof.hidden = item.status_key !== 'delivered';
+        modal.hidden = false; document.body.style.overflow = 'hidden';
+    }));
+    document.querySelector('[data-report-shipment]')?.addEventListener('click', () => { const details = document.querySelector('[data-modal="tracking-details"]'); const report = document.querySelector('[data-modal="tracking-report"]'); if (details) details.hidden = true; if (report) report.hidden = false; });
+    document.querySelector('[data-shipment-report-form]')?.addEventListener('submit', (event) => { event.preventDefault(); event.currentTarget.closest('[data-modal]').hidden = true; document.body.style.overflow = ''; if (toast) { toast.textContent = 'Shipment issue submitted to logistics support.'; toast.classList.add('is-visible'); } });
+    document.querySelector('[data-tracking-export]')?.addEventListener('click', () => { if (toast) { toast.textContent = 'Shipment report prepared for export.'; toast.classList.add('is-visible'); } });
+    document.querySelectorAll('[data-fulfillment-demo]').forEach((button) => button.addEventListener('click', () => { if (toast) { toast.textContent = `${button.dataset.fulfillmentDemo} Frontend preview only.`; toast.classList.add('is-visible'); } }));
+
+    /* Product pricing and promotion workspace. */
+    const pricingWorkspace = document.querySelector('[data-pricing-workspace]');
+    if (pricingWorkspace) {
+        const pricingRows = [...pricingWorkspace.querySelectorAll('[data-pricing-row]')];
+        const pricingSearch = pricingWorkspace.querySelector('[data-pricing-search]');
+        const pricingStatus = pricingWorkspace.querySelector('[data-pricing-status]');
+        const pricingCount = pricingWorkspace.querySelector('[data-pricing-count]');
+        const pricingEmpty = pricingWorkspace.querySelector('[data-pricing-empty]');
+        const applyPricingFilters = () => {
+            const query = pricingSearch?.value.trim().toLowerCase() ?? '';
+            const status = pricingStatus?.value ?? '';
+            let visible = 0;
+            pricingRows.forEach((row) => {
+                const match = (!query || row.dataset.search.includes(query)) && (!status || row.dataset.state === status);
+                row.hidden = !match;
+                if (match) visible += 1;
+            });
+            if (pricingCount) pricingCount.textContent = visible;
+            if (pricingEmpty) pricingEmpty.hidden = visible > 0;
+        };
+        pricingSearch?.addEventListener('input', applyPricingFilters);
+        pricingStatus?.addEventListener('change', applyPricingFilters);
+        pricingWorkspace.querySelector('[data-pricing-reset]')?.addEventListener('click', () => {
+            if (pricingSearch) pricingSearch.value = '';
+            if (pricingStatus) pricingStatus.value = '';
+            applyPricingFilters();
+        });
+        pricingWorkspace.querySelectorAll('[data-pricing-tab]').forEach((tab) => tab.addEventListener('click', () => {
+            pricingWorkspace.querySelectorAll('[data-pricing-tab]').forEach((item) => {
+                const active = item === tab;
+                item.classList.toggle('is-active', active);
+                item.setAttribute('aria-selected', String(active));
+            });
+            pricingWorkspace.querySelectorAll('[data-pricing-panel]').forEach((panel) => {
+                panel.hidden = panel.dataset.pricingPanel !== tab.dataset.pricingTab;
+            });
+        }));
+    }
+
+    const pricingParams = new URLSearchParams(window.location.search);
+    const requestedPricingTab = pricingParams.get('tab');
+    if (pricingWorkspace && requestedPricingTab) {
+        pricingWorkspace.querySelector('[data-pricing-tab="' + requestedPricingTab + '"]')?.click();
+    }
+    if (pricingParams.get('created') === '1' && toast) {
+        toast.textContent = 'Promotion created for this frontend preview.';
+        toast.classList.add('is-visible');
+        window.clearTimeout(window.sellerToastTimer);
+        window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3200);
+    }
+
+    const priceModal = document.querySelector('[data-modal="pricing-price"]');
+    const campaignModal = document.querySelector('[data-modal="pricing-campaign"]');
+    const calculatePrice = () => {
+        if (!priceModal) return;
+        const regular = Math.max(0, Number(priceModal.querySelector('[data-price-regular]')?.value || 0));
+        const discount = Math.min(90, Math.max(0, Number(priceModal.querySelector('[data-price-discount]')?.value || 0)));
+        const sale = regular * (1 - discount / 100);
+        const fee = sale * .10;
+        const format = (value) => `₱${value.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        priceModal.querySelector('[data-price-sale]').textContent = format(sale);
+        priceModal.querySelector('[data-price-fee]').textContent = `−${format(fee)}`;
+        priceModal.querySelector('[data-price-net]').textContent = format(sale - fee);
+    };
+    document.querySelectorAll('[data-pricing-open]').forEach((button) => button.addEventListener('click', () => {
+        const isPrice = button.dataset.pricingOpen === 'price';
+        const modal = isPrice ? priceModal : campaignModal;
+        if (!modal) return;
+        if (isPrice) {
+            const product = JSON.parse(button.dataset.product);
+            modal.querySelector('[data-price-product]').textContent = product.name;
+            modal.querySelector('[data-price-regular]').value = product.price;
+            modal.querySelector('[data-price-discount]').value = product.discount_percent;
+            calculatePrice();
+        }
+        modal.hidden = false;
+        document.body.style.overflow = 'hidden';
+    }));
+    priceModal?.querySelectorAll('[data-price-regular],[data-price-discount]').forEach((input) => input.addEventListener('input', calculatePrice));
+    priceModal?.querySelector('[data-price-save]')?.addEventListener('click', () => {
+        priceModal.hidden = true;
+        document.body.style.overflow = '';
+        if (toast) {
+            toast.textContent = 'Product price updated for this frontend preview.';
+            toast.classList.add('is-visible');
+            window.clearTimeout(window.sellerToastTimer);
+            window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3200);
+        }
+    });
+    campaignModal?.querySelector('[data-campaign-save]')?.addEventListener('click', () => {
+        const name = campaignModal.querySelector('[data-campaign-name]');
+        if (!name?.value.trim()) { name?.focus(); name?.reportValidity(); return; }
+        campaignModal.hidden = true;
+        document.body.style.overflow = '';
+        if (toast) {
+            toast.textContent = `${name.value.trim()} created as a frontend preview.`;
+            toast.classList.add('is-visible');
+            window.clearTimeout(window.sellerToastTimer);
+            window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3200);
+        }
+    });
+    document.querySelectorAll('[data-voucher-toggle]').forEach((toggle) => toggle.addEventListener('change', () => {
+        const label = toggle.closest('.pricing-switch')?.querySelector('span');
+        if (label) label.textContent = toggle.checked ? 'Eligible' : 'Not eligible';
+    }));
+    document.querySelectorAll('[data-pricing-demo]').forEach((button) => button.addEventListener('click', () => {
+        if (!toast) return;
+        toast.textContent = `${button.dataset.pricingDemo} Frontend preview only.`;
+        toast.classList.add('is-visible');
+        window.clearTimeout(window.sellerToastTimer);
+        window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3000);
+    }));
+
+    const promotionForm = document.querySelector('[data-promotion-form]');
+    if (promotionForm) {
+        const type = promotionForm.querySelector('[data-promotion-type]');
+        const value = promotionForm.querySelector('[data-promotion-value]');
+        const valueLabel = promotionForm.querySelector('[data-promotion-value-label]');
+        const valueSuffix = promotionForm.querySelector('[data-promotion-value-suffix]');
+        const name = promotionForm.querySelector('[data-promotion-name]');
+        const start = promotionForm.querySelector('[data-promotion-start]');
+        const end = promotionForm.querySelector('[data-promotion-end]');
+        const checks = [...promotionForm.querySelectorAll('[data-promotion-product]')];
+        const selectAll = promotionForm.querySelector('[data-promotion-select-all]');
+
+        const syncPromotionSummary = () => {
+            const currentType = type?.value || 'Product Discount';
+            const currentValue = Math.max(0, Number(value?.value || 0));
+            const selected = checks.filter((check) => check.checked).length;
+            const summaryName = promotionForm.querySelector('[data-promotion-summary-name]');
+            const summaryType = promotionForm.querySelector('[data-promotion-summary-type]');
+            const summaryValue = promotionForm.querySelector('[data-promotion-summary-value]');
+            const summaryProducts = promotionForm.querySelector('[data-promotion-summary-products]');
+            const summarySchedule = promotionForm.querySelector('[data-promotion-summary-schedule]');
+
+            if (summaryName) summaryName.textContent = name?.value.trim() || 'Untitled promotion';
+            if (summaryType) summaryType.textContent = currentType;
+            if (summaryValue) summaryValue.textContent = currentType === 'Store Voucher' ? '₱' + currentValue.toLocaleString('en-PH') + ' voucher' : currentValue + '% off';
+            if (summaryProducts) summaryProducts.textContent = selected + ' selected';
+            if (summarySchedule) summarySchedule.textContent = start?.value && end?.value ? start.value + ' to ' + end.value : 'Not set';
+
+            if (valueLabel) valueLabel.textContent = currentType === 'Store Voucher' ? 'Voucher amount' : 'Discount percentage';
+            if (valueSuffix) valueSuffix.textContent = currentType === 'Store Voucher' ? '₱' : '%';
+            if (value) {
+                if (currentType === 'Store Voucher') value.removeAttribute('max');
+                else value.setAttribute('max', '90');
+            }
+            if (selectAll) {
+                selectAll.checked = checks.length > 0 && selected === checks.length;
+                selectAll.indeterminate = selected > 0 && selected < checks.length;
+            }
+        };
+
+        [type, value, name, start, end].forEach((field) => {
+            field?.addEventListener('input', syncPromotionSummary);
+            field?.addEventListener('change', syncPromotionSummary);
+        });
+        checks.forEach((check) => check.addEventListener('change', syncPromotionSummary));
+        selectAll?.addEventListener('change', () => {
+            checks.forEach((check) => { check.checked = selectAll.checked; });
+            syncPromotionSummary();
+        });
+
+        promotionForm.addEventListener('submit', (event) => {
+            event.preventDefault();
+            if (!promotionForm.reportValidity()) return;
+            if (!checks.some((check) => check.checked)) {
+                if (toast) {
+                    toast.textContent = 'Select at least one eligible product.';
+                    toast.classList.add('is-visible');
+                    window.clearTimeout(window.sellerToastTimer);
+                    window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3000);
+                }
+                checks[0]?.focus();
+                return;
+            }
+            window.location.href = promotionForm.dataset.successUrl || '/seller/products/pricing';
+        });
+
+        syncPromotionSummary();
+    }
+
+    /* Customer Service — frontend-only seller inbox. */
+    const messageWorkspace = document.querySelector('[data-message-workspace]');
+    if (messageWorkspace) {
+        const conversationRows = [...messageWorkspace.querySelectorAll('[data-conversation]')];
+        const search = messageWorkspace.querySelector('[data-message-search]');
+        const empty = messageWorkspace.querySelector('[data-conversation-empty]');
+        const thread = messageWorkspace.querySelector('[data-message-thread]');
+        const input = messageWorkspace.querySelector('[data-message-input]');
+        let filter = 'all';
+        let activeConversation = JSON.parse(conversationRows[0]?.dataset.payload || '{}');
+
+        const setText = (selector, value) => {
+            const node = messageWorkspace.querySelector(selector);
+            if (node) node.textContent = value;
+        };
+        const renderThread = (conversation) => {
+            if (!thread) return;
+            thread.replaceChildren();
+            const day = document.createElement('div');
+            day.className = 'message-day';
+            day.innerHTML = '<span>Today</span>';
+            thread.append(day);
+            conversation.messages.forEach((message) => {
+                const row = document.createElement('article');
+                row.className = `chat-bubble-row is-${message.from}`;
+                if (message.from === 'buyer') {
+                    const avatar = document.createElement('span');
+                    avatar.className = 'conversation-avatar';
+                    avatar.textContent = conversation.initials;
+                    row.append(avatar);
+                }
+                const bubble = document.createElement('div');
+                const copy = document.createElement('p');
+                const time = document.createElement('time');
+                copy.textContent = message.text;
+                time.textContent = message.time;
+                if (message.from === 'seller') time.insertAdjacentHTML('beforeend', '<i data-lucide="check-check"></i>');
+                bubble.append(copy, time);
+                row.append(bubble);
+                thread.append(row);
+            });
+            window.lucide?.createIcons();
+            thread.scrollTop = thread.scrollHeight;
+        };
+        const openConversation = (row) => {
+            activeConversation = JSON.parse(row.dataset.payload);
+            conversationRows.forEach((item) => item.classList.toggle('is-active', item === row));
+            row.dataset.unread = '0';
+            row.querySelector('.conversation-unread')?.remove();
+            setText('[data-chat-initials]', activeConversation.initials);
+            setText('[data-chat-buyer]', activeConversation.buyer);
+            setText('[data-chat-active]', activeConversation.active);
+            setText('[data-chat-order]', activeConversation.order);
+            setText('[data-chat-context-product]', activeConversation.product);
+            setText('[data-chat-context-order]', activeConversation.order);
+            setText('[data-detail-initials]', activeConversation.initials);
+            setText('[data-detail-buyer]', activeConversation.buyer);
+            setText('[data-detail-member]', activeConversation.member);
+            setText('[data-detail-order]', activeConversation.order);
+            setText('[data-detail-status]', activeConversation.status);
+            setText('[data-detail-product]', activeConversation.product);
+            setText('[data-detail-variant]', activeConversation.variant);
+            setText('[data-detail-price]', activeConversation.price);
+            setText('[data-detail-previous]', activeConversation.previous);
+            renderThread(activeConversation);
+            const unread = conversationRows.reduce((total, item) => total + Number(item.dataset.unread || 0), 0);
+            setText('[data-total-unread]', unread);
+        };
+        const applyConversationFilter = () => {
+            const query = search?.value.trim().toLowerCase() ?? '';
+            let visible = 0;
+            conversationRows.forEach((row) => {
+                const matchesFilter = filter === 'all' || (filter === 'unread' && Number(row.dataset.unread) > 0) || row.dataset.type === filter;
+                const matchesSearch = !query || row.dataset.search.includes(query);
+                row.hidden = !(matchesFilter && matchesSearch);
+                if (!row.hidden) visible += 1;
+            });
+            if (empty) empty.hidden = visible > 0;
+        };
+        conversationRows.forEach((row) => row.addEventListener('click', () => openConversation(row)));
+        messageWorkspace.querySelectorAll('[data-message-filter]').forEach((button) => button.addEventListener('click', () => {
+            filter = button.dataset.messageFilter;
+            messageWorkspace.querySelectorAll('[data-message-filter]').forEach((item) => item.classList.toggle('is-active', item === button));
+            applyConversationFilter();
+        }));
+        search?.addEventListener('input', applyConversationFilter);
+        messageWorkspace.querySelectorAll('[data-quick-reply]').forEach((button) => button.addEventListener('click', () => {
+            if (input) { input.value = button.dataset.quickReply; input.focus(); }
+        }));
+        const messageForm = messageWorkspace.querySelector('[data-message-form]');
+        messageForm?.addEventListener('submit', (event) => {
+            event.preventDefault();
+            const message = input?.value.trim();
+            if (!message || !thread) { input?.focus(); return; }
+            activeConversation.messages.push({ from: 'seller', text: message, time: 'Just now' });
+            renderThread(activeConversation);
+            input.value = '';
+        });
+        input?.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); messageForm?.requestSubmit(); }
+        });
+        messageWorkspace.querySelector('[data-message-attach]')?.addEventListener('click', () => {
+            if (toast) { toast.textContent = 'Attachment picker will be connected with the backend later.'; toast.classList.add('is-visible'); }
+        });
+        messageWorkspace.querySelector('[data-seller-availability]')?.addEventListener('change', (event) => {
+            if (toast) { toast.textContent = `Status changed to ${event.currentTarget.value} for this preview.`; toast.classList.add('is-visible'); }
+        });
+        messageWorkspace.querySelector('[data-report-conversation]')?.addEventListener('click', () => {
+            if (toast) { toast.textContent = 'Conversation report form will be connected during backend integration.'; toast.classList.add('is-visible'); }
+        });
+    }
+
+    /* Customer feedback — frontend-only filters and replies. */
+    const feedbackWorkspace = document.querySelector('[data-feedback-workspace]');
+    if (feedbackWorkspace) {
+        const reviews = [...feedbackWorkspace.querySelectorAll('[data-feedback-review]')];
+        const search = feedbackWorkspace.querySelector('[data-feedback-search]');
+        const empty = feedbackWorkspace.querySelector('[data-feedback-empty]');
+        let activeFilter = 'all';
+        const applyFeedbackFilter = () => {
+            const query = search?.value.trim().toLowerCase() ?? '';
+            let visible = 0;
+            reviews.forEach((review) => {
+                const matches = (activeFilter === 'all' || review.dataset.status === activeFilter) && (!query || review.dataset.search.includes(query));
+                review.hidden = !matches;
+                if (matches) visible += 1;
+            });
+            if (empty) empty.hidden = visible > 0;
+        };
+        feedbackWorkspace.querySelectorAll('[data-feedback-filter]').forEach((button) => button.addEventListener('click', () => {
+            activeFilter = button.dataset.feedbackFilter;
+            feedbackWorkspace.querySelectorAll('[data-feedback-filter]').forEach((item) => item.classList.toggle('is-active', item === button));
+            applyFeedbackFilter();
+        }));
+        search?.addEventListener('input', applyFeedbackFilter);
+        feedbackWorkspace.querySelectorAll('[data-feedback-reply]').forEach((button) => button.addEventListener('click', () => {
+            button.hidden = true;
+            const form = button.parentElement.querySelector('[data-feedback-form]');
+            if (form) { form.hidden = false; form.querySelector('textarea')?.focus(); }
+        }));
+        feedbackWorkspace.querySelectorAll('[data-feedback-cancel]').forEach((button) => button.addEventListener('click', () => {
+            const area = button.closest('[data-feedback-reply-area]');
+            area.querySelector('[data-feedback-form]').hidden = true;
+            area.querySelector('[data-feedback-reply]').hidden = false;
+        }));
+        feedbackWorkspace.querySelectorAll('[data-feedback-form]').forEach((form) => form.addEventListener('submit', (event) => {
+            event.preventDefault();
+            const textarea = form.querySelector('textarea');
+            if (!textarea?.value.trim()) { textarea?.focus(); return; }
+            const review = form.closest('[data-feedback-review]');
+            const response = document.createElement('div');
+            response.className = 'seller-feedback-response';
+            const label = document.createElement('span');
+            const copy = document.createElement('p');
+            label.textContent = 'Seller response';
+            copy.textContent = textarea.value.trim();
+            response.append(label, copy);
+            form.closest('[data-feedback-reply-area]').replaceWith(response);
+            review.dataset.status = 'replied';
+            const status = review.querySelector('.feedback-review-status');
+            if (status) { status.textContent = 'Replied'; status.classList.add('is-replied'); }
+            if (toast) { toast.textContent = 'Reply posted for this frontend preview.'; toast.classList.add('is-visible'); }
+        }));
+    }
+
+    /* Reports — frontend-only filters and export feedback. */
+    document.querySelectorAll('[data-report-page]').forEach((page) => {
+        const search = page.querySelector('[data-report-search]');
+        const rows = [...page.querySelectorAll('[data-report-row]')];
+        const count = page.querySelector('[data-report-count]');
+        const empty = page.querySelector('[data-report-empty]');
+
+        const filterRows = () => {
+            const query = search?.value.trim().toLowerCase() ?? '';
+            let visible = 0;
+            rows.forEach((row) => {
+                const matches = !query || row.dataset.search.includes(query);
+                row.hidden = !matches;
+                if (matches) visible += 1;
+            });
+            if (count) count.textContent = visible;
+            if (empty) empty.hidden = visible > 0;
+        };
+
+        search?.addEventListener('input', filterRows);
+        page.querySelector('[data-report-period]')?.addEventListener('change', (event) => {
+            if (!toast) return;
+            toast.textContent = `${event.currentTarget.value} selected. Report data is a frontend preview.`;
+            toast.classList.add('is-visible');
+            window.clearTimeout(window.sellerToastTimer);
+            window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3200);
+        });
+        page.querySelector('[data-report-export]')?.addEventListener('click', () => {
+            if (!toast) return;
+            toast.textContent = 'Report export previewed. File generation will be connected with the backend.';
+            toast.classList.add('is-visible');
+            window.clearTimeout(window.sellerToastTimer);
+            window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3400);
+        });
+    });
+
+    const serverToast = document.querySelector('[data-server-toast]');
+    if (serverToast) window.setTimeout(() => serverToast.classList.remove('is-visible'), 3200);
+};
+
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bootSeller);
+else bootSeller();
+
+/* =========================================================
+   ORDER WORKFLOW MODAL
+   ========================================================= */
+
+function initializeOrderWorkflowModal() {
+    const workspace =
+        document.querySelector('[data-orders-workspace]');
+
+    const modal =
+        document.querySelector('[data-order-workflow-modal]');
+
+    if (
+        !workspace ||
+        !modal ||
+        modal.dataset.initialized === 'true'
+    ) {
+        return;
+    }
+
+    modal.dataset.initialized = 'true';
+
+
+    const title =
+        modal.querySelector('[data-order-workflow-title]');
+
+    const subtitle =
+        modal.querySelector('[data-order-workflow-subtitle]');
+
+    const iconWrap =
+        modal.querySelector('[data-order-workflow-icon-wrap]');
+
+    const status =
+        modal.querySelector('[data-order-workflow-status]');
+
+    const deadline =
+        modal.querySelector('[data-order-workflow-deadline]');
+
+    const orderId =
+        modal.querySelector('[data-order-workflow-id]');
+
+    const customer =
+        modal.querySelector('[data-order-workflow-customer]');
+
+    const payment =
+        modal.querySelector('[data-order-workflow-payment]');
+
+    const total =
+        modal.querySelector('[data-order-workflow-total]');
+
+    const itemCount =
+        modal.querySelector('[data-order-workflow-item-count]');
+
+    const itemsList =
+        modal.querySelector(
+            '[data-order-workflow-items-list]'
+        );
+
+    const guidance =
+        modal.querySelector(
+            '[data-order-workflow-guidance]'
+        );
+
+    const guidanceIcon =
+        modal.querySelector(
+            '[data-order-workflow-guidance-icon]'
+        );
+
+    const guidanceText =
+        modal.querySelector(
+            '[data-order-workflow-guidance-text]'
+        );
+
+    const checklist =
+        modal.querySelector(
+            '[data-order-workflow-checklist]'
+        );
+
+    const timelinePanel =
+        modal.querySelector(
+            '[data-order-workflow-timeline-panel]'
+        );
+
+    const timeline =
+        modal.querySelector(
+            '[data-order-workflow-timeline]'
+        );
+
+    const primary =
+        modal.querySelector(
+            '[data-order-workflow-primary]'
+        );
+
+    const closeButton =
+        modal.querySelector('.order-workflow-x');
+
+
+    let lastFocus = null;
+    let currentRow = null;
+    let currentConfig = null;
+
+
+    /*
+     * One modal, different content depending
+     * on the current seller action.
+     */
+    const configs = {
+
+        review: {
+            title: 'Review and Confirm Order',
+
+            subtitle:
+                'Check the order details and confirm if you can fulfill this order.',
+
+            icon: 'clipboard-check',
+
+            primary: 'Confirm Order',
+
+            guidance:
+                'By confirming, you accept this order and will prepare it for pickup.',
+
+            checks: [],
+        },
+
+
+        prepare: {
+            title: 'Start Preparing Order',
+
+            subtitle:
+                'Prepare the correct items and organize them for packing.',
+
+            icon: 'package-check',
+
+            primary: 'Start Preparing',
+
+            guidance:
+                'Before packing, verify the item, variation, and quantity against the order.',
+
+            checks: [],
+        },
+
+
+        packing: {
+            title: 'Continue Packing',
+
+            subtitle:
+                'Finish packing and get the parcel ready for its shipping label.',
+
+            icon: 'package',
+
+            primary: 'Continue Packing',
+
+            guidance: '',
+
+            checks: [
+                'Correct item and variation are packed',
+                'Order quantity is complete',
+                'Parcel is secure and in good condition',
+            ],
+        },
+
+
+        waybill: {
+            title: 'Print Waybill / Label',
+
+            subtitle:
+                'Prepare the shipping label for this packed order.',
+
+            icon: 'printer',
+
+            primary: 'Print Waybill',
+
+            guidance:
+                'Print the waybill and attach it securely to the parcel before marking the order ready for pickup.',
+
+            checks: [],
+        },
+
+
+        ready: {
+            title: 'Mark as Ready for Pickup',
+
+            subtitle:
+                'Confirm that the packed and labeled parcel is ready for rider pickup.',
+
+            icon: 'truck',
+
+            primary: 'Mark as Ready',
+
+            guidance:
+                'Once marked as ready, the parcel can move to Pickup Requests for logistics handover.',
+
+            checks: [],
+        },
+
+
+        details: {
+            title: 'View Order Details',
+
+            subtitle:
+                'View the order information and current delivery status.',
+
+            icon: 'circle-info',
+
+            primary: '',
+
+            guidance: '',
+
+            checks: [],
+
+            readOnly: true,
+        },
+
+    };
+
+
+    const readableStatus = value => ({
+        PLACED: 'Placed',
+        CONFIRMED: 'Confirmed',
+        PREPARING: 'Preparing',
+        PACKED: 'Packed',
+        READY_FOR_PICKUP: 'Ready for Pickup',
+        PICKED_UP: 'Picked Up',
+        AT_SORTING_CENTER: 'At Sorting Center',
+        SORTED: 'Sorted',
+        ASSIGNED_TO_RIDER: 'Rider Assigned',
+        OUT_FOR_DELIVERY: 'Out for Delivery',
+        DELIVERED: 'Delivered',
+        COMPLETED: 'Completed',
+        DELIVERY_FAILED: 'Delivery Failed',
+        RETURNED: 'Returned',
+        CANCELLED: 'Cancelled',
+    }[value] || value.replaceAll('_', ' '));
+
+
+    /*
+     * Determine which modal should be shown
+     * from the actual action label / ERP status.
+     */
+    function configFor(row, mode) {
+
+        if (mode === 'details') {
+            return configs.details;
+        }
+
+
+        const action =
+            (row.dataset.orderAction || '')
+                .trim()
+                .toLowerCase();
+
+
+        const canonical =
+            (row.dataset.orderCanonical || '')
+                .trim()
+                .toUpperCase();
+
+
+        if (
+            action.includes('review') ||
+            action.includes('confirm')
+        ) {
+            return configs.review;
+        }
+
+
+        if (
+            action.includes('start preparing')
+        ) {
+            return configs.prepare;
+        }
+
+
+        if (
+            action.includes('continue packing') ||
+            action.includes('packing')
+        ) {
+            return configs.packing;
+        }
+
+
+        if (
+            action.includes('print waybill') ||
+            action.includes('print label')
+        ) {
+            return configs.waybill;
+        }
+
+
+        if (
+            action.includes('mark as ready')
+        ) {
+            return configs.ready;
+        }
+
+
+        if (
+            action.includes('view') ||
+            action.includes('track')
+        ) {
+            return configs.details;
+        }
+
+
+        /*
+         * Status fallback.
+         */
+        if (canonical === 'PLACED') {
+            return configs.review;
+        }
+
+        if (canonical === 'CONFIRMED') {
+            return configs.prepare;
+        }
+
+        if (canonical === 'PREPARING') {
+            return configs.packing;
+        }
+
+        if (canonical === 'PACKED') {
+            return configs.waybill;
+        }
+
+
+        return configs.details;
+    }
+
+
+    /*
+     * Product / item rows
+     */
+    function renderItems(row) {
+        itemsList.replaceChildren();
+
+
+        const raw =
+            (row.dataset.orderItems || '').trim();
+
+
+        const parts = raw
+            ? raw
+                .split(/\s+\+\s+/)
+                .map(part => part.trim())
+                .filter(Boolean)
+
+            : ['Item details unavailable'];
+
+
+        parts.forEach(part => {
+
+            const article =
+                document.createElement('article');
+
+            article.className =
+                'order-workflow-item';
+
+
+            const iconBox =
+                document.createElement('span');
+
+            iconBox.className =
+                'order-workflow-item-icon';
+
+            iconBox.innerHTML = `
+                <i
+                    data-lucide="package"
+                    aria-hidden="true"
+                ></i>
+            `;
+
+
+            const copy =
+                document.createElement('div');
+
+
+            const strong =
+                document.createElement('strong');
+
+            strong.textContent = part;
+
+
+            const small =
+                document.createElement('small');
+
+            small.textContent =
+                'Order item';
+
+
+            copy.append(
+                strong,
+                small
+            );
+
+
+            article.append(
+                iconBox,
+                copy
+            );
+
+
+            itemsList.append(article);
+
+        });
+    }
+
+
+    /*
+     * Action-specific guidance / checklist
+     */
+    function renderGuidance(config) {
+        checklist.replaceChildren();
+
+
+        if (config.checks.length) {
+
+            guidance.hidden = true;
+            checklist.hidden = false;
+
+
+            config.checks.forEach(text => {
+
+                const li =
+                    document.createElement('li');
+
+
+                li.innerHTML = `
+                    <span>
+                        <i
+                            data-lucide="check"
+                            aria-hidden="true"
+                        ></i>
+                    </span>
+                `;
+
+
+                const copy =
+                    document.createElement('strong');
+
+                copy.textContent = text;
+
+
+                li.append(copy);
+
+                checklist.append(li);
+
+            });
+
+
+            return;
+        }
+
+
+        checklist.hidden = true;
+
+        guidance.hidden =
+            !config.guidance;
+
+
+        guidanceText.textContent =
+            config.guidance || '';
+
+
+        guidanceIcon.innerHTML = `
+            <i
+                data-lucide="info"
+                aria-hidden="true"
+            ></i>
+        `;
+    }
+
+
+    /*
+     * Read-only order status timeline.
+     * Visible names follow the ERP flow,
+     * not database-style underscore names.
+     */
+    function renderTimeline(canonical) {
+        timeline.replaceChildren();
+
+
+        if (canonical === 'CANCELLED') {
+
+            appendTimeline(
+                [
+                    ['PLACED', 'Placed'],
+                    ['CANCELLED', 'Cancelled'],
+                ],
+                canonical
+            );
+
+            return;
+        }
+
+
+        if (canonical === 'RETURNED') {
+
+            appendTimeline(
+                [
+                    ['PLACED', 'Placed'],
+                    ['CONFIRMED', 'Confirmed'],
+                    ['PREPARING', 'Preparing'],
+                    [
+                        'READY_FOR_PICKUP',
+                        'Ready for Pickup'
+                    ],
+                    ['PICKED_UP', 'Picked Up'],
+                    [
+                        'AT_SORTING_CENTER',
+                        'At Sorting Center'
+                    ],
+                    ['SORTED', 'Sorted'],
+                    [
+                        'ASSIGNED_TO_RIDER',
+                        'Rider Assigned'
+                    ],
+                    [
+                        'OUT_FOR_DELIVERY',
+                        'Out for Delivery'
+                    ],
+                    ['RETURNED', 'Returned'],
+                ],
+                canonical
+            );
+
+            return;
+        }
+
+
+        if (canonical === 'DELIVERY_FAILED') {
+
+            appendTimeline(
+                [
+                    ['PLACED', 'Placed'],
+                    ['CONFIRMED', 'Confirmed'],
+                    ['PREPARING', 'Preparing'],
+                    [
+                        'READY_FOR_PICKUP',
+                        'Ready for Pickup'
+                    ],
+                    ['PICKED_UP', 'Picked Up'],
+                    [
+                        'AT_SORTING_CENTER',
+                        'At Sorting Center'
+                    ],
+                    ['SORTED', 'Sorted'],
+                    [
+                        'ASSIGNED_TO_RIDER',
+                        'Rider Assigned'
+                    ],
+                    [
+                        'OUT_FOR_DELIVERY',
+                        'Out for Delivery'
+                    ],
+                    [
+                        'DELIVERY_FAILED',
+                        'Delivery Failed'
+                    ],
+                ],
+                canonical
+            );
+
+            return;
+        }
+
+
+        /*
+         * PACKED is part of the seller's
+         * preparation process.
+         */
+        const normalized =
+            canonical === 'PACKED'
+                ? 'PREPARING'
+                : canonical;
+
+
+        appendTimeline(
+            [
+                ['PLACED', 'Placed'],
+                ['CONFIRMED', 'Confirmed'],
+                ['PREPARING', 'Preparing'],
+                [
+                    'READY_FOR_PICKUP',
+                    'Ready for Pickup'
+                ],
+                ['PICKED_UP', 'Picked Up'],
+                [
+                    'AT_SORTING_CENTER',
+                    'At Sorting Center'
+                ],
+                ['SORTED', 'Sorted'],
+                [
+                    'ASSIGNED_TO_RIDER',
+                    'Rider Assigned'
+                ],
+                [
+                    'OUT_FOR_DELIVERY',
+                    'Out for Delivery'
+                ],
+                ['DELIVERED', 'Delivered'],
+                ['COMPLETED', 'Completed'],
+            ],
+            normalized
+        );
+    }
+
+
+    function appendTimeline(
+        stages,
+        currentStatus
+    ) {
+
+        const currentIndex =
+            Math.max(
+                0,
+                stages.findIndex(
+                    ([key]) =>
+                        key === currentStatus
+                )
+            );
+
+
+        stages.forEach(
+            ([key, label], index) => {
+
+                const li =
+                    document.createElement('li');
+
+
+                li.className =
+                    index < currentIndex
+                        ? 'is-done'
+                        : index === currentIndex
+                            ? 'is-current'
+                            : 'is-upcoming';
+
+
+                const marker =
+                    document.createElement('span');
+
+
+                marker.innerHTML =
+                    index <= currentIndex
+                        ? `
+                            <i
+                                data-lucide="check"
+                                aria-hidden="true"
+                            ></i>
+                        `
+                        : '';
+
+
+                const copy =
+                    document.createElement('div');
+
+
+                const strong =
+                    document.createElement('strong');
+
+                strong.textContent =
+                    label;
+
+
+                copy.append(strong);
+
+
+                if (index === currentIndex) {
+
+                    const small =
+                        document.createElement(
+                            'small'
+                        );
+
+                    small.textContent =
+                        'Current status';
+
+                    copy.append(small);
+
+                }
+
+
+                li.append(
+                    marker,
+                    copy
+                );
+
+
+                timeline.append(li);
+
+            }
+        );
+    }
+
+
+    function openModal(
+        row,
+        mode
+    ) {
+
+        const config =
+            configFor(row, mode);
+
+
+        const canonical =
+            (
+                row.dataset.orderCanonical ||
+                ''
+            )
+                .trim()
+                .toUpperCase();
+
+
+        currentRow = row;
+        currentConfig = config;
+
+        lastFocus =
+            document.activeElement;
+
+
+        title.textContent =
+            config.title;
+
+
+        subtitle.textContent =
+            config.subtitle;
+
+
+        iconWrap.innerHTML = `
+            <i
+                data-lucide="${config.icon}"
+                aria-hidden="true"
+            ></i>
+        `;
+
+
+        status.textContent =
+            row.dataset.orderStatusCopy ||
+            readableStatus(canonical);
+
+
+        if (
+            row.dataset.orderDeadline
+        ) {
+
+            deadline.textContent =
+                `Deadline / Update · ${row.dataset.orderDeadline}`;
+
+            deadline.hidden = false;
+
+        } else {
+
+            deadline.textContent = '';
+
+            deadline.hidden = true;
+
+        }
+
+
+        orderId.textContent =
+            row.dataset.orderId || '—';
+
+
+        customer.textContent =
+            row.dataset.orderCustomer || '—';
+
+
+        payment.textContent =
+            row.dataset.orderPaymentCopy || '—';
+
+
+        total.textContent =
+            row.dataset.orderTotal || '—';
+
+
+        itemCount.textContent =
+            row.dataset.orderItemCount ||
+            'Items';
+
+
+        renderItems(row);
+
+        renderGuidance(config);
+
+
+        timelinePanel.hidden =
+            !config.readOnly;
+
+
+        if (config.readOnly) {
+            renderTimeline(canonical);
+        }
+
+
+        primary.hidden =
+            !config.primary;
+
+
+        primary.textContent =
+            config.primary || '';
+
+
+        modal.hidden = false;
+
+        document.body.classList.add(
+            'modal-open'
+        );
+
+
+        /*
+         * Re-render Lucide icons inserted
+         * dynamically in this modal.
+         */
+        window.lucide?.createIcons();
+
+
+        if (config.primary) {
+            primary.focus();
+        } else {
+            closeButton?.focus();
+        }
+    }
+
+
+    function closeModal() {
+
+        modal.hidden = true;
+
+        document.body.classList.remove(
+            'modal-open'
+        );
+
+
+        currentRow = null;
+        currentConfig = null;
+
+
+        lastFocus?.focus?.();
+    }
+
+
+    function showToast(message) {
+
+        const toast =
+            document.querySelector(
+                '[data-seller-toast]'
+            );
+
+
+        if (!toast) {
+            return;
+        }
+
+
+        toast.textContent = message;
+
+        toast.classList.add(
+            'is-visible'
+        );
+
+
+        clearTimeout(
+            window.orderWorkflowToastTimer
+        );
+
+
+        window.orderWorkflowToastTimer =
+            setTimeout(() => {
+
+                toast.classList.remove(
+                    'is-visible'
+                );
+
+            }, 3500);
+    }
+
+
+    /*
+     * Open modal from:
+     * - Order ID = read-only details
+     * - Action column = action-specific modal
+     */
+    workspace.addEventListener(
+        'click',
+        event => {
+
+            const trigger =
+                event.target.closest(
+                    '[data-order-workflow-open]'
+                );
+
+
+            if (!trigger) {
+                return;
+            }
+
+
+            const row =
+                trigger.closest(
+                    '[data-order-row]'
+                );
+
+
+            if (!row) {
+                return;
+            }
+
+
+            event.preventDefault();
+
+
+            openModal(
+                row,
+                trigger.dataset.workflowMode ||
+                'action'
+            );
+        }
+    );
+
+
+    /*
+     * Close controls
+     */
+    modal
+        .querySelectorAll(
+            '[data-order-workflow-close]'
+        )
+        .forEach(button => {
+
+            button.addEventListener(
+                'click',
+                closeModal
+            );
+
+        });
+
+
+    /*
+     * Front-end-only action.
+     *
+     * Later this is where backend order
+     * status updates can be connected.
+     */
+    primary.addEventListener(
+        'click',
+        () => {
+
+            if (
+                !currentRow ||
+                !currentConfig ||
+                !currentConfig.primary
+            ) {
+                return;
+            }
+
+
+            showToast(
+                `${currentConfig.primary} is a front-end preview. No order status was changed.`
+            );
+
+
+            closeModal();
+        }
+    );
+
+
+    /*
+     * ESC key
+     */
+    document.addEventListener(
+        'keydown',
+        event => {
+
+            if (
+                event.key === 'Escape' &&
+                !modal.hidden
+            ) {
+                closeModal();
+            }
+
+        }
+    );
+}
+
+
+if (
+    document.readyState === 'loading'
+) {
+
+    document.addEventListener(
+        'DOMContentLoaded',
+        initializeOrderWorkflowModal
+    );
+
+} else {
+
+    initializeOrderWorkflowModal();
+
+}
+
+/* =========================================================
+   MANAGE ORDERS ACTION MODAL
+   Moved out of orders.blade.php
+   Append to resources/js/seller.js
+   ========================================================= */
+
+const setupBearlyOrderActionModal = () => {
+    const modal = document.querySelector('[data-bearly-action-modal]');
+    if (!modal || modal.dataset.bound === '1') return;
+
+    modal.dataset.bound = '1';
+
+    const q = (selector) => modal.querySelector(selector);
+    const title = q('[data-bearly-action-title]');
+    const subtitle = q('[data-bearly-action-subtitle]');
+    const icon = q('[data-bearly-action-icon]');
+    const badge = q('[data-bearly-action-badge]');
+    const orderId = q('[data-bearly-order-id]');
+    const customer = q('[data-bearly-order-customer]');
+    const orderDate = q('[data-bearly-order-date]');
+    const payment = q('[data-bearly-order-payment]');
+    const total = q('[data-bearly-order-total]');
+    const address = q('[data-bearly-order-address]');
+    const addressCell = q('[data-bearly-address-cell]');
+    const addressLabel = q('[data-bearly-address-label]');
+    const itemCount = q('[data-bearly-item-count]');
+    const items = q('[data-bearly-items]');
+    const context = q('[data-bearly-action-context]');
+    const primary = q('[data-bearly-action-primary]');
+    const footer = q('[data-bearly-action-footer]');
+
+    let lastFocus = null;
+    let active = null;
+
+    const statusLabels = {
+        PLACED: 'Placed',
+        CONFIRMED: 'Confirmed',
+        PREPARING: 'Preparing',
+        PACKED: 'Packed',
+        READY_FOR_PICKUP: 'Ready for Pickup',
+        PICKED_UP: 'Picked Up',
+        AT_SORTING_CENTER: 'At Sorting Center',
+        SORTED: 'Sorted',
+        ASSIGNED_TO_RIDER: 'Rider Assigned',
+        OUT_FOR_DELIVERY: 'Out for Delivery',
+        DELIVERED: 'Delivered',
+        COMPLETED: 'Completed',
+        DELIVERY_FAILED: 'Delivery Failed',
+        RETURNED: 'Returned',
+        CANCELLED: 'Cancelled',
+    };
+
+    const flow = [
+        ['PLACED', 'Placed'],
+        ['CONFIRMED', 'Confirmed'],
+        ['PREPARING', 'Preparing'],
+        ['PACKED', 'Packed'],
+        ['READY_FOR_PICKUP', 'Ready for Pickup'],
+        ['PICKED_UP', 'Picked Up'],
+        ['AT_SORTING_CENTER', 'At Sorting Center'],
+        ['SORTED', 'Sorted'],
+        ['ASSIGNED_TO_RIDER', 'Rider Assigned'],
+        ['OUT_FOR_DELIVERY', 'Out for Delivery'],
+        ['DELIVERED', 'Delivered'],
+        ['COMPLETED', 'Completed'],
+    ];
+
+    const configFor = (row, mode) => {
+        const status = (row.dataset.orderCanonical || '').toUpperCase();
+        const action = (row.dataset.orderAction || '').toLowerCase();
+
+        if (mode === 'details' || action.includes('view detail') || action.includes('track')) {
+            return {
+                type: 'details',
+                title: 'Order Details',
+                subtitle: 'View the complete details and current status of this order.',
+                icon: 'info',
+                button: null,
+            };
+        }
+
+        if (action.includes('review') || action.includes('confirm') || status === 'PLACED') {
+            return {
+                type: 'review',
+                title: 'Review and Confirm Order',
+                subtitle: 'Check the order details and confirm if you can fulfill this order.',
+                icon: 'clipboard-check',
+                button: 'Confirm Order',
+            };
+        }
+
+        if (action.includes('start preparing') || status === 'CONFIRMED') {
+            return {
+                type: 'prepare',
+                title: 'Start Preparing Order',
+                subtitle: 'Prepare the correct items and organize them for packing.',
+                icon: 'package-check',
+                button: 'Start Preparing',
+            };
+        }
+
+        if (action.includes('continue packing') || action.includes('packing') || status === 'PREPARING') {
+            return {
+                type: 'packing',
+                title: 'Continue Packing',
+                subtitle: 'Finish packing and get the parcel ready for its shipping label.',
+                icon: 'package',
+                button: 'Continue Packing',
+            };
+        }
+
+        if (action.includes('waybill') || action.includes('label') || status === 'PACKED') {
+            return {
+                type: 'waybill',
+                title: 'Print Waybill / Label',
+                subtitle: 'Generate and print the shipping label for this order.',
+                icon: 'printer',
+                button: 'Print Waybill',
+            };
+        }
+
+        if (action.includes('ready') || action.includes('pickup') || status === 'READY_FOR_PICKUP') {
+            return {
+                type: 'ready',
+                title: 'Mark as Ready for Pickup',
+                subtitle: 'Confirm that the parcel is packed, labeled, and ready for pickup.',
+                icon: 'truck',
+                button: 'Mark as Ready',
+            };
+        }
+
+        return {
+            type: 'details',
+            title: 'Order Details',
+            subtitle: 'View the complete details and current status of this order.',
+            icon: 'info',
+            button: null,
+        };
+    };
+
+    const productIcon = (text) => {
+        const value = text.toLowerCase();
+        if (value.includes('shirt') || value.includes('dress') || value.includes('top')) return 'shirt';
+        if (value.includes('bag') || value.includes('tote')) return 'shopping-bag';
+        if (value.includes('shoe') || value.includes('sneaker')) return 'footprints';
+        if (value.includes('watch')) return 'watch';
+        return 'package';
+    };
+
+    const paymentText = (row) => {
+        const raw = (row.dataset.orderPaymentCopy || '').trim();
+        const key = (row.dataset.orderPaymentKey || row.dataset.payment || '').trim().toLowerCase();
+        const canonical = (row.dataset.orderCanonical || '').trim().toLowerCase();
+        const statusCopy = (row.dataset.orderStatusCopy || '').trim().toLowerCase();
+
+        const badValues = new Set([
+            'cancelled',
+            'returned',
+            'completed',
+            'delivered',
+            'preparing',
+            'confirmed',
+            'placed',
+            'packed',
+            'ready for pickup',
+            'delivery failed',
+        ]);
+
+        if (
+            raw &&
+            !badValues.has(raw.toLowerCase()) &&
+            raw.toLowerCase() !== canonical &&
+            raw.toLowerCase() !== statusCopy
+        ) {
+            return raw;
+        }
+
+        if (key === 'cod') return 'Cash on Delivery';
+        if (key === 'paid') return 'Paid';
+        return 'Payment details unavailable';
+    };
+
+    const formatOrderDate = (rawValue) => {
+        const raw = String(rawValue || '').trim();
+        if (!raw) return 'Not available in preview';
+
+        const lower = raw.toLowerCase();
+
+        if (lower === 'today') {
+            return new Intl.DateTimeFormat('en-PH', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+            }).format(new Date());
+        }
+
+        if (['upcoming', 'previous', 'upcoming / previous'].includes(lower)) {
+            return 'Not available in preview';
+        }
+
+        const parsed = new Date(raw);
+
+        if (!Number.isNaN(parsed.getTime())) {
+            const hasTime = /\d{1,2}:\d{2}|t\d{2}:\d{2}/i.test(raw);
+            const options = {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+            };
+
+            if (hasTime) {
+                Object.assign(options, {
+                    hour: 'numeric',
+                    minute: '2-digit',
+                });
+            }
+
+            return new Intl.DateTimeFormat('en-PH', options).format(parsed);
+        }
+
+        return raw;
+    };
+
+    const parseItemsJson = (row) => {
+        const raw = (row.dataset.orderItemsJson || '').trim();
+        if (!raw) return [];
+
+        try {
+            const value = JSON.parse(raw);
+            return Array.isArray(value) ? value : [];
+        } catch (_) {
+            return [];
+        }
+    };
+
+    const itemImage = (item) =>
+        item.image || item.product_image || item.image_url || item.thumbnail || '';
+
+    const itemName = (item) =>
+        item.name || item.product_name || item.title || 'Order item';
+
+    const itemVariant = (item) =>
+        item.variant || item.variation || item.option || '';
+
+    const itemSku = (item) =>
+        item.sku || item.product_sku || '';
+
+    const itemQty = (item) =>
+        Number(item.qty ?? item.quantity ?? 1) || 1;
+
+    const itemPriceText = (item) => {
+        const value = item.unit_price ?? item.price ?? item.amount ?? null;
+        if (value === null || value === '') return '';
+
+        if (typeof value === 'number' || /^\d+(\.\d+)?$/.test(String(value))) {
+            return new Intl.NumberFormat('en-PH', {
+                style: 'currency',
+                currency: 'PHP',
+                maximumFractionDigits: 2,
+            }).format(Number(value));
+        }
+
+        return String(value);
+    };
+
+    const renderItems = (row) => {
+        items.replaceChildren();
+
+        const databaseItems = parseItemsJson(row);
+
+        if (databaseItems.length) {
+            databaseItems.forEach((item) => {
+                const nameText = itemName(item);
+                const article = document.createElement('article');
+                article.className = 'bearly-action-item';
+
+                const thumb = document.createElement('span');
+                thumb.className = 'bearly-action-thumb';
+
+                const image = itemImage(item);
+
+                if (image) {
+                    const img = document.createElement('img');
+                    img.src = image;
+                    img.alt = nameText;
+                    img.loading = 'lazy';
+
+                    img.addEventListener(
+                        'error',
+                        () => {
+                            thumb.replaceChildren();
+                            thumb.innerHTML = `<i data-lucide="${productIcon(nameText)}" aria-hidden="true"></i>`;
+                            window.lucide?.createIcons();
+                        },
+                        { once: true },
+                    );
+
+                    thumb.append(img);
+                } else {
+                    thumb.innerHTML = `<i data-lucide="${productIcon(nameText)}" aria-hidden="true"></i>`;
+                }
+
+                const copy = document.createElement('div');
+                copy.className = 'bearly-action-item-copy';
+
+                const name = document.createElement('strong');
+                name.textContent = [nameText, itemVariant(item)].filter(Boolean).join(' · ');
+
+                const meta = document.createElement('small');
+                const skuText = itemSku(item);
+                meta.textContent = skuText ? `SKU: ${skuText}` : 'Order item';
+
+                copy.append(name, meta);
+
+                const side = document.createElement('span');
+                side.className = 'bearly-action-item-side';
+
+                const price = itemPriceText(item);
+                side.textContent = price
+                    ? `${price} × ${itemQty(item)}`
+                    : `Qty ${itemQty(item)}`;
+
+                article.append(thumb, copy, side);
+                items.append(article);
+            });
+
+            const totalItems = databaseItems.reduce(
+                (sum, item) => sum + itemQty(item),
+                0,
+            );
+
+            itemCount.textContent = `(${totalItems} ${totalItems === 1 ? 'item' : 'items'})`;
+            return;
+        }
+
+        const raw = (row.dataset.orderItems || '').trim();
+        const parts = raw
+            ? raw.split(/\s*\+\s*/).filter(Boolean)
+            : ['Order item'];
+
+        const sku = (row.dataset.orderSku || '').trim();
+        const image = (row.dataset.orderProductImage || '').trim();
+
+        parts.forEach((part, index) => {
+            const article = document.createElement('article');
+            article.className = 'bearly-action-item';
+
+            const thumb = document.createElement('span');
+            thumb.className = 'bearly-action-thumb';
+
+            if (image && index === 0) {
+                const img = document.createElement('img');
+                img.src = image;
+                img.alt = part.trim();
+                img.loading = 'lazy';
+
+                img.addEventListener(
+                    'error',
+                    () => {
+                        thumb.replaceChildren();
+                        thumb.innerHTML = `<i data-lucide="${productIcon(part)}" aria-hidden="true"></i>`;
+                        window.lucide?.createIcons();
+                    },
+                    { once: true },
+                );
+
+                thumb.append(img);
+            } else {
+                thumb.innerHTML = `<i data-lucide="${productIcon(part)}" aria-hidden="true"></i>`;
+            }
+
+            const copy = document.createElement('div');
+            copy.className = 'bearly-action-item-copy';
+
+            const name = document.createElement('strong');
+            name.textContent = part.trim();
+
+            const meta = document.createElement('small');
+            meta.textContent = sku && index === 0 ? `SKU: ${sku}` : 'Order item';
+
+            copy.append(name, meta);
+
+            const side = document.createElement('span');
+            side.className = 'bearly-action-item-side';
+            side.textContent =
+                parts.length === 1
+                    ? row.dataset.orderTotal || ''
+                    : `Item ${index + 1}`;
+
+            article.append(thumb, copy, side);
+            items.append(article);
+        });
+
+        itemCount.textContent = `(${row.dataset.orderItemCount || parts.length})`;
+    };
+
+    const notice = (iconName, text) =>
+        `<section class="bearly-action-notice"><span><i data-lucide="${iconName}"></i></span><p>${text}</p></section>`;
+
+    const escapeHtml = (value) =>
+        String(value ?? '').replace(
+            /[&<>"']/g,
+            (character) =>
+                ({
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    '"': '&quot;',
+                    "'": '&#39;',
+                })[character],
+        );
+
+    const renderContext = (row, config) => {
+        context.innerHTML = '';
+
+        if (config.type === 'review') {
+            context.innerHTML = notice(
+                'info',
+                'By confirming, you accept this order and will prepare it for pickup.',
+            );
+        } else if (config.type === 'prepare') {
+            context.innerHTML = `
+                <section class="bearly-action-next">
+                    <span><i data-lucide="package-check"></i></span>
+                    <div>
+                        <small>Before packing</small>
+                        <strong>Verify the item, variation, quantity, and condition against the order.</strong>
+                    </div>
+                </section>
+            `;
+        } else if (config.type === 'packing') {
+            context.innerHTML = `
+                <section class="bearly-action-check-card">
+                    <div class="bearly-action-check-head">
+                        <strong>Packing Checklist</strong>
+                        <span data-bearly-check-count>0/3 Completed</span>
+                    </div>
+                    <label class="bearly-action-check">
+                        <input type="checkbox" data-bearly-pack-check>
+                        <span>Correct item and variation are packed</span>
+                    </label>
+                    <label class="bearly-action-check">
+                        <input type="checkbox" data-bearly-pack-check>
+                        <span>Order quantity is complete</span>
+                    </label>
+                    <label class="bearly-action-check">
+                        <input type="checkbox" data-bearly-pack-check>
+                        <span>Parcel is secure and in good condition</span>
+                    </label>
+                </section>
+            `;
+
+            const checks = [...context.querySelectorAll('[data-bearly-pack-check]')];
+            const counter = context.querySelector('[data-bearly-check-count]');
+
+            primary.disabled = true;
+
+            checks.forEach((check) => {
+                check.addEventListener('change', () => {
+                    const done = checks.filter((item) => item.checked).length;
+                    counter.textContent = `${done}/3 Completed`;
+                    primary.disabled = done !== checks.length;
+                });
+            });
+        } else if (config.type === 'waybill') {
+            const ship =
+                row.dataset.orderAddress ||
+                'Shipping address will appear here when connected to order data.';
+
+            context.innerHTML = `
+                <section class="bearly-action-shipping">
+                    <h4>Shipping Details</h4>
+                    <div class="bearly-action-address-box">
+                        <i data-lucide="map-pin"></i>
+                        <div>
+                            <strong>Delivery Address</strong>
+                            <small></small>
+                        </div>
+                    </div>
+
+                    <div class="bearly-action-waybill-preview">
+                        <div class="bearly-action-barcode" aria-hidden="true"></div>
+                        <div>
+                            <strong>Order ${escapeHtml(row.dataset.orderId || '')}</strong>
+                            <small>Shipping label preview with recipient and order details.</small>
+                        </div>
+                        <span class="bearly-action-print-pill">
+                            <i data-lucide="printer"></i>
+                            Print Preview
+                        </span>
+                    </div>
+
+                    ${notice(
+                        'printer',
+                        'Print the waybill and attach it securely to the package.',
+                    )}
+                </section>
+            `;
+
+            context.querySelector('.bearly-action-address-box small').textContent = ship;
+        } else if (config.type === 'ready') {
+            context.innerHTML = notice(
+                'truck',
+                'Once marked as ready, this parcel can proceed to logistics pickup. No delivery agency is assigned here.',
+            );
+        } else {
+            const current = (row.dataset.orderCanonical || '').toUpperCase();
+
+            let timelineFlow = flow;
+
+            if (current === 'CANCELLED') {
+                timelineFlow = [
+                    ['PLACED', 'Placed'],
+                    ['CANCELLED', 'Cancelled'],
+                ];
+            }
+
+            if (current === 'RETURNED') {
+                timelineFlow = [...flow.slice(0, 10), ['RETURNED', 'Returned']];
+            }
+
+            if (current === 'DELIVERY_FAILED') {
+                timelineFlow = [
+                    ...flow.slice(0, 10),
+                    ['DELIVERY_FAILED', 'Delivery Failed'],
+                ];
+            }
+
+            let currentIndex = timelineFlow.findIndex(([key]) => key === current);
+            if (currentIndex < 0) currentIndex = 0;
+
+            const wrap = document.createElement('section');
+            wrap.className = 'bearly-action-status-layout';
+
+            const left = document.createElement('div');
+
+            const heading = document.createElement('h4');
+            heading.className = 'bearly-action-status-title';
+            heading.textContent = 'Current Order Status';
+            left.append(heading);
+
+            const summary = document.createElement('div');
+            summary.className = 'bearly-action-next';
+            summary.innerHTML =
+                '<span><i data-lucide="info"></i></span><div><small>Next update</small><strong></strong></div>';
+
+            summary.querySelector('strong').textContent =
+                current === 'CANCELLED'
+                    ? 'This order is cancelled. No further seller fulfillment action is required.'
+                    : row.dataset.orderNext ||
+                      'No seller action is required right now.';
+
+            left.append(summary);
+
+            const timeline = document.createElement('ol');
+            timeline.className = 'bearly-action-timeline';
+
+            timelineFlow.forEach(([key, label], index) => {
+                const item = document.createElement('li');
+
+                item.className =
+                    index < currentIndex
+                        ? 'is-done'
+                        : index === currentIndex
+                          ? 'is-current'
+                          : '';
+
+                const marker = document.createElement('span');
+                marker.className = 'bearly-action-timeline-marker';
+
+                if (index <= currentIndex) {
+                    marker.innerHTML = '<i data-lucide="check"></i>';
+                }
+
+                const copy = document.createElement('div');
+                copy.className = 'bearly-action-timeline-copy';
+
+                const strong = document.createElement('strong');
+                strong.textContent = label;
+                copy.append(strong);
+
+                if (index === currentIndex) {
+                    const small = document.createElement('small');
+                    small.textContent = 'Current status';
+                    copy.append(small);
+                }
+
+                item.append(marker, copy);
+                timeline.append(item);
+            });
+
+            wrap.append(left, timeline);
+            context.append(wrap);
+        }
+    };
+
+    const open = (row, mode, trigger) => {
+        active = { row, mode, trigger };
+        lastFocus = trigger;
+
+        const config = configFor(row, mode);
+
+        title.textContent = config.title;
+        subtitle.textContent = config.subtitle;
+        icon.innerHTML = `<i data-lucide="${config.icon}"></i>`;
+
+        const canonical = (row.dataset.orderCanonical || '').toUpperCase();
+
+        badge.textContent =
+            row.dataset.orderStatusCopy ||
+            statusLabels[canonical] ||
+            'Order';
+
+        orderId.textContent =
+            row.dataset.orderId ||
+            trigger.dataset.orderDetails ||
+            '—';
+
+        customer.textContent =
+            row.dataset.orderCustomer || '—';
+
+        orderDate.textContent =
+            formatOrderDate(row.dataset.orderDateCopy || row.dataset.date);
+
+        payment.textContent = paymentText(row);
+        total.textContent = row.dataset.orderTotal || '—';
+
+        const shippingAddress = (row.dataset.orderAddress || '').trim();
+
+        if (['review', 'prepare', 'packing'].includes(config.type)) {
+            addressLabel.textContent = 'Order Status';
+            address.textContent =
+                row.dataset.orderStatusCopy ||
+                statusLabels[canonical] ||
+                '—';
+        } else {
+            addressLabel.textContent = 'Shipping Address';
+            address.textContent =
+                shippingAddress || 'Not available in preview';
+        }
+
+        addressCell.hidden = false;
+
+        renderItems(row);
+
+        primary.disabled = false;
+        primary.hidden = !config.button;
+        primary.textContent = config.button || '';
+
+        footer.classList.toggle('is-read-only', !config.button);
+
+        renderContext(row, config);
+
+        modal.hidden = false;
+        document.body.classList.add('modal-open');
+
+        window.lucide?.createIcons();
+
+        (config.button ? primary : q('.bearly-action-x'))?.focus();
+    };
+
+    const close = () => {
+        modal.hidden = true;
+        document.body.classList.remove('modal-open');
+        lastFocus?.focus?.();
+        active = null;
+    };
+
+    const showToast = (message) => {
+        const toast = document.querySelector('[data-seller-toast]');
+        if (!toast) return;
+
+        toast.textContent = message;
+        toast.classList.add('is-visible');
+
+        clearTimeout(window.__bearlyActionToast);
+
+        window.__bearlyActionToast = setTimeout(
+            () => toast.classList.remove('is-visible'),
+            3000,
+        );
+    };
+
+    document.addEventListener(
+        'click',
+        (event) => {
+            const trigger = event.target.closest('[data-bearly-action-open]');
+            if (!trigger) return;
+
+            const row = trigger.closest('[data-order-row]');
+            if (!row) return;
+
+            event.preventDefault();
+            event.stopPropagation();
+            event.stopImmediatePropagation();
+
+            open(
+                row,
+                trigger.dataset.bearlyActionMode || 'action',
+                trigger,
+            );
+        },
+        true,
+    );
+
+    modal
+        .querySelectorAll('[data-bearly-action-close]')
+        .forEach((button) => button.addEventListener('click', close));
+
+    primary.addEventListener('click', () => {
+        if (!active) return;
+
+        const config = configFor(active.row, active.mode);
+
+        showToast(
+            `${config.button} previewed. Backend status change is not connected yet.`,
+        );
+
+        close();
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && !modal.hidden) close();
+    });
+};
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', setupBearlyOrderActionModal);
+} else {
+    setupBearlyOrderActionModal();
+}

@@ -1,0 +1,15 @@
+info:
+  name: Get Provinces
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: http://127.0.0.1:8001/api/psgc/provinces
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

@@ -1877,49 +1877,83 @@ button:disabled {
         animation-iteration-count: 1 !important;
         transition-duration: 0.01ms !important;
     }
+}
 
-  /* =========================================================
+/* =========================================================
    REGISTRATION — FOUR ROLE CARDS IN ONE ROW
    ========================================================= */
+
+/*
+|--------------------------------------------------------------------------
+| Wider registration shell
+|--------------------------------------------------------------------------
+*/
 
 .register-shell {
     width: min(96vw, 1620px) !important;
     grid-template-columns: 28% 72% !important;
 }
 
+/*
+|--------------------------------------------------------------------------
+| Registration form
+|--------------------------------------------------------------------------
+*/
+
 .register-form {
     padding: 32px 38px 28px !important;
 }
 
-/* Force Buyer | Seller | Rider | Logistics into one row */
+/*
+|--------------------------------------------------------------------------
+| Buyer / Seller / Rider / Logistics
+|--------------------------------------------------------------------------
+*/
+
 .register-form .role-grid {
     display: grid !important;
     grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
     gap: 14px !important;
-    width: 100%;
-    margin-bottom: 20px;
+    width: 100% !important;
+    margin-bottom: 20px !important;
 }
+
+/*
+|--------------------------------------------------------------------------
+| Role cards
+|--------------------------------------------------------------------------
+*/
 
 .register-form .role-card {
     width: 100% !important;
     min-width: 0 !important;
     min-height: 145px !important;
     padding: 16px 10px !important;
+    border-radius: 12px !important;
 }
+
+.register-form .role-card:hover {
+    border-color: #cfab88;
+    box-shadow: 0 8px 20px rgba(74, 44, 32, 0.06);
+    transform: translateY(-1px);
+}
+
+.register-form .role-card.selected {
+    border: 1.5px solid #ed7717 !important;
+    background: #fffaf4;
+    box-shadow: 0 8px 20px rgba(237, 119, 23, 0.08);
+}
+
+/*
+|--------------------------------------------------------------------------
+| Role icons
+|--------------------------------------------------------------------------
+*/
 
 .register-form .role-card .role-icon {
-    width: 45px;
-    height: 45px;
-}
-
-.register-form .role-card strong {
-    margin: 8px 0 4px;
-    font-size: 16px;
-}
-
-.register-form .role-card small {
-    font-size: 11.5px;
-    line-height: 1.45;
+    width: 45px !important;
+    height: 45px !important;
+    flex: 0 0 45px;
 }
 
 .register-form .logistics-role-icon {
@@ -1930,12 +1964,47 @@ button:disabled {
     stroke-linejoin: round;
 }
 
-/* Keep form fields spacious */
-.register-form .form-grid.one {
-    grid-template-columns: minmax(0, 1fr);
+/*
+|--------------------------------------------------------------------------
+| Role typography
+|--------------------------------------------------------------------------
+*/
+
+.register-form .role-card strong {
+    margin: 8px 0 4px !important;
+    color: var(--brown-900);
+    font-size: 16px !important;
+    font-weight: 700;
 }
 
-/* Smaller laptop */
+.register-form .role-card small {
+    min-height: 34px;
+    color: #645d58;
+    font-size: 11.5px !important;
+    font-weight: 400;
+    line-height: 1.45;
+}
+
+/*
+|--------------------------------------------------------------------------
+| Single-column role-specific fields
+|--------------------------------------------------------------------------
+*/
+
+.register-form .form-grid.one {
+    grid-template-columns: minmax(0, 1fr) !important;
+}
+
+/* =========================================================
+   RESPONSIVE ROLE LAYOUT
+   ========================================================= */
+
+/*
+|--------------------------------------------------------------------------
+| Smaller desktop / laptop
+|--------------------------------------------------------------------------
+*/
+
 @media (max-width: 1200px) {
     .register-shell {
         width: 98vw !important;
@@ -1948,6 +2017,7 @@ button:disabled {
     }
 
     .register-form .role-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
         gap: 10px !important;
     }
 
@@ -1955,24 +2025,55 @@ button:disabled {
         min-height: 140px !important;
         padding-inline: 8px !important;
     }
+
+    .register-form .role-card strong {
+        font-size: 15px !important;
+    }
+
+    .register-form .role-card small {
+        font-size: 11px !important;
+    }
 }
 
-/* Tablet only: switch to 2 x 2 */
+/*
+|--------------------------------------------------------------------------
+| Tablet
+|--------------------------------------------------------------------------
+*/
+
 @media (max-width: 900px) {
     .register-shell {
         display: block !important;
         width: auto !important;
     }
 
+    .register-form {
+        padding: 25px !important;
+    }
+
     .register-form .role-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: 14px !important;
+    }
+
+    .register-form .role-card {
+        min-height: 135px !important;
     }
 }
 
-/* Mobile */
+/*
+|--------------------------------------------------------------------------
+| Mobile
+|--------------------------------------------------------------------------
+*/
+
 @media (max-width: 600px) {
     .register-form .role-grid {
         grid-template-columns: 1fr !important;
+        gap: 12px !important;
     }
-}
+
+    .register-form .role-card {
+        min-height: 118px !important;
+    }
 }

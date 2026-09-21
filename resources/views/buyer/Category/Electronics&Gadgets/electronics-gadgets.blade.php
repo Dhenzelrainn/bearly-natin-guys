@@ -42,41 +42,40 @@
 <body class="bc" style="--catalog-image:url('{{ asset('images/electronics-gadgets-catalog-atlas.png') }}')">
     <a href="#bc-main" class="skip">Skip to products</a>
 
-    <header class="bc-header">
-        <a href="{{ route('home') }}" class="brand">
-            <img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly home" width="185" height="62">
-        </a>
+    <header class="bc-header buyer-category-header">
+        <div class="buyer-category-brand">
+            <a href="{{ route('home') }}" class="brand" aria-label="Bearly home">
+                <img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly home" width="165" height="55">
+            </a>
+            <span class="buyer-brand-note">A kinder marketplace<br>for everyone</span>
+        </div>
 
         <form id="bc-search-form" class="search" role="search">
             <span>Electronics & Gadgets</span>
-
             <label class="sr" for="bc-search">Search Electronics & Gadgets</label>
             <input id="bc-search" type="search" placeholder="Search Electronics & Gadgets" maxlength="120">
-
-            <button aria-label="Search">
-                <i class="mi" aria-hidden="true">search</i>
-            </button>
+            <button aria-label="Search"><i class="mi" aria-hidden="true">search</i></button>
         </form>
 
-        <nav aria-label="Account">
-            <button data-info="orders">
-                <i class="mi" aria-hidden="true">receipt_long</i>
-                Orders
-            </button>
+        <nav class="buyer-category-account" aria-label="Buyer account">
+            <button type="button" data-info="orders"><i class="mi" aria-hidden="true">receipt_long</i> Orders</button>
+            <button type="button" data-info="chat"><i class="mi" aria-hidden="true">chat_bubble</i> Chat</button>
+            <a href="{{ url('/cart') }}"><i class="mi" aria-hidden="true">shopping_cart</i> Cart</a>
+            <a href="{{ url('/login') }}"><i class="mi" aria-hidden="true">person</i> Sign in</a>
+        </nav>
 
-            <button data-info="chat">
-                <i class="mi" aria-hidden="true">chat_bubble</i>
-                Chat
-            </button>
-
-            <a href="{{ url('/cart') }}">
-                <i class="mi" aria-hidden="true">shopping_cart</i>
-                Cart
+        <nav class="buyer-category-role-actions" aria-label="Apply for a Bearly role">
+            <a href="{{ route('register', ['role' => 'seller']) }}">
+                <i class="mi" aria-hidden="true">storefront</i>
+                Become a seller
             </a>
-
-            <a href="{{ url('/login') }}">
-                <i class="mi" aria-hidden="true">person</i>
-                Sign in
+            <a href="{{ route('logistics.register') }}">
+                <i class="mi" aria-hidden="true">local_shipping</i>
+                Apply as logistics
+            </a>
+            <a href="{{ route('rider.register') }}">
+                <i class="mi" aria-hidden="true">two_wheeler</i>
+                Apply as rider
             </a>
         </nav>
     </header>
@@ -208,16 +207,38 @@
         </main>
     </div>
 
-    <footer>
-        <img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly" width="110" height="37">
-        <span>Good finds. Happy spaces.</span>
+    <footer class="buyer-category-footer">
+        <div class="buyer-footer-brand">
+            <a href="{{ route('home') }}" aria-label="Bearly home">
+                <img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly" width="165" height="55">
+            </a>
+            <p>A kinder marketplace<br>for everyone.</p>
+        </div>
 
-        <nav>
-            <button data-info="help">Help centre</button>
-            <button data-info="about">About Bearly</button>
+        <nav class="buyer-footer-column" aria-label="Shop links">
+            <strong>Shop</strong>
+            <a href="{{ route('home') }}">All categories</a>
+            <a href="{{ route('products.index') }}">All products</a>
+            <a href="{{ route('wishlist.index') }}">Wishlist</a>
         </nav>
 
-        <small>Frontend preview</small>
+        <nav class="buyer-footer-column" aria-label="Support links">
+            <strong>Support</strong>
+            <a href="{{ route('contact') }}#help-topics-title">Help center</a>
+            <a href="{{ route('contact') }}#help-topics-title">Delivery &amp; tracking</a>
+            <a href="{{ route('contact') }}#contact-form">Returns &amp; refunds</a>
+        </nav>
+
+        <nav class="buyer-footer-column" aria-label="About Bearly links">
+            <strong>About</strong>
+            <a href="{{ route('about') }}">About Bearly</a>
+            <a href="{{ route('contact') }}">Contact us</a>
+        </nav>
+
+        <div class="buyer-footer-meta">
+            <p>© {{ date('Y') }} Bearly. All rights reserved.</p>
+            <span>Shopping made Bearly a hassle.</span>
+        </div>
     </footer>
 
     <button class="chat" data-info="chat">

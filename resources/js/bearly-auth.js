@@ -4,75 +4,117 @@ document.addEventListener('DOMContentLoaded', () => {
        ========================================================= */
     document.querySelectorAll('[data-toggle-password]').forEach((button) => {
         button.addEventListener('click', () => {
-            const input = document.getElementById(button.dataset.togglePassword);
+            const input = document.getElementById(
+                button.dataset.togglePassword
+            );
+
             if (!input) return;
 
             const isPassword = input.type === 'password';
-            input.type = isPassword ? 'text' : 'password';
+
+            input.type = isPassword
+                ? 'text'
+                : 'password';
 
             button.setAttribute(
                 'aria-label',
-                isPassword ? 'Hide password' : 'Show password'
+                isPassword
+                    ? 'Hide password'
+                    : 'Show password'
             );
         });
     });
 
+
     /* =========================================================
        LOGIN PREVIEW
        ========================================================= */
-    const demoLogin = document.querySelector('[data-demo-login]');
+    const demoLogin =
+        document.querySelector('[data-demo-login]');
 
-    demoLogin?.addEventListener('submit', (event) => {
-        event.preventDefault();
+    demoLogin?.addEventListener(
+        'submit',
+        (event) => {
+            event.preventDefault();
 
-        if (!demoLogin.checkValidity()) {
-            demoLogin.reportValidity();
-            return;
+            if (!demoLogin.checkValidity()) {
+                demoLogin.reportValidity();
+                return;
+            }
+
+            const message =
+                demoLogin.querySelector(
+                    '[data-login-message]'
+                );
+
+            if (message) {
+                message.hidden = false;
+            }
         }
+    );
 
-        const message = demoLogin.querySelector('[data-login-message]');
-        if (message) message.hidden = false;
-    });
 
     /* =========================================================
        REGISTRATION
        ========================================================= */
-    const registration = document.querySelector('[data-registration]');
+    const registration =
+        document.querySelector('[data-registration]');
+
     if (!registration) return;
 
-    const form = registration.querySelector('form');
-    const next = form.querySelector('[data-next]');
-    const back = form.querySelector('[data-back]');
-    const submit = form.querySelector('[data-submit]');
+    const form =
+        registration.querySelector('form');
+
+    if (!form) return;
+
+    const next =
+        form.querySelector('[data-next]');
+
+    const back =
+        form.querySelector('[data-back]');
+
+    const submit =
+        form.querySelector('[data-submit]');
 
     const PSGC_API = '/api/psgc';
 
-    /*
-     * Local postal-code files.
-     * Run setup-postal-data.ps1 once and these files will be
-     * created under public/data/.
-     */
-    const POSTAL_CITIES_URL = '/data/ph-cities.json';
-    const POSTAL_PROVINCES_URL = '/data/ph-provinces.json';
+    const provinceSelect =
+        registration.querySelector(
+            '[data-province-select]'
+        );
 
-    const provinceSelect = registration.querySelector('[data-province-select]');
-    const citySelect = registration.querySelector('[data-city-select]');
-    const barangaySelect = registration.querySelector('[data-barangay-select]');
-    const postalCodeInput = registration.querySelector('#postal-code');
+    const citySelect =
+        registration.querySelector(
+            '[data-city-select]'
+        );
 
-    const addressMessage = registration.querySelector('[data-address-message]');
-    const addressRetry = registration.querySelector('[data-address-retry]');
-    const addressManual = registration.querySelector('[data-address-manual]');
+    const barangaySelect =
+        registration.querySelector(
+            '[data-barangay-select]'
+        );
+
+    const addressMessage =
+        registration.querySelector(
+            '[data-address-message]'
+        );
+
+    const addressRetry =
+        registration.querySelector(
+            '[data-address-retry]'
+        );
+
+    const addressManual =
+        registration.querySelector(
+            '[data-address-manual]'
+        );
 
     const steps = [1, 2, 3];
 
     let currentStep = 1;
     let addressRequest = null;
 
-    let postalCities = [];
-    let postalProvinces = [];
-
     const searchableSelects = new Map();
+
 
     /* =========================================================
        GENERAL NORMALIZATION
@@ -85,32 +127,37 @@ document.addEventListener('DOMContentLoaded', () => {
             .trim();
     }
 
-    function normalizeLocationName(value) {
-        return String(value || '')
-            .normalize('NFD')
-            .replace(/[\u0300-\u036f]/g, '')
-            .toLowerCase()
-            .replace(/\bcity of\b/g, '')
-            .replace(/\bcity\b/g, '')
-            .replace(/\bmunicipality of\b/g, '')
-            .replace(/\bmunicipality\b/g, '')
-            .replace(/\bprovince of\b/g, '')
-            .replace(/[^a-z0-9]/g, '')
-            .trim();
-    }
 
     /* =========================================================
-       SEARCHABLE ADDRESS SELECTS
+       SEARCHABLE ADDRESS SELECT
        ========================================================= */
-    function closeSearchableSelect(select, returnFocus = false) {
-        const widget = searchableSelects.get(select);
+    function closeSearchableSelect(
+        select,
+        returnFocus = false
+    ) {
+        const widget =
+            searchableSelects.get(select);
 
-        if (!widget || widget.panel.hidden) return;
+        if (
+            !widget ||
+            widget.panel.hidden
+        ) {
+            return;
+        }
 
         widget.panel.hidden = true;
-        widget.trigger.setAttribute('aria-expanded', 'false');
-        widget.wrapper.classList.remove('is-open');
+
+        widget.trigger.setAttribute(
+            'aria-expanded',
+            'false'
+        );
+
+        widget.wrapper.classList.remove(
+            'is-open'
+        );
+
         widget.search.value = '';
+
         widget.renderOptions();
 
         if (returnFocus) {
@@ -118,47 +165,78 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function closeOtherSearchableSelects(currentSelect) {
-        searchableSelects.forEach((widget, select) => {
-            if (select !== currentSelect) {
-                closeSearchableSelect(select);
+
+    function closeOtherSearchableSelects(
+        currentSelect
+    ) {
+        searchableSelects.forEach(
+            (widget, select) => {
+                if (select !== currentSelect) {
+                    closeSearchableSelect(
+                        select
+                    );
+                }
             }
-        });
+        );
     }
 
-    function openSearchableSelect(select) {
-        const widget = searchableSelects.get(select);
 
-        if (!widget || select.disabled) return;
+    function openSearchableSelect(select) {
+        const widget =
+            searchableSelects.get(select);
+
+        if (
+            !widget ||
+            select.disabled
+        ) {
+            return;
+        }
 
         closeOtherSearchableSelects(select);
 
         widget.panel.hidden = false;
-        widget.trigger.setAttribute('aria-expanded', 'true');
-        widget.wrapper.classList.add('is-open');
+
+        widget.trigger.setAttribute(
+            'aria-expanded',
+            'true'
+        );
+
+        widget.wrapper.classList.add(
+            'is-open'
+        );
+
         widget.search.value = '';
+
         widget.renderOptions();
 
-        window.requestAnimationFrame(() => {
-            widget.search.focus();
-        });
+        window.requestAnimationFrame(
+            () => {
+                widget.search.focus();
+            }
+        );
     }
 
+
     function syncSearchableSelect(select) {
-        const widget = searchableSelects.get(select);
+        const widget =
+            searchableSelects.get(select);
+
         if (!widget) return;
 
-        const selectedOption = select.selectedOptions[0];
+        const selectedOption =
+            select.selectedOptions[0];
 
         widget.value.textContent =
-            selectedOption?.textContent || 'Select an option';
+            selectedOption?.textContent ||
+            'Select an option';
 
         widget.value.classList.toggle(
             'is-placeholder',
             !select.value
         );
 
-        widget.trigger.disabled = select.disabled;
+        widget.trigger.disabled =
+            select.disabled;
 
         widget.trigger.setAttribute(
             'aria-disabled',
@@ -170,7 +248,9 @@ document.addEventListener('DOMContentLoaded', () => {
             select.disabled
         );
 
-        widget.wrapper.classList.remove('is-invalid');
+        widget.wrapper.classList.remove(
+            'is-invalid'
+        );
 
         if (select.disabled) {
             closeSearchableSelect(select);
@@ -179,17 +259,38 @@ document.addEventListener('DOMContentLoaded', () => {
         widget.renderOptions();
     }
 
+
     function createSearchableSelect(select) {
-        if (!select || searchableSelects.has(select)) return;
+        if (
+            !select ||
+            searchableSelects.has(select)
+        ) {
+            return;
+        }
 
-        const wrapper = document.createElement('div');
-        wrapper.className = 'searchable-select';
+        const wrapper =
+            document.createElement('div');
 
-        const trigger = document.createElement('button');
+        wrapper.className =
+            'searchable-select';
+
+        const trigger =
+            document.createElement('button');
+
         trigger.type = 'button';
-        trigger.className = 'searchable-select__trigger';
-        trigger.setAttribute('aria-haspopup', 'listbox');
-        trigger.setAttribute('aria-expanded', 'false');
+
+        trigger.className =
+            'searchable-select__trigger';
+
+        trigger.setAttribute(
+            'aria-haspopup',
+            'listbox'
+        );
+
+        trigger.setAttribute(
+            'aria-expanded',
+            'false'
+        );
 
         trigger.innerHTML = `
             <span class="searchable-select__value"></span>
@@ -199,8 +300,12 @@ document.addEventListener('DOMContentLoaded', () => {
             </svg>
         `;
 
-        const panel = document.createElement('div');
-        panel.className = 'searchable-select__panel';
+        const panel =
+            document.createElement('div');
+
+        panel.className =
+            'searchable-select__panel';
+
         panel.hidden = true;
 
         panel.innerHTML = `
@@ -236,19 +341,49 @@ document.addEventListener('DOMContentLoaded', () => {
             ></p>
         `;
 
-        select.parentNode.insertBefore(wrapper, select);
-        wrapper.append(select, trigger, panel);
+        select.parentNode.insertBefore(
+            wrapper,
+            select
+        );
 
-        select.classList.add('searchable-select__native');
+        wrapper.append(
+            select,
+            trigger,
+            panel
+        );
 
-        const value = trigger.querySelector('.searchable-select__value');
-        const search = panel.querySelector('.searchable-select__search');
-        const options = panel.querySelector('.searchable-select__options');
-        const empty = panel.querySelector('.searchable-select__empty');
-        const count = panel.querySelector('.searchable-select__count');
+        select.classList.add(
+            'searchable-select__native'
+        );
+
+        const value =
+            trigger.querySelector(
+                '.searchable-select__value'
+            );
+
+        const search =
+            panel.querySelector(
+                '.searchable-select__search'
+            );
+
+        const options =
+            panel.querySelector(
+                '.searchable-select__options'
+            );
+
+        const empty =
+            panel.querySelector(
+                '.searchable-select__empty'
+            );
+
+        const count =
+            panel.querySelector(
+                '.searchable-select__count'
+            );
 
         search.placeholder =
-            select.dataset.searchPlaceholder || 'Search location';
+            select.dataset.searchPlaceholder ||
+            'Search location';
 
         search.setAttribute(
             'aria-label',
@@ -269,75 +404,133 @@ document.addEventListener('DOMContentLoaded', () => {
             renderOptions: () => {},
         };
 
+
         widget.renderOptions = () => {
-            const query = normalizeSearchText(search.value);
+            const query =
+                normalizeSearchText(
+                    search.value
+                );
 
             const availableOptions =
                 [...select.options].filter(
-                    (option) => option.value && !option.disabled
+                    (option) =>
+                        option.value &&
+                        !option.disabled
                 );
 
             const matches =
-                availableOptions.filter((option) =>
-                    normalizeSearchText(option.textContent).includes(query)
+                availableOptions.filter(
+                    (option) =>
+                        normalizeSearchText(
+                            option.textContent
+                        ).includes(query)
                 );
 
             options.replaceChildren();
 
-            widget.visibleOptions = matches;
+            widget.visibleOptions =
+                matches;
+
             widget.activeIndex = -1;
 
-            matches.forEach((option) => {
-                const item = document.createElement('li');
-                const button = document.createElement('button');
+            matches.forEach(
+                (option) => {
+                    const item =
+                        document.createElement(
+                            'li'
+                        );
 
-                const isSelected =
-                    option.value === select.value;
+                    const button =
+                        document.createElement(
+                            'button'
+                        );
 
-                button.type = 'button';
-                button.className = 'searchable-select__option';
+                    const isSelected =
+                        option.value ===
+                        select.value;
 
-                button.setAttribute(
-                    'role',
-                    'option'
-                );
+                    button.type =
+                        'button';
 
-                button.setAttribute(
-                    'aria-selected',
-                    String(isSelected)
-                );
+                    button.className =
+                        'searchable-select__option';
 
-                button.dataset.value = option.value;
-
-                button.innerHTML = `
-                    <span></span>
-                    <span aria-hidden="true">
-                        ${isSelected ? '✓' : ''}
-                    </span>
-                `;
-
-                button.firstElementChild.textContent =
-                    option.textContent;
-
-                button.addEventListener('click', () => {
-                    select.value = option.value;
-                    select.setCustomValidity('');
-
-                    select.dispatchEvent(
-                        new Event('change', {
-                            bubbles: true,
-                        })
+                    button.setAttribute(
+                        'role',
+                        'option'
                     );
 
-                    syncSearchableSelect(select);
-                    closeSearchableSelect(select, true);
-                });
+                    button.setAttribute(
+                        'aria-selected',
+                        String(isSelected)
+                    );
 
-                item.append(button);
-                options.append(item);
-            });
+                    button.dataset.value =
+                        option.value;
 
-            empty.hidden = matches.length !== 0;
+                    button.innerHTML = `
+                        <span></span>
+
+                        <span aria-hidden="true">
+                            ${
+                                isSelected
+                                    ? '✓'
+                                    : ''
+                            }
+                        </span>
+                    `;
+
+                    button.firstElementChild
+                        .textContent =
+                        option.textContent;
+
+                    button.addEventListener(
+                        'click',
+                        () => {
+                            select.value =
+                                option.value;
+
+                            select.setCustomValidity(
+                                ''
+                            );
+
+                            /*
+                             * IMPORTANT:
+                             * Native change event.
+                             *
+                             * PSGC listener uses this.
+                             * postal-code-registration.js
+                             * also listens for this event.
+                             */
+                            select.dispatchEvent(
+                                new Event(
+                                    'change',
+                                    {
+                                        bubbles:
+                                            true,
+                                    }
+                                )
+                            );
+
+                            syncSearchableSelect(
+                                select
+                            );
+
+                            closeSearchableSelect(
+                                select,
+                                true
+                            );
+                        }
+                    );
+
+                    item.append(button);
+
+                    options.append(item);
+                }
+            );
+
+            empty.hidden =
+                matches.length !== 0;
 
             count.textContent =
                 `${matches.length} ${
@@ -347,230 +540,182 @@ document.addEventListener('DOMContentLoaded', () => {
                 } found`;
         };
 
-        searchableSelects.set(select, widget);
 
-        trigger.addEventListener('click', () => {
-            if (panel.hidden) {
-                openSearchableSelect(select);
-            } else {
-                closeSearchableSelect(select);
-            }
-        });
+        searchableSelects.set(
+            select,
+            widget
+        );
 
-        trigger.addEventListener('keydown', (event) => {
-            if (
-                ['ArrowDown', 'Enter', ' '].includes(event.key)
-            ) {
-                event.preventDefault();
-                openSearchableSelect(select);
+
+        trigger.addEventListener(
+            'click',
+            () => {
+                if (panel.hidden) {
+                    openSearchableSelect(
+                        select
+                    );
+                } else {
+                    closeSearchableSelect(
+                        select
+                    );
+                }
             }
-        });
+        );
+
+
+        trigger.addEventListener(
+            'keydown',
+            (event) => {
+                if (
+                    [
+                        'ArrowDown',
+                        'Enter',
+                        ' ',
+                    ].includes(
+                        event.key
+                    )
+                ) {
+                    event.preventDefault();
+
+                    openSearchableSelect(
+                        select
+                    );
+                }
+            }
+        );
+
 
         search.addEventListener(
             'input',
             widget.renderOptions
         );
 
-        search.addEventListener('keydown', (event) => {
-            const optionButtons =
-                [...options.querySelectorAll('button')];
 
-            if (event.key === 'Escape') {
-                event.preventDefault();
-                closeSearchableSelect(select, true);
-                return;
-            }
+        search.addEventListener(
+            'keydown',
+            (event) => {
+                const optionButtons =
+                    [
+                        ...options
+                            .querySelectorAll(
+                                'button'
+                            ),
+                    ];
 
-            if (
-                !['ArrowDown', 'ArrowUp', 'Enter'].includes(
-                    event.key
-                )
-            ) {
-                return;
-            }
+                if (
+                    event.key ===
+                    'Escape'
+                ) {
+                    event.preventDefault();
 
-            event.preventDefault();
+                    closeSearchableSelect(
+                        select,
+                        true
+                    );
 
-            if (event.key === 'Enter') {
-                optionButtons[
-                    widget.activeIndex
-                ]?.click();
+                    return;
+                }
 
-                return;
-            }
-
-            const direction =
-                event.key === 'ArrowDown'
-                    ? 1
-                    : -1;
-
-            widget.activeIndex =
-                Math.max(
-                    0,
-                    Math.min(
-                        optionButtons.length - 1,
-                        widget.activeIndex + direction
+                if (
+                    ![
+                        'ArrowDown',
+                        'ArrowUp',
+                        'Enter',
+                    ].includes(
+                        event.key
                     )
+                ) {
+                    return;
+                }
+
+                event.preventDefault();
+
+                if (
+                    event.key ===
+                    'Enter'
+                ) {
+                    optionButtons[
+                        widget.activeIndex
+                    ]?.click();
+
+                    return;
+                }
+
+                const direction =
+                    event.key ===
+                    'ArrowDown'
+                        ? 1
+                        : -1;
+
+                widget.activeIndex =
+                    Math.max(
+                        0,
+                        Math.min(
+                            optionButtons.length -
+                                1,
+                            widget.activeIndex +
+                                direction
+                        )
+                    );
+
+                optionButtons.forEach(
+                    (
+                        button,
+                        index
+                    ) => {
+                        button.classList.toggle(
+                            'is-active',
+                            index ===
+                                widget.activeIndex
+                        );
+                    }
                 );
 
-            optionButtons.forEach(
-                (button, index) => {
-                    button.classList.toggle(
-                        'is-active',
-                        index === widget.activeIndex
-                    );
-                }
-            );
+                optionButtons[
+                    widget.activeIndex
+                ]?.scrollIntoView({
+                    block: 'nearest',
+                });
+            }
+        );
 
-            optionButtons[
-                widget.activeIndex
-            ]?.scrollIntoView({
-                block: 'nearest',
-            });
-        });
 
         syncSearchableSelect(select);
     }
 
+
     registration
-        .querySelectorAll('[data-searchable-address]')
-        .forEach(createSearchableSelect);
+        .querySelectorAll(
+            '[data-searchable-address]'
+        )
+        .forEach(
+            createSearchableSelect
+        );
 
-    document.addEventListener('pointerdown', (event) => {
-        searchableSelects.forEach((widget, select) => {
-            if (!widget.wrapper.contains(event.target)) {
-                closeSearchableSelect(select);
-            }
-        });
-    });
 
-    /* =========================================================
-       POSTAL CODE DATA
-       ========================================================= */
-    async function loadPostalData() {
-        try {
-            const [cityResponse, provinceResponse] =
-                await Promise.all([
-                    fetch(POSTAL_CITIES_URL, {
-                        headers: {
-                            Accept: 'application/json',
-                        },
-                    }),
-                    fetch(POSTAL_PROVINCES_URL, {
-                        headers: {
-                            Accept: 'application/json',
-                        },
-                    }),
-                ]);
-
-            if (!cityResponse.ok) {
-                throw new Error(
-                    `City postal data returned HTTP ${cityResponse.status}`
-                );
-            }
-
-            if (!provinceResponse.ok) {
-                throw new Error(
-                    `Province postal data returned HTTP ${provinceResponse.status}`
-                );
-            }
-
-            const cityPayload = await cityResponse.json();
-            const provincePayload =
-                await provinceResponse.json();
-
-            if (
-                !Array.isArray(cityPayload) ||
-                !Array.isArray(provincePayload)
-            ) {
-                throw new Error(
-                    'Unexpected postal data format.'
-                );
-            }
-
-            postalCities = cityPayload;
-            postalProvinces = provincePayload;
-        } catch (error) {
-            console.error(
-                'Unable to load local postal code data:',
-                error
+    document.addEventListener(
+        'pointerdown',
+        (event) => {
+            searchableSelects.forEach(
+                (widget, select) => {
+                    if (
+                        !widget.wrapper.contains(
+                            event.target
+                        )
+                    ) {
+                        closeSearchableSelect(
+                            select
+                        );
+                    }
+                }
             );
-
-            postalCities = [];
-            postalProvinces = [];
         }
-    }
+    );
 
-    function resetPostalCode(
-        placeholder = 'Select municipality first'
-    ) {
-        if (!postalCodeInput) return;
-
-        postalCodeInput.value = '';
-        postalCodeInput.placeholder = placeholder;
-    }
-
-    function updatePostalCode() {
-        if (!postalCodeInput) return;
-
-        const selectedProvince =
-            provinceSelect?.value?.trim() || '';
-
-        const selectedCity =
-            citySelect?.value?.trim() || '';
-
-        if (!selectedProvince || !selectedCity) {
-            resetPostalCode();
-            return;
-        }
-
-        const provinceMatch =
-            postalProvinces.find((province) =>
-                normalizeLocationName(
-                    province.name
-                ) ===
-                normalizeLocationName(
-                    selectedProvince
-                )
-            );
-
-        if (!provinceMatch) {
-            resetPostalCode(
-                'Postal code unavailable'
-            );
-            return;
-        }
-
-        const candidates =
-            postalCities.filter(
-                (city) =>
-                    city.provinceCode ===
-                    provinceMatch.code
-            );
-
-        const cityMatch =
-            candidates.find((city) =>
-                normalizeLocationName(
-                    city.name
-                ) ===
-                normalizeLocationName(
-                    selectedCity
-                )
-            );
-
-        if (!cityMatch?.zipCode) {
-            resetPostalCode(
-                'Postal code unavailable'
-            );
-            return;
-        }
-
-        postalCodeInput.value =
-            String(cityMatch.zipCode);
-    }
 
     /* =========================================================
        ADDRESS SERVICE
+       PSGC ONLY
        ========================================================= */
     function setAddressMessage(
         message,
@@ -578,9 +723,13 @@ document.addEventListener('DOMContentLoaded', () => {
     ) {
         if (!addressMessage) return;
 
-        addressMessage.textContent = message;
-        addressMessage.dataset.status = type;
+        addressMessage.textContent =
+            message;
+
+        addressMessage.dataset.status =
+            type;
     }
+
 
     function setSelectState(
         select,
@@ -589,14 +738,21 @@ document.addEventListener('DOMContentLoaded', () => {
     ) {
         if (!select) return;
 
-        select.disabled = disabled;
+        select.disabled =
+            disabled;
 
         select.replaceChildren(
-            new Option(message, '')
+            new Option(
+                message,
+                ''
+            )
         );
 
-        syncSearchableSelect(select);
+        syncSearchableSelect(
+            select
+        );
     }
+
 
     function populateSelect(
         select,
@@ -604,27 +760,36 @@ document.addEventListener('DOMContentLoaded', () => {
         placeholder,
         oldValue = ''
     ) {
+        if (!select) return;
+
         select.replaceChildren(
-            new Option(placeholder, '')
+            new Option(
+                placeholder,
+                ''
+            )
         );
 
         [...items]
             .sort(
                 (a, b) =>
-                    a.name.localeCompare(b.name)
+                    a.name.localeCompare(
+                        b.name
+                    )
             )
-            .forEach((item) => {
-                const option =
-                    new Option(
-                        item.name,
-                        item.name
-                    );
+            .forEach(
+                (item) => {
+                    const option =
+                        new Option(
+                            item.name,
+                            item.name
+                        );
 
-                option.dataset.code =
-                    item.code;
+                    option.dataset.code =
+                        item.code;
 
-                select.add(option);
-            });
+                    select.add(option);
+                }
+            );
 
         select.disabled = false;
 
@@ -632,8 +797,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const match =
                 [...select.options].find(
                     (option) =>
-                        option.value.toLowerCase() ===
-                        oldValue.toLowerCase()
+                        option.value
+                            .toLowerCase() ===
+                        oldValue
+                            .toLowerCase()
                 );
 
             if (match) {
@@ -642,10 +809,15 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        syncSearchableSelect(select);
+        syncSearchableSelect(
+            select
+        );
     }
 
-    async function fetchAddressData(endpoint) {
+
+    async function fetchAddressData(
+        endpoint
+    ) {
         addressRequest?.abort();
 
         addressRequest =
@@ -653,7 +825,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const timeout =
             window.setTimeout(
-                () => addressRequest.abort(),
+                () =>
+                    addressRequest.abort(),
                 12000
             );
 
@@ -663,7 +836,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     `${PSGC_API}${endpoint}`,
                     {
                         headers: {
-                            Accept: 'application/json',
+                            Accept:
+                                'application/json',
                         },
                         signal:
                             addressRequest.signal,
@@ -684,7 +858,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     ? payload
                     : payload.data;
 
-            if (!Array.isArray(result)) {
+            if (
+                !Array.isArray(result)
+            ) {
                 throw new Error(
                     'Unexpected address API response.'
                 );
@@ -692,9 +868,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
             return result;
         } finally {
-            window.clearTimeout(timeout);
+            window.clearTimeout(
+                timeout
+            );
         }
     }
+
 
     async function loadProvinces() {
         if (
@@ -720,8 +899,6 @@ document.addEventListener('DOMContentLoaded', () => {
             'Select city first'
         );
 
-        resetPostalCode();
-
         if (addressRetry) {
             addressRetry.hidden = true;
         }
@@ -740,7 +917,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 provinceSelect,
                 provinces,
                 'Select province',
-                provinceSelect.dataset.oldValue
+                provinceSelect.dataset
+                    .oldValue
             );
 
             setAddressMessage(
@@ -748,11 +926,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 'success'
             );
 
-            if (provinceSelect.value) {
+            if (
+                provinceSelect.value
+            ) {
                 await loadCities();
             }
         } catch (error) {
-            if (error.name === 'AbortError') {
+            if (
+                error.name ===
+                'AbortError'
+            ) {
                 return;
             }
 
@@ -777,19 +960,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    async function loadCities() {
-        if (
-            !provinceSelect ||
-            !citySelect ||
-            !barangaySelect
-        ) {
-            return;
-        }
 
+    async function loadCities() {
         const provinceCode =
             provinceSelect
-                .selectedOptions[0]
-                ?.dataset.code;
+                ?.selectedOptions?.[0]
+                ?.dataset
+                ?.code;
 
         setSelectState(
             citySelect,
@@ -800,8 +977,6 @@ document.addEventListener('DOMContentLoaded', () => {
             barangaySelect,
             'Select city first'
         );
-
-        resetPostalCode();
 
         if (!provinceCode) {
             setSelectState(
@@ -823,8 +998,9 @@ document.addEventListener('DOMContentLoaded', () => {
             populateSelect(
                 citySelect,
                 cities,
-                'Select city or municipality',
-                citySelect.dataset.oldValue
+                'Select municipality or city',
+                citySelect.dataset
+                    .oldValue
             );
 
             setAddressMessage(
@@ -833,11 +1009,24 @@ document.addEventListener('DOMContentLoaded', () => {
             );
 
             if (citySelect.value) {
-                updatePostalCode();
-                await loadBarangays();
+                /*
+                 * Important for restored
+                 * old form values.
+                 */
+                citySelect.dispatchEvent(
+                    new Event(
+                        'change',
+                        {
+                            bubbles: true,
+                        }
+                    )
+                );
             }
         } catch (error) {
-            if (error.name === 'AbortError') {
+            if (
+                error.name ===
+                'AbortError'
+            ) {
                 return;
             }
 
@@ -862,18 +1051,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    async function loadBarangays() {
-        if (
-            !citySelect ||
-            !barangaySelect
-        ) {
-            return;
-        }
 
+    async function loadBarangays() {
         const cityCode =
             citySelect
-                .selectedOptions[0]
-                ?.dataset.code;
+                ?.selectedOptions?.[0]
+                ?.dataset
+                ?.code;
 
         setSelectState(
             barangaySelect,
@@ -901,7 +1085,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 barangaySelect,
                 barangays,
                 'Select barangay',
-                barangaySelect.dataset.oldValue
+                barangaySelect.dataset
+                    .oldValue
             );
 
             setAddressMessage(
@@ -909,7 +1094,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 'success'
             );
         } catch (error) {
-            if (error.name === 'AbortError') {
+            if (
+                error.name ===
+                'AbortError'
+            ) {
                 return;
             }
 
@@ -934,49 +1122,86 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+
+    /* =========================================================
+       MANUAL ADDRESS MODE
+       ========================================================= */
     function enableManualAddress() {
-        [
-            [provinceSelect, 'Enter province'],
-            [citySelect, 'Enter city or municipality'],
-            [barangaySelect, 'Enter barangay'],
-        ].forEach(([select, placeholder]) => {
-            if (
-                !select ||
-                !select.isConnected
-            ) {
-                return;
+        const addressFields = [
+            [
+                provinceSelect,
+                'Enter province',
+            ],
+            [
+                citySelect,
+                'Enter city or municipality',
+            ],
+            [
+                barangaySelect,
+                'Enter barangay',
+            ],
+        ];
+
+        addressFields.forEach(
+            (
+                [
+                    select,
+                    placeholder,
+                ]
+            ) => {
+                if (
+                    !select ||
+                    !select.isConnected
+                ) {
+                    return;
+                }
+
+                const input =
+                    document.createElement(
+                        'input'
+                    );
+
+                input.type = 'text';
+
+                input.name =
+                    select.name;
+
+                input.required = true;
+
+                input.placeholder =
+                    placeholder;
+
+                input.value =
+                    select.value ||
+                    select.dataset
+                        .oldValue ||
+                    '';
+
+                input.dataset
+                    .manualAddress =
+                    '';
+
+                const widget =
+                    searchableSelects.get(
+                        select
+                    );
+
+                if (widget) {
+                    widget.wrapper
+                        .replaceWith(
+                            input
+                        );
+
+                    searchableSelects.delete(
+                        select
+                    );
+                } else {
+                    select.replaceWith(
+                        input
+                    );
+                }
             }
-
-            const input =
-                document.createElement('input');
-
-            input.type = 'text';
-            input.name = select.name;
-            input.required = true;
-            input.placeholder = placeholder;
-
-            input.value =
-                select.value ||
-                select.dataset.oldValue ||
-                '';
-
-            input.dataset.manualAddress = '';
-
-            const widget =
-                searchableSelects.get(select);
-
-            if (widget) {
-                widget.wrapper.replaceWith(
-                    input
-                );
-
-                searchableSelects.delete(
-                    select
-                );
-            } else {
-                select.replaceWith(input);
-            }
-        });
+        );
 
         addressRequest?.abort();
 
@@ -988,19 +1213,21 @@ document.addEventListener('DOMContentLoaded', () => {
             addressManual.hidden = true;
         }
 
-        /*
-         * Postal code is intentionally left readonly.
-         * If address is manually entered, the user must return
-         * to PSGC selection for automatic ZIP generation.
-         */
-        resetPostalCode(
-            'Select municipality using address service'
-        );
+        const postal =
+            form.elements.postal_code;
+
+        if (postal) {
+            postal.readOnly = false;
+
+            postal.placeholder =
+                'Enter postal code';
+        }
 
         setAddressMessage(
-            'Manual address entry enabled. Automatic postal code requires a municipality selected from the address service.'
+            'Manual address entry enabled. Check the spelling before continuing.'
         );
     }
+
 
     /* =========================================================
        AGE
@@ -1011,8 +1238,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const age =
         form.elements.age;
 
+
     function calculateAge() {
-        if (!birthday || !age) return;
+        if (
+            !birthday ||
+            !age
+        ) {
+            return;
+        }
 
         if (!birthday.value) {
             age.value = '--';
@@ -1038,13 +1271,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 born.getDate()
             );
 
-        if (today < birthdayThisYear) {
+        if (
+            today <
+            birthdayThisYear
+        ) {
             years--;
         }
 
         age.value =
-            Math.max(0, years);
+            Math.max(
+                0,
+                years
+            );
     }
+
 
     birthday?.addEventListener(
         'change',
@@ -1052,6 +1292,7 @@ document.addEventListener('DOMContentLoaded', () => {
     );
 
     calculateAge();
+
 
     /* =========================================================
        CONTACT NUMBER
@@ -1065,21 +1306,33 @@ document.addEventListener('DOMContentLoaded', () => {
             let value =
                 event.target.value;
 
-            if (value.startsWith('+')) {
+            if (
+                value.startsWith('+')
+            ) {
                 value =
                     '+' +
                     value
                         .slice(1)
-                        .replace(/\D/g, '');
+                        .replace(
+                            /\D/g,
+                            ''
+                        );
             } else {
                 value =
-                    value.replace(/\D/g, '');
+                    value.replace(
+                        /\D/g,
+                        ''
+                    );
             }
 
             event.target.value =
-                value.slice(0, 13);
+                value.slice(
+                    0,
+                    13
+                );
         }
     );
+
 
     /* =========================================================
        PASSWORD STRENGTH
@@ -1090,13 +1343,24 @@ document.addEventListener('DOMContentLoaded', () => {
     password?.addEventListener(
         'input',
         () => {
+            const checks = [
+                password.value
+                    .length >= 8,
+                /[A-Z]/.test(
+                    password.value
+                ),
+                /[a-z]/.test(
+                    password.value
+                ),
+                /\d/.test(
+                    password.value
+                ),
+            ];
+
             const score =
-                [
-                    password.value.length >= 8,
-                    /[A-Z]/.test(password.value),
-                    /[a-z]/.test(password.value),
-                    /\d/.test(password.value),
-                ].filter(Boolean).length;
+                checks.filter(
+                    Boolean
+                ).length;
 
             const meter =
                 form.querySelector(
@@ -1110,6 +1374,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     );
 
+
     /* =========================================================
        FILE UPLOAD
        ========================================================= */
@@ -1122,21 +1387,28 @@ document.addEventListener('DOMContentLoaded', () => {
     const maxDocumentSize =
         5 * 1024 * 1024;
 
-    function formatFileSize(bytes) {
-        if (bytes < 1048576) {
+
+    function formatFileSize(
+        bytes
+    ) {
+        if (
+            bytes <
+            1024 * 1024
+        ) {
             return `${Math.max(
                 1,
-                Math.round(bytes / 1024)
+                Math.round(
+                    bytes / 1024
+                )
             )} KB`;
         }
 
-        return `${
-            (
-                bytes /
-                1048576
-            ).toFixed(1)
-        } MB`;
+        return `${(
+            bytes /
+            (1024 * 1024)
+        ).toFixed(1)} MB`;
     }
+
 
     function renderFileState(
         input,
@@ -1148,27 +1420,30 @@ document.addEventListener('DOMContentLoaded', () => {
                 '[data-upload-card]'
             );
 
+        if (!card) return;
+
         const status =
-            card?.querySelector(
+            card.querySelector(
                 '[data-file-status]'
             );
 
         const name =
-            card?.querySelector(
+            card.querySelector(
                 '[data-file-name]'
             );
 
         const meta =
-            card?.querySelector(
+            card.querySelector(
                 '[data-file-meta]'
             );
 
-        card?.classList.toggle(
+        card.classList.toggle(
             'has-file',
-            Boolean(file) && !error
+            Boolean(file) &&
+                !error
         );
 
-        card?.classList.toggle(
+        card.classList.toggle(
             'has-error',
             Boolean(error)
         );
@@ -1176,7 +1451,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!status) return;
 
         status.hidden =
-            !file && !error;
+            !file &&
+            !error;
 
         if (name) {
             name.textContent =
@@ -1186,21 +1462,29 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (meta) {
-            meta.textContent =
-                file && !error
-                    ? `${
+            if (
+                file &&
+                !error
+            ) {
+                meta.textContent =
+                    `${
                         file.type ===
                         'application/pdf'
                             ? 'PDF'
                             : 'Image'
                     } · ${formatFileSize(
                         file.size
-                    )}`
-                    : error
-                        ? 'Choose another file to continue.'
-                        : '';
+                    )}`;
+            } else if (error) {
+                meta.textContent =
+                    'Choose another file to continue.';
+            } else {
+                meta.textContent =
+                    '';
+            }
         }
     }
+
 
     function validateDocument(
         input,
@@ -1223,7 +1507,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 'The file must not exceed 5 MB.';
         }
 
-        input.setCustomValidity(error);
+        input.setCustomValidity(
+            error
+        );
 
         renderFileState(
             input,
@@ -1238,6 +1524,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return !error;
     }
 
+
     function assignDroppedFile(
         input,
         file
@@ -1245,7 +1532,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const transfer =
             new DataTransfer();
 
-        transfer.items.add(file);
+        transfer.items.add(
+            file
+        );
 
         input.files =
             transfer.files;
@@ -1256,159 +1545,195 @@ document.addEventListener('DOMContentLoaded', () => {
         );
     }
 
+
     form
         .querySelectorAll(
             '[data-file-preview]'
         )
-        .forEach((input) => {
-            const dropzone =
-                input.closest(
-                    '[data-drop-zone]'
-                );
-
-            const card =
-                input.closest(
-                    '[data-upload-card]'
-                );
-
-            input.addEventListener(
-                'change',
-                () => {
-                    input.setCustomValidity('');
-
-                    const file =
-                        input.files[0];
-
-                    if (file) {
-                        validateDocument(
-                            input,
-                            file
-                        );
-                    } else {
-                        renderFileState(
-                            input
-                        );
-                    }
-                }
-            );
-
-            ['dragenter', 'dragover']
-                .forEach((type) => {
-                    dropzone?.addEventListener(
-                        type,
-                        (event) => {
-                            event.preventDefault();
-
-                            if (!input.disabled) {
-                                dropzone.classList.add(
-                                    'is-dragging'
-                                );
-                            }
-                        }
+        .forEach(
+            (input) => {
+                const dropzone =
+                    input.closest(
+                        '[data-drop-zone]'
                     );
-                });
 
-            ['dragleave', 'drop']
-                .forEach((type) => {
-                    dropzone?.addEventListener(
-                        type,
-                        (event) => {
-                            event.preventDefault();
-
-                            dropzone.classList.remove(
-                                'is-dragging'
-                            );
-                        }
+                const card =
+                    input.closest(
+                        '[data-upload-card]'
                     );
-                });
 
-            dropzone?.addEventListener(
-                'drop',
-                (event) => {
-                    if (input.disabled) {
-                        return;
-                    }
 
-                    const file =
-                        event
-                            .dataTransfer
-                            ?.files?.[0];
-
-                    if (file) {
-                        assignDroppedFile(
-                            input,
-                            file
-                        );
-                    }
-                }
-            );
-
-            card
-                ?.querySelector(
-                    '[data-file-action="preview"]'
-                )
-                ?.addEventListener(
-                    'click',
+                input.addEventListener(
+                    'change',
                     () => {
+                        input.setCustomValidity(
+                            ''
+                        );
+
                         const file =
                             input.files[0];
 
-                        if (
-                            !file ||
-                            !validateDocument(
+                        if (file) {
+                            validateDocument(
                                 input,
                                 file
-                            )
+                            );
+                        } else {
+                            renderFileState(
+                                input
+                            );
+                        }
+                    }
+                );
+
+
+                [
+                    'dragenter',
+                    'dragover',
+                ].forEach(
+                    (type) => {
+                        dropzone?.addEventListener(
+                            type,
+                            (
+                                event
+                            ) => {
+                                event.preventDefault();
+
+                                if (
+                                    !input.disabled
+                                ) {
+                                    dropzone.classList.add(
+                                        'is-dragging'
+                                    );
+                                }
+                            }
+                        );
+                    }
+                );
+
+
+                [
+                    'dragleave',
+                    'drop',
+                ].forEach(
+                    (type) => {
+                        dropzone?.addEventListener(
+                            type,
+                            (
+                                event
+                            ) => {
+                                event.preventDefault();
+
+                                dropzone.classList.remove(
+                                    'is-dragging'
+                                );
+                            }
+                        );
+                    }
+                );
+
+
+                dropzone?.addEventListener(
+                    'drop',
+                    (event) => {
+                        if (
+                            input.disabled
                         ) {
                             return;
                         }
 
-                        const url =
-                            URL.createObjectURL(file);
+                        const file =
+                            event
+                                .dataTransfer
+                                ?.files?.[0];
 
-                        window.open(
-                            url,
-                            '_blank',
-                            'noopener,noreferrer'
-                        );
-
-                        window.setTimeout(
-                            () =>
-                                URL.revokeObjectURL(
-                                    url
-                                ),
-                            60000
-                        );
+                        if (file) {
+                            assignDroppedFile(
+                                input,
+                                file
+                            );
+                        }
                     }
                 );
 
-            card
-                ?.querySelector(
-                    '[data-file-action="replace"]'
-                )
-                ?.addEventListener(
-                    'click',
-                    () => {
-                        input.click();
-                    }
-                );
 
-            card
-                ?.querySelector(
-                    '[data-file-action="remove"]'
-                )
-                ?.addEventListener(
-                    'click',
-                    () => {
-                        input.value = '';
-                        input.setCustomValidity('');
+                card
+                    ?.querySelector(
+                        '[data-file-action="preview"]'
+                    )
+                    ?.addEventListener(
+                        'click',
+                        () => {
+                            const file =
+                                input
+                                    .files[0];
 
-                        renderFileState(
-                            input
-                        );
-                    }
-                );
-        });
+                            if (
+                                !file ||
+                                !validateDocument(
+                                    input,
+                                    file
+                                )
+                            ) {
+                                return;
+                            }
+
+                            const url =
+                                URL.createObjectURL(
+                                    file
+                                );
+
+                            window.open(
+                                url,
+                                '_blank',
+                                'noopener,noreferrer'
+                            );
+
+                            window.setTimeout(
+                                () =>
+                                    URL.revokeObjectURL(
+                                        url
+                                    ),
+                                60000
+                            );
+                        }
+                    );
+
+
+                card
+                    ?.querySelector(
+                        '[data-file-action="replace"]'
+                    )
+                    ?.addEventListener(
+                        'click',
+                        () => {
+                            input.click();
+                        }
+                    );
+
+
+                card
+                    ?.querySelector(
+                        '[data-file-action="remove"]'
+                    )
+                    ?.addEventListener(
+                        'click',
+                        () => {
+                            input.value =
+                                '';
+
+                            input.setCustomValidity(
+                                ''
+                            );
+
+                            renderFileState(
+                                input
+                            );
+                        }
+                    );
+            }
+        );
+
 
     /* =========================================================
        VALIDATION
@@ -1419,34 +1744,48 @@ document.addEventListener('DOMContentLoaded', () => {
                 `[data-step="${currentStep}"]`
             );
 
-        if (!panel) return false;
+        if (!panel) {
+            return false;
+        }
 
-        const controls =
-            [
-                ...panel.querySelectorAll(
-                    'input, select, textarea'
-                ),
-            ].filter(
-                (element) =>
-                    !element.hidden &&
-                    element.offsetParent !== null
+        const controls = [
+            ...panel.querySelectorAll(
+                'input, select, textarea'
+            ),
+        ].filter(
+            (element) =>
+                !element.hidden &&
+                element.offsetParent !==
+                    null
+        );
+
+
+        for (
+            const input
+            of controls
+        ) {
+            input.setCustomValidity(
+                ''
             );
 
-        for (const input of controls) {
-            input.setCustomValidity('');
 
             if (
                 [
                     'first_name',
                     'last_name',
                     'middle_initial',
-                ].includes(input.name) &&
-                /\d/.test(input.value)
+                ].includes(
+                    input.name
+                ) &&
+                /\d/.test(
+                    input.value
+                )
             ) {
                 input.setCustomValidity(
                     'Names cannot contain numbers.'
                 );
             }
+
 
             if (
                 input.name ===
@@ -1460,13 +1799,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 );
             }
 
+
             if (
-                input.name === 'password' &&
+                input.name ===
+                    'password' &&
                 !(
-                    input.value.length >= 8 &&
-                    /[A-Z]/.test(input.value) &&
-                    /[a-z]/.test(input.value) &&
-                    /\d/.test(input.value)
+                    input.value
+                        .length >= 8 &&
+                    /[A-Z]/.test(
+                        input.value
+                    ) &&
+                    /[a-z]/.test(
+                        input.value
+                    ) &&
+                    /\d/.test(
+                        input.value
+                    )
                 )
             ) {
                 input.setCustomValidity(
@@ -1474,16 +1822,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 );
             }
 
+
             if (
                 input.name ===
                     'password_confirmation' &&
                 input.value !==
-                    form.elements.password.value
+                    form.elements
+                        .password
+                        .value
             ) {
                 input.setCustomValidity(
                     'Passwords do not match.'
                 );
             }
+
 
             if (
                 input.name ===
@@ -1497,8 +1849,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 );
             }
 
+
             if (
-                input.type === 'file' &&
+                input.type ===
+                    'file' &&
                 input.files[0]
             ) {
                 validateDocument(
@@ -1507,20 +1861,29 @@ document.addEventListener('DOMContentLoaded', () => {
                 );
             }
 
-            if (!input.checkValidity()) {
-                const searchableWidget =
-                    searchableSelects.get(input);
 
-                if (searchableWidget) {
+            if (
+                !input.checkValidity()
+            ) {
+                const searchableWidget =
+                    searchableSelects.get(
+                        input
+                    );
+
+                if (
+                    searchableWidget
+                ) {
                     searchableWidget
                         .wrapper
-                        .classList.add(
+                        .classList
+                        .add(
                             'is-invalid'
                         );
 
                     setAddressMessage(
                         `Please select your ${
-                            input.name === 'city'
+                            input.name ===
+                            'city'
                                 ? 'city or municipality'
                                 : input.name
                         }.`,
@@ -1548,6 +1911,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return true;
     }
 
+
     /* =========================================================
        REVIEW
        ========================================================= */
@@ -1555,27 +1919,40 @@ document.addEventListener('DOMContentLoaded', () => {
         const field =
             form.elements[name];
 
-        if (!field) return '';
+        if (!field) {
+            return '';
+        }
 
         return String(
-            field.value || ''
+            field.value ||
+            ''
         ).trim();
     }
 
+
     function formatSex(value) {
         const labels = {
-            female: 'Female',
-            male: 'Male',
+            female:
+                'Female',
+
+            male:
+                'Male',
+
             prefer_not_to_say:
                 'Prefer not to say',
         };
 
-        return labels[value] ||
+        return (
+            labels[value] ||
             value ||
-            '';
+            ''
+        );
     }
 
-    function formatBirthday(value) {
+
+    function formatBirthday(
+        value
+    ) {
         if (!value) return '';
 
         const date =
@@ -1601,6 +1978,7 @@ document.addEventListener('DOMContentLoaded', () => {
         );
     }
 
+
     function buildReviewGroup(
         title,
         editStep,
@@ -1614,6 +1992,7 @@ document.addEventListener('DOMContentLoaded', () => {
         group.className =
             'review-group';
 
+
         const header =
             document.createElement(
                 'header'
@@ -1622,20 +2001,27 @@ document.addEventListener('DOMContentLoaded', () => {
         header.className =
             'review-group__header';
 
+
         const heading =
             document.createElement(
                 'h4'
             );
 
-        heading.textContent = title;
+        heading.textContent =
+            title;
+
 
         const edit =
             document.createElement(
                 'button'
             );
 
-        edit.type = 'button';
-        edit.textContent = 'Edit';
+        edit.type =
+            'button';
+
+        edit.textContent =
+            'Edit';
+
         edit.dataset.editStep =
             String(editStep);
 
@@ -1649,10 +2035,12 @@ document.addEventListener('DOMContentLoaded', () => {
             edit
         );
 
+
         const list =
             document.createElement(
                 'dl'
             );
+
 
         fields
             .filter(
@@ -1660,7 +2048,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     value
             )
             .forEach(
-                ([label, value]) => {
+                (
+                    [
+                        label,
+                        value,
+                    ]
+                ) => {
                     const row =
                         document.createElement(
                             'div'
@@ -1693,6 +2086,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             );
 
+
         group.append(
             header,
             list
@@ -1700,6 +2094,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         return group;
     }
+
 
     function buildReview() {
         const summary =
@@ -1712,20 +2107,21 @@ document.addEventListener('DOMContentLoaded', () => {
         summary.replaceChildren();
 
         const validId =
-            form.elements.valid_id
+            form.elements
+                .valid_id
                 ?.files?.[0];
 
-        const street =
-            [
-                getValue(
-                    'house_number'
-                ),
-                getValue(
-                    'street_name'
-                ),
-            ]
-                .filter(Boolean)
-                .join(' ');
+        const street = [
+            getValue(
+                'house_number'
+            ),
+            getValue(
+                'street_name'
+            ),
+        ]
+            .filter(Boolean)
+            .join(' ');
+
 
         const personalGroup =
             buildReviewGroup(
@@ -1738,36 +2134,44 @@ document.addEventListener('DOMContentLoaded', () => {
                             'first_name'
                         ),
                     ],
+
                     [
                         'Last name',
                         getValue(
                             'last_name'
                         ),
                     ],
+
                     [
                         'Middle initial',
                         getValue(
                             'middle_initial'
                         ),
                     ],
+
                     [
                         'Sex',
                         formatSex(
-                            getValue('sex')
+                            getValue(
+                                'sex'
+                            )
                         ),
                     ],
+
                     [
                         'Email',
                         getValue(
                             'email'
                         ),
                     ],
+
                     [
                         'Contact',
                         getValue(
                             'contact_number'
                         ),
                     ],
+
                     [
                         'Birthday',
                         formatBirthday(
@@ -1776,12 +2180,16 @@ document.addEventListener('DOMContentLoaded', () => {
                             )
                         ),
                     ],
+
                     [
                         'Age',
-                        getValue('age'),
+                        getValue(
+                            'age'
+                        ),
                     ],
                 ]
             );
+
 
         const addressGroup =
             buildReviewGroup(
@@ -1794,20 +2202,26 @@ document.addEventListener('DOMContentLoaded', () => {
                             'province'
                         ),
                     ],
+
                     [
                         'Municipality / City',
-                        getValue('city'),
+                        getValue(
+                            'city'
+                        ),
                     ],
+
                     [
                         'Barangay',
                         getValue(
                             'barangay'
                         ),
                     ],
+
                     [
                         'Street / Unit',
                         street,
                     ],
+
                     [
                         'Postal code',
                         getValue(
@@ -1816,6 +2230,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     ],
                 ]
             );
+
 
         const verificationGroup =
             buildReviewGroup(
@@ -1830,12 +2245,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 ]
             );
 
+
         summary.append(
             personalGroup,
             addressGroup,
             verificationGroup
         );
     }
+
 
     /* =========================================================
        STEP NAVIGATION
@@ -1850,53 +2267,63 @@ document.addEventListener('DOMContentLoaded', () => {
                 )
             );
 
+
         registration
             .querySelectorAll(
                 '[data-step]'
             )
-            .forEach((panel) => {
-                panel.classList.toggle(
-                    'active',
-                    Number(
-                        panel.dataset.step
-                    ) ===
-                        currentStep
-                );
-            });
+            .forEach(
+                (panel) => {
+                    panel.classList.toggle(
+                        'active',
+                        Number(
+                            panel.dataset
+                                .step
+                        ) ===
+                            currentStep
+                    );
+                }
+            );
+
 
         registration
             .querySelectorAll(
                 '[data-step-marker]'
             )
-            .forEach((marker) => {
-                const markerStep =
-                    Number(
-                        marker.dataset
-                            .stepMarker
+            .forEach(
+                (marker) => {
+                    const markerStep =
+                        Number(
+                            marker.dataset
+                                .stepMarker
+                        );
+
+                    marker.classList.toggle(
+                        'active',
+                        markerStep ===
+                            currentStep
                     );
 
-                marker.classList.toggle(
-                    'active',
-                    markerStep ===
-                        currentStep
-                );
-
-                marker.classList.toggle(
-                    'complete',
-                    markerStep <
-                        currentStep
-                );
-
-                const number =
-                    marker.querySelector(
-                        'span'
+                    marker.classList.toggle(
+                        'complete',
+                        markerStep <
+                            currentStep
                     );
 
-                if (number) {
-                    number.textContent =
-                        String(markerStep);
+                    const number =
+                        marker.querySelector(
+                            'span'
+                        );
+
+                    if (number) {
+                        number.textContent =
+                            String(
+                                markerStep
+                            );
+                    }
                 }
-            });
+            );
+
 
         const mobileStep =
             registration.querySelector(
@@ -1908,6 +2335,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 `Step ${currentStep} of 3`;
         }
 
+
         const progressBar =
             registration.querySelector(
                 '[data-progress-bar]'
@@ -1915,24 +2343,37 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (progressBar) {
             progressBar.style.width =
-                `${(
-                    currentStep /
-                    3
-                ) * 100}%`;
+                `${
+                    (
+                        currentStep /
+                        3
+                    ) * 100
+                }%`;
         }
 
-        back.disabled =
-            currentStep === 1;
 
-        next.hidden =
-            currentStep === 3;
+        if (back) {
+            back.disabled =
+                currentStep === 1;
+        }
 
-        submit.hidden =
-            currentStep !== 3;
+        if (next) {
+            next.hidden =
+                currentStep === 3;
+        }
 
-        if (currentStep === 3) {
+        if (submit) {
+            submit.hidden =
+                currentStep !== 3;
+        }
+
+
+        if (
+            currentStep === 3
+        ) {
             buildReview();
         }
+
 
         registration.scrollIntoView({
             behavior: 'smooth',
@@ -1940,10 +2381,13 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+
     next?.addEventListener(
         'click',
         () => {
-            if (!validateStep()) {
+            if (
+                !validateStep()
+            ) {
                 return;
             }
 
@@ -1953,6 +2397,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     );
 
+
     back?.addEventListener(
         'click',
         () => {
@@ -1961,6 +2406,7 @@ document.addEventListener('DOMContentLoaded', () => {
             );
         }
     );
+
 
     registration.addEventListener(
         'click',
@@ -1974,57 +2420,72 @@ document.addEventListener('DOMContentLoaded', () => {
 
             showStep(
                 Number(
-                    edit.dataset.editStep
+                    edit.dataset
+                        .editStep
                 )
             );
         }
     );
 
+
     /* =========================================================
        ADDRESS EVENTS
+
+       IMPORTANT:
+       NO POSTAL CODE LOGIC HERE.
+
+       resources/js/postal-code-registration.js
+       is now the ONLY file responsible for postal codes.
        ========================================================= */
     provinceSelect?.addEventListener(
         'change',
         async () => {
             if (citySelect) {
-                citySelect.dataset.oldValue =
+                citySelect.dataset
+                    .oldValue =
                     '';
             }
 
             if (barangaySelect) {
-                barangaySelect.dataset.oldValue =
+                barangaySelect.dataset
+                    .oldValue =
                     '';
             }
-
-            resetPostalCode();
 
             await loadCities();
         }
     );
 
+
     citySelect?.addEventListener(
         'change',
         async () => {
             if (barangaySelect) {
-                barangaySelect.dataset.oldValue =
+                barangaySelect.dataset
+                    .oldValue =
                     '';
             }
 
-            updatePostalCode();
-
+            /*
+             * Postal code JS also catches
+             * this same city change event.
+             */
             await loadBarangays();
         }
     );
+
 
     addressRetry?.addEventListener(
         'click',
         loadProvinces
     );
 
+
     addressManual?.addEventListener(
         'click',
         enableManualAddress
     );
+
 
     /* =========================================================
        FRONT-END-ONLY SUBMISSION PREVIEW
@@ -2034,7 +2495,15 @@ document.addEventListener('DOMContentLoaded', () => {
         (event) => {
             event.preventDefault();
 
-            if (currentStep !== 3) {
+            if (
+                currentStep !== 3
+            ) {
+                return;
+            }
+
+            if (
+                !validateStep()
+            ) {
                 return;
             }
 
@@ -2044,23 +2513,32 @@ document.addEventListener('DOMContentLoaded', () => {
                 );
 
             if (message) {
-                message.hidden = false;
+                message.hidden =
+                    false;
             }
         }
     );
+
 
     /* =========================================================
        INITIAL STATE
        ========================================================= */
     showStep(1);
 
-    Promise.all([
-        loadPostalData(),
-        loadProvinces(),
-    ]).catch((error) => {
-        console.error(
-            'Registration initialization error:',
-            error
-        );
-    });
+    /*
+     * Only PSGC data is initialized here.
+     *
+     * Postal-code-registration.js imports:
+     * resources/data/ph-postal-codes.json
+     *
+     * So there is no second postal system anymore.
+     */
+    loadProvinces().catch(
+        (error) => {
+            console.error(
+                'Registration initialization error:',
+                error
+            );
+        }
+    );
 });

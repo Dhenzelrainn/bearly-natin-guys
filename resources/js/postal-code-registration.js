@@ -1,3 +1,5 @@
+import postalData from '../data/ph-postal-codes.json';
+
 (() => {
     'use strict';
 
@@ -6,21 +8,19 @@
 
     const provinceSelect = registration.querySelector('[data-province-select]');
     const citySelect = registration.querySelector('[data-city-select]');
-    const postalInput = registration.querySelector('input[name="postal_code"]');
+    const postalInput = registration.querySelector('#postal-code');
 
     if (!provinceSelect || !citySelect || !postalInput) return;
 
-    const POSTAL_DATA_URL = '/data/ph-postal-codes.json';
-    let postalData = {};
-
     const normalize = (value = '') =>
-        value
+        String(value)
             .normalize('NFD')
             .replace(/[\u0300-\u036f]/g, '')
             .toLowerCase()
             .replace(/\bcity of\b/g, '')
             .replace(/\bcity\b/g, '')
             .replace(/\bmunicipality of\b/g, '')
+            .replace(/\bmunicipality\b/g, '')
             .replace(/\bprovince of\b/g, '')
             .replace(/\(.*?\)/g, '')
             .replace(/\bsta\.\b/g, 'santa')
@@ -51,7 +51,7 @@
 
         return Object.keys(postalData).find(
             (key) => normalizeProvince(key) === target
-        );
+        ) || null;
     };
 
     const findCityKey = (provinceKey, cityName) => {
@@ -66,127 +66,68 @@
 
         match = Object.keys(cities).find((key) => {
             const normalizedKey = normalize(key);
+
             return (
-                normalizedKey.startsWith(target + ' ') ||
-                target.startsWith(normalizedKey + ' ')
+                normalizedKey.startsWith(`${target} `) ||
+                target.startsWith(`${normalizedKey} `)
             );
         });
 
         return match || null;
     };
 
-    const setPostalState = ({
-        value = '',
-        readonly = false,
-        placeholder = 'Enter postal code',
-    } = {}) => {
+    const setPostalCode = (value = '', placeholder = 'Select municipality first') => {
         postalInput.value = value;
-        postalInput.readOnly = readonly;
         postalInput.placeholder = placeholder;
-
-        postalInput.title = readonly
-            ? 'Postal code was filled automatically from the selected city / municipality.'
-            : 'Enter the 4-digit Philippine postal code.';
+        postalInput.readOnly = true;
     };
 
     const updatePostalCode = () => {
-        if (!provinceSelect.value || !citySelect.value) {
-            setPostalState({
-                value: '',
-                readonly: true,
-                placeholder: 'Select city first',
-            });
+        const province = provinceSelect.value?.trim() || '';
+        const city = citySelect.value?.trim() || '';
+
+        if (!province || !city) {
+            setPostalCode('', 'Select municipality first');
             return;
         }
 
-        const provinceKey = findProvinceKey(provinceSelect.value);
+        const provinceKey = findProvinceKey(province);
 
         if (!provinceKey) {
-            setPostalState({
-                value: '',
-                readonly: false,
-                placeholder: 'Enter postal code',
-            });
+            setPostalCode('', 'Postal code unavailable');
             return;
         }
 
-        const cityKey = findCityKey(provinceKey, citySelect.value);
+        const cityKey = findCityKey(provinceKey, city);
 
         if (!cityKey) {
-            setPostalState({
-                value: '',
-                readonly: false,
-                placeholder: 'Postal code unavailable',
-            });
+            setPostalCode('', 'Postal code unavailable');
             return;
         }
 
         const zip = postalData[provinceKey][cityKey];
 
         if (Array.isArray(zip)) {
-            setPostalState({
-                value: '',
-                readonly: false,
-                placeholder: 'Multiple ZIP codes — enter yours',
-            });
+            postalInput.readOnly = false;
+            postalInput.value = '';
+            postalInput.placeholder = 'Enter your postal code';
             return;
         }
 
-        if (/^\d{4}$/.test(String(zip))) {
-            setPostalState({
-                value: String(zip),
-                readonly: true,
-                placeholder: String(zip),
-            });
+        const zipValue = String(zip || '');
 
-            postalInput.dispatchEvent(new Event('input', { bubbles: true }));
-            postalInput.dispatchEvent(new Event('change', { bubbles: true }));
+        if (!/^\d{4}$/.test(zipValue)) {
+            setPostalCode('', 'Postal code unavailable');
             return;
         }
 
-        setPostalState({
-            value: '',
-            readonly: false,
-            placeholder: 'Enter postal code',
-        });
-    };
-
-    const loadPostalData = async () => {
-        try {
-            const response = await fetch(POSTAL_DATA_URL, {
-                headers: { Accept: 'application/json' },
-                cache: 'force-cache',
-            });
-
-            if (!response.ok) {
-                throw new Error(`Postal-code data returned HTTP ${response.status}`);
-            }
-
-            const payload = await response.json();
-
-            if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-                throw new Error('Postal-code JSON must be an object.');
-            }
-
-            postalData = payload;
-            updatePostalCode();
-        } catch (error) {
-            console.error('Unable to load postal-code data:', error);
-
-            setPostalState({
-                value: postalInput.value,
-                readonly: false,
-                placeholder: 'Enter postal code',
-            });
-        }
+        setPostalCode(zipValue, zipValue);
+        postalInput.dispatchEvent(new Event('input', { bubbles: true }));
+        postalInput.dispatchEvent(new Event('change', { bubbles: true }));
     };
 
     provinceSelect.addEventListener('change', () => {
-        setPostalState({
-            value: '',
-            readonly: true,
-            placeholder: 'Select city first',
-        });
+        setPostalCode('', 'Select municipality first');
     });
 
     citySelect.addEventListener('change', updatePostalCode);
@@ -195,19 +136,10 @@
         if (!event.target.closest('[data-address-manual]')) return;
 
         window.setTimeout(() => {
-            setPostalState({
-                value: postalInput.value,
-                readonly: false,
-                placeholder: 'Enter postal code',
-            });
+            postalInput.readOnly = false;
+            postalInput.placeholder = 'Enter postal code';
         }, 0);
     });
 
-    setPostalState({
-        value: postalInput.value,
-        readonly: true,
-        placeholder: 'Select city first',
-    });
-
-    loadPostalData();
+    updatePostalCode();
 })();

@@ -20,7 +20,8 @@
 
     @vite([
         'resources/css/bearly-auth.css',
-        'resources/js/bearly-auth.js'
+        'resources/js/bearly-auth.js',
+        'resources/js/postal-code-registration.js'
     ])
 
     @stack('styles')
@@ -46,7 +47,6 @@
         @yield('content')
     </main>
 
-    <script src="{{ asset('js/postal-code-registration.js') }}" defer></script>
     @stack('scripts')
 </body>
 </html>

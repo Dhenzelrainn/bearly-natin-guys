@@ -75,33 +75,68 @@ for ($round = 0; $round < 5; $round++) {
 
 <a class="skip-link" href="#main">Skip to products</a>
 
-<header class="header">
+<header class="header buyer-home-header">
 
-<button class="icon-button mobile-menu" id="menu-toggle" aria-label="Open categories" aria-expanded="false" aria-controls="sidebar"><span class="material-symbols-outlined" aria-hidden="true">menu</span></button>
-<a class="brand" href="{{ url('/home') }}" aria-label="Bearly home"><img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly" width="192" height="64"></a>
+<button class="icon-button mobile-menu" id="menu-toggle" type="button" aria-label="Open categories" aria-expanded="false" aria-controls="sidebar">
+    <span class="material-symbols-outlined" aria-hidden="true">menu</span>
+</button>
+
+<div class="buyer-brand-lockup">
+    <a class="brand" href="{{ url('/home') }}" aria-label="Bearly home">
+        <img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly" width="192" height="64">
+    </a>
+    <span class="buyer-brand-note">A kinder marketplace<br>for everyone</span>
+</div>
 
 <form class="search" id="search-form" role="search">
+    <label class="sr-only" for="search-category">Search category</label>
+    <select id="search-category"><option value="">All categories</option></select>
 
-<label class="sr-only" for="search-category">Search category</label>
+    <label class="sr-only" for="search-input">Search products</label>
+    <input id="search-input" type="search" placeholder="Search for anything on Bearly" maxlength="120" autocomplete="off">
 
-<select id="search-category"><option value="">All categories</option></select>
-
-<label class="sr-only" for="search-input">Search products</label>
-<input id="search-input" type="search" placeholder="Search for anything on Bearly" maxlength="120" autocomplete="off">
-
-<button type="submit" aria-label="Search"><span class="material-symbols-outlined" aria-hidden="true">search</span></button>
-
+    <button type="submit" aria-label="Search">
+        <span class="material-symbols-outlined" aria-hidden="true">search</span>
+    </button>
 </form>
 
-<nav class="header-actions" aria-label="Account">
+<nav class="header-actions" aria-label="Buyer account">
+    <button type="button" data-info="orders">
+        <span class="material-symbols-outlined" aria-hidden="true">receipt_long</span>
+        <span>Orders</span>
+    </button>
 
-<button data-info="orders"><span class="material-symbols-outlined" aria-hidden="true">receipt_long</span><span>Orders</span></button>
-<button data-info="chat"><span class="material-symbols-outlined" aria-hidden="true">chat_bubble</span><span>Chat</span></button>
+    <button type="button" data-info="chat">
+        <span class="material-symbols-outlined" aria-hidden="true">chat_bubble</span>
+        <span>Chat</span>
+    </button>
 
-<a href="{{ url('/cart') }}"><span class="material-symbols-outlined" aria-hidden="true">shopping_cart</span><span>Cart</span></a>
+    <a href="{{ url('/cart') }}">
+        <span class="material-symbols-outlined" aria-hidden="true">shopping_cart</span>
+        <span>Cart</span>
+    </a>
 
-<button class="account-action" data-info="account" aria-label="Open demo account"><span class="material-symbols-outlined" aria-hidden="true">person</span><span>Mia Santos</span></button>
+    <button class="account-action" type="button" data-info="account" aria-label="Open demo account">
+        <span class="material-symbols-outlined" aria-hidden="true">person</span>
+        <span>Mia Santos</span>
+    </button>
+</nav>
 
+<nav class="buyer-role-actions" aria-label="Apply for a Bearly role">
+    <a class="buyer-role-link" href="{{ route('register', ['role' => 'seller']) }}">
+        <span class="material-symbols-outlined" aria-hidden="true">storefront</span>
+        <span>Become a seller</span>
+    </a>
+
+    <a class="buyer-role-link" href="{{ route('logistics.register') }}">
+        <span class="material-symbols-outlined" aria-hidden="true">local_shipping</span>
+        <span>Apply as logistics</span>
+    </a>
+
+    <a class="buyer-role-link" href="{{ route('rider.register') }}">
+        <span class="material-symbols-outlined" aria-hidden="true">two_wheeler</span>
+        <span>Apply as rider</span>
+    </a>
 </nav>
 
 </header>
@@ -265,7 +300,39 @@ for ($round = 0; $round < 5; $round++) {
 </main>
 
 </div>
-<footer class="footer"><a href="{{ url('/home') }}"><img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly home" width="110" height="37"></a><p>Good finds. Happy spaces.</p><nav aria-label="Footer"><button data-info="about">About Bearly</button><button data-info="help">Help centre</button><a href="{{ url('/seller/dashboard') }}">Become a seller</a></nav><span>Homepage preview</span></footer>
+<footer class="footer buyer-home-footer">
+    <div class="buyer-footer-brand">
+        <a href="{{ url('/home') }}" aria-label="Bearly home">
+            <img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly" width="132" height="44">
+        </a>
+        <p>A kinder marketplace<br>for everyone.</p>
+    </div>
+
+    <nav class="buyer-footer-column" aria-label="Shop links">
+        <strong>Shop</strong>
+        <a href="{{ route('home') }}">All categories</a>
+        <a href="{{ route('products.index') }}">All products</a>
+        <a href="{{ route('wishlist.index') }}">Wishlist</a>
+    </nav>
+
+    <nav class="buyer-footer-column" aria-label="Support links">
+        <strong>Support</strong>
+        <a href="{{ route('contact') }}#help-topics-title">Help center</a>
+        <a href="{{ route('contact') }}#help-topics-title">Delivery &amp; tracking</a>
+        <a href="{{ route('contact') }}#contact-form">Returns &amp; refunds</a>
+    </nav>
+
+    <nav class="buyer-footer-column" aria-label="About Bearly links">
+        <strong>About</strong>
+        <a href="{{ route('about') }}">About Bearly</a>
+        <a href="{{ route('contact') }}">Contact us</a>
+    </nav>
+
+    <div class="buyer-footer-meta">
+        <p>© {{ date('Y') }} Bearly. All rights reserved.</p>
+        <span>Shopping made Bearly a hassle.</span>
+    </div>
+</footer>
 <button class="chat-button" data-info="chat" aria-controls="chat-drawer" aria-expanded="false"><span class="material-symbols-outlined" aria-hidden="true">chat_bubble</span>Chat</button>
 
 <div class="chat-drawer-backdrop" id="chat-drawer-backdrop" data-chat-close hidden></div>

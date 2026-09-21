@@ -114,8 +114,6 @@ for ($round = 0; $round < 5; $round++) {
 <div class="sidebar-title"><span class="material-symbols-outlined" aria-hidden="true">menu</span><strong>Shop by category</strong><button id="menu-close" class="icon-button" aria-label="Close categories"><span class="material-symbols-outlined" aria-hidden="true">close</span></button></div>
 <nav id="category-nav" aria-label="Shop by category"></nav>
 
-<a class="seller-link" href="{{ url('/seller/dashboard') }}"><span class="material-symbols-outlined" aria-hidden="true">storefront</span>Sell on Bearly<span aria-hidden="true">→</span></a>
-
 </aside>
 
 <main id="main" tabindex="-1">

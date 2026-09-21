@@ -3,7 +3,10 @@
 @section('title', 'Create Account | Bearly')
 
 @section('header-action')
-    <p class="header-signin">Already have an account? <a href="{{ route('login') }}">Sign in</a></p>
+    <p class="header-signin">
+        Already have an account?
+        <a href="{{ route('login') }}">Sign in</a>
+    </p>
 @endsection
 
 @section('content')
@@ -14,83 +17,71 @@
             alt="Bearly bear holding a shopping bag"
             class="register-bear"
         >
+
         <h1>Create your<br>Bearly account</h1>
-        <p>Join Bearly as a buyer, seller, rider, or logistics partner.</p>
+        <p>Create one Bearly account to shop on Bearly.</p>
 
         <ol class="step-list" aria-label="Registration progress">
-            <li class="active" data-step-marker="1"><span>1</span><b>Personal Information</b></li>
-            <li data-step-marker="2"><span>2</span><b>Address</b></li>
-            <li data-step-marker="3"><span>3</span><b data-role-step-label>Business Details</b></li>
-            <li data-step-marker="4"><span>4</span><b>Documents &amp; Review</b></li>
+            <li class="active" data-step-marker="1">
+                <span>1</span>
+                <b>Personal Information</b>
+            </li>
+            <li data-step-marker="2">
+                <span>2</span>
+                <b>Address &amp; Verification</b>
+            </li>
+            <li data-step-marker="3">
+                <span>3</span>
+                <b>Review &amp; Submit</b>
+            </li>
         </ol>
     </aside>
 
-    <form class="register-form" data-demo-register novalidate>
+    <form
+        class="register-form"
+        data-demo-register
+        enctype="multipart/form-data"
+        novalidate
+    >
+        <div class="mobile-progress">
+            <span data-mobile-step>Step 1 of 3</span>
+            <div><i data-progress-bar></i></div>
+        </div>
 
-        <div class="mobile-progress"><span data-mobile-step>Step 1 of 4</span><div><i data-progress-bar></i></div></div>
-
+        {{-- STEP 1 --}}
         <section class="form-step active" data-step="1">
-            <h2>Choose how you'll use Bearly</h2>
-            <div class="role-grid" aria-label="Choose account type">
-                <label class="role-card">
-                    <input type="radio" name="role" value="buyer">
-                    <span class="role-check">✓</span>
-                    <img
-                        src="{{ asset('images/icon-buyer.png') }}"
-                        alt=""
-                        class="role-icon"
-                        aria-hidden="true"
-                    >
-                    <strong>Buyer</strong>
-                    <small>Shop products from<br>trusted sellers</small>
-                </label>
-
-                <label class="role-card selected">
-                    <input type="radio" name="role" value="seller" checked>
-                    <span class="role-check">✓</span>
-                    <img
-                        src="{{ asset('images/icon-seller.png') }}"
-                        alt=""
-                        class="role-icon"
-                        aria-hidden="true"
-                    >
-                    <strong>Seller</strong>
-                    <small>Manage products, orders,<br>and your store</small>
-                </label>
-
-                <label class="role-card">
-                    <input type="radio" name="role" value="rider">
-                    <span class="role-check">✓</span>
-                    <img
-                        src="{{ asset('images/icon-courier.png') }}"
-                        alt=""
-                        class="role-icon"
-                        aria-hidden="true"
-                    >
-                    <strong>Rider</strong>
-                    <small>Pick up parcels<br>and complete deliveries</small>
-                </label>
-
-                <label class="role-card">
-                    <input type="radio" name="role" value="logistics">
-                    <span class="role-check">✓</span>
-                    <svg
-                        class="role-icon logistics-role-icon"
-                        viewBox="0 0 48 48"
-                        aria-hidden="true"
-                    >
-                        <path d="M7 20 24 10l17 10v19H7V20Z"/>
-                        <path d="M12 22h24M14 28h10v11H14V28Zm15 0h6v6h-6v-6Z"/>
-                    </svg>
-                    <strong>Logistics</strong>
-                    <small>Sort parcels and<br>manage rider operations</small>
-                </label>
+            <div class="section-heading" style="margin-top: 0;">
+                <h2 style="font-size: 27px;">Create your Bearly account</h2>
+                <p style="font-size: 14px;">Start with your personal information.</p>
             </div>
 
-            <div class="section-heading"><h3>Personal Information</h3><p>Tell us a little about yourself</p></div>
             <div class="form-grid three">
-                <label>First name<input name="first_name" value="{{ old('first_name') }}" pattern="[A-Za-zÀ-ÿ.' -]+" placeholder="Enter your first name" required></label>
-                <label>Last name<input name="last_name" value="{{ old('last_name') }}" pattern="[A-Za-zÀ-ÿ.' -]+" placeholder="Enter your last name" required></label>
+                <label>
+                    First name
+                    <input
+                        type="text"
+                        name="first_name"
+                        value="{{ old('first_name') }}"
+                        pattern="[A-Za-zÀ-ÿ.' -]+"
+                        placeholder="Enter your first name"
+                        autocomplete="given-name"
+                        required
+                    >
+                </label>
+
+                <label>
+                    Last name
+                    <input
+                        type="text"
+                        name="last_name"
+                        value="{{ old('last_name') }}"
+                        pattern="[A-Za-zÀ-ÿ.' -]+"
+                        placeholder="Enter your last name"
+                        autocomplete="family-name"
+                        required
+                    >
+                </label>
+
                 <label>
                     Middle initial <em>(Optional)</em>
                     <input
@@ -99,234 +90,357 @@
                         value="{{ old('middle_initial') }}"
                         maxlength="2"
                         pattern="[A-Za-z][.]?"
-                        title="Enter one letter, optionally followed by a period, such as P or P."
                         placeholder="P."
+                        autocomplete="off"
+                        title="Enter one letter, optionally followed by a period."
                     >
                 </label>
             </div>
+
             <div class="form-grid two-wide">
-                <label>Sex<select name="sex" required><option value="">Select sex</option><option value="female">Female</option><option value="male">Male</option><option value="prefer_not_to_say">Prefer not to say</option></select></label>
-                <label>Email address<input type="email" name="email" value="{{ old('email') }}" placeholder="Enter your email address" required></label>
+                <label>
+                    Sex
+                    <select name="sex" required>
+                        <option value="">Select sex</option>
+                        <option value="female" @selected(old('sex') === 'female')>Female</option>
+                        <option value="male" @selected(old('sex') === 'male')>Male</option>
+                        <option value="prefer_not_to_say" @selected(old('sex') === 'prefer_not_to_say')>
+                            Prefer not to say
+                        </option>
+                    </select>
+                </label>
+
+                <label>
+                    Email address
+                    <input
+                        type="email"
+                        name="email"
+                        value="{{ old('email') }}"
+                        placeholder="Enter your email address"
+                        autocomplete="email"
+                        required
+                    >
+                </label>
             </div>
+
             <div class="form-grid three">
-                <label>Contact number<input name="contact_number" value="{{ old('contact_number') }}" inputmode="numeric" maxlength="13" pattern="(?:\+639|09)\d{9}" placeholder="09XXXXXXXXX" required></label>
-                <label>Birthday<input id="birthday" type="date" name="birthday" value="{{ old('birthday') }}" max="{{ now()->toDateString() }}" required></label>
-                <label>Age <em>(Auto-generated)</em><input id="age" name="age" value="{{ old('age', '--') }}" readonly required></label>
+                <label>
+                    Contact number
+                    <input
+                        type="tel"
+                        name="contact_number"
+                        value="{{ old('contact_number') }}"
+                        inputmode="numeric"
+                        maxlength="13"
+                        pattern="(?:\+639|09)\d{9}"
+                        placeholder="09XXXXXXXXX"
+                        autocomplete="tel"
+                        required
+                    >
+                </label>
+
+                <label>
+                    Birthday
+                    <input
+                        id="birthday"
+                        type="date"
+                        name="birthday"
+                        value="{{ old('birthday') }}"
+                        max="{{ now()->toDateString() }}"
+                        autocomplete="bday"
+                        required
+                    >
+                </label>
+
+                <label>
+                    Age <em>(Auto-generated)</em>
+                    <input
+                        id="age"
+                        name="age"
+                        value="--"
+                        readonly
+                        tabindex="-1"
+                        aria-readonly="true"
+                    >
+                </label>
             </div>
+
             <div class="form-grid two password-row">
-                <label>Password<div class="password-wrap"><input id="register-password" type="password" name="password" placeholder="Enter your password" required><button type="button" data-toggle-password="register-password" aria-label="Show password"><svg viewBox="0 0 24 24"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></div></label>
-                <label>Confirm password<div class="password-wrap"><input id="password-confirmation" type="password" name="password_confirmation" placeholder="Confirm your password" required><button type="button" data-toggle-password="password-confirmation" aria-label="Show password"><svg viewBox="0 0 24 24"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></div></label>
+                <label>
+                    Password
+                    <div class="password-wrap">
+                        <input
+                            id="register-password"
+                            type="password"
+                            name="password"
+                            placeholder="Enter your password"
+                            autocomplete="new-password"
+                            minlength="8"
+                            required
+                        >
+                        <button
+                            type="button"
+                            data-toggle-password="register-password"
+                            aria-label="Show password"
+                        >
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/>
+                                <circle cx="12" cy="12" r="3"/>
+                            </svg>
+                        </button>
+                    </div>
+                </label>
+
+                <label>
+                    Confirm password
+                    <div class="password-wrap">
+                        <input
+                            id="password-confirmation"
+                            type="password"
+                            name="password_confirmation"
+                            placeholder="Confirm your password"
+                            autocomplete="new-password"
+                            minlength="8"
+                            required
+                        >
+                        <button
+                            type="button"
+                            data-toggle-password="password-confirmation"
+                            aria-label="Show password"
+                        >
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/>
+                                <circle cx="12" cy="12" r="3"/>
+                            </svg>
+                        </button>
+                    </div>
+                </label>
             </div>
-            <div class="password-meter"><i></i><span>Use 8+ characters with uppercase, lowercase, and a number.</span></div>
-            <label class="check-label terms"><input type="checkbox" name="terms" value="1" @checked(old('terms')) required><span>I agree to the <a href="/terms">Terms of Service</a> and <a href="/privacy">Privacy Policy</a></span></label>
+
+            <div class="password-meter"><i></i></div>
+
+            <p style="margin: -3px 0 14px; color: #7d726b; font-size: 12px; line-height: 1.45;">
+                Use at least 8 characters, including uppercase, lowercase, and a number.
+            </p>
+
+            <div class="info-box" style="margin: 0 0 14px; padding: 15px 18px;">
+                <strong style="display: block; margin-bottom: 3px; color: #4a2c20;">
+                    Your account will be created as a Bearly shopping account.
+                </strong>
+                <span style="font-size: 12.5px;">
+                    You can apply for Seller, Rider, or Logistics features later using the same account.
+                </span>
+            </div>
+
+            <label class="check-label terms">
+                <input type="checkbox" name="terms" value="1" @checked(old('terms')) required>
+                <span>
+                    I agree to the
+                    <a href="/terms">Terms of Service</a>
+                    and
+                    <a href="/privacy">Privacy Policy</a>
+                </span>
+            </label>
         </section>
 
+        {{-- STEP 2 --}}
         <section class="form-step" data-step="2">
-            <div class="section-heading"><h2>Your address</h2><p>Tell us where you are located.</p></div>
+            <div class="section-heading" style="margin-top: 0; margin-bottom: 20px;">
+                <h2 style="font-size: 27px;">Address &amp; verification</h2>
+                <p style="font-size: 14px;">Add your primary address and upload your ID.</p>
+            </div>
+
+            <div class="info-box" style="margin-bottom: 18px; padding: 14px 18px;">
+                <strong style="color: #4a2c20;">
+                    Your address will be saved as your default delivery address.
+                </strong>
+            </div>
+
             <div class="form-grid three" data-address-fields>
-                <label for="province">Province<select id="province" name="province" data-province-select data-searchable-address data-search-placeholder="Search province" data-old-value="{{ old('province') }}" required disabled><option value="">Loading provinces...</option></select></label>
-                <label for="city">City / Municipality<select id="city" name="city" data-city-select data-searchable-address data-search-placeholder="Search city or municipality" data-old-value="{{ old('city') }}" required disabled><option value="">Select province first</option></select></label>
-                <label for="barangay">Barangay<select id="barangay" name="barangay" data-barangay-select data-searchable-address data-search-placeholder="Search barangay" data-old-value="{{ old('barangay') }}" required disabled><option value="">Select city first</option></select></label>
+                <label for="province">
+                    Province
+                    <select
+                        id="province"
+                        name="province"
+                        data-province-select
+                        data-searchable-address
+                        data-search-placeholder="Search province"
+                        data-old-value="{{ old('province') }}"
+                        required
+                        disabled
+                    >
+                        <option value="">Loading provinces...</option>
+                    </select>
+                </label>
+
+                <label for="city">
+                    Municipality / City
+                    <select
+                        id="city"
+                        name="city"
+                        data-city-select
+                        data-searchable-address
+                        data-search-placeholder="Search municipality or city"
+                        data-old-value="{{ old('city') }}"
+                        required
+                        disabled
+                    >
+                        <option value="">Select province first</option>
+                    </select>
+                </label>
+
+                <label for="barangay">
+                    Barangay
+                    <select
+                        id="barangay"
+                        name="barangay"
+                        data-barangay-select
+                        data-searchable-address
+                        data-search-placeholder="Search barangay"
+                        data-old-value="{{ old('barangay') }}"
+                        required
+                        disabled
+                    >
+                        <option value="">Select city first</option>
+                    </select>
+                </label>
             </div>
+
+            <div class="form-grid three">
+                <label>
+                    Street name
+                    <input
+                        type="text"
+                        name="street_name"
+                        value="{{ old('street_name') }}"
+                        placeholder="Enter street name"
+                        autocomplete="address-line1"
+                        required
+                    >
+                </label>
+
+                <label>
+                    House / Unit no.
+                    <input
+                        type="text"
+                        name="house_number"
+                        value="{{ old('house_number') }}"
+                        placeholder="e.g. 123, Unit 4B"
+                        autocomplete="address-line2"
+                        required
+                    >
+                </label>
+
+                <label>
+                    Postal code <em>(Auto-generated)</em>
+                    <input
+                        id="postal-code"
+                        type="text"
+                        name="postal_code"
+                        value="{{ old('postal_code') }}"
+                        placeholder="Select municipality first"
+                        autocomplete="postal-code"
+                        readonly
+                        required
+                    >
+                </label>
+            </div>
+
             <div class="address-service" data-address-service>
-                <p class="address-service-message" data-address-message role="status" aria-live="polite">Loading Philippine address data...</p>
+                <p
+                    class="address-service-message"
+                    data-address-message
+                    role="status"
+                    aria-live="polite"
+                >
+                    Loading Philippine address data...
+                </p>
+
                 <div class="address-actions">
-                    <button type="button" class="secondary-button" data-address-retry hidden>Retry address service</button>
-                    <button type="button" class="secondary-button" data-address-manual>Enter address manually</button>
-                </div>
-            </div>
-            <div class="form-grid three"><label>Street name<input name="street_name" value="{{ old('street_name') }}" required></label><label>House / Unit no.<input name="house_number" value="{{ old('house_number') }}" required></label><label>Postal code<input name="postal_code" value="{{ old('postal_code') }}" inputmode="numeric" pattern="\d{4}" maxlength="4" required></label></div>
-        </section>
+                    <button
+                        type="button"
+                        class="secondary-button"
+                        data-address-retry
+                        hidden
+                    >
+                        Retry address service
+                    </button>
 
-        <section class="form-step role-details-step" data-step="3">
-            <div data-role-fields="seller" class="role-fields">
-                <div class="section-heading compact-heading">
-                    <h2>Business details</h2>
-                    <p>Provide the information used to verify your seller account.</p>
-                </div>
-
-                <div class="form-grid two compact-business-grid">
-                    <label>
-                        Business name
-                        <input
-                            name="business_name"
-                            value="{{ old('business_name') }}"
-                            pattern="[A-Za-zÀ-ÿ0-9&.,' -]+"
-                            placeholder="Enter your registered business name"
-                        >
-                    </label>
-                    <label>
-                        Line of business
-                        <select name="business_category">
-                            <option value="">Select category</option>
-                            <option value="Pet Supplies" @selected(old('business_category') === 'Pet Supplies')>Pet Supplies</option>
-                            <option value="Electronics and Gadgets" @selected(old('business_category') === 'Electronics and Gadgets')>Electronics and Gadgets</option>
-                            <option value="Women's Apparel" @selected(old('business_category') === "Women's Apparel")>Women's Apparel</option>
-                            <option value="Men's Apparel" @selected(old('business_category') === "Men's Apparel")>Men's Apparel</option>
-                            <option value="Kids and Baby" @selected(old('business_category') === 'Kids and Baby')>Kids and Baby</option>
-                            <option value="Home and Garden" @selected(old('business_category') === 'Home and Garden')>Home and Garden</option>
-                            <option value="Sports and Outdoors" @selected(old('business_category') === 'Sports and Outdoors')>Sports and Outdoors</option>
-                            <option value="Health and Beauty" @selected(old('business_category') === 'Health and Beauty')>Health and Beauty</option>
-                            <option value="Books and Media" @selected(old('business_category') === 'Books and Media')>Books and Media</option>
-                            <option value="Food and Gourmet" @selected(old('business_category') === 'Food and Gourmet')>Food and Gourmet</option>
-                            <option value="Furniture and Office Equipment" @selected(old('business_category') === 'Furniture and Office Equipment')>Furniture and Office Equipment</option>
-                            <option value="Jewelry and Watches" @selected(old('business_category') === 'Jewelry and Watches')>Jewelry and Watches</option>
-                        </select>
-                    </label>
-                </div>
-
-                <div class="info-box compact-info-box">
-                    <strong>Admin review required.</strong>
-                    We’ll email the decision before Seller Dashboard access is enabled.
+                    <button
+                        type="button"
+                        class="secondary-button"
+                        data-address-manual
+                    >
+                        Enter address manually
+                    </button>
                 </div>
             </div>
 
-            <div data-role-fields="rider" class="role-fields">
-                <div class="section-heading compact-heading">
-                    <h2>Vehicle details</h2>
-                    <p>Provide the vehicle information used for parcel pickup and delivery.</p>
-                </div>
-
-                <div class="form-grid two">
-                    <label>
-                        Vehicle type
-                        <select name="vehicle_type">
-                            <option value="">Select vehicle</option>
-                            <option>Motorcycle</option>
-                            <option>Car</option>
-                            <option>Van</option>
-                            <option>Truck</option>
-                        </select>
-                    </label>
-                    <label>Plate number<input name="plate_number" value="{{ old('plate_number') }}" data-uppercase placeholder="ABC 1234"></label>
-                </div>
-
-                <div class="info-box compact-info-box">
-                    <strong>Logistics review required.</strong>
-                    Your Rider application will be reviewed by a Logistics / Sorting Center before delivery access is enabled.
-                </div>
-            </div>
-
-            <div data-role-fields="logistics" class="role-fields">
-                <div class="section-heading compact-heading">
-                    <h2>Logistics center details</h2>
-                    <p>Provide the registered business information for your Logistics / Sorting Center.</p>
-                </div>
-
-                <div class="form-grid one">
-                    <label>
-                        Business / logistics center name
-                        <input
-                            name="logistics_business_name"
-                            value="{{ old('logistics_business_name') }}"
-                            pattern="[A-Za-zÀ-ÿ0-9&.,' -]+"
-                            placeholder="Enter your registered business or center name"
-                        >
-                    </label>
-                </div>
-
-                <div class="info-box compact-info-box">
-                    <strong>Admin review required.</strong>
-                    Your Logistics / Sorting Center application will be reviewed before dashboard access is enabled.
-                </div>
-            </div>
-        </section>
-
-        <section class="form-step documents-step" data-step="4">
-            <div class="documents-heading">
+            <div class="documents-heading" style="margin-top: 22px;">
                 <div>
-                    <h2>Documents &amp; review</h2>
-                    <p>Upload the required documents and confirm your application.</p>
+                    <h2 style="font-size: 18px;">Upload ID</h2>
+                    <p>Upload a clear copy of your valid government-issued ID.</p>
                 </div>
+
                 <div class="document-security-note">
-                    <img src="{{ asset('images/security.png') }}" alt="" class="document-security-icon" aria-hidden="true">
-                    <span>Your documents are encrypted and visible only to authorized reviewers.</span>
+                    <img
+                        src="{{ asset('images/security.png') }}"
+                        alt=""
+                        class="document-security-icon"
+                        aria-hidden="true"
+                    >
+                    <span>Visible only to authorized reviewers.</span>
                 </div>
             </div>
 
-            <div class="upload-grid" data-upload-grid>
+            <div class="upload-grid" style="grid-template-columns: 1fr;">
                 <article class="document-upload" data-upload-card>
                     <div class="document-upload__header">
                         <span class="document-icon" aria-hidden="true">
                             <img src="{{ asset('images/id.png') }}" alt="">
                         </span>
+
                         <div>
                             <span class="required-badge">Required</span>
-                            <h3 data-valid-id-label>Valid government ID</h3>
-                            <p data-valid-id-help>Passport, driver’s license, national ID, or another government-issued ID.</p>
-                            <small>PNG, JPG, or PDF · Max 5 MB</small>
+                            <h3>Valid government ID</h3>
+                            <p>
+                                Passport, driver's license, national ID,
+                                or another government-issued ID.
+                            </p>
+                            <small>PNG, JPG, JPEG, or PDF · Max 5 MB</small>
                         </div>
                     </div>
 
                     <label class="upload-dropzone" data-drop-zone>
-                        <input name="valid_id" type="file" accept=".png,.jpg,.jpeg,.pdf" data-file-preview required>
-                        <img src="{{ asset('images/cloud.png') }}" alt="" class="upload-icon" aria-hidden="true">
-                        <span><strong>Choose file</strong> or drag and drop</span>
-                    </label>
+                        <input
+                            name="valid_id"
+                            type="file"
+                            accept=".png,.jpg,.jpeg,.pdf"
+                            data-file-preview
+                            required
+                        >
 
-                    <div class="file-status" data-file-status hidden>
-                        <span class="file-status__icon" aria-hidden="true">✓</span>
-                        <span class="file-status__details"><strong data-file-name></strong><small data-file-meta></small></span>
-                        <div class="file-status__actions">
-                            <button type="button" data-file-action="preview">Preview</button>
-                            <button type="button" data-file-action="replace">Replace</button>
-                            <button type="button" data-file-action="remove">Remove</button>
-                        </div>
-                    </div>
-                </article>
+                        <img
+                            src="{{ asset('images/cloud.png') }}"
+                            alt=""
+                            class="upload-icon"
+                            aria-hidden="true"
+                        >
 
-                <article class="document-upload" data-upload-card data-business-document>
-                    <div class="document-upload__header">
-                        <span class="document-icon" aria-hidden="true">
-                            <img src="{{ asset('images/permit.png') }}" alt="">
+                        <span>
+                            <strong>Choose file</strong>
+                            or drag and drop
                         </span>
-                        <div>
-                            <span class="required-badge">Required</span>
-                            <h3 data-business-document-title>Business permit</h3>
-                            <p data-business-document-help>Upload a clear and current copy of your business permit.</p>
-                            <small>PNG, JPG, or PDF · Max 5 MB</small>
-                        </div>
-                    </div>
-
-                    <label class="upload-dropzone" data-drop-zone>
-                        <input name="business_permit" type="file" accept=".png,.jpg,.jpeg,.pdf" data-file-preview>
-                        <img src="{{ asset('images/cloud.png') }}" alt="" class="upload-icon" aria-hidden="true">
-                        <span><strong>Choose file</strong> or drag and drop</span>
                     </label>
 
                     <div class="file-status" data-file-status hidden>
                         <span class="file-status__icon" aria-hidden="true">✓</span>
-                        <span class="file-status__details"><strong data-file-name></strong><small data-file-meta></small></span>
-                        <div class="file-status__actions">
-                            <button type="button" data-file-action="preview">Preview</button>
-                            <button type="button" data-file-action="replace">Replace</button>
-                            <button type="button" data-file-action="remove">Remove</button>
-                        </div>
-                    </div>
-                </article>
 
-                <article class="document-upload" data-upload-card data-rider-document>
-                    <div class="document-upload__header">
-                        <span class="document-icon" aria-hidden="true">
-                            <img src="{{ asset('images/permit.png') }}" alt="">
+                        <span class="file-status__details">
+                            <strong data-file-name></strong>
+                            <small data-file-meta></small>
                         </span>
-                        <div>
-                            <span class="required-badge">Required</span>
-                            <h3>OR / CR</h3>
-                            <p>Upload a clear copy of the vehicle’s current OR and CR.</p>
-                            <small>PNG, JPG, or PDF · Max 5 MB</small>
-                        </div>
-                    </div>
 
-                    <label class="upload-dropzone" data-drop-zone>
-                        <input name="or_cr" type="file" accept=".png,.jpg,.jpeg,.pdf" data-file-preview>
-                        <img src="{{ asset('images/cloud.png') }}" alt="" class="upload-icon" aria-hidden="true">
-                        <span><strong>Choose file</strong> or drag and drop</span>
-                    </label>
-
-                    <div class="file-status" data-file-status hidden>
-                        <span class="file-status__icon" aria-hidden="true">✓</span>
-                        <span class="file-status__details"><strong data-file-name></strong><small data-file-meta></small></span>
                         <div class="file-status__actions">
                             <button type="button" data-file-action="preview">Preview</button>
                             <button type="button" data-file-action="replace">Replace</button>
@@ -334,33 +448,82 @@
                         </div>
                     </div>
                 </article>
-            </div>
-
-            <section class="application-summary" aria-labelledby="application-summary-title">
-                <div class="application-summary__header">
-                    <div>
-                        <span class="summary-eyebrow">Final check</span>
-                        <h3 id="application-summary-title">Application summary</h3>
-                    </div>
-                    <button type="button" class="summary-edit" data-edit-step="1">Edit personal details</button>
-                </div>
-                <div class="review-groups" data-review-summary></div>
-            </section>
-
-            <div class="approval-callout">
-                <span class="approval-callout__icon" aria-hidden="true">
-                    <img src="{{ asset('images/security.png') }}" alt="">
-                </span>
-                <div><strong>What happens next?</strong><p data-approval-notice></p></div>
             </div>
         </section>
 
+        {{-- STEP 3 --}}
+        <section class="form-step documents-step" data-step="3">
+            <div class="documents-heading" style="align-items: flex-start;">
+                <div>
+                    <h2>Review &amp; submit</h2>
+                    <p>Check your details before creating your account.</p>
+                </div>
+            </div>
+
+            <article class="application-summary">
+                <div class="application-summary__header">
+                    <div>
+                        <span class="summary-eyebrow">Registration summary</span>
+                        <h3>Your Bearly account</h3>
+                    </div>
+                </div>
+
+                <div class="review-groups" data-review-summary></div>
+            </article>
+
+            <div class="approval-callout">
+                <span class="approval-callout__icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24">
+                        <path d="m5 12 4 4L19 6"/>
+                    </svg>
+                </span>
+
+                <div>
+                    <strong>Administrator approval required</strong>
+                    <p>
+                        After submitting your registration, please wait for the
+                        administrator's approval. The decision will be sent to
+                        your registered email address.
+                    </p>
+                    <p style="margin-top: 3px;">
+                        Once approved, you can sign in and start shopping on Bearly.
+                    </p>
+                </div>
+            </div>
+
+            <p class="demo-message" data-register-message hidden>
+                Registration preview completed.
+                Backend submission will be connected during the authentication integration.
+            </p>
+        </section>
+
         <div class="form-actions">
-            <button type="button" class="secondary-button" data-back>Back</button>
-            <button type="button" class="primary-button" data-next>Continue</button>
-            <button type="button" class="primary-button" data-submit>Submit application <span aria-hidden="true">→</span></button>
+            <button
+                type="button"
+                class="secondary-button"
+                data-back
+                disabled
+            >
+                Back
+            </button>
+
+            <button
+                type="button"
+                class="primary-button"
+                data-next
+            >
+                Continue
+            </button>
+
+            <button
+                type="submit"
+                class="primary-button"
+                data-submit
+                hidden
+            >
+                Submit registration
+            </button>
         </div>
-        <div class="demo-message" data-register-message hidden role="status">Registration preview completed. No information was saved.</div>
     </form>
 </section>
 @endsection

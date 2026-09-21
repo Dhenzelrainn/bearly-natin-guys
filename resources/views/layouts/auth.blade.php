@@ -16,7 +16,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 
     <link
-          href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap"rel="stylesheet">
+          href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
     @vite([
         'resources/css/bearly-auth.css',
@@ -46,6 +46,7 @@
         @yield('content')
     </main>
 
+    <script src="{{ asset('js/postal-code-registration.js') }}" defer></script>
     @stack('scripts')
 </body>
 </html>

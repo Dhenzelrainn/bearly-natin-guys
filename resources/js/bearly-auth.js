@@ -1,18 +1,27 @@
 document.addEventListener('DOMContentLoaded', () => {
+    /* =========================================================
+       PASSWORD VISIBILITY
+       ========================================================= */
     document.querySelectorAll('[data-toggle-password]').forEach((button) => {
         button.addEventListener('click', () => {
             const input = document.getElementById(button.dataset.togglePassword);
             if (!input) return;
 
-            input.type = input.type === 'password' ? 'text' : 'password';
+            const isPassword = input.type === 'password';
+            input.type = isPassword ? 'text' : 'password';
+
             button.setAttribute(
                 'aria-label',
-                input.type === 'password' ? 'Show password' : 'Hide password'
+                isPassword ? 'Hide password' : 'Show password'
             );
         });
     });
 
+    /* =========================================================
+       LOGIN PREVIEW
+       ========================================================= */
     const demoLogin = document.querySelector('[data-demo-login]');
+
     demoLogin?.addEventListener('submit', (event) => {
         event.preventDefault();
 
@@ -25,6 +34,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (message) message.hidden = false;
     });
 
+    /* =========================================================
+       REGISTRATION
+       ========================================================= */
     const registration = document.querySelector('[data-registration]');
     if (!registration) return;
 
@@ -34,27 +46,65 @@ document.addEventListener('DOMContentLoaded', () => {
     const submit = form.querySelector('[data-submit]');
 
     const PSGC_API = '/api/psgc';
+
+    /*
+     * Local postal-code files.
+     * Run setup-postal-data.ps1 once and these files will be
+     * created under public/data/.
+     */
+    const POSTAL_CITIES_URL = '/data/ph-cities.json';
+    const POSTAL_PROVINCES_URL = '/data/ph-provinces.json';
+
     const provinceSelect = registration.querySelector('[data-province-select]');
     const citySelect = registration.querySelector('[data-city-select]');
     const barangaySelect = registration.querySelector('[data-barangay-select]');
+    const postalCodeInput = registration.querySelector('#postal-code');
+
     const addressMessage = registration.querySelector('[data-address-message]');
     const addressRetry = registration.querySelector('[data-address-retry]');
     const addressManual = registration.querySelector('[data-address-manual]');
 
+    const steps = [1, 2, 3];
+
     let currentStep = 1;
     let addressRequest = null;
+
+    let postalCities = [];
+    let postalProvinces = [];
+
     const searchableSelects = new Map();
 
+    /* =========================================================
+       GENERAL NORMALIZATION
+       ========================================================= */
     function normalizeSearchText(value) {
-        return String(value)
+        return String(value || '')
             .normalize('NFD')
             .replace(/[\u0300-\u036f]/g, '')
             .toLocaleLowerCase('en-PH')
             .trim();
     }
 
+    function normalizeLocationName(value) {
+        return String(value || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .replace(/\bcity of\b/g, '')
+            .replace(/\bcity\b/g, '')
+            .replace(/\bmunicipality of\b/g, '')
+            .replace(/\bmunicipality\b/g, '')
+            .replace(/\bprovince of\b/g, '')
+            .replace(/[^a-z0-9]/g, '')
+            .trim();
+    }
+
+    /* =========================================================
+       SEARCHABLE ADDRESS SELECTS
+       ========================================================= */
     function closeSearchableSelect(select, returnFocus = false) {
         const widget = searchableSelects.get(select);
+
         if (!widget || widget.panel.hidden) return;
 
         widget.panel.hidden = true;
@@ -63,27 +113,35 @@ document.addEventListener('DOMContentLoaded', () => {
         widget.search.value = '';
         widget.renderOptions();
 
-        if (returnFocus) widget.trigger.focus();
+        if (returnFocus) {
+            widget.trigger.focus();
+        }
     }
 
     function closeOtherSearchableSelects(currentSelect) {
         searchableSelects.forEach((widget, select) => {
-            if (select !== currentSelect) closeSearchableSelect(select);
+            if (select !== currentSelect) {
+                closeSearchableSelect(select);
+            }
         });
     }
 
     function openSearchableSelect(select) {
         const widget = searchableSelects.get(select);
+
         if (!widget || select.disabled) return;
 
         closeOtherSearchableSelects(select);
+
         widget.panel.hidden = false;
         widget.trigger.setAttribute('aria-expanded', 'true');
         widget.wrapper.classList.add('is-open');
         widget.search.value = '';
         widget.renderOptions();
 
-        window.requestAnimationFrame(() => widget.search.focus());
+        window.requestAnimationFrame(() => {
+            widget.search.focus();
+        });
     }
 
     function syncSearchableSelect(select) {
@@ -91,14 +149,33 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!widget) return;
 
         const selectedOption = select.selectedOptions[0];
-        widget.value.textContent = selectedOption?.textContent || 'Select an option';
-        widget.value.classList.toggle('is-placeholder', !select.value);
+
+        widget.value.textContent =
+            selectedOption?.textContent || 'Select an option';
+
+        widget.value.classList.toggle(
+            'is-placeholder',
+            !select.value
+        );
+
         widget.trigger.disabled = select.disabled;
-        widget.trigger.setAttribute('aria-disabled', String(select.disabled));
-        widget.wrapper.classList.toggle('is-disabled', select.disabled);
+
+        widget.trigger.setAttribute(
+            'aria-disabled',
+            String(select.disabled)
+        );
+
+        widget.wrapper.classList.toggle(
+            'is-disabled',
+            select.disabled
+        );
+
         widget.wrapper.classList.remove('is-invalid');
 
-        if (select.disabled) closeSearchableSelect(select);
+        if (select.disabled) {
+            closeSearchableSelect(select);
+        }
+
         widget.renderOptions();
     }
 
@@ -113,8 +190,10 @@ document.addEventListener('DOMContentLoaded', () => {
         trigger.className = 'searchable-select__trigger';
         trigger.setAttribute('aria-haspopup', 'listbox');
         trigger.setAttribute('aria-expanded', 'false');
+
         trigger.innerHTML = `
             <span class="searchable-select__value"></span>
+
             <svg viewBox="0 0 20 20" aria-hidden="true">
                 <path d="m5 7.5 5 5 5-5"/>
             </svg>
@@ -123,12 +202,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const panel = document.createElement('div');
         panel.className = 'searchable-select__panel';
         panel.hidden = true;
+
         panel.innerHTML = `
             <div class="searchable-select__search-wrap">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                     <circle cx="11" cy="11" r="7"></circle>
                     <path d="m20 20-4-4"></path>
                 </svg>
+
                 <input
                     type="search"
                     class="searchable-select__search"
@@ -136,13 +217,28 @@ document.addEventListener('DOMContentLoaded', () => {
                     spellcheck="false"
                 >
             </div>
-            <ul class="searchable-select__options" role="listbox"></ul>
-            <p class="searchable-select__empty" hidden>No locations found</p>
-            <p class="searchable-select__count" aria-live="polite"></p>
+
+            <ul
+                class="searchable-select__options"
+                role="listbox"
+            ></ul>
+
+            <p
+                class="searchable-select__empty"
+                hidden
+            >
+                No locations found
+            </p>
+
+            <p
+                class="searchable-select__count"
+                aria-live="polite"
+            ></p>
         `;
 
         select.parentNode.insertBefore(wrapper, select);
         wrapper.append(select, trigger, panel);
+
         select.classList.add('searchable-select__native');
 
         const value = trigger.querySelector('.searchable-select__value');
@@ -151,8 +247,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const empty = panel.querySelector('.searchable-select__empty');
         const count = panel.querySelector('.searchable-select__count');
 
-        search.placeholder = select.dataset.searchPlaceholder || 'Search location';
-        search.setAttribute('aria-label', search.placeholder);
+        search.placeholder =
+            select.dataset.searchPlaceholder || 'Search location';
+
+        search.setAttribute(
+            'aria-label',
+            search.placeholder
+        );
 
         const widget = {
             wrapper,
@@ -170,34 +271,64 @@ document.addEventListener('DOMContentLoaded', () => {
 
         widget.renderOptions = () => {
             const query = normalizeSearchText(search.value);
-            const availableOptions = [...select.options].filter(
-                (option) => option.value && !option.disabled
-            );
-            const matches = availableOptions.filter((option) =>
-                normalizeSearchText(option.textContent).includes(query)
-            );
+
+            const availableOptions =
+                [...select.options].filter(
+                    (option) => option.value && !option.disabled
+                );
+
+            const matches =
+                availableOptions.filter((option) =>
+                    normalizeSearchText(option.textContent).includes(query)
+                );
 
             options.replaceChildren();
+
             widget.visibleOptions = matches;
             widget.activeIndex = -1;
 
             matches.forEach((option) => {
                 const item = document.createElement('li');
                 const button = document.createElement('button');
-                const isSelected = option.value === select.value;
+
+                const isSelected =
+                    option.value === select.value;
 
                 button.type = 'button';
                 button.className = 'searchable-select__option';
-                button.setAttribute('role', 'option');
-                button.setAttribute('aria-selected', String(isSelected));
+
+                button.setAttribute(
+                    'role',
+                    'option'
+                );
+
+                button.setAttribute(
+                    'aria-selected',
+                    String(isSelected)
+                );
+
                 button.dataset.value = option.value;
-                button.innerHTML = `<span></span><span aria-hidden="true">${isSelected ? '✓' : ''}</span>`;
-                button.firstElementChild.textContent = option.textContent;
+
+                button.innerHTML = `
+                    <span></span>
+                    <span aria-hidden="true">
+                        ${isSelected ? '✓' : ''}
+                    </span>
+                `;
+
+                button.firstElementChild.textContent =
+                    option.textContent;
 
                 button.addEventListener('click', () => {
                     select.value = option.value;
                     select.setCustomValidity('');
-                    select.dispatchEvent(new Event('change', { bubbles: true }));
+
+                    select.dispatchEvent(
+                        new Event('change', {
+                            bubbles: true,
+                        })
+                    );
+
                     syncSearchableSelect(select);
                     closeSearchableSelect(select, true);
                 });
@@ -207,26 +338,42 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             empty.hidden = matches.length !== 0;
-            count.textContent = `${matches.length} ${matches.length === 1 ? 'location' : 'locations'} found`;
+
+            count.textContent =
+                `${matches.length} ${
+                    matches.length === 1
+                        ? 'location'
+                        : 'locations'
+                } found`;
         };
 
         searchableSelects.set(select, widget);
 
         trigger.addEventListener('click', () => {
-            panel.hidden ? openSearchableSelect(select) : closeSearchableSelect(select);
+            if (panel.hidden) {
+                openSearchableSelect(select);
+            } else {
+                closeSearchableSelect(select);
+            }
         });
 
         trigger.addEventListener('keydown', (event) => {
-            if (['ArrowDown', 'Enter', ' '].includes(event.key)) {
+            if (
+                ['ArrowDown', 'Enter', ' '].includes(event.key)
+            ) {
                 event.preventDefault();
                 openSearchableSelect(select);
             }
         });
 
-        search.addEventListener('input', widget.renderOptions);
+        search.addEventListener(
+            'input',
+            widget.renderOptions
+        );
 
         search.addEventListener('keydown', (event) => {
-            const optionButtons = [...options.querySelectorAll('button')];
+            const optionButtons =
+                [...options.querySelectorAll('button')];
 
             if (event.key === 'Escape') {
                 event.preventDefault();
@@ -234,24 +381,52 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            if (!['ArrowDown', 'ArrowUp', 'Enter'].includes(event.key)) return;
-            event.preventDefault();
-
-            if (event.key === 'Enter') {
-                optionButtons[widget.activeIndex]?.click();
+            if (
+                !['ArrowDown', 'ArrowUp', 'Enter'].includes(
+                    event.key
+                )
+            ) {
                 return;
             }
 
-            const direction = event.key === 'ArrowDown' ? 1 : -1;
-            widget.activeIndex = Math.max(
-                0,
-                Math.min(optionButtons.length - 1, widget.activeIndex + direction)
+            event.preventDefault();
+
+            if (event.key === 'Enter') {
+                optionButtons[
+                    widget.activeIndex
+                ]?.click();
+
+                return;
+            }
+
+            const direction =
+                event.key === 'ArrowDown'
+                    ? 1
+                    : -1;
+
+            widget.activeIndex =
+                Math.max(
+                    0,
+                    Math.min(
+                        optionButtons.length - 1,
+                        widget.activeIndex + direction
+                    )
+                );
+
+            optionButtons.forEach(
+                (button, index) => {
+                    button.classList.toggle(
+                        'is-active',
+                        index === widget.activeIndex
+                    );
+                }
             );
 
-            optionButtons.forEach((button, index) => {
-                button.classList.toggle('is-active', index === widget.activeIndex);
+            optionButtons[
+                widget.activeIndex
+            ]?.scrollIntoView({
+                block: 'nearest',
             });
-            optionButtons[widget.activeIndex]?.scrollIntoView({ block: 'nearest' });
         });
 
         syncSearchableSelect(select);
@@ -263,375 +438,208 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.addEventListener('pointerdown', (event) => {
         searchableSelects.forEach((widget, select) => {
-            if (!widget.wrapper.contains(event.target)) closeSearchableSelect(select);
+            if (!widget.wrapper.contains(event.target)) {
+                closeSearchableSelect(select);
+            }
         });
     });
 
-    const selectedRole = () =>
-        form.querySelector('input[name="role"]:checked')?.value || 'seller';
+    /* =========================================================
+       POSTAL CODE DATA
+       ========================================================= */
+    async function loadPostalData() {
+        try {
+            const [cityResponse, provinceResponse] =
+                await Promise.all([
+                    fetch(POSTAL_CITIES_URL, {
+                        headers: {
+                            Accept: 'application/json',
+                        },
+                    }),
+                    fetch(POSTAL_PROVINCES_URL, {
+                        headers: {
+                            Accept: 'application/json',
+                        },
+                    }),
+                ]);
 
-    const activeSteps = () =>
-        selectedRole() === 'buyer' ? [1, 2, 4] : [1, 2, 3, 4];
+            if (!cityResponse.ok) {
+                throw new Error(
+                    `City postal data returned HTTP ${cityResponse.status}`
+                );
+            }
 
-    const roleRequired = {
-        seller: [
-            'business_name',
-            'business_category',
-            'business_permit',
-        ],
-        rider: [
-            'vehicle_type',
-            'plate_number',
-            'or_cr',
-        ],
-        logistics: [
-            'logistics_business_name',
-            'business_permit',
-        ],
-    };
+            if (!provinceResponse.ok) {
+                throw new Error(
+                    `Province postal data returned HTTP ${provinceResponse.status}`
+                );
+            }
 
-    function updateRoleUI() {
-        const role = selectedRole();
-        const stepLabel = registration.querySelector('[data-role-step-label]');
-        const idLabel = registration.querySelector('[data-valid-id-label]');
-        const idHelp = registration.querySelector('[data-valid-id-help]');
-        const businessDocumentTitle = registration.querySelector('[data-business-document-title]');
-        const businessDocumentHelp = registration.querySelector('[data-business-document-help]');
+            const cityPayload = await cityResponse.json();
+            const provincePayload =
+                await provinceResponse.json();
 
-        if (stepLabel) {
-            stepLabel.textContent =
-                role === 'seller'
-                    ? 'Business Details'
-                    : role === 'rider'
-                        ? 'Vehicle Details'
-                        : role === 'logistics'
-                            ? 'Logistics Details'
-                            : 'Buyer Details';
-        }
+            if (
+                !Array.isArray(cityPayload) ||
+                !Array.isArray(provincePayload)
+            ) {
+                throw new Error(
+                    'Unexpected postal data format.'
+                );
+            }
 
-        if (idLabel) {
-            idLabel.textContent =
-                role === 'rider'
-                    ? 'Valid ID or driver’s license'
-                    : 'Valid government ID';
-        }
-
-        if (idHelp) {
-            idHelp.textContent =
-                role === 'rider'
-                    ? 'Upload a government-issued ID or a valid driver’s license.'
-                    : 'Passport, driver’s license, national ID, or another government-issued ID.';
-        }
-
-        if (businessDocumentTitle) {
-            businessDocumentTitle.textContent =
-                role === 'logistics'
-                    ? 'Business / DTI permit'
-                    : 'Business permit';
-        }
-
-        if (businessDocumentHelp) {
-            businessDocumentHelp.textContent =
-                role === 'logistics'
-                    ? 'Upload a clear copy of your Logistics / Sorting Center business or DTI permit.'
-                    : 'Upload a clear and current copy of your business permit.';
-        }
-
-        registration.querySelectorAll('.role-card').forEach((card) => {
-            card.classList.toggle('selected', card.querySelector('input').checked);
-        });
-
-        registration.querySelectorAll('[data-role-fields]').forEach((group) => {
-            group.classList.toggle('active', group.dataset.roleFields === role);
-        });
-
-        registration.querySelectorAll('[data-business-document]').forEach((element) => {
-            const inactive = !['seller', 'logistics'].includes(role);
-            element.hidden = inactive;
-            element.querySelectorAll('input').forEach((input) => {
-                input.disabled = inactive;
-            });
-        });
-
-        registration.querySelectorAll('[data-rider-document]').forEach((element) => {
-            const inactive = role !== 'rider';
-            element.hidden = inactive;
-            element.querySelectorAll('input').forEach((input) => {
-                input.disabled = inactive;
-            });
-        });
-
-        Object.values(roleRequired)
-            .flat()
-            .forEach((name) => form.elements[name]?.removeAttribute('required'));
-
-        (roleRequired[role] || []).forEach((name) => {
-            form.elements[name]?.setAttribute('required', 'required');
-        });
-    }
-
-    function buildReview() {
-        const summary = registration.querySelector('[data-review-summary]');
-        if (!summary) return;
-
-        summary.innerHTML = '';
-        const role = selectedRole();
-        const valueOf = (name) => form.elements[name]?.value?.trim() || '';
-        const fullName = [
-            valueOf('first_name'),
-            valueOf('middle_initial'),
-            valueOf('last_name'),
-        ].filter(Boolean).join(' ');
-        const streetLine = [valueOf('house_number'), valueOf('street_name')]
-            .filter(Boolean)
-            .join(' ');
-
-        const roleLabels = {
-            buyer: 'Buyer',
-            seller: 'Seller',
-            rider: 'Rider',
-            logistics: 'Logistics / Sorting Center',
-        };
-
-        const groups = [
-            {
-                title: 'Account',
-                editStep: 1,
-                fields: [
-                    ['Account type', roleLabels[role] || role],
-                    ['Name', fullName],
-                    ['Email', valueOf('email')],
-                    ['Contact', valueOf('contact_number')],
-                ],
-            },
-            {
-                title: 'Address',
-                editStep: 2,
-                fields: [
-                    ['Province', valueOf('province')],
-                    ['City / Municipality', valueOf('city')],
-                    ['Barangay', valueOf('barangay')],
-                    ['Street / Unit', streetLine],
-                    ['Postal code', valueOf('postal_code')],
-                ],
-            },
-        ];
-
-        if (role === 'seller') {
-            groups.push({
-                title: 'Business',
-                editStep: 3,
-                fields: [
-                    ['Business name', valueOf('business_name')],
-                    ['Line of business', valueOf('business_category')],
-                ],
-            });
-        }
-
-        if (role === 'rider') {
-            groups.push({
-                title: 'Vehicle',
-                editStep: 3,
-                fields: [
-                    ['Vehicle type', valueOf('vehicle_type')],
-                    ['Plate number', valueOf('plate_number')],
-                ],
-            });
-        }
-
-        if (role === 'logistics') {
-            groups.push({
-                title: 'Logistics center',
-                editStep: 3,
-                fields: [
-                    ['Business / center name', valueOf('logistics_business_name')],
-                ],
-            });
-        }
-
-        groups.forEach(({ title, editStep, fields }) => {
-            const group = document.createElement('section');
-            group.className = 'review-group';
-
-            const header = document.createElement('header');
-            header.className = 'review-group__header';
-            const heading = document.createElement('h4');
-            const edit = document.createElement('button');
-            heading.textContent = title;
-            edit.type = 'button';
-            edit.textContent = 'Edit';
-            edit.dataset.editStep = String(editStep);
-            edit.setAttribute('aria-label', `Edit ${title.toLowerCase()} details`);
-            header.append(heading, edit);
-
-            const list = document.createElement('dl');
-            fields.filter(([, value]) => value).forEach(([label, value]) => {
-                const row = document.createElement('div');
-                const term = document.createElement('dt');
-                const description = document.createElement('dd');
-                term.textContent = label;
-                description.textContent = value;
-                row.append(term, description);
-                list.appendChild(row);
-            });
-
-            group.append(header, list);
-            summary.appendChild(group);
-        });
-
-        const approvalNotice = registration.querySelector('[data-approval-notice]');
-
-        if (approvalNotice) {
-            approvalNotice.textContent =
-                role === 'rider'
-                    ? 'A Logistics / Sorting Center will review your Rider application. We’ll email the decision to your registered email address.'
-                    : `An administrator will review your ${roleLabels[role] || role} application. We’ll email the decision to your registered email address.`;
-        }
-    }
-
-    function showStep(step) {
-        const steps = activeSteps();
-        currentStep = steps.includes(step)
-            ? step
-            : step === 3 && selectedRole() === 'buyer'
-                ? 4
-                : steps[0];
-
-        registration.querySelectorAll('[data-step]').forEach((panel) => {
-            panel.classList.toggle(
-                'active',
-                Number(panel.dataset.step) === currentStep
-            );
-        });
-
-        registration.querySelectorAll('[data-step-marker]').forEach((marker) => {
-            const markerStep = Number(marker.dataset.stepMarker);
-            const markerIndex = steps.indexOf(markerStep);
-            const currentIndex = steps.indexOf(currentStep);
-            marker.hidden = markerIndex === -1;
-            marker.classList.toggle('active', markerStep === currentStep);
-            marker.classList.toggle(
-                'complete',
-                markerIndex !== -1 && markerIndex < currentIndex
+            postalCities = cityPayload;
+            postalProvinces = provincePayload;
+        } catch (error) {
+            console.error(
+                'Unable to load local postal code data:',
+                error
             );
 
-            const number = marker.querySelector('span');
-            if (number && markerIndex !== -1) {
-                number.textContent = String(markerIndex + 1);
-            }
-        });
-
-        const currentIndex = steps.indexOf(currentStep);
-        registration.querySelector('[data-mobile-step]').textContent =
-            `Step ${currentIndex + 1} of ${steps.length}`;
-        registration.querySelector('[data-progress-bar]').style.width =
-            `${((currentIndex + 1) / steps.length) * 100}%`;
-
-        back.disabled = currentStep === 1;
-        next.hidden = currentStep === 4;
-        submit.hidden = currentStep !== 4;
-
-        if (currentStep === 4) buildReview();
-        updateRoleUI();
+            postalCities = [];
+            postalProvinces = [];
+        }
     }
 
-    function validateStep() {
-        const panel = registration.querySelector(`[data-step="${currentStep}"]`);
-        const controls = [...panel.querySelectorAll('input, select, textarea')]
-            .filter((element) => !element.hidden && element.offsetParent !== null);
+    function resetPostalCode(
+        placeholder = 'Select municipality first'
+    ) {
+        if (!postalCodeInput) return;
 
-        for (const input of controls) {
-            input.setCustomValidity('');
+        postalCodeInput.value = '';
+        postalCodeInput.placeholder = placeholder;
+    }
 
-            if (
-                ['first_name', 'last_name', 'middle_initial'].includes(input.name) &&
-                /\d/.test(input.value)
-            ) {
-                input.setCustomValidity('Names cannot contain numbers.');
-            }
+    function updatePostalCode() {
+        if (!postalCodeInput) return;
 
-            if (
-                input.name === 'contact_number' &&
-                !/^(?:\+639|09)\d{9}$/.test(input.value)
-            ) {
-                input.setCustomValidity('Use 09XXXXXXXXX or +639XXXXXXXXX.');
-            }
+        const selectedProvince =
+            provinceSelect?.value?.trim() || '';
 
-            if (
-                input.name === 'password_confirmation' &&
-                input.value !== form.elements.password.value
-            ) {
-                input.setCustomValidity('Passwords do not match.');
-            }
+        const selectedCity =
+            citySelect?.value?.trim() || '';
 
-            if (input.type === 'file' && input.files[0]) {
-                const file = input.files[0];
-                const allowedTypes = [
-                    'image/png',
-                    'image/jpeg',
-                    'application/pdf',
-                ];
-
-                if (!allowedTypes.includes(file.type)) {
-                    input.setCustomValidity('Upload a PNG, JPG, JPEG, or PDF file.');
-                } else if (file.size > 5 * 1024 * 1024) {
-                    input.setCustomValidity('The file must not exceed 5 MB.');
-                }
-            }
-
-            if (!input.checkValidity()) {
-                const searchableWidget = searchableSelects.get(input);
-                if (searchableWidget) {
-                    searchableWidget.wrapper.classList.add('is-invalid');
-                    setAddressMessage(
-                        `Please select your ${input.name === 'city' ? 'city or municipality' : input.name}.`,
-                        'error'
-                    );
-                    searchableWidget.trigger.focus();
-                    openSearchableSelect(input);
-                    return false;
-                }
-
-                input.reportValidity();
-                input.focus();
-                return false;
-            }
+        if (!selectedProvince || !selectedCity) {
+            resetPostalCode();
+            return;
         }
 
-        return true;
+        const provinceMatch =
+            postalProvinces.find((province) =>
+                normalizeLocationName(
+                    province.name
+                ) ===
+                normalizeLocationName(
+                    selectedProvince
+                )
+            );
+
+        if (!provinceMatch) {
+            resetPostalCode(
+                'Postal code unavailable'
+            );
+            return;
+        }
+
+        const candidates =
+            postalCities.filter(
+                (city) =>
+                    city.provinceCode ===
+                    provinceMatch.code
+            );
+
+        const cityMatch =
+            candidates.find((city) =>
+                normalizeLocationName(
+                    city.name
+                ) ===
+                normalizeLocationName(
+                    selectedCity
+                )
+            );
+
+        if (!cityMatch?.zipCode) {
+            resetPostalCode(
+                'Postal code unavailable'
+            );
+            return;
+        }
+
+        postalCodeInput.value =
+            String(cityMatch.zipCode);
     }
 
-    function setAddressMessage(message, type = 'info') {
+    /* =========================================================
+       ADDRESS SERVICE
+       ========================================================= */
+    function setAddressMessage(
+        message,
+        type = 'info'
+    ) {
         if (!addressMessage) return;
+
         addressMessage.textContent = message;
         addressMessage.dataset.status = type;
     }
 
-    function setSelectState(select, message, disabled = true) {
+    function setSelectState(
+        select,
+        message,
+        disabled = true
+    ) {
         if (!select) return;
+
         select.disabled = disabled;
-        select.replaceChildren(new Option(message, ''));
+
+        select.replaceChildren(
+            new Option(message, '')
+        );
+
         syncSearchableSelect(select);
     }
 
-    function populateSelect(select, items, placeholder, oldValue = '') {
-        select.replaceChildren(new Option(placeholder, ''));
+    function populateSelect(
+        select,
+        items,
+        placeholder,
+        oldValue = ''
+    ) {
+        select.replaceChildren(
+            new Option(placeholder, '')
+        );
 
         [...items]
-            .sort((a, b) => a.name.localeCompare(b.name))
+            .sort(
+                (a, b) =>
+                    a.name.localeCompare(b.name)
+            )
             .forEach((item) => {
-                const option = new Option(item.name, item.name);
-                option.dataset.code = item.code;
+                const option =
+                    new Option(
+                        item.name,
+                        item.name
+                    );
+
+                option.dataset.code =
+                    item.code;
+
                 select.add(option);
             });
 
         select.disabled = false;
 
         if (oldValue) {
-            const match = [...select.options].find(
-                (option) => option.value.toLowerCase() === oldValue.toLowerCase()
-            );
-            if (match) select.value = match.value;
+            const match =
+                [...select.options].find(
+                    (option) =>
+                        option.value.toLowerCase() ===
+                        oldValue.toLowerCase()
+                );
+
+            if (match) {
+                select.value =
+                    match.value;
+            }
         }
 
         syncSearchableSelect(select);
@@ -639,126 +647,290 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function fetchAddressData(endpoint) {
         addressRequest?.abort();
-        addressRequest = new AbortController();
 
-        const timeout = window.setTimeout(() => addressRequest.abort(), 12000);
+        addressRequest =
+            new AbortController();
+
+        const timeout =
+            window.setTimeout(
+                () => addressRequest.abort(),
+                12000
+            );
 
         try {
-            const response = await fetch(`${PSGC_API}${endpoint}`, {
-                headers: { Accept: 'application/json' },
-                signal: addressRequest.signal,
-            });
+            const response =
+                await fetch(
+                    `${PSGC_API}${endpoint}`,
+                    {
+                        headers: {
+                            Accept: 'application/json',
+                        },
+                        signal:
+                            addressRequest.signal,
+                    }
+                );
 
             if (!response.ok) {
-                throw new Error(`Address API returned HTTP ${response.status}`);
+                throw new Error(
+                    `Address API returned HTTP ${response.status}`
+                );
             }
 
-            const payload = await response.json();
+            const payload =
+                await response.json();
 
-            const result = Array.isArray(payload)
-                  ? payload
-                  : payload.data;
+            const result =
+                Array.isArray(payload)
+                    ? payload
+                    : payload.data;
 
             if (!Array.isArray(result)) {
-                throw new Error('Unexpected address API response.');
-          }
+                throw new Error(
+                    'Unexpected address API response.'
+                );
+            }
 
-return result;
+            return result;
         } finally {
             window.clearTimeout(timeout);
         }
     }
 
     async function loadProvinces() {
-        if (!provinceSelect || !citySelect || !barangaySelect) return;
+        if (
+            !provinceSelect ||
+            !citySelect ||
+            !barangaySelect
+        ) {
+            return;
+        }
 
-        setSelectState(provinceSelect, 'Loading provinces...');
-        setSelectState(citySelect, 'Select province first');
-        setSelectState(barangaySelect, 'Select city first');
-        addressRetry.hidden = true;
-        setAddressMessage('Loading Philippine address data...');
+        setSelectState(
+            provinceSelect,
+            'Loading provinces...'
+        );
+
+        setSelectState(
+            citySelect,
+            'Select province first'
+        );
+
+        setSelectState(
+            barangaySelect,
+            'Select city first'
+        );
+
+        resetPostalCode();
+
+        if (addressRetry) {
+            addressRetry.hidden = true;
+        }
+
+        setAddressMessage(
+            'Loading Philippine address data...'
+        );
 
         try {
-            const provinces = await fetchAddressData('/provinces');
+            const provinces =
+                await fetchAddressData(
+                    '/provinces'
+                );
+
             populateSelect(
                 provinceSelect,
                 provinces,
                 'Select province',
                 provinceSelect.dataset.oldValue
             );
-            setAddressMessage('Address service is ready.', 'success');
 
-            if (provinceSelect.value) await loadCities();
+            setAddressMessage(
+                'Address service is ready.',
+                'success'
+            );
+
+            if (provinceSelect.value) {
+                await loadCities();
+            }
         } catch (error) {
-            if (error.name === 'AbortError') return;
-            console.error('Unable to load provinces:', error);
-            setSelectState(provinceSelect, 'Address service unavailable');
+            if (error.name === 'AbortError') {
+                return;
+            }
+
+            console.error(
+                'Unable to load provinces:',
+                error
+            );
+
+            setSelectState(
+                provinceSelect,
+                'Address service unavailable'
+            );
+
             setAddressMessage(
                 'Address service is unavailable. Retry or enter your address manually.',
                 'error'
             );
-            addressRetry.hidden = false;
+
+            if (addressRetry) {
+                addressRetry.hidden = false;
+            }
         }
     }
 
     async function loadCities() {
-        const provinceCode = provinceSelect.selectedOptions[0]?.dataset.code;
-        setSelectState(citySelect, 'Loading cities...');
-        setSelectState(barangaySelect, 'Select city first');
+        if (
+            !provinceSelect ||
+            !citySelect ||
+            !barangaySelect
+        ) {
+            return;
+        }
+
+        const provinceCode =
+            provinceSelect
+                .selectedOptions[0]
+                ?.dataset.code;
+
+        setSelectState(
+            citySelect,
+            'Loading cities...'
+        );
+
+        setSelectState(
+            barangaySelect,
+            'Select city first'
+        );
+
+        resetPostalCode();
 
         if (!provinceCode) {
-            setSelectState(citySelect, 'Select province first');
+            setSelectState(
+                citySelect,
+                'Select province first'
+            );
+
             return;
         }
 
         try {
-            const cities = await fetchAddressData(
-                `/provinces/${encodeURIComponent(provinceCode)}/cities`
-            );
+            const cities =
+                await fetchAddressData(
+                    `/provinces/${encodeURIComponent(
+                        provinceCode
+                    )}/cities`
+                );
+
             populateSelect(
                 citySelect,
                 cities,
                 'Select city or municipality',
                 citySelect.dataset.oldValue
             );
-            setAddressMessage('Cities and municipalities loaded.', 'success');
 
-            if (citySelect.value) await loadBarangays();
+            setAddressMessage(
+                'Cities and municipalities loaded.',
+                'success'
+            );
+
+            if (citySelect.value) {
+                updatePostalCode();
+                await loadBarangays();
+            }
         } catch (error) {
-            if (error.name === 'AbortError') return;
-            console.error('Unable to load cities:', error);
-            setSelectState(citySelect, 'Unable to load cities');
-            setAddressMessage('Unable to load cities. Please retry.', 'error');
-            addressRetry.hidden = false;
+            if (error.name === 'AbortError') {
+                return;
+            }
+
+            console.error(
+                'Unable to load cities:',
+                error
+            );
+
+            setSelectState(
+                citySelect,
+                'Unable to load cities'
+            );
+
+            setAddressMessage(
+                'Unable to load cities. Please retry.',
+                'error'
+            );
+
+            if (addressRetry) {
+                addressRetry.hidden = false;
+            }
         }
     }
 
     async function loadBarangays() {
-        const cityCode = citySelect.selectedOptions[0]?.dataset.code;
-        setSelectState(barangaySelect, 'Loading barangays...');
+        if (
+            !citySelect ||
+            !barangaySelect
+        ) {
+            return;
+        }
+
+        const cityCode =
+            citySelect
+                .selectedOptions[0]
+                ?.dataset.code;
+
+        setSelectState(
+            barangaySelect,
+            'Loading barangays...'
+        );
 
         if (!cityCode) {
-            setSelectState(barangaySelect, 'Select city first');
+            setSelectState(
+                barangaySelect,
+                'Select city first'
+            );
+
             return;
         }
 
         try {
-            const barangays = await fetchAddressData(
-                `/cities/${encodeURIComponent(cityCode)}/barangays`
-            );
+            const barangays =
+                await fetchAddressData(
+                    `/cities/${encodeURIComponent(
+                        cityCode
+                    )}/barangays`
+                );
+
             populateSelect(
                 barangaySelect,
                 barangays,
                 'Select barangay',
                 barangaySelect.dataset.oldValue
             );
-            setAddressMessage('Barangays loaded.', 'success');
+
+            setAddressMessage(
+                'Barangays loaded.',
+                'success'
+            );
         } catch (error) {
-            if (error.name === 'AbortError') return;
-            console.error('Unable to load barangays:', error);
-            setSelectState(barangaySelect, 'Unable to load barangays');
-            setAddressMessage('Unable to load barangays. Please retry.', 'error');
-            addressRetry.hidden = false;
+            if (error.name === 'AbortError') {
+                return;
+            }
+
+            console.error(
+                'Unable to load barangays:',
+                error
+            );
+
+            setSelectState(
+                barangaySelect,
+                'Unable to load barangays'
+            );
+
+            setAddressMessage(
+                'Unable to load barangays. Please retry.',
+                'error'
+            );
+
+            if (addressRetry) {
+                addressRetry.hidden = false;
+            }
         }
     }
 
@@ -768,241 +940,1127 @@ return result;
             [citySelect, 'Enter city or municipality'],
             [barangaySelect, 'Enter barangay'],
         ].forEach(([select, placeholder]) => {
-            if (!select?.isConnected) return;
+            if (
+                !select ||
+                !select.isConnected
+            ) {
+                return;
+            }
 
-            const input = document.createElement('input');
+            const input =
+                document.createElement('input');
+
             input.type = 'text';
             input.name = select.name;
             input.required = true;
             input.placeholder = placeholder;
-            input.value = select.value || select.dataset.oldValue || '';
+
+            input.value =
+                select.value ||
+                select.dataset.oldValue ||
+                '';
+
             input.dataset.manualAddress = '';
 
-            const widget = searchableSelects.get(select);
+            const widget =
+                searchableSelects.get(select);
+
             if (widget) {
-                widget.wrapper.replaceWith(input);
-                searchableSelects.delete(select);
+                widget.wrapper.replaceWith(
+                    input
+                );
+
+                searchableSelects.delete(
+                    select
+                );
             } else {
                 select.replaceWith(input);
             }
         });
 
         addressRequest?.abort();
-        addressRetry.hidden = true;
-        addressManual.hidden = true;
+
+        if (addressRetry) {
+            addressRetry.hidden = true;
+        }
+
+        if (addressManual) {
+            addressManual.hidden = true;
+        }
+
+        /*
+         * Postal code is intentionally left readonly.
+         * If address is manually entered, the user must return
+         * to PSGC selection for automatic ZIP generation.
+         */
+        resetPostalCode(
+            'Select municipality using address service'
+        );
+
         setAddressMessage(
-            'Manual address entry enabled. Check the spelling before continuing.'
+            'Manual address entry enabled. Automatic postal code requires a municipality selected from the address service.'
         );
     }
 
-    form.querySelectorAll('input[name="role"]').forEach((input) => {
-        input.addEventListener('change', () => showStep(currentStep));
-    });
+    /* =========================================================
+       AGE
+       ========================================================= */
+    const birthday =
+        form.elements.birthday;
 
-    next.addEventListener('click', () => {
-        if (!validateStep()) return;
-        const steps = activeSteps();
-        const nextStep = steps[steps.indexOf(currentStep) + 1];
-        if (nextStep) showStep(nextStep);
-    });
-    back.addEventListener('click', () => {
-        const steps = activeSteps();
-        const previousStep = steps[steps.indexOf(currentStep) - 1];
-        if (previousStep) showStep(previousStep);
-    });
-
-    registration.addEventListener('click', (event) => {
-        const edit = event.target.closest('[data-edit-step]');
-        if (!edit) return;
-        showStep(Number(edit.dataset.editStep));
-    });
-
-    provinceSelect?.addEventListener('change', async () => {
-        citySelect.dataset.oldValue = '';
-        barangaySelect.dataset.oldValue = '';
-        await loadCities();
-    });
-
-    citySelect?.addEventListener('change', async () => {
-        barangaySelect.dataset.oldValue = '';
-        await loadBarangays();
-    });
-
-    addressRetry?.addEventListener('click', loadProvinces);
-    addressManual?.addEventListener('click', enableManualAddress);
-
-    const birthday = form.elements.birthday;
-    const age = form.elements.age;
+    const age =
+        form.elements.age;
 
     function calculateAge() {
+        if (!birthday || !age) return;
+
         if (!birthday.value) {
             age.value = '--';
             return;
         }
 
-        const born = new Date(`${birthday.value}T00:00:00`);
-        const today = new Date();
-        let years = today.getFullYear() - born.getFullYear();
+        const born =
+            new Date(
+                `${birthday.value}T00:00:00`
+            );
 
-        if (today < new Date(today.getFullYear(), born.getMonth(), born.getDate())) {
+        const today =
+            new Date();
+
+        let years =
+            today.getFullYear() -
+            born.getFullYear();
+
+        const birthdayThisYear =
+            new Date(
+                today.getFullYear(),
+                born.getMonth(),
+                born.getDate()
+            );
+
+        if (today < birthdayThisYear) {
             years--;
         }
 
-        age.value = Math.max(0, years);
+        age.value =
+            Math.max(0, years);
     }
 
-    birthday.addEventListener('change', calculateAge);
+    birthday?.addEventListener(
+        'change',
+        calculateAge
+    );
+
     calculateAge();
 
-    form.elements.contact_number.addEventListener('input', (event) => {
-        event.target.value = event.target.value
-            .replace(/(?!^\+)[^\d]/g, '')
-            .slice(0, 13);
-    });
+    /* =========================================================
+       CONTACT NUMBER
+       ========================================================= */
+    const contactNumber =
+        form.elements.contact_number;
 
-    form.querySelectorAll('[data-uppercase]').forEach((input) => {
-        input.addEventListener('input', () => {
-            input.value = input.value.toUpperCase();
-        });
-    });
+    contactNumber?.addEventListener(
+        'input',
+        (event) => {
+            let value =
+                event.target.value;
 
-    const password = form.elements.password;
-    password.addEventListener('input', () => {
-        const score = [
-            password.value.length >= 8,
-            /[A-Z]/.test(password.value),
-            /[a-z]/.test(password.value),
-            /\d/.test(password.value),
-        ].filter(Boolean).length;
+            if (value.startsWith('+')) {
+                value =
+                    '+' +
+                    value
+                        .slice(1)
+                        .replace(/\D/g, '');
+            } else {
+                value =
+                    value.replace(/\D/g, '');
+            }
 
-        form.querySelector('.password-meter')
-            .style.setProperty('--strength', `${score * 25}%`);
-    });
+            event.target.value =
+                value.slice(0, 13);
+        }
+    );
 
+    /* =========================================================
+       PASSWORD STRENGTH
+       ========================================================= */
+    const password =
+        form.elements.password;
+
+    password?.addEventListener(
+        'input',
+        () => {
+            const score =
+                [
+                    password.value.length >= 8,
+                    /[A-Z]/.test(password.value),
+                    /[a-z]/.test(password.value),
+                    /\d/.test(password.value),
+                ].filter(Boolean).length;
+
+            const meter =
+                form.querySelector(
+                    '.password-meter'
+                );
+
+            meter?.style.setProperty(
+                '--strength',
+                `${score * 25}%`
+            );
+        }
+    );
+
+    /* =========================================================
+       FILE UPLOAD
+       ========================================================= */
     const allowedDocumentTypes = [
         'image/png',
         'image/jpeg',
         'application/pdf',
     ];
-    const maxDocumentSize = 5 * 1024 * 1024;
 
-    const formatFileSize = (bytes) =>
-        bytes < 1048576
-            ? `${Math.max(1, Math.round(bytes / 1024))} KB`
-            : `${(bytes / 1048576).toFixed(1)} MB`;
+    const maxDocumentSize =
+        5 * 1024 * 1024;
 
-    function renderFileState(input, file = null, error = '') {
-        const card = input.closest('[data-upload-card]');
-        const status = card?.querySelector('[data-file-status]');
-        const name = card?.querySelector('[data-file-name]');
-        const meta = card?.querySelector('[data-file-meta]');
+    function formatFileSize(bytes) {
+        if (bytes < 1048576) {
+            return `${Math.max(
+                1,
+                Math.round(bytes / 1024)
+            )} KB`;
+        }
 
-        card?.classList.toggle('has-file', Boolean(file) && !error);
-        card?.classList.toggle('has-error', Boolean(error));
+        return `${
+            (
+                bytes /
+                1048576
+            ).toFixed(1)
+        } MB`;
+    }
+
+    function renderFileState(
+        input,
+        file = null,
+        error = ''
+    ) {
+        const card =
+            input.closest(
+                '[data-upload-card]'
+            );
+
+        const status =
+            card?.querySelector(
+                '[data-file-status]'
+            );
+
+        const name =
+            card?.querySelector(
+                '[data-file-name]'
+            );
+
+        const meta =
+            card?.querySelector(
+                '[data-file-meta]'
+            );
+
+        card?.classList.toggle(
+            'has-file',
+            Boolean(file) && !error
+        );
+
+        card?.classList.toggle(
+            'has-error',
+            Boolean(error)
+        );
+
         if (!status) return;
 
-        status.hidden = !file && !error;
-        if (name) name.textContent = error || file?.name || '';
+        status.hidden =
+            !file && !error;
+
+        if (name) {
+            name.textContent =
+                error ||
+                file?.name ||
+                '';
+        }
+
         if (meta) {
-            meta.textContent = file && !error
-                ? `${file.type === 'application/pdf' ? 'PDF' : 'Image'} · ${formatFileSize(file.size)}`
-                : error
-                    ? 'Choose another file to continue.'
-                    : '';
+            meta.textContent =
+                file && !error
+                    ? `${
+                        file.type ===
+                        'application/pdf'
+                            ? 'PDF'
+                            : 'Image'
+                    } · ${formatFileSize(
+                        file.size
+                    )}`
+                    : error
+                        ? 'Choose another file to continue.'
+                        : '';
         }
     }
 
-    function validateDocument(input, file) {
+    function validateDocument(
+        input,
+        file
+    ) {
         let error = '';
-        if (!allowedDocumentTypes.includes(file.type)) {
-            error = 'Upload a PNG, JPG, JPEG, or PDF file.';
-        } else if (file.size > maxDocumentSize) {
-            error = 'The file must not exceed 5 MB.';
+
+        if (
+            !allowedDocumentTypes.includes(
+                file.type
+            )
+        ) {
+            error =
+                'Upload a PNG, JPG, JPEG, or PDF file.';
+        } else if (
+            file.size >
+            maxDocumentSize
+        ) {
+            error =
+                'The file must not exceed 5 MB.';
         }
 
         input.setCustomValidity(error);
-        renderFileState(input, file, error);
-        if (error) input.reportValidity();
+
+        renderFileState(
+            input,
+            file,
+            error
+        );
+
+        if (error) {
+            input.reportValidity();
+        }
+
         return !error;
     }
 
-    function assignDroppedFile(input, file) {
-        const transfer = new DataTransfer();
+    function assignDroppedFile(
+        input,
+        file
+    ) {
+        const transfer =
+            new DataTransfer();
+
         transfer.items.add(file);
-        input.files = transfer.files;
-        validateDocument(input, file);
+
+        input.files =
+            transfer.files;
+
+        validateDocument(
+            input,
+            file
+        );
     }
 
-    form.querySelectorAll('[data-file-preview]').forEach((input) => {
-        const dropzone = input.closest('[data-drop-zone]');
-        const card = input.closest('[data-upload-card]');
+    form
+        .querySelectorAll(
+            '[data-file-preview]'
+        )
+        .forEach((input) => {
+            const dropzone =
+                input.closest(
+                    '[data-drop-zone]'
+                );
 
-        input.addEventListener('change', () => {
+            const card =
+                input.closest(
+                    '[data-upload-card]'
+                );
+
+            input.addEventListener(
+                'change',
+                () => {
+                    input.setCustomValidity('');
+
+                    const file =
+                        input.files[0];
+
+                    if (file) {
+                        validateDocument(
+                            input,
+                            file
+                        );
+                    } else {
+                        renderFileState(
+                            input
+                        );
+                    }
+                }
+            );
+
+            ['dragenter', 'dragover']
+                .forEach((type) => {
+                    dropzone?.addEventListener(
+                        type,
+                        (event) => {
+                            event.preventDefault();
+
+                            if (!input.disabled) {
+                                dropzone.classList.add(
+                                    'is-dragging'
+                                );
+                            }
+                        }
+                    );
+                });
+
+            ['dragleave', 'drop']
+                .forEach((type) => {
+                    dropzone?.addEventListener(
+                        type,
+                        (event) => {
+                            event.preventDefault();
+
+                            dropzone.classList.remove(
+                                'is-dragging'
+                            );
+                        }
+                    );
+                });
+
+            dropzone?.addEventListener(
+                'drop',
+                (event) => {
+                    if (input.disabled) {
+                        return;
+                    }
+
+                    const file =
+                        event
+                            .dataTransfer
+                            ?.files?.[0];
+
+                    if (file) {
+                        assignDroppedFile(
+                            input,
+                            file
+                        );
+                    }
+                }
+            );
+
+            card
+                ?.querySelector(
+                    '[data-file-action="preview"]'
+                )
+                ?.addEventListener(
+                    'click',
+                    () => {
+                        const file =
+                            input.files[0];
+
+                        if (
+                            !file ||
+                            !validateDocument(
+                                input,
+                                file
+                            )
+                        ) {
+                            return;
+                        }
+
+                        const url =
+                            URL.createObjectURL(file);
+
+                        window.open(
+                            url,
+                            '_blank',
+                            'noopener,noreferrer'
+                        );
+
+                        window.setTimeout(
+                            () =>
+                                URL.revokeObjectURL(
+                                    url
+                                ),
+                            60000
+                        );
+                    }
+                );
+
+            card
+                ?.querySelector(
+                    '[data-file-action="replace"]'
+                )
+                ?.addEventListener(
+                    'click',
+                    () => {
+                        input.click();
+                    }
+                );
+
+            card
+                ?.querySelector(
+                    '[data-file-action="remove"]'
+                )
+                ?.addEventListener(
+                    'click',
+                    () => {
+                        input.value = '';
+                        input.setCustomValidity('');
+
+                        renderFileState(
+                            input
+                        );
+                    }
+                );
+        });
+
+    /* =========================================================
+       VALIDATION
+       ========================================================= */
+    function validateStep() {
+        const panel =
+            registration.querySelector(
+                `[data-step="${currentStep}"]`
+            );
+
+        if (!panel) return false;
+
+        const controls =
+            [
+                ...panel.querySelectorAll(
+                    'input, select, textarea'
+                ),
+            ].filter(
+                (element) =>
+                    !element.hidden &&
+                    element.offsetParent !== null
+            );
+
+        for (const input of controls) {
             input.setCustomValidity('');
-            const file = input.files[0];
-            file ? validateDocument(input, file) : renderFileState(input);
-        });
 
-        ['dragenter', 'dragover'].forEach((type) => {
-            dropzone?.addEventListener(type, (event) => {
-                event.preventDefault();
-                if (!input.disabled) dropzone.classList.add('is-dragging');
-            });
-        });
+            if (
+                [
+                    'first_name',
+                    'last_name',
+                    'middle_initial',
+                ].includes(input.name) &&
+                /\d/.test(input.value)
+            ) {
+                input.setCustomValidity(
+                    'Names cannot contain numbers.'
+                );
+            }
 
-        ['dragleave', 'drop'].forEach((type) => {
-            dropzone?.addEventListener(type, (event) => {
-                event.preventDefault();
-                dropzone.classList.remove('is-dragging');
-            });
-        });
+            if (
+                input.name ===
+                    'contact_number' &&
+                !/^(?:09|\+639)\d{9}$/.test(
+                    input.value
+                )
+            ) {
+                input.setCustomValidity(
+                    'Use 09XXXXXXXXX or +639XXXXXXXXX.'
+                );
+            }
 
-        dropzone?.addEventListener('drop', (event) => {
-            if (input.disabled) return;
-            const file = event.dataTransfer?.files?.[0];
-            if (file) assignDroppedFile(input, file);
-        });
+            if (
+                input.name === 'password' &&
+                !(
+                    input.value.length >= 8 &&
+                    /[A-Z]/.test(input.value) &&
+                    /[a-z]/.test(input.value) &&
+                    /\d/.test(input.value)
+                )
+            ) {
+                input.setCustomValidity(
+                    'Use at least 8 characters with uppercase, lowercase, and a number.'
+                );
+            }
 
-        card?.querySelector('[data-file-action="preview"]')?.addEventListener('click', () => {
-            const file = input.files[0];
-            if (!file || !validateDocument(input, file)) return;
-            const url = URL.createObjectURL(file);
-            window.open(url, '_blank', 'noopener,noreferrer');
-            window.setTimeout(() => URL.revokeObjectURL(url), 60000);
-        });
+            if (
+                input.name ===
+                    'password_confirmation' &&
+                input.value !==
+                    form.elements.password.value
+            ) {
+                input.setCustomValidity(
+                    'Passwords do not match.'
+                );
+            }
 
-        card?.querySelector('[data-file-action="replace"]')?.addEventListener('click', () => {
-            input.click();
-        });
+            if (
+                input.name ===
+                    'postal_code' &&
+                !/^\d{4}$/.test(
+                    input.value
+                )
+            ) {
+                input.setCustomValidity(
+                    'Select a municipality with an available postal code.'
+                );
+            }
 
-        card?.querySelector('[data-file-action="remove"]')?.addEventListener('click', () => {
-            input.value = '';
-            input.setCustomValidity('');
-            renderFileState(input);
-        });
-    });
+            if (
+                input.type === 'file' &&
+                input.files[0]
+            ) {
+                validateDocument(
+                    input,
+                    input.files[0]
+                );
+            }
 
-    submit.addEventListener('click', () => {
-        if (!validateStep()) return;
-        const message = form.querySelector('[data-register-message]');
-        if (message) message.hidden = false;
-    });
+            if (!input.checkValidity()) {
+                const searchableWidget =
+                    searchableSelects.get(input);
 
-    const requestedRole = new URLSearchParams(window.location.search).get('role');
-    const allowedRoles = ['buyer', 'seller', 'rider', 'logistics'];
+                if (searchableWidget) {
+                    searchableWidget
+                        .wrapper
+                        .classList.add(
+                            'is-invalid'
+                        );
 
-    if (allowedRoles.includes(requestedRole)) {
-        const requestedRoleInput = form.querySelector(
-            `input[name="role"][value="${requestedRole}"]`
+                    setAddressMessage(
+                        `Please select your ${
+                            input.name === 'city'
+                                ? 'city or municipality'
+                                : input.name
+                        }.`,
+                        'error'
+                    );
+
+                    searchableWidget
+                        .trigger
+                        .focus();
+
+                    openSearchableSelect(
+                        input
+                    );
+
+                    return false;
+                }
+
+                input.reportValidity();
+                input.focus();
+
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /* =========================================================
+       REVIEW
+       ========================================================= */
+    function getValue(name) {
+        const field =
+            form.elements[name];
+
+        if (!field) return '';
+
+        return String(
+            field.value || ''
+        ).trim();
+    }
+
+    function formatSex(value) {
+        const labels = {
+            female: 'Female',
+            male: 'Male',
+            prefer_not_to_say:
+                'Prefer not to say',
+        };
+
+        return labels[value] ||
+            value ||
+            '';
+    }
+
+    function formatBirthday(value) {
+        if (!value) return '';
+
+        const date =
+            new Date(
+                `${value}T00:00:00`
+            );
+
+        if (
+            Number.isNaN(
+                date.getTime()
+            )
+        ) {
+            return value;
+        }
+
+        return date.toLocaleDateString(
+            'en-PH',
+            {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+            }
+        );
+    }
+
+    function buildReviewGroup(
+        title,
+        editStep,
+        fields
+    ) {
+        const group =
+            document.createElement(
+                'section'
+            );
+
+        group.className =
+            'review-group';
+
+        const header =
+            document.createElement(
+                'header'
+            );
+
+        header.className =
+            'review-group__header';
+
+        const heading =
+            document.createElement(
+                'h4'
+            );
+
+        heading.textContent = title;
+
+        const edit =
+            document.createElement(
+                'button'
+            );
+
+        edit.type = 'button';
+        edit.textContent = 'Edit';
+        edit.dataset.editStep =
+            String(editStep);
+
+        edit.setAttribute(
+            'aria-label',
+            `Edit ${title.toLowerCase()}`
         );
 
-        if (requestedRoleInput) {
-            form.querySelectorAll('input[name="role"]').forEach((input) => {
-                input.checked = input === requestedRoleInput;
-            });
-        }
+        header.append(
+            heading,
+            edit
+        );
+
+        const list =
+            document.createElement(
+                'dl'
+            );
+
+        fields
+            .filter(
+                ([, value]) =>
+                    value
+            )
+            .forEach(
+                ([label, value]) => {
+                    const row =
+                        document.createElement(
+                            'div'
+                        );
+
+                    const term =
+                        document.createElement(
+                            'dt'
+                        );
+
+                    const description =
+                        document.createElement(
+                            'dd'
+                        );
+
+                    term.textContent =
+                        label;
+
+                    description.textContent =
+                        value;
+
+                    row.append(
+                        term,
+                        description
+                    );
+
+                    list.appendChild(
+                        row
+                    );
+                }
+            );
+
+        group.append(
+            header,
+            list
+        );
+
+        return group;
     }
 
+    function buildReview() {
+        const summary =
+            registration.querySelector(
+                '[data-review-summary]'
+            );
+
+        if (!summary) return;
+
+        summary.replaceChildren();
+
+        const validId =
+            form.elements.valid_id
+                ?.files?.[0];
+
+        const street =
+            [
+                getValue(
+                    'house_number'
+                ),
+                getValue(
+                    'street_name'
+                ),
+            ]
+                .filter(Boolean)
+                .join(' ');
+
+        const personalGroup =
+            buildReviewGroup(
+                'Personal Information',
+                1,
+                [
+                    [
+                        'First name',
+                        getValue(
+                            'first_name'
+                        ),
+                    ],
+                    [
+                        'Last name',
+                        getValue(
+                            'last_name'
+                        ),
+                    ],
+                    [
+                        'Middle initial',
+                        getValue(
+                            'middle_initial'
+                        ),
+                    ],
+                    [
+                        'Sex',
+                        formatSex(
+                            getValue('sex')
+                        ),
+                    ],
+                    [
+                        'Email',
+                        getValue(
+                            'email'
+                        ),
+                    ],
+                    [
+                        'Contact',
+                        getValue(
+                            'contact_number'
+                        ),
+                    ],
+                    [
+                        'Birthday',
+                        formatBirthday(
+                            getValue(
+                                'birthday'
+                            )
+                        ),
+                    ],
+                    [
+                        'Age',
+                        getValue('age'),
+                    ],
+                ]
+            );
+
+        const addressGroup =
+            buildReviewGroup(
+                'Address',
+                2,
+                [
+                    [
+                        'Province',
+                        getValue(
+                            'province'
+                        ),
+                    ],
+                    [
+                        'Municipality / City',
+                        getValue('city'),
+                    ],
+                    [
+                        'Barangay',
+                        getValue(
+                            'barangay'
+                        ),
+                    ],
+                    [
+                        'Street / Unit',
+                        street,
+                    ],
+                    [
+                        'Postal code',
+                        getValue(
+                            'postal_code'
+                        ),
+                    ],
+                ]
+            );
+
+        const verificationGroup =
+            buildReviewGroup(
+                'Verification',
+                2,
+                [
+                    [
+                        'Uploaded ID',
+                        validId?.name ||
+                            'No file selected',
+                    ],
+                ]
+            );
+
+        summary.append(
+            personalGroup,
+            addressGroup,
+            verificationGroup
+        );
+    }
+
+    /* =========================================================
+       STEP NAVIGATION
+       ========================================================= */
+    function showStep(step) {
+        currentStep =
+            Math.max(
+                1,
+                Math.min(
+                    3,
+                    Number(step)
+                )
+            );
+
+        registration
+            .querySelectorAll(
+                '[data-step]'
+            )
+            .forEach((panel) => {
+                panel.classList.toggle(
+                    'active',
+                    Number(
+                        panel.dataset.step
+                    ) ===
+                        currentStep
+                );
+            });
+
+        registration
+            .querySelectorAll(
+                '[data-step-marker]'
+            )
+            .forEach((marker) => {
+                const markerStep =
+                    Number(
+                        marker.dataset
+                            .stepMarker
+                    );
+
+                marker.classList.toggle(
+                    'active',
+                    markerStep ===
+                        currentStep
+                );
+
+                marker.classList.toggle(
+                    'complete',
+                    markerStep <
+                        currentStep
+                );
+
+                const number =
+                    marker.querySelector(
+                        'span'
+                    );
+
+                if (number) {
+                    number.textContent =
+                        String(markerStep);
+                }
+            });
+
+        const mobileStep =
+            registration.querySelector(
+                '[data-mobile-step]'
+            );
+
+        if (mobileStep) {
+            mobileStep.textContent =
+                `Step ${currentStep} of 3`;
+        }
+
+        const progressBar =
+            registration.querySelector(
+                '[data-progress-bar]'
+            );
+
+        if (progressBar) {
+            progressBar.style.width =
+                `${(
+                    currentStep /
+                    3
+                ) * 100}%`;
+        }
+
+        back.disabled =
+            currentStep === 1;
+
+        next.hidden =
+            currentStep === 3;
+
+        submit.hidden =
+            currentStep !== 3;
+
+        if (currentStep === 3) {
+            buildReview();
+        }
+
+        registration.scrollIntoView({
+            behavior: 'smooth',
+            block: 'start',
+        });
+    }
+
+    next?.addEventListener(
+        'click',
+        () => {
+            if (!validateStep()) {
+                return;
+            }
+
+            showStep(
+                currentStep + 1
+            );
+        }
+    );
+
+    back?.addEventListener(
+        'click',
+        () => {
+            showStep(
+                currentStep - 1
+            );
+        }
+    );
+
+    registration.addEventListener(
+        'click',
+        (event) => {
+            const edit =
+                event.target.closest(
+                    '[data-edit-step]'
+                );
+
+            if (!edit) return;
+
+            showStep(
+                Number(
+                    edit.dataset.editStep
+                )
+            );
+        }
+    );
+
+    /* =========================================================
+       ADDRESS EVENTS
+       ========================================================= */
+    provinceSelect?.addEventListener(
+        'change',
+        async () => {
+            if (citySelect) {
+                citySelect.dataset.oldValue =
+                    '';
+            }
+
+            if (barangaySelect) {
+                barangaySelect.dataset.oldValue =
+                    '';
+            }
+
+            resetPostalCode();
+
+            await loadCities();
+        }
+    );
+
+    citySelect?.addEventListener(
+        'change',
+        async () => {
+            if (barangaySelect) {
+                barangaySelect.dataset.oldValue =
+                    '';
+            }
+
+            updatePostalCode();
+
+            await loadBarangays();
+        }
+    );
+
+    addressRetry?.addEventListener(
+        'click',
+        loadProvinces
+    );
+
+    addressManual?.addEventListener(
+        'click',
+        enableManualAddress
+    );
+
+    /* =========================================================
+       FRONT-END-ONLY SUBMISSION PREVIEW
+       ========================================================= */
+    form.addEventListener(
+        'submit',
+        (event) => {
+            event.preventDefault();
+
+            if (currentStep !== 3) {
+                return;
+            }
+
+            const message =
+                form.querySelector(
+                    '[data-register-message]'
+                );
+
+            if (message) {
+                message.hidden = false;
+            }
+        }
+    );
+
+    /* =========================================================
+       INITIAL STATE
+       ========================================================= */
     showStep(1);
-    loadProvinces();
+
+    Promise.all([
+        loadPostalData(),
+        loadProvinces(),
+    ]).catch((error) => {
+        console.error(
+            'Registration initialization error:',
+            error
+        );
+    });
 });

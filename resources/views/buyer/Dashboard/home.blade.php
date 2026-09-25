@@ -43,6 +43,8 @@ for ($round = 0; $round < 5; $round++) {
 
 $buyer = auth()->user();
 $buyerName = $buyer?->name ?: 'Buyer';
+$buyerFirstName = $buyer?->first_name ?: (explode(' ', $buyerName)[0] ?? 'Buyer');
+
 @endphp
 
 <!DOCTYPE html>
@@ -73,48 +75,57 @@ $buyerName = $buyer?->name ?: 'Buyer';
 ])
 
 </head>
-<body class="bh" style="--buyer-product-atlas: url('{{ asset('images/product-atlas.png') }}'); --buyer-outdoor-banner: url('{{ asset('images/outdoor-banner.png') }}')">
+<body class="bh" data-buyer-name="{{ $buyerName }}" data-buyer-first-name="{{ $buyerFirstName }}" data-buyer-email="{{ $buyer?->email }}" style="--buyer-product-atlas: url('{{ asset('images/product-atlas.png') }}'); --buyer-outdoor-banner: url('{{ asset('images/outdoor-banner.png') }}')">
 
 <a class="skip-link" href="#main">Skip to products</a>
 
 <header class="header">
 
-<button class="icon-button mobile-menu" id="menu-toggle" aria-label="Open categories" aria-expanded="false" aria-controls="sidebar"><span class="material-symbols-outlined" aria-hidden="true">menu</span></button>
-<a class="brand" href="{{ url('/home') }}" aria-label="Bearly home"><img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly" width="192" height="64"></a>
-
-<form class="search" id="search-form" role="search">
-
-<label class="sr-only" for="search-category">Search category</label>
-
-<select id="search-category"><option value="">All categories</option></select>
-
-<label class="sr-only" for="search-input">Search products</label>
-<input id="search-input" type="search" placeholder="Search for anything on Bearly" maxlength="120" autocomplete="off">
-
-<button type="submit" aria-label="Search"><span class="material-symbols-outlined" aria-hidden="true">search</span></button>
-
-</form>
-
-<nav class="header-actions" aria-label="Account">
-
-<button data-info="orders"><span class="material-symbols-outlined" aria-hidden="true">receipt_long</span><span>Orders</span></button>
-<button data-info="chat"><span class="material-symbols-outlined" aria-hidden="true">chat_bubble</span><span>Chat</span></button>
-
-<a href="{{ url('/cart') }}"><span class="material-symbols-outlined" aria-hidden="true">shopping_cart</span><span>Cart</span></a>
-
-<button class="account-action" type="button" aria-label="Signed in as {{ $buyerName }}" title="{{ $buyer?->email }}">
-    <span class="material-symbols-outlined" aria-hidden="true">person</span>
-    <span>{{ $buyerName }}</span>
+<button class="icon-button mobile-menu" id="menu-toggle" type="button" aria-label="Open categories" aria-expanded="false" aria-controls="sidebar">
+    <span class="material-symbols-outlined" aria-hidden="true">menu</span>
 </button>
 
-<form method="POST" action="{{ route('logout') }}" class="buyer-logout-form">
-    @csrf
-    <button type="submit" class="account-action" aria-label="Logout">
-        <span class="material-symbols-outlined" aria-hidden="true">logout</span>
-        <span>Logout</span>
+<div class="buyer-brand-lockup">
+    <a class="brand" href="{{ url('/home') }}" aria-label="Bearly home">
+        <img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly" width="192" height="64">
+    </a>
+    <span class="buyer-brand-note">A kinder marketplace<br>for everyone</span>
+</div>
+
+<form class="search" id="search-form" role="search">
+    <label class="sr-only" for="search-category">Search category</label>
+    <select id="search-category">
+        <option value="">All categories</option>
+    </select>
+
+    <label class="sr-only" for="search-input">Search products</label>
+    <input id="search-input" type="search" placeholder="Search for anything on Bearly" maxlength="120" autocomplete="off">
+
+    <button type="submit" aria-label="Search">
+        <span class="material-symbols-outlined" aria-hidden="true">search</span>
     </button>
 </form>
 
+<nav class="header-actions" aria-label="Buyer account">
+    <button type="button" data-info="orders">
+        <span class="material-symbols-outlined" aria-hidden="true">receipt_long</span>
+        <span>Orders</span>
+    </button>
+
+    <button type="button" data-info="chat">
+        <span class="material-symbols-outlined" aria-hidden="true">chat_bubble</span>
+        <span>Chat</span>
+    </button>
+
+    <a href="{{ url('/cart') }}">
+        <span class="material-symbols-outlined" aria-hidden="true">shopping_cart</span>
+        <span>Cart</span>
+    </a>
+
+    <div class="buyer-account-display" title="{{ $buyer?->email }}">
+        <span class="material-symbols-outlined" aria-hidden="true">person</span>
+        <span>{{ $buyerName }}</span>
+    </div>
 </nav>
 
 </header>
@@ -125,9 +136,17 @@ $buyerName = $buyer?->name ?: 'Buyer';
 <aside class="sidebar" id="sidebar" aria-label="Product categories">
 
 <div class="sidebar-title"><span class="material-symbols-outlined" aria-hidden="true">menu</span><strong>Shop by category</strong><button id="menu-close" class="icon-button" aria-label="Close categories"><span class="material-symbols-outlined" aria-hidden="true">close</span></button></div>
-<nav id="category-nav" aria-label="Shop by category"></nav>
+<nav id="category-nav" class="sidebar-category-list" aria-label="Shop by category"></nav>
 
-<a class="seller-link" href="{{ url('/seller/dashboard') }}"><span class="material-symbols-outlined" aria-hidden="true">storefront</span>Sell on Bearly<span aria-hidden="true">→</span></a>
+<div class="buyer-sidebar-footer">
+    <form method="POST" action="{{ route('logout') }}">
+        @csrf
+        <button type="submit" class="buyer-sidebar-logout">
+            <span class="material-symbols-outlined" aria-hidden="true">logout</span>
+            <span>Logout</span>
+        </button>
+    </form>
+</div>
 
 </aside>
 
@@ -280,7 +299,38 @@ $buyerName = $buyer?->name ?: 'Buyer';
 </main>
 
 </div>
-<footer class="footer"><a href="{{ url('/home') }}"><img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly home" width="110" height="37"></a><p>Good finds. Happy spaces.</p><nav aria-label="Footer"><button data-info="about">About Bearly</button><button data-info="help">Help centre</button><a href="{{ url('/seller/dashboard') }}">Become a seller</a></nav><span>Homepage preview</span></footer>
+<footer class="footer buyer-footer">
+    <div class="buyer-footer-brand">
+        <a href="{{ url('/home') }}" aria-label="Bearly home">
+            <img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly" width="132" height="44">
+        </a>
+        <p>A kinder marketplace<br>for everyone.</p>
+    </div>
+
+    <nav class="buyer-footer-column" aria-label="Shop">
+        <strong>Shop</strong>
+        <a href="{{ route('home') }}">All categories</a>
+        <a href="{{ route('products.index') }}">All products</a>
+    </nav>
+
+    <nav class="buyer-footer-column" aria-label="Support">
+        <strong>Support</strong>
+        <a href="{{ route('contact') }}#help-topics-title">Help center</a>
+        <a href="{{ route('contact') }}#help-topics-title">Delivery &amp; tracking</a>
+        <a href="{{ route('contact') }}#contact-form">Returns &amp; refunds</a>
+    </nav>
+
+    <nav class="buyer-footer-column" aria-label="About Bearly">
+        <strong>About</strong>
+        <a href="{{ route('about') }}">About Bearly</a>
+        <a href="{{ route('contact') }}">Contact us</a>
+    </nav>
+
+    <div class="buyer-footer-meta">
+        <span>Shopping made Bearly a hassle.</span>
+        <small>© {{ date('Y') }} Bearly. All rights reserved.</small>
+    </div>
+</footer>
 <button class="chat-button" data-info="chat" aria-controls="chat-drawer" aria-expanded="false"><span class="material-symbols-outlined" aria-hidden="true">chat_bubble</span>Chat</button>
 
 <div class="chat-drawer-backdrop" id="chat-drawer-backdrop" data-chat-close hidden></div>
@@ -302,7 +352,7 @@ $buyerName = $buyer?->name ?: 'Buyer';
             <div class="chat-thread-heading"><span class="chat-store-avatar">GH</span><div><strong>Greenline Home</strong><small>Usually replies within an hour</small></div></div>
             <div class="chat-messages" data-chat-messages>
                 <p class="chat-date">Today</p>
-                <div class="chat-bubble seller">Hi {{ $buyer?->first_name ?: $buyerName }}! Your desk lamp has been handed to the courier.</div>
+                <div class="chat-bubble seller">Hi {{ $buyerFirstName }}! Your desk lamp has been handed to the courier.</div>
                 <div class="chat-bubble buyer">Great, thank you for the update!</div>
             </div>
             <form class="chat-composer" data-chat-form>

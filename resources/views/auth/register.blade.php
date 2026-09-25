@@ -145,18 +145,11 @@
                         Line of business
                         <select name="business_category">
                             <option value="">Select category</option>
-                            <option value="Pet Supplies" @selected(old('business_category') === 'Pet Supplies')>Pet Supplies</option>
-                            <option value="Electronics and Gadgets" @selected(old('business_category') === 'Electronics and Gadgets')>Electronics and Gadgets</option>
-                            <option value="Women's Apparel" @selected(old('business_category') === "Women's Apparel")>Women's Apparel</option>
-                            <option value="Men's Apparel" @selected(old('business_category') === "Men's Apparel")>Men's Apparel</option>
-                            <option value="Kids and Baby" @selected(old('business_category') === 'Kids and Baby')>Kids and Baby</option>
-                            <option value="Home and Garden" @selected(old('business_category') === 'Home and Garden')>Home and Garden</option>
-                            <option value="Sports and Outdoors" @selected(old('business_category') === 'Sports and Outdoors')>Sports and Outdoors</option>
-                            <option value="Health and Beauty" @selected(old('business_category') === 'Health and Beauty')>Health and Beauty</option>
-                            <option value="Books and Media" @selected(old('business_category') === 'Books and Media')>Books and Media</option>
-                            <option value="Food and Gourmet" @selected(old('business_category') === 'Food and Gourmet')>Food and Gourmet</option>
-                            <option value="Furniture and Office Equipment" @selected(old('business_category') === 'Furniture and Office Equipment')>Furniture and Office Equipment</option>
-                            <option value="Jewelry and Watches" @selected(old('business_category') === 'Jewelry and Watches')>Jewelry and Watches</option>
+                            @foreach ($businessCategories as $category)
+                                <option value="{{ $category->name }}" @selected(old('business_category') === $category->name)>
+                                    {{ $category->name }}
+                                </option>
+                            @endforeach
                         </select>
                     </label>
                 </div>

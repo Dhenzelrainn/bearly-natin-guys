@@ -5,6 +5,9 @@ namespace App\Http\Controllers;
 use App\Enums\AccountStatus;
 use App\Enums\UserRole;
 use App\Models\User;
+use App\Models\Parcel;
+use App\Models\PickupAssignment;
+use App\Services\RiderFulfillmentService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
@@ -257,12 +260,10 @@ class RiderController extends Controller
         ]);
     }
 
-    public function confirmPickup(Request $request, string $id)
+    public function confirmPickup(Request $request, string $id, RiderFulfillmentService $service)
     {
-        return back()->with(
-            'job_status',
-            "Pickup {$id} confirmed. Front-end session state updated."
-        );
+        $service->confirmPickup(PickupAssignment::findOrFail($id), $request->user());
+        return back()->with('job_status', "Pickup {$id} confirmed and persisted.");
     }
 
     public function deliver(string $id)
@@ -284,12 +285,13 @@ class RiderController extends Controller
         ]);
     }
 
-    public function confirmDelivery(Request $request, string $id)
+    public function confirmDelivery(Request $request, string $id, RiderFulfillmentService $service)
     {
-        return back()->with(
-            'job_status',
-            "Delivery {$id} confirmed. Earnings preview updated."
-        );
+        $data = $request->validate(['outcome'=>['required','in:delivered,failed'],'failure_reason'=>['nullable','required_if:outcome,failed','string','max:100'],
+            'notes'=>['nullable','string','max:1000'],'recipient_name'=>['nullable','required_if:outcome,delivered','string','max:160'],
+            'proof'=>['nullable','image','mimes:jpg,jpeg,png,webp','max:5120']]);
+        $service->recordDelivery(Parcel::findOrFail($id), $request->user(), $data, $request->file('proof'));
+        return back()->with('job_status', "Delivery {$id} outcome persisted.");
     }
 
     public function earnings()

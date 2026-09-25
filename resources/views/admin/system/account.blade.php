@@ -17,7 +17,11 @@
             data-profile-avatar
             data-current-admin-avatar
         >
-            {{ $admin['initials'] }}
+            @if($profile->avatar_path)
+                <img src="{{ Storage::url($profile->avatar_path) }}" alt="{{ $admin['name'] }} profile photo">
+            @else
+                {{ $admin['initials'] }}
+            @endif
         </span>
 
         <div>
@@ -68,13 +72,20 @@
 
         </div>
 
+        <form method="POST" action="{{ route('admin.account.profile') }}" enctype="multipart/form-data">
+        @csrf
+        @method('PATCH')
         <div class="profile-banner">
             <span
                 class="avatar avatar-xxl avatar-warm"
                 data-profile-avatar
                 data-current-admin-avatar
             >
-                {{ $admin['initials'] }}
+                @if($profile->avatar_path)
+                    <img src="{{ Storage::url($profile->avatar_path) }}" alt="{{ $admin['name'] }} profile photo">
+                @else
+                    {{ $admin['initials'] }}
+                @endif
             </span>
 
             <div>
@@ -89,6 +100,12 @@
                 <span class="status-badge badge-success">
                     Active administrator
                 </span>
+
+                <label class="button button-secondary button-small" style="margin-top: .75rem;">
+                    <i data-lucide="camera"></i>
+                    Change photo
+                    <input type="file" name="avatar" accept="image/jpeg,image/png,image/webp" hidden>
+                </label>
             </div>
         </div>
 
@@ -97,7 +114,8 @@
                 <span>First name</span>
                 <input
                     type="text"
-                    value="{{ $profile['first_name'] }}"
+                    name="first_name"
+                    value="{{ old('first_name', $profile->first_name) }}"
                     data-profile-field="first_name"
                     readonly
                 >
@@ -107,7 +125,8 @@
                 <span>Last name</span>
                 <input
                     type="text"
-                    value="{{ $profile['last_name'] }}"
+                    name="last_name"
+                    value="{{ old('last_name', $profile->last_name) }}"
                     data-profile-field="last_name"
                     readonly
                 >
@@ -117,7 +136,8 @@
                 <span>Email address</span>
                 <input
                     type="email"
-                    value="{{ $profile['email'] }}"
+                    name="email"
+                    value="{{ old('email', $profile->email) }}"
                     data-profile-field="email"
                     readonly
                 >
@@ -127,7 +147,8 @@
                 <span>Contact number</span>
                 <input
                     type="text"
-                    value="{{ $profile['phone'] }}"
+                    name="contact_number"
+                    value="{{ old('contact_number', $profile->contact_number) }}"
                     data-profile-field="phone"
                     readonly
                 >
@@ -138,7 +159,7 @@
             <span>Role</span>
             <input
                 type="text"
-                value="{{ $profile['role'] }}"
+                value="Administrator"
                 readonly
             >
         </label>
@@ -146,7 +167,7 @@
         <div class="panel-footer-actions">
             <button
                 class="button button-primary"
-                type="button"
+                type="submit"
                 data-profile-save
                 disabled
             >
@@ -154,6 +175,7 @@
                 Save changes
             </button>
         </div>
+        </form>
     </article>
 
     <aside class="panel security-panel">
@@ -164,10 +186,14 @@
             </div>
         </div>
 
+        <form method="POST" action="{{ route('admin.account.password') }}">
+        @csrf
+        @method('PATCH')
         <label class="form-field">
             <span>Current password</span>
             <input
                 type="password"
+                name="current_password"
                 placeholder="••••••••"
                 data-password-current
             >
@@ -177,6 +203,7 @@
             <span>New password</span>
             <input
                 type="password"
+                name="password"
                 placeholder="At least 8 characters"
                 data-password-new
             >
@@ -186,6 +213,7 @@
             <span>Confirm new password</span>
             <input
                 type="password"
+                name="password_confirmation"
                 placeholder="Repeat new password"
                 data-password-confirm
             >
@@ -221,12 +249,13 @@
 
         <button
             class="button button-primary full-button"
-            type="button"
+            type="submit"
             data-password-update
             disabled
         >
             Update password
         </button>
+        </form>
 
         <div class="security-callout">
             <i data-lucide="shield-check"></i>

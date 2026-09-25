@@ -2,285 +2,213 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Category;
+use App\Models\InventoryMovement;
+use App\Models\Product;
+use App\Models\ProductImage;
+use App\Models\ProductVariant;
+use App\Models\Store;
+use App\Services\ComplianceScanner;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class SellerProductController extends Controller
 {
-    private function seller(): array
+    public function index(Request $request): View
     {
-        return [
-            'name' => 'Bea Rivera',
-            'first_name' => 'Bea',
-            'initials' => 'BR',
-            'email' => 'bea@juansclothing.test',
-            'store' => "Juan's Clothing Shop",
-            'business_category' => 'Fashion and Apparel',
-        ];
-    }
+        [$store, $category] = $this->context($request);
+        $products = $store->products()->with(['variants', 'images', 'category'])->latest()->get()
+            ->map(fn (Product $product) => $this->productArray($product));
 
-    private function notifications(): array
-    {
-        return [
-            ['title' => '2 new orders need confirmation', 'time' => '5 minutes ago', 'type' => 'warning'],
-            ['title' => 'Classic Linen Shirt is low in stock', 'time' => '42 minutes ago', 'type' => 'danger'],
-            ['title' => '2 parcels are ready for pickup request', 'time' => '1 hour ago', 'type' => 'success'],
-        ];
-    }
-
-    private function registeredCategory(Request $request): string
-    {
-        return (string) data_get($request->session()->get('seller.store', []), 'category', 'Fashion and Apparel');
-    }
-
-    private function normalizeProduct(array $product): array
-    {
-        return array_merge([
-            'id' => '',
-            'name' => '',
-            'category' => '',
-            'description' => '',
-            'sku' => '',
-            'price' => 0,
-            'discount_percent' => 0,
-            'voucher_eligible' => false,
-            'stock' => 0,
-            'low_stock_threshold' => 5,
-            'option_one_name' => '',
-            'option_one_values' => '',
-            'option_two_name' => '',
-            'option_two_values' => '',
-            'variants' => [],
-            'status' => 'Draft',
-            'previous_status' => 'Active',
-            'image' => null,
-            'gallery_images' => [],
-        ], $product);
-    }
-
-    private function validateProduct(Request $request): array
-    {
-        $registeredCategory = $this->registeredCategory($request);
-
-        return $request->validate([
-            'name' => ['required', 'string', 'max:120'],
-            'category' => ['required', 'string', Rule::in([$registeredCategory])],
-            'description' => ['nullable', 'string', 'max:1000'],
-            'sku' => ['nullable', 'string', 'max:60'],
-            'price' => ['required', 'numeric', 'min:0'],
-            'discount_percent' => ['nullable', 'integer', 'min:0', 'max:90'],
-            'voucher_eligible' => ['nullable', 'boolean'],
-            'stock' => ['required', 'integer', 'min:0'],
-            'low_stock_threshold' => ['required', 'integer', 'min:0'],
-            'option_one_name' => ['nullable', 'string', 'max:40'],
-            'option_one_values' => ['nullable', 'string', 'max:250'],
-            'option_two_name' => ['nullable', 'string', 'max:40'],
-            'option_two_values' => ['nullable', 'string', 'max:250'],
-            'variants' => ['nullable', 'array', 'max:100'],
-            'variants.*.label' => ['required_with:variants', 'string', 'max:120'],
-            'variants.*.sku' => ['nullable', 'string', 'max:80'],
-            'variants.*.price' => ['nullable', 'numeric', 'min:0'],
-            'variants.*.stock' => ['required_with:variants', 'integer', 'min:0'],
-            'image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
-            'gallery_images' => ['nullable', 'array', 'max:4'],
-            'gallery_images.*' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
-            'intent' => ['required', 'in:draft,publish'],
-        ], [
-            'category.in' => 'Products must match the seller’s approved business category.',
+        return view('seller.Products.products', [
+            'seller' => $this->seller($request, $store, $category), 'notifications' => [],
+            'products' => $products, 'categories' => $products->pluck('category')->filter()->unique()->values(),
+            'statuses' => $products->pluck('status')->filter()->unique()->values(),
+            'counts' => ['all'=>$products->count(), 'active'=>$products->where('status', 'Active')->count(),
+                'low'=>$products->filter(fn ($product) => $product['status'] === 'Active' && $product['stock'] <= $product['low_stock_threshold'])->count(),
+                'archived'=>$products->where('status', 'Archived')->count()],
         ]);
-    }
-
-    private function normalizedVariants(array $validated, float $basePrice): array
-    {
-        return collect($validated['variants'] ?? [])
-            ->filter(fn (array $variant) => trim((string) ($variant['label'] ?? '')) !== '')
-            ->values()
-            ->map(function (array $variant, int $index) use ($basePrice) {
-                return [
-                    'label' => trim((string) $variant['label']),
-                    'sku' => trim((string) ($variant['sku'] ?? '')),
-                    'price' => isset($variant['price']) && $variant['price'] !== ''
-                        ? (float) $variant['price']
-                        : $basePrice,
-                    'stock' => max(0, (int) ($variant['stock'] ?? 0)),
-                    'position' => $index + 1,
-                ];
-            })
-            ->all();
     }
 
     public function createProduct(Request $request): View
     {
-        $registeredCategory = $this->registeredCategory($request);
+        [$store, $category] = $this->context($request);
 
         return view('seller.Products.product-form', [
-            'seller' => $this->seller(),
-            'notifications' => $this->notifications(),
-            'categories' => [$registeredCategory],
-            'registeredCategory' => $registeredCategory,
-            'product' => $this->normalizeProduct(['category' => $registeredCategory]),
-            'mode' => 'create',
+            'seller' => $this->seller($request, $store, $category), 'notifications' => [],
+            'categories' => [$category->name], 'registeredCategory' => $category->name,
+            'product' => $this->emptyProduct($category->name), 'mode' => 'create',
         ]);
     }
 
-    public function addProduct(Request $request): RedirectResponse
+    public function addProduct(Request $request, ComplianceScanner $scanner): RedirectResponse
     {
-        $validated = $this->validateProduct($request);
-        $basePrice = (float) $validated['price'];
-        $variants = $this->normalizedVariants($validated, $basePrice);
-        $effectiveStock = count($variants) > 0
-            ? collect($variants)->sum('stock')
-            : (int) $validated['stock'];
+        [$store, $category] = $this->context($request);
+        $data = $this->validateProduct($request, $category);
+        $product = DB::transaction(function () use ($request, $store, $category, $data): Product {
+            $product = Product::create([
+                'store_id' => $store->id, 'category_id' => $category->id, 'name' => $data['name'],
+                'slug' => $this->uniqueSlug($store, $data['name']), 'description' => $data['description'] ?? null,
+                'product_status' => $data['intent'] === 'publish' ? 'active' : 'draft',
+                'compliance_status' => 'pending_scan', 'voucher_eligible' => (bool) ($data['voucher_eligible'] ?? false),
+                'published_at' => $data['intent'] === 'publish' ? now() : null,
+            ]);
+            $this->syncVariants($request, $product, $data);
+            $this->syncImages($request, $product, false);
 
-        $products = $request->session()->get('seller.products', []);
-        $id = (string) ((int) collect($products)->max(fn ($item) => (int) ($item['id'] ?? 0)) + 1);
+            return $product;
+        }, 3);
+        $scanner->scan($product->fresh(['store.sellerProfile']), 'create');
 
-        $galleryImages = [];
-        foreach ($request->file('gallery_images', []) as $image) {
-            $galleryImages[] = $image->store('seller-products', 'public');
-        }
-
-        $products[] = $this->normalizeProduct([
-            'id' => $id,
-            'name' => $validated['name'],
-            'category' => $validated['category'],
-            'description' => $validated['description'] ?? '',
-            'sku' => ($validated['sku'] ?? '') ?: 'BR-'.str_pad($id, 4, '0', STR_PAD_LEFT),
-            'price' => $basePrice,
-            'discount_percent' => (int) ($validated['discount_percent'] ?? 0),
-            'voucher_eligible' => (bool) ($validated['voucher_eligible'] ?? false),
-            'stock' => $effectiveStock,
-            'low_stock_threshold' => (int) $validated['low_stock_threshold'],
-            'option_one_name' => $validated['option_one_name'] ?? '',
-            'option_one_values' => $validated['option_one_values'] ?? '',
-            'option_two_name' => $validated['option_two_name'] ?? '',
-            'option_two_values' => $validated['option_two_values'] ?? '',
-            'variants' => $variants,
-            'status' => $validated['intent'] === 'publish' ? 'Active' : 'Draft',
-            'previous_status' => $validated['intent'] === 'publish' ? 'Active' : 'Draft',
-            'image' => $request->hasFile('image')
-                ? $request->file('image')->store('seller-products', 'public')
-                : null,
-            'gallery_images' => $galleryImages,
-        ]);
-
-        $request->session()->put('seller.products', $products);
-
-        return redirect()->route('seller.products')->with(
-            'success',
-            $validated['intent'] === 'publish'
-                ? 'Product published in your approved business category.'
-                : 'Product saved as a draft.'
-        );
+        return redirect()->route('seller.products')->with('success', $data['intent'] === 'publish'
+            ? 'Product published in your approved business category.' : 'Product saved as a draft.');
     }
 
-    public function editProduct(Request $request, string $product): View
+    public function editProduct(Request $request, Product $product): View
     {
-        $item = collect($request->session()->get('seller.products', []))
-            ->first(fn (array $item) => (string) ($item['id'] ?? '') === $product);
-
-        abort_if(!$item, 404);
-        $registeredCategory = $this->registeredCategory($request);
-        $item = $this->normalizeProduct($item);
-
-        if ($item['category'] !== $registeredCategory) {
-            $item['category'] = $registeredCategory;
-        }
+        [$store, $category] = $this->context($request);
+        $this->authorizeProduct($product, $store);
 
         return view('seller.Products.product-form', [
-            'seller' => $this->seller(),
-            'notifications' => $this->notifications(),
-            'categories' => [$registeredCategory],
-            'registeredCategory' => $registeredCategory,
-            'product' => $item,
-            'mode' => 'edit',
+            'seller' => $this->seller($request, $store, $category), 'notifications' => [],
+            'categories' => [$category->name], 'registeredCategory' => $category->name,
+            'product' => $this->productArray($product->load(['variants', 'images', 'category'])), 'mode' => 'edit',
         ]);
     }
 
-    public function updateProduct(Request $request, string $product): RedirectResponse
+    public function updateProduct(Request $request, Product $product, ComplianceScanner $scanner): RedirectResponse
     {
-        $validated = $this->validateProduct($request);
-        $basePrice = (float) $validated['price'];
-        $variants = $this->normalizedVariants($validated, $basePrice);
-        $effectiveStock = count($variants) > 0
-            ? collect($variants)->sum('stock')
-            : (int) $validated['stock'];
+        [$store, $category] = $this->context($request);
+        $this->authorizeProduct($product, $store);
+        $data = $this->validateProduct($request, $category);
+        DB::transaction(function () use ($request, $product, $category, $data): void {
+            $product->update([
+                'category_id' => $category->id, 'name' => $data['name'], 'description' => $data['description'] ?? null,
+                'product_status' => $data['intent'] === 'publish' ? 'active' : 'draft', 'compliance_status' => 'pending_scan',
+                'voucher_eligible' => (bool) ($data['voucher_eligible'] ?? false),
+                'published_at' => $data['intent'] === 'publish' ? ($product->published_at ?? now()) : null, 'archived_at' => null,
+            ]);
+            $this->syncVariants($request, $product, $data);
+            $this->syncImages($request, $product, true);
+        }, 3);
+        $scanner->scan($product->fresh(['store.sellerProfile']), 'update');
 
-        $found = false;
-
-        $products = collect($request->session()->get('seller.products', []))
-            ->map(function (array $item) use ($request, $validated, $basePrice, $variants, $effectiveStock, $product, &$found) {
-                if ((string) ($item['id'] ?? '') !== $product) {
-                    return $item;
-                }
-
-                $found = true;
-                $item = $this->normalizeProduct($item);
-                $newGalleryImages = $request->file('gallery_images', []);
-                $galleryImages = $item['gallery_images'];
-
-                if (count($newGalleryImages) > 0) {
-                    $galleryImages = [];
-                    foreach ($newGalleryImages as $image) {
-                        $galleryImages[] = $image->store('seller-products', 'public');
-                    }
-                }
-
-                return array_merge($item, [
-                    'name' => $validated['name'],
-                    'category' => $validated['category'],
-                    'description' => $validated['description'] ?? '',
-                    'sku' => ($validated['sku'] ?? '') ?: $item['sku'],
-                    'price' => $basePrice,
-                    'discount_percent' => (int) ($validated['discount_percent'] ?? 0),
-                    'voucher_eligible' => (bool) ($validated['voucher_eligible'] ?? false),
-                    'stock' => $effectiveStock,
-                    'low_stock_threshold' => (int) $validated['low_stock_threshold'],
-                    'option_one_name' => $validated['option_one_name'] ?? '',
-                    'option_one_values' => $validated['option_one_values'] ?? '',
-                    'option_two_name' => $validated['option_two_name'] ?? '',
-                    'option_two_values' => $validated['option_two_values'] ?? '',
-                    'variants' => $variants,
-                    'status' => $validated['intent'] === 'publish' ? 'Active' : 'Draft',
-                    'previous_status' => $validated['intent'] === 'publish' ? 'Active' : 'Draft',
-                    'image' => $request->hasFile('image')
-                        ? $request->file('image')->store('seller-products', 'public')
-                        : $item['image'],
-                    'gallery_images' => $galleryImages,
-                ]);
-            })->values()->all();
-
-        abort_unless($found, 404);
-        $request->session()->put('seller.products', $products);
-
-        return redirect()->route('seller.products')->with(
-            'success',
-            $validated['intent'] === 'publish'
-                ? 'Product changes published in your approved business category.'
-                : 'Product changes saved as a draft.'
-        );
+        return redirect()->route('seller.products')->with('success', 'Product changes saved and checked for compliance.');
     }
 
-    public function toggleProductArchive(Request $request, string $product): RedirectResponse
+    public function toggleProductArchive(Request $request, Product $product): RedirectResponse
     {
-        $products = collect($request->session()->get('seller.products', []))
-            ->map(function (array $item) use ($product) {
-                if ((string) ($item['id'] ?? '') === $product) {
-                    $item = $this->normalizeProduct($item);
-                    if ($item['status'] === 'Archived') {
-                        $item['status'] = $item['previous_status'] ?: 'Draft';
-                    } else {
-                        $item['previous_status'] = $item['status'];
-                        $item['status'] = 'Archived';
-                    }
-                }
-                return $item;
-            })->values()->all();
+        [$store] = $this->context($request);
+        $this->authorizeProduct($product, $store);
+        $archiving = $product->product_status !== 'archived';
+        $product->update(['product_status' => $archiving ? 'archived' : 'draft', 'archived_at' => $archiving ? now() : null]);
 
-        $request->session()->put('seller.products', $products);
+        return back()->with('success', 'Product status updated.');
+    }
 
-        return redirect()->route('seller.products')->with('success', 'Product status updated.');
+    private function context(Request $request): array
+    {
+        $profile = $request->user()->sellerProfile()->with(['store', 'approvedCategory'])->firstOrFail();
+        abort_unless($profile->store && $profile->approvedCategory, 422, 'Complete the approved seller profile and store before managing products.');
+
+        return [$profile->store, $profile->approvedCategory];
+    }
+
+    private function validateProduct(Request $request, Category $category): array
+    {
+        return $request->validate([
+            'name' => ['required', 'string', 'max:120'], 'category' => ['required', Rule::in([$category->name])],
+            'description' => ['nullable', 'string', 'max:1000'], 'sku' => ['nullable', 'string', 'max:80'],
+            'price' => ['required', 'numeric', 'min:0'], 'discount_percent' => ['nullable', 'integer', 'min:0', 'max:90'],
+            'voucher_eligible' => ['nullable', 'boolean'], 'stock' => ['required', 'integer', 'min:0'],
+            'low_stock_threshold' => ['required', 'integer', 'min:0'], 'variants' => ['nullable', 'array', 'max:100'],
+            'variants.*.label' => ['required_with:variants', 'string', 'max:120'], 'variants.*.sku' => ['nullable', 'string', 'max:80'],
+            'variants.*.price' => ['nullable', 'numeric', 'min:0'], 'variants.*.stock' => ['required_with:variants', 'integer', 'min:0'],
+            'image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+            'gallery_images' => ['nullable', 'array', 'max:4'], 'gallery_images.*' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+            'intent' => ['required', 'in:draft,publish'],
+        ], ['category.in' => 'Products must match the seller’s approved business category.']);
+    }
+
+    private function syncVariants(Request $request, Product $product, array $data): void
+    {
+        $rows = collect($data['variants'] ?? [])->filter(fn ($row) => trim((string) ($row['label'] ?? '')) !== '')->values();
+        if ($rows->isEmpty()) {
+            $rows = collect([['label' => 'Default', 'sku' => $data['sku'] ?? null, 'price' => $data['price'], 'stock' => $data['stock']]]);
+        }
+        $existing = $product->variants()->get(); $kept = [];
+        foreach ($rows as $position => $row) {
+            $variant = $existing->get($position) ?? new ProductVariant(['product_id' => $product->id]);
+            $oldStock = (int) ($variant->stock_on_hand ?? 0);
+            $sku = trim((string) ($row['sku'] ?? '')) ?: 'PRD-'.$product->id.'-'.($position + 1);
+            $variant->fill(['product_id' => $product->id, 'sku' => $sku, 'name' => $row['label'], 'options' => ['label' => $row['label']],
+                'price_minor' => (int) round((float) ($row['price'] ?? $data['price']) * 100), 'stock_on_hand' => (int) $row['stock'],
+                'low_stock_threshold' => (int) $data['low_stock_threshold'], 'is_active' => true, 'position' => $position])->save();
+            $kept[] = $variant->id; $delta = (int) $row['stock'] - $oldStock;
+            if ($delta !== 0) {
+                InventoryMovement::create(['variant_id' => $variant->id, 'type' => $variant->wasRecentlyCreated ? 'initial' : 'adjustment',
+                    'quantity_delta' => $delta, 'balance_after' => (int) $row['stock'], 'reason' => 'Seller product form update',
+                    'created_by' => $request->user()->id, 'occurred_at' => now()]);
+            }
+        }
+        $product->variants()->whereNotIn('id', $kept)->delete();
+    }
+
+    private function syncImages(Request $request, Product $product, bool $keepExisting): void
+    {
+        $files = collect();
+        if ($request->hasFile('image')) $files->push($request->file('image'));
+        foreach ($request->file('gallery_images', []) as $file) $files->push($file);
+        if ($files->isEmpty() && $keepExisting) return;
+        if (!$files->isEmpty()) $product->images()->delete();
+        foreach ($files as $position => $file) {
+            ProductImage::create(['product_id' => $product->id, 'path' => $file->store('seller-products', 'public'),
+                'alt_text' => $product->name, 'position' => $position, 'is_primary' => $position === 0]);
+        }
+    }
+
+    private function productArray(Product $product): array
+    {
+        $variant = $product->variants->first();
+        return array_replace($this->emptyProduct($product->category->name), [
+            'id' => (string) $product->id, 'name' => $product->name, 'description' => $product->description ?? '',
+            'sku' => $variant?->sku ?? '', 'price' => ($variant?->price_minor ?? 0) / 100,
+            'stock' => $product->variants->sum('stock_on_hand'), 'low_stock_threshold' => $variant?->low_stock_threshold ?? 5,
+            'voucher_eligible' => $product->voucher_eligible,
+            'variants' => $product->variants->map(fn ($v) => ['label'=>$v->name,'sku'=>$v->sku,'price'=>$v->price_minor / 100,'stock'=>$v->stock_on_hand])->all(),
+            'status' => str($product->product_status)->title()->toString(), 'image' => $product->images->firstWhere('is_primary', true)?->path,
+            'gallery_images' => $product->images->where('is_primary', false)->pluck('path')->all(),
+        ]);
+    }
+
+    private function emptyProduct(string $category): array
+    {
+        return ['id'=>'','name'=>'','category'=>$category,'description'=>'','sku'=>'','price'=>0,'discount_percent'=>0,'voucher_eligible'=>false,
+            'stock'=>0,'low_stock_threshold'=>5,'option_one_name'=>'','option_one_values'=>'','option_two_name'=>'','option_two_values'=>'',
+            'variants'=>[],'status'=>'Draft','previous_status'=>'Draft','image'=>null,'gallery_images'=>[]];
+    }
+
+    private function seller(Request $request, Store $store, Category $category): array
+    {
+        $user = $request->user();
+        return ['name'=>$user->name,'first_name'=>$user->first_name,
+            'initials'=>str($user->first_name)->substr(0,1)->append(str($user->last_name)->substr(0,1))->upper(),
+            'email'=>$user->email,'store'=>$store->name,'business_category'=>$category->name];
+    }
+
+    private function uniqueSlug(Store $store, string $name): string
+    {
+        $base = Str::slug($name) ?: 'product'; $slug = $base; $i = 2;
+        while ($store->products()->withTrashed()->where('slug', $slug)->exists()) $slug = $base.'-'.$i++;
+        return $slug;
+    }
+
+    private function authorizeProduct(Product $product, Store $store): void
+    {
+        abort_unless($product->store_id === $store->id, 404);
     }
 }

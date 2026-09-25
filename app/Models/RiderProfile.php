@@ -20,4 +20,8 @@ class RiderProfile extends Model
     {
         return $this->belongsTo(LogisticsProfile::class);
     }
+
+    public function earnings(){ return $this->hasMany(RiderEarning::class); }
+    public function pickupAssignments(){ return $this->hasMany(PickupAssignment::class); }
+    public function deliveryAttempts(){ return $this->hasMany(DeliveryAttempt::class); }
 }

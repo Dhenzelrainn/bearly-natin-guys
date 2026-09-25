@@ -2,6 +2,18 @@
 
 use App\Http\Controllers\AccountApprovalController;
 use App\Http\Controllers\AdminController;
+use App\Http\Controllers\AdminComplianceController;
+use App\Http\Controllers\AdminCommerceController;
+use App\Http\Controllers\AdminFulfillmentController;
+use App\Http\Controllers\AdminDashboardController;
+use App\Http\Controllers\AdminAccountController;
+use App\Http\Controllers\AdminAuditLogController;
+use App\Http\Controllers\AdminAnnouncementController;
+use App\Http\Controllers\AdminPolicyController;
+use App\Http\Controllers\AdminRegistrationController;
+use App\Http\Controllers\AdminSettingController;
+use App\Http\Controllers\AdminUserController;
+use App\Http\Controllers\ApplicationDocumentController;
 use App\Http\Controllers\Auth\BearlyAuthController;
 use App\Http\Controllers\BuyerController;
 use App\Http\Controllers\LogisticsController;
@@ -58,44 +70,39 @@ Route::prefix('api/psgc')
         )->name('psgc.barangays');
     });
 
-/*
-|--------------------------------------------------------------------------
-| Static Admin Front-End Routes
-|--------------------------------------------------------------------------
-| These preview screens remain publicly accessible while the UI is still in
-| the front-end stage and backend authentication is not yet implemented.
-*/
-
-Route::prefix('admin')->name('admin.')->group(function () {
+Route::prefix('admin')->name('admin.')->middleware(['auth', 'role:admin'])->group(function () {
     Route::redirect('/', '/admin/dashboard');
 
-    Route::get('/dashboard', [AdminController::class, 'dashboard'])->name('dashboard');
+    Route::get('/dashboard', AdminDashboardController::class)->name('dashboard');
 
     Route::get('/registrations', [AdminController::class, 'registrations'])->name('registrations');
-    Route::get('/registrations/buyers', [AdminController::class, 'buyerApplications'])
+    Route::get('/registrations/buyers', [AdminRegistrationController::class, 'buyers'])
         ->name('registrations.buyers');
 
-    Route::get('/registrations/sellers', [AdminController::class, 'sellerApplications'])
+    Route::get('/registrations/sellers', [AdminRegistrationController::class, 'sellers'])
         ->name('registrations.sellers');
 
-    Route::get('/registrations/logistics', [AdminController::class, 'logisticsApplications'])
+    Route::get('/registrations/logistics', [AdminRegistrationController::class, 'logistics'])
         ->name('registrations.logistics');
 
-    Route::get('/users', [AdminController::class, 'users'])->name('users');
-    Route::get('/users/buyers', [AdminController::class, 'buyerUsers'])
+    Route::get('/users', [AdminUserController::class, 'index'])->name('users');
+    Route::get('/users/buyers', [AdminUserController::class, 'buyers'])
         ->name('users.buyers');
 
-    Route::get('/users/sellers', [AdminController::class, 'sellerUsers'])
+    Route::get('/users/sellers', [AdminUserController::class, 'sellers'])
         ->name('users.sellers');
 
-    Route::get('/users/logistics', [AdminController::class, 'logisticsUsers'])
+    Route::get('/users/logistics', [AdminUserController::class, 'logistics'])
         ->name('users.logistics');
 
-    Route::get('/users/riders', [AdminController::class, 'riderUsers'])
+    Route::get('/users/riders', [AdminUserController::class, 'riders'])
         ->name('users.riders');
+    Route::get('/users/{user}', [AdminUserController::class, 'show'])->name('users.show');
+    Route::patch('/users/{user}/status', [AdminUserController::class, 'updateStatus'])->name('users.status');
 
-    Route::get('/compliance', [AdminController::class, 'compliance'])
-        ->name('compliance');
+    Route::get('/compliance', [AdminComplianceController::class, 'index'])->name('compliance');
+    Route::post('/compliance/violations/{violation}/decide', [ProductComplianceController::class, 'decide'])
+        ->name('compliance.decide');
 
     Route::get('/disputes', [AdminController::class, 'disputes'])
         ->name('disputes');
@@ -106,34 +113,49 @@ Route::prefix('admin')->name('admin.')->group(function () {
     Route::get('/compliance/returns-refunds', [AdminController::class, 'returnsRefunds'])
         ->name('compliance.returns-refunds');
 
-    Route::get('/commissions', [AdminController::class, 'commissions'])->name('commissions');
-    Route::get('/transactions', [AdminController::class, 'transactions'])->name('transactions');
+    Route::get('/orders', [AdminCommerceController::class, 'orders'])->name('orders');
+    Route::post('/orders/payments/{payment}/confirm', [AdminCommerceController::class, 'confirmPayment'])->name('orders.payments.confirm');
+    Route::get('/commissions', [AdminCommerceController::class, 'commissions'])->name('commissions');
+    Route::get('/transactions', [AdminCommerceController::class, 'transactions'])->name('transactions');
     Route::get('/payments', [AdminController::class, 'payments'])->name('payments');
     Route::get('/reports', [AdminController::class, 'reports'])->name('reports');
+    Route::get('/fulfillment', [AdminFulfillmentController::class, 'index'])->name('fulfillment');
+    Route::patch('/fulfillment/{shipment}/override', [AdminFulfillmentController::class, 'override'])->name('fulfillment.override');
 
-    Route::get('/settings', [AdminController::class, 'settings'])
-        ->name('settings');
-    Route::get('/policies', [AdminController::class, 'policies'])
-        ->name('policies');
-    Route::get('/audit-logs', [AdminController::class, 'auditLogs'])
-        ->name('audit-logs');
+    Route::get('/settings', [AdminSettingController::class, 'index'])->name('settings');
+    Route::patch('/settings', [AdminSettingController::class, 'update'])->name('settings.update');
+    Route::post('/settings/reset', [AdminSettingController::class, 'reset'])->name('settings.reset');
+    Route::get('/policies', [AdminPolicyController::class, 'index'])->name('policies');
+    Route::post('/policies', [AdminPolicyController::class, 'store'])->name('policies.store');
+    Route::patch('/policies/{policy}', [AdminPolicyController::class, 'update'])->name('policies.update');
+    Route::post('/policies/{policy}/publish', [AdminPolicyController::class, 'publish'])->name('policies.publish');
+    Route::post('/policies/{policy}/archive', [AdminPolicyController::class, 'archive'])->name('policies.archive');
+    Route::get('/audit-logs', [AdminAuditLogController::class, 'index'])->name('audit-logs');
 
     Route::get('/messages', [AdminController::class, 'messages'])
         ->name('messages');
 
-    Route::get('/announcements', [AdminController::class, 'announcements'])
-        ->name('announcements');
+    Route::get('/announcements', [AdminAnnouncementController::class, 'index'])->name('announcements');
+    Route::post('/announcements', [AdminAnnouncementController::class, 'store'])->name('announcements.store');
+    Route::patch('/announcements/{announcement}', [AdminAnnouncementController::class, 'update'])->name('announcements.update');
+    Route::delete('/announcements/{announcement}', [AdminAnnouncementController::class, 'destroy'])->name('announcements.destroy');
 
-    Route::get('/account', [AdminController::class, 'account'])->name('account');
+    Route::get('/account', [AdminAccountController::class, 'show'])->name('account');
+    Route::patch('/account/profile', [AdminAccountController::class, 'updateProfile'])->name('account.profile');
+    Route::patch('/account/password', [AdminAccountController::class, 'updatePassword'])->name('account.password');
 
-    Route::middleware(['auth', 'role:admin'])->group(function () {
-        Route::post('/applications/{user}/approve', [AccountApprovalController::class, 'approveByAdmin'])
-            ->name('applications.approve');
-        Route::post('/applications/{user}/reject', [AccountApprovalController::class, 'rejectByAdmin'])
-            ->name('applications.reject');
-        Route::post('/violations/{violation}/decision', [ProductComplianceController::class, 'decide'])
-            ->name('violations.decision');
-    });
+    Route::post('/applications/{application}/approve', [AccountApprovalController::class, 'approveByAdmin'])
+        ->name('applications.approve');
+    Route::post('/applications/{application}/reject', [AccountApprovalController::class, 'rejectByAdmin'])
+        ->name('applications.reject');
+    Route::post('/applications/{application}/request-revision', [AccountApprovalController::class, 'requestRevisionByAdmin'])
+        ->name('applications.request-revision');
+    Route::get('/applications/{application}/documents/{document}', [ApplicationDocumentController::class, 'show'])
+        ->name('application-documents.show');
+    Route::patch('/applications/{application}/documents/{document}', [ApplicationDocumentController::class, 'update'])
+        ->name('application-documents.update');
+    Route::post('/violations/{violation}/decision', [ProductComplianceController::class, 'decide'])
+        ->name('violations.decision');
 });
 
 /*
@@ -142,7 +164,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
 |--------------------------------------------------------------------------
 */
 
-Route::get('/home', [BuyerController::class, 'home'])->name('home');
+Route::get('/home', [BuyerController::class, 'home'])
+    ->middleware(['auth', 'role:buyer'])
+    ->name('home');
 
 Route::get('/products', [BuyerController::class, 'products'])
     ->name('products.index');
@@ -167,17 +191,9 @@ Route::delete('/cart/{cartItem}', [BuyerController::class, 'removeFromCart'])
 
 Route::delete('/cart', [BuyerController::class, 'clearCart'])
     ->name('cart.clear');
+Route::post('/checkout', [BuyerController::class, 'checkout'])->middleware(['auth','role:buyer'])->name('checkout.place');
 
-/*
-/*
-|--------------------------------------------------------------------------
-| Static Seller Front-End Routes
-|--------------------------------------------------------------------------
-| These preview screens remain public so the team can continue working on the
-| seller interface before backend authentication is implemented.
-*/
-
-Route::prefix('seller')->name('seller.')->group(function () {
+Route::prefix('seller')->name('seller.')->middleware(['auth', 'role:seller'])->group(function () {
     Route::redirect('/', '/seller/dashboard');
 
     // Dashboard
@@ -198,7 +214,7 @@ Route::prefix('seller')->name('seller.')->group(function () {
         ->name('store.publication');
 
     // Products & Inventory
-    Route::get('/products', [SellerController::class, 'products'])
+    Route::get('/products', [SellerProductController::class, 'index'])
         ->name('products');
 
     Route::get('/inventory', [SellerController::class, 'inventory'])
@@ -304,19 +320,18 @@ Route::prefix('logistics')->name('logistics.')->group(function () {
 
     Route::redirect('/login', '/login')->name('login');
 
-    Route::get('/dashboard', [LogisticsController::class, 'dashboard'])->name('dashboard');
-    Route::get('/riders', [LogisticsController::class, 'riders'])->name('riders.index');
-    Route::get('/riders/{id}', [LogisticsController::class, 'showRider'])->name('riders.show');
-    Route::get('/pickups', [LogisticsController::class, 'pickups'])->name('pickups.index');
-    Route::get('/incoming', [LogisticsController::class, 'incoming'])->name('sorting.incoming');
-    Route::get('/sorting', [LogisticsController::class, 'sorting'])->name('sorting.center');
-    Route::get('/dispatch', [LogisticsController::class, 'dispatch'])->name('dispatch.index');
-    Route::get('/monitoring', [LogisticsController::class, 'monitoring'])->name('dispatch.monitoring');
-    Route::get('/reports', [LogisticsController::class, 'reports'])->name('reports.index');
-    Route::get('/messages', [LogisticsController::class, 'messages'])->name('messages.index');
-    Route::get('/account', [LogisticsController::class, 'account'])->name('profile.index');
-
     Route::middleware(['auth', 'role:logistics'])->group(function () {
+        Route::get('/dashboard', [LogisticsController::class, 'dashboard'])->name('dashboard');
+        Route::get('/riders', [LogisticsController::class, 'riders'])->name('riders.index');
+        Route::get('/riders/{id}', [LogisticsController::class, 'showRider'])->name('riders.show');
+        Route::get('/pickups', [LogisticsController::class, 'pickups'])->name('pickups.index');
+        Route::get('/incoming', [LogisticsController::class, 'incoming'])->name('sorting.incoming');
+        Route::get('/sorting', [LogisticsController::class, 'sorting'])->name('sorting.center');
+        Route::get('/dispatch', [LogisticsController::class, 'dispatch'])->name('dispatch.index');
+        Route::get('/monitoring', [LogisticsController::class, 'monitoring'])->name('dispatch.monitoring');
+        Route::get('/reports', [LogisticsController::class, 'reports'])->name('reports.index');
+        Route::get('/messages', [LogisticsController::class, 'messages'])->name('messages.index');
+        Route::get('/account', [LogisticsController::class, 'account'])->name('profile.index');
         Route::get('/api/waybills/{identifier}', [WaybillScanController::class, 'show'])->name('waybills.lookup');
         Route::post('/api/waybills/{identifier}/receive', [WaybillScanController::class, 'receive'])->name('waybills.receive');
         Route::post('/riders/{user}/approve', [AccountApprovalController::class, 'approveRider'])
@@ -340,17 +355,19 @@ Route::prefix('rider')->name('rider.')->group(function () {
 
     Route::redirect('/login', '/login')->name('login');
 
-    Route::get('/dashboard/pickups', [RiderController::class, 'pickupsDashboard'])->name('dashboard.pickups');
-    Route::get('/dashboard/deliveries', [RiderController::class, 'deliveriesDashboard'])->name('dashboard.deliveries');
+    Route::middleware(['auth', 'role:rider'])->group(function () {
+        Route::get('/dashboard/pickups', [RiderController::class, 'pickupsDashboard'])->name('dashboard.pickups');
+        Route::get('/dashboard/deliveries', [RiderController::class, 'deliveriesDashboard'])->name('dashboard.deliveries');
 
-    Route::get('/pickup/{id}', [RiderController::class, 'pickup'])->name('orders.pickup');
-    Route::post('/pickup/{id}/confirm', [RiderController::class, 'confirmPickup'])->name('orders.pickup.confirm');
+        Route::get('/pickup/{id}', [RiderController::class, 'pickup'])->name('orders.pickup');
+        Route::post('/pickup/{id}/confirm', [RiderController::class, 'confirmPickup'])->name('orders.pickup.confirm');
 
-    Route::get('/deliver/{id}', [RiderController::class, 'deliver'])->name('orders.delivery');
-    Route::post('/deliver/{id}/confirm', [RiderController::class, 'confirmDelivery'])->name('orders.delivery.confirm');
+        Route::get('/deliver/{id}', [RiderController::class, 'deliver'])->name('orders.delivery');
+        Route::post('/deliver/{id}/confirm', [RiderController::class, 'confirmDelivery'])->name('orders.delivery.confirm');
 
-    Route::get('/earnings', [RiderController::class, 'earnings'])->name('earnings.index');
-    Route::get('/history', [RiderController::class, 'history'])->name('history.index');
-    Route::get('/messages', [RiderController::class, 'messages'])->name('messages.index');
-    Route::get('/account', [RiderController::class, 'account'])->name('profile.index');
+        Route::get('/earnings', [RiderController::class, 'earnings'])->name('earnings.index');
+        Route::get('/history', [RiderController::class, 'history'])->name('history.index');
+        Route::get('/messages', [RiderController::class, 'messages'])->name('messages.index');
+        Route::get('/account', [RiderController::class, 'account'])->name('profile.index');
+    });
 });

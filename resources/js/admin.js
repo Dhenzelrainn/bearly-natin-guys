@@ -439,6 +439,8 @@
                     const noteError = drawer.querySelector('[data-compliance-note-error]');
                     if (notes) notes.value = button.dataset.adminNotes || '';
                     if (noteError) noteError.hidden = true;
+                    const decisionForm = drawer.querySelector('[data-compliance-decision-form]');
+                    if (decisionForm) decisionForm.action = button.dataset.decisionUrl || '';
                 }
 
                 drawer.hidden = false;

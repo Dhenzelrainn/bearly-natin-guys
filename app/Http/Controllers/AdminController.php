@@ -4,8 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Enums\AccountStatus;
 use App\Enums\UserRole;
+use App\Models\AccountApplication;
 use App\Models\User;
-use Illuminate\Support\Facades\Schema;
+use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class AdminController extends Controller
@@ -51,43 +52,41 @@ class AdminController extends Controller
         ]));
     }
 
-    public function registrations(): View
+    public function registrations(Request $request): View
     {
-        $applications = [
-            ['id' => 'REG-2041', 'name' => 'Sofia Mendoza', 'role' => 'Seller', 'email' => 'sofia@example.test', 'submitted' => 'Aug 24, 2026', 'status' => 'Pending', 'category' => 'Jewelry & Watches', 'documents' => ['Government ID', 'Business Permit']],
-            ['id' => 'REG-2042', 'name' => 'Northstar Logistics', 'role' => 'Logistics', 'email' => 'applications@northstar.example.test', 'submitted' => 'Aug 24, 2026', 'status' => 'Pending', 'category' => 'Regional Delivery Partner', 'documents' => ['SEC/DTI Registration', 'Business Permit', 'Service Coverage']],
-            ['id' => 'REG-2043', 'name' => 'Bianca Lim', 'role' => 'Buyer', 'email' => 'bianca@example.test', 'submitted' => 'Aug 23, 2026', 'status' => 'Pending', 'category' => '—', 'documents' => ['Government ID']],
-            ['id' => 'REG-2044', 'name' => 'Ethan Cruz', 'role' => 'Seller', 'email' => 'ethan@example.test', 'submitted' => 'Aug 23, 2026', 'status' => 'Needs Review', 'category' => 'Food & Gourmet', 'documents' => ['Government ID', 'Business Permit']],
-            ['id' => 'REG-2045', 'name' => 'Laguna Express Hub', 'role' => 'Logistics', 'email' => 'onboarding@lagunaexpress.example.test', 'submitted' => 'Aug 22, 2026', 'status' => 'Pending', 'category' => 'Provincial Sorting Center', 'documents' => ['SEC/DTI Registration', 'Business Permit', 'Warehouse Permit']],
-        ];
+        $search = trim((string) $request->query('search'));
+        $role = (string) $request->query('role');
+        $status = (string) $request->query('status');
+        $reviewableStatuses = ['submitted', 'under_review', 'needs_revision'];
 
-        if (Schema::hasTable('users')) {
-            $databaseApplications = User::query()
-                ->whereIn('role', UserRole::adminApproved())
-                ->whereIn('status', [AccountStatus::Pending->value, AccountStatus::NeedsRevision->value])
-                ->latest()
-                ->get()
-                ->map(fn (User $user) => [
-                    'id' => 'DB-'.$user->id,
-                    'database_id' => $user->id,
-                    'name' => $user->business_name ?: $user->name,
-                    'role' => ucfirst($user->role),
-                    'email' => $user->email,
-                    'submitted' => $user->created_at?->format('M j, Y') ?? 'Recently',
-                    'status' => $user->status === AccountStatus::NeedsRevision->value ? 'Needs Review' : 'Pending',
-                    'category' => $user->business_category ?: '—',
-                    'documents' => array_values(array_filter([
-                        $user->valid_id_path ? 'Government ID' : null,
-                        $user->business_permit_path ? 'Business Permit' : null,
-                    ])),
-                ])
-                ->all();
-
-            $applications = [...$databaseApplications, ...$applications];
-        }
+        $applications = AccountApplication::query()
+            ->with(['user', 'requestedRole', 'businessCategory', 'documents'])
+            ->whereIn('status', $reviewableStatuses)
+            ->whereHas('requestedRole', fn ($query) => $query->whereIn('name', UserRole::adminApproved()))
+            ->whereHas('user', fn ($query) => $query->whereIn('status', [
+                AccountStatus::Pending->value,
+                AccountStatus::NeedsRevision->value,
+            ]))
+            ->when($search !== '', function ($query) use ($search): void {
+                $query->where(function ($query) use ($search): void {
+                    $query->where('application_no', 'like', "%{$search}%")
+                        ->orWhere('business_name', 'like', "%{$search}%")
+                        ->orWhereHas('user', fn ($userQuery) => $userQuery
+                            ->where('name', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%"));
+                });
+            })
+            ->when(in_array($role, UserRole::adminApproved(), true), fn ($query) => $query
+                ->whereHas('requestedRole', fn ($roleQuery) => $roleQuery->where('name', $role)))
+            ->when(in_array($status, $reviewableStatuses, true), fn ($query) => $query->where('status', $status))
+            ->orderByDesc('submitted_at')
+            ->orderByDesc('id')
+            ->paginate(10)
+            ->withQueryString();
 
         return view('admin.registrations.index', $this->base([
             'applications' => $applications,
+            'filters' => compact('search', 'role', 'status'),
         ]));
     }
 

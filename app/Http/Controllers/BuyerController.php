@@ -2,10 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Cart;
 use App\Models\CartItem;
 use App\Models\Product;
 use App\Models\Wishlist;
+use App\Services\CheckoutService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
@@ -16,9 +19,9 @@ class BuyerController extends Controller
 {
     try {
         return Schema::hasTable('products')
-            && Schema::hasTable('shops')
+            && Schema::hasTable('stores')
             && Schema::hasTable('cart_items')
-            && Schema::hasTable('wishlist');
+            && Schema::hasTable('wishlists');
     } catch (\Throwable $e) {
         return false;
     }
@@ -275,10 +278,10 @@ class BuyerController extends Controller
             return view('buyer.Category.MenApparel.mens-apparel');
         }
 
-        $query = Product::with('shop');
+        $query = Product::with(['store', 'category', 'variants'])->where('product_status', 'active');
 
         if ($request->category && $request->category !== 'All') {
-            $query->where('category', $request->category);
+            $query->whereHas('category', fn ($category) => $category->where('name', $request->category));
         }
 
         if ($request->search) {
@@ -288,20 +291,11 @@ class BuyerController extends Controller
 
         $sort = $request->sort ?? 'featured';
         switch ($sort) {
-            case 'price_low':
-                $query->orderBy('price', 'asc');
-                break;
-            case 'price_high':
-                $query->orderBy('price', 'desc');
-                break;
             case 'newest':
                 $query->orderByDesc('created_at');
                 break;
-            case 'popular':
-                $query->orderByDesc('sold_count');
-                break;
             default:
-                $query->where('is_featured', true)->orderByDesc('sold_count');
+                $query->orderByDesc('published_at');
         }
 
         $products = $query->paginate(12);
@@ -326,9 +320,9 @@ class BuyerController extends Controller
             abort(404);
         }
 
-        $product->load('shop', 'orderItems');
+        $product->load(['store', 'category', 'variants', 'images']);
 
-        $relatedProducts = Product::where('category', $product->category)
+        $relatedProducts = Product::where('category_id', $product->category_id)
             ->where('id', '!=', $product->id)
             ->limit(4)
             ->get();
@@ -342,45 +336,42 @@ class BuyerController extends Controller
             return view('buyer.Dashboard.home');
         }
 
-        $sessionId = session()->getId();
-        $cartItems = CartItem::where('session_id', $sessionId)
-            ->with('product.shop')
-            ->get();
+        $cartItems = $this->cartFor(request())->items()->with('variant.product.store')->get();
 
-        $total = $cartItems->sum(fn (CartItem $item) => $item->quantity * $item->price);
+        $total = $cartItems->sum(fn (CartItem $item) => $item->quantity * $item->variant->price_minor / 100);
 
         return view('buyer.Dashboard.home', compact('cartItems', 'total'));
     }
 
     public function addToCart(Request $request): JsonResponse
     {
-        $request->validate([
+        $validated = $request->validate([
             'product_id' => 'required|exists:products,id',
+            'product_variant_id' => 'nullable|exists:product_variants,id',
             'quantity' => 'required|integer|min:1',
         ]);
 
-        $product = Product::findOrFail($request->product_id);
-        $sessionId = session()->getId();
-        $existingItem = CartItem::where('session_id', $sessionId)
-            ->where('product_id', $request->product_id)
-            ->first();
+        $product = Product::with('variants')->findOrFail($validated['product_id']);
+        $variant = $product->variants->firstWhere('id', (int) ($validated['product_variant_id'] ?? 0)) ?? $product->variants->first();
+        abort_unless($variant, 422, 'This product has no purchasable variant.');
+        $cart = $this->cartFor($request);
+        $existingItem = $cart->items()->where('product_variant_id', $variant->id)->first();
 
         if ($existingItem) {
             $existingItem->quantity += $request->quantity;
             $existingItem->save();
         } else {
             CartItem::create([
-                'session_id' => $sessionId,
-                'product_id' => $request->product_id,
+                'cart_id' => $cart->id,
+                'product_variant_id' => $variant->id,
                 'quantity' => $request->quantity,
-                'price' => $product->price,
             ]);
         }
 
         return response()->json([
             'success' => true,
             'message' => 'Product added to cart',
-            'cart_count' => CartItem::where('session_id', $sessionId)->count(),
+            'cart_count' => $cart->items()->count(),
         ]);
     }
 
@@ -394,7 +385,7 @@ class BuyerController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Cart updated',
-            'total' => $cartItem->quantity * $cartItem->price,
+            'total' => $cartItem->quantity * $cartItem->variant->price_minor / 100,
         ]);
     }
 
@@ -410,7 +401,7 @@ class BuyerController extends Controller
 
     public function clearCart(): JsonResponse
     {
-        CartItem::where('session_id', session()->getId())->delete();
+        $this->cartFor(request())->items()->delete();
 
         return response()->json([
             'success' => true,
@@ -424,8 +415,9 @@ class BuyerController extends Controller
             return view('buyer.Dashboard.home');
         }
 
-        $sessionId = session()->getId();
-        $wishlistItems = Wishlist::where('session_id', $sessionId)
+        $wishlistItems = Wishlist::where(fn ($query) => auth()->check()
+                ? $query->where('user_id', auth()->id())
+                : $query->where('session_token', session()->getId()))
             ->with('product')
             ->get();
 
@@ -436,8 +428,8 @@ class BuyerController extends Controller
     {
         $request->validate(['product_id' => 'required|exists:products,id']);
 
-        $sessionId = session()->getId();
-        $wishlistItem = Wishlist::where('session_id', $sessionId)
+        $owner = $request->user() ? ['user_id' => $request->user()->id] : ['session_token' => $request->session()->getId()];
+        $wishlistItem = Wishlist::where($owner)
             ->where('product_id', $request->product_id)
             ->first();
 
@@ -446,7 +438,7 @@ class BuyerController extends Controller
             $isWishlisted = false;
         } else {
             Wishlist::create([
-                'session_id' => $sessionId,
+                ...$owner,
                 'product_id' => $request->product_id,
             ]);
             $isWishlisted = true;
@@ -455,7 +447,24 @@ class BuyerController extends Controller
         return response()->json([
             'success' => true,
             'is_wishlisted' => $isWishlisted,
-            'wishlist_count' => Wishlist::where('session_id', $sessionId)->count(),
+            'wishlist_count' => Wishlist::where($owner)->count(),
         ]);
+    }
+
+    public function checkout(Request $request, CheckoutService $checkout): RedirectResponse
+    {
+        $data = $request->validate(['recipient_name'=>['required','string','max:160'],'recipient_phone'=>['required','string','max:30'],
+            'address_line'=>['required','string','max:255'],'barangay'=>['required','string','max:120'],
+            'city_municipality'=>['required','string','max:120'],'province'=>['required','string','max:120'],
+            'postal_code'=>['nullable','string','max:10'],'payment_method'=>['required','in:cod,gcash,maya,card']]);
+        $order = $checkout->place($request->user(), $this->cartFor($request), $data);
+        return redirect()->route('home')->with('success', 'Order '.$order->order_no.' was placed successfully.');
+    }
+
+    private function cartFor(Request $request): Cart
+    {
+        return Cart::firstOrCreate($request->user()
+            ? ['user_id'=>$request->user()->id,'status'=>'active']
+            : ['session_token'=>$request->session()->getId(),'status'=>'active']);
     }
 }

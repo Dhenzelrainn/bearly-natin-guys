@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Enums\AccountStatus;
 use App\Enums\UserRole;
 use App\Models\User;
+use App\Services\AccountRegistrationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -52,7 +53,7 @@ class LogisticsController extends Controller
         return view('logistics.applications.create');
     }
 
-    public function submitRegistration(Request $request)
+    public function submitRegistration(Request $request, AccountRegistrationService $registration)
     {
         $validated = $request->validate([
             'business_name' => ['required', 'string', 'max:120'],
@@ -83,7 +84,7 @@ class LogisticsController extends Controller
             'password' => ['required', 'confirmed', 'min:8', 'regex:/[a-z]/', 'regex:/[A-Z]/', 'regex:/[0-9]/'],
         ]);
 
-        $user = User::create([
+        $user = $registration->register([
             'name' => trim($validated['first_name'].' '.($validated['middle_initial'] ?? '').' '.$validated['last_name']),
             'first_name' => $validated['first_name'],
             'middle_initial' => $validated['middle_initial'] ?? null,
@@ -103,9 +104,22 @@ class LogisticsController extends Controller
             'barangay' => $validated['barangay'],
             'street_address' => trim($validated['house_number'].' '.$validated['street']),
             'business_name' => $validated['business_name'],
-            'valid_id_path' => $request->file('valid_id')->store('registration-documents/logistics/valid-ids', 'local'),
-            'business_permit_path' => $request->file('business_permit')->store('registration-documents/logistics/permits', 'local'),
             'password' => Hash::make($validated['password']),
+        ], UserRole::Logistics->value, [
+            [
+                'type' => 'government_id',
+                'file' => $request->file('valid_id'),
+                'directory' => 'registration-documents/logistics/valid-ids',
+                'legacy_attribute' => 'valid_id_path',
+            ],
+            [
+                'type' => 'business_permit',
+                'file' => $request->file('business_permit'),
+                'directory' => 'registration-documents/logistics/permits',
+                'legacy_attribute' => 'business_permit_path',
+            ],
+        ], [
+            'business_name' => $validated['business_name'],
         ]);
 
         session([

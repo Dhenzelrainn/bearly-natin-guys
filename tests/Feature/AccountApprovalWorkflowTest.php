@@ -4,7 +4,10 @@ namespace Tests\Feature;
 
 use App\Enums\AccountStatus;
 use App\Enums\UserRole;
+use App\Models\AccountApplication;
+use App\Models\Role;
 use App\Models\User;
+use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -13,6 +16,13 @@ use Tests\TestCase;
 class AccountApprovalWorkflowTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->seed(DatabaseSeeder::class);
+    }
 
     public function test_buyer_application_is_saved_for_admin_approval(): void
     {
@@ -44,6 +54,56 @@ class AccountApprovalWorkflowTest extends TestCase
         $this->assertSame(AccountStatus::Pending->value, $buyer->status);
         $this->assertGuest();
         Storage::disk('local')->assertExists($buyer->valid_id_path);
+
+        $application = $buyer->applications()->with('requestedRole', 'documents')->sole();
+        $this->assertSame(UserRole::Buyer->value, $application->requestedRole->name);
+        $this->assertSame('submitted', $application->status);
+        $this->assertNotNull($application->submitted_at);
+        $this->assertCount(1, $application->documents);
+        $this->assertSame('government_id', $application->documents->sole()->document_type);
+        $this->assertSame($buyer->valid_id_path, $application->documents->sole()->file_path);
+    }
+
+    public function test_seller_application_uses_the_canonical_category_and_document_records(): void
+    {
+        Storage::fake('local');
+
+        $this->post(route('register.submit'), [
+            'role' => UserRole::Seller->value,
+            'first_name' => 'Selena',
+            'last_name' => 'Reyes',
+            'middle_initial' => 'T',
+            'sex' => 'female',
+            'birthday' => '1998-08-20',
+            'email' => 'selena@example.test',
+            'contact_number' => '09181234567',
+            'province' => 'Laguna',
+            'city' => 'Calamba City',
+            'barangay' => 'Real',
+            'street_name' => 'Market Road',
+            'house_number' => '21',
+            'postal_code' => '4027',
+            'business_name' => 'Selena Gems',
+            'business_category' => 'Jewelry and Watches',
+            'valid_id' => UploadedFile::fake()->create('seller-id.pdf', 100, 'application/pdf'),
+            'business_permit' => UploadedFile::fake()->create('seller-permit.pdf', 100, 'application/pdf'),
+            'password' => 'Password123',
+            'password_confirmation' => 'Password123',
+            'terms' => '1',
+        ])->assertRedirect(route('application.pending'));
+
+        $seller = User::where('email', 'selena@example.test')->firstOrFail();
+        $application = $seller->applications()->with('requestedRole', 'businessCategory', 'documents')->sole();
+
+        $this->assertSame(UserRole::Seller->value, $application->requestedRole->name);
+        $this->assertSame('Selena Gems', $application->business_name);
+        $this->assertSame('Jewelry and Watches', $application->businessCategory->name);
+        $this->assertEqualsCanonicalizing(
+            ['government_id', 'business_permit'],
+            $application->documents->pluck('document_type')->all(),
+        );
+        Storage::disk('local')->assertExists($seller->valid_id_path);
+        Storage::disk('local')->assertExists($seller->business_permit_path);
     }
 
     public function test_logistics_application_is_saved_for_admin_approval(): void
@@ -75,6 +135,14 @@ class AccountApprovalWorkflowTest extends TestCase
         $this->assertSame(AccountStatus::Pending->value, $logistics->status);
         Storage::disk('local')->assertExists($logistics->valid_id_path);
         Storage::disk('local')->assertExists($logistics->business_permit_path);
+
+        $application = $logistics->applications()->with('requestedRole', 'documents')->sole();
+        $this->assertSame(UserRole::Logistics->value, $application->requestedRole->name);
+        $this->assertSame('Laguna Test Logistics', $application->business_name);
+        $this->assertEqualsCanonicalizing(
+            ['government_id', 'business_permit'],
+            $application->documents->pluck('document_type')->all(),
+        );
     }
 
     public function test_rider_application_belongs_to_the_selected_active_logistics_account(): void
@@ -124,19 +192,57 @@ class AccountApprovalWorkflowTest extends TestCase
         ]);
 
         foreach (UserRole::adminApproved() as $role) {
-            $application = User::factory()->create([
+            $applicant = User::factory()->create([
                 'role' => $role,
                 'status' => AccountStatus::Pending->value,
             ]);
+
+            $application = AccountApplication::query()->create([
+                'application_no' => 'APP-APPROVAL-'.str()->upper(str()->random(8)),
+                'user_id' => $applicant->id,
+                'requested_role_id' => Role::where('name', $role)->value('id'),
+                'business_name' => $role === UserRole::Buyer->value ? null : $applicant->name.' Business',
+                'status' => 'under_review',
+                'submitted_at' => now(),
+                'review_started_at' => now(),
+            ]);
+
+            foreach ($role === UserRole::Buyer->value
+                ? ['government_id']
+                : ['government_id', 'business_permit'] as $documentType) {
+                $application->documents()->create([
+                    'document_type' => $documentType,
+                    'file_path' => 'test/'.$documentType.'.pdf',
+                    'original_name' => $documentType.'.pdf',
+                    'mime_type' => 'application/pdf',
+                    'size_bytes' => 100,
+                    'verification_status' => 'verified',
+                    'verified_by' => $admin->id,
+                    'verified_at' => now(),
+                ]);
+            }
 
             $this->actingAs($admin)
                 ->post(route('admin.applications.approve', $application))
                 ->assertSessionHasNoErrors();
 
             $application->refresh();
-            $this->assertSame(AccountStatus::Active->value, $application->status);
-            $this->assertSame($admin->id, $application->approved_by);
-            $this->assertNotNull($application->approved_at);
+            $applicant->refresh();
+            $this->assertSame('approved', $application->status);
+            $this->assertSame($admin->id, $application->reviewed_by);
+            $this->assertSame(AccountStatus::Active->value, $applicant->status);
+            $this->assertSame($admin->id, $applicant->approved_by);
+            $this->assertTrue($applicant->roles()->where('name', $role)->exists());
+
+            if ($role === UserRole::Seller->value) {
+                $this->assertNotNull($applicant->sellerProfile);
+                $this->assertNotNull($applicant->sellerProfile->store);
+                $this->assertSame('draft', $applicant->sellerProfile->store->publication_status);
+            }
+
+            if ($role === UserRole::Logistics->value) {
+                $this->assertNotNull($applicant->logisticsProfile);
+            }
         }
     }
 

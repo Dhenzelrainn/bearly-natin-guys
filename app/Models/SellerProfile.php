@@ -20,4 +20,14 @@ class SellerProfile extends Model
     {
         return $this->hasOne(Store::class);
     }
+
+    public function approvedCategory()
+    {
+        return $this->belongsTo(Category::class, 'approved_category_id');
+    }
+
+    public function warnings()
+    {
+        return $this->hasMany(SellerWarning::class);
+    }
 }

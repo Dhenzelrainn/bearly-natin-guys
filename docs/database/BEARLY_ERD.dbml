@@ -1,0 +1,1198 @@
+// Generated from the validated Bearly MySQL schema
+
+Table account_applications {
+  id bigint [pk, increment, not null]
+  application_no varchar(30) [not null, unique]
+  user_id bigint [not null]
+  requested_role_id bigint [not null]
+  sponsor_logistics_profile_id bigint
+  business_name varchar(160)
+  business_category_id bigint
+  status varchar(32) [not null]
+  submitted_at timestamp
+  review_started_at timestamp
+  decided_at timestamp
+  reviewed_by bigint
+  decision_reason text
+  revision_notes text
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table addresses {
+  id bigint [pk, increment, not null]
+  user_id bigint
+  label varchar(50) [not null]
+  recipient_name varchar(160) [not null]
+  phone varchar(30) [not null]
+  house_number varchar(40)
+  street varchar(180) [not null]
+  barangay varchar(120) [not null]
+  city_municipality varchar(120) [not null]
+  province varchar(120) [not null]
+  postal_code varchar(10)
+  psgc_province_code varchar(20)
+  psgc_city_code varchar(20)
+  psgc_barangay_code varchar(20)
+  latitude decimal(10,7)
+  longitude decimal(10,7)
+  is_default_shipping boolean [not null]
+  is_default_pickup boolean [not null]
+  created_at timestamp
+  updated_at timestamp
+  deleted_at timestamp
+}
+
+Table announcement_roles {
+  announcement_id bigint [pk, not null]
+  role_id bigint [pk, not null]
+}
+
+Table announcements {
+  id bigint [pk, increment, not null]
+  announcement_no varchar(32) [not null, unique]
+  title varchar(180) [not null]
+  body text [not null]
+  status varchar(20) [not null]
+  created_by bigint
+  publish_at timestamp
+  published_at timestamp
+  expires_at timestamp
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table application_documents {
+  id bigint [pk, increment, not null]
+  application_id bigint [not null]
+  document_type varchar(50) [not null]
+  file_path varchar(500) [not null]
+  original_name varchar(255) [not null]
+  mime_type varchar(100) [not null]
+  size_bytes bigint [not null]
+  verification_status varchar(30) [not null]
+  verified_by bigint
+  verified_at timestamp
+  rejection_reason text
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table audit_logs {
+  id bigint [pk, increment, not null]
+  actor_user_id bigint
+  action varchar(100) [not null]
+  module varchar(80) [not null]
+  auditable_type varchar(100)
+  auditable_id bigint
+  description text
+  old_values json
+  new_values json
+  ip_address varchar(45)
+  user_agent text
+  severity varchar(20) [not null]
+  created_at timestamp [not null]
+}
+
+Table cart_items {
+  id bigint [pk, increment, not null]
+  cart_id bigint [not null]
+  product_variant_id bigint [not null]
+  quantity int [not null]
+  selected boolean [not null]
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table carts {
+  id bigint [pk, increment, not null]
+  user_id bigint
+  session_token varchar(100)
+  status varchar(20) [not null]
+  expires_at timestamp
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table categories {
+  id bigint [pk, increment, not null]
+  parent_id bigint
+  name varchar(120) [not null]
+  slug varchar(140) [not null, unique]
+  description text
+  is_restricted boolean [not null]
+  is_active boolean [not null]
+  position int [not null]
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table compliance_rules {
+  id bigint [pk, increment, not null]
+  code varchar(50) [not null, unique]
+  name varchar(160) [not null]
+  rule_type varchar(40) [not null]
+  target_field varchar(40) [not null]
+  pattern text
+  category_id bigint
+  severity varchar(20) [not null]
+  default_action varchar(30) [not null]
+  configuration json
+  is_active boolean [not null]
+  version int [not null]
+  created_by bigint
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table conversation_participants {
+  conversation_id bigint [pk, not null]
+  user_id bigint [pk, not null]
+  participant_role varchar(30) [not null]
+  last_read_at timestamp
+  joined_at timestamp [not null]
+}
+
+Table conversations {
+  id bigint [pk, increment, not null]
+  subject varchar(180)
+  order_id bigint
+  seller_order_id bigint
+  product_id bigint
+  dispute_id bigint
+  type varchar(30) [not null]
+  status varchar(20) [not null]
+  created_by bigint
+  last_message_at timestamp
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table delivery_attempts {
+  id bigint [pk, increment, not null]
+  parcel_id bigint [not null]
+  dispatch_batch_id bigint
+  rider_profile_id bigint [not null]
+  attempt_no smallint [not null]
+  outcome varchar(30) [not null]
+  failure_reason varchar(100)
+  notes text
+  latitude decimal(10,7)
+  longitude decimal(10,7)
+  attempted_at timestamp [not null]
+  next_attempt_at timestamp
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table delivery_proofs {
+  id bigint [pk, increment, not null]
+  delivery_attempt_id bigint [not null]
+  type varchar(30) [not null]
+  file_path varchar(500)
+  recipient_name varchar(160)
+  recipient_signature_path varchar(500)
+  otp_verified_at timestamp
+  captured_at timestamp [not null]
+  uploaded_by bigint
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table dispatch_batch_parcels {
+  dispatch_batch_id bigint [pk, not null]
+  parcel_id bigint [pk, not null]
+  sequence smallint
+  loaded_at timestamp
+}
+
+Table dispatch_batches {
+  id bigint [pk, increment, not null]
+  batch_no varchar(32) [not null, unique]
+  sorting_center_id bigint [not null]
+  sorting_zone_id bigint
+  rider_profile_id bigint [not null]
+  status varchar(30) [not null]
+  prepared_by bigint
+  prepared_at timestamp
+  assigned_at timestamp
+  dispatched_at timestamp
+  completed_at timestamp
+  cancelled_at timestamp
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table dispute_events {
+  id bigint [pk, increment, not null]
+  dispute_id bigint [not null]
+  event_type varchar(40) [not null]
+  actor_user_id bigint
+  from_status varchar(30)
+  to_status varchar(30)
+  note text
+  metadata json
+  created_at timestamp [not null]
+}
+
+Table dispute_evidence {
+  id bigint [pk, increment, not null]
+  dispute_id bigint [not null]
+  uploaded_by bigint
+  type varchar(30) [not null]
+  file_path varchar(500) [not null]
+  original_name varchar(255) [not null]
+  description varchar(500)
+  created_at timestamp [not null]
+}
+
+Table dispute_participants {
+  dispute_id bigint [pk, not null]
+  user_id bigint [pk, not null]
+  participant_role varchar(30) [not null]
+  joined_at timestamp [not null]
+}
+
+Table disputes {
+  id bigint [pk, increment, not null]
+  dispute_no varchar(32) [not null, unique]
+  seller_order_id bigint
+  return_request_id bigint
+  shipment_id bigint
+  opened_by bigint [not null]
+  subject varchar(180) [not null]
+  description text [not null]
+  priority varchar(20) [not null]
+  status varchar(30) [not null]
+  amount_minor bigint
+  assigned_to bigint
+  opened_at timestamp [not null]
+  response_due_at timestamp
+  resolved_at timestamp
+  closed_at timestamp
+  resolution text
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table inventory_movements {
+  id bigint [pk, increment, not null]
+  variant_id bigint [not null]
+  type varchar(40) [not null]
+  quantity_delta int [not null]
+  balance_after int [not null]
+  reference_type varchar(50)
+  reference_id bigint
+  reason varchar(255)
+  created_by bigint
+  occurred_at timestamp [not null]
+  created_at timestamp [not null]
+}
+
+Table logistics_profiles {
+  id bigint [pk, increment, not null]
+  user_id bigint [not null, unique]
+  application_id bigint
+  legal_name varchar(160) [not null]
+  display_name varchar(160) [not null]
+  contact_phone varchar(30) [not null]
+  status varchar(30) [not null]
+  created_at timestamp
+  updated_at timestamp
+  deleted_at timestamp
+}
+
+Table message_attachments {
+  id bigint [pk, increment, not null]
+  message_id bigint [not null]
+  file_path varchar(500) [not null]
+  original_name varchar(255) [not null]
+  mime_type varchar(100) [not null]
+  size_bytes bigint [not null]
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table messages {
+  id bigint [pk, increment, not null]
+  conversation_id bigint [not null]
+  sender_id bigint
+  body text [not null]
+  message_type varchar(20) [not null]
+  sent_at timestamp [not null]
+  edited_at timestamp
+  deleted_at timestamp
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table notifications {
+  id char(36) [pk, not null]
+  type varchar(255) [not null]
+  notifiable_type varchar(255) [not null]
+  notifiable_id bigint [not null]
+  data text [not null]
+  read_at timestamp
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table order_items {
+  id bigint [pk, increment, not null]
+  seller_order_id bigint [not null]
+  product_id bigint
+  product_variant_id bigint
+  product_name varchar(180) [not null]
+  variant_name varchar(140) [not null]
+  sku varchar(80) [not null]
+  options json
+  unit_price_minor bigint [not null]
+  quantity int [not null]
+  discount_minor bigint [not null]
+  subtotal_minor bigint [not null]
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table orders {
+  id bigint [pk, increment, not null]
+  order_no varchar(32) [not null, unique]
+  buyer_id bigint [not null]
+  shipping_address_id bigint
+  recipient_name varchar(160) [not null]
+  recipient_phone varchar(30) [not null]
+  address_line varchar(255) [not null]
+  barangay varchar(120) [not null]
+  city_municipality varchar(120) [not null]
+  province varchar(120) [not null]
+  postal_code varchar(10)
+  currency char(3) [not null]
+  subtotal_minor bigint [not null]
+  shipping_fee_minor bigint [not null]
+  discount_minor bigint [not null]
+  total_minor bigint [not null]
+  status varchar(30) [not null]
+  payment_status varchar(30) [not null]
+  placed_at timestamp
+  cancelled_at timestamp
+  completed_at timestamp
+  cancel_reason text
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table parcels {
+  id bigint [pk, increment, not null]
+  shipment_id bigint [not null]
+  waybill_id bigint [not null]
+  parcel_no varchar(50) [not null, unique]
+  piece_sequence smallint [not null]
+  weight_kg decimal(10,3) [not null]
+  length_cm decimal(10,2)
+  width_cm decimal(10,2)
+  height_cm decimal(10,2)
+  size_class varchar(20)
+  status varchar(40) [not null]
+  current_sorting_center_id bigint
+  current_zone_id bigint
+  last_event_at timestamp
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table payments {
+  id bigint [pk, increment, not null]
+  payment_no varchar(40) [not null, unique]
+  order_id bigint [not null]
+  method varchar(30) [not null]
+  provider varchar(50)
+  provider_reference varchar(150)
+  amount_minor bigint [not null]
+  status varchar(30) [not null]
+  initiated_at timestamp
+  authorized_at timestamp
+  paid_at timestamp
+  failed_at timestamp
+  refunded_at timestamp
+  failure_reason text
+  metadata json
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table pickup_assignments {
+  id bigint [pk, increment, not null]
+  pickup_request_id bigint [not null]
+  rider_profile_id bigint [not null]
+  status varchar(30) [not null]
+  assigned_by bigint
+  assigned_at timestamp [not null]
+  accepted_at timestamp
+  arrived_at timestamp
+  picked_up_at timestamp
+  completed_at timestamp
+  cancelled_at timestamp
+  notes text
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table pickup_request_parcels {
+  pickup_request_id bigint [pk, not null]
+  parcel_id bigint [pk, not null]
+  added_at timestamp [not null]
+}
+
+Table pickup_requests {
+  id bigint [pk, increment, not null]
+  pickup_no varchar(32) [not null, unique]
+  store_id bigint [not null]
+  logistics_profile_id bigint [not null]
+  pickup_address_id bigint [not null]
+  status varchar(30) [not null]
+  requested_date date [not null]
+  window_start datetime [not null]
+  window_end datetime [not null]
+  seller_instructions text
+  verified_by bigint
+  verified_at timestamp
+  cancelled_at timestamp
+  completed_at timestamp
+  cancellation_reason text
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table platform_commissions {
+  id bigint [pk, increment, not null]
+  seller_order_id bigint [not null]
+  refund_id bigint
+  type varchar(30) [not null]
+  base_amount_minor bigint [not null]
+  rate_bps smallint [not null]
+  amount_minor bigint [not null]
+  status varchar(30) [not null]
+  calculated_at timestamp [not null]
+  finalized_at timestamp
+  reversed_at timestamp
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table policies {
+  id bigint [pk, increment, not null]
+  code varchar(50) [not null, unique]
+  title varchar(180) [not null]
+  category varchar(80) [not null]
+  status varchar(20) [not null]
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table policy_versions {
+  id bigint [pk, increment, not null]
+  policy_id bigint [not null]
+  version varchar(20) [not null]
+  body longtext [not null]
+  summary text
+  status varchar(20) [not null]
+  created_by bigint
+  effective_at timestamp
+  published_at timestamp
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table product_compliance_check_matches {
+  id bigint [pk, increment, not null]
+  check_id bigint [not null]
+  rule_id bigint [not null]
+  matched_field varchar(40) [not null]
+  matched_excerpt varchar(500)
+  score decimal(5,4)
+  severity varchar(20) [not null]
+  recommended_action varchar(30) [not null]
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table product_compliance_checks {
+  id bigint [pk, increment, not null]
+  product_id bigint [not null]
+  trigger varchar(20) [not null]
+  status varchar(30) [not null]
+  result varchar(30)
+  name_snapshot varchar(180) [not null]
+  description_snapshot text
+  category_id_snapshot bigint
+  rules_version varchar(50)
+  started_at timestamp
+  completed_at timestamp
+  error_message text
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table product_images {
+  id bigint [pk, increment, not null]
+  product_id bigint [not null]
+  variant_id bigint
+  path varchar(500) [not null]
+  alt_text varchar(255)
+  position smallint [not null]
+  is_primary boolean [not null]
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table product_reports {
+  id bigint [pk, increment, not null]
+  report_no varchar(32) [not null, unique]
+  product_id bigint [not null]
+  reporter_user_id bigint
+  reason_code varchar(50) [not null]
+  details text
+  status varchar(30) [not null]
+  reviewed_by bigint
+  reviewed_at timestamp
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table product_variants {
+  id bigint [pk, increment, not null]
+  product_id bigint [not null]
+  sku varchar(80) [not null, unique]
+  name varchar(140) [not null]
+  options json
+  price_minor bigint [not null]
+  compare_at_price_minor bigint
+  stock_on_hand int [not null]
+  stock_reserved int [not null]
+  low_stock_threshold int [not null]
+  weight_kg decimal(10,3)
+  is_active boolean [not null]
+  position smallint [not null]
+  created_at timestamp
+  updated_at timestamp
+  deleted_at timestamp
+}
+
+Table product_violations {
+  id bigint [pk, increment, not null]
+  violation_no varchar(32) [not null, unique]
+  product_id bigint [not null]
+  seller_profile_id bigint [not null]
+  check_id bigint
+  rule_id bigint
+  product_report_id bigint
+  source varchar(30) [not null]
+  violation_type varchar(50) [not null]
+  severity varchar(20) [not null]
+  reason text [not null]
+  detected_excerpt varchar(500)
+  status varchar(30) [not null]
+  assigned_to bigint
+  reviewed_at timestamp
+  resolved_at timestamp
+  resolution varchar(40)
+  admin_note text
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table products {
+  id bigint [pk, increment, not null]
+  store_id bigint [not null]
+  category_id bigint [not null]
+  name varchar(180) [not null]
+  slug varchar(220) [not null]
+  description text
+  product_status varchar(30) [not null]
+  compliance_status varchar(30) [not null]
+  voucher_eligible boolean [not null]
+  published_at timestamp
+  archived_at timestamp
+  removed_at timestamp
+  removed_reason text
+  created_at timestamp
+  updated_at timestamp
+  deleted_at timestamp
+}
+
+Table refunds {
+  id bigint [pk, increment, not null]
+  refund_no varchar(40) [not null, unique]
+  return_request_id bigint
+  payment_id bigint
+  order_id bigint [not null]
+  amount_minor bigint [not null]
+  status varchar(30) [not null]
+  method varchar(30) [not null]
+  provider_reference varchar(150)
+  approved_by bigint
+  approved_at timestamp
+  processed_at timestamp
+  completed_at timestamp
+  failed_at timestamp
+  failure_reason text
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table return_evidence {
+  id bigint [pk, increment, not null]
+  return_request_id bigint [not null]
+  uploaded_by bigint
+  type varchar(30) [not null]
+  file_path varchar(500) [not null]
+  original_name varchar(255) [not null]
+  description varchar(500)
+  created_at timestamp [not null]
+}
+
+Table return_items {
+  id bigint [pk, increment, not null]
+  return_request_id bigint [not null]
+  order_item_id bigint [not null]
+  quantity int [not null]
+  condition_code varchar(40)
+  resolution varchar(30)
+  refund_amount_minor bigint [not null]
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table return_requests {
+  id bigint [pk, increment, not null]
+  return_no varchar(32) [not null, unique]
+  order_id bigint [not null]
+  seller_order_id bigint [not null]
+  buyer_id bigint [not null]
+  store_id bigint [not null]
+  request_type varchar(30) [not null]
+  reason_code varchar(50) [not null]
+  buyer_note text
+  seller_response text
+  status varchar(40) [not null]
+  requested_amount_minor bigint [not null]
+  response_due_at timestamp
+  submitted_at timestamp [not null]
+  seller_responded_at timestamp
+  reviewed_at timestamp
+  resolved_at timestamp
+  reviewed_by bigint
+  resolution text
+  return_shipment_id bigint
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table rider_earnings {
+  id bigint [pk, increment, not null]
+  rider_profile_id bigint [not null]
+  pickup_assignment_id bigint
+  delivery_attempt_id bigint
+  type varchar(30) [not null]
+  amount_minor bigint [not null]
+  status varchar(30) [not null]
+  description varchar(255)
+  earned_at timestamp [not null]
+  posted_at timestamp
+  paid_at timestamp
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table rider_profiles {
+  id bigint [pk, increment, not null]
+  user_id bigint [not null, unique]
+  logistics_profile_id bigint [not null]
+  home_sorting_center_id bigint
+  current_zone_id bigint
+  vehicle_type varchar(80) [not null]
+  vehicle_model varchar(100)
+  plate_number varchar(30)
+  parcel_capacity smallint
+  emergency_contact_name varchar(160)
+  emergency_contact_phone varchar(30)
+  availability_status varchar(30) [not null]
+  verification_status varchar(30) [not null]
+  created_at timestamp
+  updated_at timestamp
+  deleted_at timestamp
+}
+
+Table role_user {
+  role_id bigint [pk, not null]
+  user_id bigint [pk, not null]
+  assigned_by bigint
+  assigned_at timestamp [not null]
+}
+
+Table roles {
+  id bigint [pk, increment, not null]
+  name varchar(40) [not null, unique]
+  display_name varchar(80) [not null]
+  description varchar(255)
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table seller_orders {
+  id bigint [pk, increment, not null]
+  seller_order_no varchar(32) [not null, unique]
+  order_id bigint [not null]
+  store_id bigint [not null]
+  status varchar(30) [not null]
+  subtotal_minor bigint [not null]
+  discount_minor bigint [not null]
+  shipping_fee_minor bigint [not null]
+  total_minor bigint [not null]
+  fulfillment_deadline_at timestamp
+  confirmed_at timestamp
+  preparing_at timestamp
+  ready_at timestamp
+  handed_over_at timestamp
+  delivered_at timestamp
+  completed_at timestamp
+  cancelled_at timestamp
+  seller_note text
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table seller_payouts {
+  id bigint [pk, increment, not null]
+  payout_no varchar(40) [not null, unique]
+  seller_profile_id bigint [not null]
+  period_start date [not null]
+  period_end date [not null]
+  gross_minor bigint [not null]
+  commission_minor bigint [not null]
+  adjustment_minor bigint [not null]
+  net_minor bigint [not null]
+  status varchar(30) [not null]
+  due_at timestamp
+  paid_at timestamp
+  reference varchar(150)
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table seller_profiles {
+  id bigint [pk, increment, not null]
+  user_id bigint [not null, unique]
+  application_id bigint
+  legal_business_name varchar(160) [not null]
+  approved_category_id bigint
+  pickup_address_id bigint
+  commission_rate_bps smallint [not null]
+  standing_status varchar(30) [not null]
+  warning_points smallint [not null]
+  approved_at timestamp
+  created_at timestamp
+  updated_at timestamp
+  deleted_at timestamp
+}
+
+Table seller_transactions {
+  id bigint [pk, increment, not null]
+  transaction_no varchar(40) [not null, unique]
+  seller_profile_id bigint [not null]
+  seller_order_id bigint
+  payment_id bigint
+  refund_id bigint
+  commission_id bigint
+  type varchar(40) [not null]
+  amount_minor bigint [not null]
+  status varchar(30) [not null]
+  available_at timestamp
+  posted_at timestamp
+  description varchar(255)
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table seller_warnings {
+  id bigint [pk, increment, not null]
+  warning_no varchar(32) [not null, unique]
+  seller_profile_id bigint [not null]
+  violation_id bigint
+  level varchar(20) [not null]
+  points smallint [not null]
+  reason text [not null]
+  status varchar(20) [not null]
+  issued_by bigint
+  issued_at timestamp [not null]
+  expires_at timestamp
+  acknowledged_at timestamp
+  revoked_at timestamp
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table shipment_events {
+  id bigint [pk, increment, not null]
+  shipment_id bigint [not null]
+  parcel_id bigint
+  event_type varchar(50) [not null]
+  from_status varchar(40)
+  to_status varchar(40) [not null]
+  sorting_center_id bigint
+  sorting_zone_id bigint
+  actor_user_id bigint
+  source varchar(20) [not null]
+  scan_method varchar(20)
+  notes text
+  metadata json
+  occurred_at timestamp [not null]
+  created_at timestamp [not null]
+}
+
+Table shipments {
+  id bigint [pk, increment, not null]
+  shipment_no varchar(32) [not null, unique]
+  seller_order_id bigint [not null]
+  logistics_profile_id bigint [not null]
+  origin_address_id bigint
+  destination_address_id bigint
+  purpose varchar(20) [not null]
+  status varchar(40) [not null]
+  shipping_fee_minor bigint [not null]
+  cod_amount_minor bigint [not null]
+  cod_collected_at timestamp
+  estimated_delivery_at timestamp
+  delivered_at timestamp
+  returned_at timestamp
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table sorting_centers {
+  id bigint [pk, increment, not null]
+  logistics_profile_id bigint [not null]
+  address_id bigint [not null]
+  name varchar(160) [not null]
+  code varchar(30) [not null, unique]
+  contact_phone varchar(30)
+  operating_hours varchar(100)
+  daily_capacity int
+  status varchar(20) [not null]
+  created_at timestamp
+  updated_at timestamp
+  deleted_at timestamp
+}
+
+Table sorting_zones {
+  id bigint [pk, increment, not null]
+  sorting_center_id bigint [not null]
+  code varchar(30) [not null]
+  name varchar(120) [not null]
+  destination_rules json
+  status varchar(20) [not null]
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table stores {
+  id bigint [pk, increment, not null]
+  seller_profile_id bigint [not null, unique]
+  name varchar(160) [not null]
+  slug varchar(180) [not null, unique]
+  description text
+  contact_email varchar(255)
+  contact_phone varchar(30)
+  logo_path varchar(500)
+  banner_path varchar(500)
+  publication_status varchar(30) [not null]
+  published_at timestamp
+  created_at timestamp
+  updated_at timestamp
+  deleted_at timestamp
+}
+
+Table support_tickets {
+  id bigint [pk, increment, not null]
+  ticket_no varchar(32) [not null, unique]
+  user_id bigint
+  name varchar(160)
+  email varchar(255)
+  role_label varchar(50)
+  topic varchar(80) [not null]
+  subject varchar(180) [not null]
+  message text [not null]
+  reference varchar(50)
+  status varchar(30) [not null]
+  priority varchar(20) [not null]
+  assigned_to bigint
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table system_settings {
+  id bigint [pk, increment, not null]
+  key varchar(100) [not null, unique]
+  value json [not null]
+  value_type varchar(20) [not null]
+  is_public boolean [not null]
+  updated_by bigint
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table user_notification_preferences {
+  id bigint [pk, increment, not null]
+  user_id bigint [not null]
+  event_key varchar(80) [not null]
+  in_app boolean [not null]
+  email boolean [not null]
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table users {
+  id bigint [pk, increment, not null]
+  name varchar(255)
+  first_name varchar(80) [not null]
+  middle_initial varchar(5)
+  middle_name varchar(80)
+  last_name varchar(80) [not null]
+  sex varchar(30)
+  birthday date
+  birth_date date
+  email varchar(255) [not null, unique]
+  phone varchar(30)
+  contact_number varchar(30)
+  role varchar(32)
+  province varchar(120)
+  city varchar(120)
+  barangay varchar(120)
+  street_address varchar(255)
+  business_name varchar(160)
+  business_category varchar(120)
+  vehicle_type varchar(80)
+  plate_number varchar(30)
+  valid_id_path varchar(500)
+  business_permit_path varchar(500)
+  or_cr_path varchar(500)
+  driver_license_path varchar(500)
+  logistics_id bigint
+  approved_by bigint
+  approved_at timestamp
+  rejection_reason text
+  password varchar(255) [not null]
+  status varchar(32) [not null]
+  email_verified_at timestamp
+  last_login_at timestamp
+  suspended_at timestamp
+  deactivated_at timestamp
+  banned_at timestamp
+  status_reason text
+  remember_token varchar(100)
+  created_at timestamp
+  updated_at timestamp
+  deleted_at timestamp
+}
+
+Table violation_actions {
+  id bigint [pk, increment, not null]
+  violation_id bigint [not null]
+  action_type varchar(40) [not null]
+  from_status varchar(30)
+  to_status varchar(30)
+  actor_user_id bigint
+  reason text
+  metadata json
+  created_at timestamp [not null]
+}
+
+Table waybills {
+  id bigint [pk, increment, not null]
+  shipment_id bigint [not null, unique]
+  waybill_no varchar(40) [not null, unique]
+  scan_token char(64) [not null, unique]
+  barcode_value varchar(120) [not null, unique]
+  piece_count smallint [not null]
+  total_weight_kg decimal(10,3) [not null]
+  length_cm decimal(10,2)
+  width_cm decimal(10,2)
+  height_cm decimal(10,2)
+  status varchar(30) [not null]
+  generated_by bigint
+  generated_at timestamp [not null]
+  printed_at timestamp
+  print_count smallint [not null]
+  voided_at timestamp
+  void_reason text
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table wishlists {
+  id bigint [pk, increment, not null]
+  user_id bigint
+  session_token varchar(100)
+  product_id bigint [not null]
+  created_at timestamp [not null]
+}
+
+Ref: account_applications.business_category_id > categories.id
+Ref: account_applications.requested_role_id > roles.id
+Ref: account_applications.reviewed_by > users.id
+Ref: account_applications.sponsor_logistics_profile_id > logistics_profiles.id
+Ref: account_applications.user_id > users.id
+Ref: addresses.user_id > users.id
+Ref: announcement_roles.announcement_id > announcements.id
+Ref: announcement_roles.role_id > roles.id
+Ref: announcements.created_by > users.id
+Ref: application_documents.application_id > account_applications.id
+Ref: application_documents.verified_by > users.id
+Ref: audit_logs.actor_user_id > users.id
+Ref: cart_items.cart_id > carts.id
+Ref: cart_items.product_variant_id > product_variants.id
+Ref: carts.user_id > users.id
+Ref: categories.parent_id > categories.id
+Ref: compliance_rules.category_id > categories.id
+Ref: compliance_rules.created_by > users.id
+Ref: conversation_participants.conversation_id > conversations.id
+Ref: conversation_participants.user_id > users.id
+Ref: conversations.created_by > users.id
+Ref: conversations.dispute_id > disputes.id
+Ref: conversations.order_id > orders.id
+Ref: conversations.product_id > products.id
+Ref: conversations.seller_order_id > seller_orders.id
+Ref: delivery_attempts.dispatch_batch_id > dispatch_batches.id
+Ref: delivery_attempts.parcel_id > parcels.id
+Ref: delivery_attempts.rider_profile_id > rider_profiles.id
+Ref: delivery_proofs.delivery_attempt_id > delivery_attempts.id
+Ref: delivery_proofs.uploaded_by > users.id
+Ref: dispatch_batch_parcels.dispatch_batch_id > dispatch_batches.id
+Ref: dispatch_batch_parcels.parcel_id > parcels.id
+Ref: dispatch_batches.prepared_by > users.id
+Ref: dispatch_batches.rider_profile_id > rider_profiles.id
+Ref: dispatch_batches.sorting_center_id > sorting_centers.id
+Ref: dispatch_batches.sorting_zone_id > sorting_zones.id
+Ref: dispute_events.actor_user_id > users.id
+Ref: dispute_events.dispute_id > disputes.id
+Ref: dispute_evidence.dispute_id > disputes.id
+Ref: dispute_evidence.uploaded_by > users.id
+Ref: dispute_participants.dispute_id > disputes.id
+Ref: dispute_participants.user_id > users.id
+Ref: disputes.assigned_to > users.id
+Ref: disputes.opened_by > users.id
+Ref: disputes.return_request_id > return_requests.id
+Ref: disputes.seller_order_id > seller_orders.id
+Ref: disputes.shipment_id > shipments.id
+Ref: inventory_movements.created_by > users.id
+Ref: inventory_movements.variant_id > product_variants.id
+Ref: logistics_profiles.application_id > account_applications.id
+Ref: logistics_profiles.user_id > users.id
+Ref: message_attachments.message_id > messages.id
+Ref: messages.conversation_id > conversations.id
+Ref: messages.sender_id > users.id
+Ref: order_items.product_id > products.id
+Ref: order_items.product_variant_id > product_variants.id
+Ref: order_items.seller_order_id > seller_orders.id
+Ref: orders.buyer_id > users.id
+Ref: orders.shipping_address_id > addresses.id
+Ref: parcels.current_sorting_center_id > sorting_centers.id
+Ref: parcels.current_zone_id > sorting_zones.id
+Ref: parcels.shipment_id > shipments.id
+Ref: parcels.waybill_id > waybills.id
+Ref: payments.order_id > orders.id
+Ref: pickup_assignments.assigned_by > users.id
+Ref: pickup_assignments.pickup_request_id > pickup_requests.id
+Ref: pickup_assignments.rider_profile_id > rider_profiles.id
+Ref: pickup_request_parcels.parcel_id > parcels.id
+Ref: pickup_request_parcels.pickup_request_id > pickup_requests.id
+Ref: pickup_requests.logistics_profile_id > logistics_profiles.id
+Ref: pickup_requests.pickup_address_id > addresses.id
+Ref: pickup_requests.store_id > stores.id
+Ref: pickup_requests.verified_by > users.id
+Ref: platform_commissions.refund_id > refunds.id
+Ref: platform_commissions.seller_order_id > seller_orders.id
+Ref: policy_versions.created_by > users.id
+Ref: policy_versions.policy_id > policies.id
+Ref: product_compliance_check_matches.check_id > product_compliance_checks.id
+Ref: product_compliance_check_matches.rule_id > compliance_rules.id
+Ref: product_compliance_checks.category_id_snapshot > categories.id
+Ref: product_compliance_checks.product_id > products.id
+Ref: product_images.product_id > products.id
+Ref: product_images.variant_id > product_variants.id
+Ref: product_reports.product_id > products.id
+Ref: product_reports.reporter_user_id > users.id
+Ref: product_reports.reviewed_by > users.id
+Ref: product_variants.product_id > products.id
+Ref: product_violations.assigned_to > users.id
+Ref: product_violations.check_id > product_compliance_checks.id
+Ref: product_violations.product_id > products.id
+Ref: product_violations.product_report_id > product_reports.id
+Ref: product_violations.rule_id > compliance_rules.id
+Ref: product_violations.seller_profile_id > seller_profiles.id
+Ref: products.category_id > categories.id
+Ref: products.store_id > stores.id
+Ref: refunds.approved_by > users.id
+Ref: refunds.order_id > orders.id
+Ref: refunds.payment_id > payments.id
+Ref: refunds.return_request_id > return_requests.id
+Ref: return_evidence.return_request_id > return_requests.id
+Ref: return_evidence.uploaded_by > users.id
+Ref: return_items.order_item_id > order_items.id
+Ref: return_items.return_request_id > return_requests.id
+Ref: return_requests.buyer_id > users.id
+Ref: return_requests.order_id > orders.id
+Ref: return_requests.return_shipment_id > shipments.id
+Ref: return_requests.reviewed_by > users.id
+Ref: return_requests.seller_order_id > seller_orders.id
+Ref: return_requests.store_id > stores.id
+Ref: rider_earnings.delivery_attempt_id > delivery_attempts.id
+Ref: rider_earnings.pickup_assignment_id > pickup_assignments.id
+Ref: rider_earnings.rider_profile_id > rider_profiles.id
+Ref: rider_profiles.current_zone_id > sorting_zones.id
+Ref: rider_profiles.home_sorting_center_id > sorting_centers.id
+Ref: rider_profiles.logistics_profile_id > logistics_profiles.id
+Ref: rider_profiles.user_id > users.id
+Ref: role_user.assigned_by > users.id
+Ref: role_user.role_id > roles.id
+Ref: role_user.user_id > users.id
+Ref: seller_orders.order_id > orders.id
+Ref: seller_orders.store_id > stores.id
+Ref: seller_payouts.seller_profile_id > seller_profiles.id
+Ref: seller_profiles.application_id > account_applications.id
+Ref: seller_profiles.approved_category_id > categories.id
+Ref: seller_profiles.pickup_address_id > addresses.id
+Ref: seller_profiles.user_id > users.id
+Ref: seller_transactions.commission_id > platform_commissions.id
+Ref: seller_transactions.payment_id > payments.id
+Ref: seller_transactions.refund_id > refunds.id
+Ref: seller_transactions.seller_order_id > seller_orders.id
+Ref: seller_transactions.seller_profile_id > seller_profiles.id
+Ref: seller_warnings.issued_by > users.id
+Ref: seller_warnings.seller_profile_id > seller_profiles.id
+Ref: seller_warnings.violation_id > product_violations.id
+Ref: shipment_events.actor_user_id > users.id
+Ref: shipment_events.parcel_id > parcels.id
+Ref: shipment_events.shipment_id > shipments.id
+Ref: shipment_events.sorting_center_id > sorting_centers.id
+Ref: shipment_events.sorting_zone_id > sorting_zones.id
+Ref: shipments.destination_address_id > addresses.id
+Ref: shipments.logistics_profile_id > logistics_profiles.id
+Ref: shipments.origin_address_id > addresses.id
+Ref: shipments.seller_order_id > seller_orders.id
+Ref: sorting_centers.address_id > addresses.id
+Ref: sorting_centers.logistics_profile_id > logistics_profiles.id
+Ref: sorting_zones.sorting_center_id > sorting_centers.id
+Ref: stores.seller_profile_id > seller_profiles.id
+Ref: support_tickets.assigned_to > users.id
+Ref: support_tickets.user_id > users.id
+Ref: system_settings.updated_by > users.id
+Ref: user_notification_preferences.user_id > users.id
+Ref: users.approved_by > users.id
+Ref: users.logistics_id > users.id
+Ref: violation_actions.actor_user_id > users.id
+Ref: violation_actions.violation_id > product_violations.id
+Ref: waybills.generated_by > users.id
+Ref: waybills.shipment_id > shipments.id
+Ref: wishlists.product_id > products.id
+Ref: wishlists.user_id > users.id

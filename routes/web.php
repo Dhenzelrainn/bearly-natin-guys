@@ -4,11 +4,13 @@ use App\Http\Controllers\AccountApprovalController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\BuyerController;
 use App\Http\Controllers\LogisticsController;
+use App\Http\Controllers\ProductComplianceController;
 use App\Http\Controllers\PsgcController;
 use App\Http\Controllers\RiderController;
 use App\Http\Controllers\SellerController;
 use App\Http\Controllers\SellerProductController;
 use App\Http\Controllers\SellerWorkflowController;
+use App\Http\Controllers\WaybillScanController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -197,6 +199,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
 
         Route::post('/applications/{user}/reject', [AccountApprovalController::class, 'rejectByAdmin'])
             ->name('applications.reject');
+
+        Route::post('/violations/{violation}/decision', [ProductComplianceController::class, 'decide'])
+            ->name('violations.decision');
     });
 });
 
@@ -366,6 +371,12 @@ Route::prefix('logistics')->name('logistics.')->group(function () {
         ->name('profile.index');
 
     Route::middleware(['auth', 'role:logistics'])->group(function () {
+        Route::get('/api/waybills/{identifier}', [WaybillScanController::class, 'show'])
+            ->name('waybills.lookup');
+
+        Route::post('/api/waybills/{identifier}/receive', [WaybillScanController::class, 'receive'])
+            ->name('waybills.receive');
+
         Route::post('/riders/{user}/approve', [AccountApprovalController::class, 'approveRider'])
             ->name('riders.approve');
 

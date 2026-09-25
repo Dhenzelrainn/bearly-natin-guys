@@ -5,15 +5,15 @@
 
     @section('content')
     <section class="page-hero">
-        <div><span class="eyebrow">User Management</span><h1>Manage user accounts</h1><p>Search user profiles and simulate account activation, suspension, or deactivation without touching a database.</p></div>
+        <div><span class="eyebrow">User Management</span><h1>Manage user accounts</h1><p>Search approved user profiles and review their current account status.</p></div>
         <div class="hero-actions"><button class="button button-secondary" type="button" data-export-users="users-table"><i data-lucide="download"></i> Export list</button></div>
     </section>
 
     <section class="kpi-grid kpi-grid-compact">
-        <article class="mini-stat"><span><i data-lucide="users"></i></span><div><strong data-user-kpi="total">24,860</strong><small>Total users</small></div></article>
-        <article class="mini-stat"><span><i data-lucide="circle-check-big"></i></span><div><strong data-user-kpi="active">23,914</strong><small>Active</small></div></article>
-        <article class="mini-stat"><span><i data-lucide="shield-ban"></i></span><div><strong data-user-kpi="suspended">128</strong><small>Suspended</small></div></article>
-        <article class="mini-stat"><span><i data-lucide="user-x"></i></span><div><strong data-user-kpi="deactivated">818</strong><small>Deactivated</small></div></article>
+        <article class="mini-stat"><span><i data-lucide="users"></i></span><div><strong data-user-kpi="total">{{ $userStats['total'] }}</strong><small>Total users</small></div></article>
+        <article class="mini-stat"><span><i data-lucide="circle-check-big"></i></span><div><strong data-user-kpi="active">{{ $userStats['active'] }}</strong><small>Active</small></div></article>
+        <article class="mini-stat"><span><i data-lucide="shield-ban"></i></span><div><strong data-user-kpi="suspended">{{ $userStats['suspended'] }}</strong><small>Suspended</small></div></article>
+        <article class="mini-stat"><span><i data-lucide="user-x"></i></span><div><strong data-user-kpi="deactivated">{{ $userStats['deactivated'] }}</strong><small>Deactivated</small></div></article>
     </section>
 
     <section class="panel">

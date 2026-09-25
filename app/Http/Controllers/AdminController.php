@@ -448,63 +448,50 @@ class AdminController extends Controller
 
     public function users(): View
     {
+        $accounts = User::query()
+            ->whereIn('role', ['buyer', 'seller', 'logistics', 'rider'])
+            ->whereIn('status', ['active', 'suspended', 'deactivated'])
+            ->latest('created_at')
+            ->get();
+
         return view('admin.users.index', $this->base([
-            'users' => [
-                ['id' => 'USR-8812', 'name' => 'Andrea Flores', 'email' => 'andrea@example.test', 'role' => 'Buyer', 'joined' => 'Jul 11, 2026', 'status' => 'Active'],
-                ['id' => 'USR-7719', 'name' => 'Mara Home Goods', 'email' => 'mara@example.test', 'role' => 'Seller', 'joined' => 'Jun 28, 2026', 'status' => 'Active'],
-                ['id' => 'USR-6915', 'name' => 'Jared Molina', 'email' => 'jared@example.test', 'role' => 'Rider', 'joined' => 'Jun 18, 2026', 'status' => 'Active'],
-                ['id' => 'USR-6507', 'name' => 'TechVault PH', 'email' => 'techvault@example.test', 'role' => 'Seller', 'joined' => 'Jun 02, 2026', 'status' => 'Suspended'],
-                ['id' => 'USR-6021', 'name' => 'Paolo Reyes', 'email' => 'paolo@example.test', 'role' => 'Buyer', 'joined' => 'May 21, 2026', 'status' => 'Deactivated'],
-                ['id' => 'USR-5418', 'name' => 'Nina Villanueva', 'email' => 'nina@example.test', 'role' => 'Buyer', 'joined' => 'Apr 09, 2026', 'status' => 'Active'],
+            'users' => $accounts->map(fn (User $user) => [
+                'id' => 'USR-'.str_pad((string) $user->id, 6, '0', STR_PAD_LEFT),
+                'name' => $user->name,
+                'email' => $user->email,
+                'role' => ucfirst($user->role),
+                'joined' => $user->created_at?->format('M d, Y') ?? '—',
+                'status' => ucfirst(str_replace('_', ' ', $user->status)),
+            ])->all(),
+            'userStats' => [
+                'total' => $accounts->count(),
+                'active' => $accounts->where('status', 'active')->count(),
+                'suspended' => $accounts->where('status', 'suspended')->count(),
+                'deactivated' => $accounts->where('status', 'deactivated')->count(),
             ],
         ]));
     }
 
     public function buyerUsers(): View
     {
+        $buyers = User::query()
+            ->where('role', UserRole::Buyer->value)
+            ->whereIn('status', ['active', 'suspended', 'deactivated'])
+            ->withCount('buyerOrders')
+            ->latest('created_at')
+            ->get();
+
         return view('admin.users.buyers', $this->base([
-            'users' => [
-                [
-                    'id' => 'BUY-8812',
-                    'name' => 'Andrea Flores',
-                    'email' => 'andrea@example.test',
-                    'contact' => '0917 551 2084',
-                    'location' => 'San Pablo City, Laguna',
-                    'joined' => 'Jul 11, 2026',
-                    'orders' => 24,
-                    'status' => 'Active',
-                ],
-                [
-                    'id' => 'BUY-6021',
-                    'name' => 'Paolo Reyes',
-                    'email' => 'paolo@example.test',
-                    'contact' => '0918 416 8220',
-                    'location' => 'Calamba City, Laguna',
-                    'joined' => 'May 21, 2026',
-                    'orders' => 11,
-                    'status' => 'Deactivated',
-                ],
-                [
-                    'id' => 'BUY-5418',
-                    'name' => 'Nina Villanueva',
-                    'email' => 'nina@example.test',
-                    'contact' => '0921 318 4057',
-                    'location' => 'Pila, Laguna',
-                    'joined' => 'Apr 09, 2026',
-                    'orders' => 37,
-                    'status' => 'Active',
-                ],
-                [
-                    'id' => 'BUY-4927',
-                    'name' => 'Marco Lim',
-                    'email' => 'marco.lim@example.test',
-                    'contact' => '0995 620 1148',
-                    'location' => 'Los Baños, Laguna',
-                    'joined' => 'Mar 18, 2026',
-                    'orders' => 18,
-                    'status' => 'Suspended',
-                ],
-            ],
+            'users' => $buyers->map(fn (User $user) => [
+                'id' => 'BUY-'.str_pad((string) $user->id, 6, '0', STR_PAD_LEFT),
+                'name' => $user->name,
+                'email' => $user->email,
+                'contact' => $user->contact_number ?: '—',
+                'location' => collect([$user->city, $user->province])->filter()->implode(', ') ?: '—',
+                'joined' => $user->created_at?->format('M d, Y') ?? '—',
+                'orders' => $user->buyer_orders_count,
+                'status' => ucfirst(str_replace('_', ' ', $user->status)),
+            ])->all(),
         ]));
     }
 

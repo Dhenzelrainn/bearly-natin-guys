@@ -41,6 +41,8 @@ for ($round = 0; $round < 5; $round++) {
     }
 }
 
+$buyer = auth()->user();
+$buyerName = $buyer?->name ?: 'Buyer';
 @endphp
 
 <!DOCTYPE html>
@@ -100,7 +102,18 @@ for ($round = 0; $round < 5; $round++) {
 
 <a href="{{ url('/cart') }}"><span class="material-symbols-outlined" aria-hidden="true">shopping_cart</span><span>Cart</span></a>
 
-<button class="account-action" data-info="account" aria-label="Open demo account"><span class="material-symbols-outlined" aria-hidden="true">person</span><span>Mia Santos</span></button>
+<button class="account-action" type="button" aria-label="Signed in as {{ $buyerName }}" title="{{ $buyer?->email }}">
+    <span class="material-symbols-outlined" aria-hidden="true">person</span>
+    <span>{{ $buyerName }}</span>
+</button>
+
+<form method="POST" action="{{ route('logout') }}" class="buyer-logout-form">
+    @csrf
+    <button type="submit" class="account-action" aria-label="Logout">
+        <span class="material-symbols-outlined" aria-hidden="true">logout</span>
+        <span>Logout</span>
+    </button>
+</form>
 
 </nav>
 
@@ -289,7 +302,7 @@ for ($round = 0; $round < 5; $round++) {
             <div class="chat-thread-heading"><span class="chat-store-avatar">GH</span><div><strong>Greenline Home</strong><small>Usually replies within an hour</small></div></div>
             <div class="chat-messages" data-chat-messages>
                 <p class="chat-date">Today</p>
-                <div class="chat-bubble seller">Hi Mia! Your desk lamp has been handed to the courier.</div>
+                <div class="chat-bubble seller">Hi {{ $buyer?->first_name ?: $buyerName }}! Your desk lamp has been handed to the courier.</div>
                 <div class="chat-bubble buyer">Great, thank you for the update!</div>
             </div>
             <form class="chat-composer" data-chat-form>

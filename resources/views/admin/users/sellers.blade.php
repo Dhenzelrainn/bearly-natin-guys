@@ -11,11 +11,10 @@
         <h1>Seller accounts</h1>
 
         <p>
-            Manage registered Seller accounts, review their business
-            information and marketplace activity, and control account access.
+            View approved Seller accounts, registered business information,
+            marketplace listings, and current platform status.
         </p>
     </div>
-
 
     <div class="hero-context-stat">
         <span class="hero-context-icon">
@@ -29,19 +28,14 @@
     </div>
 </section>
 
-
 <section class="panel">
-
     <div class="panel-heading panel-heading-wrap">
-
         <div>
             <span class="eyebrow">Seller directory</span>
             <h2>Registered Sellers</h2>
         </div>
 
-
         <div class="table-toolbar">
-
             <label class="field-with-icon compact-field">
                 <i data-lucide="search"></i>
 
@@ -52,7 +46,6 @@
                 >
             </label>
 
-
             <select
                 class="select-field"
                 data-table-filter="seller-users-table"
@@ -60,13 +53,12 @@
             >
                 <option value="">All categories</option>
 
-                @foreach (collect($users)->pluck('category')->unique() as $category)
+                @foreach (collect($users)->pluck('category')->filter()->unique()->sort()->values() as $category)
                     <option value="{{ $category }}">
                         {{ $category }}
                     </option>
                 @endforeach
             </select>
-
 
             <select
                 class="select-field"
@@ -78,16 +70,11 @@
                 <option value="Suspended">Suspended</option>
                 <option value="Deactivated">Deactivated</option>
             </select>
-
         </div>
-
     </div>
 
-
     <div class="table-wrap">
-
         <table class="admin-table" id="seller-users-table">
-
             <thead>
                 <tr>
                     <th>Business</th>
@@ -100,67 +87,42 @@
                 </tr>
             </thead>
 
-
             <tbody>
-
-                @foreach ($users as $user)
-
-                   <tr
+                @forelse ($users as $user)
+                    <tr
                         data-table-row
-                        data-user-id="{{ $user['id'] }}"
+                        data-user-id="{{ $user['database_id'] }}"
                         data-category="{{ $user['category'] }}"
                         data-status="{{ $user['status'] }}"
-                        data-search="{{
-                            strtolower(
-                                $user['name']
-                                .' '
-                                .$user['owner']
-                                .' '
-                                .$user['email']
-                                .' '
-                                .$user['category']
-                                .' '
-                                .$user['id']
-                            )
-                        }}"
+                        data-search="{{ strtolower(
+                            $user['name'].' '.
+                            $user['owner'].' '.
+                            $user['email'].' '.
+                            $user['category'].' '.
+                            $user['id']
+                        ) }}"
                     >
-
                         <td>
-
                             <div class="identity-cell">
-
                                 <span class="avatar avatar-soft">
                                     {{
                                         collect(explode(' ', $user['name']))
+                                            ->filter()
                                             ->map(fn($part) => strtoupper(substr($part, 0, 1)))
                                             ->take(2)
                                             ->implode('')
                                     }}
                                 </span>
 
-
                                 <div>
                                     <strong>{{ $user['name'] }}</strong>
-
-                                    <small>
-                                        {{ $user['id'] }} • {{ $user['email'] }}
-                                    </small>
+                                    <small>{{ $user['id'] }} • {{ $user['email'] }}</small>
                                 </div>
-
                             </div>
-
                         </td>
 
-
-                        <td>
-                            {{ $user['owner'] }}
-                        </td>
-
-
-                        <td>
-                            {{ $user['category'] }}
-                        </td>
-
+                        <td>{{ $user['owner'] }}</td>
+                        <td>{{ $user['category'] }}</td>
 
                         <td>
                             <div class="table-primary-secondary">
@@ -169,114 +131,102 @@
                             </div>
                         </td>
 
+                        <td>{{ $user['joined'] }}</td>
 
                         <td>
-                            {{ $user['joined'] }}
-                        </td>
-
-
-                        <td>
-
                             <span
                                 class="status-badge
                                 {{
                                     $user['status'] === 'Active'
-                                    ? 'badge-success'
-                                    : ($user['status'] === 'Suspended'
-                                        ? 'badge-danger'
-                                        : 'badge-neutral')
+                                        ? 'badge-success'
+                                        : ($user['status'] === 'Suspended'
+                                            ? 'badge-danger'
+                                            : 'badge-neutral')
                                 }}"
                             >
                                 {{ $user['status'] }}
                             </span>
-
                         </td>
 
-
                         <td class="align-right">
-
                             <button
                                 type="button"
                                 class="button button-ghost button-small"
-                                data-open-modal="seller-user-{{ $loop->index }}"
+                                data-open-modal="seller-user-{{ $user['database_id'] }}"
                             >
                                 <i data-lucide="eye"></i>
                                 View
                             </button>
-
                         </td>
-
                     </tr>
-
-                @endforeach
-
+                @empty
+                    <tr>
+                        <td colspan="7">
+                            <div class="table-empty">
+                                <i data-lucide="store"></i>
+                                <strong>No Seller accounts found</strong>
+                                <span>Approved Seller accounts will appear here automatically.</span>
+                            </div>
+                        </td>
+                    </tr>
+                @endforelse
             </tbody>
-
         </table>
 
-
-        <div
-            class="table-empty"
-            data-table-empty="seller-users-table"
-            hidden
-        >
-            <i data-lucide="search-x"></i>
-            <strong>No Sellers found</strong>
-            <span>Try another search or filter.</span>
-        </div>
-
+        @if (count($users) > 0)
+            <div
+                class="table-empty"
+                data-table-empty="seller-users-table"
+                hidden
+            >
+                <i data-lucide="search-x"></i>
+                <strong>No Sellers found</strong>
+                <span>Try another search or filter.</span>
+            </div>
+        @endif
     </div>
-
 </section>
 
-
 @foreach ($users as $user)
-
 <div
     class="modal-shell"
-    data-modal="seller-user-{{ $loop->index }}"
+    data-modal="seller-user-{{ $user['database_id'] }}"
     hidden
 >
-
     <button
         class="modal-backdrop"
         type="button"
         data-close-modal
     ></button>
 
-
     <section
         class="modal-card modal-wide"
         role="dialog"
         aria-modal="true"
+        aria-label="Seller profile"
     >
-
         <div class="modal-heading">
-
             <div>
                 <span class="eyebrow">{{ $user['id'] }}</span>
                 <h2>Seller profile</h2>
             </div>
 
-
             <button
                 class="icon-button"
                 type="button"
                 data-close-modal
+                aria-label="Close"
             >
                 <i data-lucide="x"></i>
             </button>
-
         </div>
 
-
         <div class="review-grid">
-
             <div class="review-profile">
-
                 <span class="avatar avatar-large avatar-warm">
                     {{
                         collect(explode(' ', $user['name']))
+                            ->filter()
                             ->map(fn($part) => strtoupper(substr($part, 0, 1)))
                             ->take(2)
                             ->implode('')
@@ -284,25 +234,17 @@
                 </span>
 
                 <h3>{{ $user['name'] }}</h3>
-
                 <p>{{ $user['email'] }}</p>
 
                 <span class="role-badge role-seller">
                     Seller
                 </span>
-
             </div>
 
-
             <div class="review-details">
-
-                <h3 class="section-subtitle">
-                    Business information
-                </h3>
-
+                <h3 class="section-subtitle">Business information</h3>
 
                 <div class="detail-grid">
-
                     <div>
                         <span>Business name</span>
                         <strong>{{ $user['name'] }}</strong>
@@ -324,7 +266,7 @@
                     </div>
 
                     <div>
-                        <span>Active product listings</span>
+                        <span>Product listings</span>
                         <strong>{{ $user['products'] }}</strong>
                     </div>
 
@@ -337,56 +279,21 @@
                         <span>Current status</span>
                         <strong>{{ $user['status'] }}</strong>
                     </div>
-
                 </div>
-
             </div>
-
         </div>
 
-
-       <div
-            class="modal-footer decision-footer user-profile-actions"
-            data-user-modal-actions
-            data-user-id="{{ $user['id'] }}"
-        >
-
+        <div class="modal-footer">
             <button
                 type="button"
                 class="button button-primary"
-                data-modal-user-status="Active"
-                data-mock-action="{{ $user['name'] }} account activated."
+                data-close-modal
             >
-                <i data-lucide="circle-check"></i>
-                Activate
+                Close
             </button>
-
-            <button
-                type="button"
-                class="button button-danger-soft"
-                data-modal-user-status="Suspended"
-                data-mock-action="{{ $user['name'] }} account suspended."
-            >
-                <i data-lucide="pause-circle"></i>
-                Suspend
-            </button>
-
-            <button
-                type="button"
-                class="button button-danger"
-                data-modal-user-status="Deactivated"
-                data-mock-action="{{ $user['name'] }} account deactivated."
-            >
-                <i data-lucide="user-x"></i>
-                Deactivate
-            </button>
-
         </div>
-
     </section>
-
 </div>
-
 @endforeach
 
 @endsection

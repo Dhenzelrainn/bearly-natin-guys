@@ -92,9 +92,18 @@
             @endforeach
         </nav>
         <div class="seller-sidebar-footer">
-            <a href="{{ route('login') }}" class="seller-nav-link seller-logout" title="Logout">
-                <i class="seller-ui-icon" data-lucide="log-out" aria-hidden="true"></i><span>Logout</span>
-            </a>
+            <form method="POST" action="{{ route('logout') }}">
+                @csrf
+                <button
+                    type="submit"
+                    class="seller-nav-link seller-logout"
+                    title="Logout"
+                    style="width:100%; border:0; background:transparent; text-align:left; cursor:pointer;"
+                >
+                    <i class="seller-ui-icon" data-lucide="log-out" aria-hidden="true"></i>
+                    <span>Logout</span>
+                </button>
+            </form>
         </div>
     </aside>
     <button class="seller-overlay" type="button" data-seller-overlay aria-label="Close menu"></button>
@@ -141,7 +150,17 @@
                         <strong>{{ $seller['name'] ?? 'Bearly Seller' }}</strong>
                         <small>{{ $seller['email'] ?? 'seller@bearly.test' }}</small>
                         <a href="{{ route('seller.settings.account') }}"><i class="seller-ui-icon" data-lucide="user-round-cog" aria-hidden="true"></i> Account settings</a>
-                        <a href="{{ route('login') }}"><i class="seller-ui-icon" data-lucide="log-out" aria-hidden="true"></i> Logout</a>
+
+                        <form method="POST" action="{{ route('logout') }}">
+                            @csrf
+                            <button
+                                type="submit"
+                                style="width:100%; border:0; background:transparent; cursor:pointer;"
+                            >
+                                <i class="seller-ui-icon" data-lucide="log-out" aria-hidden="true"></i>
+                                Logout
+                            </button>
+                        </form>
                     </div>
                 </div>
             </div>

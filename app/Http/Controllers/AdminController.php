@@ -498,49 +498,41 @@ class AdminController extends Controller
 
     public function sellerUsers(): View
     {
+        $sellers = User::query()
+            ->where('role', UserRole::Seller->value)
+            ->whereIn('status', [
+                AccountStatus::Active->value,
+                AccountStatus::Suspended->value,
+                AccountStatus::Deactivated->value,
+            ])
+            ->with([
+                'sellerProfile.store.products',
+            ])
+            ->latest('approved_at')
+            ->latest('created_at')
+            ->get();
+
         return view('admin.users.sellers', $this->base([
-            'users' => [
-                [
-                    'id' => 'SEL-7719',
-                    'name' => 'Mara Home Goods',
-                    'owner' => 'Maria L. Santos',
-                    'email' => 'mara@example.test',
-                    'category' => 'Home & Living',
-                    'joined' => 'Jun 28, 2026',
-                    'products' => 48,
-                    'status' => 'Active',
-                ],
-                [
-                    'id' => 'SEL-6507',
-                    'name' => 'TechVault PH',
-                    'owner' => 'Daniel P. Reyes',
-                    'email' => 'techvault@example.test',
-                    'category' => 'Electronics & Gadgets',
-                    'joined' => 'Jun 02, 2026',
-                    'products' => 31,
-                    'status' => 'Suspended',
-                ],
-                [
-                    'id' => 'SEL-6128',
-                    'name' => 'Chrono Alley',
-                    'owner' => 'Luis Fernandez',
-                    'email' => 'chrono@example.test',
-                    'category' => 'Jewelry & Watches',
-                    'joined' => 'May 15, 2026',
-                    'products' => 27,
-                    'status' => 'Active',
-                ],
-                [
-                    'id' => 'SEL-5880',
-                    'name' => 'Everyday Finds',
-                    'owner' => 'Clarissa Go',
-                    'email' => 'everyday@example.test',
-                    'category' => 'Home & Living',
-                    'joined' => 'Apr 26, 2026',
-                    'products' => 54,
-                    'status' => 'Active',
-                ],
-            ],
+            'users' => $sellers->map(function (User $user) {
+                $productCount = $user->sellerProfile?->store?->products?->count() ?? 0;
+
+                return [
+                    'id' => 'SEL-'.str_pad((string) $user->id, 6, '0', STR_PAD_LEFT),
+                    'database_id' => $user->id,
+                    'name' => $user->business_name ?: $user->name,
+                    'owner' => $user->name ?: '—',
+                    'email' => $user->email,
+                    'category' => $user->business_category ?: 'Uncategorized',
+                    'joined' => ($user->approved_at ?? $user->created_at)?->format('M d, Y') ?? '—',
+                    'products' => $productCount,
+                    'status' => match ($user->status) {
+                        AccountStatus::Active->value => 'Active',
+                        AccountStatus::Suspended->value => 'Suspended',
+                        AccountStatus::Deactivated->value => 'Deactivated',
+                        default => ucwords(str_replace('_', ' ', $user->status)),
+                    },
+                ];
+            })->values()->all(),
         ]));
     }
 

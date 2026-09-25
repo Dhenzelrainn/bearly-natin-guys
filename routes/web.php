@@ -1,5 +1,5 @@
 <?php
-
+use App\Http\Controllers\Auth\BearlyAuthController;
 use App\Http\Controllers\AccountApprovalController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\BuyerController;
@@ -33,33 +33,31 @@ Route::view('/contact', 'landing-page.contact.contact')
 |--------------------------------------------------------------------------
 | Authentication
 |--------------------------------------------------------------------------
-| Front-end integration stage.
-| Keep login/register simple while the full auth backend is being integrated.
 */
 
-Route::view('/login', 'auth.login')
-    ->name('login');
+Route::middleware('guest')->group(function () {
+    Route::get('/login', [BearlyAuthController::class, 'showLogin'])
+        ->name('login');
 
-Route::view('/register', 'auth.register')
-    ->name('register');
+    Route::post('/login', [BearlyAuthController::class, 'login'])
+        ->name('login.submit');
 
-Route::get('/forgot-password', fn () => redirect()->route('login'))
-    ->name('password.request');
+    Route::get('/register', [BearlyAuthController::class, 'showRegister'])
+        ->name('register');
+
+    Route::post('/register', [BearlyAuthController::class, 'register'])
+        ->name('register.submit');
+});
+
+Route::post('/logout', [BearlyAuthController::class, 'logout'])
+    ->middleware('auth')
+    ->name('logout');
 
 Route::view('/application/pending', 'auth.pending')
     ->name('application.pending');
 
-/*
-|--------------------------------------------------------------------------
-| Temporary Logout Route
-|--------------------------------------------------------------------------
-| Keeps Admin / Logistics / Rider layouts working during front-end compilation.
-*/
-
-Route::post('/logout', function () {
-    return redirect()->route('login');
-})->name('logout');
-
+Route::get('/forgot-password', fn () => redirect()->route('login'))
+    ->name('password.request');
 /*
 |--------------------------------------------------------------------------
 | PSGC Address API

@@ -2,6 +2,7 @@
 use App\Http\Controllers\Auth\BearlyAuthController;
 use App\Http\Controllers\AccountApprovalController;
 use App\Http\Controllers\AdminController;
+use App\Http\Controllers\AdminRoleApplicationController;
 use App\Http\Controllers\BuyerController;
 use App\Http\Controllers\LogisticsController;
 use App\Http\Controllers\ProductComplianceController;
@@ -123,16 +124,25 @@ Route::prefix('admin')->name('admin.')->group(function () {
         ->name('dashboard');
 
     Route::get('/registrations', [AdminController::class, 'registrations'])
+        ->middleware(['auth', 'role:admin'])
         ->name('registrations');
 
-    Route::get('/registrations/buyers', [AdminController::class, 'buyerApplications'])
+    Route::get('/registrations/buyers', [AdminRoleApplicationController::class, 'buyers'])
+        ->middleware(['auth', 'role:admin'])
         ->name('registrations.buyers');
 
-    Route::get('/registrations/sellers', [AdminController::class, 'sellerApplications'])
+    Route::get('/registrations/sellers', [AdminRoleApplicationController::class, 'sellers'])
+        ->middleware(['auth', 'role:admin'])
         ->name('registrations.sellers');
 
-    Route::get('/registrations/logistics', [AdminController::class, 'logisticsApplications'])
+    Route::get('/registrations/logistics', [AdminRoleApplicationController::class, 'logistics'])
+        ->middleware(['auth', 'role:admin'])
         ->name('registrations.logistics');
+
+    Route::get('/applications/{user}/documents/{type}', [AdminRoleApplicationController::class, 'document'])
+        ->where('type', 'valid-id|business-permit')
+        ->middleware(['auth', 'role:admin'])
+        ->name('applications.document');
 
     Route::get('/users', [AdminController::class, 'users'])
         ->name('users');
@@ -325,10 +335,9 @@ Route::prefix('logistics')->name('logistics.')->group(function () {
     Route::get('/', [LogisticsController::class, 'landing'])
         ->name('landing');
 
-    Route::get('/register', function () {
-        return redirect('/register?role=logistics');
-    })->name('register');
-
+    Route::get('/register', [LogisticsController::class, 'register'])
+    ->name('register');
+    
     Route::post('/register', [LogisticsController::class, 'submitRegistration'])
         ->name('register.submit');
 
@@ -393,9 +402,8 @@ Route::prefix('rider')->name('rider.')->group(function () {
     Route::get('/', [RiderController::class, 'landing'])
         ->name('landing');
 
-    Route::get('/register', function () {
-        return redirect('/register?role=rider');
-    })->name('register');
+   Route::get('/register', [RiderController::class, 'register'])
+    ->name('register');
 
     Route::post('/register', [RiderController::class, 'submitRegistration'])
         ->name('register.submit');

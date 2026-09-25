@@ -15,7 +15,7 @@
             class="register-bear"
         >
         <h1>Create your<br>Bearly account</h1>
-        <p>Join Bearly as a buyer, seller, rider, or logistics partner.</p>
+        <p>Join Bearly as a buyer or seller. Rider and logistics applications use their dedicated registration flow.</p>
 
         <ol class="step-list" aria-label="Registration progress">
             <li class="active" data-step-marker="1"><span>1</span><b>Personal Information</b></li>
@@ -25,7 +25,21 @@
         </ol>
     </aside>
 
-    <form class="register-form" data-demo-register novalidate>
+    <form
+    class="register-form"
+    method="POST"
+    action="{{ route('register.submit') }}"
+    enctype="multipart/form-data"
+    novalidate
+>
+    @csrf
+
+    @if ($errors->any())
+        <div class="info-box" role="alert">
+            <strong>Registration error.</strong>
+            {{ $errors->first() }}
+        </div>
+    @endif
 
         <div class="mobile-progress"><span data-mobile-step>Step 1 of 4</span><div><i data-progress-bar></i></div></div>
 
@@ -33,7 +47,7 @@
             <h2>Choose how you'll use Bearly</h2>
             <div class="role-grid" aria-label="Choose account type">
                 <label class="role-card">
-                    <input type="radio" name="role" value="buyer">
+                    <input type="radio" name="role" value="buyer" @checked(old('role') === 'buyer')>
                     <span class="role-check">✓</span>
                     <img
                         src="{{ asset('images/icon-buyer.png') }}"
@@ -46,7 +60,7 @@
                 </label>
 
                 <label class="role-card selected">
-                    <input type="radio" name="role" value="seller" checked>
+                    <input type="radio" name="role" value="seller" @checked(old('role', 'seller') === 'seller')>
                     <span class="role-check">✓</span>
                     <img
                         src="{{ asset('images/icon-seller.png') }}"
@@ -58,9 +72,8 @@
                     <small>Manage products, orders,<br>and your store</small>
                 </label>
 
-                <label class="role-card">
-                    <input type="radio" name="role" value="rider">
-                    <span class="role-check">✓</span>
+                <a class="role-card" href="{{ route('rider.register') }}">
+                    <span class="role-check">→</span>
                     <img
                         src="{{ asset('images/icon-courier.png') }}"
                         alt=""
@@ -68,12 +81,11 @@
                         aria-hidden="true"
                     >
                     <strong>Rider</strong>
-                    <small>Pick up parcels<br>and complete deliveries</small>
-                </label>
+                    <small>Apply through a<br>Logistics partner</small>
+                </a>
 
-                <label class="role-card">
-                    <input type="radio" name="role" value="logistics">
-                    <span class="role-check">✓</span>
+                <a class="role-card" href="{{ route('logistics.register') }}">
+                    <span class="role-check">→</span>
                     <svg
                         class="role-icon logistics-role-icon"
                         viewBox="0 0 48 48"
@@ -83,8 +95,8 @@
                         <path d="M12 22h24M14 28h10v11H14V28Zm15 0h6v6h-6v-6Z"/>
                     </svg>
                     <strong>Logistics</strong>
-                    <small>Sort parcels and<br>manage rider operations</small>
-                </label>
+                    <small>Apply to operate<br>a sorting center</small>
+                </a>
             </div>
 
             <div class="section-heading"><h3>Personal Information</h3><p>Tell us a little about yourself</p></div>
@@ -105,7 +117,15 @@
                 </label>
             </div>
             <div class="form-grid two-wide">
-                <label>Sex<select name="sex" required><option value="">Select sex</option><option value="female">Female</option><option value="male">Male</option><option value="prefer_not_to_say">Prefer not to say</option></select></label>
+                <label>
+                    Sex
+                    <select name="sex" required>
+                        <option value="">Select sex</option>
+                        <option value="female" @selected(old('sex') === 'female')>Female</option>
+                        <option value="male" @selected(old('sex') === 'male')>Male</option>
+                        <option value="prefer_not_to_say" @selected(old('sex') === 'prefer_not_to_say')>Prefer not to say</option>
+                    </select>
+                </label>
                 <label>Email address<input type="email" name="email" value="{{ old('email') }}" placeholder="Enter your email address" required></label>
             </div>
             <div class="form-grid three">
@@ -181,55 +201,7 @@
                 </div>
             </div>
 
-            <div data-role-fields="rider" class="role-fields">
-                <div class="section-heading compact-heading">
-                    <h2>Vehicle details</h2>
-                    <p>Provide the vehicle information used for parcel pickup and delivery.</p>
-                </div>
 
-                <div class="form-grid two">
-                    <label>
-                        Vehicle type
-                        <select name="vehicle_type">
-                            <option value="">Select vehicle</option>
-                            <option>Motorcycle</option>
-                            <option>Car</option>
-                            <option>Van</option>
-                            <option>Truck</option>
-                        </select>
-                    </label>
-                    <label>Plate number<input name="plate_number" value="{{ old('plate_number') }}" data-uppercase placeholder="ABC 1234"></label>
-                </div>
-
-                <div class="info-box compact-info-box">
-                    <strong>Logistics review required.</strong>
-                    Your Rider application will be reviewed by a Logistics / Sorting Center before delivery access is enabled.
-                </div>
-            </div>
-
-            <div data-role-fields="logistics" class="role-fields">
-                <div class="section-heading compact-heading">
-                    <h2>Logistics center details</h2>
-                    <p>Provide the registered business information for your Logistics / Sorting Center.</p>
-                </div>
-
-                <div class="form-grid one">
-                    <label>
-                        Business / logistics center name
-                        <input
-                            name="logistics_business_name"
-                            value="{{ old('logistics_business_name') }}"
-                            pattern="[A-Za-zÀ-ÿ0-9&.,' -]+"
-                            placeholder="Enter your registered business or center name"
-                        >
-                    </label>
-                </div>
-
-                <div class="info-box compact-info-box">
-                    <strong>Admin review required.</strong>
-                    Your Logistics / Sorting Center application will be reviewed before dashboard access is enabled.
-                </div>
-            </div>
         </section>
 
         <section class="form-step documents-step" data-step="4">
@@ -275,15 +247,15 @@
                     </div>
                 </article>
 
-                <article class="document-upload" data-upload-card data-business-document>
+                <article class="document-upload" data-upload-card data-seller-document>
                     <div class="document-upload__header">
                         <span class="document-icon" aria-hidden="true">
                             <img src="{{ asset('images/permit.png') }}" alt="">
                         </span>
                         <div>
                             <span class="required-badge">Required</span>
-                            <h3 data-business-document-title>Business permit</h3>
-                            <p data-business-document-help>Upload a clear and current copy of your business permit.</p>
+                            <h3 data-seller-document-title>Business permit</h3>
+                            <p data-seller-document-help>Upload a clear and current copy of your business permit.</p>
                             <small>PNG, JPG, or PDF · Max 5 MB</small>
                         </div>
                     </div>
@@ -305,35 +277,7 @@
                     </div>
                 </article>
 
-                <article class="document-upload" data-upload-card data-rider-document>
-                    <div class="document-upload__header">
-                        <span class="document-icon" aria-hidden="true">
-                            <img src="{{ asset('images/permit.png') }}" alt="">
-                        </span>
-                        <div>
-                            <span class="required-badge">Required</span>
-                            <h3>OR / CR</h3>
-                            <p>Upload a clear copy of the vehicle’s current OR and CR.</p>
-                            <small>PNG, JPG, or PDF · Max 5 MB</small>
-                        </div>
-                    </div>
 
-                    <label class="upload-dropzone" data-drop-zone>
-                        <input name="or_cr" type="file" accept=".png,.jpg,.jpeg,.pdf" data-file-preview>
-                        <img src="{{ asset('images/cloud.png') }}" alt="" class="upload-icon" aria-hidden="true">
-                        <span><strong>Choose file</strong> or drag and drop</span>
-                    </label>
-
-                    <div class="file-status" data-file-status hidden>
-                        <span class="file-status__icon" aria-hidden="true">✓</span>
-                        <span class="file-status__details"><strong data-file-name></strong><small data-file-meta></small></span>
-                        <div class="file-status__actions">
-                            <button type="button" data-file-action="preview">Preview</button>
-                            <button type="button" data-file-action="replace">Replace</button>
-                            <button type="button" data-file-action="remove">Remove</button>
-                        </div>
-                    </div>
-                </article>
             </div>
 
             <section class="application-summary" aria-labelledby="application-summary-title">
@@ -360,7 +304,6 @@
             <button type="button" class="primary-button" data-next>Continue</button>
             <button type="button" class="primary-button" data-submit>Submit application <span aria-hidden="true">→</span></button>
         </div>
-        <div class="demo-message" data-register-message hidden role="status">Registration preview completed. No information was saved.</div>
     </form>
 </section>
 @endsection

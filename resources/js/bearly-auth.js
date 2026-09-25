@@ -12,26 +12,15 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    const demoLogin = document.querySelector('[data-demo-login]');
-    demoLogin?.addEventListener('submit', (event) => {
-        event.preventDefault();
-
-        if (!demoLogin.checkValidity()) {
-            demoLogin.reportValidity();
-            return;
-        }
-
-        const message = demoLogin.querySelector('[data-login-message]');
-        if (message) message.hidden = false;
-    });
-
     const registration = document.querySelector('[data-registration]');
     if (!registration) return;
 
     const form = registration.querySelector('form');
-    const next = form.querySelector('[data-next]');
-    const back = form.querySelector('[data-back]');
-    const submit = form.querySelector('[data-submit]');
+    const next = form?.querySelector('[data-next]');
+    const back = form?.querySelector('[data-back]');
+    const submit = form?.querySelector('[data-submit]');
+
+    if (!form || !next || !back || !submit) return;
 
     const PSGC_API = '/api/psgc';
     const provinceSelect = registration.querySelector('[data-province-select]');
@@ -207,13 +196,16 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             empty.hidden = matches.length !== 0;
-            count.textContent = `${matches.length} ${matches.length === 1 ? 'location' : 'locations'} found`;
+            count.textContent =
+                `${matches.length} ${matches.length === 1 ? 'location' : 'locations'} found`;
         };
 
         searchableSelects.set(select, widget);
 
         trigger.addEventListener('click', () => {
-            panel.hidden ? openSearchableSelect(select) : closeSearchableSelect(select);
+            panel.hidden
+                ? openSearchableSelect(select)
+                : closeSearchableSelect(select);
         });
 
         trigger.addEventListener('keydown', (event) => {
@@ -251,6 +243,7 @@ document.addEventListener('DOMContentLoaded', () => {
             optionButtons.forEach((button, index) => {
                 button.classList.toggle('is-active', index === widget.activeIndex);
             });
+
             optionButtons[widget.activeIndex]?.scrollIntoView({ block: 'nearest' });
         });
 
@@ -263,7 +256,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.addEventListener('pointerdown', (event) => {
         searchableSelects.forEach((widget, select) => {
-            if (!widget.wrapper.contains(event.target)) closeSearchableSelect(select);
+            if (!widget.wrapper.contains(event.target)) {
+                closeSearchableSelect(select);
+            }
         });
     });
 
@@ -279,83 +274,30 @@ document.addEventListener('DOMContentLoaded', () => {
             'business_category',
             'business_permit',
         ],
-        rider: [
-            'vehicle_type',
-            'plate_number',
-            'or_cr',
-        ],
-        logistics: [
-            'logistics_business_name',
-            'business_permit',
-        ],
     };
 
     function updateRoleUI() {
         const role = selectedRole();
         const stepLabel = registration.querySelector('[data-role-step-label]');
-        const idLabel = registration.querySelector('[data-valid-id-label]');
-        const idHelp = registration.querySelector('[data-valid-id-help]');
-        const businessDocumentTitle = registration.querySelector('[data-business-document-title]');
-        const businessDocumentHelp = registration.querySelector('[data-business-document-help]');
 
         if (stepLabel) {
             stepLabel.textContent =
-                role === 'seller'
-                    ? 'Business Details'
-                    : role === 'rider'
-                        ? 'Vehicle Details'
-                        : role === 'logistics'
-                            ? 'Logistics Details'
-                            : 'Buyer Details';
-        }
-
-        if (idLabel) {
-            idLabel.textContent =
-                role === 'rider'
-                    ? 'Valid ID or driver’s license'
-                    : 'Valid government ID';
-        }
-
-        if (idHelp) {
-            idHelp.textContent =
-                role === 'rider'
-                    ? 'Upload a government-issued ID or a valid driver’s license.'
-                    : 'Passport, driver’s license, national ID, or another government-issued ID.';
-        }
-
-        if (businessDocumentTitle) {
-            businessDocumentTitle.textContent =
-                role === 'logistics'
-                    ? 'Business / DTI permit'
-                    : 'Business permit';
-        }
-
-        if (businessDocumentHelp) {
-            businessDocumentHelp.textContent =
-                role === 'logistics'
-                    ? 'Upload a clear copy of your Logistics / Sorting Center business or DTI permit.'
-                    : 'Upload a clear and current copy of your business permit.';
+                role === 'seller' ? 'Business Details' : 'Buyer Details';
         }
 
         registration.querySelectorAll('.role-card').forEach((card) => {
-            card.classList.toggle('selected', card.querySelector('input').checked);
+            const input = card.querySelector('input[name="role"]');
+            card.classList.toggle('selected', Boolean(input?.checked));
         });
 
         registration.querySelectorAll('[data-role-fields]').forEach((group) => {
             group.classList.toggle('active', group.dataset.roleFields === role);
         });
 
-        registration.querySelectorAll('[data-business-document]').forEach((element) => {
-            const inactive = !['seller', 'logistics'].includes(role);
+        registration.querySelectorAll('[data-seller-document]').forEach((element) => {
+            const inactive = role !== 'seller';
             element.hidden = inactive;
-            element.querySelectorAll('input').forEach((input) => {
-                input.disabled = inactive;
-            });
-        });
 
-        registration.querySelectorAll('[data-rider-document]').forEach((element) => {
-            const inactive = role !== 'rider';
-            element.hidden = inactive;
             element.querySelectorAll('input').forEach((input) => {
                 input.disabled = inactive;
             });
@@ -377,28 +319,24 @@ document.addEventListener('DOMContentLoaded', () => {
         summary.innerHTML = '';
         const role = selectedRole();
         const valueOf = (name) => form.elements[name]?.value?.trim() || '';
+
         const fullName = [
             valueOf('first_name'),
             valueOf('middle_initial'),
             valueOf('last_name'),
         ].filter(Boolean).join(' ');
-        const streetLine = [valueOf('house_number'), valueOf('street_name')]
-            .filter(Boolean)
-            .join(' ');
 
-        const roleLabels = {
-            buyer: 'Buyer',
-            seller: 'Seller',
-            rider: 'Rider',
-            logistics: 'Logistics / Sorting Center',
-        };
+        const streetLine = [
+            valueOf('house_number'),
+            valueOf('street_name'),
+        ].filter(Boolean).join(' ');
 
         const groups = [
             {
                 title: 'Account',
                 editStep: 1,
                 fields: [
-                    ['Account type', roleLabels[role] || role],
+                    ['Account type', role.charAt(0).toUpperCase() + role.slice(1)],
                     ['Name', fullName],
                     ['Email', valueOf('email')],
                     ['Contact', valueOf('contact_number')],
@@ -428,69 +366,60 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
-        if (role === 'rider') {
-            groups.push({
-                title: 'Vehicle',
-                editStep: 3,
-                fields: [
-                    ['Vehicle type', valueOf('vehicle_type')],
-                    ['Plate number', valueOf('plate_number')],
-                ],
-            });
-        }
-
-        if (role === 'logistics') {
-            groups.push({
-                title: 'Logistics center',
-                editStep: 3,
-                fields: [
-                    ['Business / center name', valueOf('logistics_business_name')],
-                ],
-            });
-        }
-
         groups.forEach(({ title, editStep, fields }) => {
             const group = document.createElement('section');
             group.className = 'review-group';
 
             const header = document.createElement('header');
             header.className = 'review-group__header';
+
             const heading = document.createElement('h4');
-            const edit = document.createElement('button');
             heading.textContent = title;
+
+            const edit = document.createElement('button');
             edit.type = 'button';
             edit.textContent = 'Edit';
             edit.dataset.editStep = String(editStep);
-            edit.setAttribute('aria-label', `Edit ${title.toLowerCase()} details`);
+            edit.setAttribute(
+                'aria-label',
+                `Edit ${title.toLowerCase()} details`
+            );
+
             header.append(heading, edit);
 
             const list = document.createElement('dl');
-            fields.filter(([, value]) => value).forEach(([label, value]) => {
-                const row = document.createElement('div');
-                const term = document.createElement('dt');
-                const description = document.createElement('dd');
-                term.textContent = label;
-                description.textContent = value;
-                row.append(term, description);
-                list.appendChild(row);
-            });
+
+            fields
+                .filter(([, value]) => value)
+                .forEach(([label, value]) => {
+                    const row = document.createElement('div');
+                    const term = document.createElement('dt');
+                    const description = document.createElement('dd');
+
+                    term.textContent = label;
+                    description.textContent = value;
+
+                    row.append(term, description);
+                    list.appendChild(row);
+                });
 
             group.append(header, list);
             summary.appendChild(group);
         });
 
-        const approvalNotice = registration.querySelector('[data-approval-notice]');
+        const approvalNotice =
+            registration.querySelector('[data-approval-notice]');
 
         if (approvalNotice) {
             approvalNotice.textContent =
-                role === 'rider'
-                    ? 'A Logistics / Sorting Center will review your Rider application. We’ll email the decision to your registered email address.'
-                    : `An administrator will review your ${roleLabels[role] || role} application. We’ll email the decision to your registered email address.`;
+                `A Bearly administrator will review your ${role} application. ` +
+                'Access stays pending until the application is approved.';
         }
     }
 
     function showStep(step) {
         const steps = activeSteps();
+
         currentStep = steps.includes(step)
             ? step
             : step === 3 && selectedRole() === 'buyer'
@@ -508,6 +437,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const markerStep = Number(marker.dataset.stepMarker);
             const markerIndex = steps.indexOf(markerStep);
             const currentIndex = steps.indexOf(currentStep);
+
             marker.hidden = markerIndex === -1;
             marker.classList.toggle('active', markerStep === currentStep);
             marker.classList.toggle(
@@ -522,10 +452,18 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         const currentIndex = steps.indexOf(currentStep);
-        registration.querySelector('[data-mobile-step]').textContent =
-            `Step ${currentIndex + 1} of ${steps.length}`;
-        registration.querySelector('[data-progress-bar]').style.width =
-            `${((currentIndex + 1) / steps.length) * 100}%`;
+        const mobileStep = registration.querySelector('[data-mobile-step]');
+        const progressBar = registration.querySelector('[data-progress-bar]');
+
+        if (mobileStep) {
+            mobileStep.textContent =
+                `Step ${currentIndex + 1} of ${steps.length}`;
+        }
+
+        if (progressBar) {
+            progressBar.style.width =
+                `${((currentIndex + 1) / steps.length) * 100}%`;
+        }
 
         back.disabled = currentStep === 1;
         next.hidden = currentStep === 4;
@@ -536,9 +474,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function validateStep() {
-        const panel = registration.querySelector(`[data-step="${currentStep}"]`);
-        const controls = [...panel.querySelectorAll('input, select, textarea')]
-            .filter((element) => !element.hidden && element.offsetParent !== null);
+        const panel =
+            registration.querySelector(`[data-step="${currentStep}"]`);
+
+        if (!panel) return false;
+
+        const controls = [
+            ...panel.querySelectorAll('input, select, textarea'),
+        ].filter(
+            (element) =>
+                !element.hidden &&
+                !element.disabled &&
+                element.offsetParent !== null
+        );
 
         for (const input of controls) {
             input.setCustomValidity('');
@@ -554,12 +502,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 input.name === 'contact_number' &&
                 !/^(?:\+639|09)\d{9}$/.test(input.value)
             ) {
-                input.setCustomValidity('Use 09XXXXXXXXX or +639XXXXXXXXX.');
+                input.setCustomValidity(
+                    'Use 09XXXXXXXXX or +639XXXXXXXXX.'
+                );
             }
 
             if (
                 input.name === 'password_confirmation' &&
-                input.value !== form.elements.password.value
+                input.value !== form.elements.password?.value
             ) {
                 input.setCustomValidity('Passwords do not match.');
             }
@@ -573,18 +523,27 @@ document.addEventListener('DOMContentLoaded', () => {
                 ];
 
                 if (!allowedTypes.includes(file.type)) {
-                    input.setCustomValidity('Upload a PNG, JPG, JPEG, or PDF file.');
+                    input.setCustomValidity(
+                        'Upload a PNG, JPG, JPEG, or PDF file.'
+                    );
                 } else if (file.size > 5 * 1024 * 1024) {
-                    input.setCustomValidity('The file must not exceed 5 MB.');
+                    input.setCustomValidity(
+                        'The file must not exceed 5 MB.'
+                    );
                 }
             }
 
             if (!input.checkValidity()) {
                 const searchableWidget = searchableSelects.get(input);
+
                 if (searchableWidget) {
                     searchableWidget.wrapper.classList.add('is-invalid');
                     setAddressMessage(
-                        `Please select your ${input.name === 'city' ? 'city or municipality' : input.name}.`,
+                        `Please select your ${
+                            input.name === 'city'
+                                ? 'city or municipality'
+                                : input.name
+                        }.`,
                         'error'
                     );
                     searchableWidget.trigger.focus();
@@ -603,18 +562,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function setAddressMessage(message, type = 'info') {
         if (!addressMessage) return;
+
         addressMessage.textContent = message;
         addressMessage.dataset.status = type;
     }
 
     function setSelectState(select, message, disabled = true) {
         if (!select) return;
+
         select.disabled = disabled;
         select.replaceChildren(new Option(message, ''));
         syncSearchableSelect(select);
     }
 
     function populateSelect(select, items, placeholder, oldValue = '') {
+        if (!select) return;
+
         select.replaceChildren(new Option(placeholder, ''));
 
         [...items]
@@ -629,8 +592,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (oldValue) {
             const match = [...select.options].find(
-                (option) => option.value.toLowerCase() === oldValue.toLowerCase()
+                (option) =>
+                    option.value.toLowerCase() === oldValue.toLowerCase()
             );
+
             if (match) select.value = match.value;
         }
 
@@ -641,7 +606,10 @@ document.addEventListener('DOMContentLoaded', () => {
         addressRequest?.abort();
         addressRequest = new AbortController();
 
-        const timeout = window.setTimeout(() => addressRequest.abort(), 12000);
+        const timeout = window.setTimeout(
+            () => addressRequest.abort(),
+            12000
+        );
 
         try {
             const response = await fetch(`${PSGC_API}${endpoint}`, {
@@ -650,20 +618,19 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             if (!response.ok) {
-                throw new Error(`Address API returned HTTP ${response.status}`);
+                throw new Error(
+                    `Address API returned HTTP ${response.status}`
+                );
             }
 
             const payload = await response.json();
-
-            const result = Array.isArray(payload)
-                  ? payload
-                  : payload.data;
+            const result = Array.isArray(payload) ? payload : payload.data;
 
             if (!Array.isArray(result)) {
                 throw new Error('Unexpected address API response.');
-          }
+            }
 
-return result;
+            return result;
         } finally {
             window.clearTimeout(timeout);
         }
@@ -675,34 +642,51 @@ return result;
         setSelectState(provinceSelect, 'Loading provinces...');
         setSelectState(citySelect, 'Select province first');
         setSelectState(barangaySelect, 'Select city first');
-        addressRetry.hidden = true;
+
+        if (addressRetry) addressRetry.hidden = true;
+
         setAddressMessage('Loading Philippine address data...');
 
         try {
             const provinces = await fetchAddressData('/provinces');
+
             populateSelect(
                 provinceSelect,
                 provinces,
                 'Select province',
                 provinceSelect.dataset.oldValue
             );
+
             setAddressMessage('Address service is ready.', 'success');
 
-            if (provinceSelect.value) await loadCities();
+            if (provinceSelect.value) {
+                await loadCities();
+            }
         } catch (error) {
             if (error.name === 'AbortError') return;
+
             console.error('Unable to load provinces:', error);
-            setSelectState(provinceSelect, 'Address service unavailable');
+
+            setSelectState(
+                provinceSelect,
+                'Address service unavailable'
+            );
+
             setAddressMessage(
                 'Address service is unavailable. Retry or enter your address manually.',
                 'error'
             );
-            addressRetry.hidden = false;
+
+            if (addressRetry) addressRetry.hidden = false;
         }
     }
 
     async function loadCities() {
-        const provinceCode = provinceSelect.selectedOptions[0]?.dataset.code;
+        if (!provinceSelect || !citySelect || !barangaySelect) return;
+
+        const provinceCode =
+            provinceSelect.selectedOptions[0]?.dataset.code;
+
         setSelectState(citySelect, 'Loading cities...');
         setSelectState(barangaySelect, 'Select city first');
 
@@ -715,26 +699,41 @@ return result;
             const cities = await fetchAddressData(
                 `/provinces/${encodeURIComponent(provinceCode)}/cities`
             );
+
             populateSelect(
                 citySelect,
                 cities,
                 'Select city or municipality',
                 citySelect.dataset.oldValue
             );
-            setAddressMessage('Cities and municipalities loaded.', 'success');
 
-            if (citySelect.value) await loadBarangays();
+            setAddressMessage(
+                'Cities and municipalities loaded.',
+                'success'
+            );
+
+            if (citySelect.value) {
+                await loadBarangays();
+            }
         } catch (error) {
             if (error.name === 'AbortError') return;
+
             console.error('Unable to load cities:', error);
             setSelectState(citySelect, 'Unable to load cities');
-            setAddressMessage('Unable to load cities. Please retry.', 'error');
-            addressRetry.hidden = false;
+            setAddressMessage(
+                'Unable to load cities. Please retry.',
+                'error'
+            );
+
+            if (addressRetry) addressRetry.hidden = false;
         }
     }
 
     async function loadBarangays() {
+        if (!citySelect || !barangaySelect) return;
+
         const cityCode = citySelect.selectedOptions[0]?.dataset.code;
+
         setSelectState(barangaySelect, 'Loading barangays...');
 
         if (!cityCode) {
@@ -746,19 +745,29 @@ return result;
             const barangays = await fetchAddressData(
                 `/cities/${encodeURIComponent(cityCode)}/barangays`
             );
+
             populateSelect(
                 barangaySelect,
                 barangays,
                 'Select barangay',
                 barangaySelect.dataset.oldValue
             );
+
             setAddressMessage('Barangays loaded.', 'success');
         } catch (error) {
             if (error.name === 'AbortError') return;
+
             console.error('Unable to load barangays:', error);
-            setSelectState(barangaySelect, 'Unable to load barangays');
-            setAddressMessage('Unable to load barangays. Please retry.', 'error');
-            addressRetry.hidden = false;
+            setSelectState(
+                barangaySelect,
+                'Unable to load barangays'
+            );
+            setAddressMessage(
+                'Unable to load barangays. Please retry.',
+                'error'
+            );
+
+            if (addressRetry) addressRetry.hidden = false;
         }
     }
 
@@ -775,10 +784,12 @@ return result;
             input.name = select.name;
             input.required = true;
             input.placeholder = placeholder;
-            input.value = select.value || select.dataset.oldValue || '';
+            input.value =
+                select.value || select.dataset.oldValue || '';
             input.dataset.manualAddress = '';
 
             const widget = searchableSelects.get(select);
+
             if (widget) {
                 widget.wrapper.replaceWith(input);
                 searchableSelects.delete(select);
@@ -788,43 +799,52 @@ return result;
         });
 
         addressRequest?.abort();
-        addressRetry.hidden = true;
-        addressManual.hidden = true;
+
+        if (addressRetry) addressRetry.hidden = true;
+        if (addressManual) addressManual.hidden = true;
+
         setAddressMessage(
             'Manual address entry enabled. Check the spelling before continuing.'
         );
     }
 
     form.querySelectorAll('input[name="role"]').forEach((input) => {
-        input.addEventListener('change', () => showStep(currentStep));
+        input.addEventListener('change', () => {
+            showStep(currentStep);
+        });
     });
 
     next.addEventListener('click', () => {
         if (!validateStep()) return;
+
         const steps = activeSteps();
         const nextStep = steps[steps.indexOf(currentStep) + 1];
+
         if (nextStep) showStep(nextStep);
     });
+
     back.addEventListener('click', () => {
         const steps = activeSteps();
         const previousStep = steps[steps.indexOf(currentStep) - 1];
+
         if (previousStep) showStep(previousStep);
     });
 
     registration.addEventListener('click', (event) => {
         const edit = event.target.closest('[data-edit-step]');
         if (!edit) return;
+
         showStep(Number(edit.dataset.editStep));
     });
 
     provinceSelect?.addEventListener('change', async () => {
-        citySelect.dataset.oldValue = '';
-        barangaySelect.dataset.oldValue = '';
+        if (citySelect) citySelect.dataset.oldValue = '';
+        if (barangaySelect) barangaySelect.dataset.oldValue = '';
         await loadCities();
     });
 
     citySelect?.addEventListener('change', async () => {
-        barangaySelect.dataset.oldValue = '';
+        if (barangaySelect) barangaySelect.dataset.oldValue = '';
         await loadBarangays();
     });
 
@@ -835,6 +855,8 @@ return result;
     const age = form.elements.age;
 
     function calculateAge() {
+        if (!birthday || !age) return;
+
         if (!birthday.value) {
             age.value = '--';
             return;
@@ -842,19 +864,27 @@ return result;
 
         const born = new Date(`${birthday.value}T00:00:00`);
         const today = new Date();
+
         let years = today.getFullYear() - born.getFullYear();
 
-        if (today < new Date(today.getFullYear(), born.getMonth(), born.getDate())) {
+        if (
+            today <
+            new Date(
+                today.getFullYear(),
+                born.getMonth(),
+                born.getDate()
+            )
+        ) {
             years--;
         }
 
         age.value = Math.max(0, years);
     }
 
-    birthday.addEventListener('change', calculateAge);
+    birthday?.addEventListener('change', calculateAge);
     calculateAge();
 
-    form.elements.contact_number.addEventListener('input', (event) => {
+    form.elements.contact_number?.addEventListener('input', (event) => {
         event.target.value = event.target.value
             .replace(/(?!^\+)[^\d]/g, '')
             .slice(0, 13);
@@ -867,7 +897,8 @@ return result;
     });
 
     const password = form.elements.password;
-    password.addEventListener('input', () => {
+
+    password?.addEventListener('input', () => {
         const score = [
             password.value.length >= 8,
             /[A-Z]/.test(password.value),
@@ -876,7 +907,7 @@ return result;
         ].filter(Boolean).length;
 
         form.querySelector('.password-meter')
-            .style.setProperty('--strength', `${score * 25}%`);
+            ?.style.setProperty('--strength', `${score * 25}%`);
     });
 
     const allowedDocumentTypes = [
@@ -884,6 +915,7 @@ return result;
         'image/jpeg',
         'application/pdf',
     ];
+
     const maxDocumentSize = 5 * 1024 * 1024;
 
     const formatFileSize = (bytes) =>
@@ -899,21 +931,32 @@ return result;
 
         card?.classList.toggle('has-file', Boolean(file) && !error);
         card?.classList.toggle('has-error', Boolean(error));
+
         if (!status) return;
 
         status.hidden = !file && !error;
-        if (name) name.textContent = error || file?.name || '';
+
+        if (name) {
+            name.textContent = error || file?.name || '';
+        }
+
         if (meta) {
-            meta.textContent = file && !error
-                ? `${file.type === 'application/pdf' ? 'PDF' : 'Image'} · ${formatFileSize(file.size)}`
-                : error
-                    ? 'Choose another file to continue.'
-                    : '';
+            meta.textContent =
+                file && !error
+                    ? `${
+                        file.type === 'application/pdf'
+                            ? 'PDF'
+                            : 'Image'
+                    } · ${formatFileSize(file.size)}`
+                    : error
+                        ? 'Choose another file to continue.'
+                        : '';
         }
     }
 
     function validateDocument(input, file) {
         let error = '';
+
         if (!allowedDocumentTypes.includes(file.type)) {
             error = 'Upload a PNG, JPG, JPEG, or PDF file.';
         } else if (file.size > maxDocumentSize) {
@@ -922,7 +965,9 @@ return result;
 
         input.setCustomValidity(error);
         renderFileState(input, file, error);
+
         if (error) input.reportValidity();
+
         return !error;
     }
 
@@ -939,14 +984,21 @@ return result;
 
         input.addEventListener('change', () => {
             input.setCustomValidity('');
+
             const file = input.files[0];
-            file ? validateDocument(input, file) : renderFileState(input);
+
+            file
+                ? validateDocument(input, file)
+                : renderFileState(input);
         });
 
         ['dragenter', 'dragover'].forEach((type) => {
             dropzone?.addEventListener(type, (event) => {
                 event.preventDefault();
-                if (!input.disabled) dropzone.classList.add('is-dragging');
+
+                if (!input.disabled) {
+                    dropzone.classList.add('is-dragging');
+                }
             });
         });
 
@@ -959,49 +1011,47 @@ return result;
 
         dropzone?.addEventListener('drop', (event) => {
             if (input.disabled) return;
+
             const file = event.dataTransfer?.files?.[0];
+
             if (file) assignDroppedFile(input, file);
         });
 
-        card?.querySelector('[data-file-action="preview"]')?.addEventListener('click', () => {
-            const file = input.files[0];
-            if (!file || !validateDocument(input, file)) return;
-            const url = URL.createObjectURL(file);
-            window.open(url, '_blank', 'noopener,noreferrer');
-            window.setTimeout(() => URL.revokeObjectURL(url), 60000);
-        });
+        card?.querySelector('[data-file-action="preview"]')
+            ?.addEventListener('click', () => {
+                const file = input.files[0];
 
-        card?.querySelector('[data-file-action="replace"]')?.addEventListener('click', () => {
-            input.click();
-        });
+                if (!file || !validateDocument(input, file)) {
+                    return;
+                }
 
-        card?.querySelector('[data-file-action="remove"]')?.addEventListener('click', () => {
-            input.value = '';
-            input.setCustomValidity('');
-            renderFileState(input);
-        });
+                const url = URL.createObjectURL(file);
+                window.open(url, '_blank', 'noopener,noreferrer');
+
+                window.setTimeout(
+                    () => URL.revokeObjectURL(url),
+                    60000
+                );
+            });
+
+        card?.querySelector('[data-file-action="replace"]')
+            ?.addEventListener('click', () => {
+                input.click();
+            });
+
+        card?.querySelector('[data-file-action="remove"]')
+            ?.addEventListener('click', () => {
+                input.value = '';
+                input.setCustomValidity('');
+                renderFileState(input);
+            });
     });
 
     submit.addEventListener('click', () => {
         if (!validateStep()) return;
-        const message = form.querySelector('[data-register-message]');
-        if (message) message.hidden = false;
+
+        form.requestSubmit();
     });
-
-    const requestedRole = new URLSearchParams(window.location.search).get('role');
-    const allowedRoles = ['buyer', 'seller', 'rider', 'logistics'];
-
-    if (allowedRoles.includes(requestedRole)) {
-        const requestedRoleInput = form.querySelector(
-            `input[name="role"][value="${requestedRole}"]`
-        );
-
-        if (requestedRoleInput) {
-            form.querySelectorAll('input[name="role"]').forEach((input) => {
-                input.checked = input === requestedRoleInput;
-            });
-        }
-    }
 
     showStep(1);
     loadProvinces();

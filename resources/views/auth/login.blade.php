@@ -36,9 +36,20 @@
 
             <form
                 class="login-form"
-                data-demo-login
-                novalidate
+                method="POST"
+                action="{{ route('login.submit') }}"
             >
+                @csrf
+
+                @if ($errors->any())
+                    <div
+                        class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+                        role="alert"
+                    >
+                        {{ $errors->first() }}
+                    </div>
+                @endif
+
                 <label class="login-field">
                     <svg
                         class="field-icon"
@@ -54,9 +65,11 @@
                     <input
                         type="email"
                         name="email"
+                        value="{{ old('email') }}"
                         placeholder="Email address"
                         autocomplete="email"
                         required
+                        autofocus
                     >
                 </label>
 
@@ -106,6 +119,7 @@
                             type="checkbox"
                             name="remember"
                             value="1"
+                            @checked(old('remember'))
                         >
                         <span>Remember me</span>
                     </label>
@@ -146,15 +160,6 @@
                         Create an account
                     </a>
                 </p>
-
-                <div
-                    class="demo-message"
-                    data-login-message
-                    hidden
-                    role="status"
-                >
-                    Login UI is working. Database connection will be added later.
-                </div>
             </form>
         </div>
 

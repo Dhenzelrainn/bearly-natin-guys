@@ -1,0 +1,1130 @@
+erDiagram
+    account_applications {
+        bigint id PK
+        varchar application_no UK
+        bigint user_id
+        bigint requested_role_id
+        bigint sponsor_logistics_profile_id
+        varchar business_name
+        bigint business_category_id
+        varchar status
+        timestamp submitted_at
+        timestamp review_started_at
+        timestamp decided_at
+        bigint reviewed_by
+        text decision_reason
+        text revision_notes
+        timestamp created_at
+        timestamp updated_at
+    }
+    addresses {
+        bigint id PK
+        bigint user_id
+        varchar label
+        varchar recipient_name
+        varchar phone
+        varchar house_number
+        varchar street
+        varchar barangay
+        varchar city_municipality
+        varchar province
+        varchar postal_code
+        varchar psgc_province_code
+        varchar psgc_city_code
+        varchar psgc_barangay_code
+        decimal latitude
+        decimal longitude
+        tinyint is_default_shipping
+        tinyint is_default_pickup
+        timestamp created_at
+        timestamp updated_at
+        timestamp deleted_at
+    }
+    announcement_roles {
+        bigint announcement_id PK
+        bigint role_id PK
+    }
+    announcements {
+        bigint id PK
+        varchar announcement_no UK
+        varchar title
+        text body
+        varchar status
+        bigint created_by
+        timestamp publish_at
+        timestamp published_at
+        timestamp expires_at
+        timestamp created_at
+        timestamp updated_at
+    }
+    application_documents {
+        bigint id PK
+        bigint application_id
+        varchar document_type
+        varchar file_path
+        varchar original_name
+        varchar mime_type
+        bigint size_bytes
+        varchar verification_status
+        bigint verified_by
+        timestamp verified_at
+        text rejection_reason
+        timestamp created_at
+        timestamp updated_at
+    }
+    audit_logs {
+        bigint id PK
+        bigint actor_user_id
+        varchar action
+        varchar module
+        varchar auditable_type
+        bigint auditable_id
+        text description
+        json old_values
+        json new_values
+        varchar ip_address
+        text user_agent
+        varchar severity
+        timestamp created_at
+    }
+    cart_items {
+        bigint id PK
+        bigint cart_id
+        bigint product_variant_id
+        int quantity
+        tinyint selected
+        timestamp created_at
+        timestamp updated_at
+    }
+    carts {
+        bigint id PK
+        bigint user_id
+        varchar session_token
+        varchar status
+        timestamp expires_at
+        timestamp created_at
+        timestamp updated_at
+    }
+    categories {
+        bigint id PK
+        bigint parent_id
+        varchar name
+        varchar slug UK
+        text description
+        tinyint is_restricted
+        tinyint is_active
+        int position
+        timestamp created_at
+        timestamp updated_at
+    }
+    compliance_rules {
+        bigint id PK
+        varchar code UK
+        varchar name
+        varchar rule_type
+        varchar target_field
+        text pattern
+        bigint category_id
+        varchar severity
+        varchar default_action
+        json configuration
+        tinyint is_active
+        int version
+        bigint created_by
+        timestamp created_at
+        timestamp updated_at
+    }
+    conversation_participants {
+        bigint conversation_id PK
+        bigint user_id PK
+        varchar participant_role
+        timestamp last_read_at
+        timestamp joined_at
+    }
+    conversations {
+        bigint id PK
+        varchar subject
+        bigint order_id
+        bigint seller_order_id
+        bigint product_id
+        bigint dispute_id
+        varchar type
+        varchar status
+        bigint created_by
+        timestamp last_message_at
+        timestamp created_at
+        timestamp updated_at
+    }
+    delivery_attempts {
+        bigint id PK
+        bigint parcel_id
+        bigint dispatch_batch_id
+        bigint rider_profile_id
+        smallint attempt_no
+        varchar outcome
+        varchar failure_reason
+        text notes
+        decimal latitude
+        decimal longitude
+        timestamp attempted_at
+        timestamp next_attempt_at
+        timestamp created_at
+        timestamp updated_at
+    }
+    delivery_proofs {
+        bigint id PK
+        bigint delivery_attempt_id
+        varchar type
+        varchar file_path
+        varchar recipient_name
+        varchar recipient_signature_path
+        timestamp otp_verified_at
+        timestamp captured_at
+        bigint uploaded_by
+        timestamp created_at
+        timestamp updated_at
+    }
+    dispatch_batch_parcels {
+        bigint dispatch_batch_id PK
+        bigint parcel_id PK
+        smallint sequence
+        timestamp loaded_at
+    }
+    dispatch_batches {
+        bigint id PK
+        varchar batch_no UK
+        bigint sorting_center_id
+        bigint sorting_zone_id
+        bigint rider_profile_id
+        varchar status
+        bigint prepared_by
+        timestamp prepared_at
+        timestamp assigned_at
+        timestamp dispatched_at
+        timestamp completed_at
+        timestamp cancelled_at
+        timestamp created_at
+        timestamp updated_at
+    }
+    dispute_events {
+        bigint id PK
+        bigint dispute_id
+        varchar event_type
+        bigint actor_user_id
+        varchar from_status
+        varchar to_status
+        text note
+        json metadata
+        timestamp created_at
+    }
+    dispute_evidence {
+        bigint id PK
+        bigint dispute_id
+        bigint uploaded_by
+        varchar type
+        varchar file_path
+        varchar original_name
+        varchar description
+        timestamp created_at
+    }
+    dispute_participants {
+        bigint dispute_id PK
+        bigint user_id PK
+        varchar participant_role
+        timestamp joined_at
+    }
+    disputes {
+        bigint id PK
+        varchar dispute_no UK
+        bigint seller_order_id
+        bigint return_request_id
+        bigint shipment_id
+        bigint opened_by
+        varchar subject
+        text description
+        varchar priority
+        varchar status
+        bigint amount_minor
+        bigint assigned_to
+        timestamp opened_at
+        timestamp response_due_at
+        timestamp resolved_at
+        timestamp closed_at
+        text resolution
+        timestamp created_at
+        timestamp updated_at
+    }
+    inventory_movements {
+        bigint id PK
+        bigint variant_id
+        varchar type
+        int quantity_delta
+        int balance_after
+        varchar reference_type
+        bigint reference_id
+        varchar reason
+        bigint created_by
+        timestamp occurred_at
+        timestamp created_at
+    }
+    logistics_profiles {
+        bigint id PK
+        bigint user_id UK
+        bigint application_id
+        varchar legal_name
+        varchar display_name
+        varchar contact_phone
+        varchar status
+        timestamp created_at
+        timestamp updated_at
+        timestamp deleted_at
+    }
+    message_attachments {
+        bigint id PK
+        bigint message_id
+        varchar file_path
+        varchar original_name
+        varchar mime_type
+        bigint size_bytes
+        timestamp created_at
+        timestamp updated_at
+    }
+    messages {
+        bigint id PK
+        bigint conversation_id
+        bigint sender_id
+        text body
+        varchar message_type
+        timestamp sent_at
+        timestamp edited_at
+        timestamp deleted_at
+        timestamp created_at
+        timestamp updated_at
+    }
+    notifications {
+        char id PK
+        varchar type
+        varchar notifiable_type
+        bigint notifiable_id
+        text data
+        timestamp read_at
+        timestamp created_at
+        timestamp updated_at
+    }
+    order_items {
+        bigint id PK
+        bigint seller_order_id
+        bigint product_id
+        bigint product_variant_id
+        varchar product_name
+        varchar variant_name
+        varchar sku
+        json options
+        bigint unit_price_minor
+        int quantity
+        bigint discount_minor
+        bigint subtotal_minor
+        timestamp created_at
+        timestamp updated_at
+    }
+    orders {
+        bigint id PK
+        varchar order_no UK
+        bigint buyer_id
+        bigint shipping_address_id
+        varchar recipient_name
+        varchar recipient_phone
+        varchar address_line
+        varchar barangay
+        varchar city_municipality
+        varchar province
+        varchar postal_code
+        char currency
+        bigint subtotal_minor
+        bigint shipping_fee_minor
+        bigint discount_minor
+        bigint total_minor
+        varchar status
+        varchar payment_status
+        timestamp placed_at
+        timestamp cancelled_at
+        timestamp completed_at
+        text cancel_reason
+        timestamp created_at
+        timestamp updated_at
+    }
+    parcels {
+        bigint id PK
+        bigint shipment_id
+        bigint waybill_id
+        varchar parcel_no UK
+        smallint piece_sequence
+        decimal weight_kg
+        decimal length_cm
+        decimal width_cm
+        decimal height_cm
+        varchar size_class
+        varchar status
+        bigint current_sorting_center_id
+        bigint current_zone_id
+        timestamp last_event_at
+        timestamp created_at
+        timestamp updated_at
+    }
+    payments {
+        bigint id PK
+        varchar payment_no UK
+        bigint order_id
+        varchar method
+        varchar provider
+        varchar provider_reference
+        bigint amount_minor
+        varchar status
+        timestamp initiated_at
+        timestamp authorized_at
+        timestamp paid_at
+        timestamp failed_at
+        timestamp refunded_at
+        text failure_reason
+        json metadata
+        timestamp created_at
+        timestamp updated_at
+    }
+    pickup_assignments {
+        bigint id PK
+        bigint pickup_request_id
+        bigint rider_profile_id
+        varchar status
+        bigint assigned_by
+        timestamp assigned_at
+        timestamp accepted_at
+        timestamp arrived_at
+        timestamp picked_up_at
+        timestamp completed_at
+        timestamp cancelled_at
+        text notes
+        timestamp created_at
+        timestamp updated_at
+    }
+    pickup_request_parcels {
+        bigint pickup_request_id PK
+        bigint parcel_id PK
+        timestamp added_at
+    }
+    pickup_requests {
+        bigint id PK
+        varchar pickup_no UK
+        bigint store_id
+        bigint logistics_profile_id
+        bigint pickup_address_id
+        varchar status
+        date requested_date
+        datetime window_start
+        datetime window_end
+        text seller_instructions
+        bigint verified_by
+        timestamp verified_at
+        timestamp cancelled_at
+        timestamp completed_at
+        text cancellation_reason
+        timestamp created_at
+        timestamp updated_at
+    }
+    platform_commissions {
+        bigint id PK
+        bigint seller_order_id
+        bigint refund_id
+        varchar type
+        bigint base_amount_minor
+        smallint rate_bps
+        bigint amount_minor
+        varchar status
+        timestamp calculated_at
+        timestamp finalized_at
+        timestamp reversed_at
+        timestamp created_at
+        timestamp updated_at
+    }
+    policies {
+        bigint id PK
+        varchar code UK
+        varchar title
+        varchar category
+        varchar status
+        timestamp created_at
+        timestamp updated_at
+    }
+    policy_versions {
+        bigint id PK
+        bigint policy_id
+        varchar version
+        longtext body
+        text summary
+        varchar status
+        bigint created_by
+        timestamp effective_at
+        timestamp published_at
+        timestamp created_at
+        timestamp updated_at
+    }
+    product_compliance_check_matches {
+        bigint id PK
+        bigint check_id
+        bigint rule_id
+        varchar matched_field
+        varchar matched_excerpt
+        decimal score
+        varchar severity
+        varchar recommended_action
+        timestamp created_at
+        timestamp updated_at
+    }
+    product_compliance_checks {
+        bigint id PK
+        bigint product_id
+        varchar trigger
+        varchar status
+        varchar result
+        varchar name_snapshot
+        text description_snapshot
+        bigint category_id_snapshot
+        varchar rules_version
+        timestamp started_at
+        timestamp completed_at
+        text error_message
+        timestamp created_at
+        timestamp updated_at
+    }
+    product_images {
+        bigint id PK
+        bigint product_id
+        bigint variant_id
+        varchar path
+        varchar alt_text
+        smallint position
+        tinyint is_primary
+        timestamp created_at
+        timestamp updated_at
+    }
+    product_reports {
+        bigint id PK
+        varchar report_no UK
+        bigint product_id
+        bigint reporter_user_id
+        varchar reason_code
+        text details
+        varchar status
+        bigint reviewed_by
+        timestamp reviewed_at
+        timestamp created_at
+        timestamp updated_at
+    }
+    product_variants {
+        bigint id PK
+        bigint product_id
+        varchar sku UK
+        varchar name
+        json options
+        bigint price_minor
+        bigint compare_at_price_minor
+        int stock_on_hand
+        int stock_reserved
+        int low_stock_threshold
+        decimal weight_kg
+        tinyint is_active
+        smallint position
+        timestamp created_at
+        timestamp updated_at
+        timestamp deleted_at
+    }
+    product_violations {
+        bigint id PK
+        varchar violation_no UK
+        bigint product_id
+        bigint seller_profile_id
+        bigint check_id
+        bigint rule_id
+        bigint product_report_id
+        varchar source
+        varchar violation_type
+        varchar severity
+        text reason
+        varchar detected_excerpt
+        varchar status
+        bigint assigned_to
+        timestamp reviewed_at
+        timestamp resolved_at
+        varchar resolution
+        text admin_note
+        timestamp created_at
+        timestamp updated_at
+    }
+    products {
+        bigint id PK
+        bigint store_id
+        bigint category_id
+        varchar name
+        varchar slug
+        text description
+        varchar product_status
+        varchar compliance_status
+        tinyint voucher_eligible
+        timestamp published_at
+        timestamp archived_at
+        timestamp removed_at
+        text removed_reason
+        timestamp created_at
+        timestamp updated_at
+        timestamp deleted_at
+    }
+    refunds {
+        bigint id PK
+        varchar refund_no UK
+        bigint return_request_id
+        bigint payment_id
+        bigint order_id
+        bigint amount_minor
+        varchar status
+        varchar method
+        varchar provider_reference
+        bigint approved_by
+        timestamp approved_at
+        timestamp processed_at
+        timestamp completed_at
+        timestamp failed_at
+        text failure_reason
+        timestamp created_at
+        timestamp updated_at
+    }
+    return_evidence {
+        bigint id PK
+        bigint return_request_id
+        bigint uploaded_by
+        varchar type
+        varchar file_path
+        varchar original_name
+        varchar description
+        timestamp created_at
+    }
+    return_items {
+        bigint id PK
+        bigint return_request_id
+        bigint order_item_id
+        int quantity
+        varchar condition_code
+        varchar resolution
+        bigint refund_amount_minor
+        timestamp created_at
+        timestamp updated_at
+    }
+    return_requests {
+        bigint id PK
+        varchar return_no UK
+        bigint order_id
+        bigint seller_order_id
+        bigint buyer_id
+        bigint store_id
+        varchar request_type
+        varchar reason_code
+        text buyer_note
+        text seller_response
+        varchar status
+        bigint requested_amount_minor
+        timestamp response_due_at
+        timestamp submitted_at
+        timestamp seller_responded_at
+        timestamp reviewed_at
+        timestamp resolved_at
+        bigint reviewed_by
+        text resolution
+        bigint return_shipment_id
+        timestamp created_at
+        timestamp updated_at
+    }
+    rider_earnings {
+        bigint id PK
+        bigint rider_profile_id
+        bigint pickup_assignment_id
+        bigint delivery_attempt_id
+        varchar type
+        bigint amount_minor
+        varchar status
+        varchar description
+        timestamp earned_at
+        timestamp posted_at
+        timestamp paid_at
+        timestamp created_at
+        timestamp updated_at
+    }
+    rider_profiles {
+        bigint id PK
+        bigint user_id UK
+        bigint logistics_profile_id
+        bigint home_sorting_center_id
+        bigint current_zone_id
+        varchar vehicle_type
+        varchar vehicle_model
+        varchar plate_number
+        smallint parcel_capacity
+        varchar emergency_contact_name
+        varchar emergency_contact_phone
+        varchar availability_status
+        varchar verification_status
+        timestamp created_at
+        timestamp updated_at
+        timestamp deleted_at
+    }
+    role_user {
+        bigint role_id PK
+        bigint user_id PK
+        bigint assigned_by
+        timestamp assigned_at
+    }
+    roles {
+        bigint id PK
+        varchar name UK
+        varchar display_name
+        varchar description
+        timestamp created_at
+        timestamp updated_at
+    }
+    seller_orders {
+        bigint id PK
+        varchar seller_order_no UK
+        bigint order_id
+        bigint store_id
+        varchar status
+        bigint subtotal_minor
+        bigint discount_minor
+        bigint shipping_fee_minor
+        bigint total_minor
+        timestamp fulfillment_deadline_at
+        timestamp confirmed_at
+        timestamp preparing_at
+        timestamp ready_at
+        timestamp handed_over_at
+        timestamp delivered_at
+        timestamp completed_at
+        timestamp cancelled_at
+        text seller_note
+        timestamp created_at
+        timestamp updated_at
+    }
+    seller_payouts {
+        bigint id PK
+        varchar payout_no UK
+        bigint seller_profile_id
+        date period_start
+        date period_end
+        bigint gross_minor
+        bigint commission_minor
+        bigint adjustment_minor
+        bigint net_minor
+        varchar status
+        timestamp due_at
+        timestamp paid_at
+        varchar reference
+        timestamp created_at
+        timestamp updated_at
+    }
+    seller_profiles {
+        bigint id PK
+        bigint user_id UK
+        bigint application_id
+        varchar legal_business_name
+        bigint approved_category_id
+        bigint pickup_address_id
+        smallint commission_rate_bps
+        varchar standing_status
+        smallint warning_points
+        timestamp approved_at
+        timestamp created_at
+        timestamp updated_at
+        timestamp deleted_at
+    }
+    seller_transactions {
+        bigint id PK
+        varchar transaction_no UK
+        bigint seller_profile_id
+        bigint seller_order_id
+        bigint payment_id
+        bigint refund_id
+        bigint commission_id
+        varchar type
+        bigint amount_minor
+        varchar status
+        timestamp available_at
+        timestamp posted_at
+        varchar description
+        timestamp created_at
+        timestamp updated_at
+    }
+    seller_warnings {
+        bigint id PK
+        varchar warning_no UK
+        bigint seller_profile_id
+        bigint violation_id
+        varchar level
+        smallint points
+        text reason
+        varchar status
+        bigint issued_by
+        timestamp issued_at
+        timestamp expires_at
+        timestamp acknowledged_at
+        timestamp revoked_at
+        timestamp created_at
+        timestamp updated_at
+    }
+    shipment_events {
+        bigint id PK
+        bigint shipment_id
+        bigint parcel_id
+        varchar event_type
+        varchar from_status
+        varchar to_status
+        bigint sorting_center_id
+        bigint sorting_zone_id
+        bigint actor_user_id
+        varchar source
+        varchar scan_method
+        text notes
+        json metadata
+        timestamp occurred_at
+        timestamp created_at
+    }
+    shipments {
+        bigint id PK
+        varchar shipment_no UK
+        bigint seller_order_id
+        bigint logistics_profile_id
+        bigint origin_address_id
+        bigint destination_address_id
+        varchar purpose
+        varchar status
+        bigint shipping_fee_minor
+        bigint cod_amount_minor
+        timestamp cod_collected_at
+        timestamp estimated_delivery_at
+        timestamp delivered_at
+        timestamp returned_at
+        timestamp created_at
+        timestamp updated_at
+    }
+    sorting_centers {
+        bigint id PK
+        bigint logistics_profile_id
+        bigint address_id
+        varchar name
+        varchar code UK
+        varchar contact_phone
+        varchar operating_hours
+        int daily_capacity
+        varchar status
+        timestamp created_at
+        timestamp updated_at
+        timestamp deleted_at
+    }
+    sorting_zones {
+        bigint id PK
+        bigint sorting_center_id
+        varchar code
+        varchar name
+        json destination_rules
+        varchar status
+        timestamp created_at
+        timestamp updated_at
+    }
+    stores {
+        bigint id PK
+        bigint seller_profile_id UK
+        varchar name
+        varchar slug UK
+        text description
+        varchar contact_email
+        varchar contact_phone
+        varchar logo_path
+        varchar banner_path
+        varchar publication_status
+        timestamp published_at
+        timestamp created_at
+        timestamp updated_at
+        timestamp deleted_at
+    }
+    support_tickets {
+        bigint id PK
+        varchar ticket_no UK
+        bigint user_id
+        varchar name
+        varchar email
+        varchar role_label
+        varchar topic
+        varchar subject
+        text message
+        varchar reference
+        varchar status
+        varchar priority
+        bigint assigned_to
+        timestamp created_at
+        timestamp updated_at
+    }
+    system_settings {
+        bigint id PK
+        varchar key UK
+        json value
+        varchar value_type
+        tinyint is_public
+        bigint updated_by
+        timestamp created_at
+        timestamp updated_at
+    }
+    user_notification_preferences {
+        bigint id PK
+        bigint user_id
+        varchar event_key
+        tinyint in_app
+        tinyint email
+        timestamp created_at
+        timestamp updated_at
+    }
+    users {
+        bigint id PK
+        varchar name
+        varchar first_name
+        varchar middle_initial
+        varchar middle_name
+        varchar last_name
+        varchar sex
+        date birthday
+        date birth_date
+        varchar email UK
+        varchar phone
+        varchar contact_number
+        varchar role
+        varchar province
+        varchar city
+        varchar barangay
+        varchar street_address
+        varchar business_name
+        varchar business_category
+        varchar vehicle_type
+        varchar plate_number
+        varchar valid_id_path
+        varchar business_permit_path
+        varchar or_cr_path
+        varchar driver_license_path
+        bigint logistics_id
+        bigint approved_by
+        timestamp approved_at
+        text rejection_reason
+        varchar password
+        varchar status
+        timestamp email_verified_at
+        timestamp last_login_at
+        timestamp suspended_at
+        timestamp deactivated_at
+        timestamp banned_at
+        text status_reason
+        varchar remember_token
+        timestamp created_at
+        timestamp updated_at
+        timestamp deleted_at
+    }
+    violation_actions {
+        bigint id PK
+        bigint violation_id
+        varchar action_type
+        varchar from_status
+        varchar to_status
+        bigint actor_user_id
+        text reason
+        json metadata
+        timestamp created_at
+    }
+    waybills {
+        bigint id PK
+        bigint shipment_id UK
+        varchar waybill_no UK
+        char scan_token UK
+        varchar barcode_value UK
+        smallint piece_count
+        decimal total_weight_kg
+        decimal length_cm
+        decimal width_cm
+        decimal height_cm
+        varchar status
+        bigint generated_by
+        timestamp generated_at
+        timestamp printed_at
+        smallint print_count
+        timestamp voided_at
+        text void_reason
+        timestamp created_at
+        timestamp updated_at
+    }
+    wishlists {
+        bigint id PK
+        bigint user_id
+        varchar session_token
+        bigint product_id
+        timestamp created_at
+    }
+    categories ||--o{ account_applications : business_category_id
+    roles ||--|{ account_applications : requested_role_id
+    users ||--o{ account_applications : reviewed_by
+    logistics_profiles ||--o{ account_applications : sponsor_logistics_profile_id
+    users ||--|{ account_applications : user_id
+    users ||--o{ addresses : user_id
+    announcements ||--|{ announcement_roles : announcement_id
+    roles ||--|{ announcement_roles : role_id
+    users ||--o{ announcements : created_by
+    account_applications ||--|{ application_documents : application_id
+    users ||--o{ application_documents : verified_by
+    users ||--o{ audit_logs : actor_user_id
+    carts ||--|{ cart_items : cart_id
+    product_variants ||--|{ cart_items : product_variant_id
+    users ||--o{ carts : user_id
+    categories ||--o{ categories : parent_id
+    categories ||--o{ compliance_rules : category_id
+    users ||--o{ compliance_rules : created_by
+    conversations ||--|{ conversation_participants : conversation_id
+    users ||--|{ conversation_participants : user_id
+    users ||--o{ conversations : created_by
+    disputes ||--o{ conversations : dispute_id
+    orders ||--o{ conversations : order_id
+    products ||--o{ conversations : product_id
+    seller_orders ||--o{ conversations : seller_order_id
+    dispatch_batches ||--o{ delivery_attempts : dispatch_batch_id
+    parcels ||--|{ delivery_attempts : parcel_id
+    rider_profiles ||--|{ delivery_attempts : rider_profile_id
+    delivery_attempts ||--|{ delivery_proofs : delivery_attempt_id
+    users ||--o{ delivery_proofs : uploaded_by
+    dispatch_batches ||--|{ dispatch_batch_parcels : dispatch_batch_id
+    parcels ||--|{ dispatch_batch_parcels : parcel_id
+    users ||--o{ dispatch_batches : prepared_by
+    rider_profiles ||--|{ dispatch_batches : rider_profile_id
+    sorting_centers ||--|{ dispatch_batches : sorting_center_id
+    sorting_zones ||--o{ dispatch_batches : sorting_zone_id
+    users ||--o{ dispute_events : actor_user_id
+    disputes ||--|{ dispute_events : dispute_id
+    disputes ||--|{ dispute_evidence : dispute_id
+    users ||--o{ dispute_evidence : uploaded_by
+    disputes ||--|{ dispute_participants : dispute_id
+    users ||--|{ dispute_participants : user_id
+    users ||--o{ disputes : assigned_to
+    users ||--|{ disputes : opened_by
+    return_requests ||--o{ disputes : return_request_id
+    seller_orders ||--o{ disputes : seller_order_id
+    shipments ||--o{ disputes : shipment_id
+    users ||--o{ inventory_movements : created_by
+    product_variants ||--|{ inventory_movements : variant_id
+    account_applications ||--o{ logistics_profiles : application_id
+    users ||--|{ logistics_profiles : user_id
+    messages ||--|{ message_attachments : message_id
+    conversations ||--|{ messages : conversation_id
+    users ||--o{ messages : sender_id
+    products ||--o{ order_items : product_id
+    product_variants ||--o{ order_items : product_variant_id
+    seller_orders ||--|{ order_items : seller_order_id
+    users ||--|{ orders : buyer_id
+    addresses ||--o{ orders : shipping_address_id
+    sorting_centers ||--o{ parcels : current_sorting_center_id
+    sorting_zones ||--o{ parcels : current_zone_id
+    shipments ||--|{ parcels : shipment_id
+    waybills ||--|{ parcels : waybill_id
+    orders ||--|{ payments : order_id
+    users ||--o{ pickup_assignments : assigned_by
+    pickup_requests ||--|{ pickup_assignments : pickup_request_id
+    rider_profiles ||--|{ pickup_assignments : rider_profile_id
+    parcels ||--|{ pickup_request_parcels : parcel_id
+    pickup_requests ||--|{ pickup_request_parcels : pickup_request_id
+    logistics_profiles ||--|{ pickup_requests : logistics_profile_id
+    addresses ||--|{ pickup_requests : pickup_address_id
+    stores ||--|{ pickup_requests : store_id
+    users ||--o{ pickup_requests : verified_by
+    refunds ||--o{ platform_commissions : refund_id
+    seller_orders ||--|{ platform_commissions : seller_order_id
+    users ||--o{ policy_versions : created_by
+    policies ||--|{ policy_versions : policy_id
+    product_compliance_checks ||--|{ product_compliance_check_matches : check_id
+    compliance_rules ||--|{ product_compliance_check_matches : rule_id
+    categories ||--o{ product_compliance_checks : category_id_snapshot
+    products ||--|{ product_compliance_checks : product_id
+    products ||--|{ product_images : product_id
+    product_variants ||--o{ product_images : variant_id
+    products ||--|{ product_reports : product_id
+    users ||--o{ product_reports : reporter_user_id
+    users ||--o{ product_reports : reviewed_by
+    products ||--|{ product_variants : product_id
+    users ||--o{ product_violations : assigned_to
+    product_compliance_checks ||--o{ product_violations : check_id
+    products ||--|{ product_violations : product_id
+    product_reports ||--o{ product_violations : product_report_id
+    compliance_rules ||--o{ product_violations : rule_id
+    seller_profiles ||--|{ product_violations : seller_profile_id
+    categories ||--|{ products : category_id
+    stores ||--|{ products : store_id
+    users ||--o{ refunds : approved_by
+    orders ||--|{ refunds : order_id
+    payments ||--o{ refunds : payment_id
+    return_requests ||--o{ refunds : return_request_id
+    return_requests ||--|{ return_evidence : return_request_id
+    users ||--o{ return_evidence : uploaded_by
+    order_items ||--|{ return_items : order_item_id
+    return_requests ||--|{ return_items : return_request_id
+    users ||--|{ return_requests : buyer_id
+    orders ||--|{ return_requests : order_id
+    shipments ||--o{ return_requests : return_shipment_id
+    users ||--o{ return_requests : reviewed_by
+    seller_orders ||--|{ return_requests : seller_order_id
+    stores ||--|{ return_requests : store_id
+    delivery_attempts ||--o{ rider_earnings : delivery_attempt_id
+    pickup_assignments ||--o{ rider_earnings : pickup_assignment_id
+    rider_profiles ||--|{ rider_earnings : rider_profile_id
+    sorting_zones ||--o{ rider_profiles : current_zone_id
+    sorting_centers ||--o{ rider_profiles : home_sorting_center_id
+    logistics_profiles ||--|{ rider_profiles : logistics_profile_id
+    users ||--|{ rider_profiles : user_id
+    users ||--o{ role_user : assigned_by
+    roles ||--|{ role_user : role_id
+    users ||--|{ role_user : user_id
+    orders ||--|{ seller_orders : order_id
+    stores ||--|{ seller_orders : store_id
+    seller_profiles ||--|{ seller_payouts : seller_profile_id
+    account_applications ||--o{ seller_profiles : application_id
+    categories ||--o{ seller_profiles : approved_category_id
+    addresses ||--o{ seller_profiles : pickup_address_id
+    users ||--|{ seller_profiles : user_id
+    platform_commissions ||--o{ seller_transactions : commission_id
+    payments ||--o{ seller_transactions : payment_id
+    refunds ||--o{ seller_transactions : refund_id
+    seller_orders ||--o{ seller_transactions : seller_order_id
+    seller_profiles ||--|{ seller_transactions : seller_profile_id
+    users ||--o{ seller_warnings : issued_by
+    seller_profiles ||--|{ seller_warnings : seller_profile_id
+    product_violations ||--o{ seller_warnings : violation_id
+    users ||--o{ shipment_events : actor_user_id
+    parcels ||--o{ shipment_events : parcel_id
+    shipments ||--|{ shipment_events : shipment_id
+    sorting_centers ||--o{ shipment_events : sorting_center_id
+    sorting_zones ||--o{ shipment_events : sorting_zone_id
+    addresses ||--o{ shipments : destination_address_id
+    logistics_profiles ||--|{ shipments : logistics_profile_id
+    addresses ||--o{ shipments : origin_address_id
+    seller_orders ||--|{ shipments : seller_order_id
+    addresses ||--|{ sorting_centers : address_id
+    logistics_profiles ||--|{ sorting_centers : logistics_profile_id
+    sorting_centers ||--|{ sorting_zones : sorting_center_id
+    seller_profiles ||--|{ stores : seller_profile_id
+    users ||--o{ support_tickets : assigned_to
+    users ||--o{ support_tickets : user_id
+    users ||--o{ system_settings : updated_by
+    users ||--|{ user_notification_preferences : user_id
+    users ||--o{ users : approved_by
+    users ||--o{ users : logistics_id
+    users ||--o{ violation_actions : actor_user_id
+    product_violations ||--|{ violation_actions : violation_id
+    users ||--o{ waybills : generated_by
+    shipments ||--|{ waybills : shipment_id
+    products ||--|{ wishlists : product_id
+    users ||--o{ wishlists : user_id

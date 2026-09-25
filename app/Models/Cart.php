@@ -4,15 +4,13 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-class Wishlist extends Model
+class Cart extends Model
 {
-    public $timestamps = false;
-
     protected $guarded = [];
 
-    public function product()
+    public function items()
     {
-        return $this->belongsTo(Product::class);
+        return $this->hasMany(CartItem::class);
     }
 
     public function user()

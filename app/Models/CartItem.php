@@ -3,30 +3,18 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class CartItem extends Model
 {
-    protected $fillable = [
-        'session_id',
-        'user_id',
-        'product_id',
-        'quantity',
-        'price',
-    ];
+    protected $guarded = [];
 
-    public function product(): BelongsTo
+    public function cart()
     {
-        return $this->belongsTo(Product::class);
+        return $this->belongsTo(Cart::class);
     }
 
-    public function user(): BelongsTo
+    public function variant()
     {
-        return $this->belongsTo(User::class);
-    }
-
-    public function getTotalAttribute()
-    {
-        return $this->quantity * $this->price;
+        return $this->belongsTo(ProductVariant::class, 'product_variant_id');
     }
 }

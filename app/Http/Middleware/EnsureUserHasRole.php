@@ -15,7 +15,7 @@ class EnsureUserHasRole
         }
 
         abort_unless(
-            $request->user()->status === 'active' && in_array($request->user()->role, $roles, true),
+            $request->user()->status === 'active' && collect($roles)->contains(fn (string $role) => $request->user()->hasRole($role)),
             403
         );
 

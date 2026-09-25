@@ -3,61 +3,46 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Product extends Model
 {
-    protected $fillable = [
-        'shop_id',
-        'name',
-        'description',
-        'category',
-        'price',
-        'original_price',
-        'discount_percentage',
-        'image',
-        'images',
-        'rating',
-        'sold_count',
-        'stock',
-        'free_shipping',
-        'location',
-        'badge',
-        'is_featured',
-    ];
+    use SoftDeletes;
 
-    protected $casts = [
-        'images' => 'array',
-        'is_featured' => 'boolean',
-        'free_shipping' => 'boolean',
-    ];
+    protected $guarded = [];
 
-    public function shop(): BelongsTo
+    protected function casts(): array
     {
-        return $this->belongsTo(Shop::class);
+        return ['voucher_eligible' => 'boolean'];
     }
 
-    public function cartItems(): HasMany
+    public function store()
     {
-        return $this->hasMany(CartItem::class);
+        return $this->belongsTo(Store::class);
     }
 
-    public function orderItems(): HasMany
+    public function category()
     {
-        return $this->hasMany(OrderItem::class);
+        return $this->belongsTo(Category::class);
     }
 
-    public function wishlistItems()
+    public function variants()
     {
-        return $this->hasMany(Wishlist::class);
+        return $this->hasMany(ProductVariant::class);
     }
 
-    public function getDiscountedPriceAttribute()
+    public function images()
     {
-        if ($this->discount_percentage) {
-            return $this->price - ($this->price * $this->discount_percentage / 100);
-        }
-        return $this->price;
+        return $this->hasMany(ProductImage::class)->orderBy('position');
+    }
+
+    public function complianceChecks()
+    {
+        return $this->hasMany(ProductComplianceCheck::class);
+    }
+
+    public function violations()
+    {
+        return $this->hasMany(ProductViolation::class);
     }
 }

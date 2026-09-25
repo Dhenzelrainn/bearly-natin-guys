@@ -3,82 +3,60 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
 class User extends Authenticatable
 {
-    use HasFactory, Notifiable;
+    use HasFactory,Notifiable,SoftDeletes;
 
-    /**
-     * The attributes that are mass assignable.
-     *
-     * @var list<string>
-     */
-    protected $fillable = [
-        'name',
-        'first_name',
-        'last_name',
-        'middle_initial',
-        'sex',
-        'birthday',
-        'email',
-        'contact_number',
-        'role',
-        'status',
-        'logistics_id',
-        'approved_by',
-        'approved_at',
-        'rejection_reason',
-        'province',
-        'city',
-        'barangay',
-        'street_address',
-        'business_name',
-        'business_category',
-        'vehicle_type',
-        'plate_number',
-        'valid_id_path',
-        'business_permit_path',
-        'or_cr_path',
-        'driver_license_path',
-        'password',
-    ];
+    protected $guarded = [];
 
-    /**
-     * The attributes that should be hidden for serialization.
-     *
-     * @var list<string>
-     */
-    protected $hidden = [
-        'password',
-        'remember_token',
-    ];
+    protected $hidden = ['password', 'remember_token'];
 
-    /**
-     * The attributes that should be cast.
-     *
-     * @var array<string, string>
-     */
-    protected $casts = [
-        'birthday' => 'date',
-        'email_verified_at' => 'datetime',
-        'last_login_at' => 'datetime',
-        'approved_at' => 'datetime',
-    ];
-
-    public function logisticsCenter()
+    protected function casts(): array
     {
-        return $this->belongsTo(self::class, 'logistics_id');
+        return ['birthday' => 'date', 'birth_date' => 'date', 'email_verified_at' => 'datetime', 'last_login_at' => 'datetime', 'approved_at' => 'datetime', 'password' => 'hashed'];
     }
 
-    public function riderApplicants()
+    public function roles()
     {
-        return $this->hasMany(self::class, 'logistics_id');
+        return $this->belongsToMany(Role::class)->withPivot(['assigned_by', 'assigned_at']);
     }
 
-    public function approver()
+    public function hasRole(string $role): bool
     {
-        return $this->belongsTo(self::class, 'approved_by');
+        return $this->role === $role || $this->roles()->where('name', $role)->exists();
+    }
+
+    public function addresses()
+    {
+        return $this->hasMany(Address::class);
+    }
+
+    public function applications()
+    {
+        return $this->hasMany(AccountApplication::class);
+    }
+
+    public function sellerProfile()
+    {
+        return $this->hasOne(SellerProfile::class);
+    }
+
+    public function logisticsProfile()
+    {
+        return $this->hasOne(LogisticsProfile::class);
+    }
+
+    public function riderProfile()
+    {
+        return $this->hasOne(RiderProfile::class);
+    }
+
+    public function buyerOrders()
+    {
+        return $this->hasMany(Order::class, 'buyer_id');
     }
 }

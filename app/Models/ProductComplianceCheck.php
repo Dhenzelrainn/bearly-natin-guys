@@ -4,10 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-class Wishlist extends Model
+class ProductComplianceCheck extends Model
 {
-    public $timestamps = false;
-
     protected $guarded = [];
 
     public function product()
@@ -15,8 +13,8 @@ class Wishlist extends Model
         return $this->belongsTo(Product::class);
     }
 
-    public function user()
+    public function matches()
     {
-        return $this->belongsTo(User::class);
+        return $this->hasMany(ProductComplianceCheckMatch::class, 'check_id');
     }
 }

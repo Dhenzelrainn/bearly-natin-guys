@@ -6,17 +6,15 @@
 @section('content')
 
 <section class="page-hero">
-
     <div>
         <span class="eyebrow">User Management</span>
         <h1>Logistics Centers</h1>
 
         <p>
-            View approved Logistics and Sorting Center accounts,
-            assigned riders, location information, and platform status.
+            View approved Logistics accounts, assigned riders,
+            location information, and current platform status.
         </p>
     </div>
-
 
     <div class="hero-context-stat">
         <span class="hero-context-icon">
@@ -28,22 +26,16 @@
             <span>Logistics Centers</span>
         </div>
     </div>
-
 </section>
 
-
 <section class="panel">
-
     <div class="panel-heading panel-heading-wrap">
-
         <div>
             <span class="eyebrow">Logistics directory</span>
             <h2>Registered Logistics Centers</h2>
         </div>
 
-
         <div class="table-toolbar">
-
             <label class="field-with-icon compact-field">
                 <i data-lucide="search"></i>
 
@@ -53,7 +45,6 @@
                     data-table-search="logistics-users-table"
                 >
             </label>
-
 
             <select
                 class="select-field"
@@ -65,16 +56,11 @@
                 <option value="Suspended">Suspended</option>
                 <option value="Deactivated">Deactivated</option>
             </select>
-
         </div>
-
     </div>
 
-
     <div class="table-wrap">
-
         <table class="admin-table" id="logistics-users-table">
-
             <thead>
                 <tr>
                     <th>Logistics Center</th>
@@ -87,66 +73,41 @@
                 </tr>
             </thead>
 
-
             <tbody>
-
-                @foreach ($users as $user)
-
+                @forelse ($users as $user)
                     <tr
                         data-table-row
-                        data-user-id="{{ $user['id'] }}"
+                        data-user-id="{{ $user['database_id'] }}"
                         data-status="{{ $user['status'] }}"
-                        data-search="{{
-                            strtolower(
-                                $user['name']
-                                .' '
-                                .$user['manager']
-                                .' '
-                                .$user['email']
-                                .' '
-                                .$user['location']
-                                .' '
-                                .$user['id']
-                            )
-                        }}"
+                        data-search="{{ strtolower(
+                            $user['name'].' '.
+                            $user['manager'].' '.
+                            $user['email'].' '.
+                            $user['location'].' '.
+                            $user['id']
+                        ) }}"
                     >
-
                         <td>
-
                             <div class="identity-cell">
-
                                 <span class="avatar avatar-soft">
                                     {{
                                         collect(explode(' ', $user['name']))
+                                            ->filter()
                                             ->map(fn($part) => strtoupper(substr($part, 0, 1)))
                                             ->take(2)
                                             ->implode('')
                                     }}
                                 </span>
 
-
                                 <div>
                                     <strong>{{ $user['name'] }}</strong>
-
-                                    <small>
-                                        {{ $user['id'] }} • {{ $user['email'] }}
-                                    </small>
+                                    <small>{{ $user['id'] }} • {{ $user['email'] }}</small>
                                 </div>
-
                             </div>
-
                         </td>
 
-
-                        <td>
-                            {{ $user['manager'] }}
-                        </td>
-
-
-                        <td>
-                            {{ $user['location'] }}
-                        </td>
-
+                        <td>{{ $user['manager'] }}</td>
+                        <td>{{ $user['location'] }}</td>
 
                         <td>
                             <div class="table-primary-secondary">
@@ -155,14 +116,9 @@
                             </div>
                         </td>
 
+                        <td>{{ $user['joined'] }}</td>
 
                         <td>
-                            {{ $user['joined'] }}
-                        </td>
-
-
-                        <td>
-
                             <span
                                 class="status-badge
                                 {{
@@ -175,94 +131,87 @@
                             >
                                 {{ $user['status'] }}
                             </span>
-
                         </td>
 
-
                         <td class="align-right">
-
                             <button
                                 type="button"
                                 class="button button-ghost button-small"
-                                data-open-modal="logistics-user-{{ $loop->index }}"
+                                data-open-modal="logistics-user-{{ $user['database_id'] }}"
                             >
                                 <i data-lucide="eye"></i>
                                 View
                             </button>
-
                         </td>
-
                     </tr>
-
-                @endforeach
-
+                @empty
+                    <tr>
+                        <td colspan="7">
+                            <div class="table-empty">
+                                <i data-lucide="warehouse"></i>
+                                <strong>No Logistics Centers found</strong>
+                                <span>Approved Logistics accounts will appear here automatically.</span>
+                            </div>
+                        </td>
+                    </tr>
+                @endforelse
             </tbody>
-
         </table>
 
-
-        <div
-            class="table-empty"
-            data-table-empty="logistics-users-table"
-            hidden
-        >
-            <i data-lucide="search-x"></i>
-            <strong>No Logistics Centers found</strong>
-            <span>Try another search or filter.</span>
-        </div>
-
+        @if (count($users) > 0)
+            <div
+                class="table-empty"
+                data-table-empty="logistics-users-table"
+                hidden
+            >
+                <i data-lucide="search-x"></i>
+                <strong>No Logistics Centers found</strong>
+                <span>Try another search or filter.</span>
+            </div>
+        @endif
     </div>
-
 </section>
 
-
 @foreach ($users as $user)
-
 <div
     class="modal-shell"
-    data-modal="logistics-user-{{ $loop->index }}"
+    data-modal="logistics-user-{{ $user['database_id'] }}"
     hidden
 >
-
     <button
         class="modal-backdrop"
         type="button"
         data-close-modal
     ></button>
 
-
     <section
         class="modal-card modal-wide"
         role="dialog"
         aria-modal="true"
+        aria-label="Logistics Center profile"
     >
-
         <div class="modal-heading">
-
             <div>
                 <span class="eyebrow">{{ $user['id'] }}</span>
                 <h2>Logistics Center profile</h2>
             </div>
 
-
             <button
                 class="icon-button"
                 type="button"
                 data-close-modal
+                aria-label="Close"
             >
                 <i data-lucide="x"></i>
             </button>
-
         </div>
 
-
         <div class="review-grid">
-
             <div class="review-profile">
-
                 <span class="avatar avatar-large avatar-warm">
                     {{
                         collect(explode(' ', $user['name']))
+                            ->filter()
                             ->map(fn($part) => strtoupper(substr($part, 0, 1)))
                             ->take(2)
                             ->implode('')
@@ -270,25 +219,17 @@
                 </span>
 
                 <h3>{{ $user['name'] }}</h3>
-
                 <p>{{ $user['email'] }}</p>
 
                 <span class="role-badge">
                     Logistics Center
                 </span>
-
             </div>
 
-
             <div class="review-details">
-
-                <h3 class="section-subtitle">
-                    Center information
-                </h3>
-
+                <h3 class="section-subtitle">Center information</h3>
 
                 <div class="detail-grid">
-
                     <div>
                         <span>Center name</span>
                         <strong>{{ $user['name'] }}</strong>
@@ -323,56 +264,21 @@
                         <span>Current status</span>
                         <strong>{{ $user['status'] }}</strong>
                     </div>
-
                 </div>
-
             </div>
-
         </div>
 
-
-        <div
-            class="modal-footer decision-footer user-profile-actions"
-            data-user-modal-actions
-            data-user-id="{{ $user['id'] }}"
-        >
-
+        <div class="modal-footer">
             <button
                 type="button"
                 class="button button-primary"
-                data-modal-user-status="Active"
-                data-mock-action="{{ $user['name'] }} account activated."
+                data-close-modal
             >
-                <i data-lucide="circle-check"></i>
-                Activate
+                Close
             </button>
-
-            <button
-                type="button"
-                class="button button-danger-soft"
-                data-modal-user-status="Suspended"
-                data-mock-action="{{ $user['name'] }} account suspended."
-            >
-                <i data-lucide="pause-circle"></i>
-                Suspend
-            </button>
-
-            <button
-                type="button"
-                class="button button-danger"
-                data-modal-user-status="Deactivated"
-                data-mock-action="{{ $user['name'] }} account deactivated."
-            >
-                <i data-lucide="building-x"></i>
-                Deactivate
-            </button>
-
         </div>
-
     </section>
-
 </div>
-
 @endforeach
 
 @endsection

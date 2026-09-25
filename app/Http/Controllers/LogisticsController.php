@@ -15,30 +15,45 @@ class LogisticsController extends Controller
 {
     private function shared(): array
     {
+        /** @var User|null $operator */
+        $operator = Auth::user();
+
+        $name = $operator?->name ?: 'Bearly Logistics';
+        $initials = collect(preg_split('/\s+/', trim($name)))
+            ->filter()
+            ->take(2)
+            ->map(fn (string $part) => strtoupper(mb_substr($part, 0, 1)))
+            ->implode('');
+
+        $pendingRiderCount = 0;
+
+        if ($operator && Schema::hasTable('users')) {
+            $pendingRiderCount = User::query()
+                ->where('role', UserRole::Rider->value)
+                ->where('logistics_id', $operator->id)
+                ->whereIn('status', [
+                    AccountStatus::Pending->value,
+                    AccountStatus::NeedsRevision->value,
+                ])
+                ->count();
+        }
+
         return [
             'operator' => [
-                'name' => 'Mika Santos',
-                'initials' => 'MS',
-                'email' => 'ops@bearly.test',
-                'role' => 'Sorting Center Manager',
+                'name' => $name,
+                'initials' => $initials ?: 'BL',
+                'email' => $operator?->email ?: '',
+                'role' => 'Logistics Operator',
+                'business_name' => $operator?->business_name ?: $name,
             ],
-            'topNotifications' => [
-                [
-                    'title' => '3 rider applications need review',
-                    'time' => '5 min ago',
+            'pendingRiderCount' => $pendingRiderCount,
+            'topNotifications' => $pendingRiderCount > 0
+                ? [[
+                    'title' => $pendingRiderCount.' rider application'.($pendingRiderCount === 1 ? '' : 's').' awaiting review',
+                    'time' => 'Current',
                     'type' => 'warning',
-                ],
-                [
-                    'title' => '12 parcels entered the sorting center',
-                    'time' => '18 min ago',
-                    'type' => 'info',
-                ],
-                [
-                    'title' => 'Dispatch SC-2406 completed',
-                    'time' => '42 min ago',
-                    'type' => 'success',
-                ],
-            ],
+                ]]
+                : [],
         ];
     }
 
@@ -124,13 +139,32 @@ class LogisticsController extends Controller
 
     public function dashboard()
     {
-        return view('logistics.dashboard.index', $this->shared() + [
+        $shared = $this->shared();
+
+        $recentRiderApplications = User::query()
+            ->where('role', UserRole::Rider->value)
+            ->where('logistics_id', Auth::id())
+            ->whereIn('status', [
+                AccountStatus::Pending->value,
+                AccountStatus::NeedsRevision->value,
+            ])
+            ->latest()
+            ->take(4)
+            ->get()
+            ->map(fn (User $user) => [
+                'time' => $user->created_at?->diffForHumans() ?? 'Recently',
+                'title' => 'Rider application received',
+                'detail' => $user->name.' • '.($user->vehicle_type ?: 'Vehicle not specified'),
+            ])
+            ->all();
+
+        return view('logistics.dashboard.index', $shared + [
             'metrics' => [
                 [
                     'label' => 'Pending Rider Applications',
-                    'value' => 8,
+                    'value' => $shared['pendingRiderCount'],
                     'icon' => 'user-round-check',
-                    'trend' => '3 added today',
+                    'trend' => $shared['pendingRiderCount'] > 0 ? 'Needs review' : 'Queue is clear',
                 ],
                 [
                     'label' => 'Incoming Parcels',
@@ -177,181 +211,119 @@ class LogisticsController extends Controller
                     'riders' => 5,
                 ],
             ],
-            'activity' => [
-                [
-                    'time' => '2:14 PM',
-                    'title' => 'Parcel batch received',
-                    'detail' => '12 parcels from TechVault PH',
-                ],
-                [
-                    'time' => '1:58 PM',
-                    'title' => 'Rider approved',
-                    'detail' => 'Jared Molina • Motorcycle',
-                ],
-                [
-                    'time' => '1:32 PM',
-                    'title' => 'Dispatch assigned',
-                    'detail' => '9 parcels → Zone SP-N2',
-                ],
-                [
-                    'time' => '12:47 PM',
-                    'title' => 'Pickup request approved',
-                    'detail' => 'Mara Home Goods • 5 parcels',
-                ],
-            ],
+            'activity' => $recentRiderApplications,
         ]);
     }
 
     public function riders()
     {
-        $databaseApplications = [];
+        $applications = User::query()
+            ->where('role', UserRole::Rider->value)
+            ->where('logistics_id', Auth::id())
+            ->whereIn('status', [
+                AccountStatus::Pending->value,
+                AccountStatus::NeedsRevision->value,
+            ])
+            ->latest()
+            ->get()
+            ->map(fn (User $user) => [
+                'id' => 'RIDER-'.$user->id,
+                'user_id' => $user->id,
+                'name' => $user->name,
+                'vehicle' => $user->vehicle_type ?: 'Not specified',
+                'plate' => $user->plate_number ?: '—',
+                'area' => $user->city ?: '—',
+                'submitted' => $user->created_at?->format('M j, Y') ?? 'Recently',
+                'status' => $user->status === AccountStatus::NeedsRevision->value
+                    ? 'Needs Review'
+                    : 'Pending',
+            ])
+            ->all();
 
-        if (Auth::check() && Auth::user()->role === UserRole::Logistics->value && Schema::hasTable('users')) {
-            $databaseApplications = User::query()
-                ->where('role', UserRole::Rider->value)
-                ->where('logistics_id', Auth::id())
-                ->whereIn('status', [AccountStatus::Pending->value, AccountStatus::NeedsRevision->value])
-                ->latest()
-                ->get()
-                ->map(fn (User $user) => [
-                    'id' => 'RIDER-'.$user->id,
-                    'user_id' => $user->id,
-                    'name' => $user->name,
-                    'vehicle' => $user->vehicle_type ?: 'Not specified',
-                    'plate' => $user->plate_number ?: '—',
-                    'area' => $user->city,
-                    'submitted' => $user->created_at?->format('M j, Y') ?? 'Recently',
-                    'status' => $user->status === AccountStatus::NeedsRevision->value ? 'Needs Review' : 'Pending',
-                ])
-                ->all();
-        }
+        $riders = User::query()
+            ->where('role', UserRole::Rider->value)
+            ->where('logistics_id', Auth::id())
+            ->whereIn('status', [
+                AccountStatus::Active->value,
+                AccountStatus::Suspended->value,
+                AccountStatus::Deactivated->value,
+            ])
+            ->latest('approved_at')
+            ->get()
+            ->map(fn (User $user) => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'vehicle' => $user->vehicle_type ?: 'Not specified',
+                'zone' => $user->city ?: 'Not assigned',
+                'jobs' => 0,
+                'rating' => null,
+                'status' => match ($user->status) {
+                    AccountStatus::Active->value => 'Active',
+                    AccountStatus::Suspended->value => 'Suspended',
+                    AccountStatus::Deactivated->value => 'Deactivated',
+                    default => ucfirst(str_replace('_', ' ', $user->status)),
+                },
+            ])
+            ->all();
 
         return view('logistics.riders.index', $this->shared() + [
-            'applications' => [
-                ...$databaseApplications,
-                [
-                    'id' => 'RA-1048',
-                    'name' => 'Jared Molina',
-                    'vehicle' => 'Motorcycle',
-                    'plate' => 'ABC 1234',
-                    'area' => 'San Pablo North',
-                    'submitted' => 'Sep 6, 2026',
-                    'status' => 'Pending',
-                ],
-                [
-                    'id' => 'RA-1047',
-                    'name' => 'Lara Mendoza',
-                    'vehicle' => 'Motorcycle',
-                    'plate' => 'NCD 8831',
-                    'area' => 'Pila / Sta. Cruz',
-                    'submitted' => 'Sep 6, 2026',
-                    'status' => 'Pending',
-                ],
-                [
-                    'id' => 'RA-1045',
-                    'name' => 'Paolo Reyes',
-                    'vehicle' => 'E-bike',
-                    'plate' => '—',
-                    'area' => 'San Pablo South',
-                    'submitted' => 'Sep 5, 2026',
-                    'status' => 'Needs Review',
-                ],
-            ],
-            'riders' => [
-                [
-                    'name' => 'Nico Flores',
-                    'vehicle' => 'Motorcycle',
-                    'zone' => 'SP-N1',
-                    'jobs' => 18,
-                    'rating' => '4.9',
-                    'status' => 'Active',
-                ],
-                [
-                    'name' => 'Anne Cruz',
-                    'vehicle' => 'Motorcycle',
-                    'zone' => 'SP-S2',
-                    'jobs' => 15,
-                    'rating' => '4.8',
-                    'status' => 'Active',
-                ],
-                [
-                    'name' => 'Marco Lim',
-                    'vehicle' => 'Van',
-                    'zone' => 'PILA-1',
-                    'jobs' => 11,
-                    'rating' => '4.7',
-                    'status' => 'Inactive',
-                ],
-            ],
+            'applications' => $applications,
+            'riders' => $riders,
         ]);
     }
 
     public function showRider(string $id): View
     {
-        if (ctype_digit($id)) {
-            abort_unless(Auth::check() && Auth::user()->role === UserRole::Logistics->value, 403);
+        abort_unless(ctype_digit($id), 404);
 
-            $user = User::query()
-                ->whereKey($id)
-                ->where('role', UserRole::Rider->value)
-                ->where('logistics_id', Auth::id())
-                ->firstOrFail();
+        $user = User::query()
+            ->whereKey((int) $id)
+            ->where('role', UserRole::Rider->value)
+            ->where('logistics_id', Auth::id())
+            ->firstOrFail();
 
-            return view('logistics.riders.show', $this->shared() + [
-                'application' => [
-                    'id' => 'RIDER-'.$user->id,
-                    'user_id' => $user->id,
-                    'name' => $user->name,
-                    'email' => $user->email,
-                    'contact' => $user->contact_number,
-                    'birthday' => $user->birthday?->format('F j, Y') ?? 'Not provided',
-                    'sex' => ucfirst(str_replace('_', ' ', $user->sex)),
-                    'address' => "{$user->street_address}, {$user->barangay}, {$user->city}, {$user->province}",
-                    'vehicle' => $user->vehicle_type ?: 'Not specified',
-                    'plate' => $user->plate_number ?: '—',
-                    'area' => $user->city,
-                    'submitted' => $user->created_at?->format('M j, Y') ?? 'Recently',
-                    'status' => ucfirst(str_replace('_', ' ', $user->status)),
-                    'documents' => [
-                        ['label' => "Driver's License / ID", 'filename' => basename((string) $user->driver_license_path), 'status' => 'For review'],
-                        ['label' => 'Vehicle OR/CR', 'filename' => basename((string) $user->or_cr_path), 'status' => 'For review'],
-                    ],
-                ],
-            ]);
-        }
+        $documents = array_values(array_filter([
+            $user->driver_license_path
+                ? [
+                    'label' => "Driver's License / ID",
+                    'filename' => basename($user->driver_license_path),
+                    'status' => 'For review',
+                ]
+                : null,
+            $user->or_cr_path
+                ? [
+                    'label' => 'Vehicle OR/CR',
+                    'filename' => basename($user->or_cr_path),
+                    'status' => 'For review',
+                ]
+                : null,
+        ]));
 
-        $applications = [
-            'RA-1048' => [
-                'id' => 'RA-1048', 'name' => 'Jared Molina', 'email' => 'jared.molina@example.test',
-                'contact' => '0917 841 2048', 'birthday' => 'May 18, 1998', 'sex' => 'Male',
-                'address' => 'Brgy. San Lucas 1, San Pablo City, Laguna', 'vehicle' => 'Motorcycle',
-                'plate' => 'ABC 1234', 'area' => 'San Pablo North', 'submitted' => 'Sep 6, 2026',
-                'status' => 'Pending',
-            ],
-            'RA-1047' => [
-                'id' => 'RA-1047', 'name' => 'Lara Mendoza', 'email' => 'lara.mendoza@example.test',
-                'contact' => '0918 506 1047', 'birthday' => 'January 9, 1997', 'sex' => 'Female',
-                'address' => 'Brgy. Bagong Pook, Pila, Laguna', 'vehicle' => 'Motorcycle',
-                'plate' => 'NCD 8831', 'area' => 'Pila / Sta. Cruz', 'submitted' => 'Sep 6, 2026',
-                'status' => 'Pending',
-            ],
-            'RA-1045' => [
-                'id' => 'RA-1045', 'name' => 'Paolo Reyes', 'email' => 'paolo.reyes@example.test',
-                'contact' => '0920 775 1045', 'birthday' => 'October 23, 2000', 'sex' => 'Male',
-                'address' => 'Brgy. San Roque, San Pablo City, Laguna', 'vehicle' => 'E-bike',
-                'plate' => 'Not required', 'area' => 'San Pablo South', 'submitted' => 'Sep 5, 2026',
-                'status' => 'Needs Review',
-            ],
-        ];
-
-        abort_unless(isset($applications[$id]), 404);
+        $address = collect([
+            $user->street_address,
+            $user->barangay,
+            $user->city,
+            $user->province,
+        ])->filter()->implode(', ');
 
         return view('logistics.riders.show', $this->shared() + [
-            'application' => $applications[$id] + [
-                'documents' => [
-                    ['label' => "Driver's License / ID", 'filename' => 'drivers-license.pdf', 'status' => 'Verified'],
-                    ['label' => 'Vehicle OR/CR', 'filename' => 'vehicle-orcr.pdf', 'status' => 'For review'],
-                ],
+            'application' => [
+                'id' => 'RIDER-'.$user->id,
+                'user_id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'contact' => $user->contact_number ?: '—',
+                'birthday' => $user->birthday?->format('F j, Y') ?? 'Not provided',
+                'sex' => $user->sex
+                    ? ucwords(str_replace('_', ' ', $user->sex))
+                    : 'Not provided',
+                'address' => $address ?: 'Not provided',
+                'vehicle' => $user->vehicle_type ?: 'Not specified',
+                'plate' => $user->plate_number ?: '—',
+                'area' => $user->city ?: '—',
+                'submitted' => $user->created_at?->format('M j, Y') ?? 'Recently',
+                'status' => ucwords(str_replace('_', ' ', $user->status)),
+                'documents' => $documents,
             ],
         ]);
     }
@@ -594,13 +566,23 @@ class LogisticsController extends Controller
 
     public function account()
     {
+        /** @var User $operator */
+        $operator = Auth::user();
+
+        $address = collect([
+            $operator->street_address,
+            $operator->barangay,
+            $operator->city,
+            $operator->province,
+        ])->filter()->implode(', ');
+
         return view('logistics.profile.index', $this->shared() + [
             'facility' => [
-                'business_name' => 'Laguna Central Logistics',
-                'contact' => '0917 555 0182',
-                'address' => 'Pedro Guevara Avenue, Santa Cruz, Laguna',
-                'operating_hours' => '08:00–18:00',
-                'daily_capacity' => 650,
+                'business_name' => $operator->business_name ?: $operator->name,
+                'contact' => $operator->contact_number ?: '',
+                'address' => $address,
+                'operating_hours' => '',
+                'daily_capacity' => '',
             ],
         ]);
     }

@@ -6,6 +6,7 @@ use App\Enums\AccountStatus;
 use App\Enums\UserRole;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
@@ -14,32 +15,43 @@ class RiderController extends Controller
 {
     private function shared(): array
     {
+        /** @var User|null $user */
+        $user = Auth::user();
+
+        $name = $user?->name ?: 'Bearly Rider';
+        $initials = collect(preg_split('/\s+/', trim($name)))
+            ->filter()
+            ->take(2)
+            ->map(fn (string $part) => strtoupper(mb_substr($part, 0, 1)))
+            ->implode('');
+
+        $logistics = null;
+
+        if ($user?->logistics_id) {
+            $logistics = User::query()
+                ->whereKey($user->logistics_id)
+                ->where('role', UserRole::Logistics->value)
+                ->first();
+        }
+
         return [
             'rider' => [
-                'name' => 'Nico Flores',
-                'initials' => 'NF',
-                'email' => 'nico.rider@bearly.test',
-                'role' => 'Active Rider',
-                'vehicle' => 'Motorcycle',
-                'plate' => 'NCR 4821',
+                'name' => $name,
+                'initials' => $initials ?: 'BR',
+                'email' => $user?->email ?: '',
+                'role' => 'Rider',
+                'vehicle' => $user?->vehicle_type ?: 'Not specified',
+                'plate' => $user?->plate_number ?: '—',
+                'status' => $user?->status
+                    ? ucwords(str_replace('_', ' ', $user->status))
+                    : 'Unknown',
             ],
-            'topNotifications' => [
-                [
-                    'title' => 'New pickup job available nearby',
-                    'time' => '4 min ago',
-                    'type' => 'warning',
-                ],
-                [
-                    'title' => '6 parcels assigned for delivery',
-                    'time' => '13 min ago',
-                    'type' => 'info',
-                ],
-                [
-                    'title' => '₱420 payout posted',
-                    'time' => '1 hr ago',
-                    'type' => 'success',
-                ],
+            'logistics' => [
+                'name' => $logistics
+                    ? ($logistics->business_name ?: $logistics->name)
+                    : 'Not assigned',
             ],
+            'topNotifications' => [],
         ];
     }
 
@@ -420,13 +432,30 @@ class RiderController extends Controller
 
     public function account()
     {
+        /** @var User $user */
+        $user = Auth::user();
+
+        $address = collect([
+            $user->street_address,
+            $user->barangay,
+            $user->city,
+            $user->province,
+        ])->filter()->implode(', ');
+
         return view('rider.profile.index', $this->shared() + [
             'profile' => [
-                'contact' => '0917 440 8821',
-                'birthday' => '1998-05-14',
-                'sex' => 'Male',
-                'address' => 'Blk 3 Lot 8, Brgy. San Rafael, San Pablo City, Laguna',
-                'emergency_contact' => 'Maya Flores · 0917 444 0188',
+                'contact' => $user->contact_number ?: '',
+                'birthday' => $user->birthday?->format('Y-m-d') ?? '',
+                'sex' => $user->sex
+                    ? ucwords(str_replace('_', ' ', $user->sex))
+                    : 'Prefer not to say',
+                'address' => $address,
+                'emergency_contact' => '',
+                'preferred_area' => collect([$user->city, $user->province])
+                    ->filter()
+                    ->implode(', '),
+                'vehicle_model' => '',
+                'parcel_capacity' => '',
             ],
         ]);
     }

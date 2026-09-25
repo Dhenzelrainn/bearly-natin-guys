@@ -546,39 +546,54 @@ class AdminController extends Controller
 
     public function logisticsUsers(): View
     {
+        $users = User::query()
+            ->where('role', UserRole::Logistics->value)
+            ->whereIn('status', [
+                AccountStatus::Active->value,
+                AccountStatus::Suspended->value,
+                AccountStatus::Deactivated->value,
+            ])
+            ->latest('approved_at')
+            ->latest('created_at')
+            ->get()
+            ->map(function (User $user) {
+                $location = collect([
+                    $user->city,
+                    $user->province,
+                ])->filter()->implode(', ');
+
+                $assignedRiders = User::query()
+                    ->where('role', UserRole::Rider->value)
+                    ->where('logistics_id', $user->id)
+                    ->whereIn('status', [
+                        AccountStatus::Active->value,
+                        AccountStatus::Suspended->value,
+                        AccountStatus::Deactivated->value,
+                    ])
+                    ->count();
+
+                return [
+                    'id' => 'LOG-'.str_pad((string) $user->id, 4, '0', STR_PAD_LEFT),
+                    'database_id' => $user->id,
+                    'name' => $user->business_name ?: $user->name,
+                    'manager' => $user->name ?: '—',
+                    'email' => $user->email,
+                    'location' => $location ?: '—',
+                    'riders' => $assignedRiders,
+                    'joined' => ($user->approved_at ?? $user->created_at)?->format('M d, Y') ?? '—',
+                    'status' => match ($user->status) {
+                        AccountStatus::Active->value => 'Active',
+                        AccountStatus::Suspended->value => 'Suspended',
+                        AccountStatus::Deactivated->value => 'Deactivated',
+                        default => ucwords(str_replace('_', ' ', $user->status)),
+                    },
+                ];
+            })
+            ->values()
+            ->all();
+
         return view('admin.users.logistics', $this->base([
-            'users' => [
-                [
-                    'id' => 'LOG-4101',
-                    'name' => 'Laguna Central Logistics',
-                    'manager' => 'Nathan D. Garcia',
-                    'email' => 'laguna.central@example.test',
-                    'location' => 'Santa Cruz, Laguna',
-                    'riders' => 18,
-                    'joined' => 'May 07, 2026',
-                    'status' => 'Active',
-                ],
-                [
-                    'id' => 'LOG-4105',
-                    'name' => 'South Laguna Sorting Hub',
-                    'manager' => 'Clarisse M. Villanueva',
-                    'email' => 'southlaguna@example.test',
-                    'location' => 'Calamba City, Laguna',
-                    'riders' => 12,
-                    'joined' => 'May 29, 2026',
-                    'status' => 'Active',
-                ],
-                [
-                    'id' => 'LOG-4109',
-                    'name' => 'Bearly South Distribution Center',
-                    'manager' => 'Paolo A. Fernandez',
-                    'email' => 'bearlysouth@example.test',
-                    'location' => 'San Pablo City, Laguna',
-                    'riders' => 15,
-                    'joined' => 'Jun 10, 2026',
-                    'status' => 'Suspended',
-                ],
-            ],
+            'users' => $users,
         ]));
     }
 

@@ -52,8 +52,8 @@
                 <div class="lp-hero-copy"><p class="lp-eyebrow">EVERYDAY STYLE</p><h2>Shopping should<br>be easy.</h2><p>Bearly stressful. Find something that feels like you.</p><a class="lp-button" href="#bl-featured" data-hero-filter="Fashion">Explore fashion <span aria-hidden="true">↗</span></a><div class="lp-bear-note"><span class="lp-bear" aria-hidden="true"></span><p>A fresh little<br>upgrade.</p></div></div>
             </article>
         </div>
-        <div class="lp-hero-controls"><div class="lp-dots" aria-label="Choose hero slide"><button aria-label="Go to slide 1" aria-current="true" data-slide-to="0"></button><button aria-label="Go to slide 2" data-slide-to="1"></button><button aria-label="Go to slide 3" data-slide-to="2"></button></div><button class="lp-icon" data-hero-pause aria-label="Pause slideshow"><span class="material-symbols-outlined" aria-hidden="true">pause</span></button></div>
-        <div class="lp-hero-arrows"><button class="lp-round" data-hero-prev aria-label="Previous slide">←</button><button class="lp-round" data-hero-next aria-label="Next slide">→</button></div>
+        <div class="lp-hero-controls"><div class="lp-dots" aria-label="Choose hero slide"><button aria-label="Go to slide 1" aria-current="true" data-slide-to="0"></button><button aria-label="Go to slide 2" data-slide-to="1"></button><button aria-label="Go to slide 3" data-slide-to="2"></button></div></div>
+        <div class="lp-hero-arrows"><button class="lp-round" data-hero-prev aria-label="Previous slide">‹</button><button class="lp-round" data-hero-next aria-label="Next slide">›</button></div>
     </section>
     <div class="lp-brand-strip">Find more. Live better.</div>
     <section class="lp-section lp-categories" id="bl-categories" aria-labelledby="lp-category-title">
@@ -72,15 +72,23 @@
         <a class="lp-campaign lp-reveal" href="#bl-featured" data-hero-filter="Fashion"><img src="{{ asset('images/landing/fashion.webp') }}" alt="Knitwear, denim and a cap" loading="lazy" width="1024" height="1024"><div><p class="lp-eyebrow">FRESH LOOKS</p><h2>A fresh little<br>upgrade</h2><p>Everyday style, your way.</p><span class="lp-text-link">Shop collection ↗</span></div></a>
     </section>
     <section class="lp-section lp-featured" id="bl-featured" aria-labelledby="lp-featured-title">
-        <div class="lp-heading lp-featured-heading"><div><h2 id="lp-featured-title">Featured Products</h2><p>A little of everything, all in one place.</p></div><div class="lp-filters" role="group" aria-label="Filter featured products"></div></div>
-        <p class="lp-catalogue-note">Sample catalogue · Illustrative photos · Prices to be confirmed</p>
+        <div class="lp-heading lp-featured-heading">
+            <div class="lp-featured-copy">
+                <h2 id="lp-featured-title">Featured Products</h2>
+                <p>A little of everything, all in one place.</p>
+            </div>
+
+            <div class="lp-filters" role="group" aria-label="Filter featured products"></div>
+        </div>
         <div class="lp-product-grid" id="lp-products"></div>
         <noscript><p>Enable JavaScript to browse the sample catalogue, or <a href="{{ url('/products') }}">visit the shop</a>.</p></noscript>
-        <div class="lp-product-nav"><p class="lp-catalogue-note" data-product-status role="status" aria-live="polite"></p><div class="lp-product-pages" aria-label="Product pages"></div><div class="lp-product-nav-actions"><button class="lp-round" data-products-prev aria-label="Previous product page">←</button><button class="lp-round" data-products-next aria-label="Next product page">→</button><a class="lp-text-link" href="{{ url('/products') }}">View all products ↗</a></div></div>
+        <div class="lp-guest-more">
+            <a class="lp-guest-login" href="{{ url('/login') }}">Login to see more</a>
+        </div>
     </section>
     <section class="lp-section lp-story lp-reveal" aria-labelledby="lp-story-title"><div><p class="lp-eyebrow">ABOUT BEARLY</p><h2 id="lp-story-title">Shopping should<br>feel more human.</h2></div><div><p>Bearly brings independent stores and thoughtful shoppers together in one easy-to-use marketplace.</p><a class="lp-text-link" href="{{ route('about') }}">Read our story ↗</a></div></section>
     <section class="lp-section lp-support" id="bl-delivery" aria-labelledby="lp-support-title"><div><p class="lp-eyebrow">CONTACT BEARLY</p><h2 id="lp-support-title">We’re here to help.</h2></div><a href="{{ route('contact') }}#help-topics-title"><span class="material-symbols-outlined" aria-hidden="true">package_2</span>Shopping & Orders</a><a href="{{ route('contact') }}#help-topics-title"><span class="material-symbols-outlined" aria-hidden="true">storefront</span>Seller Support</a><a href="{{ route('contact') }}#help-topics-title"><span class="material-symbols-outlined" aria-hidden="true">person</span>Account & Registration</a><a class="lp-text-link" href="{{ route('contact') }}">Contact us ↗</a></section>
-    <section class="lp-signup"><span class="lp-bear" aria-hidden="true"></span><div><h2>Make shopping Bearly a hassle.</h2><p>Create an account and start discovering.</p></div><a class="lp-button" href="{{ url('/register') }}">Create an account ↗</a></section>
+    <section class="lp-signup"><div><h2>Make shopping Bearly a hassle.</h2><p>Create an account and start discovering.</p></div><a class="lp-button" href="{{ url('/register') }}">Create an account ↗</a></section>
 </main>
 <footer class="lp-footer">
     <div class="lp-footer-grid"><div><a class="lp-footer-logo" href="{{ url('/') }}" aria-label="Bearly home"><img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly" width="205" height="64" loading="lazy"></a><p>Shopping should be easy.<br>Bearly stressful.</p></div>

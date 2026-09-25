@@ -11,28 +11,35 @@
 
 @section('content')
 <section class="login-page">
+    <div class="login-landscape" aria-hidden="true"></div>
 
-    {{-- Page heading --}}
-    <div class="login-intro">
-        <h1>Welcome back to Bearly</h1>
+    <img
+        src="{{ asset('images/bearly-login-bear.png') }}"
+        alt=""
+        class="login-bear"
+        aria-hidden="true"
+    >
 
-        <p>
-            One secure sign-in for shopping, selling, and delivering.
-        </p>
-    </div>
+    <img
+        src="{{ asset('images/bearly-login-truck.png') }}"
+        alt=""
+        class="login-truck"
+        aria-hidden="true"
+    >
 
-    <div class="login-stage">
+    <div class="login-shell">
+        <div class="login-surface">
+            <div class="login-intro">
+                <h1>Welcome back to Bearly</h1>
+                <p>Sign in to continue shopping or managing your account.</p>
+            </div>
 
-        {{-- Login form --}}
-        <form
-            class="login-form"
-            data-demo-login
-            novalidate
-        >
-            <div class="access-bar">
-
-                {{-- Email --}}
-                <label class="access-field">
+            <form
+                class="login-form"
+                data-demo-login
+                novalidate
+            >
+                <label class="login-field">
                     <svg
                         class="field-icon"
                         viewBox="0 0 24 24"
@@ -53,8 +60,7 @@
                     >
                 </label>
 
-                {{-- Password --}}
-                <label class="access-field">
+                <label class="login-field">
                     <svg
                         class="field-icon"
                         viewBox="0 0 24 24"
@@ -67,7 +73,6 @@
                             height="11"
                             rx="2"
                         />
-
                         <path d="M8 10V7a4 4 0 0 1 8 0v3"/>
                     </svg>
 
@@ -95,128 +100,70 @@
                     </button>
                 </label>
 
-                {{-- Sign-in button --}}
+                <div class="login-options">
+                    <label class="check-label">
+                        <input
+                            type="checkbox"
+                            name="remember"
+                            value="1"
+                        >
+                        <span>Remember me</span>
+                    </label>
+
+                    <a href="{{ route('password.request') }}">
+                        Forgot password?
+                    </a>
+                </div>
+
                 <button
                     type="submit"
                     class="sign-in-button"
                 >
-                    Sign In
+                    <span>Sign In</span>
+                    <span class="sign-in-arrow" aria-hidden="true">→</span>
                 </button>
-            </div>
 
-            {{-- Login options --}}
-            <div class="login-options">
-                <label class="check-label">
-                    <input
-                        type="checkbox"
-                        name="remember"
-                        value="1"
-                    >
+                <div class="divider">
+                    <span>or</span>
+                </div>
 
-                    <span>Remember me</span>
-                </label>
-
-                <a href="{{ route('password.request') }}">
-                    Forgot password?
-                </a>
-
-                <span class="secure-note">
+                <button
+                    type="button"
+                    class="google-button"
+                >
                     <img
-                        src="{{ asset('images/icon-secure-small.png') }}"
+                        src="{{ asset('images/google-icon.png') }}"
                         alt=""
+                        class="google-icon"
                         aria-hidden="true"
                     >
+                    <span>Continue with Google</span>
+                </button>
 
-                    <span>Secure access</span>
-                </span>
-            </div>
+                <p class="switch-auth">
+                    New to Bearly?
+                    <a href="{{ route('register') }}">
+                        Create an account
+                    </a>
+                </p>
 
-            {{-- Divider --}}
-            <div class="divider">
-                <span>or</span>
-            </div>
-
-            {{-- Google button --}}
-            <button
-                type="button"
-                class="google-button"
-            >
-                <img
-                   src="{{ asset('images/google-icon.png') }}" alt="" class="google-icon"aria-hidden="true">
-
-                <span>Continue with Google</span>
-            </button>
-
-            {{-- Registration link --}}
-            <p class="switch-auth">
-                New to Bearly?
-
-                <a href="{{ route('register') }}">
-                    Create an account
-                </a>
-            </p>
-
-            {{-- Frontend-only preview message --}}
-            <div
-                class="demo-message"
-                data-login-message
-                hidden
-                role="status"
-            >
-                Login UI is working. Database connection will be added later.
-            </div>
-        </form>
-
-        {{-- Bottom e-commerce illustration --}}
-        <img
-            src="{{ asset('images/bearly-auth-scene.png') }}"
-            alt=""
-            class="login-scene"
-            aria-hidden="true"
-        >
-    </div>
-
-    {{-- Account benefits --}}
-    <div
-        class="trust-row"
-        aria-label="Bearly account benefits"
-    >
-        <div>
-            <span class="trust-icon">
-                <img
-                    src="{{ asset('images/icon-one-account.png') }}"
-                    alt=""
-                    aria-hidden="true"
+                <div
+                    class="demo-message"
+                    data-login-message
+                    hidden
+                    role="status"
                 >
-            </span>
-
-            <strong>One account</strong>
+                    Login UI is working. Database connection will be added later.
+                </div>
+            </form>
         </div>
 
-        <div>
-            <span class="trust-icon">
-                <img
-                    src="{{ asset('images/icon-role-aware.png') }}"
-                    alt=""
-                    aria-hidden="true"
-                >
-            </span>
-
-            <strong>Role-aware access</strong>
-        </div>
-
-        <div>
-            <span class="trust-icon secure">
-                <img
-                    src="{{ asset('images/icon-secure.png') }}"
-                    alt=""
-                    aria-hidden="true"
-                >
-            </span>
-
-            <strong>Secure sign-in</strong>
+        <div class="login-mobile-bear" aria-hidden="true">
+            <img
+                src="{{ asset('images/bearly-login-bear.png') }}"
+                alt=""
+            >
         </div>
     </div>
-
 </section>
 @endsection

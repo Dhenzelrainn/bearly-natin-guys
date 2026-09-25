@@ -10,9 +10,7 @@
     const reportButton = document.querySelector("[data-contact-report]");
     const toast = document.querySelector("[data-contact-toast]");
 
-    if (!form) {
-        return;
-    }
+    if (!form) return;
 
     let toastTimer = null;
 
@@ -23,7 +21,6 @@
         toast.hidden = false;
 
         window.clearTimeout(toastTimer);
-
         toastTimer = window.setTimeout(() => {
             toast.hidden = true;
         }, 4200);
@@ -40,7 +37,7 @@
         if (!topicSelect) return;
 
         const option = [...topicSelect.options].find(
-            (item) => item.value === topic
+            (item) => item.value === topic,
         );
 
         if (option) {
@@ -71,7 +68,6 @@
 
     const updateCount = () => {
         if (!messageInput || !counter) return;
-
         counter.textContent = `${messageInput.value.length}/1000`;
     };
 
@@ -92,12 +88,9 @@
             validate: (value) => {
                 const trimmed = value.trim();
 
-                if (!trimmed) {
-                    return "Please enter your email address.";
-                }
+                if (!trimmed) return "Please enter your email address.";
 
                 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
                 return emailPattern.test(trimmed)
                     ? ""
                     : "Please enter a valid email address.";
@@ -135,12 +128,10 @@
 
         config.element.setAttribute(
             "aria-invalid",
-            message ? "true" : "false"
+            message ? "true" : "false",
         );
 
-        if (error) {
-            error.textContent = message;
-        }
+        if (error) error.textContent = message;
     };
 
     Object.entries(fields).forEach(([id, config]) => {
@@ -150,10 +141,7 @@
             config.element.tagName === "SELECT" ? "change" : "input";
 
         config.element.addEventListener(eventName, () => {
-            setFieldError(
-                id,
-                config.validate(config.element.value)
-            );
+            setFieldError(id, config.validate(config.element.value));
         });
     });
 
@@ -167,15 +155,11 @@
             if (!config.element) return;
 
             const errorMessage = config.validate(config.element.value);
-
             setFieldError(id, errorMessage);
 
             if (errorMessage) {
                 valid = false;
-
-                if (!firstInvalid) {
-                    firstInvalid = config.element;
-                }
+                if (!firstInvalid) firstInvalid = config.element;
             }
         });
 
@@ -186,7 +170,7 @@
         }
 
         showToast(
-            "Your message is ready. Sending will be connected when Bearly’s backend support module is implemented."
+            "Your message is ready. Sending will be connected when Bearly’s backend support module is implemented.",
         );
 
         form.reset();

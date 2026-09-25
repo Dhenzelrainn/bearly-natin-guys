@@ -3,106 +3,219 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="Learn more about Bearly and our marketplace for independent stores.">
+    <meta name="description" content="Learn more about Bearly, a marketplace built to make product discovery feel simpler and more human.">
+    <meta name="theme-color" content="#432214">
     <title>About Bearly</title>
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@300&display=block" rel="stylesheet">
-    @vite(['resources/css/landing.css', 'resources/css/about.css'])
+
+    @vite(['resources/css/about.css'])
 </head>
-<body class="bl ba">
-<header class="bl-header">
-    <a class="bl-brand" href="{{ url('/') }}" aria-label="Bearly home">
-        <img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly - Find more. Live better.">
+<body class="bearly-public about-page">
+<a class="public-skip" href="#about-main">Skip to content</a>
+
+<header class="public-header">
+    <a class="public-logo" href="{{ url('/') }}" aria-label="Bearly home">
+        <img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly">
     </a>
-    <nav class="bl-nav" aria-label="Main navigation">
+
+    <nav class="public-nav" aria-label="Main navigation">
         <a href="{{ url('/') }}">Home</a>
-        <a href="{{ url('/home') }}">Shop</a>
+        <a href="{{ url('/products') }}">Shop</a>
         <a href="{{ route('about') }}" aria-current="page">About</a>
-        <a href="{{ url('/').'#bl-delivery' }}">Delivery</a>
         <a href="{{ route('contact') }}">Contact</a>
     </nav>
-    <div class="bl-actions">
-        <a href="{{ url('/login') }}" aria-label="Sign in"><span class="material-symbols-outlined" aria-hidden="true">person</span></a>
-        <a href="{{ url('/cart') }}" aria-label="Shopping cart"><span class="material-symbols-outlined" aria-hidden="true">shopping_cart</span></a>
-    </div>
-    <form class="bl-search" action="{{ url('/home') }}" role="search">
-        <button aria-label="Search"><span class="material-symbols-outlined" aria-hidden="true">search</span></button>
-        <label class="sr-only" for="about-query">Search products</label>
-        <input id="about-query" name="search" type="search" maxlength="120" placeholder="Search for products, brands, or independent stores...">
+
+    <form class="public-search" action="{{ url('/products') }}" method="GET" role="search">
+        <label class="public-sr" for="about-search">Search products and stores</label>
+        <input id="about-search" name="search" type="search" maxlength="120" placeholder="Search products and stores">
+        <button type="submit" aria-label="Search">
+            <span class="material-symbols-outlined" aria-hidden="true">search</span>
+        </button>
     </form>
+
+    <div class="public-actions">
+        <a href="{{ url('/login') }}" aria-label="Log in">
+            <span class="material-symbols-outlined" aria-hidden="true">person</span>
+        </a>
+        <a href="{{ url('/cart') }}" aria-label="Shopping cart">
+            <span class="material-symbols-outlined" aria-hidden="true">shopping_bag</span>
+        </a>
+    </div>
 </header>
 
-<main>
-    <section class="ba-hero">
-        <div class="ba-shell">
-            <p class="ba-eyebrow">ABOUT BEARLY</p>
-            <h1>Shopping should feel <span>more human.</span></h1>
-            <p class="ba-hero-copy">Bearly brings independent stores and thoughtful shoppers together in one easy-to-use marketplace. We make discovery simpler, more personal, and a little less stressful.</p>
-        </div>
-    </section>
+<main id="about-main">
+    <section class="about-hero">
+        <div class="about-shell about-hero-grid">
+            <div class="about-hero-copy">
+                <p class="about-eyebrow">ABOUT BEARLY</p>
+                <h1>Shopping should feel <span>more human.</span></h1>
+                <p class="about-lead">
+                    Bearly brings independent stores and thoughtful shoppers together
+                    in one marketplace built around easier discovery and less friction.
+                </p>
 
-    <section class="ba-section">
-        <div class="ba-shell ba-two-column">
-            <article class="ba-copy-block">
-                <p class="ba-label">OUR STORY</p>
-                <h2>A marketplace built around better everyday choices.</h2>
-                <p>We created Bearly for people who want to find useful, distinctive products without getting lost in the noise. Every store adds something different, and every discovery has a story behind it.</p>
-            </article>
-            <article class="ba-copy-block ba-copy-divider">
-                <p class="ba-label">OUR PROMISE</p>
-                <h2>Make finding good things feel easy.</h2>
-                <p>From independent sellers to curious buyers, Bearly is designed to keep the experience clear, welcoming, and worth coming back to.</p>
-            </article>
-        </div>
-    </section>
-
-    <section class="ba-section ba-name-section">
-        <div class="ba-shell ba-name-grid">
-            <article>
-                <p class="ba-label">WHY “BEARLY”</p>
-                <h2>Because shopping should be barely a hassle.</h2>
-                <p>It is a small idea with a practical goal: remove the unnecessary friction between people and the things they are looking for.</p>
-            </article>
-            <blockquote>Find more.<br><strong>Live better.</strong></blockquote>
-        </div>
-    </section>
-
-    <section class="ba-section ba-offers">
-        <div class="ba-shell">
-            <p class="ba-label">WHAT YOU CAN EXPECT</p>
-            <h2>A better way to browse.</h2>
-            <div class="ba-offer-grid">
-                <article><span class="material-symbols-outlined" aria-hidden="true">storefront</span><h3>Independent stores</h3><p>Discover products from sellers with their own point of view.</p></article>
-                <article><span class="material-symbols-outlined" aria-hidden="true">search</span><h3>Thoughtful discovery</h3><p>Browse curated categories and find something that fits your life.</p></article>
-                <article><span class="material-symbols-outlined" aria-hidden="true">verified_user</span><h3>Shopping confidence</h3><p>Clear product information and buyer-focused experiences.</p></article>
-                <article><span class="material-symbols-outlined" aria-hidden="true">favorite</span><h3>More meaningful finds</h3><p>Choose useful, personal pieces instead of endless scrolling.</p></article>
+                <div class="about-hero-actions">
+                    <a class="about-primary" href="{{ url('/products') }}">Explore the shop ↗</a>
+                    <a class="about-text-link" href="{{ route('contact') }}">Contact Bearly</a>
+                </div>
             </div>
+
+            <aside class="about-manifesto" aria-label="Bearly principles">
+                <p class="about-manifesto-kicker">BEARLY IN THREE LINES</p>
+                <strong>Find more.<br>Live better.</strong>
+
+                <div class="about-manifesto-list">
+                    <div><span>01</span><p>Independent stores deserve room to be discovered.</p></div>
+                    <div><span>02</span><p>Useful shopping should not feel overwhelming.</p></div>
+                    <div><span>03</span><p>Good products should be easier to find and understand.</p></div>
+                </div>
+            </aside>
         </div>
     </section>
 
-    <section class="ba-cta">
-        <div class="ba-shell ba-cta-inner">
+    <section class="about-section">
+        <div class="about-shell about-story-grid">
             <div>
-                <p class="ba-label">START EXPLORING</p>
-                <h2>Good things are waiting.</h2>
-                <p>Browse Bearly and discover independent stores made for everyday life.</p>
+                <p class="about-label">OUR STORY</p>
+                <h2>A marketplace built around better everyday choices.</h2>
             </div>
-            <div class="ba-cta-actions">
-                <a class="ba-primary" href="{{ url('/home') }}">Shop now <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span></a>
-                <a class="ba-secondary" href="{{ url('/register') }}">Create an account</a>
+
+            <div class="about-story-copy">
+                <p>
+                    Bearly was created for people who want to discover useful,
+                    distinctive products without getting lost in endless noise.
+                </p>
+                <p>
+                    The marketplace gives independent sellers space to present what
+                    they offer clearly while giving shoppers a simpler way to browse.
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <section class="about-name">
+        <div class="about-shell about-name-grid">
+            <div>
+                <p class="about-label">WHY “BEARLY”</p>
+                <h2>Because shopping should be barely a hassle.</h2>
+            </div>
+            <p>
+                The name is a reminder of the product goal: remove unnecessary
+                friction between people and the things they are trying to find.
+            </p>
+        </div>
+    </section>
+
+    <section class="about-section about-expect">
+        <div class="about-shell">
+            <div class="about-section-heading">
+                <div>
+                    <p class="about-label">WHAT BEARLY OFFERS</p>
+                    <h2>Built for discovery, not clutter.</h2>
+                </div>
+                <p>
+                    A marketplace can have variety without making every screen feel busy.
+                </p>
+            </div>
+
+            <div class="about-offer-list">
+                <article>
+                    <span class="material-symbols-outlined" aria-hidden="true">storefront</span>
+                    <div>
+                        <h3>Independent and growing stores</h3>
+                        <p>Give smaller businesses a clear place to present products beside larger sellers.</p>
+                    </div>
+                </article>
+
+                <article>
+                    <span class="material-symbols-outlined" aria-hidden="true">search</span>
+                    <div>
+                        <h3>Thoughtful product discovery</h3>
+                        <p>Browse useful categories and move from interest to product without unnecessary steps.</p>
+                    </div>
+                </article>
+
+                <article>
+                    <span class="material-symbols-outlined" aria-hidden="true">verified_user</span>
+                    <div>
+                        <h3>Clear shopping information</h3>
+                        <p>Keep product, seller, and order information understandable as the platform grows.</p>
+                    </div>
+                </article>
+
+                <article>
+                    <span class="material-symbols-outlined" aria-hidden="true">handshake</span>
+                    <div>
+                        <h3>Support for small businesses</h3>
+                        <p>Help independent sellers reach more shoppers without losing their own identity.</p>
+                    </div>
+                </article>
+            </div>
+        </div>
+    </section>
+
+    <section class="about-small-business">
+        <div class="about-shell about-small-business-grid">
+            <p class="about-label">WHY IT MATTERS</p>
+            <h2>More room for small businesses to be seen.</h2>
+            <p>
+                Bearly is designed as an open marketplace where independent shops and
+                larger stores can coexist. Discovery should not depend only on who is
+                already the biggest.
+            </p>
+        </div>
+    </section>
+
+    <section class="about-cta">
+        <div class="about-shell about-cta-inner">
+            <div>
+                <p class="about-label">START EXPLORING</p>
+                <h2>Good things are waiting.</h2>
+                <p>Browse the guest catalogue or create an account when you are ready.</p>
+            </div>
+
+            <div class="about-cta-actions">
+                <a class="about-primary" href="{{ url('/products') }}">Shop now ↗</a>
+                <a class="about-secondary" href="{{ url('/register') }}">Create an account</a>
             </div>
         </div>
     </section>
 </main>
 
-<footer class="bl-footer">
-    <div class="bl-footer-grid">
-        <div><a class="bl-brand" href="{{ url('/') }}" aria-label="Bearly home"><img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly - Find more. Live better."></a><p class="bl-copyright">© {{ date('Y') }} Bearly.<br>All rights reserved.</p></div>
-        <nav aria-label="Shop links"><h3>Shop</h3><a href="{{ url('/home') }}">All Products</a><a href="{{ url('/').'#bl-categories' }}">Categories</a></nav>
-        <nav aria-label="About links"><h3>About</h3><a href="{{ route('about') }}">Our Story</a><a href="{{ url('/seller/dashboard') }}">Sell on Bearly</a></nav>
-        <nav aria-label="Support links"><h3>Support</h3><a href="{{ url('/').'#bl-delivery' }}">Delivery</a><a href="{{ route('contact') }}">Contact Us</a></nav>
+<footer class="public-footer">
+    <div class="public-footer-grid">
+        <div>
+            <a class="public-footer-logo" href="{{ url('/') }}" aria-label="Bearly home">
+                <img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly">
+            </a>
+            <p>Shopping should be easy.<br>Bearly stressful.</p>
+        </div>
+
+        <nav aria-label="Shop links">
+            <h2>Shop</h2>
+            <a href="{{ url('/products') }}">All Products</a>
+            <a href="{{ url('/') }}#bl-categories">Categories</a>
+        </nav>
+
+        <nav aria-label="About links">
+            <h2>About</h2>
+            <a href="{{ route('about') }}">Our Story</a>
+            <a href="{{ url('/register') }}">Sell on Bearly</a>
+        </nav>
+
+        <nav aria-label="Support links">
+            <h2>Support</h2>
+            <a href="{{ route('contact') }}">Contact Us</a>
+            <a href="{{ url('/login') }}">Log in</a>
+        </nav>
+    </div>
+
+    <div class="public-footer-bottom">
+        <span>© {{ date('Y') }} Bearly. All rights reserved.</span>
     </div>
 </footer>
 </body>

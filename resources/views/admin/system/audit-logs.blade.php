@@ -34,7 +34,7 @@
             </small>
 
             <strong>
-                {{ count($logs) }}
+                {{ $logs->total() }}
             </strong>
 
             <span>
@@ -64,7 +64,7 @@
         </div>
 
 
-        <div class="table-toolbar">
+        <form method="GET" action="{{ route('admin.audit-logs') }}" class="table-toolbar">
 
             <label class="field-with-icon compact-field">
 
@@ -72,8 +72,9 @@
 
                 <input
                     type="search"
+                    name="search"
+                    value="{{ $filters['search'] }}"
                     placeholder="Search logs..."
-                    data-table-search="audit-logs-table"
                 >
 
             </label>
@@ -81,31 +82,30 @@
 
             <select
                 class="select-field"
-                data-table-filter="audit-logs-table"
-                data-filter-key="module"
+                name="module"
             >
 
                 <option value="">
                     All modules
                 </option>
 
-                <option value="Registration Management">
+                <option value="registration_management" @selected($filters['module'] === 'registration_management')>
                     Registration Management
                 </option>
 
-                <option value="User Management">
+                <option value="user_management" @selected($filters['module'] === 'user_management')>
                     User Management
                 </option>
 
-                <option value="Compliance & Disputes">
+                <option value="compliance" @selected($filters['module'] === 'compliance')>
                     Compliance & Disputes
                 </option>
 
-                <option value="Communication">
+                <option value="communication" @selected($filters['module'] === 'communication')>
                     Communication
                 </option>
 
-                <option value="System Management">
+                <option value="system_management" @selected($filters['module'] === 'system_management')>
                     System Management
                 </option>
 
@@ -114,29 +114,32 @@
 
             <select
                 class="select-field"
-                data-table-filter="audit-logs-table"
-                data-filter-key="severity"
+                name="severity"
             >
 
                 <option value="">
                     All severities
                 </option>
 
-                <option value="Info">
+                <option value="info" @selected($filters['severity'] === 'info')>
                     Info
                 </option>
 
-                <option value="Warning">
+                <option value="warning" @selected($filters['severity'] === 'warning')>
                     Warning
                 </option>
 
-                <option value="Critical">
+                <option value="critical" @selected($filters['severity'] === 'critical')>
                     Critical
                 </option>
 
             </select>
 
-        </div>
+            <input class="select-field" type="date" name="date_from" value="{{ $filters['dateFrom'] }}" aria-label="From date">
+            <input class="select-field" type="date" name="date_to" value="{{ $filters['dateTo'] }}" aria-label="To date">
+            <button class="button button-secondary button-small" type="submit">Apply filters</button>
+
+        </form>
 
     </div>
 
@@ -327,6 +330,8 @@
     </div>
 
 </section>
+
+{{ $logs->links() }}
 
 
 

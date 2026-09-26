@@ -81,6 +81,7 @@
                     <th>Manager</th>
                     <th>Location</th>
                     <th>Riders</th>
+                    <th>Deliveries</th>
                     <th>Joined</th>
                     <th>Status</th>
                     <th class="align-right">Actions</th>
@@ -136,6 +137,8 @@
                             </div>
 
                         </td>
+
+                        <td><div class="table-primary-secondary"><strong>{{ $user['deliveries'] }}</strong><small>Completed</small></div></td>
 
 
                         <td>
@@ -319,6 +322,8 @@
                         <strong>{{ $user['joined'] }}</strong>
                     </div>
 
+                    <div><span>Successful deliveries</span><strong>{{ $user['deliveries'] }}</strong></div>
+
                     <div>
                         <span>Current status</span>
                         <strong>{{ $user['status'] }}</strong>
@@ -337,35 +342,7 @@
             data-user-id="{{ $user['id'] }}"
         >
 
-            <button
-                type="button"
-                class="button button-primary"
-                data-modal-user-status="Active"
-                data-mock-action="{{ $user['name'] }} account activated."
-            >
-                <i data-lucide="circle-check"></i>
-                Activate
-            </button>
-
-            <button
-                type="button"
-                class="button button-danger-soft"
-                data-modal-user-status="Suspended"
-                data-mock-action="{{ $user['name'] }} account suspended."
-            >
-                <i data-lucide="pause-circle"></i>
-                Suspend
-            </button>
-
-            <button
-                type="button"
-                class="button button-danger"
-                data-modal-user-status="Deactivated"
-                data-mock-action="{{ $user['name'] }} account deactivated."
-            >
-                <i data-lucide="building-x"></i>
-                Deactivate
-            </button>
+            @include('admin.users._status-actions')
 
         </div>
 

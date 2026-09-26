@@ -439,6 +439,8 @@
                     const noteError = drawer.querySelector('[data-compliance-note-error]');
                     if (notes) notes.value = button.dataset.adminNotes || '';
                     if (noteError) noteError.hidden = true;
+                    const decisionForm = drawer.querySelector('[data-compliance-decision-form]');
+                    if (decisionForm) decisionForm.action = button.dataset.decisionUrl || '';
                 }
 
                 drawer.hidden = false;
@@ -1566,22 +1568,8 @@
             });
         });
 
-        // Finance ledgers and seller payment status
-        const PAYMENT_STATUS_STORAGE_KEY = 'bearlyAdminPaymentStatuses';
-        const paymentStatuses = (() => {
-            try {
-                return JSON.parse(localStorage.getItem(PAYMENT_STATUS_STORAGE_KEY) || '{}');
-            } catch {
-                return {};
-            }
-        })();
-
-        const financeStatusClass = (status) => {
-            if (status === 'Completed' || status === 'Paid') return 'badge-success';
-            if (status === 'Refunded' || status === 'Failed' || status === 'On Hold') return 'badge-danger';
-            if (status === 'Processing') return 'badge-info';
-            return 'badge-warning';
-        };
+        // Finance ledgers use server-authoritative values. Client code only filters
+        // and exports the rendered rows.
 
         const applyFinanceFilters = (module) => {
             const rows = [...module.querySelectorAll('[data-finance-row]')];
@@ -1625,42 +1613,6 @@
             module.querySelector('[data-finance-reset]')?.addEventListener('click', () => {
                 filterControls.forEach((control) => { control.value = ''; });
                 applyFinanceFilters(module);
-            });
-        });
-
-        document.querySelectorAll('[data-payment-id]').forEach((row) => {
-            const id = row.dataset.paymentId;
-            const select = row.querySelector('[data-payment-status]');
-            const badge = row.querySelector('.js-payment-status');
-            const savedPayment = paymentStatuses[id];
-            const savedStatus = typeof savedPayment === 'string' ? savedPayment : savedPayment?.status;
-            const savedReference = typeof savedPayment === 'object' ? savedPayment?.reference : '';
-            const applyPaymentStatus = (status) => {
-                row.dataset.status = status;
-                if (select) select.value = status;
-                if (badge) {
-                    badge.textContent = status;
-                    badge.className = `status-badge js-payment-status ${financeStatusClass(status)}`;
-                }
-            };
-
-            applyPaymentStatus(savedStatus || row.dataset.status || 'Pending');
-            const reference = row.querySelector('[data-payment-reference]');
-            if (savedReference && reference) reference.textContent = savedReference;
-            select?.addEventListener('change', () => {
-                applyPaymentStatus(select.value);
-                if (select.value === 'Paid' && reference?.textContent.trim() === '—') {
-                    reference.textContent = `DEMO-${Date.now().toString().slice(-6)}`;
-                }
-                paymentStatuses[id] = {
-                    status: select.value,
-                    reference: reference?.textContent.trim() || '—',
-                };
-                localStorage.setItem(PAYMENT_STATUS_STORAGE_KEY, JSON.stringify(paymentStatuses));
-
-                const module = row.closest('[data-finance-module]');
-                if (module) applyFinanceFilters(module);
-                showToast(`${id} changed to ${select.value}.`, 'Payment status saved');
             });
         });
 
@@ -4509,11 +4461,12 @@
         const commissionInput = document.querySelector('[data-commission-input]');
         const commissionOutput = document.querySelector('[data-commission-output]');
         const sellerNet = document.querySelector('[data-seller-net]');
+        const commissionRate = Number(document.querySelector('[data-commission-rate]')?.dataset.commissionRate || 10) / 100;
         const formatPeso = (number) => `₱${Number(number).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         const calculateCommission = () => {
             const gross = Math.max(0, Number(commissionInput?.value || 0));
-            if (commissionOutput) commissionOutput.textContent = formatPeso(gross * .10);
-            if (sellerNet) sellerNet.textContent = formatPeso(gross * .90);
+            if (commissionOutput) commissionOutput.textContent = formatPeso(gross * commissionRate);
+            if (sellerNet) sellerNet.textContent = formatPeso(gross * (1 - commissionRate));
         };
         commissionInput?.addEventListener('input', calculateCommission);
 

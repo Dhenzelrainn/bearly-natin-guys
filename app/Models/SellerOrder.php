@@ -27,4 +27,19 @@ class SellerOrder extends Model
     {
         return $this->hasMany(Shipment::class);
     }
+
+    public function commissions()
+    {
+        return $this->hasMany(PlatformCommission::class);
+    }
+
+    public function transactions()
+    {
+        return $this->hasMany(SellerTransaction::class);
+    }
+
+    public function returnRequests()
+    {
+        return $this->hasMany(ReturnRequest::class);
+    }
 }

@@ -4,8 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Enums\AccountStatus;
 use App\Enums\UserRole;
+use App\Models\AccountApplication;
 use App\Models\User;
-use Illuminate\Support\Facades\Schema;
+use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class AdminController extends Controller
@@ -51,43 +52,41 @@ class AdminController extends Controller
         ]));
     }
 
-    public function registrations(): View
+    public function registrations(Request $request): View
     {
-        $applications = [
-            ['id' => 'REG-2041', 'name' => 'Sofia Mendoza', 'role' => 'Seller', 'email' => 'sofia@example.test', 'submitted' => 'Aug 24, 2026', 'status' => 'Pending', 'category' => 'Jewelry & Watches', 'documents' => ['Government ID', 'Business Permit']],
-            ['id' => 'REG-2042', 'name' => 'Northstar Logistics', 'role' => 'Logistics', 'email' => 'applications@northstar.example.test', 'submitted' => 'Aug 24, 2026', 'status' => 'Pending', 'category' => 'Regional Delivery Partner', 'documents' => ['SEC/DTI Registration', 'Business Permit', 'Service Coverage']],
-            ['id' => 'REG-2043', 'name' => 'Bianca Lim', 'role' => 'Buyer', 'email' => 'bianca@example.test', 'submitted' => 'Aug 23, 2026', 'status' => 'Pending', 'category' => '—', 'documents' => ['Government ID']],
-            ['id' => 'REG-2044', 'name' => 'Ethan Cruz', 'role' => 'Seller', 'email' => 'ethan@example.test', 'submitted' => 'Aug 23, 2026', 'status' => 'Needs Review', 'category' => 'Food & Gourmet', 'documents' => ['Government ID', 'Business Permit']],
-            ['id' => 'REG-2045', 'name' => 'Laguna Express Hub', 'role' => 'Logistics', 'email' => 'onboarding@lagunaexpress.example.test', 'submitted' => 'Aug 22, 2026', 'status' => 'Pending', 'category' => 'Provincial Sorting Center', 'documents' => ['SEC/DTI Registration', 'Business Permit', 'Warehouse Permit']],
-        ];
+        $search = trim((string) $request->query('search'));
+        $role = (string) $request->query('role');
+        $status = (string) $request->query('status');
+        $reviewableStatuses = ['submitted', 'under_review', 'needs_revision'];
 
-        if (Schema::hasTable('users')) {
-            $databaseApplications = User::query()
-                ->whereIn('role', UserRole::adminApproved())
-                ->whereIn('status', [AccountStatus::Pending->value, AccountStatus::NeedsRevision->value])
-                ->latest()
-                ->get()
-                ->map(fn (User $user) => [
-                    'id' => 'DB-'.$user->id,
-                    'database_id' => $user->id,
-                    'name' => $user->business_name ?: $user->name,
-                    'role' => ucfirst($user->role),
-                    'email' => $user->email,
-                    'submitted' => $user->created_at?->format('M j, Y') ?? 'Recently',
-                    'status' => $user->status === AccountStatus::NeedsRevision->value ? 'Needs Review' : 'Pending',
-                    'category' => $user->business_category ?: '—',
-                    'documents' => array_values(array_filter([
-                        $user->valid_id_path ? 'Government ID' : null,
-                        $user->business_permit_path ? 'Business Permit' : null,
-                    ])),
-                ])
-                ->all();
-
-            $applications = [...$databaseApplications, ...$applications];
-        }
+        $applications = AccountApplication::query()
+            ->with(['user', 'requestedRole', 'businessCategory', 'documents'])
+            ->whereIn('status', $reviewableStatuses)
+            ->whereHas('requestedRole', fn ($query) => $query->whereIn('name', UserRole::adminApproved()))
+            ->whereHas('user', fn ($query) => $query->whereIn('status', [
+                AccountStatus::Pending->value,
+                AccountStatus::NeedsRevision->value,
+            ]))
+            ->when($search !== '', function ($query) use ($search): void {
+                $query->where(function ($query) use ($search): void {
+                    $query->where('application_no', 'like', "%{$search}%")
+                        ->orWhere('business_name', 'like', "%{$search}%")
+                        ->orWhereHas('user', fn ($userQuery) => $userQuery
+                            ->where('name', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%"));
+                });
+            })
+            ->when(in_array($role, UserRole::adminApproved(), true), fn ($query) => $query
+                ->whereHas('requestedRole', fn ($roleQuery) => $roleQuery->where('name', $role)))
+            ->when(in_array($status, $reviewableStatuses, true), fn ($query) => $query->where('status', $status))
+            ->orderByDesc('submitted_at')
+            ->orderByDesc('id')
+            ->paginate(10)
+            ->withQueryString();
 
         return view('admin.registrations.index', $this->base([
             'applications' => $applications,
+            'filters' => compact('search', 'role', 'status'),
         ]));
     }
 
@@ -781,98 +780,6 @@ class AdminController extends Controller
                     'seller_response' => 'Seller agreed to the refund after reviewing the submitted evidence.',
                     'buyer_request' => 'Buyer requested a full refund based on significant differences from the listing.',
                 ],
-            ],
-        ]));
-    }
-
-    public function commissions(): View
-    {
-        $ledger = [
-            ['date' => 'Aug 24, 2026', 'order' => 'ORD-50192', 'seller' => 'Mara Home Goods', 'gross' => 2480.00],
-            ['date' => 'Aug 24, 2026', 'order' => 'ORD-50188', 'seller' => 'Chrono Alley', 'gross' => 6390.00],
-            ['date' => 'Aug 23, 2026', 'order' => 'ORD-50171', 'seller' => 'Everyday Finds', 'gross' => 1299.00],
-            ['date' => 'Aug 23, 2026', 'order' => 'ORD-50154', 'seller' => 'TechVault PH', 'gross' => 4299.00],
-            ['date' => 'Aug 22, 2026', 'order' => 'ORD-50111', 'seller' => 'Mara Home Goods', 'gross' => 3190.00],
-        ];
-
-        $ledger = array_map(function ($row) {
-            $row['commission'] = $row['gross'] * 0.10;
-            $row['sellerNet'] = $row['gross'] * 0.90;
-
-            return $row;
-        }, $ledger);
-
-        return view('admin.finance.commissions', $this->base([
-            'rate' => 10,
-            'ledger' => $ledger,
-        ]));
-    }
-
-    public function transactions(): View
-    {
-        $transactions = [
-            ['id' => 'TXN-260824-0192', 'date' => '2026-08-24', 'order' => 'ORD-50192', 'seller' => 'Mara Home Goods', 'buyer' => 'Karen Yu', 'method' => 'GCash', 'gross' => 2480.00, 'refund' => 0.00, 'status' => 'Completed'],
-            ['id' => 'TXN-260824-0188', 'date' => '2026-08-24', 'order' => 'ORD-50188', 'seller' => 'Chrono Alley', 'buyer' => 'Marco Lim', 'method' => 'Card', 'gross' => 6390.00, 'refund' => 0.00, 'status' => 'Completed'],
-            ['id' => 'TXN-260823-0171', 'date' => '2026-08-23', 'order' => 'ORD-50171', 'seller' => 'Everyday Finds', 'buyer' => 'Bianca Lim', 'method' => 'Cash on Delivery', 'gross' => 1299.00, 'refund' => 0.00, 'status' => 'Pending'],
-            ['id' => 'TXN-260823-0154', 'date' => '2026-08-23', 'order' => 'ORD-50154', 'seller' => 'TechVault PH', 'buyer' => 'Paolo Reyes', 'method' => 'Maya', 'gross' => 4299.00, 'refund' => 4299.00, 'status' => 'Refunded'],
-            ['id' => 'TXN-260822-0111', 'date' => '2026-08-22', 'order' => 'ORD-50111', 'seller' => 'Mara Home Goods', 'buyer' => 'Angela Torres', 'method' => 'GCash', 'gross' => 3190.00, 'refund' => 0.00, 'status' => 'Completed'],
-            ['id' => 'TXN-260821-0097', 'date' => '2026-08-21', 'order' => 'ORD-50097', 'seller' => 'Everyday Finds', 'buyer' => 'Carlo Reyes', 'method' => 'Card', 'gross' => 1875.00, 'refund' => 0.00, 'status' => 'Failed'],
-        ];
-
-        $transactions = array_map(function ($row) {
-            $commissionBase = $row['status'] === 'Completed'
-                ? max(0, $row['gross'] - $row['refund'])
-                : 0;
-            $row['commission'] = $commissionBase * 0.10;
-            $row['sellerNet'] = $commissionBase * 0.90;
-
-            return $row;
-        }, $transactions);
-
-        return view('admin.finance.transactions', $this->base([
-            'rate' => 10,
-            'transactions' => $transactions,
-        ]));
-    }
-
-    public function payments(): View
-    {
-        return view('admin.finance.payments', $this->base([
-            'payments' => [
-                ['id' => 'PAY-2608-041', 'seller' => 'Mara Home Goods', 'period' => 'Aug 16–22, 2026', 'gross' => 184210.00, 'commission' => 18421.00, 'adjustments' => -1250.00, 'net' => 164539.00, 'due' => '2026-08-26', 'paid' => null, 'reference' => '—', 'status' => 'Pending'],
-                ['id' => 'PAY-2608-040', 'seller' => 'Chrono Alley', 'period' => 'Aug 16–22, 2026', 'gross' => 142880.00, 'commission' => 14288.00, 'adjustments' => 0.00, 'net' => 128592.00, 'due' => '2026-08-26', 'paid' => null, 'reference' => '—', 'status' => 'Processing'],
-                ['id' => 'PAY-2608-039', 'seller' => 'Everyday Finds', 'period' => 'Aug 9–15, 2026', 'gross' => 119520.00, 'commission' => 11952.00, 'adjustments' => -640.00, 'net' => 106928.00, 'due' => '2026-08-19', 'paid' => '2026-08-19', 'reference' => 'BNK-849301', 'status' => 'Paid'],
-                ['id' => 'PAY-2608-038', 'seller' => 'TechVault PH', 'period' => 'Aug 9–15, 2026', 'gross' => 96410.00, 'commission' => 9641.00, 'adjustments' => -4299.00, 'net' => 82470.00, 'due' => '2026-08-19', 'paid' => null, 'reference' => '—', 'status' => 'On Hold'],
-                ['id' => 'PAY-2608-037', 'seller' => 'Mara Home Goods', 'period' => 'Aug 9–15, 2026', 'gross' => 156780.00, 'commission' => 15678.00, 'adjustments' => 0.00, 'net' => 141102.00, 'due' => '2026-08-19', 'paid' => '2026-08-18', 'reference' => 'BNK-848775', 'status' => 'Paid'],
-            ],
-        ]));
-    }
-
-    public function reports(): View
-    {
-        return view('admin.finance.reports', $this->base([
-            'reportKpis' => [
-                ['label' => 'Net Sales', 'value' => '₱1,154,820', 'note' => '+11.2% vs previous period'],
-                ['label' => 'Orders', 'value' => '8,421', 'note' => '+7.8% vs previous period'],
-                ['label' => 'Platform Commission', 'value' => '₱128,313', 'note' => '10% configured rate'],
-                ['label' => 'Avg. Order Value', 'value' => '₱152.40', 'note' => '+2.1% vs previous period'],
-            ],
-            'salesSeries' => [64, 71, 69, 78, 86, 82, 93, 99, 106, 112, 121, 134],
-            'topSellers' => [
-                ['seller' => 'Mara Home Goods', 'sales' => '₱184,210', 'commission' => '₱18,421'],
-                ['seller' => 'Chrono Alley', 'sales' => '₱142,880', 'commission' => '₱14,288'],
-                ['seller' => 'Everyday Finds', 'sales' => '₱119,520', 'commission' => '₱11,952'],
-                ['seller' => 'TechVault PH', 'sales' => '₱96,410', 'commission' => '₱9,641'],
-            ],
-            'settlementRows' => [
-                ['seller' => 'Mara Home Goods', 'period' => 'Aug 16–22, 2026', 'net' => '₱164,539', 'status' => 'Pending'],
-                ['seller' => 'Chrono Alley', 'period' => 'Aug 16–22, 2026', 'net' => '₱128,592', 'status' => 'Processing'],
-                ['seller' => 'Everyday Finds', 'period' => 'Aug 9–15, 2026', 'net' => '₱106,928', 'status' => 'Paid'],
-            ],
-            'refundRows' => [
-                ['case' => 'REF-2211', 'order' => 'ORD-50154', 'seller' => 'TechVault PH', 'amount' => '₱4,299', 'status' => 'Approved'],
-                ['case' => 'REF-2209', 'order' => 'ORD-50132', 'seller' => 'Everyday Finds', 'amount' => '₱640', 'status' => 'Processing'],
-                ['case' => 'REF-2204', 'order' => 'ORD-50088', 'seller' => 'Mara Home Goods', 'amount' => '₱1,250', 'status' => 'Completed'],
             ],
         ]));
     }

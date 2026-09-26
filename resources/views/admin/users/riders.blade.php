@@ -82,6 +82,7 @@
                     <th>Plate</th>
                     <th>Logistics Center</th>
                     <th>Deliveries</th>
+                    <th>Active jobs / Earnings</th>
                     <th>Status</th>
                     <th class="align-right">Actions</th>
                 </tr>
@@ -138,6 +139,8 @@
                             </div>
 
                         </td>
+
+                        <td><div class="table-primary-secondary"><strong>{{ $user['active_batches'] }} active</strong><small>₱{{ number_format($user['earnings'], 2) }} earned</small></div></td>
 
 
                         <td>
@@ -321,6 +324,9 @@
                         <strong>{{ $user['joined'] }}</strong>
                     </div>
 
+                    <div><span>Active assigned jobs</span><strong>{{ $user['active_batches'] }}</strong></div>
+                    <div><span>Accumulated earnings</span><strong>₱{{ number_format($user['earnings'], 2) }}</strong></div>
+
                     <div>
                         <span>Current status</span>
                         <strong>{{ $user['status'] }}</strong>
@@ -339,35 +345,7 @@
             data-user-id="{{ $user['id'] }}"
         >
 
-            <button
-                type="button"
-                class="button button-primary"
-                data-modal-user-status="Active"
-                data-mock-action="{{ $user['name'] }} account activated."
-            >
-                <i data-lucide="circle-check"></i>
-                Activate
-            </button>
-
-            <button
-                type="button"
-                class="button button-danger-soft"
-                data-modal-user-status="Suspended"
-                data-mock-action="{{ $user['name'] }} account suspended."
-            >
-                <i data-lucide="pause-circle"></i>
-                Suspend
-            </button>
-
-            <button
-                type="button"
-                class="button button-danger"
-                data-modal-user-status="Deactivated"
-                data-mock-action="{{ $user['name'] }} account deactivated."
-            >
-                <i data-lucide="user-x"></i>
-                Deactivate
-            </button>
+            @include('admin.users._status-actions')
 
         </div>
 

@@ -5,13 +5,13 @@
 
 @section('content')
 @php
-    $grossTotal = collect($transactions)->where('status', '!=', 'Failed')->sum('gross');
-    $refundTotal = collect($transactions)->sum('refund');
-    $commissionTotal = collect($transactions)->sum('commission');
+    $grossTotal = collect($transactions)->where('status', 'Completed')->sum('gross');
+    $refundTotal = collect($transactions)->where('status', 'Refunded')->sum('refund');
+    $commissionTotal = collect($transactions)->whereIn('status', ['Completed', 'Refunded'])->sum('commission');
 @endphp
 
 <section class="page-hero">
-    <div><span class="eyebrow">Finance ledger</span><h1>Track commission transactions</h1><p>Review every order amount, refund adjustment, 10% platform commission, and resulting seller net.</p></div>
+    <div><span class="eyebrow">Finance ledger</span><h1>Track commission transactions</h1><p>Review every order amount, refund adjustment, {{ $rate }}% platform commission, and resulting seller net.</p></div>
     <div class="hero-actions"><button class="button button-secondary" type="button" data-finance-export="transactions"><i data-lucide="download"></i> Export ledger</button></div>
 </section>
 
@@ -28,8 +28,8 @@
         <div class="table-toolbar">
             <label class="field-with-icon compact-field"><i data-lucide="search"></i><input type="search" placeholder="Order, seller, buyer..." data-finance-search></label>
             <select class="select-field" data-finance-status><option value="">All statuses</option><option>Completed</option><option>Pending</option><option>Refunded</option><option>Failed</option></select>
-            <input class="date-field" type="date" value="2026-08-21" data-finance-start>
-            <input class="date-field" type="date" value="2026-08-24" data-finance-end>
+            <input class="date-field" type="date" value="{{ $dateRangeStart }}" data-finance-start>
+            <input class="date-field" type="date" value="{{ $dateRangeEnd }}" data-finance-end>
             <button class="button button-secondary button-small" type="button" data-finance-reset>Reset</button>
         </div>
     </div>

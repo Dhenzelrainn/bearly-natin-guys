@@ -2,11 +2,16 @@
 
 namespace Tests\Feature;
 
-// use Illuminate\Foundation\Testing\RefreshDatabase;
+use App\Enums\AccountStatus;
+use App\Enums\UserRole;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class ExampleTest extends TestCase
 {
+    use RefreshDatabase;
+
     /**
      * A basic test example.
      */
@@ -17,11 +22,16 @@ class ExampleTest extends TestCase
         $response->assertStatus(200);
     }
 
-    public function test_admin_frontend_preview_routes_are_available(): void
+    public function test_admin_routes_are_available_to_active_administrators(): void
     {
-        $this->get('/admin/dashboard')->assertOk();
-        $this->get('/admin/transactions')->assertOk();
-        $this->get('/admin/payments')->assertOk();
-        $this->get('/admin/reports')->assertOk();
+        $admin = User::factory()->create([
+            'role' => UserRole::Admin->value,
+            'status' => AccountStatus::Active->value,
+        ]);
+
+        $this->actingAs($admin)->get('/admin/dashboard')->assertOk();
+        $this->actingAs($admin)->get('/admin/transactions')->assertOk();
+        $this->actingAs($admin)->get('/admin/payments')->assertOk();
+        $this->actingAs($admin)->get('/admin/reports')->assertOk();
     }
 }

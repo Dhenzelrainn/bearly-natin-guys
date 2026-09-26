@@ -288,7 +288,7 @@
 <div
     class="modal-shell"
     data-modal="seller-application-{{ $loop->index }}"
-    hidden
+    @if ((int) session('review_application_id') !== (int) $application['database_id']) hidden @endif
 >
 
     <button
@@ -328,6 +328,12 @@
 
         </div>
 
+
+        @if ((int) session('review_application_id') === (int) $application['database_id'] && $errors->any())
+            <div class="registration-review-feedback" role="alert">{{ $errors->first() }}</div>
+        @elseif ((int) session('review_application_id') === (int) $application['database_id'] && session('success'))
+            <div class="registration-review-feedback is-success">{{ session('success') }}</div>
+        @endif
 
         <div class="review-grid">
 
@@ -471,26 +477,7 @@
 
                 <div class="document-preview-grid">
 
-                    @foreach ($application['documents'] as $doc)
-
-                        <button
-                            type="button"
-                            class="document-preview"
-                            data-mock-action="{{ $doc }} preview opened."
-                        >
-                            <span>
-                                <i data-lucide="file-text"></i>
-                            </span>
-
-                            <div>
-                                <strong>{{ $doc }}</strong>
-                                <small>Mock verification file • PDF/JPG</small>
-                            </div>
-
-                            <i data-lucide="maximize-2"></i>
-                        </button>
-
-                    @endforeach
+                    @include('admin.registrations._document-review')
 
                 </div>
 
@@ -501,30 +488,7 @@
 
         <div class="modal-footer decision-footer">
 
-            <button
-                type="button"
-                class="button button-danger-soft"
-                data-close-modal
-                data-open-modal="seller-email-decision"
-                data-decision="Disapproved"
-                data-applicant="{{ $application['name'] }}"
-            >
-                <i data-lucide="circle-x"></i>
-                Disapprove
-            </button>
-
-
-            <button
-                type="button"
-                class="button button-primary"
-                data-close-modal
-                data-open-modal="seller-email-decision"
-                data-decision="Approved"
-                data-applicant="{{ $application['name'] }}"
-            >
-                <i data-lucide="circle-check"></i>
-                Approve application
-            </button>
+            @include('admin.registrations._decision-actions')
 
         </div>
 

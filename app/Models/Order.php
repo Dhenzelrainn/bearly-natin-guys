@@ -22,4 +22,14 @@ class Order extends Model
     {
         return $this->hasMany(Payment::class);
     }
+
+    public function refunds()
+    {
+        return $this->hasMany(Refund::class);
+    }
+
+    public function returnRequests()
+    {
+        return $this->hasMany(ReturnRequest::class);
+    }
 }

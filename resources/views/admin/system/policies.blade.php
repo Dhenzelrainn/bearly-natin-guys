@@ -259,6 +259,9 @@
 
         <div class="review-details">
 
+            <form method="POST" action="{{ route('admin.policies.update', $policy['database_id']) }}">
+            @csrf
+            @method('PATCH')
             <h3 class="section-subtitle">
                 Policy information
             </h3>
@@ -266,17 +269,18 @@
             <div class="detail-grid">
 
                 <div>
+                    <span>Title</span>
+                    <input class="text-field" name="title" value="{{ $policy['title'] }}" maxlength="180" required>
+                </div>
+
+                <div>
                     <span>Category</span>
-                    <strong data-policy-category>
-                        {{ $policy['category'] }}
-                    </strong>
+                    <select class="select-field" name="category" required>@foreach ($categories as $category)<option value="{{ $category }}" @selected($policy['category'] === $category)>{{ $category }}</option>@endforeach</select>
                 </div>
 
                 <div>
                     <span>Version</span>
-                    <strong data-policy-version>
-                        {{ $policy['version'] }}
-                    </strong>
+                    <input class="text-field" name="version" value="{{ $policy['version'] }}" maxlength="20" required>
                 </div>
 
                 <div>
@@ -305,19 +309,17 @@
 
             <div class="detail-note">
                 <span>Summary</span>
-
-                <p data-policy-summary>
-                    {{ $policy['summary'] }}
-                </p>
+                <textarea class="text-field" name="summary" rows="4" maxlength="2000">{{ $policy['summary'] }}</textarea>
             </div>
 
             <div class="detail-note">
                 <span>Policy content</span>
 
-                <p data-policy-body>
-                    {{ $policy['body'] }}
-                </p>
+                <textarea class="text-field" name="body" rows="10" maxlength="50000" required>{{ $policy['body'] }}</textarea>
             </div>
+
+            <div class="modal-footer decision-footer"><button type="submit" class="button button-secondary"><i data-lucide="save"></i> Save Draft</button></div>
+            </form>
 
         </div>
 
@@ -327,52 +329,12 @@
             data-policy-actions
         >
 
-            <button
-                type="button"
-                class="button button-secondary"
-                data-policy-action="edit"
-                data-mock-action="{{ $policy['title'] }} opened for editing."
-            >
-                <i data-lucide="pencil"></i>
-                Edit Policy
-            </button>
-
-
-            <button
-                type="button"
-                class="button button-primary"
-                data-policy-action="publish"
-                data-mock-action="{{ $policy['title'] }} published."
-            >
-                <i data-lucide="send"></i>
-                Publish
-            </button>
-
-
-            <button
-                type="button"
-                class="button button-danger-soft"
-                data-policy-action="archive"
-                data-mock-action="{{ $policy['title'] }} archived."
-            >
-                <i data-lucide="archive"></i>
-                Archive
-            </button>
-
-
-            <button
-                type="button"
-                class="button button-secondary"
-                data-policy-state-indicator
-                hidden
-                disabled
-            >
-                <i data-lucide="circle-check"></i>
-
-                <span data-policy-state-label>
-                    Policy updated
-                </span>
-            </button>
+            @if ($policy['version_status'] === 'draft')
+                <form method="POST" action="{{ route('admin.policies.publish', $policy['database_id']) }}">@csrf<button type="submit" class="button button-primary"><i data-lucide="send"></i> Publish</button></form>
+            @endif
+            @if ($policy['status'] !== 'Archived')
+                <form method="POST" action="{{ route('admin.policies.archive', $policy['database_id']) }}" onsubmit="return confirm('Archive this policy?')">@csrf<button type="submit" class="button button-danger-soft"><i data-lucide="archive"></i> Archive</button></form>
+            @endif
 
         </div>
 
@@ -419,6 +381,8 @@
         </div>
 
 
+        <form method="POST" action="{{ route('admin.policies.store') }}">
+        @csrf
         <div class="policy-form">
 
             <div class="form-grid two-column-form">
@@ -429,7 +393,7 @@
                     <input
                         type="text"
                         class="text-field"
-                        data-record-field="title"
+                        name="title"
                         placeholder="Enter policy title"
                     >
                 </label>
@@ -440,7 +404,7 @@
 
                     <select
                         class="select-field"
-                        data-record-field="category"
+                        name="category"
                     >
                         <option>Marketplace</option>
                         <option>Seller Compliance</option>
@@ -456,7 +420,7 @@
                     <input
                         type="text"
                         class="text-field"
-                        data-record-field="version"
+                        name="version"
                         placeholder="e.g. v1.0"
                     >
                 </label>
@@ -467,10 +431,10 @@
 
                     <select
                         class="select-field"
-                        data-record-field="status"
+                        name="status"
                     >
-                        <option>Draft</option>
-                        <option>Active</option>
+                        <option value="draft">Draft</option>
+                        <option value="published">Active</option>
                     </select>
                 </label>
 
@@ -483,7 +447,7 @@
                 <textarea
                     class="text-field"
                     rows="4"
-                    data-record-field="summary"
+                    name="summary"
                     placeholder="Briefly describe this policy..."
                 ></textarea>
             </label>
@@ -495,7 +459,7 @@
                 <textarea
                     class="text-field"
                     rows="10"
-                    data-record-field="body"
+                    name="body"
                     placeholder="Write the complete policy..."
                 ></textarea>
             </label>
@@ -506,28 +470,27 @@
         <div class="modal-footer decision-footer">
 
             <button
-                type="button"
+                type="submit"
                 class="button button-ghost"
-                data-mock-action="Policy saved as draft."
-                data-save-record="policy"
-                data-record-status="Draft"
+                name="status"
+                value="draft"
             >
                 <i data-lucide="save"></i>
                 Save Draft
             </button>
 
             <button
-                type="button"
+                type="submit"
                 class="button button-primary"
-                data-mock-action="Platform policy published."
-                data-save-record="policy"
-                data-record-status="Active"
+                name="status"
+                value="published"
             >
                 <i data-lucide="send"></i>
                 Publish Policy
             </button>
 
         </div>
+        </form>
 
     </section>
 

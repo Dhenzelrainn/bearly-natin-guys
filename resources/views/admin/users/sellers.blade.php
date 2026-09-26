@@ -351,35 +351,7 @@
             data-user-id="{{ $user['id'] }}"
         >
 
-            <button
-                type="button"
-                class="button button-primary"
-                data-modal-user-status="Active"
-                data-mock-action="{{ $user['name'] }} account activated."
-            >
-                <i data-lucide="circle-check"></i>
-                Activate
-            </button>
-
-            <button
-                type="button"
-                class="button button-danger-soft"
-                data-modal-user-status="Suspended"
-                data-mock-action="{{ $user['name'] }} account suspended."
-            >
-                <i data-lucide="pause-circle"></i>
-                Suspend
-            </button>
-
-            <button
-                type="button"
-                class="button button-danger"
-                data-modal-user-status="Deactivated"
-                data-mock-action="{{ $user['name'] }} account deactivated."
-            >
-                <i data-lucide="user-x"></i>
-                Deactivate
-            </button>
+            @include('admin.users._status-actions')
 
         </div>
 

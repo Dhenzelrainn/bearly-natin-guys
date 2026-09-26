@@ -17,4 +17,9 @@ class ProductViolation extends Model
     {
         return $this->hasMany(ViolationAction::class, 'violation_id');
     }
+
+    public function sellerProfile()
+    {
+        return $this->belongsTo(SellerProfile::class);
+    }
 }

@@ -5,7 +5,8 @@ namespace App\Http\Controllers\Auth;
 use App\Enums\AccountStatus;
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
-use App\Models\User;
+use App\Models\Category;
+use App\Services\AccountRegistrationService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -22,7 +23,13 @@ class BearlyAuthController extends Controller
 
     public function showRegister(): View
     {
-        return view('auth.register');
+        $businessCategories = Category::query()
+            ->where('is_active', true)
+            ->orderBy('position')
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
+        return view('auth.register', compact('businessCategories'));
     }
 
     public function login(Request $request): RedirectResponse
@@ -66,7 +73,7 @@ class BearlyAuthController extends Controller
             : redirect('/');
     }
 
-    public function register(Request $request): RedirectResponse
+    public function register(Request $request, AccountRegistrationService $registration): RedirectResponse
     {
         $data = $request->validate([
             'role' => ['required', Rule::in([UserRole::Buyer->value, UserRole::Seller->value])],
@@ -84,17 +91,40 @@ class BearlyAuthController extends Controller
             'house_number' => ['required', 'string', 'max:40'],
             'postal_code' => ['required', 'digits:4'],
             'business_name' => ['required_if:role,seller', 'nullable', 'string', 'max:150', 'regex:/^[\pL\pN\s&\'\.\-]+$/u'],
-            'business_category' => ['required_if:role,seller', 'nullable', 'string', 'max:100'],
+            'business_category' => [
+                'required_if:role,seller',
+                'nullable',
+                'string',
+                'max:120',
+                Rule::exists('categories', 'name')->where('is_active', true),
+            ],
             'valid_id' => ['required', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:5120'],
             'business_permit' => ['required_if:role,seller', 'nullable', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:5120'],
             'password' => ['required', 'confirmed', 'min:8', 'regex:/[a-z]/', 'regex:/[A-Z]/', 'regex:/[0-9]/'],
             'terms' => ['accepted'],
         ]);
 
-        $validIdPath = $request->file('valid_id')->store('registration-documents/valid-ids', 'local');
-        $businessPermitPath = $request->file('business_permit')?->store('registration-documents/business-permits', 'local');
+        $category = isset($data['business_category'])
+            ? Category::query()->where('name', $data['business_category'])->firstOrFail()
+            : null;
 
-        $user = User::create([
+        $uploads = [[
+            'type' => 'government_id',
+            'file' => $request->file('valid_id'),
+            'directory' => 'registration-documents/valid-ids',
+            'legacy_attribute' => 'valid_id_path',
+        ]];
+
+        if ($request->hasFile('business_permit')) {
+            $uploads[] = [
+                'type' => 'business_permit',
+                'file' => $request->file('business_permit'),
+                'directory' => 'registration-documents/business-permits',
+                'legacy_attribute' => 'business_permit_path',
+            ];
+        }
+
+        $user = $registration->register([
             'name' => trim($data['first_name'].' '.$data['last_name']),
             'first_name' => $data['first_name'],
             'last_name' => $data['last_name'],
@@ -111,9 +141,10 @@ class BearlyAuthController extends Controller
             'street_address' => trim($data['house_number'].' '.$data['street_name']).', '.$data['postal_code'],
             'business_name' => $data['business_name'] ?? null,
             'business_category' => $data['business_category'] ?? null,
-            'valid_id_path' => $validIdPath,
-            'business_permit_path' => $businessPermitPath,
             'password' => Hash::make($data['password']),
+        ], $data['role'], $uploads, [
+            'business_name' => $data['business_name'] ?? null,
+            'business_category_id' => $category?->id,
         ]);
 
         session([

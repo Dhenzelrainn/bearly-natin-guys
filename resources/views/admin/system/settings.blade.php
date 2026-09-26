@@ -16,6 +16,9 @@
     </div>
 </section>
 
+<form method="POST" action="{{ route('admin.settings.update') }}">
+@csrf
+@method('PATCH')
 <section class="settings-grid">
 
     <article class="panel settings-editor-panel">
@@ -31,7 +34,8 @@
                 <span>Marketplace name</span>
                 <input
                     type="text"
-                    value="Bearly"
+                    name="marketplace_name"
+                    value="{{ old('marketplace_name', $settings['marketplace_name']) }}"
                     data-setting-marketplace-name
                 >
             </label>
@@ -44,7 +48,8 @@
                         min="0"
                         max="100"
                         step="0.1"
-                        value="10"
+                        name="commission_rate"
+                        value="{{ old('commission_rate', $settings['commission_rate']) }}"
                         data-setting-commission-rate
                     >
                     <span>%</span>
@@ -56,8 +61,9 @@
             <span>Marketplace description</span>
             <textarea
                 rows="4"
+                name="marketplace_description"
                 data-setting-marketplace-description
-            >Bearly is an e-commerce marketplace connecting Buyers, Sellers, Logistics Centers, and Riders.</textarea>
+            >{{ old('marketplace_description', $settings['marketplace_description']) }}</textarea>
         </label>
     </article>
 
@@ -79,10 +85,13 @@
                     </small>
                 </div>
 
+                <input type="hidden" name="platform_active" value="0">
                 <input
                     type="checkbox"
+                    name="platform_active"
+                    value="1"
                     data-setting-platform-active
-                    checked
+                    @checked(old('platform_active', $settings['platform_active']))
                 >
             </label>
 
@@ -94,9 +103,13 @@
                     </small>
                 </div>
 
+                <input type="hidden" name="maintenance_mode" value="0">
                 <input
                     type="checkbox"
+                    name="maintenance_mode"
+                    value="1"
                     data-setting-maintenance-mode
+                    @checked(old('maintenance_mode', $settings['maintenance_mode']))
                 >
             </label>
 
@@ -145,10 +158,13 @@
                 <small>Allow new Buyer accounts to register.</small>
             </span>
 
+            <input type="hidden" name="registration_buyer" value="0">
             <input
                 type="checkbox"
+                name="registration_buyer"
+                value="1"
                 data-setting-registration="buyer"
-                checked
+                @checked(old('registration_buyer', $settings['registration_buyer']))
             >
         </label>
 
@@ -162,10 +178,13 @@
                 <small>Allow new Sellers to submit applications.</small>
             </span>
 
+            <input type="hidden" name="registration_seller" value="0">
             <input
                 type="checkbox"
+                name="registration_seller"
+                value="1"
                 data-setting-registration="seller"
-                checked
+                @checked(old('registration_seller', $settings['registration_seller']))
             >
         </label>
 
@@ -179,10 +198,13 @@
                 <small>Allow Logistics Centers to submit applications.</small>
             </span>
 
+            <input type="hidden" name="registration_logistics" value="0">
             <input
                 type="checkbox"
+                name="registration_logistics"
+                value="1"
                 data-setting-registration="logistics"
-                checked
+                @checked(old('registration_logistics', $settings['registration_logistics']))
             >
         </label>
 
@@ -196,10 +218,13 @@
                 <small>Allow Riders to submit applications through Logistics Centers.</small>
             </span>
 
+            <input type="hidden" name="registration_rider" value="0">
             <input
                 type="checkbox"
+                name="registration_rider"
+                value="1"
                 data-setting-registration="rider"
-                checked
+                @checked(old('registration_rider', $settings['registration_rider']))
             >
         </label>
 
@@ -222,7 +247,9 @@
                 <input
                     type="number"
                     min="1"
-                    value="24"
+                    max="720"
+                    name="cancellation_hours"
+                    value="{{ old('cancellation_hours', $settings['cancellation_hours']) }}"
                     data-setting-cancellation-hours
                 >
                 <span>hours</span>
@@ -231,10 +258,10 @@
 
         <label class="form-field">
             <span>Seller settlement period</span>
-            <select data-setting-settlement-period>
-                <option value="7">Every 7 days</option>
-                <option value="14">Every 14 days</option>
-                <option value="30">Every 30 days</option>
+            <select name="settlement_days" data-setting-settlement-period>
+                <option value="7" @selected(old('settlement_days', $settings['settlement_days']) == 7)>Every 7 days</option>
+                <option value="14" @selected(old('settlement_days', $settings['settlement_days']) == 14)>Every 14 days</option>
+                <option value="30" @selected(old('settlement_days', $settings['settlement_days']) == 30)>Every 30 days</option>
             </select>
         </label>
 
@@ -299,8 +326,7 @@
 
         <button
             class="button button-primary"
-            type="button"
-            data-settings-save
+            type="submit"
         >
             <i data-lucide="save"></i>
             Save settings
@@ -309,6 +335,7 @@
     </div>
 
 </section>
+</form>
 
 <div
     class="modal-shell"
@@ -386,14 +413,13 @@
             </button>
 
 
-            <button
-                type="button"
-                class="button button-danger-soft"
-                data-settings-reset-confirm
-            >
-                <i data-lucide="rotate-ccw"></i>
-                Reset settings
-            </button>
+            <form method="POST" action="{{ route('admin.settings.reset') }}">
+                @csrf
+                <button type="submit" class="button button-danger-soft">
+                    <i data-lucide="rotate-ccw"></i>
+                    Reset settings
+                </button>
+            </form>
 
         </div>
 

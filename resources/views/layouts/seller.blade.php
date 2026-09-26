@@ -143,7 +143,7 @@
                 <div class="seller-popover-wrap">
                     <button class="seller-profile-button" type="button" data-seller-popover-toggle="profile">
                         <span class="seller-avatar">{{ $seller['initials'] ?? 'BR' }}</span>
-                        <span class="seller-profile-name">{{ $seller['store'] ?? ($seller['name'] ?? 'Bearly Seller') }}</span>
+                        <span class="seller-profile-name">{{ $seller['name'] ?? 'Bearly Seller' }}</span>
                         <i class="seller-ui-icon" data-lucide="chevron-down" aria-hidden="true"></i>
                     </button>
                     <div class="seller-popover profile-popover" data-seller-popover="profile" hidden>

@@ -11,16 +11,10 @@ class SellerProductController extends Controller
 {
     private function seller(): array
     {
-        return [
-            'name' => 'Bea Rivera',
-            'first_name' => 'Bea',
-            'initials' => 'BR',
-            'email' => 'bea@juansclothing.test',
-            'store' => "Juan's Clothing Shop",
-            'business_category' => 'Fashion and Apparel',
-        ];
+        return app(
+            \App\Services\SellerIdentityService::class
+        )->current();
     }
-
     private function notifications(): array
     {
         return [

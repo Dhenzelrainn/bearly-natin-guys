@@ -27,4 +27,9 @@ class Shipment extends Model
     {
         return $this->hasMany(ShipmentEvent::class)->orderBy('occurred_at');
     }
+
+    public function disputes()
+    {
+        return $this->hasMany(Dispute::class);
+    }
 }

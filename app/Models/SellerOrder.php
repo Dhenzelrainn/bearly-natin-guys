@@ -42,4 +42,14 @@ class SellerOrder extends Model
     {
         return $this->hasMany(ReturnRequest::class);
     }
+
+    public function disputes()
+    {
+        return $this->hasMany(Dispute::class);
+    }
+
+    public function conversations()
+    {
+        return $this->hasMany(Conversation::class);
+    }
 }

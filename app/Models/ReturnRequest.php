@@ -39,8 +39,33 @@ class ReturnRequest extends Model
         return $this->belongsTo(Store::class);
     }
 
+    public function reviewer()
+    {
+        return $this->belongsTo(User::class, 'reviewed_by');
+    }
+
+    public function returnShipment()
+    {
+        return $this->belongsTo(Shipment::class, 'return_shipment_id');
+    }
+
+    public function items()
+    {
+        return $this->hasMany(ReturnItem::class);
+    }
+
+    public function evidence()
+    {
+        return $this->hasMany(ReturnEvidence::class);
+    }
+
     public function refunds()
     {
         return $this->hasMany(Refund::class);
+    }
+
+    public function disputes()
+    {
+        return $this->hasMany(Dispute::class);
     }
 }

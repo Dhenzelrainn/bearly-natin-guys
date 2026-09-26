@@ -23,13 +23,18 @@ class Order extends Model
         return $this->hasMany(Payment::class);
     }
 
+    public function returnRequests()
+    {
+        return $this->hasMany(ReturnRequest::class);
+    }
+
     public function refunds()
     {
         return $this->hasMany(Refund::class);
     }
 
-    public function returnRequests()
+    public function conversations()
     {
-        return $this->hasMany(ReturnRequest::class);
+        return $this->hasMany(Conversation::class);
     }
 }

@@ -53,4 +53,9 @@ class Refund extends Model
     {
         return $this->hasMany(SellerTransaction::class);
     }
+
+    public function approver()
+    {
+        return $this->belongsTo(User::class, 'approved_by');
+    }
 }

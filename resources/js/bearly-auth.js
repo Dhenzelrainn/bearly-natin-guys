@@ -927,6 +927,123 @@ document.addEventListener('DOMContentLoaded', () => {
             ?.style.setProperty('--strength', `${score * 25}%`);
     });
 
+    // ---------------------------------------------------------
+    // Registration password guidance and validation
+    // ---------------------------------------------------------
+    const passwordConfirmation = form.elements.password_confirmation;
+    const passwordRules = {
+        length: registration.querySelector('[data-password-rule="length"]'),
+        uppercase: registration.querySelector('[data-password-rule="uppercase"]'),
+        lowercase: registration.querySelector('[data-password-rule="lowercase"]'),
+        number: registration.querySelector('[data-password-rule="number"]'),
+    };
+    const passwordStatus = registration.querySelector('[data-password-status]');
+    const passwordMatch = registration.querySelector('[data-password-match]');
+    const passwordStrengthLabel = registration.querySelector(
+        '[data-password-strength-label]'
+    );
+
+    function evaluatePassword(value) {
+        return {
+            length: value.length >= 8,
+            uppercase: /[A-Z]/.test(value),
+            lowercase: /[a-z]/.test(value),
+            number: /\d/.test(value),
+        };
+    }
+
+    function passwordValidationMessage(value) {
+        const rules = evaluatePassword(value);
+
+        if (!rules.length) {
+            return 'Password must be at least 8 characters long.';
+        }
+        if (!rules.uppercase) {
+            return 'Password must contain at least one uppercase letter.';
+        }
+        if (!rules.lowercase) {
+            return 'Password must contain at least one lowercase letter.';
+        }
+        if (!rules.number) {
+            return 'Password must contain at least one number.';
+        }
+
+        return '';
+    }
+
+    function updatePasswordGuidance() {
+        if (!password) return;
+
+        const rules = evaluatePassword(password.value);
+        const score = Object.values(rules).filter(Boolean).length;
+
+        Object.entries(rules).forEach(([rule, met]) => {
+            const item = passwordRules[rule];
+            if (!item) return;
+
+            item.classList.toggle('is-met', met);
+            item.classList.toggle('is-missing', !met);
+        });
+
+        if (passwordStrengthLabel) {
+            const labels = ['Not set', 'Weak', 'Fair', 'Good', 'Strong'];
+            passwordStrengthLabel.textContent =
+                password.value ? labels[score] : labels[0];
+            passwordStrengthLabel.dataset.strength = String(score);
+        }
+
+        if (passwordStatus) {
+            if (!password.value) {
+                passwordStatus.textContent =
+                    'Meet all four requirements to continue.';
+                passwordStatus.dataset.state = 'neutral';
+            } else if (score === 4) {
+                passwordStatus.textContent =
+                    'Password meets all requirements.';
+                passwordStatus.dataset.state = 'success';
+            } else {
+                const missing = Object.entries(rules)
+                    .filter(([, met]) => !met)
+                    .map(([rule]) => ({
+                        length: '8 or more characters',
+                        uppercase: 'an uppercase letter',
+                        lowercase: 'a lowercase letter',
+                        number: 'a number',
+                    })[rule]);
+
+                passwordStatus.textContent =
+                    `Still needed: ${missing.join(', ')}.`;
+                passwordStatus.dataset.state = 'error';
+            }
+        }
+
+        if (passwordMatch) {
+            if (!passwordConfirmation?.value) {
+                passwordMatch.textContent = '';
+                passwordMatch.dataset.state = 'neutral';
+            } else if (passwordConfirmation.value === password.value) {
+                passwordMatch.textContent = 'Passwords match.';
+                passwordMatch.dataset.state = 'success';
+            } else {
+                passwordMatch.textContent = 'Passwords do not match.';
+                passwordMatch.dataset.state = 'error';
+            }
+        }
+    }
+
+    password?.addEventListener('input', () => {
+        password.setCustomValidity('');
+        passwordConfirmation?.setCustomValidity('');
+        updatePasswordGuidance();
+    });
+
+    passwordConfirmation?.addEventListener('input', () => {
+        passwordConfirmation.setCustomValidity('');
+        updatePasswordGuidance();
+    });
+
+    updatePasswordGuidance();
+
     const allowedDocumentTypes = [
         'image/png',
         'image/jpeg',

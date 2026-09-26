@@ -141,8 +141,8 @@
                     <span>or</span>
                 </div>
 
-                <button
-                    type="button"
+                <a
+                    href="{{ route('google.redirect') }}"
                     class="google-button"
                 >
                     <img
@@ -152,7 +152,7 @@
                         aria-hidden="true"
                     >
                     <span>Continue with Google</span>
-                </button>
+                </a>
 
                 <p class="switch-auth">
                     New to Bearly?

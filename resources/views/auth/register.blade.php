@@ -3,337 +3,712 @@
 @section('title', 'Create Account | Bearly')
 
 @section('header-action')
+
     <p class="header-signin">Already have an account? <a href="{{ route('login') }}">Sign in</a></p>
+
 @endsection
 
 @section('content')
+
+@php
+
+    $googleRegistration = session('google_registration');
+
+@endphp
+
 <section class="register-shell" data-registration>
+
     <aside class="register-aside">
+
         <img
+
             src="{{ asset('images/bearly-register-bear.png') }}"
+
             alt="Bearly bear holding a shopping bag"
+
             class="register-bear"
+
         >
+
         <h1>Create your<br>Bearly account</h1>
+
         <p>Join Bearly as a buyer or seller. Rider and logistics applications use their dedicated registration flow.</p>
 
         <ol class="step-list" aria-label="Registration progress">
+
             <li class="active" data-step-marker="1"><span>1</span><b>Personal Information</b></li>
+
             <li data-step-marker="2"><span>2</span><b>Address</b></li>
+
             <li data-step-marker="3"><span>3</span><b data-role-step-label>Business Details</b></li>
+
             <li data-step-marker="4"><span>4</span><b>Documents &amp; Review</b></li>
+
         </ol>
+
     </aside>
 
     <form
+
     class="register-form"
+
     method="POST"
+
     action="{{ route('register.submit') }}"
+
     enctype="multipart/form-data"
+
     data-email-send="{{ route('register.email.send') }}"
+
     data-email-check="{{ route('register.email.check') }}"
+
     data-postal-url="{{ route('postal.lookup') }}"
+
+    data-google-verified-email="{{ $googleRegistration['email'] ?? '' }}"
+
     novalidate
+
 >
+
     @csrf
 
     @if ($errors->any())
+
         <div class="info-box" role="alert">
+
             <strong>Registration error.</strong>
+
             {{ $errors->first() }}
+
         </div>
+
+    @endif
+
+    @if ($googleRegistration)
+
+        <div class="info-box" role="status">
+
+            <strong>Google account verified.</strong>
+
+            Your Google email is locked for this registration. Complete the remaining Bearly details and documents.
+
+        </div>
+
     @endif
 
         <div class="mobile-progress"><span data-mobile-step>Step 1 of 4</span><div><i data-progress-bar></i></div></div>
 
         <section class="form-step active" data-step="1">
+
             <h2>Choose how you'll use Bearly</h2>
+
             <div class="role-grid" aria-label="Choose account type">
+
                 <label class="role-card">
+
                     <input type="radio" name="role" value="buyer" @checked(old('role', 'buyer') === 'buyer')>
+
                     <span class="role-check">✓</span>
+
                     <img
+
                         src="{{ asset('images/icon-buyer.png') }}"
+
                         alt=""
+
                         class="role-icon"
+
                         aria-hidden="true"
+
                     >
+
                     <strong>Buyer</strong>
+
                     <small>Shop products from<br>trusted sellers</small>
+
                 </label>
 
                 <label class="role-card selected">
+
                     <input type="radio" name="role" value="seller" @checked(old('role') === 'seller')>
+
                     <span class="role-check">✓</span>
+
                     <img
+
                         src="{{ asset('images/icon-seller.png') }}"
+
                         alt=""
+
                         class="role-icon"
+
                         aria-hidden="true"
+
                     >
+
                     <strong>Seller</strong>
+
                     <small>Manage products, orders,<br>and your store</small>
+
                 </label>
 
                 <a class="role-card" href="{{ route('rider.register') }}">
+
                     <span class="role-check">→</span>
+
                     <img
+
                         src="{{ asset('images/icon-courier.png') }}"
+
                         alt=""
+
                         class="role-icon"
+
                         aria-hidden="true"
+
                     >
+
                     <strong>Rider</strong>
+
                     <small>Apply through a<br>Logistics partner</small>
+
                 </a>
 
                 <a class="role-card" href="{{ route('logistics.register') }}">
+
                     <span class="role-check">→</span>
+
                     <svg
+
                         class="role-icon logistics-role-icon"
+
                         viewBox="0 0 48 48"
+
                         aria-hidden="true"
+
                     >
+
                         <path d="M7 20 24 10l17 10v19H7V20Z"/>
+
                         <path d="M12 22h24M14 28h10v11H14V28Zm15 0h6v6h-6v-6Z"/>
+
                     </svg>
+
                     <strong>Logistics</strong>
+
                     <small>Apply to operate<br>a sorting center</small>
+
                 </a>
+
             </div>
 
             <div class="section-heading"><h3>Personal Information</h3><p>Tell us a little about yourself</p></div>
+
             <div class="form-grid three">
-                <label>First name<input name="first_name" value="{{ old('first_name') }}" pattern="[A-Za-zÀ-ÿ.' -]+" placeholder="Enter your first name" required></label>
-                <label>Last name<input name="last_name" value="{{ old('last_name') }}" pattern="[A-Za-zÀ-ÿ.' -]+" placeholder="Enter your last name" required></label>
+
+                <label>First name<input name="first_name" value="{{ old('first_name', $googleRegistration['first_name'] ?? '') }}" pattern="[A-Za-zÀ-ÿ.' -]+" placeholder="Enter your first name" required></label>
+
+                <label>Last name<input name="last_name" value="{{ old('last_name', $googleRegistration['last_name'] ?? '') }}" pattern="[A-Za-zÀ-ÿ.' -]+" placeholder="Enter your last name" required></label>
+
                 <label>
+
                     Middle initial <em>(Optional)</em>
+
                     <input
+
                         type="text"
+
                         name="middle_initial"
+
                         value="{{ old('middle_initial') }}"
+
                         maxlength="2"
+
                         pattern="[A-Za-z][.]?"
+
                         title="Enter one letter. It will be capitalized and a period added." autocomplete="additional-name" data-middle-initial
+
                         placeholder="P."
+
                     >
+
                 </label>
+
             </div>
+
             <div class="form-grid two-wide">
+
                 <label>
+
                     Sex
+
                     <select name="sex" required>
+
                         <option value="">Select sex</option>
+
                         <option value="female" @selected(old('sex') === 'female')>Female</option>
+
                         <option value="male" @selected(old('sex') === 'male')>Male</option>
+
                         <option value="prefer_not_to_say" @selected(old('sex') === 'prefer_not_to_say')>Prefer not to say</option>
+
                     </select>
+
                 </label>
-                <label>Email address<input type="email" name="email" value="{{ old('email') }}" placeholder="Enter your email address" required></label>
+
+                <label>Email address<input type="email" name="email" value="{{ old('email', $googleRegistration['email'] ?? '') }}" placeholder="Enter your email address" autocomplete="email" @readonly($googleRegistration) required></label>
+
             </div>
+
             <section class="phone-verification" data-email-verification aria-label="Verify email address">
+
                 <div class="verification-actions">
+
                     <button type="button" class="secondary-button" data-email-send>Send code</button>
+
                     <p data-email-status role="status" aria-live="polite"></p>
+
                 </div>
+
                 <div class="otp-entry" data-email-code-entry hidden>
+
                     <label for="email-code">Verification code<input id="email-code" data-email-code type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="6-digit code"></label>
+
                     <button type="button" class="primary-button" data-email-check>Verify email</button>
+
                 </div>
+
             </section>
+
             <div class="form-grid contact-birth-grid">
+
                 <div class="phone-field">
+
                     <span class="field-label">Contact number</span>
+
                     <div class="phone-inputs">
+
                         <label class="sr-only" for="phone-country">Phone country code</label>
+
                         <select id="phone-country" name="phone_country" data-old-value="{{ old('phone_country', 'PH') }}" autocomplete="country" required></select>
+
                         <label class="sr-only" for="phone-national">Mobile number</label>
+
                         <input id="phone-national" data-phone-national type="tel" inputmode="numeric" autocomplete="tel-national" maxlength="16" aria-describedby="phone-help" required>
+
                         <input type="hidden" name="contact_number" value="{{ old('contact_number') }}">
+
                     </div>
+
                     <small id="phone-help" data-phone-help></small>
+
                 </div>
+
                 <label>Birthday<input id="birthday" type="date" name="birthday" value="{{ old('birthday') }}" max="{{ now()->toDateString() }}" required></label>
+
                 <label>Age <em>(Auto-generated)</em><input id="age" name="age" value="{{ old('age', '--') }}" readonly required></label>
+
             </div>
 
             <div class="form-grid two password-row">
-                <label>Password<div class="password-wrap"><input id="register-password" type="password" name="password" autocomplete="new-password" minlength="8" pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9]).{8,}" placeholder="Enter your password" required><button type="button" data-toggle-password="register-password" aria-label="Show password"><svg viewBox="0 0 24 24"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></div></label>
-                <label>Confirm password<div class="password-wrap"><input id="password-confirmation" type="password" name="password_confirmation" autocomplete="new-password" placeholder="Confirm your password" required><button type="button" data-toggle-password="password-confirmation" aria-label="Show password"><svg viewBox="0 0 24 24"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></div></label>
+                <label for="register-password">
+                    Password
+                    <div class="password-wrap">
+                        <input
+                            id="register-password"
+                            type="password"
+                            name="password"
+                            autocomplete="new-password"
+                            minlength="8"
+                            pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9]).{8,}"
+                            title="Use at least 8 characters with one uppercase letter, one lowercase letter, and one number."
+                            placeholder="Create a strong password"
+                            aria-describedby="password-requirements password-status"
+                            required
+                        >
+                        <button
+                            type="button"
+                            data-toggle-password="register-password"
+                            aria-label="Show password"
+                        >
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/>
+                                <circle cx="12" cy="12" r="3"/>
+                            </svg>
+                        </button>
+                    </div>
+                </label>
+
+                <label for="password-confirmation">
+                    Confirm password
+                    <div class="password-wrap">
+                        <input
+                            id="password-confirmation"
+                            type="password"
+                            name="password_confirmation"
+                            autocomplete="new-password"
+                            placeholder="Re-enter your password"
+                            aria-describedby="password-match"
+                            required
+                        >
+                        <button
+                            type="button"
+                            data-toggle-password="password-confirmation"
+                            aria-label="Show password"
+                        >
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/>
+                                <circle cx="12" cy="12" r="3"/>
+                            </svg>
+                        </button>
+                    </div>
+                </label>
             </div>
-            <div class="password-meter"><i></i><span>Use 8+ characters with uppercase, lowercase, and a number.</span></div>
+
+            <div class="password-guidance" data-password-guidance>
+                <div class="password-guidance__heading">
+                    <strong>Password requirements</strong>
+                    <span data-password-strength-label>Not set</span>
+                </div>
+
+                <div class="password-meter password-guidance__meter" aria-hidden="true">
+                    <i></i>
+                </div>
+
+                <ul id="password-requirements" class="password-requirements">
+                    <li data-password-rule="length">At least 8 characters</li>
+                    <li data-password-rule="uppercase">At least 1 uppercase letter</li>
+                    <li data-password-rule="lowercase">At least 1 lowercase letter</li>
+                    <li data-password-rule="number">At least 1 number</li>
+                </ul>
+
+                <p
+                    id="password-status"
+                    class="password-guidance__status"
+                    data-password-status
+                    role="status"
+                    aria-live="polite"
+                >
+                    Meet all four requirements to continue.
+                </p>
+
+                <p
+                    id="password-match"
+                    class="password-match"
+                    data-password-match
+                    role="status"
+                    aria-live="polite"
+                ></p>
+            </div>
+
             <label class="check-label terms"><input type="checkbox" name="terms" value="1" @checked(old('terms')) required><span>I agree to the <a href="{{ route('terms') }}" target="_blank" rel="noopener">Terms of Service</a> and acknowledge the <a href="{{ route('privacy') }}" target="_blank" rel="noopener">Privacy Policy</a></span></label>
+
         </section>
 
         <section class="form-step" data-step="2">
+
             <div class="section-heading"><h2>Your address</h2><p>Enter your Philippine delivery address. International phone numbers are supported; overseas delivery addresses are not yet available.</p></div>
+
             <div class="form-grid three" data-address-fields>
+
                 <label for="province">Province<select id="province" name="province" data-province-select data-searchable-address data-search-placeholder="Search province" data-old-value="{{ old('province') }}" required disabled><option value="">Loading provinces...</option></select></label>
+
                 <label for="city">City / Municipality<select id="city" name="city" data-city-select data-searchable-address data-search-placeholder="Search city or municipality" data-old-value="{{ old('city') }}" required disabled><option value="">Select province first</option></select></label>
+
                 <label for="barangay">Barangay<select id="barangay" name="barangay" data-barangay-select data-searchable-address data-search-placeholder="Search barangay" data-old-value="{{ old('barangay') }}" required disabled><option value="">Select city first</option></select></label>
+
             </div>
+
             <div class="address-service" data-address-service>
+
                 <p class="address-service-message" data-address-message role="status" aria-live="polite">Loading Philippine address data...</p>
+
                 <div class="address-actions">
+
                     <button type="button" class="secondary-button" data-address-retry hidden>Retry address service</button>
+
                     <button type="button" class="secondary-button" data-address-manual>Enter address manually</button>
+
                 </div>
+
             </div>
+
             <div class="form-grid three"><label>Street name<input name="street_name" value="{{ old('street_name') }}" required></label><label>House / Unit no.<input name="house_number" value="{{ old('house_number') }}" required></label><div class="postal-field"><label for="postal-code">Postal code</label><input id="postal-code" name="postal_code" value="{{ old('postal_code') }}" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" aria-describedby="postal-help" required><label class="sr-only" for="postal-area">Postal area</label><select id="postal-area" data-postal-choices hidden></select><small id="postal-help" data-postal-help>Select your municipality to fill this in.</small><button type="button" class="text-button" data-postal-manual>Enter a different postal code</button><input type="hidden" name="city_code" value="{{ old('city_code') }}"><input type="hidden" name="postal_manual" value="{{ old('postal_manual', '0') }}"></div></div>
+
         </section>
 
         <section class="form-step role-details-step" data-step="3">
+
             <div data-role-fields="seller" class="role-fields">
+
                 <div class="section-heading compact-heading">
+
                     <h2>Business details</h2>
+
                     <p>Provide the information used to verify your seller account.</p>
+
                 </div>
 
                 <div class="form-grid two compact-business-grid">
+
                     <label>
+
                         Business name
+
                         <input
+
                             name="business_name"
+
                             value="{{ old('business_name') }}"
+
                             pattern="[A-Za-zÀ-ÿ0-9&.,' -]+"
+
                             placeholder="Enter your registered business name"
+
                         >
+
                     </label>
+
                     <label>
+
                         Line of business
+
                         <select name="business_category">
+
                             <option value="">Select category</option>
+
                             <option value="Pet Supplies" @selected(old('business_category') === 'Pet Supplies')>Pet Supplies</option>
+
                             <option value="Electronics and Gadgets" @selected(old('business_category') === 'Electronics and Gadgets')>Electronics and Gadgets</option>
+
                             <option value="Women's Apparel" @selected(old('business_category') === "Women's Apparel")>Women's Apparel</option>
+
                             <option value="Men's Apparel" @selected(old('business_category') === "Men's Apparel")>Men's Apparel</option>
+
                             <option value="Kids and Baby" @selected(old('business_category') === 'Kids and Baby')>Kids and Baby</option>
+
                             <option value="Home and Garden" @selected(old('business_category') === 'Home and Garden')>Home and Garden</option>
+
                             <option value="Sports and Outdoors" @selected(old('business_category') === 'Sports and Outdoors')>Sports and Outdoors</option>
+
                             <option value="Health and Beauty" @selected(old('business_category') === 'Health and Beauty')>Health and Beauty</option>
+
                             <option value="Books and Media" @selected(old('business_category') === 'Books and Media')>Books and Media</option>
+
                             <option value="Food and Gourmet" @selected(old('business_category') === 'Food and Gourmet')>Food and Gourmet</option>
+
                             <option value="Furniture and Office Equipment" @selected(old('business_category') === 'Furniture and Office Equipment')>Furniture and Office Equipment</option>
+
                             <option value="Jewelry and Watches" @selected(old('business_category') === 'Jewelry and Watches')>Jewelry and Watches</option>
+
                         </select>
+
                     </label>
+
                 </div>
 
                 <div class="info-box compact-info-box">
-                    <strong>Admin review required.</strong>
-                    We’ll email the decision before Seller Dashboard access is enabled.
-                </div>
-            </div>
 
+                    <strong>Admin review required.</strong>
+
+                    We’ll email the decision before Seller Dashboard access is enabled.
+
+                </div>
+
+            </div>
 
         </section>
 
         <section class="form-step documents-step" data-step="4">
+
             <div class="documents-heading">
+
                 <div>
+
                     <h2>Documents &amp; review</h2>
+
                     <p>Upload the required documents and confirm your application.</p>
+
                 </div>
+
                 <div class="document-security-note">
+
                     <img src="{{ asset('images/security.png') }}" alt="" class="document-security-icon" aria-hidden="true">
+
                     <span>Your ID is used to review your application.</span>
+
                 </div>
+
             </div>
 
             <div class="upload-grid" data-upload-grid>
+
                 <article class="document-upload" data-upload-card>
+
                     <div class="document-upload__header">
+
                         <span class="document-icon" aria-hidden="true">
+
                             <img src="{{ asset('images/id.png') }}" alt="">
+
                         </span>
+
                         <div>
+
                             <span class="required-badge">Required</span>
+
                             <h3 data-valid-id-label>Valid government ID</h3>
+
                             <p data-valid-id-help>Passport, driver’s license, national ID, or another government-issued ID.</p>
+
                             <small>PNG, JPG, or PDF · Max 5 MB</small>
+
                         </div>
+
                     </div>
 
                     <label class="upload-dropzone" data-drop-zone>
+
                         <input name="valid_id" type="file" accept=".png,.jpg,.jpeg,.pdf" data-file-preview required>
+
                         <img src="{{ asset('images/cloud.png') }}" alt="" class="upload-icon" aria-hidden="true">
+
                         <span><strong>Choose file</strong> or drag and drop</span>
+
                     </label>
 
                     <div class="file-status" data-file-status hidden>
+
                         <span class="file-status__icon" aria-hidden="true">✓</span>
+
                         <span class="file-status__details"><strong data-file-name></strong><small data-file-meta></small></span>
+
                         <div class="file-status__actions">
+
                             <button type="button" data-file-action="preview">Preview</button>
+
                             <button type="button" data-file-action="replace">Replace</button>
+
                             <button type="button" data-file-action="remove">Remove</button>
+
                         </div>
+
                     </div>
+
                 </article>
 
                 <aside class="upload-guidance" data-buyer-guidance hidden>
+
                     <h3>Before you upload</h3>
+
                     <ul><li>Use a current government-issued ID.</li><li>Keep all four corners visible.</li><li>Make sure the name and photo are readable.</li><li>Avoid glare, blur, and covered details.</li></ul>
+
                     <p>One file is enough. Upload a JPG, PNG, or PDF up to 5 MB.</p>
+
                     <a href="{{ route('privacy') }}" target="_blank" rel="noopener">How we use your information</a>
+
                 </aside>
 
                 <article class="document-upload" data-upload-card data-seller-document>
+
                     <div class="document-upload__header">
+
                         <span class="document-icon" aria-hidden="true">
+
                             <img src="{{ asset('images/permit.png') }}" alt="">
+
                         </span>
+
                         <div>
+
                             <span class="required-badge">Required</span>
+
                             <h3 data-seller-document-title>Business permit</h3>
+
                             <p data-seller-document-help>Upload a clear and current copy of your business permit.</p>
+
                             <small>PNG, JPG, or PDF · Max 5 MB</small>
+
                         </div>
+
                     </div>
 
                     <label class="upload-dropzone" data-drop-zone>
+
                         <input name="business_permit" type="file" accept=".png,.jpg,.jpeg,.pdf" data-file-preview>
+
                         <img src="{{ asset('images/cloud.png') }}" alt="" class="upload-icon" aria-hidden="true">
+
                         <span><strong>Choose file</strong> or drag and drop</span>
+
                     </label>
 
                     <div class="file-status" data-file-status hidden>
-                        <span class="file-status__icon" aria-hidden="true">✓</span>
-                        <span class="file-status__details"><strong data-file-name></strong><small data-file-meta></small></span>
-                        <div class="file-status__actions">
-                            <button type="button" data-file-action="preview">Preview</button>
-                            <button type="button" data-file-action="replace">Replace</button>
-                            <button type="button" data-file-action="remove">Remove</button>
-                        </div>
-                    </div>
-                </article>
 
+                        <span class="file-status__icon" aria-hidden="true">✓</span>
+
+                        <span class="file-status__details"><strong data-file-name></strong><small data-file-meta></small></span>
+
+                        <div class="file-status__actions">
+
+                            <button type="button" data-file-action="preview">Preview</button>
+
+                            <button type="button" data-file-action="replace">Replace</button>
+
+                            <button type="button" data-file-action="remove">Remove</button>
+
+                        </div>
+
+                    </div>
+
+                </article>
 
             </div>
 
             <section class="application-summary" aria-labelledby="application-summary-title">
+
                 <div class="application-summary__header">
+
                     <div>
+
                         <span class="summary-eyebrow">Final check</span>
+
                         <h3 id="application-summary-title">Application summary</h3>
+
                     </div>
+
                 </div>
+
                 <div class="review-groups" data-review-summary></div>
+
             </section>
 
             <div class="approval-callout">
+
                 <span class="approval-callout__icon" aria-hidden="true">
+
                     <img src="{{ asset('images/security.png') }}" alt="">
+
                 </span>
+
                 <div><strong>What happens next?</strong><p data-approval-notice></p></div>
+
             </div>
+
         </section>
 
         <div class="form-actions">
+
             <button type="button" class="secondary-button" data-back>Back</button>
+
             <button type="button" class="primary-button" data-next>Continue</button>
+
             <button type="button" class="primary-button" data-submit>Submit application <span aria-hidden="true">→</span></button>
+
         </div>
+
     </form>
+
 </section>
+
 @endsection

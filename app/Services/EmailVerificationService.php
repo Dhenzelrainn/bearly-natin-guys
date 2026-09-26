@@ -109,7 +109,7 @@ class EmailVerificationService
         $state = Cache::get($this->key($request));
         if (! $state || ! hash_equals($state['email'], $email) ||
             ($state['verified_until'] ?? 0) <= now()->timestamp || $state['driver'] !== $this->driver()) {
-            $this->fail('Verify this email address before submitting your buyer application.');
+            $this->fail('Verify this email address before submitting your application.');
         }
         return $state['verified_at'];
     }

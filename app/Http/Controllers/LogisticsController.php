@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Enums\AccountStatus;
 use App\Enums\UserRole;
 use App\Models\User;
+use App\Services\EmailVerificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -69,10 +70,14 @@ class LogisticsController extends Controller
 
     public function submitRegistration(Request $request)
     {
+        $request->merge([
+            'email' => strtolower(trim((string) $request->input('email'))),
+        ]);
+
         $validated = $request->validate([
             'business_name' => ['required', 'string', 'max:120'],
             'first_name' => ['required', 'string', 'max:80'],
-            'middle_initial' => ['nullable', 'string', 'max:5'],
+            'middle_initial' => ['nullable', 'string', 'max:2', 'regex:/^[A-Za-z][.]?$/D'],
             'last_name' => ['required', 'string', 'max:80'],
             'sex' => ['required', 'in:Male,Female,Prefer not to say'],
             'email' => ['required', 'email', 'unique:users,email'],
@@ -98,10 +103,20 @@ class LogisticsController extends Controller
             'password' => ['required', 'confirmed', 'min:8', 'regex:/[a-z]/', 'regex:/[A-Z]/', 'regex:/[0-9]/'],
         ]);
 
+        $verification = app(EmailVerificationService::class);
+        $verifiedAt = $verification->verifiedAt(
+            $request,
+            $validated['email']
+        );
+
+        $middleInitial = empty($validated['middle_initial'])
+            ? null
+            : strtoupper(substr($validated['middle_initial'], 0, 1)).'.';
+
         $user = User::create([
-            'name' => trim($validated['first_name'].' '.($validated['middle_initial'] ?? '').' '.$validated['last_name']),
+            'name' => trim($validated['first_name'].' '.($middleInitial ?? '').' '.$validated['last_name']),
             'first_name' => $validated['first_name'],
-            'middle_initial' => $validated['middle_initial'] ?? null,
+            'middle_initial' => $middleInitial,
             'last_name' => $validated['last_name'],
             'sex' => match ($validated['sex']) {
                 'Male' => 'male',
@@ -110,6 +125,7 @@ class LogisticsController extends Controller
             },
             'birthday' => $validated['birthday'],
             'email' => $validated['email'],
+            'email_verified_at' => $verifiedAt,
             'contact_number' => $validated['contact_number'],
             'role' => UserRole::Logistics->value,
             'status' => AccountStatus::Pending->value,
@@ -122,6 +138,8 @@ class LogisticsController extends Controller
             'business_permit_path' => $request->file('business_permit')->store('registration-documents/logistics/permits', 'local'),
             'password' => Hash::make($validated['password']),
         ]);
+
+        $verification->forget($request);
 
         session([
             'logistics_application' => [

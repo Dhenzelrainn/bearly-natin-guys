@@ -309,49 +309,714 @@ function setupAccount() {
     });
 }
 
+function setupRegistrationEmail(form) {
+    const email = form.elements.email;
+    const send = form.querySelector('[data-email-send]');
+    const check = form.querySelector('[data-email-check]');
+    const code = form.querySelector('[data-email-code]');
+    const entry = form.querySelector('[data-email-code-entry]');
+    const status = form.querySelector('[data-email-status]');
+
+    if (!email || !send || !check || !code || !entry || !status) {
+        return { validate: () => true };
+    }
+
+    let verifiedEmail = '';
+    let verifiedUntil = 0;
+    let sentEmail = '';
+    let busy = false;
+    let cooldownUntil = 0;
+    let generation = 0;
+
+    const normalizedEmail = () =>
+        String(email.value || '').trim().toLowerCase();
+
+    const setStatus = (message, state = 'info') => {
+        status.textContent = message;
+        status.dataset.state = state;
+    };
+
+    const resetVerification = () => {
+        generation++;
+        verifiedEmail = '';
+        verifiedUntil = 0;
+        sentEmail = '';
+        entry.hidden = true;
+        code.value = '';
+        setStatus('Verify your email address to continue.');
+    };
+
+    const validEmail = () => {
+        email.value = normalizedEmail();
+        email.setCustomValidity('');
+
+        if (!email.value || !email.checkValidity()) {
+            email.reportValidity();
+            email.focus();
+            return false;
+        }
+
+        return true;
+    };
+
+    async function post(url, extra = {}) {
+        const response = await fetch(url, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json',
+                'X-CSRF-TOKEN': form.elements._token.value,
+            },
+            body: JSON.stringify({
+                email: normalizedEmail(),
+                ...extra,
+            }),
+        });
+
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+            if (response.status === 429) {
+                cooldownUntil =
+                    Date.now() +
+                    Number(response.headers.get('Retry-After') || 60) * 1000;
+            }
+
+            throw new Error(
+                response.status === 419
+                    ? 'Your session expired. Refresh the page and try again.'
+                    : Object.values(data.errors || {}).flat()[0] ||
+                      (
+                          response.status === 429
+                              ? 'Too many requests. Please wait before trying again.'
+                              : 'Email verification is unavailable. Please try again.'
+                      )
+            );
+        }
+
+        return data;
+    }
+
+    const refresh = () => {
+        const secondsLeft = Math.max(
+            0,
+            Math.ceil((cooldownUntil - Date.now()) / 1000)
+        );
+
+        const isVerified =
+            verifiedEmail === normalizedEmail() &&
+            Date.now() < verifiedUntil;
+
+        send.disabled = busy || secondsLeft > 0 || isVerified;
+        check.disabled = busy;
+
+        send.textContent = busy
+            ? 'Please wait…'
+            : isVerified
+                ? 'Verified'
+                : secondsLeft
+                    ? `Resend in ${secondsLeft}s`
+                    : sentEmail === normalizedEmail()
+                        ? 'Resend code'
+                        : 'Send code';
+
+        if (verifiedEmail && Date.now() >= verifiedUntil) {
+            resetVerification();
+            setStatus(
+                'Verification expired. Please verify your email again.',
+                'error'
+            );
+        }
+    };
+
+    email.addEventListener('input', () => {
+        resetVerification();
+        refresh();
+    });
+
+    code.addEventListener('input', () => {
+        code.value = code.value
+            .replace(/[^0-9]/g, '')
+            .slice(0, 6);
+    });
+
+    send.addEventListener('click', async () => {
+        if (busy || Date.now() < cooldownUntil || !validEmail()) return;
+
+        busy = true;
+        resetVerification();
+
+        const requestGeneration = generation;
+        const requestedEmail = normalizedEmail();
+
+        refresh();
+        setStatus('Sending verification code…');
+
+        try {
+            const data = await post(form.dataset.emailSend);
+
+            cooldownUntil =
+                Date.now() + Number(data.retry_after || 60) * 1000;
+
+            if (requestGeneration !== generation) return;
+
+            sentEmail = requestedEmail;
+            entry.hidden = false;
+            setStatus(
+                data.message ||
+                'Verification code sent. Check your inbox.'
+            );
+            code.focus();
+        } catch (error) {
+            if (requestGeneration === generation) {
+                setStatus(error.message, 'error');
+            }
+        } finally {
+            busy = false;
+            refresh();
+        }
+    });
+
+    check.addEventListener('click', async () => {
+        if (busy || !validEmail()) return;
+
+        if (normalizedEmail() !== sentEmail) {
+            resetVerification();
+            setStatus(
+                'The email address changed. Request a new code.',
+                'error'
+            );
+            return;
+        }
+
+        if (!/^[0-9]{6}$/.test(code.value)) {
+            setStatus(
+                'Enter the 6-digit code from your email.',
+                'error'
+            );
+            code.focus();
+            return;
+        }
+
+        busy = true;
+
+        const requestGeneration = generation;
+        const requestedEmail = normalizedEmail();
+
+        refresh();
+
+        try {
+            const data = await post(
+                form.dataset.emailCheck,
+                { code: code.value }
+            );
+
+            if (requestGeneration !== generation) return;
+
+            verifiedEmail = requestedEmail;
+            verifiedUntil =
+                Date.now() + Number(data.expires_in || 900) * 1000;
+
+            entry.hidden = true;
+            code.value = '';
+            setStatus(
+                data.message || 'Email address verified.',
+                'verified'
+            );
+        } catch (error) {
+            if (requestGeneration === generation) {
+                setStatus(error.message, 'error');
+            }
+        } finally {
+            busy = false;
+            refresh();
+        }
+    });
+
+    resetVerification();
+    refresh();
+    window.setInterval(refresh, 1000);
+
+    return {
+        validate: () => {
+            if (!validEmail()) return false;
+
+            if (
+                verifiedEmail !== normalizedEmail() ||
+                Date.now() >= verifiedUntil
+            ) {
+                setStatus(
+                    'Verify your email address before continuing.',
+                    'error'
+                );
+                send.focus();
+                return false;
+            }
+
+            return true;
+        },
+    };
+}
+
+function setupRegistrationPassword(form) {
+    const password = form.querySelector('[data-registration-password]');
+    const confirmation = form.querySelector(
+        '[data-registration-password-confirmation]'
+    );
+
+    if (!password || !confirmation) {
+        return {
+            prepareField: () => {},
+            validate: () => true,
+        };
+    }
+
+    const meter = form.querySelector('.registration-password-meter');
+    const strengthLabel = form.querySelector(
+        '[data-password-strength-label]'
+    );
+    const status = form.querySelector('[data-password-status]');
+    const matchStatus = form.querySelector('[data-password-match]');
+
+    const ruleElements = {
+        length: form.querySelector('[data-password-rule="length"]'),
+        uppercase: form.querySelector('[data-password-rule="uppercase"]'),
+        lowercase: form.querySelector('[data-password-rule="lowercase"]'),
+        number: form.querySelector('[data-password-rule="number"]'),
+    };
+
+    const evaluate = (value) => ({
+        length: value.length >= 8,
+        uppercase: /[A-Z]/.test(value),
+        lowercase: /[a-z]/.test(value),
+        number: /[0-9]/.test(value),
+    });
+
+    const passwordMessage = (value) => {
+        const rules = evaluate(value);
+
+        if (!rules.length) {
+            return 'Password must be at least 8 characters long.';
+        }
+        if (!rules.uppercase) {
+            return 'Password must contain at least one uppercase letter.';
+        }
+        if (!rules.lowercase) {
+            return 'Password must contain at least one lowercase letter.';
+        }
+        if (!rules.number) {
+            return 'Password must contain at least one number.';
+        }
+
+        return '';
+    };
+
+    const update = () => {
+        const rules = evaluate(password.value);
+        const score = Object.values(rules).filter(Boolean).length;
+
+        Object.entries(rules).forEach(([name, met]) => {
+            ruleElements[name]?.classList.toggle('is-met', met);
+        });
+
+        meter?.style.setProperty('--strength', `${score * 25}%`);
+
+        if (strengthLabel) {
+            const labels = ['Not set', 'Weak', 'Fair', 'Good', 'Strong'];
+            strengthLabel.textContent =
+                password.value ? labels[score] : labels[0];
+            strengthLabel.dataset.strength = String(score);
+        }
+
+        if (status) {
+            if (!password.value) {
+                status.textContent =
+                    'Meet all four requirements to continue.';
+                status.dataset.state = 'neutral';
+            } else if (score === 4) {
+                status.textContent =
+                    'Password meets all requirements.';
+                status.dataset.state = 'success';
+            } else {
+                status.textContent = passwordMessage(password.value);
+                status.dataset.state = 'error';
+            }
+        }
+
+        if (matchStatus) {
+            if (!confirmation.value) {
+                matchStatus.textContent = '';
+                matchStatus.dataset.state = 'neutral';
+            } else if (confirmation.value === password.value) {
+                matchStatus.textContent = 'Passwords match.';
+                matchStatus.dataset.state = 'success';
+            } else {
+                matchStatus.textContent = 'Passwords do not match.';
+                matchStatus.dataset.state = 'error';
+            }
+        }
+    };
+
+    const prepareField = (field) => {
+        if (field === password) {
+            field.setCustomValidity(passwordMessage(field.value));
+        }
+
+        if (field === confirmation) {
+            field.setCustomValidity(
+                field.value === password.value
+                    ? ''
+                    : 'Passwords do not match.'
+            );
+        }
+    };
+
+    form
+        .querySelectorAll('[data-toggle-password]')
+        .forEach((button) => {
+            button.addEventListener('click', () => {
+                const input = document.getElementById(
+                    button.dataset.togglePassword
+                );
+
+                if (!input) return;
+
+                input.type =
+                    input.type === 'password'
+                        ? 'text'
+                        : 'password';
+
+                const isVisible = input.type === 'text';
+
+                button.setAttribute(
+                    'aria-label',
+                    isVisible ? 'Hide password' : 'Show password'
+                );
+                button.setAttribute(
+                    'aria-pressed',
+                    String(isVisible)
+                );
+            });
+        });
+
+    password.addEventListener('input', () => {
+        password.setCustomValidity('');
+        confirmation.setCustomValidity('');
+        update();
+    });
+
+    confirmation.addEventListener('input', () => {
+        confirmation.setCustomValidity('');
+        update();
+    });
+
+    update();
+
+    return {
+        prepareField,
+        validate: () => {
+            prepareField(password);
+
+            if (!password.checkValidity()) {
+                password.reportValidity();
+                password.focus();
+                return false;
+            }
+
+            prepareField(confirmation);
+
+            if (!confirmation.checkValidity()) {
+                confirmation.reportValidity();
+                confirmation.focus();
+                return false;
+            }
+
+            return true;
+        },
+    };
+}
+
+function setupMiddleInitial(form) {
+    const middle = form.querySelector('[data-middle-initial]');
+    if (!middle) return;
+
+    const getLetter = () =>
+        middle.value
+            .replace(/[^A-Za-z]/g, '')
+            .slice(0, 1)
+            .toUpperCase();
+
+    middle.addEventListener('focus', () => {
+        middle.value = getLetter();
+    });
+
+    middle.addEventListener('input', () => {
+        middle.value = getLetter();
+    });
+
+    middle.addEventListener('blur', () => {
+        const letter = getLetter();
+        middle.value = letter ? `${letter}.` : '';
+    });
+}
+
 function setupRegistration() {
     const form = document.querySelector('[data-registration-form]');
     if (!form) return;
+
     let step = 1;
+
+    const emailVerification = setupRegistrationEmail(form);
+    const passwordUx = setupRegistrationPassword(form);
+
+    setupMiddleInitial(form);
+
     const show = (next) => {
         step = next;
-        document.querySelectorAll('[data-form-step]').forEach((panel) => { panel.hidden = Number(panel.dataset.formStep) !== step; });
-        document.querySelectorAll('[data-step-marker]').forEach((marker) => marker.classList.toggle('is-active', Number(marker.dataset.stepMarker) === step));
+
+        document
+            .querySelectorAll('[data-form-step]')
+            .forEach((panel) => {
+                panel.hidden =
+                    Number(panel.dataset.formStep) !== step;
+            });
+
+        document
+            .querySelectorAll('[data-step-marker]')
+            .forEach((marker) => {
+                const markerStep =
+                    Number(marker.dataset.stepMarker);
+
+                marker.classList.toggle(
+                    'is-active',
+                    markerStep === step
+                );
+
+                marker.classList.toggle(
+                    'is-complete',
+                    markerStep < step
+                );
+            });
     };
-    const validateStep = () => [...form.querySelector(`[data-form-step="${step}"]`).querySelectorAll('input,select')].every((field) => field.reportValidity());
-    document.querySelectorAll('[data-step-next]').forEach((button) => button.addEventListener('click', () => { if (validateStep()) show(Math.min(3, step + 1)); }));
-    document.querySelectorAll('[data-step-back]').forEach((button) => button.addEventListener('click', () => show(Math.max(1, step - 1))));
+
+    const validateStep = () => {
+        const panel = form.querySelector(
+            `[data-form-step="${step}"]`
+        );
+
+        if (!panel) return false;
+
+        const fields = [
+            ...panel.querySelectorAll('input, select, textarea'),
+        ].filter(
+            (field) =>
+                !field.disabled &&
+                field.type !== 'button' &&
+                field.type !== 'submit'
+        );
+
+        for (const field of fields) {
+            field.setCustomValidity('');
+            passwordUx.prepareField(field);
+
+            if (!field.checkValidity()) {
+                field.reportValidity();
+                field.focus();
+                return false;
+            }
+        }
+
+        if (step === 1) {
+            if (!passwordUx.validate()) return false;
+            if (!emailVerification.validate()) return false;
+        }
+
+        return true;
+    };
+
+    document
+        .querySelectorAll('[data-step-next]')
+        .forEach((button) => {
+            button.addEventListener('click', () => {
+                if (validateStep()) {
+                    show(Math.min(3, step + 1));
+                }
+            });
+        });
+
+    document
+        .querySelectorAll('[data-step-back]')
+        .forEach((button) => {
+            button.addEventListener('click', () => {
+                show(Math.max(1, step - 1));
+            });
+        });
+
     const birthday = form.querySelector('[name="birthday"]');
-    birthday?.addEventListener('change', () => {
-        const birth = new Date(birthday.value); const now = new Date();
+    const ageField = form.querySelector('[data-age]');
+
+    const updateAge = () => {
+        if (!birthday || !ageField) return;
+
+        if (!birthday.value) {
+            ageField.value = '';
+            return;
+        }
+
+        const birth = new Date(`${birthday.value}T00:00:00`);
+        const now = new Date();
+
         let age = now.getFullYear() - birth.getFullYear();
-        if (now < new Date(now.getFullYear(), birth.getMonth(), birth.getDate())) age--;
-        const field = form.querySelector('[data-age]'); if (field) field.value = Number.isFinite(age) ? age : '';
-    });
-    form.querySelectorAll('input[type="file"]').forEach((input) => input.addEventListener('change', () => {
-        const label = input.closest('.upload-field')?.querySelector('[data-file-name]');
-        if (label) label.textContent = input.files?.[0]?.name || 'Choose a JPG, PNG, or PDF file';
-    }));
+
+        if (
+            now <
+            new Date(
+                now.getFullYear(),
+                birth.getMonth(),
+                birth.getDate()
+            )
+        ) {
+            age--;
+        }
+
+        ageField.value =
+            Number.isFinite(age) && age >= 0
+                ? String(age)
+                : '';
+    };
+
+    birthday?.addEventListener('change', updateAge);
+    updateAge();
+
+    form
+        .querySelectorAll('input[type="file"]')
+        .forEach((input) => {
+            input.addEventListener('change', () => {
+                const label =
+                    input
+                        .closest('.upload-field')
+                        ?.querySelector('[data-file-name]');
+
+                if (label) {
+                    label.textContent =
+                        input.files?.[0]?.name ||
+                        'Choose a JPG, PNG, or PDF file';
+                }
+            });
+        });
+
     const province = form.querySelector('[data-province]');
     const city = form.querySelector('[data-city]');
     const barangay = form.querySelector('[data-barangay]');
-    const fill = (select, items, placeholder) => { select.innerHTML = `<option value="">${placeholder}</option>` + items.map((item) => `<option value="${item.name}" data-code="${item.code}">${item.name}</option>`).join(''); select.disabled = false; };
+
     const fallbackLocations = (url) => {
-        if (url.endsWith('/provinces')) return [{ name:'Laguna', code:'043400000' },{ name:'Batangas', code:'041000000' },{ name:'Cavite', code:'042100000' },{ name:'Quezon', code:'045600000' }];
-        if (url.includes('/provinces/043400000/')) return [{ name:'San Pablo City', code:'043426000' },{ name:'Santa Cruz', code:'043428000' },{ name:'Calauan', code:'043405000' },{ name:'Pila', code:'043419000' },{ name:'Bay', code:'043403000' }];
-        if (url.includes('/provinces/')) return [{ name:'Provincial Capital', code:'000000001' },{ name:'Service Municipality', code:'000000002' }];
-        return [{ name:'Poblacion', code:'000000101' },{ name:'San Antonio', code:'000000102' },{ name:'San Rafael', code:'000000103' },{ name:'Del Remedio', code:'000000104' }];
+        if (url.endsWith('/provinces')) {
+            return [
+                { name: 'Laguna', code: '043400000' },
+                { name: 'Batangas', code: '041000000' },
+                { name: 'Cavite', code: '042100000' },
+                { name: 'Quezon', code: '045600000' },
+            ];
+        }
+
+        if (url.includes('/provinces/043400000/')) {
+            return [
+                { name: 'San Pablo City', code: '043426000' },
+                { name: 'Santa Cruz', code: '043428000' },
+                { name: 'Calauan', code: '043405000' },
+                { name: 'Pila', code: '043419000' },
+                { name: 'Bay', code: '043403000' },
+            ];
+        }
+
+        if (url.includes('/provinces/')) {
+            return [
+                { name: 'Provincial Capital', code: '000000001' },
+                { name: 'Service Municipality', code: '000000002' },
+            ];
+        }
+
+        return [
+            { name: 'Poblacion', code: '000000101' },
+            { name: 'San Antonio', code: '000000102' },
+            { name: 'San Rafael', code: '000000103' },
+            { name: 'Del Remedio', code: '000000104' },
+        ];
     };
+
+    const fill = (select, items, placeholder) => {
+        select.innerHTML =
+            `<option value="">${placeholder}</option>` +
+            items
+                .map(
+                    (item) =>
+                        `<option value="${escapeHtml(item.name)}" data-code="${escapeHtml(item.code)}">${escapeHtml(item.name)}</option>`
+                )
+                .join('');
+
+        select.disabled = false;
+    };
+
     const load = async (url, select, placeholder) => {
-        select.disabled = true; select.innerHTML = '<option>Loading…</option>';
-        try { const response = await fetch(url); if (!response.ok) throw new Error(); const payload = await response.json(); const items = Array.isArray(payload) ? payload : payload.data; if (!Array.isArray(items)) throw new Error(); fill(select, items, placeholder); }
-        catch { fill(select, fallbackLocations(url), `${placeholder} (preview list)`); toast('Using the offline preview location list.'); }
+        select.disabled = true;
+        select.innerHTML = '<option>Loading…</option>';
+
+        try {
+            const response = await fetch(url);
+
+            if (!response.ok) throw new Error();
+
+            const payload = await response.json();
+            const items =
+                Array.isArray(payload)
+                    ? payload
+                    : payload.data;
+
+            if (!Array.isArray(items)) throw new Error();
+
+            fill(select, items, placeholder);
+        } catch {
+            fill(
+                select,
+                fallbackLocations(url),
+                `${placeholder} (preview list)`
+            );
+
+            toast('Using the offline preview location list.');
+        }
     };
+
     if (province && city && barangay) {
         load('/api/psgc/provinces', province, 'Select province');
-        province.addEventListener('change', () => { const code = province.selectedOptions[0]?.dataset.code; if (code) load(`/api/psgc/provinces/${code}/cities`, city, 'Select municipality / city'); });
-        city.addEventListener('change', () => { const code = city.selectedOptions[0]?.dataset.code; if (code) load(`/api/psgc/cities/${code}/barangays`, barangay, 'Select barangay'); });
+
+        province.addEventListener('change', () => {
+            const code =
+                province.selectedOptions[0]?.dataset.code;
+
+            if (code) {
+                load(
+                    `/api/psgc/provinces/${code}/cities`,
+                    city,
+                    'Select municipality / city'
+                );
+            }
+        });
+
+        city.addEventListener('change', () => {
+            const code =
+                city.selectedOptions[0]?.dataset.code;
+
+            if (code) {
+                load(
+                    `/api/psgc/cities/${code}/barangays`,
+                    barangay,
+                    'Select barangay'
+                );
+            }
+        });
     }
+
     show(1);
 }
 

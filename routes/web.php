@@ -360,11 +360,13 @@ Route::prefix('logistics')->name('logistics.')->group(function () {
     Route::get('/', [LogisticsController::class, 'landing'])
         ->name('landing');
 
-    Route::get('/register', [LogisticsController::class, 'register'])
-        ->name('register');
+    Route::middleware('guest')->group(function () {
+        Route::get('/register', [LogisticsController::class, 'register'])
+            ->name('register');
 
-    Route::post('/register', [LogisticsController::class, 'submitRegistration'])
-        ->middleware('throttle:10,1')->block(30, 5)->name('register.submit');
+        Route::post('/register', [LogisticsController::class, 'submitRegistration'])
+            ->middleware('throttle:10,1')->block(30, 5)->name('register.submit');
+    });
 
     Route::redirect('/login', '/login')
         ->name('login');
@@ -429,11 +431,13 @@ Route::prefix('rider')->name('rider.')->group(function () {
     Route::get('/', [RiderController::class, 'landing'])
         ->name('landing');
 
-    Route::get('/register', [RiderController::class, 'register'])
-        ->name('register');
+    Route::middleware('guest')->group(function () {
+        Route::get('/register', [RiderController::class, 'register'])
+            ->name('register');
 
-    Route::post('/register', [RiderController::class, 'submitRegistration'])
-        ->middleware('throttle:10,1')->block(30, 5)->name('register.submit');
+        Route::post('/register', [RiderController::class, 'submitRegistration'])
+            ->middleware('throttle:10,1')->block(30, 5)->name('register.submit');
+    });
 
     Route::redirect('/login', '/login')
         ->name('login');

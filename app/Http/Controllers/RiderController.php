@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Enums\AccountStatus;
 use App\Enums\UserRole;
 use App\Models\User;
+use App\Services\EmailVerificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -80,10 +81,14 @@ class RiderController extends Controller
 
     public function submitRegistration(Request $request)
     {
+        $request->merge([
+            'email' => strtolower(trim((string) $request->input('email'))),
+        ]);
+
         $validated = $request->validate([
             'logistics_partner' => ['required', 'integer', 'exists:users,id'],
             'first_name' => ['required', 'string', 'max:80'],
-            'middle_initial' => ['nullable', 'string', 'max:5'],
+            'middle_initial' => ['nullable', 'string', 'max:2', 'regex:/^[A-Za-z][.]?$/D'],
             'last_name' => ['required', 'string', 'max:80'],
             'sex' => ['required', 'in:Male,Female,Prefer not to say'],
             'email' => ['required', 'email', 'unique:users,email'],
@@ -117,10 +122,20 @@ class RiderController extends Controller
             ->where('status', AccountStatus::Active->value)
             ->firstOrFail();
 
+        $verification = app(EmailVerificationService::class);
+        $verifiedAt = $verification->verifiedAt(
+            $request,
+            $validated['email']
+        );
+
+        $middleInitial = empty($validated['middle_initial'])
+            ? null
+            : strtoupper(substr($validated['middle_initial'], 0, 1)).'.';
+
         $user = User::create([
-            'name' => trim($validated['first_name'].' '.($validated['middle_initial'] ?? '').' '.$validated['last_name']),
+            'name' => trim($validated['first_name'].' '.($middleInitial ?? '').' '.$validated['last_name']),
             'first_name' => $validated['first_name'],
-            'middle_initial' => $validated['middle_initial'] ?? null,
+            'middle_initial' => $middleInitial,
             'last_name' => $validated['last_name'],
             'sex' => match ($validated['sex']) {
                 'Male' => 'male',
@@ -129,6 +144,7 @@ class RiderController extends Controller
             },
             'birthday' => $validated['birthday'],
             'email' => $validated['email'],
+            'email_verified_at' => $verifiedAt,
             'contact_number' => $validated['contact_number'],
             'role' => UserRole::Rider->value,
             'status' => AccountStatus::Pending->value,
@@ -143,6 +159,8 @@ class RiderController extends Controller
             'driver_license_path' => $request->file('driver_license')->store('registration-documents/riders/licenses', 'local'),
             'password' => Hash::make($validated['password']),
         ]);
+
+        $verification->forget($request);
 
         session([
             'rider_application' => [

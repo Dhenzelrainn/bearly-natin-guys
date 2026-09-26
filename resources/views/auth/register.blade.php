@@ -152,7 +152,7 @@
 
                 </label>
 
-                <a class="role-card" href="{{ route('rider.register') }}">
+                <a class="role-card" href="{{ route('rider.landing') }}">
 
                     <span class="role-check">→</span>
 
@@ -174,7 +174,7 @@
 
                 </a>
 
-                <a class="role-card" href="{{ route('logistics.register') }}">
+                <a class="role-card" href="{{ route('logistics.landing') }}">
 
                     <span class="role-check">→</span>
 

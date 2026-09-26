@@ -519,26 +519,13 @@
                                 <label for="rider-province">
                                     Province <span>*</span>
                                 </label>
-
-                                <div class="location-search">
-                                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                                        <circle cx="11" cy="11" r="7"/>
-                                        <path d="m20 20-3.5-3.5"/>
-                                    </svg>
-                                    <input
-                                        type="search"
-                                        data-location-search="province"
-                                        placeholder="Search province"
-                                        aria-label="Search province"
-                                        autocomplete="off"
-                                    >
-                                </div>
-
-                                <select
+<select
                                     id="rider-province"
                                     name="province"
                                     data-province
                                     data-location-select="province"
+                                    data-searchable-location
+                                    data-search-placeholder="Search province"
                                     required
                                 >
                                     <option value="">Loading provinces…</option>
@@ -549,27 +536,13 @@
                                 <label for="rider-city">
                                     Municipality / City <span>*</span>
                                 </label>
-
-                                <div class="location-search">
-                                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                                        <circle cx="11" cy="11" r="7"/>
-                                        <path d="m20 20-3.5-3.5"/>
-                                    </svg>
-                                    <input
-                                        type="search"
-                                        data-location-search="city"
-                                        placeholder="Search municipality or city"
-                                        aria-label="Search municipality or city"
-                                        autocomplete="off"
-                                        disabled
-                                    >
-                                </div>
-
-                                <select
+<select
                                     id="rider-city"
                                     name="municipality"
                                     data-city
                                     data-location-select="city"
+                                    data-searchable-location
+                                    data-search-placeholder="Search municipality or city"
                                     required
                                     disabled
                                 >
@@ -581,27 +554,13 @@
                                 <label for="rider-barangay">
                                     Barangay <span>*</span>
                                 </label>
-
-                                <div class="location-search">
-                                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                                        <circle cx="11" cy="11" r="7"/>
-                                        <path d="m20 20-3.5-3.5"/>
-                                    </svg>
-                                    <input
-                                        type="search"
-                                        data-location-search="barangay"
-                                        placeholder="Search barangay"
-                                        aria-label="Search barangay"
-                                        autocomplete="off"
-                                        disabled
-                                    >
-                                </div>
-
-                                <select
+<select
                                     id="rider-barangay"
                                     name="barangay"
                                     data-barangay
                                     data-location-select="barangay"
+                                    data-searchable-location
+                                    data-search-placeholder="Search barangay"
                                     required
                                     disabled
                                 >

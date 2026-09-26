@@ -551,6 +551,429 @@ function setupRegistration() {
 
     setupMiddleInitial(form);
 
+    const province = form.querySelector('[data-province]');
+    const city = form.querySelector('[data-city]');
+    const barangay = form.querySelector('[data-barangay]');
+
+    const postalCode = form.querySelector('[data-postal-code]');
+    const postalChoices = form.querySelector('[data-postal-choices]');
+    const postalHelp = form.querySelector('[data-postal-help]');
+    const cityCodeField = form.elements.city_code;
+    const postalManualField = form.elements.postal_manual;
+
+    /*
+     * Searchable address dropdowns
+     * Same interaction pattern as Buyer/Seller:
+     * click the select-looking trigger -> search field appears inside panel.
+     */
+    const searchableSelects = new Map();
+
+    const normalizeSearchText = (value) =>
+        String(value || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLocaleLowerCase('en-PH')
+            .trim();
+
+    const closeSearchableSelect = (
+        select,
+        returnFocus = false
+    ) => {
+        const widget = searchableSelects.get(select);
+
+        if (!widget || widget.panel.hidden) return;
+
+        widget.panel.hidden = true;
+        widget.trigger.setAttribute('aria-expanded', 'false');
+        widget.wrapper.classList.remove('is-open');
+        widget.search.value = '';
+        widget.renderOptions();
+
+        if (returnFocus) {
+            widget.trigger.focus();
+        }
+    };
+
+    const closeOtherSearchableSelects = (currentSelect) => {
+        searchableSelects.forEach((widget, select) => {
+            if (select !== currentSelect) {
+                closeSearchableSelect(select);
+            }
+        });
+    };
+
+    const openSearchableSelect = (select) => {
+        const widget = searchableSelects.get(select);
+
+        if (!widget || select.disabled) return;
+
+        closeOtherSearchableSelects(select);
+
+        widget.panel.hidden = false;
+        widget.trigger.setAttribute('aria-expanded', 'true');
+        widget.wrapper.classList.add('is-open');
+        widget.search.value = '';
+        widget.renderOptions();
+
+        window.requestAnimationFrame(() => {
+            widget.search.focus();
+        });
+    };
+
+    const syncSearchableSelect = (select) => {
+        const widget = searchableSelects.get(select);
+        if (!widget) return;
+
+        const selected = select.selectedOptions?.[0];
+
+        widget.value.textContent =
+            selected?.textContent || 'Select an option';
+
+        widget.value.classList.toggle(
+            'is-placeholder',
+            !select.value
+        );
+
+        widget.trigger.disabled = select.disabled;
+        widget.trigger.setAttribute(
+            'aria-disabled',
+            String(select.disabled)
+        );
+
+        widget.wrapper.classList.toggle(
+            'is-disabled',
+            select.disabled
+        );
+
+        widget.wrapper.classList.remove('is-invalid');
+
+        if (select.disabled) {
+            closeSearchableSelect(select);
+        }
+
+        widget.renderOptions();
+    };
+
+    const createSearchableSelect = (select) => {
+        if (!select || searchableSelects.has(select)) return;
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'searchable-select';
+
+        const trigger = document.createElement('button');
+        trigger.type = 'button';
+        trigger.className = 'searchable-select__trigger';
+        trigger.setAttribute('aria-haspopup', 'listbox');
+        trigger.setAttribute('aria-expanded', 'false');
+        trigger.innerHTML = `
+            <span class="searchable-select__value"></span>
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+                <path d="m5 7.5 5 5 5-5"></path>
+            </svg>
+        `;
+
+        const panel = document.createElement('div');
+        panel.className = 'searchable-select__panel';
+        panel.hidden = true;
+        panel.innerHTML = `
+            <div class="searchable-select__search-wrap">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="11" cy="11" r="7"></circle>
+                    <path d="m20 20-4-4"></path>
+                </svg>
+
+                <input
+                    type="search"
+                    class="searchable-select__search"
+                    autocomplete="off"
+                    spellcheck="false"
+                >
+            </div>
+
+            <ul
+                class="searchable-select__options"
+                role="listbox"
+            ></ul>
+
+            <p
+                class="searchable-select__empty"
+                hidden
+            >
+                No locations found
+            </p>
+
+            <p
+                class="searchable-select__count"
+                aria-live="polite"
+            ></p>
+        `;
+
+        select.parentNode.insertBefore(wrapper, select);
+        wrapper.append(select, trigger, panel);
+
+        select.classList.add('searchable-select__native');
+
+        const value =
+            trigger.querySelector('.searchable-select__value');
+
+        const search =
+            panel.querySelector('.searchable-select__search');
+
+        const options =
+            panel.querySelector('.searchable-select__options');
+
+        const empty =
+            panel.querySelector('.searchable-select__empty');
+
+        const count =
+            panel.querySelector('.searchable-select__count');
+
+        search.placeholder =
+            select.dataset.searchPlaceholder ||
+            'Search location';
+
+        search.setAttribute(
+            'aria-label',
+            search.placeholder
+        );
+
+        const widget = {
+            wrapper,
+            trigger,
+            panel,
+            value,
+            search,
+            options,
+            empty,
+            count,
+            activeIndex: -1,
+            visibleOptions: [],
+            renderOptions: () => {},
+        };
+
+        widget.renderOptions = () => {
+            const query =
+                normalizeSearchText(search.value);
+
+            const availableOptions =
+                [...select.options].filter(
+                    (option) =>
+                        option.value &&
+                        !option.disabled
+                );
+
+            const matches =
+                availableOptions.filter((option) =>
+                    normalizeSearchText(
+                        option.textContent
+                    ).includes(query)
+                );
+
+            options.replaceChildren();
+
+            widget.visibleOptions = matches;
+            widget.activeIndex = -1;
+
+            matches.forEach((option) => {
+                const item =
+                    document.createElement('li');
+
+                const button =
+                    document.createElement('button');
+
+                const isSelected =
+                    option.value === select.value;
+
+                button.type = 'button';
+                button.className =
+                    'searchable-select__option';
+
+                button.setAttribute(
+                    'role',
+                    'option'
+                );
+
+                button.setAttribute(
+                    'aria-selected',
+                    String(isSelected)
+                );
+
+                button.dataset.value = option.value;
+
+                button.innerHTML = `
+                    <span></span>
+                    <span
+                        class="searchable-select__check"
+                        aria-hidden="true"
+                    >
+                        ${isSelected ? '✓' : ''}
+                    </span>
+                `;
+
+                button.firstElementChild.textContent =
+                    option.textContent;
+
+                button.addEventListener('click', () => {
+                    select.value = option.value;
+                    select.setCustomValidity('');
+
+                    select.dispatchEvent(
+                        new Event(
+                            'change',
+                            { bubbles: true }
+                        )
+                    );
+
+                    syncSearchableSelect(select);
+                    closeSearchableSelect(
+                        select,
+                        true
+                    );
+                });
+
+                item.append(button);
+                options.append(item);
+            });
+
+            empty.hidden = matches.length !== 0;
+
+            count.textContent =
+                `${matches.length} ${
+                    matches.length === 1
+                        ? 'location'
+                        : 'locations'
+                } found`;
+        };
+
+        searchableSelects.set(select, widget);
+
+        trigger.addEventListener('click', () => {
+            if (panel.hidden) {
+                openSearchableSelect(select);
+            } else {
+                closeSearchableSelect(select);
+            }
+        });
+
+        trigger.addEventListener(
+            'keydown',
+            (event) => {
+                if (
+                    [
+                        'ArrowDown',
+                        'Enter',
+                        ' ',
+                    ].includes(event.key)
+                ) {
+                    event.preventDefault();
+                    openSearchableSelect(select);
+                }
+            }
+        );
+
+        search.addEventListener(
+            'input',
+            widget.renderOptions
+        );
+
+        search.addEventListener(
+            'keydown',
+            (event) => {
+                const optionButtons = [
+                    ...options.querySelectorAll(
+                        'button'
+                    ),
+                ];
+
+                if (event.key === 'Escape') {
+                    event.preventDefault();
+
+                    closeSearchableSelect(
+                        select,
+                        true
+                    );
+
+                    return;
+                }
+
+                if (
+                    ![
+                        'ArrowDown',
+                        'ArrowUp',
+                        'Enter',
+                    ].includes(event.key)
+                ) {
+                    return;
+                }
+
+                event.preventDefault();
+
+                if (event.key === 'Enter') {
+                    optionButtons[
+                        widget.activeIndex
+                    ]?.click();
+
+                    return;
+                }
+
+                const direction =
+                    event.key === 'ArrowDown'
+                        ? 1
+                        : -1;
+
+                widget.activeIndex = Math.max(
+                    0,
+                    Math.min(
+                        optionButtons.length - 1,
+                        widget.activeIndex +
+                            direction
+                    )
+                );
+
+                optionButtons.forEach(
+                    (button, index) => {
+                        button.classList.toggle(
+                            'is-active',
+                            index ===
+                                widget.activeIndex
+                        );
+                    }
+                );
+
+                optionButtons[
+                    widget.activeIndex
+                ]?.scrollIntoView({
+                    block: 'nearest',
+                });
+            }
+        );
+
+        syncSearchableSelect(select);
+    };
+
+    form
+        .querySelectorAll('[data-searchable-location]')
+        .forEach(createSearchableSelect);
+
+    document.addEventListener(
+        'pointerdown',
+        (event) => {
+            searchableSelects.forEach(
+                (widget, select) => {
+                    if (
+                        !widget.wrapper.contains(
+                            event.target
+                        )
+                    ) {
+                        closeSearchableSelect(
+                            select
+                        );
+                    }
+                }
+            );
+        }
+    );
+
     const show = (next) => {
         step = next;
 
@@ -577,6 +1000,11 @@ function setupRegistration() {
                     markerStep < step
                 );
             });
+
+        window.scrollTo({
+            top: 0,
+            behavior: 'smooth',
+        });
     };
 
     const validateStep = () => {
@@ -587,12 +1015,17 @@ function setupRegistration() {
         if (!panel) return false;
 
         const fields = [
-            ...panel.querySelectorAll('input, select, textarea'),
+            ...panel.querySelectorAll(
+                'input, select, textarea'
+            ),
         ].filter(
             (field) =>
                 !field.disabled &&
                 field.type !== 'button' &&
-                field.type !== 'submit'
+                field.type !== 'submit' &&
+                !field.classList.contains(
+                    'searchable-select__search'
+                )
         );
 
         for (const field of fields) {
@@ -600,8 +1033,21 @@ function setupRegistration() {
             passwordUx.prepareField(field);
 
             if (!field.checkValidity()) {
-                field.reportValidity();
-                field.focus();
+                const widget =
+                    searchableSelects.get(field);
+
+                if (widget) {
+                    widget.wrapper.classList.add(
+                        'is-invalid'
+                    );
+
+                    openSearchableSelect(field);
+                    widget.trigger.focus();
+                } else {
+                    field.reportValidity();
+                    field.focus();
+                }
+
                 return false;
             }
         }
@@ -619,7 +1065,12 @@ function setupRegistration() {
         .forEach((button) => {
             button.addEventListener('click', () => {
                 if (validateStep()) {
-                    show(Math.min(3, step + 1));
+                    show(
+                        Math.min(
+                            3,
+                            step + 1
+                        )
+                    );
                 }
             });
         });
@@ -628,12 +1079,20 @@ function setupRegistration() {
         .querySelectorAll('[data-step-back]')
         .forEach((button) => {
             button.addEventListener('click', () => {
-                show(Math.max(1, step - 1));
+                show(
+                    Math.max(
+                        1,
+                        step - 1
+                    )
+                );
             });
         });
 
-    const birthday = form.querySelector('[name="birthday"]');
-    const ageField = form.querySelector('[data-age]');
+    const birthday =
+        form.querySelector('[name="birthday"]');
+
+    const ageField =
+        form.querySelector('[data-age]');
 
     const updateAge = () => {
         if (!birthday || !ageField) return;
@@ -643,10 +1102,16 @@ function setupRegistration() {
             return;
         }
 
-        const birth = new Date(`${birthday.value}T00:00:00`);
+        const birth =
+            new Date(
+                `${birthday.value}T00:00:00`
+            );
+
         const now = new Date();
 
-        let age = now.getFullYear() - birth.getFullYear();
+        let age =
+            now.getFullYear() -
+            birth.getFullYear();
 
         if (
             now <
@@ -660,71 +1125,133 @@ function setupRegistration() {
         }
 
         ageField.value =
-            Number.isFinite(age) && age >= 0
+            Number.isFinite(age) &&
+            age >= 0
                 ? String(age)
                 : '';
     };
 
-    birthday?.addEventListener('change', updateAge);
+    birthday?.addEventListener(
+        'change',
+        updateAge
+    );
+
     updateAge();
 
     form
         .querySelectorAll('input[type="file"]')
         .forEach((input) => {
-            input.addEventListener('change', () => {
-                const label =
-                    input
-                        .closest('.upload-field')
-                        ?.querySelector('[data-file-name]');
+            input.addEventListener(
+                'change',
+                () => {
+                    const label =
+                        input
+                            .closest(
+                                '.upload-field'
+                            )
+                            ?.querySelector(
+                                '[data-file-name]'
+                            );
 
-                if (label) {
-                    label.textContent =
-                        input.files?.[0]?.name ||
-                        'Choose a JPG, PNG, or PDF file';
+                    if (label) {
+                        label.textContent =
+                            input.files?.[0]
+                                ?.name ||
+                            'Choose a JPG, PNG, or PDF file';
+                    }
                 }
-            });
+            );
         });
-
-    const province = form.querySelector('[data-province]');
-    const city = form.querySelector('[data-city]');
-    const barangay = form.querySelector('[data-barangay]');
 
     const fallbackLocations = (url) => {
         if (url.endsWith('/provinces')) {
             return [
-                { name: 'Laguna', code: '043400000' },
-                { name: 'Batangas', code: '041000000' },
-                { name: 'Cavite', code: '042100000' },
-                { name: 'Quezon', code: '045600000' },
+                {
+                    name: 'Laguna',
+                    code: '043400000',
+                },
+                {
+                    name: 'Batangas',
+                    code: '041000000',
+                },
+                {
+                    name: 'Cavite',
+                    code: '042100000',
+                },
+                {
+                    name: 'Quezon',
+                    code: '045600000',
+                },
             ];
         }
 
-        if (url.includes('/provinces/043400000/')) {
+        if (
+            url.includes(
+                '/provinces/043400000/'
+            )
+        ) {
             return [
-                { name: 'San Pablo City', code: '043426000' },
-                { name: 'Santa Cruz', code: '043428000' },
-                { name: 'Calauan', code: '043405000' },
-                { name: 'Pila', code: '043419000' },
-                { name: 'Bay', code: '043403000' },
+                {
+                    name: 'San Pablo City',
+                    code: '043426000',
+                },
+                {
+                    name: 'Santa Cruz',
+                    code: '043428000',
+                },
+                {
+                    name: 'Calauan',
+                    code: '043405000',
+                },
+                {
+                    name: 'Pila',
+                    code: '043419000',
+                },
+                {
+                    name: 'Bay',
+                    code: '043403000',
+                },
             ];
         }
 
         if (url.includes('/provinces/')) {
             return [
-                { name: 'Provincial Capital', code: '000000001' },
-                { name: 'Service Municipality', code: '000000002' },
+                {
+                    name: 'Provincial Capital',
+                    code: '000000001',
+                },
+                {
+                    name: 'Service Municipality',
+                    code: '000000002',
+                },
             ];
         }
 
         return [
-            { name: 'Poblacion', code: '000000101' },
-            { name: 'San Antonio', code: '000000102' },
-            { name: 'San Rafael', code: '000000103' },
-            { name: 'Del Remedio', code: '000000104' },
+            {
+                name: 'Poblacion',
+                code: '000000101',
+            },
+            {
+                name: 'San Antonio',
+                code: '000000102',
+            },
+            {
+                name: 'San Rafael',
+                code: '000000103',
+            },
+            {
+                name: 'Del Remedio',
+                code: '000000104',
+            },
         ];
     };
 
-    const fill = (select, items, placeholder) => {
+    const fill = (
+        select,
+        items,
+        placeholder
+    ) => {
         select.innerHTML =
             `<option value="">${placeholder}</option>` +
             items
@@ -735,26 +1262,42 @@ function setupRegistration() {
                 .join('');
 
         select.disabled = false;
+        syncSearchableSelect(select);
     };
 
-    const load = async (url, select, placeholder) => {
+    const load = async (
+        url,
+        select,
+        placeholder
+    ) => {
         select.disabled = true;
-        select.innerHTML = '<option>Loading…</option>';
+        select.innerHTML =
+            '<option value="">Loading…</option>';
+
+        syncSearchableSelect(select);
 
         try {
             const response = await fetch(url);
 
             if (!response.ok) throw new Error();
 
-            const payload = await response.json();
+            const payload =
+                await response.json();
+
             const items =
                 Array.isArray(payload)
                     ? payload
                     : payload.data;
 
-            if (!Array.isArray(items)) throw new Error();
+            if (!Array.isArray(items)) {
+                throw new Error();
+            }
 
-            fill(select, items, placeholder);
+            fill(
+                select,
+                items,
+                placeholder
+            );
         } catch {
             fill(
                 select,
@@ -762,38 +1305,320 @@ function setupRegistration() {
                 `${placeholder} (preview list)`
             );
 
-            toast('Using the offline preview location list.');
+            toast(
+                'Using the offline preview location list.'
+            );
         }
     };
 
+    const resetPostal = (
+        message =
+            'Select a municipality to fill this automatically.'
+    ) => {
+        if (!postalCode) return;
+
+        postalCode.value = '';
+        postalCode.readOnly = true;
+        postalCode.placeholder =
+            'Auto-generated';
+
+        if (postalChoices) {
+            postalChoices.hidden = true;
+            postalChoices.innerHTML = '';
+        }
+
+        if (postalHelp) {
+            postalHelp.textContent = message;
+            postalHelp.dataset.state = 'info';
+        }
+
+        if (cityCodeField) {
+            cityCodeField.value = '';
+        }
+
+        if (postalManualField) {
+            postalManualField.value = '0';
+        }
+    };
+
+    const postalLabel = (option) => {
+        const area =
+            option.area ||
+            option.label ||
+            option.name ||
+            option.location ||
+            '';
+
+        return area
+            ? `${option.code} — ${area}`
+            : String(option.code || '');
+    };
+
+    const applyPostal = (option) => {
+        if (!postalCode || !option?.code) return;
+
+        postalCode.value =
+            String(option.code)
+                .replace(/\D/g, '')
+                .slice(0, 4);
+
+        postalCode.readOnly = true;
+
+        if (postalManualField) {
+            postalManualField.value = '0';
+        }
+    };
+
+    const loadPostalCode = async () => {
+        if (
+            !postalCode ||
+            !city ||
+            !province
+        ) {
+            return;
+        }
+
+        const cityOption =
+            city.selectedOptions[0];
+
+        const cityCode =
+            cityOption?.dataset.code || '';
+
+        resetPostal('Looking up postal code…');
+
+        if (
+            !city.value ||
+            !province.value
+        ) {
+            resetPostal();
+            return;
+        }
+
+        if (cityCodeField) {
+            cityCodeField.value = cityCode;
+        }
+
+        try {
+            const params =
+                new URLSearchParams({
+                    city_code: cityCode,
+                    province: province.value,
+                    city: city.value,
+                });
+
+            const response =
+                await fetch(
+                    `${form.dataset.postalUrl}?${params.toString()}`,
+                    {
+                        headers: {
+                            Accept:
+                                'application/json',
+                        },
+                    }
+                );
+
+            if (!response.ok) {
+                throw new Error();
+            }
+
+            const payload =
+                await response.json();
+
+            const options =
+                Array.isArray(payload.options)
+                    ? payload.options.filter(
+                        (item) =>
+                            item &&
+                            /^\d{4}$/.test(
+                                String(
+                                    item.code ||
+                                        ''
+                                )
+                            )
+                    )
+                    : [];
+
+            if (options.length === 1) {
+                applyPostal(options[0]);
+
+                if (postalHelp) {
+                    postalHelp.textContent =
+                        `Postal code ${options[0].code} was filled from the selected municipality.`;
+
+                    postalHelp.dataset.state =
+                        'success';
+                }
+
+                return;
+            }
+
+            if (
+                options.length > 1 &&
+                postalChoices
+            ) {
+                postalChoices.innerHTML =
+                    options
+                        .map(
+                            (
+                                option,
+                                index
+                            ) =>
+                                `<option value="${escapeHtml(option.code)}" data-index="${index}">${escapeHtml(postalLabel(option))}</option>`
+                        )
+                        .join('');
+
+                postalChoices.hidden = false;
+
+                applyPostal(options[0]);
+
+                postalChoices.onchange = () => {
+                    const selected =
+                        options[
+                            Number(
+                                postalChoices
+                                    .selectedOptions[0]
+                                    ?.dataset
+                                    .index || 0
+                            )
+                        ];
+
+                    applyPostal(selected);
+                };
+
+                if (postalHelp) {
+                    postalHelp.textContent =
+                        'This municipality has more than one postal code. Choose the correct postal area.';
+
+                    postalHelp.dataset.state =
+                        'info';
+                }
+
+                return;
+            }
+
+            postalCode.readOnly = false;
+            postalCode.placeholder =
+                'Enter 4-digit postal code';
+
+            if (postalManualField) {
+                postalManualField.value =
+                    '1';
+            }
+
+            if (postalHelp) {
+                postalHelp.textContent =
+                    'No postal code was found for this municipality. Enter the correct 4-digit postal code.';
+
+                postalHelp.dataset.state =
+                    'warning';
+            }
+        } catch {
+            postalCode.readOnly = false;
+            postalCode.placeholder =
+                'Enter 4-digit postal code';
+
+            if (postalManualField) {
+                postalManualField.value =
+                    '1';
+            }
+
+            if (postalHelp) {
+                postalHelp.textContent =
+                    'Postal lookup is temporarily unavailable. Enter the correct 4-digit postal code.';
+
+                postalHelp.dataset.state =
+                    'warning';
+            }
+        }
+    };
+
+    postalCode?.addEventListener(
+        'input',
+        () => {
+            if (!postalCode.readOnly) {
+                postalCode.value =
+                    postalCode.value
+                        .replace(/\D/g, '')
+                        .slice(0, 4);
+            }
+        }
+    );
+
     if (province && city && barangay) {
-        load('/api/psgc/provinces', province, 'Select province');
+        load(
+            '/api/psgc/provinces',
+            province,
+            'Select province'
+        );
 
-        province.addEventListener('change', () => {
-            const code =
-                province.selectedOptions[0]?.dataset.code;
+        province.addEventListener(
+            'change',
+            () => {
+                const code =
+                    province
+                        .selectedOptions[0]
+                        ?.dataset.code;
 
-            if (code) {
-                load(
-                    `/api/psgc/provinces/${code}/cities`,
-                    city,
-                    'Select municipality / city'
-                );
+                city.innerHTML =
+                    '<option value="">Select province first</option>';
+
+                city.disabled = true;
+
+                barangay.innerHTML =
+                    '<option value="">Select city first</option>';
+
+                barangay.disabled = true;
+
+                syncSearchableSelect(city);
+                syncSearchableSelect(barangay);
+
+                resetPostal();
+
+                if (code) {
+                    load(
+                        `/api/psgc/provinces/${code}/cities`,
+                        city,
+                        'Select municipality / city'
+                    );
+                }
             }
-        });
+        );
 
-        city.addEventListener('change', () => {
-            const code =
-                city.selectedOptions[0]?.dataset.code;
+        city.addEventListener(
+            'change',
+            () => {
+                const code =
+                    city
+                        .selectedOptions[0]
+                        ?.dataset.code;
 
-            if (code) {
-                load(
-                    `/api/psgc/cities/${code}/barangays`,
-                    barangay,
-                    'Select barangay'
-                );
+                barangay.innerHTML =
+                    '<option value="">Select city first</option>';
+
+                barangay.disabled = true;
+
+                syncSearchableSelect(barangay);
+
+                resetPostal();
+
+                if (code) {
+                    load(
+                        `/api/psgc/cities/${code}/barangays`,
+                        barangay,
+                        'Select barangay'
+                    );
+                }
+
+                loadPostalCode();
             }
-        });
+        );
+
+        barangay.addEventListener(
+            'change',
+            () => {
+                syncSearchableSelect(barangay);
+            }
+        );
     }
 
     show(1);

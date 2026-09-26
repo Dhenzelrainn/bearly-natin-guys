@@ -73,8 +73,21 @@ Route::post('/logout', [BearlyAuthController::class, 'logout'])
 Route::view('/application/pending', 'auth.pending')
     ->name('application.pending');
 
-Route::get('/forgot-password', fn () => redirect()->route('login'))
-    ->name('password.request');
+Route::middleware('guest')->group(function () {
+    Route::get('/forgot-password', [BearlyAuthController::class, 'showForgotPassword'])
+        ->name('password.request');
+
+    Route::post('/forgot-password', [BearlyAuthController::class, 'sendPasswordResetLink'])
+        ->middleware('throttle:5,1')
+        ->name('password.email');
+
+    Route::get('/reset-password/{token}', [BearlyAuthController::class, 'showResetPassword'])
+        ->name('password.reset');
+
+    Route::post('/reset-password', [BearlyAuthController::class, 'resetPassword'])
+        ->middleware('throttle:10,1')
+        ->name('password.update');
+});
 
 /*
 |--------------------------------------------------------------------------

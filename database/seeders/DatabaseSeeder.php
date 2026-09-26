@@ -29,21 +29,44 @@ class DatabaseSeeder extends Seeder
         foreach ($rules as $rule) {
             ComplianceRule::updateOrCreate(['code' => $rule['code']], $rule);
         }
-        $admin = User::firstOrCreate(['email' => 'admin@bearly.test'], [
-            'name' => 'Bearly Admin',
-            'first_name' => 'Bearly',
-            'last_name' => 'Admin',
-            'sex' => 'prefer_not_to_say',
-            'birthday' => '2000-01-01',
-            'contact_number' => '09000000000',
-            'province' => 'Metro Manila',
-            'city' => 'Manila',
-            'barangay' => 'System',
-            'street_address' => 'Bearly Administration',
-            'role' => 'admin',
-            'status' => 'active',
-            'password' => Hash::make('Password123'),
-        ]);
-        $admin->roles()->syncWithoutDetaching([Role::where('name', 'admin')->value('id') => ['assigned_at' => now()]]);
-    }
+        $adminEmail = env('SEED_ADMIN_EMAIL', 'admin@bearly.test');
+        $adminPassword = env('SEED_ADMIN_PASSWORD');
+
+        /*
+         * A predictable demo password is allowed only in local/testing.
+         * Production must explicitly provide SEED_ADMIN_PASSWORD.
+         */
+        if (
+            blank($adminPassword)
+            && app()->environment(['local', 'testing'])
+        ) {
+            $adminPassword = 'Password123';
+        }
+
+        if (filled($adminEmail) && filled($adminPassword)) {
+            $admin = User::firstOrCreate(
+                ['email' => $adminEmail],
+                [
+                    'name' => 'Bearly Admin',
+                    'first_name' => 'Bearly',
+                    'last_name' => 'Admin',
+                    'sex' => 'prefer_not_to_say',
+                    'birthday' => '2000-01-01',
+                    'contact_number' => '09000000000',
+                    'province' => 'Metro Manila',
+                    'city' => 'Manila',
+                    'barangay' => 'System',
+                    'street_address' => 'Bearly Administration',
+                    'role' => 'admin',
+                    'status' => 'active',
+                    'password' => Hash::make($adminPassword),
+                ]
+            );
+
+            $admin->roles()->syncWithoutDetaching([
+                Role::where('name', 'admin')->value('id') => [
+                    'assigned_at' => now(),
+                ],
+            ]);
+        }    }
 }

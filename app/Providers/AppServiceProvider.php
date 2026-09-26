@@ -2,6 +2,14 @@
 
 namespace App\Providers;
 
+use App\Observers\AccountApplicationObserver;
+
+use App\Observers\AddressObserver;
+
+use App\Models\AccountApplication;
+
+use App\Models\Address;
+
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -19,6 +27,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Address::observe(AddressObserver::class);
+        AccountApplication::observe(AccountApplicationObserver::class);
         //
     }
 }

@@ -6,6 +6,8 @@ use App\Enums\AccountStatus;
 use App\Enums\UserRole;
 use App\Models\User;
 use App\Services\EmailVerificationService;
+use App\Services\InternationalPhone;
+use App\Services\RegistrationLifecycleService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -100,9 +102,15 @@ class LogisticsController extends Controller
                 'mimes:jpg,jpeg,png,pdf',
                 'max:5120',
             ],
+            'terms' => ['accepted'],
             'password' => ['required', 'confirmed', 'min:8', 'regex:/[a-z]/', 'regex:/[A-Z]/', 'regex:/[0-9]/'],
         ]);
 
+        $validated['contact_number'] =
+            app(InternationalPhone::class)->normalize(
+                $validated['contact_number'],
+                'PH'
+            );
         $verification = app(EmailVerificationService::class);
         $verifiedAt = $verification->verifiedAt(
             $request,
@@ -127,6 +135,10 @@ class LogisticsController extends Controller
             'email' => $validated['email'],
             'email_verified_at' => $verifiedAt,
             'contact_number' => $validated['contact_number'],
+            'phone_country' => 'PH',
+            'terms_accepted_at' => now(),
+            'terms_version' => config('bearly-policies.version'),
+            'privacy_version' => config('bearly-policies.version'),
             'role' => UserRole::Logistics->value,
             'status' => AccountStatus::Pending->value,
             'province' => $validated['province'],
@@ -139,6 +151,40 @@ class LogisticsController extends Controller
             'password' => Hash::make($validated['password']),
         ]);
 
+        app(RegistrationLifecycleService::class)
+            ->recordPendingApplication(
+                $user,
+                UserRole::Logistics->value,
+                [
+                    'house_number' => $validated['house_number'],
+                    'street' => $validated['street'],
+                    'barangay' => $validated['barangay'],
+                    'municipality' => $validated['municipality'],
+                    'province' => $validated['province'],
+                    'postal_code' =>
+                        $validated['postal_code'] ?? null,
+                    'city_code' =>
+                        $validated['city_code'] ?? null,
+                ],
+                [
+                    'business_name' =>
+                        $validated['business_name'],
+                ],
+                [
+                    [
+                        'type' => 'valid_id',
+                        'path' => $user->valid_id_path,
+                        'file' => $request->file('valid_id'),
+                    ],
+                    [
+                        'type' => 'business_permit',
+                        'path' => $user->business_permit_path,
+                        'file' => $request->file(
+                            'business_permit'
+                        ),
+                    ],
+                ]
+            );
         $verification->forget($request);
 
         session([

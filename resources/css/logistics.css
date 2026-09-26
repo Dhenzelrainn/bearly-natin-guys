@@ -262,3 +262,230 @@
         grid-template-columns: 1fr;
     }
 }
+
+/* =========================================================
+   REGISTRATION ADDRESS — IN-DROPDOWN SEARCH
+   Mirrors Buyer/Seller searchable PSGC dropdown behavior.
+   ========================================================= */
+
+.searchable-select {
+    position: relative;
+    width: 100%;
+}
+
+.searchable-select__native {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    clip: rect(0 0 0 0) !important;
+    clip-path: inset(50%) !important;
+    border: 0 !important;
+    opacity: 0 !important;
+    white-space: nowrap !important;
+    pointer-events: none !important;
+}
+
+.searchable-select__trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    min-height: 38px;
+    padding: 8px 11px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fff;
+    color: var(--ink);
+    font-size: 11px;
+    text-align: left;
+    cursor: pointer;
+    transition:
+        border-color 160ms ease,
+        box-shadow 160ms ease,
+        background-color 160ms ease;
+}
+
+.searchable-select__trigger svg {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transition: transform 160ms ease;
+}
+
+.searchable-select__value {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.searchable-select__value.is-placeholder {
+    color: #8f8680;
+}
+
+.searchable-select__trigger:hover:not(:disabled) {
+    border-color: #cbbdb2;
+    background: #fdfbf9;
+}
+
+.searchable-select__trigger:focus-visible,
+.searchable-select.is-open .searchable-select__trigger {
+    border-color: #9f826d;
+    outline: 0;
+    box-shadow: 0 0 0 3px rgba(97, 70, 55, .09);
+}
+
+.searchable-select.is-open
+.searchable-select__trigger svg {
+    transform: rotate(180deg);
+}
+
+.searchable-select.is-disabled
+.searchable-select__trigger {
+    background: #f7f4f1;
+    color: #9a928d;
+    cursor: not-allowed;
+    opacity: .72;
+}
+
+.searchable-select.is-invalid
+.searchable-select__trigger {
+    border-color: var(--red);
+    box-shadow: 0 0 0 3px rgba(179, 58, 54, .08);
+}
+
+.searchable-select__panel {
+    position: absolute;
+    z-index: 90;
+    top: calc(100% + 6px);
+    left: 0;
+    width: 100%;
+    min-width: 220px;
+    overflow: hidden;
+    border: 1px solid #d9cec5;
+    border-radius: 10px;
+    background: #fff;
+    box-shadow: 0 14px 34px rgba(38, 25, 19, .14);
+}
+
+.searchable-select__panel[hidden] {
+    display: none;
+}
+
+.searchable-select__search-wrap {
+    position: relative;
+    padding: 10px;
+    border-bottom: 1px solid #eee8e2;
+    background: #fcfaf8;
+}
+
+.searchable-select__search-wrap > svg {
+    position: absolute;
+    top: 50%;
+    left: 21px;
+    width: 15px;
+    height: 15px;
+    fill: none;
+    stroke: #857870;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transform: translateY(-50%);
+    pointer-events: none;
+}
+
+.searchable-select__search {
+    width: 100%;
+    height: 38px;
+    padding: 8px 10px 8px 34px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fff;
+    color: var(--ink);
+    font-size: 11px;
+    outline: 0;
+}
+
+.searchable-select__search:focus {
+    border-color: #9f826d;
+    box-shadow: 0 0 0 3px rgba(97, 70, 55, .08);
+}
+
+.searchable-select__options {
+    max-height: 230px;
+    margin: 0;
+    padding: 5px;
+    overflow-y: auto;
+    list-style: none;
+}
+
+.searchable-select__option {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    width: 100%;
+    min-height: 36px;
+    padding: 8px 9px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--ink);
+    font-size: 11px;
+    text-align: left;
+    cursor: pointer;
+}
+
+.searchable-select__option:hover,
+.searchable-select__option.is-active {
+    background: #f7f2ed;
+}
+
+.searchable-select__option[aria-selected="true"] {
+    color: var(--brown-900);
+    font-weight: 600;
+    background: #fff8ee;
+}
+
+.searchable-select__check {
+    flex: 0 0 auto;
+    color: var(--green);
+    font-weight: 700;
+}
+
+.searchable-select__empty,
+.searchable-select__count {
+    margin: 0;
+    color: var(--muted);
+    font-size: 9px;
+}
+
+.searchable-select__empty {
+    padding: 16px 14px 8px;
+    text-align: center;
+}
+
+.searchable-select__count {
+    padding: 7px 12px 9px;
+    border-top: 1px solid #f1ebe6;
+    text-align: right;
+}
+
+.location-field > .searchable-select {
+    margin-top: 0;
+}
+
+@media (max-width: 760px) {
+    .searchable-select__panel {
+        min-width: 100%;
+    }
+}

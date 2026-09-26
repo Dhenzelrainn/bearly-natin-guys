@@ -9,11 +9,16 @@ use App\Models\User;
 use App\Services\InternationalPhone;
 use App\Services\EmailVerificationService;
 use App\Services\PostalCodeLookup;
+use App\Services\RegistrationLifecycleService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Throwable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
+use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Password;
+use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
@@ -39,10 +44,39 @@ class BearlyAuthController extends Controller
             'password' => ['required', 'string'],
         ]);
 
-        if (! Auth::attempt($credentials, $request->boolean('remember'))) {
-            return back()->withInput($request->only('email'))
-                ->withErrors(['email' => 'Invalid email or password.']);
+        $email = strtolower(trim($credentials['email']));
+        $request->merge(['email' => $email]);
+
+        $rateKey = 'login:' . hash_hmac(
+            'sha256',
+            $email . '|' . $request->ip(),
+            (string) config('app.key')
+        );
+
+        if (RateLimiter::tooManyAttempts($rateKey, 5)) {
+            $seconds = RateLimiter::availableIn($rateKey);
+
+            return back()
+                ->withInput($request->only('email'))
+                ->withErrors([
+                    'email' => "Too many sign-in attempts. Try again in {$seconds} seconds.",
+                ]);
         }
+
+        if (! Auth::attempt(
+            ['email' => $email, 'password' => $credentials['password']],
+            $request->boolean('remember')
+        )) {
+            RateLimiter::hit($rateKey, 60);
+
+            return back()
+                ->withInput($request->only('email'))
+                ->withErrors([
+                    'email' => 'Invalid email or password.',
+                ]);
+        }
+
+        RateLimiter::clear($rateKey);
 
         $request->session()->regenerate();
         $user = $request->user();
@@ -52,18 +86,33 @@ class BearlyAuthController extends Controller
             $request->session()->invalidate();
             $request->session()->regenerateToken();
 
-            if (in_array($user->status, ['pending', 'needs_revision'], true) && $user->role === 'buyer') {
-                $request->session()->put('marketplace_application', [
-                    'name' => $user->name,
-                    'role' => $user->role,
-                    'status' => $user->status,
-                ]);
+            if (
+                in_array(
+                    $user->status,
+                    ['pending', 'needs_revision'],
+                    true
+                )
+                && $user->role === UserRole::Buyer->value
+            ) {
+                $request->session()->put(
+                    'marketplace_application',
+                    [
+                        'name' => $user->name,
+                        'role' => $user->role,
+                        'status' => $user->status,
+                    ]
+                );
             }
 
             return $this->redirectForStatus($user->status);
         }
 
-        $user->forceFill(['last_login_at' => now()])->save();
+        $user->forceFill([
+            'last_login_at' => now(),
+        ])->save();
+
+        app(RegistrationLifecycleService::class)
+            ->syncActiveRole($user);
 
         $routes = [
             UserRole::Admin->value => 'admin.dashboard',
@@ -322,7 +371,7 @@ class BearlyAuthController extends Controller
                 : null;
 
             $user = DB::transaction(fn () => User::create([
-                'name' => trim($data['first_name'].' '.$data['last_name']),
+                'name' => trim($data['first_name'].' '.($data['middle_initial'] ?? '').' '.$data['last_name']),
                 'first_name' => $data['first_name'],
                 'last_name' => $data['last_name'],
                 'middle_initial' => $data['middle_initial'] ?? null,
@@ -365,6 +414,42 @@ class BearlyAuthController extends Controller
             throw $exception;
         }
 
+        app(RegistrationLifecycleService::class)
+            ->recordPendingApplication(
+                $user,
+                $data['role'],
+                [
+                    'house_number' => $data['house_number'],
+                    'street_name' => $data['street_name'],
+                    'barangay' => $data['barangay'],
+                    'city' => $data['city'],
+                    'province' => $data['province'],
+                    'postal_code' => $data['postal_code'],
+                    'city_code' => $data['city_code'] ?? null,
+                ],
+                [
+                    'business_name' =>
+                        $data['business_name'] ?? null,
+                    'business_category' =>
+                        $data['business_category'] ?? null,
+                ],
+                array_values(array_filter([
+                    [
+                        'type' => 'valid_id',
+                        'path' => $validIdPath,
+                        'file' => $request->file('valid_id'),
+                    ],
+                    $businessPermitPath
+                        ? [
+                            'type' => 'business_permit',
+                            'path' => $businessPermitPath,
+                            'file' => $request->file(
+                                'business_permit'
+                            ),
+                        ]
+                        : null,
+                ]))
+            );
         $verification->forget($request);
 
         $request->session()->forget([
@@ -387,6 +472,96 @@ class BearlyAuthController extends Controller
         return redirect()->route('application.pending');
     }
 
+    public function showForgotPassword(): View
+    {
+        return view('auth.forgot-password');
+    }
+
+    public function sendPasswordResetLink(
+        Request $request
+    ): RedirectResponse {
+        $validated = $request->validate([
+            'email' => ['required', 'email'],
+        ]);
+
+        $email = strtolower(trim($validated['email']));
+
+        try {
+            Password::sendResetLink(['email' => $email]);
+        } catch (Throwable) {
+            return back()
+                ->withInput(['email' => $email])
+                ->withErrors([
+                    'email' => 'We could not send the reset email right now. Please try again later.',
+                ]);
+        }
+
+        /*
+         * Always use the same response whether or not the email exists.
+         * This avoids exposing which email addresses are registered.
+         */
+        return back()->with(
+            'status',
+            'If a Bearly account exists for that email, a password reset link has been sent.'
+        );
+    }
+
+    public function showResetPassword(
+        Request $request,
+        string $token
+    ): View {
+        return view('auth.reset-password', [
+            'token' => $token,
+            'email' => (string) $request->query('email', ''),
+        ]);
+    }
+
+    public function resetPassword(
+        Request $request
+    ): RedirectResponse {
+        $validated = $request->validate([
+            'token' => ['required', 'string'],
+            'email' => ['required', 'email'],
+            'password' => [
+                'required',
+                'confirmed',
+                'min:8',
+                'regex:/[a-z]/',
+                'regex:/[A-Z]/',
+                'regex:/[0-9]/',
+            ],
+        ]);
+
+        $validated['email'] =
+            strtolower(trim($validated['email']));
+
+        $status = Password::reset(
+            $validated,
+            function (User $user, string $password): void {
+                $user->forceFill([
+                    'password' => Hash::make($password),
+                    'remember_token' => Str::random(60),
+                ])->save();
+
+                event(new PasswordReset($user));
+            }
+        );
+
+        if ($status === Password::PASSWORD_RESET) {
+            return redirect()
+                ->route('login')
+                ->with(
+                    'status',
+                    'Your password has been updated. You can sign in with your new password.'
+                );
+        }
+
+        return back()
+            ->withInput($request->only('email'))
+            ->withErrors([
+                'email' => __($status),
+            ]);
+    }
     public function logout(Request $request): RedirectResponse
     {
         Auth::logout();

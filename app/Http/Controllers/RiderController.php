@@ -6,6 +6,8 @@ use App\Enums\AccountStatus;
 use App\Enums\UserRole;
 use App\Models\User;
 use App\Services\EmailVerificationService;
+use App\Services\InternationalPhone;
+use App\Services\RegistrationLifecycleService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -113,6 +115,7 @@ class RiderController extends Controller
                 'mimes:jpg,jpeg,png,pdf',
                 'max:5120',
             ],
+            'terms' => ['accepted'],
             'password' => ['required', 'confirmed', 'min:8', 'regex:/[a-z]/', 'regex:/[A-Z]/', 'regex:/[0-9]/'],
         ]);
 
@@ -122,6 +125,11 @@ class RiderController extends Controller
             ->where('status', AccountStatus::Active->value)
             ->firstOrFail();
 
+        $validated['contact_number'] =
+            app(InternationalPhone::class)->normalize(
+                $validated['contact_number'],
+                'PH'
+            );
         $verification = app(EmailVerificationService::class);
         $verifiedAt = $verification->verifiedAt(
             $request,
@@ -146,6 +154,10 @@ class RiderController extends Controller
             'email' => $validated['email'],
             'email_verified_at' => $verifiedAt,
             'contact_number' => $validated['contact_number'],
+            'phone_country' => 'PH',
+            'terms_accepted_at' => now(),
+            'terms_version' => config('bearly-policies.version'),
+            'privacy_version' => config('bearly-policies.version'),
             'role' => UserRole::Rider->value,
             'status' => AccountStatus::Pending->value,
             'logistics_id' => $logistics->id,
@@ -160,6 +172,38 @@ class RiderController extends Controller
             'password' => Hash::make($validated['password']),
         ]);
 
+        app(RegistrationLifecycleService::class)
+            ->recordPendingApplication(
+                $user,
+                UserRole::Rider->value,
+                [
+                    'house_number' => $validated['house_number'],
+                    'street' => $validated['street'],
+                    'barangay' => $validated['barangay'],
+                    'municipality' => $validated['municipality'],
+                    'province' => $validated['province'],
+                    'postal_code' =>
+                        $validated['postal_code'] ?? null,
+                    'city_code' =>
+                        $validated['city_code'] ?? null,
+                ],
+                [],
+                [
+                    [
+                        'type' => 'or_cr',
+                        'path' => $user->or_cr_path,
+                        'file' => $request->file('or_cr'),
+                    ],
+                    [
+                        'type' => 'driver_license',
+                        'path' => $user->driver_license_path,
+                        'file' => $request->file(
+                            'driver_license'
+                        ),
+                    ],
+                ],
+                $logistics->id
+            );
         $verification->forget($request);
 
         session([

@@ -45,4 +45,9 @@ class Product extends Model
     {
         return $this->hasMany(ProductViolation::class);
     }
+
+    public function conversations()
+    {
+        return $this->hasMany(Conversation::class);
+    }
 }

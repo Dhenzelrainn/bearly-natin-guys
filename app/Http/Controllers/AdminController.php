@@ -5,8 +5,12 @@ namespace App\Http\Controllers;
 use App\Enums\AccountStatus;
 use App\Enums\UserRole;
 use App\Models\AccountApplication;
+use App\Models\ReturnRequest;
 use App\Models\User;
+use App\Models\Dispute;
+use App\Models\Conversation;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 class AdminController extends Controller
@@ -640,24 +644,285 @@ class AdminController extends Controller
 
     public function disputes(): View
     {
-        return view('admin.compliance.disputes', $this->base([
-            'disputes' => [
-                ['id' => 'DSP-1048', 'subject' => 'Item arrived damaged', 'buyer' => 'Karen Yu', 'seller' => 'Mara Home Goods', 'courier' => 'Jared Molina', 'amount' => '₱2,480', 'priority' => 'High', 'status' => 'Under Review', 'opened' => 'Aug 24, 9:18 AM'],
-                ['id' => 'DSP-1047', 'subject' => 'Missing accessory', 'buyer' => 'Theo Garcia', 'seller' => 'TechVault PH', 'courier' => 'Noah Santos', 'amount' => '₱1,299', 'priority' => 'Medium', 'status' => 'Awaiting Seller', 'opened' => 'Aug 23, 4:42 PM'],
-                ['id' => 'DSP-1046', 'subject' => 'Delivery marked completed early', 'buyer' => 'Liza Ong', 'seller' => 'Everyday Finds', 'courier' => 'Leah Ramos', 'amount' => '₱849', 'priority' => 'Medium', 'status' => 'Coordinating', 'opened' => 'Aug 23, 11:07 AM'],
-            ],
-            'evidence' => [
-                ['label' => 'Buyer photo', 'type' => 'Image', 'meta' => 'damaged-package.jpg • 1.8 MB'],
-                ['label' => 'Order invoice', 'type' => 'Document', 'meta' => 'invoice-1048.pdf • 284 KB'],
-                ['label' => 'Rider proof', 'type' => 'Image', 'meta' => 'delivery-proof.jpg • 1.1 MB'],
-            ],
-            'timeline' => [
-                ['time' => '9:18 AM', 'text' => 'Buyer submitted complaint and photo evidence.'],
-                ['time' => '9:36 AM', 'text' => 'Seller acknowledged the case and requested parcel photos.'],
-                ['time' => '10:02 AM', 'text' => 'Rider uploaded delivery proof.'],
-                ['time' => '10:24 AM', 'text' => 'Admin review started.'],
-            ],
-        ]));
+        $records = Dispute::query()
+            ->with([
+                'sellerOrder.store',
+                'returnRequest',
+                'shipment',
+                'opener',
+                'assignee',
+                'participants',
+                'evidence.uploader',
+                'events.actor',
+            ])
+            ->whereNotIn('status', [
+                'resolved',
+                'closed',
+            ])
+            ->orderByRaw("
+                CASE priority
+                    WHEN 'urgent' THEN 1
+                    WHEN 'high' THEN 2
+                    WHEN 'medium' THEN 3
+                    WHEN 'normal' THEN 4
+                    WHEN 'low' THEN 5
+                    ELSE 6
+                END
+            ")
+            ->orderBy('response_due_at')
+            ->orderByDesc('opened_at')
+            ->get();
+
+        $disputes = $records
+            ->map(function (Dispute $dispute): array {
+                $buyer = $dispute->participants
+                    ->first(
+                        fn ($participant) =>
+                            $participant->pivot->participant_role === 'buyer'
+                    );
+
+                $seller = $dispute->participants
+                    ->first(
+                        fn ($participant) =>
+                            $participant->pivot->participant_role === 'seller'
+                    );
+
+                $rider = $dispute->participants
+                    ->first(
+                        fn ($participant) =>
+                            $participant->pivot->participant_role === 'rider'
+                    );
+
+                $logistics = $dispute->participants
+                    ->first(
+                        fn ($participant) =>
+                            $participant->pivot->participant_role === 'logistics'
+                    );
+
+                $priority = Str::of($dispute->priority)
+                    ->replace(['_', '-'], ' ')
+                    ->title()
+                    ->toString();
+
+                $status = match ($dispute->status) {
+                    'open' => 'Open',
+                    'under_review' => 'Under Review',
+                    'awaiting_buyer' => 'Awaiting Buyer',
+                    'awaiting_seller' => 'Awaiting Seller',
+                    'awaiting_logistics' => 'Awaiting Logistics',
+                    'awaiting_evidence' => 'Awaiting Evidence',
+                    'coordinating' => 'Coordinating',
+                    'escalated' => 'Escalated',
+                    'resolved' => 'Resolved',
+                    'closed' => 'Closed',
+
+                    default => Str::of($dispute->status)
+                        ->replace(['_', '-'], ' ')
+                        ->title()
+                        ->toString(),
+                };
+
+                $evidence = $dispute->evidence
+                    ->sortBy('created_at')
+                    ->values()
+                    ->map(function ($item): array {
+                        $type = Str::lower((string) $item->type);
+
+                        return [
+                            'id' =>
+                                $item->id,
+
+                            'label' =>
+                                $item->description
+                                    ?: $item->original_name,
+
+                            'type' =>
+                                Str::contains($type, [
+                                    'image',
+                                    'photo',
+                                    'picture',
+                                ])
+                                    ? 'Image'
+                                    : 'Document',
+
+                            'meta' =>
+                                collect([
+                                    $item->original_name,
+                                    $item->uploader?->name,
+                                ])
+                                    ->filter()
+                                    ->implode(' • '),
+
+                            'download_url' =>
+                                route(
+                                    'admin.disputes.evidence.download',
+                                    $item
+                                ),
+                        ];
+                    })
+                    ->all();
+
+                $timeline = $dispute->events
+                    ->sortBy('created_at')
+                    ->values()
+                    ->map(function ($event): array {
+                        $eventLabel = Str::of(
+                            $event->event_type
+                        )
+                            ->replace(['_', '-'], ' ')
+                            ->title()
+                            ->toString();
+
+                        $actor = $event->actor?->name;
+
+                        $text = $event->note;
+
+                        if (! $text) {
+                            $text = $actor
+                                ? "{$actor}: {$eventLabel}"
+                                : $eventLabel;
+                        }
+
+                        return [
+                            'time' => $event->created_at
+                                ?->format('g:i A')
+                                ?? '—',
+
+                            'text' => $text,
+                        ];
+                    })
+                    ->all();
+
+                /*
+                * Internal notes belong to dispute_events,
+                * not the final resolution column.
+                */
+                $latestInternalNote = $dispute->events
+                    ->where('event_type', 'internal_note')
+                    ->sortByDesc('created_at')
+                    ->first();
+
+                /*
+                * Resolution outcome is stored in the
+                * metadata of the resolved event.
+                */
+                $resolutionEvent = $dispute->events
+                    ->where('event_type', 'resolved')
+                    ->sortByDesc('created_at')
+                    ->first();
+
+                return [
+                    'database_id' => $dispute->id,
+
+                    'id' => $dispute->dispute_no,
+
+                    'subject' => $dispute->subject,
+
+                    'buyer' => $buyer?->name
+                        ?? (
+                            $dispute->opener?->role === 'buyer'
+                                ? $dispute->opener->name
+                                : '—'
+                        ),
+
+                    'buyer_user_id' =>
+                        $buyer?->id
+                        ?? (
+                            $dispute->opener?->role === 'buyer'
+                                ? $dispute->opener?->id
+                                : null
+                        ),
+
+                    'seller' => $dispute->sellerOrder?->store?->name
+                        ?? $seller?->name
+                        ?? '—',
+
+                    'seller_user_id' =>
+                        $seller?->id,
+
+                    'courier' => $rider?->name
+                        ?? $logistics?->name
+                        ?? '—',
+
+                    'rider_user_id' =>
+                        $rider?->id,
+
+                    'logistics_user_id' =>
+                        $logistics?->id,
+
+                    'amount' => $dispute->amount_minor !== null
+                        ? '₱'.number_format(
+                            $dispute->amount_minor / 100,
+                            2
+                        )
+                        : '—',
+
+                    'priority' => $priority,
+
+                    'status' => $status,
+
+                    'opened' => $dispute->opened_at
+                        ?->format('M j, g:i A')
+                        ?? '—',
+
+                    'summary' => $dispute->description,
+
+                    'assignee' => $dispute->assignee?->name
+                        ?? 'Unassigned',
+
+                    'response_due' => $dispute->response_due_at
+                        ?->format('M j, g:i A'),
+
+                    'resolution' => $dispute->resolution,
+
+                    /*
+                    * These URLs are intentionally generated
+                    * directly for now so this page can still
+                    * render before we paste the new routes.
+                    */
+                    'note_url' => url(
+                        "/admin/disputes/{$dispute->id}/notes"
+                    ),
+
+                    'resolve_url' => url(
+                        "/admin/disputes/{$dispute->id}/resolve"
+                    ),
+
+                    'message_url' => route(
+                        'admin.messages.disputes.open',
+                        $dispute
+                    ),
+
+                    'update_url' => route(
+                        'admin.disputes.update',
+                        $dispute
+                    ),
+
+                    'evidence' => $evidence,
+
+                    'timeline' => $timeline,
+
+                    'internalNote' => $latestInternalNote?->note
+                        ?? '',
+
+                    'resolutionOutcome' =>
+                        $resolutionEvent?->metadata['outcome']
+                        ?? '',
+                ];
+            })
+            ->values()
+            ->all();
+
+        $firstDispute = $disputes[0] ?? null;
+
+        return view(
+            'admin.compliance.disputes',
+            $this->base([
+                'disputes' => $disputes,
+                'evidence' => $firstDispute['evidence'] ?? [],
+                'timeline' => $firstDispute['timeline'] ?? [],
+            ])
+        );
     }
 
     public function productViolations(): View
@@ -726,62 +991,106 @@ class AdminController extends Controller
 
     public function returnsRefunds(): View
     {
-        return view('admin.compliance.returns-refunds', $this->base([
-            'cases' => [
-                [
-                    'id' => 'REF-2208',
-                    'order' => 'ORD-50192',
-                    'buyer' => 'Karen Yu',
-                    'seller' => 'Mara Home Goods',
-                    'reason' => 'Item arrived damaged',
-                    'amount' => '₱2,480',
-                    'requested' => 'Aug 26, 2026',
-                    'type' => 'Return & Refund',
-                    'status' => 'Escalated',
-                    'seller_response' => 'Seller requested additional parcel photos before approving the return.',
-                    'buyer_request' => 'Buyer requests a full refund and return shipping assistance.',
-                ],
-                [
-                    'id' => 'REF-2209',
-                    'order' => 'ORD-50188',
-                    'buyer' => 'Theo Garcia',
-                    'seller' => 'TechVault PH',
-                    'reason' => 'Missing accessory',
-                    'amount' => '₱1,299',
-                    'requested' => 'Aug 25, 2026',
-                    'type' => 'Partial Refund',
-                    'status' => 'Under Review',
-                    'seller_response' => 'Seller confirmed that the accessory may have been omitted during packing.',
-                    'buyer_request' => 'Buyer is requesting compensation for the missing accessory.',
-                ],
-                [
-                    'id' => 'REF-2210',
-                    'order' => 'ORD-50171',
-                    'buyer' => 'Liza Ong',
-                    'seller' => 'Everyday Finds',
-                    'reason' => 'Wrong item received',
-                    'amount' => '₱849',
-                    'requested' => 'Aug 25, 2026',
-                    'type' => 'Return & Refund',
-                    'status' => 'Awaiting Seller',
-                    'seller_response' => 'Seller has not yet submitted a final response.',
-                    'buyer_request' => 'Buyer requests replacement or full refund after returning the incorrect item.',
-                ],
-                [
-                    'id' => 'REF-2211',
-                    'order' => 'ORD-50154',
-                    'buyer' => 'Marco Lim',
-                    'seller' => 'Chrono Alley',
-                    'reason' => 'Product not as described',
-                    'amount' => '₱6,390',
-                    'requested' => 'Aug 24, 2026',
-                    'type' => 'Refund Only',
-                    'status' => 'Resolved',
-                    'seller_response' => 'Seller agreed to the refund after reviewing the submitted evidence.',
-                    'buyer_request' => 'Buyer requested a full refund based on significant differences from the listing.',
-                ],
-            ],
-        ]));
+        $returnRequests = ReturnRequest::query()
+            ->with([
+                'order',
+                'buyer',
+                'store',
+                'sellerOrder',
+                'items.orderItem',
+                'evidence',
+                'reviewer',
+                'refunds',
+            ])
+            ->orderByDesc('submitted_at')
+            ->orderByDesc('id')
+            ->get();
+
+        $cases = $returnRequests
+            ->map(function (ReturnRequest $returnRequest): array {
+                $requestType = match ($returnRequest->request_type) {
+                    'return_refund',
+                    'return_and_refund',
+                    'return & refund' => 'Return & Refund',
+
+                    'partial_refund',
+                    'partial refund' => 'Partial Refund',
+
+                    'refund_only',
+                    'refund only' => 'Refund Only',
+
+                    default => Str::of($returnRequest->request_type)
+                        ->replace(['_', '-'], ' ')
+                        ->title()
+                        ->toString(),
+                };
+
+                $status = match ($returnRequest->status) {
+                    'submitted' => 'Awaiting Seller',
+                    'awaiting_seller' => 'Awaiting Seller',
+                    'under_review' => 'Under Review',
+                    'escalated' => 'Escalated',
+                    'awaiting_evidence' => 'Awaiting Evidence',
+                    'approved' => 'Approved',
+                    'rejected' => 'Rejected',
+                    'resolved' => 'Resolved',
+
+                    default => Str::of($returnRequest->status)
+                        ->replace(['_', '-'], ' ')
+                        ->title()
+                        ->toString(),
+                };
+
+                $reason = Str::of($returnRequest->reason_code)
+                    ->replace(['_', '-'], ' ')
+                    ->title()
+                    ->toString();
+
+                return [
+                    'database_id' => $returnRequest->id,
+
+                    'id' => $returnRequest->return_no,
+
+                    'order' => $returnRequest->order?->order_no
+                        ?? 'Order unavailable',
+
+                    'buyer' => $returnRequest->buyer?->name
+                        ?? 'Buyer unavailable',
+
+                    'seller' => $returnRequest->store?->name
+                        ?? 'Seller unavailable',
+
+                    'reason' => $reason,
+
+                    'amount' => '₱'.number_format(
+                        $returnRequest->requested_amount_minor / 100,
+                        2
+                    ),
+
+                    'requested' => $returnRequest->submitted_at
+                        ?->format('M j, Y')
+                        ?? '—',
+
+                    'type' => $requestType,
+
+                    'status' => $status,
+
+                    'seller_response' => $returnRequest->seller_response
+                        ?: 'No seller response submitted yet.',
+
+                    'buyer_request' => $returnRequest->buyer_note
+                        ?: 'No additional buyer note was provided.',
+                ];
+            })
+            ->values()
+            ->all();
+
+        return view(
+            'admin.compliance.returns-refunds',
+            $this->base([
+                'cases' => $cases,
+            ])
+        );
     }
 
     public function commissions(): View
@@ -876,22 +1185,299 @@ class AdminController extends Controller
         ]));
     }
 
-    public function messages(): View
+    public function messages(Request $request): View
     {
-        return view('admin.communication.messages', $this->base([
-            'conversations' => [
-                ['id' => 1, 'name' => 'Mara Home Goods', 'role' => 'Seller', 'preview' => 'We uploaded the additional photos.', 'time' => '6:42 PM', 'unread' => 2, 'initials' => 'MH'],
-                ['id' => 2, 'name' => 'Karen Yu', 'role' => 'Buyer', 'preview' => 'Thank you for reviewing my complaint.', 'time' => '5:18 PM', 'unread' => 0, 'initials' => 'KY'],
-                ['id' => 3, 'name' => 'Jared Molina', 'role' => 'Rider', 'preview' => 'Delivery proof has been uploaded.', 'time' => '3:11 PM', 'unread' => 0, 'initials' => 'JM'],
-                ['id' => 4, 'name' => 'TechVault PH', 'role' => 'Seller', 'preview' => 'Can we clarify the compliance notice?', 'time' => '1:54 PM', 'unread' => 1, 'initials' => 'TV'],
-            ],
-            'messages' => [
-                ['from' => 'them', 'text' => 'Good afternoon. We uploaded the additional photos requested for case DSP-1048.', 'time' => '6:34 PM'],
-                ['from' => 'me', 'text' => 'Received. We are reviewing the evidence from all parties now.', 'time' => '6:36 PM'],
-                ['from' => 'them', 'text' => 'Thank you. Please let us know if you need a clearer copy of the packing photo.', 'time' => '6:42 PM'],
-            ],
-        ]));
-    }
+        $admin = $request->user();
+
+        $recipients = User::query()
+            ->where('id', '!=', $admin->id)
+            ->where('status', 'active')
+            ->whereHas('roles', function ($query) {
+                $query->whereIn('name', [
+                    'buyer',
+                    'seller',
+                    'logistics',
+                    'rider',
+                ]);
+            })
+            ->with([
+                'roles:id,name',
+                'sellerProfile.store',
+                'logisticsProfile',
+                'riderProfile',
+            ])
+            ->orderBy('name')
+            ->get()
+            ->map(function (User $user): array {
+                $role = $user->roles
+                    ->first(
+                        fn ($role) => in_array(
+                            $role->name,
+                            [
+                                'buyer',
+                                'seller',
+                                'logistics',
+                                'rider',
+                            ],
+                            true
+                        )
+                    )
+                    ?->name
+                    ?? $user->role
+                    ?? 'user';
+
+                $displayName = match ($role) {
+                    'seller' =>
+                        $user->sellerProfile?->store?->name
+                        ?? $user->name,
+
+                    'logistics' =>
+                        $user->logisticsProfile?->center_name
+                        ?? $user->name,
+
+                    default =>
+                        $user->name,
+                };
+
+                return [
+                    'id' => $user->id,
+                    'name' => $displayName,
+                    'account_name' => $user->name,
+                    'email' => $user->email,
+                    'role' => $role,
+                ];
+            })
+            ->values()
+            ->all();
+
+        $records = Conversation::query()
+            ->with([
+                'creator',
+                'participants.sellerProfile.store',
+                'latestMessage.sender',
+                'messages' => fn ($query) => $query
+                    ->with([
+                        'sender',
+                        'attachments',
+                    ])
+                    ->orderBy('sent_at'),
+            ])
+            ->whereHas(
+                'participants',
+                fn ($query) => $query->where(
+                    'users.id',
+                    $admin->id
+                )
+            )
+            ->orderByDesc('last_message_at')
+            ->orderByDesc('updated_at')
+            ->get();
+
+        $conversations = $records
+            ->map(function (Conversation $conversation) use ($admin): array {
+                $adminParticipant = $conversation
+                    ->participants
+                    ->firstWhere('id', $admin->id);
+
+                $otherParticipant = $conversation
+                    ->participants
+                    ->first(
+                        fn ($participant) =>
+                            $participant->id !== $admin->id
+                    );
+
+                $participantRole = $otherParticipant
+                    ?->pivot
+                    ?->participant_role
+                    ?? $otherParticipant?->role
+                    ?? 'User';
+
+                $role = Str::of($participantRole)
+                    ->replace(['_', '-'], ' ')
+                    ->title()
+                    ->toString();
+
+                /*
+                * Seller conversations should show the store
+                * name when one exists. Other roles use the
+                * participant's account name.
+                */
+                $name = $participantRole === 'seller'
+                    ? (
+                        $otherParticipant
+                            ?->sellerProfile
+                            ?->store
+                            ?->name
+                        ?? $otherParticipant?->name
+                        ?? 'Unknown Seller'
+                    )
+                    : (
+                        $otherParticipant?->name
+                        ?? 'Unknown User'
+                    );
+
+                $initials = collect(
+                    preg_split(
+                        '/\s+/',
+                        trim($name)
+                    ) ?: []
+                )
+                    ->filter()
+                    ->take(2)
+                    ->map(
+                        fn ($part) => Str::upper(
+                            Str::substr($part, 0, 1)
+                        )
+                    )
+                    ->implode('');
+
+                $latestMessage = $conversation->latestMessage;
+
+                /*
+                * Count inbound messages newer than the
+                * Admin participant's last-read timestamp.
+                */
+                $lastReadAt = $adminParticipant
+                    ?->pivot
+                    ?->last_read_at;
+
+                $unread = $conversation
+                    ->messages
+                    ->filter(function ($message) use (
+                        $admin,
+                        $lastReadAt
+                    ): bool {
+                        if ($message->sender_id === $admin->id) {
+                            return false;
+                        }
+
+                        if (! $lastReadAt) {
+                            return true;
+                        }
+
+                        return $message->sent_at
+                            && $message->sent_at->isAfter(
+                                \Illuminate\Support\Carbon::parse(
+                                    $lastReadAt
+                                )
+                            );
+                    })
+                    ->count();
+
+                return [
+                    'database_id' => $conversation->id,
+
+                    'id' => $conversation->id,
+
+                    'name' => $name,
+
+                    'role' => $role,
+
+                    'preview' => $latestMessage?->body
+                        ?? 'No messages yet.',
+
+                    'time' => $latestMessage?->sent_at
+                        ?->format('g:i A')
+                        ?? '',
+
+                    'unread' => $unread,
+
+                    'initials' => $initials ?: '—',
+
+                    'subject' => $conversation->subject,
+
+                    'status' => $conversation->status,
+
+                    'type' => $conversation->type,
+
+                    'messages' => $conversation
+                        ->messages
+                        ->map(
+                            fn ($message) => [
+                                'id' => $message->id,
+
+                                'from' => $message->sender_id === $admin->id
+                                    ? 'me'
+                                    : 'them',
+
+                                'text' => $message->body,
+
+                                'time' => $message->sent_at
+                                    ?->format('g:i A')
+                                    ?? '',
+
+                                'message_type' =>
+                                    $message->message_type,
+
+                                'attachments' =>
+                                    $message->attachments
+                                        ->map(
+                                            fn ($attachment) => [
+                                                'id' => $attachment->id,
+
+                                                'name' =>
+                                                    $attachment->original_name,
+
+                                                'mime_type' =>
+                                                    $attachment->mime_type,
+
+                                                'size_bytes' =>
+                                                    $attachment->size_bytes,
+
+                                                'download_url' =>
+                                                    route(
+                                                        'admin.messages.attachments.download',
+                                                        $attachment
+                                                    ),
+                                            ]
+                                        )
+                                        ->values()
+                                        ->all(),
+                            ]
+                        )
+                        ->values()
+                        ->all(),
+                ];
+            })
+            ->values()
+            ->all();
+
+        $requestedConversationId =
+            (int) $request->query(
+                'conversation',
+                0
+            );
+
+        $activeConversation =
+            $requestedConversationId > 0
+                ? collect($conversations)
+                    ->first(
+                        fn ($conversation) =>
+                            (int) $conversation['database_id']
+                            === $requestedConversationId
+                    )
+                : null;
+
+        $activeConversation ??=
+            $conversations[0] ?? null;
+
+        return view(
+            'admin.communication.messages',
+            $this->base([
+                'conversations' => $conversations,
+
+                'messages' =>
+                    $activeConversation['messages']
+                    ?? [],
+
+                'activeConversation' =>
+                    $activeConversation,
+
+                'recipients' =>
+                    $recipients,
+            ])
+        );
+}
 
     public function announcements(): View
     {

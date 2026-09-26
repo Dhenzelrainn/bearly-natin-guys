@@ -3048,8 +3048,13 @@
 
         Object.entries(workflowStatuses).forEach(([recordId, status]) => {
 
-            // Product Violations are now handled separately.
+            // Product Violations use their own dedicated state system.
             if (recordId.startsWith('VIO-')) {
+                return;
+            }
+
+            // Returns & Refunds are now server/database backed.
+            if (recordId.startsWith('REF-')) {
                 return;
             }
 
@@ -3142,11 +3147,7 @@
                     `tr[data-return-id="${returnId}"]`
                 );
 
-                const savedStatus =
-                    workflowStatuses[returnId];
-
                 const initialStatus =
-                    savedStatus ||
                     row?.dataset.status ||
                     modal
                         .querySelector(
@@ -3173,19 +3174,7 @@
 
             let status = null;
 
-            if (action.includes('approved for refund')) {
-                status = 'Approved';
-            }
-
-            else if (action.includes('refund request rejected')) {
-                status = 'Rejected';
-            }
-
-            else if (action.includes('additional evidence requested')) {
-                status = 'Awaiting Evidence';
-            }
-
-            else if (action.includes('warning issued')) {
+            if (action.includes('warning issued')) {
                 status = 'Warning Issued';
             }
 
@@ -5392,248 +5381,40 @@
             );
        
 
-        // Dispute queue search + dynamic master-detail workspace
-        const disputeSearch = document.querySelector('[data-dispute-search]');
-        const disputeDataNode = document.getElementById('dispute-preview-data');
+        // Dispute queue search + database-backed master-detail workspace
+        const disputeSearch =
+            document.querySelector('[data-dispute-search]');
+
+        const disputeDataNode =
+            document.getElementById('dispute-preview-data');
+
         let disputeData = {};
-        try { disputeData = disputeDataNode ? JSON.parse(disputeDataNode.textContent) : {}; } catch {}
-        const DISPUTE_STORAGE_KEY = 'bearlyAdminDisputeState';
-        let savedDisputeState = {};
-        try { savedDisputeState = JSON.parse(localStorage.getItem(DISPUTE_STORAGE_KEY) || '{}'); } catch {}
-        Object.entries(savedDisputeState).forEach(([id, state]) => {
-            if (disputeData[id]) Object.assign(disputeData[id], state);
-        });
-        const saveDisputeState = (id) => {
-            if (!disputeData[id]) return;
-            savedDisputeState[id] = {
-                status: disputeData[id].status,
-                internalNote: disputeData[id].internalNote || '',
-                resolutionOutcome: disputeData[id].resolutionOutcome || '',
-            };
-            localStorage.setItem(DISPUTE_STORAGE_KEY, JSON.stringify(savedDisputeState));
-        };
+
+        try {
+            disputeData = disputeDataNode
+                ? JSON.parse(disputeDataNode.textContent)
+                : {};
+        } catch {
+            disputeData = {};
+        }
+
+
+        const csrfToken =
+            document.querySelector(
+                'meta[name="csrf-token"]'
+            )?.content || '';
+
 
         const setDisputeText = (selector, value) => {
             const el = document.querySelector(selector);
-            if (el) el.textContent = value ?? '';
-        };
-        const escapeDisputeHtml = (value = '') => String(value)
-            .replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')
-            .replaceAll('"','&quot;').replaceAll("'",'&#039;');
 
-        const renderEvidence = (items = []) => {
-            const box = document.querySelector('[data-dispute-evidence]');
-            if (!box) return;
-            box.innerHTML = items.map(item => `
-                <button type="button" class="evidence-card" data-dynamic-evidence="${escapeDisputeHtml(item.label)}">
-                    <span><i data-lucide="${item.type === 'Image' ? 'image' : 'file-text'}"></i></span>
-                    <div><strong>${escapeDisputeHtml(item.label)}</strong><small>${escapeDisputeHtml(item.meta)}</small></div>
-                    <i data-lucide="external-link"></i>
-                </button>`).join('');
-            box.querySelectorAll('[data-dynamic-evidence]').forEach(button => button.addEventListener('click', () =>
-                showToast(`${button.dataset.dynamicEvidence} preview opened.`, 'Evidence preview')
-            ));
-            refreshIcons();
+            if (el) {
+                el.textContent = value ?? '';
+            }
         };
 
-        const renderTimeline = (items = []) => {
-            const box = document.querySelector('[data-dispute-timeline]');
-            if (!box) return;
-            box.innerHTML = items.map(item => `
-                <div class="timeline-row"><span>${escapeDisputeHtml(item.time)}</span>
-                <div><i></i><p>${escapeDisputeHtml(item.text)}</p></div></div>`).join('');
-        };
 
-        const renderDispute = (id, notify = true) => {
-            const d = disputeData[id];
-            if (!d) return;
-            setDisputeText('[data-dispute-id]', d.id);
-            setDisputeText('[data-dispute-subject]', d.subject);
-            setDisputeText('[data-dispute-status]', d.status);
-            setDisputeText('[data-dispute-opened]', d.opened);
-            setDisputeText('[data-dispute-buyer]', d.buyer);
-            setDisputeText('[data-dispute-seller]', d.seller);
-            setDisputeText('[data-dispute-courier]', d.courier);
-            setDisputeText('[data-dispute-amount]', d.amount);
-            setDisputeText('[data-dispute-summary]', d.summary);
-            const priority = document.querySelector('[data-dispute-priority]');
-            if (priority) {
-                priority.textContent = `${d.priority} priority`;
-                priority.className = 'status-badge ' + (
-                    String(d.priority).toLowerCase() === 'high' ? 'badge-danger' :
-                    String(d.priority).toLowerCase() === 'medium' ? 'badge-warning' : 'badge-success'
-                );
-                priority.setAttribute('data-dispute-priority','');
-            }
-            setDisputeText('[data-party-buyer]', d.buyer);
-            setDisputeText('[data-party-seller]', d.seller);
-            setDisputeText('[data-party-courier]', d.courier);
-
-            const note = document.querySelector('[data-dispute-note]');
-            if (note) note.value = d.internalNote || '';
-
-            renderEvidence(d.evidence);
-            renderTimeline(d.timeline);
-            if (notify) showToast(`${d.id} — ${d.subject} loaded.`, 'Dispute workspace');
-        };
-
-        disputeSearch?.addEventListener('input', () => {
-            const query = disputeSearch.value.trim().toLowerCase();
-            document.querySelectorAll('[data-case-card]').forEach(card => {
-                card.hidden = !!query && !card.dataset.caseSearch.includes(query);
-            });
-        });
-        document.querySelectorAll('[data-case-card]').forEach(card => {
-            card.addEventListener('click', () => {
-                if (card.classList.contains('is-active')) return;
-                document.querySelectorAll('[data-case-card]').forEach(item => item.classList.remove('is-active'));
-                card.classList.add('is-active');
-                renderDispute(card.dataset.caseId);
-            });
-        });
-        document.querySelectorAll('[data-case-card]').forEach((card) => {
-            if (disputeData[card.dataset.caseId]?.status === 'Resolved') card.remove();
-        });
-        const remainingDisputeCards = [...document.querySelectorAll('[data-case-card]')];
-        if (remainingDisputeCards.length && !remainingDisputeCards.some((card) => card.classList.contains('is-active'))) {
-            remainingDisputeCards[0].classList.add('is-active');
-        }
-        const restoredOpenCount = document.querySelector('[data-dispute-open-count]');
-        if (restoredOpenCount) restoredOpenCount.textContent = String(remainingDisputeCards.length);
-        const getActiveDisputeId = () =>
-            document.querySelector('[data-case-card].is-active')?.dataset.caseId || '';
-
-        document.querySelector('[data-dispute-refresh]')?.addEventListener('click', () => {
-            const id = getActiveDisputeId();
-            if (id) renderDispute(id, false);
-            showToast(`${document.querySelectorAll('[data-case-card]').length} open cases loaded.`, 'Dispute queue refreshed');
-        });
-
-        document.querySelectorAll('[data-party-message]').forEach((button) => {
-            button.addEventListener('click', () => {
-                const role = button.dataset.partyMessage;
-                const name = document.querySelector(`[data-party-${role}]`)?.textContent?.trim() || role;
-                showToast(`Message panel opened for ${name}.`, 'Participant message');
-            });
-        });
-
-        document.querySelector('[data-dispute-save-note]')?.addEventListener('click', () => {
-            const id = getActiveDisputeId();
-            const note = document.querySelector('[data-dispute-note]');
-            if (!id || !note) return;
-
-            disputeData[id].internalNote = note.value.trim();
-            saveDisputeState(id);
-            showToast(
-                disputeData[id].internalNote ? `Internal note saved for ${id}.` : `Internal note cleared for ${id}.`,
-                'Resolution note'
-            );
-        });
-
-        document.querySelector('[data-dispute-send-update]')?.addEventListener('click', () => {
-            const id = getActiveDisputeId();
-            if (!id) return;
-
-            const note = document.querySelector('[data-dispute-note]')?.value.trim() || '';
-            if (note) disputeData[id].internalNote = note;
-            saveDisputeState(id);
-
-            showToast(`Participant update prepared for ${id}.`, 'Case update');
-        });
-
-        const resolveModal = document.querySelector('[data-modal="resolve-dispute"]');
-
-        document.querySelector('[data-dispute-resolve]')?.addEventListener('click', () => {
-            const id = getActiveDisputeId();
-            if (!id || !resolveModal) return;
-
-            setDisputeText('[data-resolve-case-id]', id);
-
-            const outcome = resolveModal.querySelector('[data-resolution-outcome]');
-            const note = resolveModal.querySelector('[data-resolution-note]');
-            const error = resolveModal.querySelector('[data-resolution-error]');
-
-            if (outcome) outcome.value = '';
-            if (note) note.value = disputeData[id]?.internalNote || '';
-            if (error) error.hidden = true;
-
-            resolveModal.hidden = false;
-            refreshIcons();
-        });
-
-        document.querySelector('[data-confirm-resolution]')?.addEventListener('click', () => {
-            const id = getActiveDisputeId();
-            if (!id || !resolveModal) return;
-
-            const outcome = resolveModal.querySelector('[data-resolution-outcome]')?.value || '';
-            const note = resolveModal.querySelector('[data-resolution-note]')?.value.trim() || '';
-            const error = resolveModal.querySelector('[data-resolution-error]');
-
-            if (!outcome || !note) {
-                if (error) error.hidden = false;
-                return;
-            }
-
-            const card = document.querySelector(`[data-case-card][data-case-id="${id}"]`);
-            if (!card) return;
-
-            disputeData[id].status = 'Resolved';
-            disputeData[id].resolutionOutcome = outcome;
-            disputeData[id].internalNote = note;
-            saveDisputeState(id);
-
-            card.remove();
-
-            const openCount = document.querySelector('[data-dispute-open-count]');
-            if (openCount) {
-                openCount.textContent = String(document.querySelectorAll('[data-case-card]').length);
-            }
-
-            resolveModal.hidden = true;
-
-            const nextCard = document.querySelector('[data-case-card]');
-            if (nextCard) {
-                document.querySelectorAll('[data-case-card]').forEach(item => item.classList.remove('is-active'));
-                nextCard.classList.add('is-active');
-                renderDispute(nextCard.dataset.caseId, false);
-            } else {
-                setDisputeText('[data-dispute-id]', 'No open cases');
-                setDisputeText('[data-dispute-subject]', 'Resolution queue complete');
-                setDisputeText('[data-dispute-status]', 'Resolved');
-                setDisputeText('[data-dispute-opened]', '');
-                setDisputeText('[data-dispute-buyer]', '—');
-                setDisputeText('[data-dispute-seller]', '—');
-                setDisputeText('[data-dispute-courier]', '—');
-                setDisputeText('[data-dispute-amount]', '—');
-                setDisputeText('[data-dispute-summary]', 'There are no remaining open disputes in this front-end preview.');
-                setDisputeText('[data-party-buyer]', '—');
-                setDisputeText('[data-party-seller]', '—');
-                setDisputeText('[data-party-courier]', '—');
-                renderEvidence([]);
-                renderTimeline([]);
-            }
-
-            showToast(`${id} resolved: ${outcome}.`, 'Case resolved');
-        });
-
-        const initialDispute = document.querySelector('[data-case-card].is-active')?.dataset.caseId;
-        if (initialDispute) renderDispute(initialDispute, false);
-
-        /// Chat filtering + per-conversation thread state
-        const conversationSearch = document.querySelector('[data-conversation-search]');
-        let conversationItems = [...document.querySelectorAll('[data-conversation-item]')];
-
-        const conversationList = document.querySelector('[data-conversation-list]');
-        const messageThread = document.querySelector('[data-message-thread]');
-        const messageInput = document.querySelector('[data-message-input]');
-        const attachmentInput = document.querySelector('[data-chat-attachment]');
-        const attachmentName = document.querySelector('[data-chat-attachment-name]');
-        const unreadSummary = document.querySelector('[data-unread-summary]');
-
-        const CHAT_STORAGE_KEY = 'bearlyAdminChatThreads';
-
-
-        const escapeChatHtml = (value = '') =>
+        const escapeDisputeHtml = (value = '') =>
             String(value)
                 .replaceAll('&', '&amp;')
                 .replaceAll('<', '&lt;')
@@ -5642,122 +5423,1239 @@
                 .replaceAll("'", '&#039;');
 
 
-        const defaultChatThreads = {
-            'mara-home-goods': [
-                {
-                    from: 'them',
-                    text: 'Good afternoon. We uploaded the additional photos requested for case DSP-1048.',
-                    time: '6:34 PM',
-                },
-                {
-                    from: 'me',
-                    text: 'Received. We are reviewing the evidence from all parties now.',
-                    time: '6:36 PM',
-                },
-                {
-                    from: 'them',
-                    text: 'Thank you. Please let us know if you need a clearer copy of the packing photo.',
-                    time: '6:42 PM',
-                },
-            ],
-
-            'karen-yu': [
-                {
-                    from: 'them',
-                    text: 'Hello. I wanted to follow up regarding the complaint I submitted for my recent order.',
-                    time: '5:12 PM',
-                },
-                {
-                    from: 'me',
-                    text: 'Hi Karen. Your complaint is currently under review. We will update you once the seller response has been checked.',
-                    time: '5:16 PM',
-                },
-                {
-                    from: 'them',
-                    text: 'Thank you for reviewing my complaint.',
-                    time: '5:18 PM',
-                },
-            ],
-
-            'jared-molina': [
-                {
-                    from: 'them',
-                    text: 'Hi Admin, the delivery proof for the completed order has been uploaded.',
-                    time: '3:27 PM',
-                },
-                {
-                    from: 'me',
-                    text: 'Thanks, Jared. We received the delivery proof and added it to the order review.',
-                    time: '3:29 PM',
-                },
-                {
-                    from: 'them',
-                    text: 'Delivery proof has been uploaded.',
-                    time: '3:31 PM',
-                },
-            ],
-
-            'techvault-ph': [
-                {
-                    from: 'them',
-                    text: 'Good afternoon. We received a compliance notice for one of our listings.',
-                    time: '1:48 PM',
-                },
-                {
-                    from: 'me',
-                    text: 'The notice was triggered by a listing detail that requires manual verification.',
-                    time: '1:51 PM',
-                },
-                {
-                    from: 'them',
-                    text: 'Can we clarify the compliance notice?',
-                    time: '1:54 PM',
-                },
-            ],
-        };
-
-
-        const chatThreads = (() => {
-            try {
-                return JSON.parse(
-                    localStorage.getItem(CHAT_STORAGE_KEY) || '{}'
+        const renderEvidence = (items = []) => {
+            const box =
+                document.querySelector(
+                    '[data-dispute-evidence]'
                 );
-            } catch {
-                return {};
+
+            if (!box) return;
+
+
+            if (!items.length) {
+                box.innerHTML = `
+                    <div class="table-empty">
+                        <i data-lucide="file-x"></i>
+
+                        <strong>
+                            No evidence submitted
+                        </strong>
+
+                        <span>
+                            Supporting files will appear here
+                            once participants submit evidence.
+                        </span>
+                    </div>
+                `;
+
+                refreshIcons();
+
+                return;
             }
-        })();
 
 
-        const saveChatThreads = () => {
-            localStorage.setItem(
-                CHAT_STORAGE_KEY,
-                JSON.stringify(chatThreads)
-            );
+            box.innerHTML = items
+                .map(
+                    (item) => `
+                        <button
+                            type="button"
+                            class="evidence-card"
+                            data-evidence-id="${escapeDisputeHtml(
+                                item.id
+                            )}"
+                        >
+                            <span>
+                                <i
+                                    data-lucide="${
+                                        item.type === 'Image'
+                                            ? 'image'
+                                            : 'file-text'
+                                    }"
+                                ></i>
+                            </span>
+
+                            <div>
+                                <strong>
+                                    ${escapeDisputeHtml(
+                                        item.label
+                                    )}
+                                </strong>
+
+                                <small>
+                                    ${escapeDisputeHtml(
+                                        item.meta
+                                    )}
+                                </small>
+                            </div>
+
+                            <i data-lucide="external-link"></i>
+                        </button>
+                    `
+                )
+                .join('');
+
+
+            box
+                .querySelectorAll(
+                    '[data-evidence-id]'
+                )
+                .forEach((button) => {
+                    button.addEventListener(
+                        'click',
+                        () => {
+                            const item =
+                                items.find(
+                                    (evidence) =>
+                                        String(
+                                            evidence.id
+                                        ) ===
+                                        button.dataset
+                                            .evidenceId
+                                );
+
+                            if (
+                                !item ||
+                                !item.download_url
+                            ) {
+                                showToast(
+                                    'This evidence file is not available for download.',
+                                    'Evidence unavailable'
+                                );
+
+                                return;
+                            }
+
+                            window.location.href =
+                                item.download_url;
+                        }
+                    );
+                });
+
+
+            refreshIcons();
         };
 
 
-        const getConversationId = (item) =>
-            item?.dataset.conversationId ||
-            item?.dataset.name
-                ?.trim()
-                .toLowerCase()
-                .replace(/[^a-z0-9]+/g, '-')
-                .replace(/^-|-$/g, '') ||
-            'conversation';
+        const renderTimeline = (items = []) => {
+            const box =
+                document.querySelector(
+                    '[data-dispute-timeline]'
+                );
+
+            if (!box) return;
+
+
+            if (!items.length) {
+                box.innerHTML = `
+                    <div class="table-empty">
+                        <i data-lucide="history"></i>
+
+                        <strong>
+                            No case activity yet
+                        </strong>
+
+                        <span>
+                            Dispute events will appear here
+                            as the case progresses.
+                        </span>
+                    </div>
+                `;
+
+                refreshIcons();
+
+                return;
+            }
+
+
+            box.innerHTML = items
+                .map(
+                    (item) => `
+                        <div class="timeline-row">
+
+                            <span>
+                                ${escapeDisputeHtml(
+                                    item.time
+                                )}
+                            </span>
+
+                            <div>
+                                <i></i>
+
+                                <p>
+                                    ${escapeDisputeHtml(
+                                        item.text
+                                    )}
+                                </p>
+                            </div>
+
+                        </div>
+                    `
+                )
+                .join('');
+        };
+
+
+        const renderDispute = (
+            id,
+            notify = true
+        ) => {
+            const dispute =
+                disputeData[id];
+
+            if (!dispute) return;
+
+
+            setDisputeText(
+                '[data-dispute-id]',
+                dispute.id
+            );
+
+            setDisputeText(
+                '[data-dispute-subject]',
+                dispute.subject
+            );
+
+            setDisputeText(
+                '[data-dispute-status]',
+                dispute.status
+            );
+
+            setDisputeText(
+                '[data-dispute-opened]',
+                dispute.opened
+            );
+
+            setDisputeText(
+                '[data-dispute-buyer]',
+                dispute.buyer
+            );
+
+            setDisputeText(
+                '[data-dispute-seller]',
+                dispute.seller
+            );
+
+            setDisputeText(
+                '[data-dispute-courier]',
+                dispute.courier
+            );
+
+            setDisputeText(
+                '[data-dispute-amount]',
+                dispute.amount
+            );
+
+            setDisputeText(
+                '[data-dispute-summary]',
+                dispute.summary
+            );
+
+
+            document
+                .querySelectorAll(
+                    '[data-party-buyer]'
+                )
+                .forEach((element) => {
+                    element.textContent =
+                        dispute.buyer ?? '—';
+                });
+
+
+            document
+                .querySelectorAll(
+                    '[data-party-seller]'
+                )
+                .forEach((element) => {
+                    element.textContent =
+                        dispute.seller ?? '—';
+                });
+
+
+            document
+                .querySelectorAll(
+                    '[data-party-courier]'
+                )
+                .forEach((element) => {
+                    element.textContent =
+                        dispute.courier ?? '—';
+                });
+
+
+            const priority =
+                document.querySelector(
+                    '[data-dispute-priority]'
+                );
+
+            if (priority) {
+                priority.textContent =
+                    `${dispute.priority} priority`;
+
+                const normalized =
+                    String(
+                        dispute.priority
+                    ).toLowerCase();
+
+                priority.className =
+                    'status-badge ' +
+                    (
+                        normalized === 'high' ||
+                        normalized === 'urgent'
+                            ? 'badge-danger'
+                            : normalized === 'medium'
+                                ? 'badge-warning'
+                                : 'badge-info'
+                    );
+            }
+
+
+            const note =
+                document.querySelector(
+                    '[data-dispute-note]'
+                );
+
+            if (note) {
+                note.value =
+                    dispute.internalNote || '';
+            }
+
+
+            renderEvidence(
+                dispute.evidence || []
+            );
+
+            renderTimeline(
+                dispute.timeline || []
+            );
+
+
+            if (notify) {
+                showToast(
+                    `${dispute.id} — ${dispute.subject} loaded.`,
+                    'Dispute workspace'
+                );
+            }
+        };
+
+
+        const getActiveDisputeId = () =>
+            document
+                .querySelector(
+                    '[data-case-card].is-active'
+                )
+                ?.dataset.caseId || '';
+
+
+        const getActiveDispute = () => {
+            const id =
+                getActiveDisputeId();
+
+            return id
+                ? disputeData[id]
+                : null;
+        };
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | Search
+        |--------------------------------------------------------------------------
+        */
+
+        disputeSearch?.addEventListener(
+            'input',
+            () => {
+                const query =
+                    disputeSearch
+                        .value
+                        .trim()
+                        .toLowerCase();
+
+
+                document
+                    .querySelectorAll(
+                        '[data-case-card]'
+                    )
+                    .forEach((card) => {
+                        card.hidden =
+                            !!query &&
+                            !card
+                                .dataset
+                                .caseSearch
+                                .includes(query);
+                    });
+            }
+        );
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | Select dispute
+        |--------------------------------------------------------------------------
+        */
+
+        document
+            .querySelectorAll(
+                '[data-case-card]'
+            )
+            .forEach((card) => {
+                card.addEventListener(
+                    'click',
+                    () => {
+                        if (
+                            card.classList.contains(
+                                'is-active'
+                            )
+                        ) {
+                            return;
+                        }
+
+
+                        document
+                            .querySelectorAll(
+                                '[data-case-card]'
+                            )
+                            .forEach(
+                                (item) =>
+                                    item.classList.remove(
+                                        'is-active'
+                                    )
+                            );
+
+
+                        card.classList.add(
+                            'is-active'
+                        );
+
+
+                        renderDispute(
+                            card.dataset.caseId
+                        );
+                    }
+                );
+            });
+
+
+        const remainingDisputeCards = [
+            ...document.querySelectorAll(
+                '[data-case-card]'
+            ),
+        ];
+
+
+        if (
+            remainingDisputeCards.length &&
+            !remainingDisputeCards.some(
+                (card) =>
+                    card.classList.contains(
+                        'is-active'
+                    )
+            )
+        ) {
+            remainingDisputeCards[0]
+                .classList
+                .add('is-active');
+        }
+
+
+        const restoredOpenCount =
+            document.querySelector(
+                '[data-dispute-open-count]'
+            );
+
+        if (restoredOpenCount) {
+            restoredOpenCount.textContent =
+                String(
+                    remainingDisputeCards.length
+                );
+        }
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | Refresh
+        |--------------------------------------------------------------------------
+        */
+
+        document
+            .querySelector(
+                '[data-dispute-refresh]'
+            )
+            ?.addEventListener(
+                'click',
+                () => {
+                    window.location.reload();
+                }
+            );
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | Dispute participant messaging
+        |--------------------------------------------------------------------------
+        */
+
+        document
+            .querySelectorAll(
+                '[data-party-message]'
+            )
+            .forEach((button) => {
+                button.addEventListener(
+                    'click',
+                    async () => {
+                        const dispute =
+                            getActiveDispute();
+
+                        if (
+                            !dispute ||
+                            !dispute.message_url
+                        ) {
+                            return;
+                        }
+
+                        const selectedRole =
+                            button.dataset.partyMessage;
+
+                        let recipientId = null;
+                        let recipientRole = null;
+
+                        if (
+                            selectedRole === 'buyer'
+                        ) {
+                            recipientId =
+                                dispute.buyer_user_id;
+
+                            recipientRole =
+                                'buyer';
+                        }
+
+                        if (
+                            selectedRole === 'seller'
+                        ) {
+                            recipientId =
+                                dispute.seller_user_id;
+
+                            recipientRole =
+                                'seller';
+                        }
+
+                        if (
+                            selectedRole === 'courier'
+                        ) {
+                            if (
+                                dispute.rider_user_id
+                            ) {
+                                recipientId =
+                                    dispute.rider_user_id;
+
+                                recipientRole =
+                                    'rider';
+                            } else if (
+                                dispute.logistics_user_id
+                            ) {
+                                recipientId =
+                                    dispute.logistics_user_id;
+
+                                recipientRole =
+                                    'logistics';
+                            }
+                        }
+
+                        if (
+                            !recipientId ||
+                            !recipientRole
+                        ) {
+                            showToast(
+                                'This participant does not have a linked messaging account.',
+                                'Conversation unavailable'
+                            );
+
+                            return;
+                        }
+
+                        button.disabled = true;
+
+                        try {
+                            const response =
+                                await fetch(
+                                    dispute.message_url,
+                                    {
+                                        method: 'POST',
+
+                                        headers: {
+                                            'Content-Type':
+                                                'application/json',
+
+                                            'Accept':
+                                                'application/json',
+
+                                            'X-CSRF-TOKEN':
+                                                csrfToken,
+                                        },
+
+                                        body: JSON.stringify({
+                                            recipient_id:
+                                                recipientId,
+
+                                            recipient_role:
+                                                recipientRole,
+                                        }),
+                                    }
+                                );
+
+                            const result =
+                                await response.json();
+
+                            if (!response.ok) {
+                                const firstError =
+                                    Object.values(
+                                        result.errors || {}
+                                    )
+                                        .flat()
+                                        .find(Boolean);
+
+                                throw new Error(
+                                    firstError ||
+                                    result.message ||
+                                    'Unable to open conversation.'
+                                );
+                            }
+
+                            window.location.href =
+                                result.conversation
+                                    .messages_url;
+                        } catch (error) {
+                            button.disabled =
+                                false;
+
+                            showToast(
+                                error.message ||
+                                'Unable to open the participant conversation.',
+                                'Conversation unavailable'
+                            );
+                        }
+                    }
+                );
+            });
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | Save internal note
+        |--------------------------------------------------------------------------
+        */
+
+        document
+            .querySelector(
+                '[data-dispute-save-note]'
+            )
+            ?.addEventListener(
+                'click',
+                async () => {
+                    const dispute =
+                        getActiveDispute();
+
+                    const noteElement =
+                        document.querySelector(
+                            '[data-dispute-note]'
+                        );
+
+                    const note =
+                        noteElement
+                            ?.value
+                            .trim() || '';
+
+
+                    if (
+                        !dispute ||
+                        !dispute.note_url
+                    ) {
+                        return;
+                    }
+
+
+                    if (!note) {
+                        showToast(
+                            'Enter an internal note first.',
+                            'Note not saved'
+                        );
+
+                        noteElement?.focus();
+
+                        return;
+                    }
+
+
+                    try {
+                        const response =
+                            await fetch(
+                                dispute.note_url,
+                                {
+                                    method: 'POST',
+
+                                    headers: {
+                                        'Content-Type':
+                                            'application/json',
+
+                                        'Accept':
+                                            'application/json',
+
+                                        'X-CSRF-TOKEN':
+                                            csrfToken,
+                                    },
+
+                                    body: JSON.stringify({
+                                        note,
+                                    }),
+                                }
+                            );
+
+
+                        const result =
+                            await response.json();
+
+
+                        if (!response.ok) {
+                            throw new Error(
+                                result.message ||
+                                'Unable to save note.'
+                            );
+                        }
+
+
+                        dispute.internalNote =
+                            note;
+
+
+                        if (result.event) {
+                            dispute.timeline =
+                                dispute.timeline || [];
+
+                            dispute.timeline.push(
+                                result.event
+                            );
+
+                            renderTimeline(
+                                dispute.timeline
+                            );
+                        }
+
+
+                        showToast(
+                            `${dispute.id} internal note saved.`,
+                            'Resolution note'
+                        );
+                    } catch (error) {
+                        showToast(
+                            error.message ||
+                            'Unable to save the internal note.',
+                            'Note not saved'
+                        );
+                    }
+                }
+            );
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | Send participant case update
+        |--------------------------------------------------------------------------
+        */
+
+        document
+            .querySelector(
+                '[data-dispute-send-update]'
+            )
+            ?.addEventListener(
+                'click',
+                async (event) => {
+                    const button =
+                        event.currentTarget;
+
+                    const dispute =
+                        getActiveDispute();
+
+                    const noteElement =
+                        document.querySelector(
+                            '[data-dispute-note]'
+                        );
+
+                    const message =
+                        noteElement
+                            ?.value
+                            .trim() || '';
+
+
+                    if (
+                        !dispute ||
+                        !dispute.update_url
+                    ) {
+                        showToast(
+                            'This dispute does not have an update endpoint.',
+                            'Update not sent'
+                        );
+
+                        return;
+                    }
+
+
+                    if (!message) {
+                        showToast(
+                            'Enter a case update first.',
+                            'Update not sent'
+                        );
+
+                        noteElement?.focus();
+
+                        return;
+                    }
+
+
+                    button.disabled = true;
+
+
+                    try {
+                        const response =
+                            await fetch(
+                                dispute.update_url,
+                                {
+                                    method: 'POST',
+
+                                    headers: {
+                                        'Content-Type':
+                                            'application/json',
+
+                                        'Accept':
+                                            'application/json',
+
+                                        'X-CSRF-TOKEN':
+                                            csrfToken,
+                                    },
+
+                                    body: JSON.stringify({
+                                        message,
+                                    }),
+                                }
+                            );
+
+
+                        const result =
+                            await response.json();
+
+
+                        if (!response.ok) {
+                            const validationMessage =
+                                result.errors
+                                    ? Object.values(
+                                        result.errors
+                                    )
+                                        .flat()
+                                        .find(Boolean)
+                                    : null;
+
+                            throw new Error(
+                                validationMessage ||
+                                result.message ||
+                                'Unable to send case update.'
+                            );
+                        }
+
+
+                        if (result.event) {
+                            dispute.timeline =
+                                dispute.timeline || [];
+
+                            dispute.timeline.push(
+                                result.event
+                            );
+
+                            renderTimeline(
+                                dispute.timeline
+                            );
+                        }
+
+
+                        showToast(
+                            `Update sent to ${result.recipient_count} participant${
+                                result.recipient_count === 1
+                                    ? ''
+                                    : 's'
+                            }.`,
+                            'Case update sent'
+                        );
+                    } catch (error) {
+                        showToast(
+                            error.message ||
+                            'Unable to send the case update.',
+                            'Update not sent'
+                        );
+                    } finally {
+                        button.disabled = false;
+                    }
+                }
+            );
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | Resolve dispute
+        |--------------------------------------------------------------------------
+        */
+
+        const resolveModal =
+            document.querySelector(
+                '[data-modal="resolve-dispute"]'
+            );
+
+
+        document
+            .querySelector(
+                '[data-dispute-resolve]'
+            )
+            ?.addEventListener(
+                'click',
+                () => {
+                    const dispute =
+                        getActiveDispute();
+
+                    if (
+                        !dispute ||
+                        !resolveModal
+                    ) {
+                        return;
+                    }
+
+
+                    setDisputeText(
+                        '[data-resolve-case-id]',
+                        dispute.id
+                    );
+
+
+                    const outcome =
+                        resolveModal.querySelector(
+                            '[data-resolution-outcome]'
+                        );
+
+                    const note =
+                        resolveModal.querySelector(
+                            '[data-resolution-note]'
+                        );
+
+                    const error =
+                        resolveModal.querySelector(
+                            '[data-resolution-error]'
+                        );
+
+
+                    if (outcome) {
+                        outcome.value = '';
+                    }
+
+
+                    if (note) {
+                        note.value =
+                            dispute.internalNote || '';
+                    }
+
+
+                    if (error) {
+                        error.hidden = true;
+                    }
+
+
+                    resolveModal.hidden =
+                        false;
+
+
+                    refreshIcons();
+                }
+            );
+
+
+        document
+            .querySelector(
+                '[data-confirm-resolution]'
+            )
+            ?.addEventListener(
+                'click',
+                async () => {
+                    const dispute =
+                        getActiveDispute();
+
+                    if (
+                        !dispute ||
+                        !dispute.resolve_url ||
+                        !resolveModal
+                    ) {
+                        return;
+                    }
+
+
+                    const outcome =
+                        resolveModal.querySelector(
+                            '[data-resolution-outcome]'
+                        )
+                            ?.value || '';
+
+                    const note =
+                        resolveModal.querySelector(
+                            '[data-resolution-note]'
+                        )
+                            ?.value
+                            .trim() || '';
+
+                    const error =
+                        resolveModal.querySelector(
+                            '[data-resolution-error]'
+                        );
+
+
+                    if (
+                        !outcome ||
+                        !note
+                    ) {
+                        if (error) {
+                            error.hidden =
+                                false;
+                        }
+
+                        return;
+                    }
+
+
+                    try {
+                        const response =
+                            await fetch(
+                                dispute.resolve_url,
+                                {
+                                    method: 'POST',
+
+                                    headers: {
+                                        'Content-Type':
+                                            'application/json',
+
+                                        'Accept':
+                                            'application/json',
+
+                                        'X-CSRF-TOKEN':
+                                            csrfToken,
+                                    },
+
+                                    body: JSON.stringify({
+                                        outcome,
+                                        note,
+                                    }),
+                                }
+                            );
+
+
+                        const result =
+                            await response.json();
+
+
+                        if (!response.ok) {
+                            throw new Error(
+                                result.message ||
+                                'Unable to resolve dispute.'
+                            );
+                        }
+
+
+                        resolveModal.hidden =
+                            true;
+
+
+                        showToast(
+                            `${dispute.id} was resolved.`,
+                            'Case resolved'
+                        );
+
+
+                        /*
+                        * Server is now the source of truth.
+                        * Reload to remove resolved case and
+                        * refresh its database-backed timeline.
+                        */
+                        window.location.reload();
+                    } catch (error) {
+                        if (error) {
+                            const validationError =
+                                resolveModal.querySelector(
+                                    '[data-resolution-error]'
+                                );
+
+                            if (
+                                validationError
+                            ) {
+                                validationError.hidden =
+                                    false;
+
+                                validationError.textContent =
+                                    error.message ||
+                                    'Unable to resolve this case.';
+                            }
+                        }
+                    }
+                }
+            );
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | Initial dispute
+        |--------------------------------------------------------------------------
+        */
+
+        const initialDispute =
+            document.querySelector(
+                '[data-case-card].is-active'
+            )?.dataset.caseId;
+
+
+        if (initialDispute) {
+            renderDispute(
+                initialDispute,
+                false
+            );
+        }
+
+        /// Chat filtering + database-backed conversation thread state
+        const conversationSearch =
+            document.querySelector(
+                '[data-conversation-search]'
+            );
+
+        let conversationItems = [
+            ...document.querySelectorAll(
+                '[data-conversation-item]'
+            ),
+        ];
+
+        const conversationList =
+            document.querySelector(
+                '[data-conversation-list]'
+            );
+
+        const messageThread =
+            document.querySelector(
+                '[data-message-thread]'
+            );
+
+        const messageInput =
+            document.querySelector(
+                '[data-message-input]'
+            );
+
+        const attachmentInput =
+            document.querySelector(
+                '[data-chat-attachment]'
+            );
+
+        const attachmentName =
+            document.querySelector(
+                '[data-chat-attachment-name]'
+            );
+
+        const unreadSummary =
+            document.querySelector(
+                '[data-unread-summary]'
+            );
+
+        const conversationDataNode =
+            document.getElementById(
+                'admin-conversation-data'
+            );
+
+        let conversationData = {};
+
+        try {
+            conversationData =
+                conversationDataNode
+                    ? JSON.parse(
+                        conversationDataNode.textContent
+                    )
+                    : {};
+        } catch {
+            conversationData = {};
+        }
+
+
+        const messageConfigNode =
+            document.getElementById(
+                'admin-message-config'
+            );
+
+        let messageConfig = {};
+
+        try {
+            messageConfig =
+                messageConfigNode
+                    ? JSON.parse(
+                        messageConfigNode.textContent
+                    )
+                    : {};
+        } catch {
+            messageConfig = {};
+        }
+
+
+        const escapeChatHtml = (
+            value = ''
+        ) =>
+            String(value)
+                .replaceAll('&', '&amp;')
+                .replaceAll('<', '&lt;')
+                .replaceAll('>', '&gt;')
+                .replaceAll('"', '&quot;')
+                .replaceAll("'", '&#039;');
+
+
+        const getConversationId = (
+            item
+        ) =>
+            item?.dataset
+                .conversationId || '';
+
+
+        const getActiveConversationItem =
+            () =>
+                document.querySelector(
+                    '[data-conversation-item].is-active'
+                );
+
+
+        const getActiveConversation =
+            () => {
+                const item =
+                    getActiveConversationItem();
+
+                const id =
+                    getConversationId(item);
+
+                return id
+                    ? conversationData[id]
+                    : null;
+            };
 
 
         const updateUnreadSummary = () => {
-            if (!unreadSummary) return;
+            if (!unreadSummary) {
+                return;
+            }
 
             const totalUnread = [
                 ...document.querySelectorAll(
                     '[data-conversation-item] .unread-count'
-                )
-            ].reduce((total, badge) => {
-                return total + Number(
-                    badge.textContent?.trim() || 0
-                );
-            }, 0);
+                ),
+            ].reduce(
+                (total, badge) =>
+                    total +
+                    Number(
+                        badge.textContent
+                            ?.trim() || 0
+                    ),
+                0
+            );
 
             unreadSummary.textContent =
                 `${totalUnread} unread`;
@@ -5767,267 +6665,376 @@
         };
 
 
+        const setConversationUnread = (
+            item,
+            unread
+        ) => {
+            if (!item) {
+                return;
+            }
+
+            let badge =
+                item.querySelector(
+                    '.unread-count'
+                );
+
+            const count =
+                Number(unread || 0);
+
+            if (count <= 0) {
+                badge?.remove();
+
+                updateUnreadSummary();
+
+                return;
+            }
+
+            if (!badge) {
+                badge =
+                    document.createElement(
+                        'span'
+                    );
+
+                badge.className =
+                    'unread-count';
+
+                item.appendChild(badge);
+            }
+
+            badge.textContent =
+                String(count);
+
+            updateUnreadSummary();
+        };
+
+
         const updateConversationPreview = (
             item,
             text,
             time
         ) => {
-            if (!item) return;
+            if (!item) {
+                return;
+            }
 
-            item.dataset.preview = text;
-            item.dataset.time = time;
+            const preview =
+                item.querySelector(
+                    '.conversation-preview > span:last-child'
+                );
 
-            const preview = item.querySelector(
-                '.conversation-preview span:last-child'
-            );
-
-            const timeElement = item.querySelector(
-                '.conversation-meta time'
-            );
+            const timeElement =
+                item.querySelector(
+                    '.conversation-meta time'
+                );
 
             if (preview) {
-                preview.textContent = text;
+                preview.textContent =
+                    text;
             }
 
             if (timeElement) {
-                timeElement.textContent = time;
+                timeElement.textContent =
+                    time;
             }
 
-            item.dataset.search =
-                `${item.dataset.name || ''} ` +
-                `${item.dataset.role || ''} ` +
-                `${text}`.toLowerCase();
-        };
-
-
-        /*
-        * Restore conversations created during
-        * previous front-end preview sessions.
-        */
-        (chatThreads.__contacts || []).forEach((contact) => {
-
-            if (!conversationList) return;
-
-            const alreadyExists =
-                conversationItems.some(
-                    (item) =>
-                        getConversationId(item) ===
-                        contact.conversationId
-                );
-
-            if (alreadyExists) return;
-
-
-            const item =
-                document.createElement('button');
-
-            item.type = 'button';
-            item.className = 'conversation-item';
-
-            item.dataset.conversationItem = '';
-            item.dataset.conversationId =
-                contact.conversationId;
-
-            item.dataset.search =
-                contact.search || '';
-
-            item.dataset.name =
-                contact.name || '';
-
-            item.dataset.role =
-                contact.role || '';
-
-            item.dataset.initials =
-                contact.initials || '';
-
             item.dataset.preview =
-                contact.preview || '';
+                text;
 
             item.dataset.time =
-                contact.time || '';
+                time;
 
-
-            item.innerHTML = `
-                <span class="avatar avatar-soft">
-                    ${escapeChatHtml(contact.initials)}
-                </span>
-
-                <span class="conversation-copy">
-
-                    <span class="conversation-meta">
-                        <strong>
-                            ${escapeChatHtml(contact.name)}
-                        </strong>
-
-                        <time>
-                            ${escapeChatHtml(contact.time)}
-                        </time>
-                    </span>
-
-                    <small class="conversation-preview">
-                        <span class="conversation-role">
-                            ${escapeChatHtml(contact.role)}
-                        </span>
-
-                        <span aria-hidden="true">•</span>
-
-                        <span>
-                            ${escapeChatHtml(contact.preview)}
-                        </span>
-                    </small>
-
-                </span>
-            `;
-
-            conversationList.prepend(item);
-
-            conversationItems.push(item);
-        });
-
-
-        /*
-        * Create thread data for every
-        * visible conversation.
-        */
-        conversationItems.forEach((item, index) => {
+            item.dataset.search =
+                [
+                    item.dataset.name || '',
+                    item.dataset.role || '',
+                    text,
+                ]
+                    .join(' ')
+                    .toLowerCase();
 
             const id =
                 getConversationId(item);
 
-            item.dataset.conversationId =
-                id;
+            if (conversationData[id]) {
+                conversationData[id].preview =
+                    text;
 
-
-            chatThreads[id] =
-                chatThreads[id] ||
-                (
-                    defaultChatThreads[id] ||
-                    [
-                        {
-                            from: 'them',
-                            text:
-                                item.dataset.preview ||
-                                'This is the beginning of this support conversation.',
-                            time:
-                                item.dataset.time || '',
-                        },
-                    ]
-                ).map((message) => ({
-                    ...message,
-                }));
-
-
-            /*
-            * Preserve the first Blade-rendered thread
-            * the first time the chat preview is used.
-            */
-            if (
-                index === 0 &&
-                messageThread &&
-                !localStorage.getItem(CHAT_STORAGE_KEY)
-            ) {
-                const bladeMessages = [
-                    ...messageThread.querySelectorAll(
-                        '.message-row'
-                    )
-                ]
-                    .map((row) => ({
-                        from:
-                            row.classList.contains('message-me')
-                                ? 'me'
-                                : 'them',
-
-                        text:
-                            row
-                                .querySelector('p')
-                                ?.textContent
-                                ?.trim() || '',
-
-                        time:
-                            row
-                                .querySelector('span')
-                                ?.textContent
-                                ?.trim() || '',
-                    }))
-                    .filter((message) =>
-                        message.text
-                    );
-
-
-                if (bladeMessages.length) {
-                    chatThreads[id] =
-                        bladeMessages;
-                }
+                conversationData[id].time =
+                    time;
             }
-        });
+        };
 
 
-        saveChatThreads();
+        const clearAttachmentPreview =
+            () => {
+                if (attachmentInput) {
+                    attachmentInput.value = '';
+                }
+
+                if (attachmentName) {
+                    attachmentName.textContent =
+                        '';
+
+                    attachmentName.hidden =
+                        true;
+                }
+            };
+
+        const formatAttachmentSize = (
+            bytes = 0
+        ) => {
+            const size = Number(bytes || 0);
+
+            if (size < 1024) {
+                return `${size} B`;
+            }
+
+            if (size < 1024 * 1024) {
+                return `${(
+                    size / 1024
+                ).toFixed(1)} KB`;
+            }
+
+            return `${(
+                size /
+                (1024 * 1024)
+            ).toFixed(1)} MB`;
+        };
 
 
-        const renderChatThread = (id) => {
-            if (!messageThread) return;
+        const attachmentIcon = (
+            mimeType = ''
+        ) => {
+            if (
+                String(mimeType)
+                    .startsWith('image/')
+            ) {
+                return 'image';
+            }
+
+            if (
+                String(mimeType)
+                    .includes('pdf')
+            ) {
+                return 'file-text';
+            }
+
+            return 'paperclip';
+        };
+
+
+        const renderMessageAttachments = (
+            attachments = []
+        ) => {
+            if (!attachments.length) {
+                return '';
+            }
+
+            return `
+                <div class="message-attachments">
+                    ${attachments
+                        .map(
+                            (attachment) => `
+                                <a
+                                    class="message-attachment"
+                                    href="${escapeChatHtml(
+                                        attachment.download_url || '#'
+                                    )}"
+                                    ${
+                                        attachment.download_url
+                                            ? ''
+                                            : 'aria-disabled="true"'
+                                    }
+                                >
+                                    <i
+                                        data-lucide="${attachmentIcon(
+                                            attachment.mime_type
+                                        )}"
+                                    ></i>
+
+                                    <span>
+                                        <strong>
+                                            ${escapeChatHtml(
+                                                attachment.name ||
+                                                'Attachment'
+                                            )}
+                                        </strong>
+
+                                        <small>
+                                            ${escapeChatHtml(
+                                                formatAttachmentSize(
+                                                    attachment.size_bytes
+                                                )
+                                            )}
+                                        </small>
+                                    </span>
+
+                                    <i
+                                        data-lucide="download"
+                                    ></i>
+                                </a>
+                            `
+                        )
+                        .join('')}
+                </div>
+            `;
+        };
+
+
+        const renderChatThread = (
+            id
+        ) => {
+            if (!messageThread) {
+                return;
+            }
+
+            const conversation =
+                conversationData[id];
+
+            if (!conversation) {
+                messageThread.innerHTML = `
+                    <div class="table-empty">
+
+                        <i
+                            data-lucide="message-square-off"
+                        ></i>
+
+                        <strong>
+                            Select a conversation
+                        </strong>
+
+                        <span>
+                            Choose a conversation from
+                            the inbox to view its messages.
+                        </span>
+
+                    </div>
+                `;
+
+                refreshIcons();
+
+                return;
+            }
 
             const messages =
-                chatThreads[id] || [];
+                conversation.messages || [];
 
+            if (!messages.length) {
+                messageThread.innerHTML = `
+                    <div class="thread-date">
+                        Conversation
+                    </div>
+
+                    <div class="table-empty">
+
+                        <i
+                            data-lucide="message-circle"
+                        ></i>
+
+                        <strong>
+                            No messages yet
+                        </strong>
+
+                        <span>
+                            This conversation has not
+                            received any messages yet.
+                        </span>
+
+                    </div>
+                `;
+
+                refreshIcons();
+
+                return;
+            }
 
             messageThread.innerHTML = `
                 <div class="thread-date">
-                    Today
+                    Conversation
                 </div>
 
                 ${messages
-                    .map((message) => `
-                        <div
-                            class="message-row
-                            message-${message.from === 'me' ? 'me' : 'them'}"
-                        >
-                            <div class="message-bubble">
+                    .map(
+                        (message) => `
+                            <div
+                                class="
+                                    message-row
+                                    message-${
+                                        message.from === 'me'
+                                            ? 'me'
+                                            : 'them'
+                                    }
+                                "
+                            >
 
-                                <p>
-                                    ${escapeChatHtml(message.text)}
-                                </p>
+                                <div
+                                    class="message-bubble"
+                                >
 
-                                <span>
-                                    ${escapeChatHtml(message.time)}
-                                </span>
+                                    ${
+                                        message.text
+                                            ? `
+                                                <p>
+                                                    ${escapeChatHtml(
+                                                        message.text
+                                                    )}
+                                                </p>
+                                            `
+                                            : ''
+                                    }
+
+                                    ${renderMessageAttachments(
+                                        message.attachments || []
+                                    )}
+
+                                    <span>
+                                        ${escapeChatHtml(
+                                            message.time
+                                        )}
+                                    </span>
+
+                                </div>
 
                             </div>
-                        </div>
-                    `)
+                        `
+                    )
                     .join('')}
             `;
 
+            refreshIcons();
 
             messageThread.scrollTop =
                 messageThread.scrollHeight;
         };
 
 
-        const clearAttachmentPreview = () => {
-            if (attachmentInput) {
-                attachmentInput.value = '';
+        const selectConversation = async (
+            item
+        ) => {
+            if (!item) {
+                return;
             }
-
-            if (attachmentName) {
-                attachmentName.textContent = '';
-                attachmentName.hidden = true;
-            }
-        };
-
-
-        const selectConversation = (item) => {
-            if (!item) return;
-
 
             conversationItems.forEach(
                 (other) =>
-                    other.classList.remove('is-active')
+                    other.classList.remove(
+                        'is-active'
+                    )
             );
 
-            item.classList.add('is-active');
+            item.classList.add(
+                'is-active'
+            );
 
+            const id =
+                getConversationId(item);
+
+            const conversation =
+                conversationData[id];
+
+            if (!conversation) {
+                return;
+            }
 
             const name =
                 document.querySelector(
@@ -6044,77 +7051,117 @@
                     '[data-chat-avatar]'
                 );
 
-
             if (name) {
                 name.textContent =
-                    item.dataset.name || '';
+                    conversation.name || '';
             }
 
             if (role) {
                 role.textContent =
-                    item.dataset.role || '';
+                    conversation.role || '';
             }
 
             if (avatar) {
                 avatar.textContent =
-                    item.dataset.initials || '';
+                    conversation.initials || '';
             }
-
-
-            /*
-            * Opening the conversation marks
-            * its unread messages as read.
-            */
-            const unread =
-                item.querySelector(
-                    '.unread-count'
-                );
-
-            if (unread) {
-                unread.remove();
-            }
-
-            updateUnreadSummary();
-
 
             clearAttachmentPreview();
 
-            renderChatThread(
-                getConversationId(item)
-            );
+            renderChatThread(id);
+
+
+            /*
+            |--------------------------------------------------------------------------
+            | Persist read state
+            |--------------------------------------------------------------------------
+            */
+
+            if (!conversation.read_url) {
+                return;
+            }
+
+            try {
+                const response =
+                    await fetch(
+                        conversation.read_url,
+                        {
+                            method: 'POST',
+
+                            headers: {
+                                'Accept':
+                                    'application/json',
+
+                                'X-CSRF-TOKEN':
+                                    csrfToken,
+                            },
+                        }
+                    );
+
+                if (!response.ok) {
+                    return;
+                }
+
+                conversation.unread = 0;
+
+                setConversationUnread(
+                    item,
+                    0
+                );
+            } catch {
+                /*
+                 * Keep the server-rendered unread state
+                 * if the request cannot be completed.
+                 */
+            }
         };
 
 
-        conversationSearch?.addEventListener(
-            'input',
-            () => {
+        /*
+        |--------------------------------------------------------------------------
+        | Conversation search
+        |--------------------------------------------------------------------------
+        */
 
-                const query =
-                    conversationSearch.value
-                        .trim()
-                        .toLowerCase();
+        conversationSearch
+            ?.addEventListener(
+                'input',
+                () => {
+                    const query =
+                        conversationSearch
+                            .value
+                            .trim()
+                            .toLowerCase();
+
+                    conversationItems.forEach(
+                        (item) => {
+                            item.hidden =
+                                Boolean(query) &&
+                                !(
+                                    item.dataset
+                                        .search || ''
+                                ).includes(query);
+                        }
+                    );
+                }
+            );
 
 
-                conversationItems.forEach(
-                    (item) => {
+        /*
+        |--------------------------------------------------------------------------
+        | Select conversation
+        |--------------------------------------------------------------------------
+        */
 
-                        item.hidden =
-                            Boolean(query) &&
-                            !(
-                                item.dataset.search || ''
-                            ).includes(query);
-
-                    }
-                );
-            }
-        );
-
-
-        const bindConversation = (item) => {
+        const bindConversation = (
+            item
+        ) => {
             item.addEventListener(
                 'click',
                 () =>
-                    selectConversation(item)
+                    selectConversation(
+                        item
+                    )
             );
         };
 
@@ -6125,435 +7172,435 @@
 
 
         /*
-        * Send message
+        |--------------------------------------------------------------------------
+        | Send message
+        |--------------------------------------------------------------------------
         */
-        const sendMessage = () => {
+
+        const sendMessage = async () => {
+            const conversation =
+                getActiveConversation();
 
             const text =
-                messageInput?.value.trim();
+                messageInput
+                    ?.value
+                    .trim() || '';
 
-            const activeItem =
-                document.querySelector(
-                    '[data-conversation-item].is-active'
-                );
-
+            const attachment =
+                attachmentInput
+                    ?.files?.[0] || null;
 
             if (
-                !text ||
-                !activeItem ||
-                !messageThread
+                !conversation ||
+                !conversation.send_url ||
+                (
+                    !text &&
+                    !attachment
+                )
             ) {
                 return;
             }
 
+            const sendButton =
+                document.querySelector(
+                    '[data-send-message]'
+                );
 
-            const id =
-                getConversationId(activeItem);
+            if (sendButton) {
+                sendButton.disabled =
+                    true;
+            }
 
-            const time =
-                new Date()
-                    .toLocaleTimeString(
-                        [],
+            try {
+                const formData =
+                    new FormData();
+
+                if (text) {
+                    formData.append(
+                        'message',
+                        text
+                    );
+                }
+
+                if (attachment) {
+                    formData.append(
+                        'attachment',
+                        attachment
+                    );
+                }
+
+                const response =
+                    await fetch(
+                        conversation.send_url,
                         {
-                            hour: 'numeric',
-                            minute: '2-digit',
+                            method: 'POST',
+
+                            headers: {
+                                'Accept':
+                                    'application/json',
+
+                                'X-CSRF-TOKEN':
+                                    csrfToken,
+                            },
+
+                            body: formData,
                         }
                     );
 
+                const result =
+                    await response.json();
 
-            if (!chatThreads[id]) {
-                chatThreads[id] = [];
-            }
+                if (!response.ok) {
+                    const firstError =
+                        Object.values(
+                            result.errors || {}
+                        )
+                            .flat()
+                            .find(Boolean);
 
-
-            chatThreads[id].push({
-                from: 'me',
-                text,
-                time,
-            });
-
-
-            updateConversationPreview(
-                activeItem,
-                text,
-                time
-            );
-
-
-            const storedContact =
-                (chatThreads.__contacts || [])
-                    .find(
-                        (contact) =>
-                            contact.conversationId === id
+                    throw new Error(
+                        firstError ||
+                        result.message ||
+                        'Unable to send message.'
                     );
+                }
 
-            if (storedContact) {
-                storedContact.preview =
-                    text;
+                conversation.messages =
+                    conversation.messages || [];
 
-                storedContact.time =
-                    time;
+                conversation.messages.push(
+                    result.data
+                );
 
-                storedContact.search =
-                    `${activeItem.dataset.name || ''} ` +
-                    `${activeItem.dataset.role || ''} ` +
-                    `${text}`.toLowerCase();
+                const previewText =
+                    result.data.text ||
+                    result.data.attachments?.[0]
+                        ?.name ||
+                    'Attachment';
+
+                conversation.preview =
+                    previewText;
+
+                conversation.time =
+                    result.data.time;
+
+                if (messageInput) {
+                    messageInput.value =
+                        '';
+                }
+
+                clearAttachmentPreview();
+
+                renderChatThread(
+                    String(
+                        conversation.database_id
+                    )
+                );
+
+                const activeItem =
+                    getActiveConversationItem();
+
+                updateConversationPreview(
+                    activeItem,
+                    previewText,
+                    result.data.time
+                );
+
+                showToast(
+                    attachment
+                        ? `Message and attachment sent to ${conversation.name}.`
+                        : `Message sent to ${conversation.name}.`,
+                    'Message sent'
+                );
+            } catch (error) {
+                showToast(
+                    error.message ||
+                    'Unable to send the message.',
+                    'Message not sent'
+                );
+            } finally {
+                if (sendButton) {
+                    sendButton.disabled =
+                        false;
+                }
             }
-
-
-            saveChatThreads();
-
-
-            messageInput.value = '';
-
-            clearAttachmentPreview();
-
-            renderChatThread(id);
-
-
-            showToast(
-                `Message added to ${activeItem.dataset.name}'s conversation preview.`,
-                'Message sent'
-            );
         };
 
 
         document
-            .querySelector('[data-send-message]')
+            .querySelector(
+                '[data-send-message]'
+            )
             ?.addEventListener(
                 'click',
                 sendMessage
             );
 
 
-        messageInput?.addEventListener(
-            'keydown',
-            (event) => {
+        messageInput
+            ?.addEventListener(
+                'keydown',
+                (event) => {
+                    if (
+                        event.key ===
+                            'Enter' &&
+                        !event.shiftKey
+                    ) {
+                        event.preventDefault();
 
-                if (
-                    event.key === 'Enter' &&
-                    !event.shiftKey
-                ) {
-                    event.preventDefault();
-                    sendMessage();
+                        sendMessage();
+                    }
                 }
-            }
-        );
+            );
 
 
         /*
-        * Create new conversation
+        |--------------------------------------------------------------------------
+        | New conversation
+        |--------------------------------------------------------------------------
         */
+
         document
             .querySelector(
                 '[data-create-conversation]'
             )
             ?.addEventListener(
                 'click',
-                () => {
+                async (event) => {
+                    const button =
+                        event.currentTarget;
 
-                    const nameInput =
+                    const recipientInput =
                         document.querySelector(
-                            '[data-new-chat-name]'
+                            '[data-new-chat-recipient]'
                         );
 
-                    const roleInput =
-                        document.querySelector(
-                            '[data-new-chat-role]'
-                        );
-
-                    const firstMessage =
+                    const messageField =
                         document.querySelector(
                             '[data-new-chat-message]'
                         );
 
+                    const recipientId =
+                        recipientInput?.value || '';
 
-                    const name =
-                        nameInput?.value
+                    const selectedOption =
+                        recipientInput
+                            ?.selectedOptions?.[0];
+
+                    const recipientRole =
+                        selectedOption
+                            ?.dataset.role || '';
+
+                    const message =
+                        messageField
+                            ?.value
                             .trim() || '';
-
-                    const role =
-                        roleInput?.value ||
-                        'Buyer';
-
-                    const text =
-                        firstMessage?.value
-                            .trim() || '';
-
 
                     if (
-                        !name ||
-                        !text ||
-                        !conversationList
+                        !recipientId ||
+                        !recipientRole ||
+                        !message
                     ) {
                         showToast(
-                            'Enter a recipient and a first message.',
+                            'Select a recipient and enter a first message.',
                             'Conversation not started'
                         );
 
                         return;
                     }
 
+                    if (!messageConfig.create_url) {
+                        showToast(
+                            'The conversation endpoint is unavailable.',
+                            'Conversation not started'
+                        );
 
-                    let id =
-                        name
-                            .toLowerCase()
-                            .replace(
-                                /[^a-z0-9]+/g,
-                                '-'
-                            )
-                            .replace(
-                                /^-|-$/g,
-                                ''
-                            ) ||
-                        `conversation-${Date.now()}`;
-
-
-                    if (chatThreads[id]) {
-                        id =
-                            `${id}-${Date.now()
-                                .toString()
-                                .slice(-4)}`;
+                        return;
                     }
 
+                    button.disabled =
+                        true;
 
-                    const initials =
-                        name
-                            .split(/\s+/)
-                            .map(
-                                (part) =>
-                                    part[0]
-                            )
-                            .join('')
-                            .slice(0, 2)
-                            .toUpperCase();
-
-
-                    const time =
-                        new Date()
-                            .toLocaleTimeString(
-                                [],
+                    try {
+                        const response =
+                            await fetch(
+                                messageConfig.create_url,
                                 {
-                                    hour: 'numeric',
-                                    minute: '2-digit',
+                                    method: 'POST',
+
+                                    headers: {
+                                        'Content-Type':
+                                            'application/json',
+
+                                        'Accept':
+                                            'application/json',
+
+                                        'X-CSRF-TOKEN':
+                                            csrfToken,
+                                    },
+
+                                    body: JSON.stringify({
+                                        recipient_id:
+                                            Number(
+                                                recipientId
+                                            ),
+
+                                        recipient_role:
+                                            recipientRole,
+
+                                        message,
+                                    }),
                                 }
                             );
 
+                        const result =
+                            await response.json();
 
-                    const item =
-                        document.createElement(
-                            'button'
+                        if (!response.ok) {
+                            const firstError =
+                                Object.values(
+                                    result.errors || {}
+                                )
+                                    .flat()
+                                    .find(Boolean);
+
+                            throw new Error(
+                                firstError ||
+                                result.message ||
+                                'Unable to start conversation.'
+                            );
+                        }
+
+                        showToast(
+                            `Conversation with ${result.conversation.participant.name} started.`,
+                            'Conversation started'
                         );
 
+                        /*
+                         * Reload from the database so the
+                         * new thread is rendered from server truth.
+                         */
+                        window.location.reload();
+                    } catch (error) {
+                        button.disabled =
+                            false;
 
-                    item.type = 'button';
-
-                    item.className =
-                        'conversation-item';
-
-                    item.dataset.conversationItem =
-                        '';
-
-                    item.dataset.conversationId =
-                        id;
-
-                    item.dataset.search =
-                        `${name} ${role} ${text}`
-                            .toLowerCase();
-
-                    item.dataset.name =
-                        name;
-
-                    item.dataset.role =
-                        role;
-
-                    item.dataset.initials =
-                        initials;
-
-                    item.dataset.preview =
-                        text;
-
-                    item.dataset.time =
-                        time;
-
-
-                    item.innerHTML = `
-                        <span class="avatar avatar-soft">
-                            ${escapeChatHtml(initials)}
-                        </span>
-
-                        <span class="conversation-copy">
-
-                            <span class="conversation-meta">
-
-                                <strong>
-                                    ${escapeChatHtml(name)}
-                                </strong>
-
-                                <time>
-                                    ${escapeChatHtml(time)}
-                                </time>
-
-                            </span>
-
-                            <small class="conversation-preview">
-
-                                <span class="conversation-role">
-                                    ${escapeChatHtml(role)}
-                                </span>
-
-                                <span aria-hidden="true">
-                                    •
-                                </span>
-
-                                <span>
-                                    ${escapeChatHtml(text)}
-                                </span>
-
-                            </small>
-
-                        </span>
-                    `;
-
-
-                    conversationList.prepend(
-                        item
-                    );
-
-
-                    conversationItems.push(
-                        item
-                    );
-
-
-                    bindConversation(
-                        item
-                    );
-
-
-                    chatThreads[id] = [
-                        {
-                            from: 'me',
-                            text,
-                            time,
-                        },
-                    ];
-
-
-                    chatThreads.__contacts = [
-                        {
-                            conversationId:
-                                id,
-
-                            search:
-                                item.dataset.search,
-
-                            name,
-                            role,
-                            initials,
-
-                            preview:
-                                text,
-
-                            time,
-                        },
-
-                        ...(
-                            chatThreads.__contacts ||
-                            []
-                        ).filter(
-                            (contact) =>
-                                contact.conversationId !==
-                                id
-                        ),
-                    ];
-
-
-                    saveChatThreads();
-
-
-                    selectConversation(
-                        item
-                    );
-
-
-                    closeModal(
-                        document.querySelector(
-                            '[data-modal="new-conversation"]'
-                        )
-                    );
-
-
-                    if (nameInput) {
-                        nameInput.value = '';
+                        showToast(
+                            error.message ||
+                            'Unable to start the conversation.',
+                            'Conversation not started'
+                        );
                     }
-
-                    if (roleInput) {
-                        roleInput.value = 'Buyer';
-                    }
-
-                    if (firstMessage) {
-                        firstMessage.value = '';
-                    }
-
-
-                    showToast(
-                        `Conversation with ${name} was created.`,
-                        'Conversation started'
-                    );
                 }
             );
 
 
+                /*
+                |--------------------------------------------------------------------------
+                | Attachment selection
+                |--------------------------------------------------------------------------
+                */
+
+                document
+                    .querySelector(
+                        '[data-chat-attachment-button]'
+                    )
+                    ?.addEventListener(
+                        'click',
+                        () => {
+                            attachmentInput
+                                ?.click();
+                        }
+                    );
+
+
+                attachmentInput
+                    ?.addEventListener(
+                        'change',
+                        (event) => {
+                            const file =
+                                event.target
+                                    .files?.[0];
+
+                            if (!file) {
+                                clearAttachmentPreview();
+
+                                return;
+                            }
+
+                            const maxSize =
+                                10 * 1024 * 1024;
+
+                            if (file.size > maxSize) {
+                                showToast(
+                                    'Attachments must not exceed 10 MB.',
+                                    'Attachment too large'
+                                );
+
+                                clearAttachmentPreview();
+
+                                return;
+                            }
+
+                            const allowedExtensions = [
+                                'jpg',
+                                'jpeg',
+                                'png',
+                                'webp',
+                                'pdf',
+                                'doc',
+                                'docx',
+                                'xls',
+                                'xlsx',
+                                'txt',
+                                'csv',
+                                'zip',
+                            ];
+
+                            const extension =
+                                file.name
+                                    .split('.')
+                                    .pop()
+                                    ?.toLowerCase() || '';
+
+                            if (
+                                !allowedExtensions
+                                    .includes(extension)
+                            ) {
+                                showToast(
+                                    'This file type is not supported.',
+                                    'Attachment not allowed'
+                                );
+
+                                clearAttachmentPreview();
+
+                                return;
+                            }
+
+                            if (attachmentName) {
+                                attachmentName.textContent =
+                                    `${file.name} · ${formatAttachmentSize(
+                                        file.size
+                                    )}`;
+
+                                attachmentName.hidden =
+                                    false;
+                            }
+
+                            showToast(
+                                `${file.name} is ready to send.`,
+                                'Attachment selected'
+                            );
+                        }
+                    );
+
+
         /*
-        * Attachment preview
+        |--------------------------------------------------------------------------
+        | Emoji shortcut
+        |--------------------------------------------------------------------------
         */
-        document
-            .querySelector(
-                '[data-chat-attachment-button]'
-            )
-            ?.addEventListener(
-                'click',
-                () => {
-                    attachmentInput?.click();
-                }
-            );
 
-
-        attachmentInput?.addEventListener(
-            'change',
-            (event) => {
-
-                const file =
-                    event.target.files?.[0];
-
-
-                if (!file) {
-                    clearAttachmentPreview();
-                    return;
-                }
-
-
-                if (attachmentName) {
-                    attachmentName.textContent =
-                        `Attached: ${file.name}`;
-
-                    attachmentName.hidden =
-                        false;
-                }
-
-
-                showToast(
-                    `${file.name} is ready to attach to your next message.`,
-                    'Attachment selected'
-                );
-            }
-        );
-
-
-        /*
-        * Emoji shortcut
-        */
         document
             .querySelector(
                 '[data-chat-emoji]'
@@ -6561,10 +7608,12 @@
             ?.addEventListener(
                 'click',
                 () => {
+                    if (!messageInput) {
+                        return;
+                    }
 
-                    if (!messageInput) return;
-
-                    messageInput.value += '🙂';
+                    messageInput.value +=
+                        '🙂';
 
                     messageInput.focus();
                 }
@@ -6572,8 +7621,11 @@
 
 
         /*
-        * Conversation details
+        |--------------------------------------------------------------------------
+        | Conversation details
+        |--------------------------------------------------------------------------
         */
+
         document
             .querySelector(
                 '[data-chat-details]'
@@ -6581,28 +7633,21 @@
             ?.addEventListener(
                 'click',
                 () => {
+                    const conversation =
+                        getActiveConversation();
 
-                    const activeItem =
-                        document.querySelector(
-                            '[data-conversation-item].is-active'
-                        );
-
-
-                    if (!activeItem) return;
-
+                    if (!conversation) {
+                        return;
+                    }
 
                     const count =
                         (
-                            chatThreads[
-                                getConversationId(
-                                    activeItem
-                                )
-                            ] || []
+                            conversation.messages ||
+                            []
                         ).length;
 
-
                     showToast(
-                        `${activeItem.dataset.name} · ${activeItem.dataset.role} · ${count} messages`,
+                        `${conversation.name} · ${conversation.role} · ${count} message${count === 1 ? '' : 's'}`,
                         'Conversation details'
                     );
                 }
@@ -6610,77 +7655,95 @@
 
 
         /*
-        * Mark current conversation unread
+        |--------------------------------------------------------------------------
+        | Mark unread
+        |--------------------------------------------------------------------------
         */
+
         document
             .querySelector(
                 '[data-chat-mark-unread]'
             )
             ?.addEventListener(
                 'click',
-                () => {
+                async () => {
+                    const conversation =
+                        getActiveConversation();
 
                     const activeItem =
-                        document.querySelector(
-                            '[data-conversation-item].is-active'
-                        );
+                        getActiveConversationItem();
 
-
-                    if (!activeItem) return;
-
-
-                    let unread =
-                        activeItem.querySelector(
-                            '.unread-count'
-                        );
-
-
-                    if (!unread) {
-                        unread =
-                            document.createElement(
-                                'span'
-                            );
-
-                        unread.className =
-                            'unread-count';
-
-                        unread.textContent =
-                            '1';
-
-                        activeItem.appendChild(
-                            unread
-                        );
-                    } else {
-                        unread.textContent =
-                            String(
-                                Number(
-                                    unread.textContent ||
-                                    0
-                                ) + 1
-                            );
+                    if (
+                        !conversation ||
+                        !conversation.unread_url ||
+                        !activeItem
+                    ) {
+                        return;
                     }
 
+                    try {
+                        const response =
+                            await fetch(
+                                conversation.unread_url,
+                                {
+                                    method: 'POST',
 
-                    updateUnreadSummary();
+                                    headers: {
+                                        'Accept':
+                                            'application/json',
 
+                                        'X-CSRF-TOKEN':
+                                            csrfToken,
+                                    },
+                                }
+                            );
 
-                    showToast(
-                        `${activeItem.dataset.name}'s conversation was marked unread.`,
-                        'Inbox updated'
-                    );
+                        const result =
+                            await response.json();
+
+                        if (!response.ok) {
+                            throw new Error(
+                                result.message ||
+                                'Unable to change read status.'
+                            );
+                        }
+
+                        conversation.unread =
+                            Number(
+                                result.unread || 0
+                            );
+
+                        setConversationUnread(
+                            activeItem,
+                            conversation.unread
+                        );
+
+                        showToast(
+                            result.message,
+                            conversation.unread > 0
+                                ? 'Marked unread'
+                                : 'Read state unchanged'
+                        );
+                    } catch (error) {
+                        showToast(
+                            error.message ||
+                            'Unable to update the conversation.',
+                            'Read state not changed'
+                        );
+                    }
                 }
             );
 
 
         /*
-        * Initial unread counter.
+        |--------------------------------------------------------------------------
+        | Initial inbox state
+        |--------------------------------------------------------------------------
         */
+
         updateUnreadSummary();
 
 
-        /*
-        * Render initial active thread.
-        */
         const initialConversation =
             document.querySelector(
                 '[data-conversation-item].is-active'
@@ -6688,10 +7751,8 @@
 
 
         if (initialConversation) {
-            renderChatThread(
-                getConversationId(
-                    initialConversation
-                )
+            selectConversation(
+                initialConversation
             );
         }
     });

@@ -69,4 +69,97 @@ class User extends Authenticatable
     {
         return $this->hasMany(Order::class, 'buyer_id');
     }
+
+    public function returnRequests()
+    {
+        return $this->hasMany(ReturnRequest::class, 'buyer_id');
+    }
+
+    public function reviewedReturnRequests()
+    {
+        return $this->hasMany(ReturnRequest::class, 'reviewed_by');
+    }
+
+    public function returnEvidence()
+    {
+        return $this->hasMany(ReturnEvidence::class, 'uploaded_by');
+    }
+
+    public function approvedRefunds()
+    {
+        return $this->hasMany(Refund::class, 'approved_by');
+    }
+
+    public function openedDisputes()
+    {
+        return $this->hasMany(
+            Dispute::class,
+            'opened_by'
+        );
+    }
+
+    public function assignedDisputes()
+    {
+        return $this->hasMany(
+            Dispute::class,
+            'assigned_to'
+        );
+    }
+
+    public function disputes()
+    {
+        return $this->belongsToMany(
+            Dispute::class,
+            'dispute_participants'
+        )
+            ->withPivot([
+                'participant_role',
+                'joined_at',
+            ]);
+    }
+
+    public function disputeEvidence()
+    {
+        return $this->hasMany(
+            DisputeEvidence::class,
+            'uploaded_by'
+        );
+    }
+
+    public function disputeEvents()
+    {
+        return $this->hasMany(
+            DisputeEvent::class,
+            'actor_user_id'
+        );
+    }
+
+    public function createdConversations()
+    {
+        return $this->hasMany(
+            Conversation::class,
+            'created_by'
+        );
+    }
+
+    public function conversations()
+    {
+        return $this->belongsToMany(
+            Conversation::class,
+            'conversation_participants'
+        )
+            ->withPivot([
+                'participant_role',
+                'last_read_at',
+                'joined_at',
+            ]);
+    }
+
+    public function sentMessages()
+    {
+        return $this->hasMany(
+            Message::class,
+            'sender_id'
+        );
+    }
 }

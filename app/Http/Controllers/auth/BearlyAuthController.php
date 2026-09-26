@@ -1,11 +1,17 @@
 <?php
 
-namespace App\Http\Controllers\Auth;
+namespace App\Http\Controllers\auth;
 
 use App\Enums\AccountStatus;
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\InternationalPhone;
+use App\Services\EmailVerificationService;
+use App\Services\PostalCodeLookup;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Throwable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -45,6 +51,11 @@ class BearlyAuthController extends Controller
             $request->session()->invalidate();
             $request->session()->regenerateToken();
 
+            if (in_array($user->status, ['pending', 'needs_revision'], true) && $user->role === 'buyer') {
+                $request->session()->put('marketplace_application', [
+                    'name' => $user->name, 'role' => $user->role, 'status' => $user->status,
+                ]);
+            }
             return $this->redirectForStatus($user->status);
         }
 
@@ -72,11 +83,14 @@ class BearlyAuthController extends Controller
             'role' => ['required', Rule::in([UserRole::Buyer->value, UserRole::Seller->value])],
             'first_name' => ['required', 'string', 'max:60', 'regex:/^[\pL\s\'\-]+$/u'],
             'last_name' => ['required', 'string', 'max:60', 'regex:/^[\pL\s\'\-]+$/u'],
-            'middle_initial' => ['nullable', 'string', 'max:2', 'regex:/^[\pL\.]+$/u'],
+            'middle_initial' => ['nullable', 'string', 'max:2', 'regex:/^[A-Za-z]\.?$/D'],
             'sex' => ['required', Rule::in(['female', 'male', 'prefer_not_to_say'])],
             'birthday' => ['required', 'date', 'before:today'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
-            'contact_number' => ['required', 'regex:/^(09|\+639)\d{9}$/'],
+            'contact_number' => ['required', 'string', 'max:17'],
+            'phone_country' => ['required', 'string', 'size:2'],
+            'city_code' => ['nullable', 'regex:/^[0-9]{6,10}$/D'],
+            'postal_manual' => ['nullable', 'boolean'],
             'province' => ['required', 'string', 'max:100'],
             'city' => ['required', 'string', 'max:100'],
             'barangay' => ['required', 'string', 'max:100'],
@@ -91,34 +105,56 @@ class BearlyAuthController extends Controller
             'terms' => ['accepted'],
         ]);
 
-        $validIdPath = $request->file('valid_id')->store('registration-documents/valid-ids', 'local');
-        $businessPermitPath = $request->file('business_permit')?->store('registration-documents/business-permits', 'local');
+        $data['contact_number'] = app(InternationalPhone::class)->normalize($data['contact_number'], $data['phone_country']);
+        app(PostalCodeLookup::class)->validate($data);
+        $verification = app(EmailVerificationService::class);
+        $verifiedAt = $data['role'] === 'buyer'
+            ? $verification->verifiedAt($request, strtolower(trim($data['email']))) : null;
+        $data['middle_initial'] = empty($data['middle_initial']) ? null : strtoupper(substr($data['middle_initial'], 0, 1)).'.';
 
-        $user = User::create([
-            'name' => trim($data['first_name'].' '.$data['last_name']),
-            'first_name' => $data['first_name'],
-            'last_name' => $data['last_name'],
-            'middle_initial' => $data['middle_initial'] ?? null,
-            'sex' => $data['sex'],
-            'birthday' => $data['birthday'],
-            'email' => $data['email'],
-            'contact_number' => $data['contact_number'],
-            'role' => $data['role'],
-            'status' => AccountStatus::Pending->value,
-            'province' => $data['province'],
-            'city' => $data['city'],
-            'barangay' => $data['barangay'],
-            'street_address' => trim($data['house_number'].' '.$data['street_name']).', '.$data['postal_code'],
-            'business_name' => $data['business_name'] ?? null,
-            'business_category' => $data['business_category'] ?? null,
-            'valid_id_path' => $validIdPath,
-            'business_permit_path' => $businessPermitPath,
-            'password' => Hash::make($data['password']),
-        ]);
+        $validIdPath = $request->file('valid_id')->store('registration-documents/valid-ids', 'local');
+        $businessPermitPath = null;
+        try {
+            $businessPermitPath = $data['role'] === 'seller'
+                ? $request->file('business_permit')?->store('registration-documents/business-permits', 'local') : null;
+
+            $user = DB::transaction(fn () => User::create([
+                'name' => trim($data['first_name'].' '.$data['last_name']),
+                'first_name' => $data['first_name'],
+                'last_name' => $data['last_name'],
+                'middle_initial' => $data['middle_initial'] ?? null,
+                'sex' => $data['sex'],
+                'birthday' => $data['birthday'],
+                'email' => $data['email'],
+                'contact_number' => $data['contact_number'],
+                'phone_country' => $data['phone_country'],
+                'phone_verified_at' => null,
+                'email_verified_at' => $verifiedAt,
+                'terms_accepted_at' => now(),
+                'terms_version' => config('bearly-policies.version'),
+                'privacy_version' => config('bearly-policies.version'),
+                'role' => $data['role'],
+                'status' => AccountStatus::Pending->value,
+                'province' => $data['province'],
+                'city' => $data['city'],
+                'barangay' => $data['barangay'],
+                'street_address' => trim($data['house_number'].' '.$data['street_name']).', '.$data['postal_code'],
+                'business_name' => $data['role'] === 'seller' ? ($data['business_name'] ?? null) : null,
+                'business_category' => $data['role'] === 'seller' ? ($data['business_category'] ?? null) : null,
+                'valid_id_path' => $validIdPath,
+                'business_permit_path' => $businessPermitPath,
+                'password' => Hash::make($data['password']),
+            ]));
+        } catch (Throwable $exception) {
+            Storage::disk('local')->delete(array_filter([$validIdPath, $businessPermitPath]));
+            throw $exception;
+        }
+        $verification->forget($request);
+        $request->session()->forget(['logistics_application', 'rider_application']);
 
         session([
             'marketplace_application' => [
-                'name' => $user->name,
+                'name' => trim($user->first_name.' '.$user->middle_initial.' '.$user->last_name),
                 'role' => $user->role,
                 'status' => $user->status,
                 'approval_authority' => 'Bearly Administrator',

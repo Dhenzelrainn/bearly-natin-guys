@@ -1,3 +1,7 @@
+import { setupEmail } from './registration-email';
+import { setupPhone } from './registration-phone';
+import { setupPostal } from './registration-postal';
+
 document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('[data-toggle-password]').forEach((button) => {
         button.addEventListener('click', () => {
@@ -9,6 +13,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 'aria-label',
                 input.type === 'password' ? 'Show password' : 'Hide password'
             );
+            button.setAttribute('aria-pressed', String(input.type === 'text'));
         });
     });
 
@@ -263,7 +268,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     const selectedRole = () =>
-        form.querySelector('input[name="role"]:checked')?.value || 'seller';
+        form.querySelector('input[name="role"]:checked')?.value || 'buyer';
+
+    const phone = setupPhone(form, selectedRole);
+    const emailVerification = setupEmail(form, selectedRole);
+    const postal = setupPostal(form);
 
     const activeSteps = () =>
         selectedRole() === 'buyer' ? [1, 2, 4] : [1, 2, 3, 4];
@@ -278,6 +287,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function updateRoleUI() {
         const role = selectedRole();
+        registration.dataset.role = role;
+        phone.updateRole();
+        emailVerification.updateRole();
+        registration.querySelector('[data-buyer-guidance]').hidden = role !== 'buyer';
         const stepLabel = registration.querySelector('[data-role-step-label]');
 
         if (stepLabel) {
@@ -499,15 +512,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             if (
-                input.name === 'contact_number' &&
-                !/^(?:\+639|09)\d{9}$/.test(input.value)
-            ) {
-                input.setCustomValidity(
-                    'Use 09XXXXXXXXX or +639XXXXXXXXX.'
-                );
-            }
-
-            if (
                 input.name === 'password_confirmation' &&
                 input.value !== form.elements.password?.value
             ) {
@@ -557,6 +561,16 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
+        if (currentStep === 1 && (!phone.validate() || !emailVerification.validate())) return false;
+        if (currentStep === 2) {
+            for (const name of ['province', 'city', 'barangay', 'postal_code']) {
+                const field = form.elements[name];
+                if (!field || field.disabled || !field.value.trim()) {
+                    setAddressMessage('Complete your address, or choose manual entry if the address service is unavailable.', 'error');
+                    return false;
+                }
+            }
+        }
         return true;
     }
 
@@ -687,6 +701,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const provinceCode =
             provinceSelect.selectedOptions[0]?.dataset.code;
 
+        postal.clear();
         setSelectState(citySelect, 'Loading cities...');
         setSelectState(barangaySelect, 'Select city first');
 
@@ -732,6 +747,7 @@ document.addEventListener('DOMContentLoaded', () => {
     async function loadBarangays() {
         if (!citySelect || !barangaySelect) return;
 
+        void postal.lookup();
         const cityCode = citySelect.selectedOptions[0]?.dataset.code;
 
         setSelectState(barangaySelect, 'Loading barangays...');
@@ -772,6 +788,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function enableManualAddress() {
+        postal.clear();
+        postal.manual();
         [
             [provinceSelect, 'Enter province'],
             [citySelect, 'Enter city or municipality'],
@@ -787,6 +805,7 @@ document.addEventListener('DOMContentLoaded', () => {
             input.value =
                 select.value || select.dataset.oldValue || '';
             input.dataset.manualAddress = '';
+            if (input.name !== 'barangay') input.addEventListener('change', () => postal.lookup());
 
             const widget = searchableSelects.get(select);
 
@@ -884,11 +903,9 @@ document.addEventListener('DOMContentLoaded', () => {
     birthday?.addEventListener('change', calculateAge);
     calculateAge();
 
-    form.elements.contact_number?.addEventListener('input', (event) => {
-        event.target.value = event.target.value
-            .replace(/(?!^\+)[^\d]/g, '')
-            .slice(0, 13);
-    });
+    const middle = form.elements.middle_initial;
+    middle.addEventListener('input', () => { middle.value = middle.value.replace(/[^a-z]/gi, '').slice(0, 1).toUpperCase(); });
+    middle.addEventListener('blur', () => { if (middle.value) middle.value = middle.value[0].toUpperCase() + '.'; });
 
     form.querySelectorAll('[data-uppercase]').forEach((input) => {
         input.addEventListener('input', () => {
@@ -1047,11 +1064,18 @@ document.addEventListener('DOMContentLoaded', () => {
             });
     });
 
-    submit.addEventListener('click', () => {
-        if (!validateStep()) return;
-
-        form.requestSubmit();
+    let submitting = false;
+    form.addEventListener('submit', (event) => {
+        if (submitting) { event.preventDefault(); return; }
+        for (const step of activeSteps()) {
+            showStep(step);
+            if (!validateStep()) { event.preventDefault(); return; }
+        }
+        submitting = true;
+        submit.disabled = true;
+        submit.textContent = 'Submitting…';
     });
+    submit.addEventListener('click', () => form.requestSubmit());
 
     showStep(1);
     loadProvinces();

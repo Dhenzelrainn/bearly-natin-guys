@@ -30,6 +30,9 @@
     method="POST"
     action="{{ route('register.submit') }}"
     enctype="multipart/form-data"
+    data-email-send="{{ route('register.email.send') }}"
+    data-email-check="{{ route('register.email.check') }}"
+    data-postal-url="{{ route('postal.lookup') }}"
     novalidate
 >
     @csrf
@@ -47,7 +50,7 @@
             <h2>Choose how you'll use Bearly</h2>
             <div class="role-grid" aria-label="Choose account type">
                 <label class="role-card">
-                    <input type="radio" name="role" value="buyer" @checked(old('role') === 'buyer')>
+                    <input type="radio" name="role" value="buyer" @checked(old('role', 'buyer') === 'buyer')>
                     <span class="role-check">✓</span>
                     <img
                         src="{{ asset('images/icon-buyer.png') }}"
@@ -60,7 +63,7 @@
                 </label>
 
                 <label class="role-card selected">
-                    <input type="radio" name="role" value="seller" @checked(old('role', 'seller') === 'seller')>
+                    <input type="radio" name="role" value="seller" @checked(old('role') === 'seller')>
                     <span class="role-check">✓</span>
                     <img
                         src="{{ asset('images/icon-seller.png') }}"
@@ -111,7 +114,7 @@
                         value="{{ old('middle_initial') }}"
                         maxlength="2"
                         pattern="[A-Za-z][.]?"
-                        title="Enter one letter, optionally followed by a period, such as P or P."
+                        title="Enter one letter. It will be capitalized and a period added." autocomplete="additional-name" data-middle-initial
                         placeholder="P."
                     >
                 </label>
@@ -128,21 +131,42 @@
                 </label>
                 <label>Email address<input type="email" name="email" value="{{ old('email') }}" placeholder="Enter your email address" required></label>
             </div>
-            <div class="form-grid three">
-                <label>Contact number<input name="contact_number" value="{{ old('contact_number') }}" inputmode="numeric" maxlength="13" pattern="(?:\+639|09)\d{9}" placeholder="09XXXXXXXXX" required></label>
+            <section class="phone-verification" data-email-verification aria-label="Verify email address">
+                <div class="verification-actions">
+                    <button type="button" class="secondary-button" data-email-send>Send code</button>
+                    <p data-email-status role="status" aria-live="polite"></p>
+                </div>
+                <div class="otp-entry" data-email-code-entry hidden>
+                    <label for="email-code">Verification code<input id="email-code" data-email-code type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="6-digit code"></label>
+                    <button type="button" class="primary-button" data-email-check>Verify email</button>
+                </div>
+            </section>
+            <div class="form-grid contact-birth-grid">
+                <div class="phone-field">
+                    <span class="field-label">Contact number</span>
+                    <div class="phone-inputs">
+                        <label class="sr-only" for="phone-country">Phone country code</label>
+                        <select id="phone-country" name="phone_country" data-old-value="{{ old('phone_country', 'PH') }}" autocomplete="country" required></select>
+                        <label class="sr-only" for="phone-national">Mobile number</label>
+                        <input id="phone-national" data-phone-national type="tel" inputmode="numeric" autocomplete="tel-national" maxlength="16" aria-describedby="phone-help" required>
+                        <input type="hidden" name="contact_number" value="{{ old('contact_number') }}">
+                    </div>
+                    <small id="phone-help" data-phone-help></small>
+                </div>
                 <label>Birthday<input id="birthday" type="date" name="birthday" value="{{ old('birthday') }}" max="{{ now()->toDateString() }}" required></label>
                 <label>Age <em>(Auto-generated)</em><input id="age" name="age" value="{{ old('age', '--') }}" readonly required></label>
             </div>
+
             <div class="form-grid two password-row">
-                <label>Password<div class="password-wrap"><input id="register-password" type="password" name="password" placeholder="Enter your password" required><button type="button" data-toggle-password="register-password" aria-label="Show password"><svg viewBox="0 0 24 24"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></div></label>
-                <label>Confirm password<div class="password-wrap"><input id="password-confirmation" type="password" name="password_confirmation" placeholder="Confirm your password" required><button type="button" data-toggle-password="password-confirmation" aria-label="Show password"><svg viewBox="0 0 24 24"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></div></label>
+                <label>Password<div class="password-wrap"><input id="register-password" type="password" name="password" autocomplete="new-password" minlength="8" pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9]).{8,}" placeholder="Enter your password" required><button type="button" data-toggle-password="register-password" aria-label="Show password"><svg viewBox="0 0 24 24"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></div></label>
+                <label>Confirm password<div class="password-wrap"><input id="password-confirmation" type="password" name="password_confirmation" autocomplete="new-password" placeholder="Confirm your password" required><button type="button" data-toggle-password="password-confirmation" aria-label="Show password"><svg viewBox="0 0 24 24"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></div></label>
             </div>
             <div class="password-meter"><i></i><span>Use 8+ characters with uppercase, lowercase, and a number.</span></div>
-            <label class="check-label terms"><input type="checkbox" name="terms" value="1" @checked(old('terms')) required><span>I agree to the <a href="/terms">Terms of Service</a> and <a href="/privacy">Privacy Policy</a></span></label>
+            <label class="check-label terms"><input type="checkbox" name="terms" value="1" @checked(old('terms')) required><span>I agree to the <a href="{{ route('terms') }}" target="_blank" rel="noopener">Terms of Service</a> and acknowledge the <a href="{{ route('privacy') }}" target="_blank" rel="noopener">Privacy Policy</a></span></label>
         </section>
 
         <section class="form-step" data-step="2">
-            <div class="section-heading"><h2>Your address</h2><p>Tell us where you are located.</p></div>
+            <div class="section-heading"><h2>Your address</h2><p>Enter your Philippine delivery address. International phone numbers are supported; overseas delivery addresses are not yet available.</p></div>
             <div class="form-grid three" data-address-fields>
                 <label for="province">Province<select id="province" name="province" data-province-select data-searchable-address data-search-placeholder="Search province" data-old-value="{{ old('province') }}" required disabled><option value="">Loading provinces...</option></select></label>
                 <label for="city">City / Municipality<select id="city" name="city" data-city-select data-searchable-address data-search-placeholder="Search city or municipality" data-old-value="{{ old('city') }}" required disabled><option value="">Select province first</option></select></label>
@@ -155,7 +179,7 @@
                     <button type="button" class="secondary-button" data-address-manual>Enter address manually</button>
                 </div>
             </div>
-            <div class="form-grid three"><label>Street name<input name="street_name" value="{{ old('street_name') }}" required></label><label>House / Unit no.<input name="house_number" value="{{ old('house_number') }}" required></label><label>Postal code<input name="postal_code" value="{{ old('postal_code') }}" inputmode="numeric" pattern="\d{4}" maxlength="4" required></label></div>
+            <div class="form-grid three"><label>Street name<input name="street_name" value="{{ old('street_name') }}" required></label><label>House / Unit no.<input name="house_number" value="{{ old('house_number') }}" required></label><div class="postal-field"><label for="postal-code">Postal code</label><input id="postal-code" name="postal_code" value="{{ old('postal_code') }}" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" aria-describedby="postal-help" required><label class="sr-only" for="postal-area">Postal area</label><select id="postal-area" data-postal-choices hidden></select><small id="postal-help" data-postal-help>Select your municipality to fill this in.</small><button type="button" class="text-button" data-postal-manual>Enter a different postal code</button><input type="hidden" name="city_code" value="{{ old('city_code') }}"><input type="hidden" name="postal_manual" value="{{ old('postal_manual', '0') }}"></div></div>
         </section>
 
         <section class="form-step role-details-step" data-step="3">
@@ -212,7 +236,7 @@
                 </div>
                 <div class="document-security-note">
                     <img src="{{ asset('images/security.png') }}" alt="" class="document-security-icon" aria-hidden="true">
-                    <span>Your documents are encrypted and visible only to authorized reviewers.</span>
+                    <span>Your ID is used to review your application.</span>
                 </div>
             </div>
 
@@ -246,6 +270,13 @@
                         </div>
                     </div>
                 </article>
+
+                <aside class="upload-guidance" data-buyer-guidance hidden>
+                    <h3>Before you upload</h3>
+                    <ul><li>Use a current government-issued ID.</li><li>Keep all four corners visible.</li><li>Make sure the name and photo are readable.</li><li>Avoid glare, blur, and covered details.</li></ul>
+                    <p>One file is enough. Upload a JPG, PNG, or PDF up to 5 MB.</p>
+                    <a href="{{ route('privacy') }}" target="_blank" rel="noopener">How we use your information</a>
+                </aside>
 
                 <article class="document-upload" data-upload-card data-seller-document>
                     <div class="document-upload__header">
@@ -286,7 +317,6 @@
                         <span class="summary-eyebrow">Final check</span>
                         <h3 id="application-summary-title">Application summary</h3>
                     </div>
-                    <button type="button" class="summary-edit" data-edit-step="1">Edit personal details</button>
                 </div>
                 <div class="review-groups" data-review-summary></div>
             </section>

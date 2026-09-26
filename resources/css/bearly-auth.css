@@ -38,7 +38,7 @@ html {
     min-width: 320px;
     background: var(--cream-50);
     color: var(--text);
-    font-family: "Plus Jakarta Sans", sans-serif;
+    font-family: "Poppins", sans-serif;
 }
 
 body {
@@ -80,6 +80,12 @@ img {
     white-space: nowrap;
     border: 0;
 }
+
+/* Custom reveal buttons own password visibility, including Microsoft Edge. */
+.login-field input::-ms-reveal,
+.login-field input::-ms-clear,
+.password-wrap input::-ms-reveal,
+.password-wrap input::-ms-clear { display: none; }
 
 /* ---------- Shared header ---------- */
 .auth-header {
@@ -2284,4 +2290,87 @@ button:disabled {
     .register-form .role-card {
         min-height: 118px !important;
     }
+}
+
+/* ---------- Registration phone and postal controls ---------- */
+.register-form [hidden], .buyer-pending [hidden] { display: none !important; }
+.field-label { display: block; margin-bottom: 0; font-size: 14px; font-weight: 600; }
+.contact-birth-grid { grid-template-columns: minmax(280px, 1.7fr) minmax(140px, 1fr) minmax(80px, .55fr); }
+.phone-inputs { display: grid; grid-template-columns: minmax(130px, 1fr) minmax(115px, 1fr); gap: 8px; }
+.phone-inputs select, .phone-inputs input { min-width: 0; width: 100%; }
+.phone-field small, .postal-field small { display: block; color: var(--muted); margin-top: 8px; line-height: 1.6; font-size: 12px; }
+.phone-verification { border-block: 1px solid var(--line-soft); padding: 18px 0; margin: 6px 0 24px; }
+.phone-verification .check-label { display: flex; gap: 10px; font-size: 13px; font-weight: 400; line-height: 1.65; align-items: flex-start; }
+.phone-verification .check-label input { flex: 0 0 18px; width: 18px; height: 18px; margin: 2px 0 0; padding: 0; }
+.verification-actions { display: flex; align-items: center; gap: 16px; margin-top: 14px; }
+.verification-actions button { flex-shrink: 0; }
+.verification-actions p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+[data-email-status][data-state="error"] { color: var(--error); }
+[data-email-status][data-state="verified"] { color: #287044; font-weight: 600; }
+.otp-entry { display: flex; align-items: flex-end; gap: 12px; margin-top: 16px; }
+.otp-entry label { max-width: 230px; }
+.otp-entry input { letter-spacing: .18em; }
+.register-form button:disabled { opacity: .6; cursor: not-allowed; }
+.postal-field select { margin-top: 8px; }
+.postal-field input[readonly] { background: #f5f3ee; }
+.text-button { background: none; padding: 0; border: 0; color: var(--brown-900); font-size: 12px; text-align: left; text-decoration: underline; cursor: pointer; margin-top: 8px; }
+
+/* ---------- Buyer document guidance ---------- */
+.register-shell[data-role="buyer"] .upload-grid { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 28px; }
+.upload-guidance { padding: 18px 0 18px 24px; border-left: 1px solid var(--line-soft); }
+.upload-guidance h3 { color: var(--brown-950); font-size: 18px; margin: 0 0 18px; }
+.upload-guidance ul { padding-left: 18px; margin: 0; }
+.upload-guidance li { margin: 0 0 13px; font-size: 14px; line-height: 1.6; }
+.upload-guidance p, .upload-guidance a { font-size: 13px; line-height: 1.7; }
+.upload-guidance p { color: var(--muted); margin-top: 22px; }
+
+/* ---------- Buyer application receipt ---------- */
+.buyer-pending { padding: 48px 24px 64px; background: #f7f5f2; min-height: calc(100vh - 80px); }
+.pending-receipt { max-width: 680px; margin: 0 auto; background: #fff; border: 1px solid var(--line-soft); border-radius: 12px; padding: 40px 48px; }
+.pending-check { display: grid; place-items: center; width: 48px; height: 48px; background: #edf5ef; color: #287044; font-size: 25px; border-radius: 50%; margin-bottom: 24px; }
+.pending-eyebrow { font-size: 12px; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.pending-receipt h1 { font-size: clamp(25px, 3vw, 32px); line-height: 1.25; color: var(--brown-950); margin: 8px 0 14px; font-weight: 600; }
+.pending-intro { color: var(--muted); font-size: 15px; line-height: 1.8; margin: 0; }
+.pending-details { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; padding: 24px 0; margin: 24px 0; border-block: 1px solid var(--line-soft); }
+.pending-details dt { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+.pending-details dd { margin: 0; font-size: 14px; font-weight: 500; overflow-wrap: anywhere; }
+.pending-status { color: #8b631a; }
+.pending-timeline { padding: 0; margin: 0; list-style: none; }
+.pending-timeline li { position: relative; display: flex; align-items: flex-start; gap: 16px; padding-bottom: 26px; }
+.pending-timeline li:not(:last-child)::after { content: ''; position: absolute; top: 32px; bottom: 4px; left: 15px; border-left: 1px solid var(--line-soft); }
+.pending-timeline li > span { flex: 0 0 32px; height: 32px; display: grid; place-items: center; font-size: 13px; border-radius: 50%; border: 1px solid var(--line-soft); color: var(--muted); }
+.pending-timeline .is-complete > span { background: #edf5ef; color: #287044; border-color: #d8e8dc; }
+.pending-timeline [aria-current="step"] > span { color: var(--brown-900); background: #fcf3df; border-color: #d8b56f; }
+.pending-timeline strong { font-size: 14px; font-weight: 600; }
+.pending-timeline p { font-size: 13px; color: var(--muted); line-height: 1.7; margin: 4px 0 0; }
+.pending-timeline .is-upcoming strong { color: var(--muted); }
+.pending-next { padding-top: 20px; border-top: 1px solid var(--line-soft); }
+.pending-next h2 { font-size: 16px; font-weight: 600; margin: 0 0 8px; }
+.pending-next p { font-size: 14px; color: var(--muted); line-height: 1.8; margin: 0 0 24px; }
+.pending-signin { display: flex; justify-content: space-between; width: 100%; text-decoration: none; background: var(--brown-900); color: #fff; }
+.pending-note { text-align: center; color: var(--muted); font-size: 12px; margin: 16px 0 0; }
+
+/* ---------- Terms and privacy ---------- */
+.legal-page { max-width: 840px; margin: 0 auto; padding: 48px 24px 80px; }
+.legal-page h1 { color: var(--brown-950); font-size: 32px; font-weight: 600; margin: 12px 0; }
+.legal-page h2 { font-size: 19px; margin-top: 32px; font-weight: 600; }
+.legal-page p, .legal-page li { font-size: 15px; line-height: 1.9; }
+.legal-page ul { list-style: disc; padding-left: 24px; }
+.legal-meta { font-size: 12px !important; color: var(--muted); }
+.legal-draft { border-left: 3px solid #b9892d; background: #fcf5e6; padding: 12px 16px; font-size: 13px !important; }
+@media (max-width: 800px) {
+    .register-shell[data-role="buyer"] .upload-grid { grid-template-columns: 1fr; }
+    .upload-guidance { padding: 16px 0; border-left: 0; border-top: 1px solid var(--line-soft); }
+    .verification-actions, .otp-entry { flex-wrap: wrap; }
+    .pending-receipt { padding: 28px 24px; }
+    .buyer-pending { padding: 24px 16px; }
+}
+@media (max-width: 420px) {
+    .pending-details { grid-template-columns: 1fr; gap: 18px; }
+    .phone-inputs { grid-template-columns: minmax(130px, 1fr) minmax(100px, 1fr); }
+}
+
+@media (max-width: 1100px) {
+    .contact-birth-grid { grid-template-columns: 1fr 1fr; }
+    .contact-birth-grid .phone-field { grid-column: 1 / -1; }
 }

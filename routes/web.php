@@ -1,6 +1,8 @@
 <?php
 
-use App\Http\Controllers\Auth\BearlyAuthController;
+use App\Http\Controllers\auth\BearlyAuthController;
+use App\Http\Controllers\auth\EmailVerificationController;
+use App\Http\Controllers\PostalCodeController;
 use App\Http\Controllers\AccountApprovalController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AdminRoleApplicationController;
@@ -37,7 +39,14 @@ Route::view('/contact', 'landing-page.contact.contact')
 |--------------------------------------------------------------------------
 */
 
+Route::view('/terms', 'legal.terms')->name('terms');
+Route::view('/privacy', 'legal.privacy')->name('privacy');
+
 Route::middleware('guest')->group(function () {
+    Route::post('/register/email/send', [EmailVerificationController::class, 'send'])
+        ->middleware('throttle:10,1')->block(30, 5)->name('register.email.send');
+    Route::post('/register/email/check', [EmailVerificationController::class, 'check'])
+        ->middleware('throttle:15,1')->block(30, 5)->name('register.email.check');
     Route::get('/login', [BearlyAuthController::class, 'showLogin'])
         ->name('login');
 
@@ -48,7 +57,7 @@ Route::middleware('guest')->group(function () {
         ->name('register');
 
     Route::post('/register', [BearlyAuthController::class, 'register'])
-        ->name('register.submit');
+        ->middleware('throttle:10,1')->block(30, 5)->name('register.submit');
 });
 
 Route::post('/logout', [BearlyAuthController::class, 'logout'])
@@ -66,6 +75,9 @@ Route::get('/forgot-password', fn () => redirect()->route('login'))
 | PSGC Address API
 |--------------------------------------------------------------------------
 */
+
+Route::get('/api/postal-codes', PostalCodeController::class)
+    ->middleware('throttle:60,1')->name('postal.lookup');
 
 Route::prefix('api/psgc')
     ->middleware('throttle:60,1')
@@ -346,7 +358,7 @@ Route::prefix('logistics')->name('logistics.')->group(function () {
         ->name('register');
 
     Route::post('/register', [LogisticsController::class, 'submitRegistration'])
-        ->name('register.submit');
+        ->middleware('throttle:10,1')->block(30, 5)->name('register.submit');
 
     Route::redirect('/login', '/login')
         ->name('login');
@@ -415,7 +427,7 @@ Route::prefix('rider')->name('rider.')->group(function () {
         ->name('register');
 
     Route::post('/register', [RiderController::class, 'submitRegistration'])
-        ->name('register.submit');
+        ->middleware('throttle:10,1')->block(30, 5)->name('register.submit');
 
     Route::redirect('/login', '/login')
         ->name('login');

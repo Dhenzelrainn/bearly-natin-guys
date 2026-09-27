@@ -23,15 +23,6 @@ class MobileAuthController extends Controller
 
         $email = strtolower(trim($credentials['email']));
 
-        /*
-        |--------------------------------------------------------------------------
-        | Login rate limit
-        |--------------------------------------------------------------------------
-        |
-        | Same idea as the Bearly website login:
-        | maximum 5 failed attempts before a temporary lock.
-        |
-        */
         $rateKey = 'mobile-login:' . hash_hmac(
             'sha256',
             $email . '|' . $request->ip(),
@@ -46,12 +37,6 @@ class MobileAuthController extends Controller
             ], 429);
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Find account
-        |--------------------------------------------------------------------------
-        */
-
         $user = User::whereRaw('LOWER(email) = ?', [$email])->first();
 
         if (! $user || ! Hash::check($credentials['password'], $user->password)) {
@@ -64,15 +49,6 @@ class MobileAuthController extends Controller
 
         RateLimiter::clear($rateKey);
 
-        /*
-        |--------------------------------------------------------------------------
-        | Mobile-supported roles
-        |--------------------------------------------------------------------------
-        |
-        | Bearly mobile currently supports Buyer and Rider only.
-        |
-        */
-
         if (! in_array($user->role, [
             UserRole::Buyer->value,
             UserRole::Rider->value,
@@ -82,12 +58,6 @@ class MobileAuthController extends Controller
             ], 403);
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Account approval/status check
-        |--------------------------------------------------------------------------
-        */
-
         if ($user->status !== AccountStatus::Active->value) {
             return response()->json([
                 'message' => $this->statusMessage($user->status),
@@ -95,12 +65,6 @@ class MobileAuthController extends Controller
                 'role' => $user->role,
             ], 403);
         }
-
-        /*
-        |--------------------------------------------------------------------------
-        | Successful login
-        |--------------------------------------------------------------------------
-        */
 
         $user->forceFill([
             'last_login_at' => now(),
@@ -127,6 +91,17 @@ class MobileAuthController extends Controller
                 'role' => $user->role,
                 'status' => $user->status,
             ],
+        ]);
+    }
+
+    public function logout(Request $request): JsonResponse
+    {
+        $request->user()
+            ?->currentAccessToken()
+            ?->delete();
+
+        return response()->json([
+            'message' => 'Logout successful.',
         ]);
     }
 

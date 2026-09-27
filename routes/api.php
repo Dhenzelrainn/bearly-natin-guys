@@ -25,6 +25,11 @@ Route::post('/mobile/register/email/verify', [
     'verifyEmailCode',
 ]);
 
+Route::post('/mobile/register/buyer', [
+    MobileRegistrationController::class,
+    'registerBuyer',
+]);
+
 Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');

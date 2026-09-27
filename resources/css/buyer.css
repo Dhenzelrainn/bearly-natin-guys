@@ -2667,3 +2667,1652 @@ body.bc .bc-preview-toast.is-visible {
         gap: 3px;
     }
 }
+
+/* =========================================================
+   HOMEPAGE CHAT — SAFE SIDEBAR PLACEMENT
+   Chat remains part of the left sidebar and stops with the
+   sidebar before the footer. Category button sizes are untouched.
+   ========================================================= */
+
+body:not(.bc) .sidebar > .chat-button{
+    position:sticky;
+    left:auto;
+    right:auto;
+    bottom:10px;
+    flex:0 0 auto;
+    align-self:flex-start;
+    margin:10px 8px 4px;
+    z-index:26;
+}
+
+body:not(.bc) .sidebar > .chat-button::before{
+    content:'';
+    position:absolute;
+    inset:-10px -8px -4px;
+    z-index:-1;
+    background:#fbfaf8;
+}
+
+/* Hide the old visible promo timer/progress line. */
+body:not(.bc) .bearly-slider-progress{
+    display:none!important;
+}
+
+/* =========================================================
+   HOMEPAGE SIDEBAR — MAXIMIZE AVAILABLE HEIGHT
+   Keeps category/chat sizes unchanged.
+   Extra vertical space is distributed between categories,
+   while Chat stays anchored at the bottom of the sidebar.
+   ========================================================= */
+
+@media (min-width:721px){
+    body:not(.bc) .sidebar{
+        display:flex;
+        flex-direction:column;
+        overflow:hidden;
+    }
+
+    body:not(.bc) .sidebar-title{
+        flex:0 0 auto;
+    }
+
+    body:not(.bc) #category-nav{
+        flex:1 1 auto;
+        min-height:0;
+        display:flex;
+        flex-direction:column;
+        justify-content:space-between;
+        overflow-y:auto;
+        overscroll-behavior:contain;
+        scrollbar-width:thin;
+        padding-bottom:6px;
+    }
+
+    body:not(.bc) .sidebar > .chat-button{
+        position:static;
+        left:auto;
+        right:auto;
+        bottom:auto;
+        flex:0 0 auto;
+        align-self:flex-start;
+        margin:8px 8px 0;
+    }
+
+    body:not(.bc) .sidebar > .chat-button::before{
+        display:none;
+    }
+}
+
+
+
+/* Homepage uses the same product-detail experience as category pages. */
+body:not(.bc) #product-dialog .mi{
+    font-family:'Material Symbols Outlined';
+    font-style:normal;
+    font-size:23px;
+    line-height:1;
+    display:inline-block;
+    font-feature-settings:'liga';
+    letter-spacing:normal;
+    white-space:nowrap
+}
+
+body:not(.bc) #product-dialog .photo{
+    display:block;
+    width:100%;
+    min-height:0;
+    aspect-ratio:1;
+    background-position:var(--x) var(--y);
+    background-repeat:no-repeat;
+    background-color:var(--bg)
+}
+
+body:not(.bc) #product-dialog > .dialog-close{
+    position:absolute;
+    z-index:20;
+    top:14px;
+    right:14px;
+    display:grid;
+    place-items:center;
+    width:40px;
+    height:40px;
+    padding:0;
+    border:1px solid #e4dbd1;
+    border-radius:50%;
+    background:rgba(255,255,255,.95);
+    color:var(--brown);
+    box-shadow:0 4px 15px rgba(53,37,30,.08)
+}
+
+body:not(.bc) #product-dialog > .dialog-close .material-symbols-outlined{
+    font-size:22px
+}
+
+
+/* =========================================================
+   BUYER PRODUCT DETAILS MODAL
+   Frontend-only product detail experience
+   ========================================================= */
+
+body:not(.bc) #product-dialog {
+    width: min(1120px, calc(100% - 32px));
+    max-width: 1120px;
+    max-height: 92dvh;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid #e4dbd1;
+    border-radius: 18px;
+    background: #fffaf4;
+    box-shadow:
+        0 28px 80px rgba(53, 37, 30, .18),
+        0 8px 30px rgba(53, 37, 30, .08);
+}
+
+body:not(.bc) #product-dialog::backdrop {
+    background: rgba(39, 29, 23, .58);
+    backdrop-filter: blur(5px);
+}
+
+body:not(.bc) #product-dialog > .close {
+    position: absolute;
+    z-index: 20;
+    top: 14px;
+    right: 14px;
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border: 1px solid #e4dbd1;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, .95);
+    color: var(--brown);
+    box-shadow: 0 4px 15px rgba(53, 37, 30, .08);
+    transition:
+        transform .16s ease,
+        background .16s ease;
+}
+
+body:not(.bc) #product-dialog > .close:hover {
+    transform: rotate(5deg) scale(1.04);
+    background: #fff;
+}
+
+body:not(.bc) #product-dialog > .close .mi {
+    font-size: 22px;
+}
+
+body:not(.bc) #product-detail {
+    max-height: 92dvh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+}
+
+body:not(.bc) #product-dialog .pd-shell {
+    padding: 30px;
+}
+
+body:not(.bc) #product-dialog .pd-top {
+    display: grid;
+    grid-template-columns:
+        minmax(330px, .92fr)
+        minmax(390px, 1.08fr);
+    gap: 38px;
+    align-items: start;
+}
+
+
+/* PRODUCT IMAGE */
+
+body:not(.bc) #product-dialog .pd-media {
+    position: sticky;
+    top: 0;
+}
+
+body:not(.bc) #product-dialog .pd-main-photo {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border: 1px solid #ebe3d9;
+    border-radius: 12px;
+    background-color: #f5f2ed;
+    overflow: hidden;
+}
+
+body:not(.bc) #product-dialog .pd-thumbnails {
+    display: flex;
+    gap: 8px;
+    margin-top: 11px;
+}
+
+body:not(.bc) #product-dialog .pd-thumbnail {
+    width: 68px;
+    height: 68px;
+    padding: 3px;
+    border: 1px solid #ddd3c7;
+    border-radius: 8px;
+    background: #fff;
+    overflow: hidden;
+}
+
+body:not(.bc) #product-dialog .pd-thumbnail.is-active {
+    border-color: var(--gold);
+    box-shadow: 0 0 0 1px var(--gold);
+}
+
+body:not(.bc) #product-dialog .pd-thumb-photo {
+    width: 100%;
+    height: 100%;
+    aspect-ratio: 1;
+    border-radius: 5px;
+}
+
+body:not(.bc) #product-dialog .pd-media-note {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-top: 14px;
+    color: var(--muted);
+    font-size: 11px;
+}
+
+body:not(.bc) #product-dialog .pd-media-note .mi {
+    font-size: 17px;
+    color: #8b6a40;
+}
+
+
+/* PRODUCT INFO */
+
+body:not(.bc) #product-dialog .pd-info {
+    min-width: 0;
+    padding-top: 4px;
+}
+
+body:not(.bc) #product-dialog .pd-category {
+    color: #81746b;
+    font-size: 12px;
+    margin: 0 50px 6px 0;
+}
+
+body:not(.bc) #product-dialog .pd-info h2 {
+    margin: 0;
+    padding-right: 42px;
+    color: var(--brown);
+    font-size: clamp(26px, 3vw, 34px);
+    font-weight: 750;
+    line-height: 1.17;
+    letter-spacing: -.045em;
+}
+
+body:not(.bc) #product-dialog .pd-social-proof {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 12px;
+    color: #756a62;
+    font-size: 12px;
+}
+
+body:not(.bc) #product-dialog .pd-rating {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: #7a571b;
+    font-weight: 600;
+}
+
+body:not(.bc) #product-dialog .pd-rating .mi {
+    font-size: 17px;
+    color: #dc961a;
+}
+
+body:not(.bc) #product-dialog .pd-divider {
+    width: 1px;
+    height: 14px;
+    background: #d8cfc4;
+}
+
+body:not(.bc) #product-dialog .pd-price-box {
+    margin: 18px 0 14px;
+    padding: 15px 18px;
+    border-radius: 8px;
+    background:
+        linear-gradient(
+            90deg,
+            #fff0d7 0%,
+            #fff7ea 100%
+        );
+}
+
+body:not(.bc) #product-dialog .pd-price {
+    display: block;
+    color: #3e2b21;
+    font-size: 32px;
+    font-weight: 750;
+    line-height: 1;
+    letter-spacing: -.035em;
+}
+
+
+/* BADGES */
+
+body:not(.bc) #product-dialog .pd-badges {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 17px;
+}
+
+body:not(.bc) #product-dialog .pd-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 29px;
+    padding: 5px 9px;
+    border: 1px solid #ead9bd;
+    border-radius: 5px;
+    background: #fff9ef;
+    color: #6e4c19;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+body:not(.bc) #product-dialog .pd-badge .mi {
+    font-size: 16px;
+}
+
+
+/* OVERVIEW */
+
+body:not(.bc) #product-dialog .pd-overview {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    padding: 14px 0 18px;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+}
+
+body:not(.bc) #product-dialog .pd-overview > div {
+    min-width: 0;
+}
+
+body:not(.bc) #product-dialog .pd-overview span {
+    display: block;
+    margin-bottom: 3px;
+    color: var(--muted);
+    font-size: 11px;
+}
+
+body:not(.bc) #product-dialog .pd-overview strong {
+    display: block;
+    overflow: hidden;
+    font-size: 13px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+
+/* VARIATIONS */
+
+body:not(.bc) #product-dialog .pd-option-group {
+    padding-top: 18px;
+}
+
+body:not(.bc) #product-dialog .pd-option-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+body:not(.bc) #product-dialog .pd-option-heading strong {
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 500;
+}
+
+body:not(.bc) #product-dialog .pd-size-guide {
+    padding: 0;
+    color: #8a5b14;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+body:not(.bc) #product-dialog .pd-size-guide:hover {
+    text-decoration: underline;
+}
+
+body:not(.bc) #product-dialog .pd-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+body:not(.bc) #product-dialog .pd-option {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    min-width: 48px;
+    min-height: 38px;
+    padding: 7px 13px;
+    border: 1px solid #d7cec3;
+    border-radius: 6px;
+    background: #fff;
+    color: #51453e;
+    font-size: 12px;
+    transition:
+        border-color .15s ease,
+        background .15s ease,
+        color .15s ease,
+        box-shadow .15s ease;
+}
+
+body:not(.bc) #product-dialog .pd-option:hover {
+    border-color: #a88a6b;
+}
+
+body:not(.bc) #product-dialog .pd-option[aria-pressed="true"] {
+    border-color: var(--brown);
+    background: var(--brown);
+    color: #fff;
+    box-shadow: 0 3px 10px rgba(53, 37, 30, .10);
+}
+
+body:not(.bc) #product-dialog .pd-color-option {
+    min-width: 86px;
+}
+
+body:not(.bc) #product-dialog .pd-color-dot {
+    display: block;
+    width: 17px;
+    height: 17px;
+    flex: 0 0 17px;
+    border: 1px solid rgba(53, 37, 30, .18);
+    border-radius: 50%;
+    background: var(--pd-color);
+}
+
+body:not(.bc) #product-dialog .pd-option[aria-pressed="true"] .pd-color-dot {
+    border-color: rgba(255, 255, 255, .55);
+}
+
+
+/* QUANTITY */
+
+body:not(.bc) #product-dialog .pd-quantity-group {
+    margin-top: 2px;
+}
+
+body:not(.bc) #product-dialog .pd-option-heading small {
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 400;
+}
+
+body:not(.bc) #product-dialog .pd-option-heading small.is-out {
+    color: #a33d2b;
+    font-weight: 600;
+}
+
+body:not(.bc) #product-dialog .pd-quantity-row {
+    display: flex;
+    align-items: center;
+}
+
+body:not(.bc) #product-dialog .pd-stepper {
+    display: inline-grid;
+    grid-template-columns: 40px 48px 40px;
+    overflow: hidden;
+    border: 1px solid #d7cec3;
+    border-radius: 6px;
+    background: #fff;
+}
+
+body:not(.bc) #product-dialog .pd-stepper button {
+    display: grid;
+    place-items: center;
+    min-height: 39px;
+    background: #fff;
+}
+
+body:not(.bc) #product-dialog .pd-stepper button:first-child {
+    border-right: 1px solid #e4ddd4;
+}
+
+body:not(.bc) #product-dialog .pd-stepper button:last-child {
+    border-left: 1px solid #e4ddd4;
+}
+
+body:not(.bc) #product-dialog .pd-stepper button:hover:not(:disabled) {
+    background: #faf6f1;
+}
+
+body:not(.bc) #product-dialog .pd-stepper button:disabled {
+    cursor: not-allowed;
+    opacity: .35;
+}
+
+body:not(.bc) #product-dialog .pd-stepper button .mi {
+    font-size: 18px;
+}
+
+body:not(.bc) #product-dialog .pd-stepper > span {
+    display: grid;
+    place-items: center;
+    min-height: 39px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+
+/* CART / BUY BUTTONS */
+
+body:not(.bc) #product-dialog .pd-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 21px;
+}
+
+body:not(.bc) #product-dialog .pd-add-cart,
+body:not(.bc) #product-dialog .pd-buy-now {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 49px;
+    padding: 10px 16px;
+    border-radius: 7px;
+    font-size: 13px;
+    font-weight: 650;
+    transition:
+        transform .14s ease,
+        box-shadow .14s ease,
+        opacity .14s ease;
+}
+
+body:not(.bc) #product-dialog .pd-add-cart {
+    border: 1px solid #d7941c;
+    background: #fff5e4;
+    color: #694615;
+}
+
+body:not(.bc) #product-dialog .pd-buy-now {
+    border: 1px solid var(--gold);
+    background: var(--gold);
+    color: var(--brown);
+}
+
+body:not(.bc) #product-dialog .pd-add-cart:hover:not(:disabled),
+body:not(.bc) #product-dialog .pd-buy-now:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 5px 15px rgba(53, 37, 30, .10);
+}
+
+body:not(.bc) #product-dialog .pd-add-cart:disabled,
+body:not(.bc) #product-dialog .pd-buy-now:disabled {
+    cursor: not-allowed;
+    opacity: .45;
+    transform: none;
+    box-shadow: none;
+}
+
+body:not(.bc) #product-dialog .pd-add-cart .mi {
+    font-size: 19px;
+}
+
+body:not(.bc) #product-dialog .pd-action-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 7px;
+    margin-top: 10px;
+    color: #847970;
+    font-size: 10px;
+    line-height: 1.55;
+}
+
+body:not(.bc) #product-dialog .pd-action-note .mi {
+    margin-top: 1px;
+    font-size: 15px;
+    flex: 0 0 auto;
+}
+
+
+/* SELLER CARD */
+
+body:not(.bc) #product-dialog .pd-seller-card {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 14px;
+    margin-top: 30px;
+    padding: 19px;
+    border: 1px solid #e6ddd3;
+    border-radius: 10px;
+    background: #fff;
+}
+
+body:not(.bc) #product-dialog .pd-seller-avatar {
+    display: grid;
+    place-items: center;
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background:
+        linear-gradient(
+            145deg,
+            #f5bd54,
+            #dc9415
+        );
+    color: #493118;
+    font-size: 20px;
+    font-weight: 750;
+}
+
+body:not(.bc) #product-dialog .pd-seller-info {
+    min-width: 0;
+}
+
+body:not(.bc) #product-dialog .pd-seller-info small {
+    display: block;
+    margin-bottom: 1px;
+    color: var(--muted);
+    font-size: 10px;
+}
+
+body:not(.bc) #product-dialog .pd-seller-info h3 {
+    margin: 0;
+    overflow: hidden;
+    color: var(--brown);
+    font-size: 15px;
+    font-weight: 650;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+body:not(.bc) #product-dialog .pd-seller-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px 15px;
+    margin-top: 4px;
+    color: #746a63;
+    font-size: 10px;
+}
+
+body:not(.bc) #product-dialog .pd-seller-meta span {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+body:not(.bc) #product-dialog .pd-seller-meta .mi {
+    font-size: 14px;
+}
+
+body:not(.bc) #product-dialog .pd-seller-actions {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+
+body:not(.bc) #product-dialog .pd-shop-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 37px;
+    padding: 7px 11px;
+    border: 1px solid #d5c9bd;
+    border-radius: 6px;
+    background: #fff;
+    font-size: 11px;
+}
+
+body:not(.bc) #product-dialog .pd-shop-button:hover {
+    border-color: #a98c70;
+    background: #fcf8f3;
+}
+
+body:not(.bc) #product-dialog .pd-shop-button .mi {
+    font-size: 17px;
+}
+
+
+/* PRODUCT DESCRIPTION */
+
+body:not(.bc) #product-dialog .pd-description {
+    margin-top: 18px;
+    padding: 22px;
+    border: 1px solid #e6ddd3;
+    border-radius: 10px;
+    background: #fff;
+}
+
+body:not(.bc) #product-dialog .pd-description h3 {
+    margin: 0 0 12px;
+    color: var(--brown);
+    font-size: 16px;
+}
+
+body:not(.bc) #product-dialog .pd-description > p {
+    margin: 0;
+    color: #6d635c;
+    font-size: 12px;
+    line-height: 1.75;
+}
+
+body:not(.bc) #product-dialog .pd-description-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-top: 18px;
+    padding-top: 17px;
+    border-top: 1px solid var(--line);
+}
+
+body:not(.bc) #product-dialog .pd-description-grid > div {
+    min-width: 0;
+}
+
+body:not(.bc) #product-dialog .pd-description-grid span {
+    display: block;
+    margin-bottom: 3px;
+    color: var(--muted);
+    font-size: 10px;
+}
+
+body:not(.bc) #product-dialog .pd-description-grid strong {
+    display: block;
+    overflow: hidden;
+    font-size: 11px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+
+/* FRONTEND PREVIEW TOAST */
+
+body:not(.bc) .bc-preview-toast {
+    position: fixed;
+    z-index: 9999;
+    left: 50%;
+    bottom: 28px;
+    max-width: min(440px, calc(100% - 30px));
+    padding: 11px 17px;
+    border-radius: 8px;
+    background: #35251e;
+    color: #fff;
+    box-shadow: 0 12px 30px rgba(35, 23, 18, .25);
+    font-size: 12px;
+    pointer-events: none;
+    opacity: 0;
+    transform: translate(-50%, 12px);
+    transition:
+        opacity .18s ease,
+        transform .18s ease;
+}
+
+body:not(.bc) .bc-preview-toast.is-visible {
+    opacity: 1;
+    transform: translate(-50%, 0);
+}
+
+
+/* PRODUCT DETAILS RESPONSIVE */
+
+@media (max-width: 900px) {
+    body:not(.bc) #product-dialog {
+        width: min(820px, calc(100% - 24px));
+    }
+
+    body:not(.bc) #product-dialog .pd-shell {
+        padding: 24px;
+    }
+
+    body:not(.bc) #product-dialog .pd-top {
+        grid-template-columns:
+            minmax(280px, .9fr)
+            minmax(330px, 1.1fr);
+        gap: 24px;
+    }
+
+    body:not(.bc) #product-dialog .pd-description-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    body:not(.bc) #product-dialog .pd-seller-card {
+        grid-template-columns: auto 1fr;
+    }
+
+    body:not(.bc) #product-dialog .pd-seller-actions {
+        grid-column: 1 / -1;
+        padding-left: 66px;
+    }
+}
+
+@media (max-width: 720px) {
+    body:not(.bc) #product-dialog {
+        width: 100%;
+        max-width: none;
+        height: 100dvh;
+        max-height: 100dvh;
+        margin: 0;
+        border: 0;
+        border-radius: 0;
+    }
+
+    body:not(.bc) #product-detail {
+        max-height: 100dvh;
+    }
+
+    body:not(.bc) #product-dialog > .close {
+        position: fixed;
+        top: 12px;
+        right: 12px;
+    }
+
+    body:not(.bc) #product-dialog .pd-shell {
+        padding:
+            18px
+            16px
+            max(26px, env(safe-area-inset-bottom));
+    }
+
+    body:not(.bc) #product-dialog .pd-top {
+        display: block;
+    }
+
+    body:not(.bc) #product-dialog .pd-media {
+        position: static;
+        padding-top: 34px;
+    }
+
+    body:not(.bc) #product-dialog .pd-main-photo {
+        width: min(100%, 430px);
+        margin: 0 auto;
+    }
+
+    body:not(.bc) #product-dialog .pd-info {
+        margin-top: 22px;
+    }
+
+    body:not(.bc) #product-dialog .pd-info h2 {
+        padding-right: 0;
+        font-size: 27px;
+    }
+
+    body:not(.bc) #product-dialog .pd-price {
+        font-size: 28px;
+    }
+
+    body:not(.bc) #product-dialog .pd-overview {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    body:not(.bc) #product-dialog .pd-actions {
+        grid-template-columns: 1fr;
+    }
+
+    body:not(.bc) #product-dialog .pd-add-cart,
+    body:not(.bc) #product-dialog .pd-buy-now {
+        min-height: 48px;
+    }
+
+    body:not(.bc) #product-dialog .pd-seller-card {
+        grid-template-columns: auto 1fr;
+        margin-top: 23px;
+        padding: 15px;
+    }
+
+    body:not(.bc) #product-dialog .pd-seller-actions {
+        grid-column: 1 / -1;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        padding-left: 0;
+    }
+
+    body:not(.bc) #product-dialog .pd-shop-button {
+        min-height: 40px;
+    }
+
+    body:not(.bc) #product-dialog .pd-description {
+        padding: 17px;
+    }
+
+    body:not(.bc) #product-dialog .pd-description-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+@media (max-width: 430px) {
+    body:not(.bc) #product-dialog .pd-overview {
+        grid-template-columns: 1fr;
+    }
+
+    body:not(.bc) #product-dialog .pd-description-grid {
+        grid-template-columns: 1fr;
+    }
+
+    body:not(.bc) #product-dialog .pd-options {
+        gap: 6px;
+    }
+
+    body:not(.bc) #product-dialog .pd-option {
+        min-width: 44px;
+        padding: 7px 10px;
+    }
+
+    body:not(.bc) #product-dialog .pd-seller-meta {
+        display: grid;
+        gap: 3px;
+    }
+}
+
+
+
+/* =========================================================
+   CATEGORY PAGES — DASHBOARD VISUAL CONSISTENCY
+   Keeps all category-specific content/functionality intact.
+   ========================================================= */
+
+@media (min-width:981px){
+
+    body.bc{
+        --header:76px;
+        background:#f7f5f2;
+    }
+
+    /* Same compact dark top bar feel as the dashboard */
+    body.bc .bc-header{
+        min-height:var(--header);
+        gap:18px;
+        padding:8px 28px;
+        border-bottom:0;
+        background:var(--brown);
+        color:#fff;
+    }
+
+    body.bc .brand{
+        flex:0 0 140px;
+    }
+
+    body.bc .brand img{
+        width:136px;
+        max-height:52px;
+        object-fit:contain;
+    }
+
+    body.bc .search{
+        height:42px;
+        border:0;
+        border-radius:5px;
+        background:#fff;
+        color:var(--text);
+    }
+
+    body.bc .search>span{
+        min-width:150px;
+        padding:0 14px;
+        border-right:1px solid #e6ded5;
+        color:var(--text);
+        font-size:11px;
+    }
+
+    body.bc .search input{
+        color:var(--text);
+        font-size:12px;
+    }
+
+    body.bc .search button{
+        width:46px;
+        background:var(--gold);
+        color:var(--deep);
+    }
+
+    body.bc .bc-header nav{
+        gap:18px;
+        color:#fff;
+    }
+
+    body.bc .bc-header nav a,
+    body.bc .bc-header nav button{
+        gap:4px;
+        color:#fff;
+        font-size:10px;
+    }
+
+    body.bc .bc-header nav .mi{
+        font-size:21px;
+    }
+
+    /* Match dashboard proportions without removing category tools */
+    body.bc .bc-shell{
+        grid-template-columns:200px minmax(0,1fr);
+        background:#f7f5f2;
+    }
+
+    body.bc .bc-sidebar{
+        top:var(--header);
+        height:calc(100dvh - var(--header));
+        padding:14px 11px 22px;
+        border-right:1px solid #e5e0d9;
+        background:#fbfaf8;
+    }
+
+    body.bc .back{
+        gap:8px;
+        margin-bottom:12px;
+        padding:4px 5px;
+        font-size:11px;
+    }
+
+    body.bc .back .mi{
+        font-size:18px;
+    }
+
+    body.bc .active-category{
+        gap:8px;
+        margin-bottom:12px;
+        padding:9px;
+        border-radius:6px;
+        font-size:11px;
+    }
+
+    body.bc .active-category .mi{
+        font-size:18px;
+    }
+
+    body.bc details{
+        padding:13px 0;
+    }
+
+    body.bc summary{
+        font-size:11px;
+    }
+
+    body.bc details[open]>summary{
+        margin-bottom:9px;
+    }
+
+    body.bc .subcategories nav{
+        gap:2px;
+    }
+
+    body.bc .subcategories button{
+        gap:8px;
+        padding:7px 6px;
+        border-radius:5px;
+        font-size:10px;
+        line-height:1.25;
+    }
+
+    body.bc .subcategories .mi{
+        font-size:17px;
+    }
+
+    body.bc .filter-heading{
+        margin:16px 0 10px;
+    }
+
+    body.bc .filter-heading h2{
+        gap:7px;
+        font-size:13px;
+    }
+
+    body.bc .filter-heading h2 .mi{
+        font-size:18px;
+    }
+
+    body.bc .filter-heading button,
+    body.bc .selected button{
+        font-size:10px;
+    }
+
+    body.bc .category-search{
+        padding:6px 7px;
+        border-radius:5px;
+    }
+
+    body.bc .category-search input{
+        font-size:10px;
+    }
+
+    body.bc .selected{
+        margin:14px 0 8px;
+        font-size:10px;
+    }
+
+    body.bc .chip{
+        padding:5px 8px;
+        font-size:10px;
+    }
+
+    /* Main content mirrors dashboard spacing/scale */
+    body.bc #bc-main{
+        padding:16px 18px 32px;
+        background:#f7f5f2;
+    }
+
+    body.bc .breadcrumb{
+        margin-bottom:9px;
+        font-size:10px;
+    }
+
+    body.bc h1{
+        font-size:34px;
+        line-height:1.1;
+    }
+
+    body.bc .subtitle{
+        margin-top:5px;
+        font-size:15px;
+    }
+
+    body.bc .preview{
+        margin:8px 0 15px;
+        font-size:10px;
+    }
+
+    body.bc .toolbar{
+        gap:8px;
+        margin-bottom:13px;
+    }
+
+    body.bc .toolbar>strong{
+        font-size:12px;
+    }
+
+    body.bc .sorts{
+        gap:6px;
+    }
+
+    body.bc .sorts button,
+    body.bc .views button,
+    body.bc .saved-filter{
+        padding:7px 9px;
+        border-radius:5px;
+        font-size:10px;
+    }
+
+    /* Keep subcategory shortcuts, just make them visually match dashboard */
+    body.bc .shortcuts{
+        grid-template-columns:repeat(6,minmax(0,1fr));
+        gap:9px;
+        margin:11px 0 15px;
+    }
+
+    body.bc .shortcuts button{
+        border:1px solid var(--line);
+        border-radius:6px;
+        background:#fcfaf7;
+    }
+
+    body.bc .shortcuts button>span:last-child{
+        min-height:40px;
+        padding:8px;
+        background:#fcfaf7;
+        font-size:9px;
+    }
+
+    /* Product cards use the compact dashboard rhythm */
+    body.bc .catalog-grid{
+        grid-template-columns:repeat(6,minmax(0,1fr));
+        gap:10px;
+    }
+
+    body.bc .card{
+        border-radius:6px;
+        background:#fcfaf7;
+    }
+
+    body.bc .card-copy{
+        padding:9px;
+    }
+
+    body.bc .card-copy h2{
+        min-height:27px;
+        max-height:27px;
+        font-size:10px;
+        line-height:1.3;
+    }
+
+    body.bc .condition{
+        min-height:14px;
+        margin:2px 0;
+        font-size:9px;
+    }
+
+    body.bc .price-row{
+        min-height:22px;
+        margin:4px 0 8px;
+    }
+
+    body.bc .price-row strong{
+        font-size:12px;
+    }
+
+    body.bc .color-label{
+        font-size:9px;
+    }
+
+    body.bc .quick{
+        min-height:31px;
+        padding:5px 2px;
+        border-radius:5px;
+        font-size:10px;
+    }
+
+    body.bc .quick .mi{
+        font-size:15px;
+    }
+
+    body.bc .save{
+        width:29px;
+        height:29px;
+    }
+
+    body.bc .save .mi{
+        font-size:18px;
+    }
+
+    body.bc .load{
+        margin-top:24px;
+    }
+
+    /* Same dark footer language as dashboard */
+    body.bc footer{
+        gap:16px;
+        padding:14px 28px 18px;
+        border-top:0;
+        background:#3a2418;
+        color:#fff;
+        font-size:10px;
+    }
+
+    body.bc footer small{
+        color:#d8c8bb;
+    }
+
+    body.bc footer button,
+    body.bc footer a{
+        color:#fff;
+    }
+
+    body.bc footer img{
+        width:100px;
+    }
+
+    /* Match dashboard's left-side chat placement */
+    body.bc .chat{
+        left:20px;
+        right:auto;
+        bottom:16px;
+        padding:10px 16px;
+        font-size:11px;
+    }
+
+    body.bc .chat .mi{
+        font-size:18px;
+    }
+}
+
+/* Tablet: keep category content intact, only harmonize the header colors. */
+@media (min-width:721px) and (max-width:980px){
+    body.bc .bc-header{
+        background:var(--brown);
+        color:#fff;
+        border-bottom:0;
+    }
+
+    body.bc .bc-header nav a,
+    body.bc .bc-header nav button{
+        color:#fff;
+    }
+
+    body.bc .search{
+        background:#fff;
+        color:var(--text);
+    }
+
+    body.bc footer{
+        background:#3a2418;
+        color:#fff;
+    }
+
+    body.bc footer small{
+        color:#d8c8bb;
+    }
+
+    body.bc footer button,
+    body.bc footer a{
+        color:#fff;
+    }
+}
+
+
+
+/* =========================================================
+   CATEGORY PAGES — CHAT REMOVED
+   Dashboard chat stays unchanged.
+   ========================================================= */
+body.bc .bc-header [data-info="chat"],
+body.bc .chat{
+    display:none !important;
+}
+
+
+
+/* =========================================================
+   CATEGORY FILTER SIDEBAR — COMPACT LIKE SUBCATEGORIES
+   Desktop/tablet sidebar only. Mobile filter controls stay touch-friendly.
+   ========================================================= */
+@media (min-width:721px){
+
+    body.bc .filter-panel{
+        font-size:10px;
+    }
+
+    body.bc .filter-panel details{
+        padding:11px 0;
+    }
+
+    body.bc .filter-panel summary{
+        font-size:11px;
+        line-height:1.25;
+    }
+
+    body.bc .filter-panel details[open] > summary{
+        margin-bottom:9px;
+    }
+
+    body.bc .filter-panel small{
+        margin-top:5px;
+        font-size:9px;
+        line-height:1.35;
+    }
+
+    body.bc .selected{
+        margin:10px 0 7px;
+        font-size:10px;
+    }
+
+    body.bc .selected strong,
+    body.bc .selected button{
+        font-size:10px;
+    }
+
+    body.bc .price-fields{
+        gap:7px;
+    }
+
+    body.bc .price-fields label{
+        font-size:9px;
+    }
+
+    body.bc .price-fields input{
+        min-height:31px;
+        margin-top:3px;
+        padding:5px 7px;
+        border-radius:5px;
+        font-size:10px;
+    }
+
+    body.bc .ranges{
+        gap:6px;
+        margin:8px 0;
+    }
+
+    body.bc .ranges input{
+        height:14px;
+    }
+
+    body.bc .presets{
+        gap:5px;
+    }
+
+    body.bc .presets button{
+        padding:5px 7px;
+        border-radius:5px;
+        font-size:9px;
+        line-height:1.2;
+    }
+
+    body.bc .size-options{
+        gap:5px;
+    }
+
+    body.bc .size-options span{
+        min-width:31px;
+        padding:5px 7px;
+        border-radius:5px;
+        font-size:9px;
+        text-align:center;
+    }
+
+    body.bc .colors{
+        grid-template-columns:repeat(3,1fr);
+        gap:9px 5px;
+    }
+
+    body.bc .colors label{
+        font-size:9px;
+        line-height:1.2;
+    }
+
+    body.bc .swatch{
+        width:24px;
+        height:24px;
+        margin:0 auto 4px;
+    }
+
+    body.bc .checks{
+        gap:7px;
+    }
+
+    body.bc .checks label{
+        gap:7px;
+        min-height:24px;
+        font-size:10px;
+        line-height:1.25;
+    }
+
+    body.bc .checks input{
+        width:14px;
+        height:14px;
+    }
+
+    body.bc #bc-location-search{
+        min-height:32px;
+        margin-bottom:8px;
+        padding:6px 8px;
+        border-radius:5px;
+        font-size:10px;
+    }
+
+    body.bc .filter-panel .chip{
+        padding:4px 7px;
+        font-size:9px;
+    }
+}
+
+
+
+/* =========================================================
+   SHARED SEARCH UI — DASHBOARD + CATEGORY PAGES
+   ========================================================= */
+
+/* Category navigation already lives in the dashboard sidebar. */
+body:not(.bc) #search-category{
+    display:none!important;
+}
+
+/* Let the dashboard text field use the full search width. */
+body:not(.bc) #search-form #search-input{
+    flex:1;
+    width:100%;
+    padding-left:18px;
+}
+
+/* Custom search history / suggestions panel. */
+.bearly-search-panel{
+    position:fixed;
+    z-index:1200;
+    max-height:min(420px,55vh);
+    overflow-y:auto;
+    overscroll-behavior:contain;
+    border:1px solid #e7dfd6;
+    border-radius:12px;
+    background:#fffdf9;
+    color:#35251e;
+    box-shadow:
+        0 18px 45px rgba(53,37,30,.16),
+        0 4px 14px rgba(53,37,30,.08);
+    padding:8px;
+    font-family:Poppins,sans-serif;
+}
+
+.bearly-search-panel[hidden]{
+    display:none!important;
+}
+
+.bearly-search-panel-heading{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    padding:8px 10px 7px;
+    color:#746b65;
+    font-size:11px;
+    font-weight:600;
+    letter-spacing:.01em;
+}
+
+.bearly-search-clear{
+    border:0;
+    background:transparent;
+    color:#985c09;
+    padding:3px 5px;
+    font:inherit;
+    cursor:pointer;
+}
+
+.bearly-search-clear:hover{
+    text-decoration:underline;
+}
+
+.bearly-search-list{
+    display:grid;
+    gap:2px;
+}
+
+.bearly-search-row{
+    display:flex;
+    align-items:center;
+    min-width:0;
+    border-radius:8px;
+}
+
+.bearly-search-row:hover,
+.bearly-search-row:focus-within{
+    background:#fff3df;
+}
+
+.bearly-search-term{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    min-width:0;
+    flex:1;
+    padding:9px 10px;
+    border:0;
+    background:transparent;
+    color:#35251e;
+    text-align:left;
+    cursor:pointer;
+    font:500 12px/1.35 Poppins,sans-serif;
+}
+
+.bearly-search-term>span:last-child{
+    min-width:0;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+}
+
+.bearly-search-leading{
+    display:grid;
+    place-items:center;
+    flex:0 0 25px;
+    width:25px;
+    height:25px;
+    border-radius:50%;
+    background:#f4eee6;
+    color:#7a6556;
+    font-size:13px;
+    font-weight:600;
+}
+
+.bearly-search-delete{
+    display:grid;
+    place-items:center;
+    flex:0 0 31px;
+    width:31px;
+    height:31px;
+    margin-right:4px;
+    border:0;
+    border-radius:50%;
+    background:transparent;
+    color:#8c8178;
+    cursor:pointer;
+    font:400 20px/1 Poppins,sans-serif;
+}
+
+.bearly-search-delete:hover{
+    background:#f0e8df;
+    color:#35251e;
+}
+
+.bearly-search-empty{
+    display:grid;
+    gap:3px;
+    padding:18px 14px;
+    text-align:center;
+}
+
+.bearly-search-empty strong{
+    color:#35251e;
+    font-size:12px;
+}
+
+.bearly-search-empty span{
+    color:#746b65;
+    font-size:10px;
+}
+
+@media(max-width:720px){
+    .bearly-search-panel{
+        max-height:46vh;
+        border-radius:10px;
+        padding:6px;
+    }
+
+    .bearly-search-term{
+        min-height:42px;
+        font-size:12px;
+    }
+
+    .bearly-search-delete{
+        width:38px;
+        height:38px;
+        flex-basis:38px;
+    }
+}
+

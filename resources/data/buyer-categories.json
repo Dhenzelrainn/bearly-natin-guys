@@ -4,12 +4,12 @@
     "slug": "pet-supplies",
     "icon": "pets",
     "subcategories": [
-      "Dog Food & Treats",
-      "Cat Litter & Accessories",
-      "Aquariums & Fish Supplies",
-      "Bird Feeders & Food",
-      "Pet Grooming Products",
-      "Pet Health & Wellness"
+      "Food & Treats",
+      "Bowls & Feeding",
+      "Beds, Carriers & Travel",
+      "Walking & Apparel",
+      "Grooming & Health",
+      "Litter, Training & Toys"
     ]
   },
   {
@@ -17,12 +17,12 @@
     "slug": "electronics-and-gadgets",
     "icon": "devices",
     "subcategories": [
-      "Mobile Phones & Accessories",
-      "Laptops, Desktops & Monitors",
-      "Audio & Video Equipment",
-      "Smart Home Devices",
-      "Cameras & Photography",
-      "Wearable Technology"
+      "Phones & Tablets",
+      "Computers & Accessories",
+      "Audio & Entertainment",
+      "Gaming",
+      "Cameras & Creator Gear",
+      "Smart Devices & Power"
     ]
   },
   {
@@ -56,12 +56,12 @@
     "slug": "kids-and-baby",
     "icon": "child_care",
     "subcategories": [
-      "Baby Clothes & Accessories",
-      "Toys & Games",
-      "Educational Materials",
-      "Strollers & Gear",
-      "Nursery Furniture",
-      "Safety and Health"
+      "Baby Clothing & Care",
+      "Kids Clothing & Footwear",
+      "Feeding Essentials",
+      "Strollers, Nursery & Gear",
+      "Toys & Learning",
+      "Outdoor & Safety"
     ]
   },
   {
@@ -69,12 +69,12 @@
     "slug": "home-and-garden",
     "icon": "home_and_garden",
     "subcategories": [
-      "Kitchen Appliances",
+      "Garden & Plants",
       "Furniture & Decor",
-      "Gardening Tools",
-      "Outdoor Living",
-      "Home Improvement Tools",
-      "Bedding & Bath"
+      "Kitchen & Storage",
+      "Cleaning & Organization",
+      "Tools & Home Improvement",
+      "Outdoor Living"
     ]
   },
   {
@@ -82,12 +82,12 @@
     "slug": "sports-and-outdoors",
     "icon": "sports_basketball",
     "subcategories": [
+      "Team & Racquet Sports",
       "Fitness Equipment",
       "Camping & Hiking Gear",
-      "Sports Apparel",
-      "Cycling & Bikes",
-      "Water Sports",
-      "Team Sports Equipment"
+      "Cycling & Outdoor Gear",
+      "Sports Accessories",
+      "Recovery & Support"
     ]
   },
   {
@@ -95,12 +95,12 @@
     "slug": "health-and-beauty",
     "icon": "spa",
     "subcategories": [
-      "Skincare Products",
-      "Haircare Solutions",
-      "Makeup & Cosmetics",
-      "Personal Care Appliances",
-      "Men's Grooming",
-      "Health Supplements"
+      "Skincare",
+      "Haircare",
+      "Makeup & Nail Care",
+      "Personal Care & Fragrance",
+      "Wellness & First Aid",
+      "Bath & Body"
     ]
   },
   {
@@ -109,11 +109,11 @@
     "icon": "menu_book",
     "subcategories": [
       "Fiction & Non-Fiction Books",
-      "Magazines & Periodicals",
-      "Music CDs & Vinyl Records",
-      "Movie DVDs & Blu-ray",
-      "Video Games & Consoles",
-      "Educational DVDs"
+      "Children, Comics & Reference",
+      "Magazines & Stationery",
+      "Movies & Music",
+      "Educational Media",
+      "Games, Puzzles & Media Accessories"
     ]
   },
   {
@@ -121,12 +121,12 @@
     "slug": "food-and-gourmet",
     "icon": "grocery",
     "subcategories": [
-      "Baking Supplies & Ingredients",
+      "Pantry & Cooking Essentials",
       "Coffee, Tea & Beverages",
-      "Snacks & Candy",
-      "Specialty Foods & International Cuisine",
-      "Organic and Health Foods",
-      "Meal Kits & Prepped Foods"
+      "Breakfast & Dairy",
+      "Snacks & Sweets",
+      "Baking, Spices & Condiments",
+      "Specialty & Gourmet"
     ]
   },
   {
@@ -134,12 +134,12 @@
     "slug": "furniture-and-office-equipment",
     "icon": "chair",
     "subcategories": [
+      "Home Furniture",
       "Office Desks & Chairs",
-      "Storage Cabinets & Shelving",
-      "Conference & Meeting Furniture",
-      "Computer Tables & Workstations",
-      "Ergonomic Accessories",
-      "Office Lighting & Fixtures"
+      "Storage & Shelving",
+      "Office Equipment",
+      "Lighting & Accessories",
+      "Meeting & Workspace Furniture"
     ]
   },
   {

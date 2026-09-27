@@ -16,10 +16,10 @@ export function selectProducts(products, { category = '', search = '', sort = 'f
     return selected;
 }
 
-export function photoPosition(index, columns = 4, rows = 4) {
+export function photoPosition(index) {
     return {
-        x: (index % columns) * 100 / (columns - 1),
-        y: Math.floor(index / columns) * 100 / (rows - 1),
+        x: (index % 4) * 100 / 3,
+        y: Math.floor(index / 4) * 100 / 3,
     };
 }
 
@@ -44,16 +44,6 @@ const peso = value =>
     }).format(value);
 
 if (typeof document !== 'undefined') {
-    const categoryAccountLink = document.querySelector(
-        'body.bc header nav a[href$="/login"]'
-    );
-
-    if (categoryAccountLink) {
-        categoryAccountLink.href = '/home';
-        categoryAccountLink.innerHTML =
-            '<i class="mi" aria-hidden="true">person</i> Mia Santos';
-    }
-
     initialize();
 }
 
@@ -61,114 +51,8 @@ function initialize() {
     const dataElement = document.getElementById('home-data');
     if (!dataElement) return;
 
-    const requestedCategory = new URLSearchParams(location.search).get('category');
-    const dedicatedCategories = [
-        'men-s-apparel',
-        'women-s-apparel',
-        'electronics-and-gadgets',
-        'books-and-media',
-        'pet-supplies',
-        'sports-and-outdoors',
-        'jewelry-and-watches',
-    ];
-
-    if (dedicatedCategories.includes(requestedCategory)) {
-        window.location.replace(`/products?category=${requestedCategory}`);
-        return;
-    }
-
     const { categories, products } = JSON.parse(dataElement.textContent);
     const $ = id => document.getElementById(id);
-    const chatDrawer = $('chat-drawer');
-    const cartDrawer = $('cart-drawer');
-    const cartStorageKey = 'bearly-preview-cart-v1';
-    const chatMessages = $('chat-messages');
-    let activeConversation = 'Greenline Home';
-
-    const chatStorageKey = conversation =>
-        `bearly-demo-chat-${conversation.toLowerCase().replaceAll(' ', '-')}`;
-
-    const conversations = {
-        'Greenline Home': {
-            initials: 'GH',
-            reply: 'Hi Mia! Your desk lamp has been handed to the courier.',
-            messages: [
-                ['seller', 'Hi Mia! Your desk lamp has been handed to the courier.'],
-                ['buyer', 'Great, thank you for the update!'],
-            ],
-        },
-        'Sundays Market': {
-            initials: 'SM',
-            reply: 'Thanks for your order!',
-            messages: [['seller', 'Thanks for your order!']],
-        },
-    };
-
-    const appendChatMessage = (sender, text, time = '') => {
-        const bubble = document.createElement('div');
-        bubble.className = `chat-bubble ${sender}`;
-        bubble.textContent = text;
-        if (time) bubble.title = time;
-        chatMessages?.append(bubble);
-    };
-
-    const renderChatConversation = conversation => {
-        const details = conversations[conversation];
-        if (!details || !chatMessages) return;
-
-        activeConversation = conversation;
-        document.querySelectorAll('[data-chat-conversation]').forEach(button => {
-            button.classList.toggle(
-                'is-active',
-                button.dataset.chatConversation === conversation
-            );
-        });
-
-        const heading = chatDrawer.querySelector('.chat-thread-heading');
-        heading.querySelector('.chat-store-avatar').textContent = details.initials;
-        heading.querySelector('strong').textContent = conversation;
-        chatMessages.replaceChildren();
-        const date = document.createElement('p');
-        date.className = 'chat-date';
-        date.textContent = 'Today';
-        chatMessages.append(date);
-
-        details.messages.forEach(([sender, text]) => appendChatMessage(sender, text));
-
-        const savedMessages = JSON.parse(
-            window.localStorage.getItem(chatStorageKey(conversation)) || '[]'
-        );
-        savedMessages.forEach(message =>
-            appendChatMessage('buyer', message.text, message.time)
-        );
-        chatMessages.scrollTop = chatMessages.scrollHeight;
-    };
-
-    renderChatConversation(activeConversation);
-
-    chatDrawer?.querySelector('[data-chat-form]')?.addEventListener('submit', event => {
-        event.preventDefault();
-
-        const input = event.currentTarget.querySelector('input');
-        const message = input.value.trim();
-
-        if (!message) return;
-
-        const sentMessage = {
-            text: message,
-            time: new Date().toLocaleTimeString('en-PH', {
-                hour: 'numeric',
-                minute: '2-digit',
-            }),
-        };
-        const key = chatStorageKey(activeConversation);
-        const savedMessages = JSON.parse(window.localStorage.getItem(key) || '[]');
-        savedMessages.push(sentMessage);
-        window.localStorage.setItem(key, JSON.stringify(savedMessages));
-        appendChatMessage('buyer', sentMessage.text, sentMessage.time);
-        input.value = '';
-        chatMessages.scrollTop = chatMessages.scrollHeight;
-    });
 
     const state = {
         category: '',
@@ -177,91 +61,59 @@ function initialize() {
         limit: 20,
     };
 
-    const notify = message => {
-        let toast = document.getElementById('home-preview-toast');
-        if (!toast) {
-            toast = document.createElement('div');
-            toast.id = 'home-preview-toast';
-            toast.className = 'home-preview-toast';
-            document.body.append(toast);
-        }
-        toast.textContent = message;
-        toast.classList.add('is-visible');
-        window.clearTimeout(toast.hideTimer);
-        toast.hideTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 2400);
-    };
-
     let previousFocus = null;
-
-    const readPreviewCart = () => {
-        try {
-            const cart = JSON.parse(window.localStorage.getItem(cartStorageKey) || '[]');
-            return Array.isArray(cart) ? cart : [];
-        } catch {
-            return [];
-        }
-    };
-
-    const writePreviewCart = cart =>
-        window.localStorage.setItem(cartStorageKey, JSON.stringify(cart));
-
-    const setCartOpen = open => {
-        if (!cartDrawer) return;
-
-        cartDrawer.classList.toggle('is-open', open);
-        cartDrawer.setAttribute('aria-hidden', String(!open));
-        $('cart-drawer-backdrop').hidden = !open;
-        document.body.classList.toggle('cart-open', open);
-        document.querySelectorAll('a[href="/cart"]').forEach(link => {
-            link.setAttribute('aria-expanded', String(open));
-        });
-        if (open) renderPreviewCart();
-    };
-
-    const renderPreviewCart = () => {
-        const content = cartDrawer?.querySelector('[data-cart-content]');
-        if (!content) return;
-
-        const cart = readPreviewCart();
-        if (!cart.length) {
-            content.innerHTML = '<div class="cart-empty"><span class="material-symbols-outlined" aria-hidden="true">shopping_cart</span><strong>Your cart is empty</strong><p>Add a find from any category to see it here.</p></div>';
-            return;
-        }
-
-        const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-        content.innerHTML = `<div class="cart-items">${cart.map(item => `<article class="cart-item"><div class="cart-item-photo" aria-hidden="true"></div><div class="cart-item-copy"><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.seller_name || 'Bearly seller')}${item.color ? ` · ${escapeHtml(item.color)}` : ''}</small><div class="cart-item-row"><span>${peso(item.price)}</span><div class="cart-quantity"><button type="button" data-cart-decrease="${escapeHtml(item.key)}" aria-label="Decrease quantity">−</button><span>${item.quantity}</span><button type="button" data-cart-increase="${escapeHtml(item.key)}" aria-label="Increase quantity">+</button></div></div></div><button class="cart-remove" type="button" data-cart-remove="${escapeHtml(item.key)}" aria-label="Remove ${escapeHtml(item.name)}"><span class="material-symbols-outlined" aria-hidden="true">delete</span></button></article>`).join('')}</div><div class="cart-summary"><div><span>Subtotal</span><strong>${peso(total)}</strong></div><button class="button gold" type="button" data-cart-checkout>Proceed to checkout</button><button class="cart-clear" type="button" data-cart-clear>Clear cart</button><p>Preview cart · Checkout will be connected during backend integration.</p></div>`;
-    };
-
-    if (new URLSearchParams(location.search).get('cart') === 'open') {
-        setCartOpen(true);
-    }
-
-    const setChatOpen = open => {
-        if (!chatDrawer) return;
-
-        chatDrawer.classList.toggle('is-open', open);
-        chatDrawer.setAttribute('aria-hidden', String(!open));
-        $('chat-drawer-backdrop').hidden = !open;
-        document.body.classList.toggle('chat-open', open);
-        document.querySelectorAll('[data-info="chat"]').forEach(button =>
-            button.setAttribute('aria-expanded', String(open))
-        );
-
-        if (open) $('chat-message')?.focus();
-    };
 
     const categoryLabel = slug =>
         categories.find(category => category.slug === slug)?.name || '';
 
     const photo = product => {
-        const columns = product.atlas_columns || 5;
-        const rows = product.atlas_rows || 6;
-        const { x, y } = photoPosition(product.photo, columns, rows);
+        if (product.image) {
+            return `
+                <span
+                    class="product-photo"
+                    style="background-image:url('${escapeHtml(product.image)}');background-size:cover;background-position:center;background-repeat:no-repeat;"
+                    role="img"
+                    aria-label="${escapeHtml(product.name)}"
+                ></span>
+            `;
+        }
+
+        const columns = Math.max(
+            1,
+            Number(product.atlas_columns) || 5
+        );
+
+        const rows = Math.max(
+            1,
+            Number(product.atlas_rows) || 6
+        );
+
+        const photoIndex = Math.max(
+            0,
+            Number(product.photo) || 0
+        );
+
+        const column = photoIndex % columns;
+        const row = Math.floor(photoIndex / columns);
+
+        const x =
+            columns > 1
+                ? (column * 100) / (columns - 1)
+                : 0;
+
+        const y =
+            rows > 1
+                ? (row * 100) / (rows - 1)
+                : 0;
+
+        const atlas = product.atlas
+            ? `--buyer-product-atlas:url('${escapeHtml(product.atlas)}');`
+            : '';
 
         return `
             <span
                 class="product-photo"
-                style="--x:${x}%;--y:${y}%;--buyer-product-atlas:url('${escapeHtml(product.atlas || '/images/product-atlas.png')}');--buyer-product-columns:${columns};--buyer-product-rows:${rows}"
+                style="${atlas}--buyer-product-columns:${columns};--buyer-product-rows:${rows};--x:${x}%;--y:${y}%"
                 role="img"
                 aria-label="${escapeHtml(product.name)}"
             ></span>
@@ -315,9 +167,24 @@ function initialize() {
         const params = new URLSearchParams(location.search);
         const category = params.get('category') || '';
 
-        state.category = categories.some(item => item.slug === category)
-            ? category
-            : '';
+        if (
+            category &&
+            categories.some(item => item.slug === category)
+        ) {
+            const target = new URL('/products', location.origin);
+            target.searchParams.set('category', category);
+
+            const search = (params.get('search') || '').trim();
+
+            if (search) {
+                target.searchParams.set('q', search);
+            }
+
+            location.replace(target.toString());
+            return false;
+        }
+
+        state.category = '';
 
         state.search = (params.get('search') || '').slice(0, 120);
 
@@ -507,8 +374,23 @@ function initialize() {
     $('search-form').addEventListener('submit', event => {
         event.preventDefault();
 
-        state.category = $('search-category').value;
-        state.search = $('search-input').value.trim();
+        const category = $('search-category').value;
+        const search = $('search-input').value.trim();
+
+        if (category) {
+            const target = new URL('/products', location.origin);
+            target.searchParams.set('category', category);
+
+            if (search) {
+                target.searchParams.set('q', search);
+            }
+
+            window.location.href = target.toString();
+            return;
+        }
+
+        state.category = '';
+        state.search = search;
 
         change();
     });
@@ -534,39 +416,1288 @@ function initialize() {
         cards[count]?.focus({ preventScroll: true });
     });
 
+
+    const homeProductColors = {
+        Blue: '#305e94',
+        Black: '#26292a',
+        White: '#fff',
+        Beige: '#d8c8a4',
+        Green: '#68745a',
+        Gray: '#8a8b8e',
+        Brown: '#79543b',
+        Red: '#a8493d',
+        Pink: '#d8899b',
+        Yellow: '#d8ad39',
+        Orange: '#c97b37',
+        Purple: '#79608f',
+        Navy: '#39485f',
+    };
+
+    function homePhotoStyle(element, product) {
+        if (!element) return;
+
+        if (product.image) {
+            element.style.backgroundImage =
+                `url("${product.image}")`;
+            element.style.backgroundSize = 'cover';
+            element.style.backgroundPosition = 'center';
+            element.style.backgroundRepeat = 'no-repeat';
+            return;
+        }
+
+        const columns = Math.max(
+            1,
+            Number(product.atlas_columns) || 5
+        );
+
+        const rows = Math.max(
+            1,
+            Number(product.atlas_rows) || 6
+        );
+
+        const photoIndex = Math.max(
+            0,
+            Number(product.photo) || 0
+        );
+
+        const column = photoIndex % columns;
+        const row = Math.floor(photoIndex / columns);
+
+        const x =
+            columns > 1
+                ? (column * 100) / (columns - 1)
+                : 0;
+
+        const y =
+            rows > 1
+                ? (row * 100) / (rows - 1)
+                : 0;
+
+        if (product.atlas) {
+            element.style.backgroundImage =
+                `url("${product.atlas}")`;
+        }
+
+        element.style.backgroundSize =
+            `${columns * 100}% ${rows * 100}%`;
+
+        element.style.backgroundPosition =
+            `${x}% ${y}%`;
+
+        element.style.backgroundRepeat = 'no-repeat';
+    }
+
+
+    function showHomeProduct(product) {
+        const dialog =
+            $('product-dialog');
+
+        const detail =
+            $('product-detail');
+
+        const sizes =
+            Array.isArray(product.sizes)
+                ? product.sizes.filter(Boolean)
+                : [];
+
+        const productColors =
+            Array.isArray(product.colors) &&
+            product.colors.length
+                ? product.colors.filter(Boolean)
+                : [product.color].filter(Boolean);
+
+        const variants =
+            Array.isArray(product.variants)
+                ? product.variants
+                : [];
+
+        const productIdMatch =
+            String(product.id ?? '').match(/(\d+)$/);
+
+        const productId =
+            Number(productIdMatch?.[1]) || 1;
+
+        const sellerName =
+            product.seller_name ||
+            'Bearly Sample Seller';
+
+        const sellerLocation =
+            product.seller_location ||
+            product.location ||
+            'Philippines';
+
+        const sellerRating =
+            Number(
+                product.seller_rating ??
+                Math.min(
+                    5,
+                    (Number(product.rating) ||
+                        4.7) + 0.1
+                )
+            ).toFixed(1);
+
+        const fallbackStock =
+            12 + (productId % 9);
+
+        const baseStock =
+            Number.isFinite(
+                Number(product.stock)
+            )
+                ? Math.max(
+                    0,
+                    Number(product.stock)
+                )
+                : fallbackStock;
+
+        const soldCount =
+            Number.isFinite(
+                Number(product.sold)
+            )
+                ? Math.max(
+                    0,
+                    Number(product.sold)
+                )
+                : 24 +
+                ((productId * 17) %
+                    180);
+
+        const productRating =
+            Number(product.rating) || 0;
+
+        let selectedSize =
+            sizes[0] || '';
+
+        let selectedColor =
+            productColors[0] || '';
+
+        let quantity = 1;
+
+        const findVariant = () => {
+            if (!variants.length) {
+                return null;
+            }
+
+            return (
+                variants.find(variant => {
+                    const sizeMatches =
+                        !selectedSize ||
+                        !variant.size ||
+                        variant.size ===
+                        selectedSize;
+
+                    const colorMatches =
+                        !selectedColor ||
+                        !variant.color ||
+                        variant.color ===
+                        selectedColor;
+
+                    return (
+                        sizeMatches &&
+                        colorMatches
+                    );
+                }) || null
+            );
+        };
+
+        const sizeOptions =
+            sizes.length
+                ? `
+                    <div class="pd-option-group">
+                        <div class="pd-option-heading">
+                            <span>Size</span>
+                            <button
+                                type="button"
+                                class="pd-size-guide"
+                                data-pd-size-guide
+                            >
+                                Size guide
+                            </button>
+                        </div>
+
+                        <div
+                            class="pd-options"
+                            role="group"
+                            aria-label="Choose size"
+                        >
+                            ${sizes
+                                .map(
+                                    (
+                                        size,
+                                        index
+                                    ) => `
+                                        <button
+                                            type="button"
+                                            class="pd-option"
+                                            data-pd-size="${escapeHtml(
+                                                size
+                                            )}"
+                                            aria-pressed="${
+                                                index === 0
+                                                    ? 'true'
+                                                    : 'false'
+                                            }"
+                                        >
+                                            ${escapeHtml(
+                                                size
+                                            )}
+                                        </button>
+                                    `
+                                )
+                                .join('')}
+                        </div>
+                    </div>
+                `
+                : '';
+
+        const colorOptions =
+            productColors.length
+                ? `
+                    <div class="pd-option-group">
+                        <div class="pd-option-heading">
+                            <span>Color</span>
+
+                            <strong data-pd-color-label>
+                                ${escapeHtml(
+                                    selectedColor
+                                )}
+                            </strong>
+                        </div>
+
+                        <div
+                            class="pd-options pd-color-options"
+                            role="group"
+                            aria-label="Choose color"
+                        >
+                            ${productColors
+                                .map(
+                                    (
+                                        color,
+                                        index
+                                    ) => `
+                                        <button
+                                            type="button"
+                                            class="pd-option pd-color-option"
+                                            data-pd-color="${escapeHtml(
+                                                color
+                                            )}"
+                                            aria-pressed="${
+                                                index === 0
+                                                    ? 'true'
+                                                    : 'false'
+                                            }"
+                                        >
+                                            <span
+                                                class="pd-color-dot"
+                                                style="--pd-color:${
+                                                    homeProductColors[
+                                                        color
+                                                    ] ||
+                                                    '#aaa'
+                                                }"
+                                                aria-hidden="true"
+                                            ></span>
+
+                                            ${escapeHtml(
+                                                color
+                                            )}
+                                        </button>
+                                    `
+                                )
+                                .join('')}
+                        </div>
+                    </div>
+                `
+                : '';
+
+        const shippingBadge =
+            product.free_shipping
+                ? `
+                    <span class="pd-badge">
+                        <i class="mi" aria-hidden="true">
+                            local_shipping
+                        </i>
+                        Free shipping
+                    </span>
+                `
+                : '';
+
+        const voucherBadge =
+            product.voucher
+                ? `
+                    <span class="pd-badge">
+                        <i class="mi" aria-hidden="true">
+                            sell
+                        </i>
+                        Voucher available
+                    </span>
+                `
+                : '';
+
+        const sellerInitial =
+            escapeHtml(
+                sellerName
+                    .charAt(0)
+                    .toUpperCase()
+            );
+
+        detail.innerHTML = `
+            <article class="pd-shell">
+
+                <div class="pd-top">
+
+                    <section class="pd-media">
+
+                        <div
+                            class="photo pd-main-photo"
+                            role="img"
+                            aria-label="${escapeHtml(
+                                product.name
+                            )}"
+                        ></div>
+
+                        <div class="pd-thumbnails">
+                            <button
+                                type="button"
+                                class="pd-thumbnail is-active"
+                                aria-label="View product image"
+                            >
+                                <span
+                                    class="photo pd-thumb-photo"
+                                    aria-hidden="true"
+                                ></span>
+                            </button>
+                        </div>
+
+                        <div class="pd-media-note">
+                            <i class="mi" aria-hidden="true">
+                                verified
+                            </i>
+                            Product preview
+                        </div>
+
+                    </section>
+
+                    <section class="pd-info">
+
+                        <p class="pd-category">
+                            ${escapeHtml(
+                                product.subcategory ||
+                                product.category ||
+                                'Product'
+                            )}
+                        </p>
+
+                        <h2 id="product-title">
+                            ${escapeHtml(
+                                product.name
+                            )}
+                        </h2>
+
+                        <div class="pd-social-proof">
+
+                            <span class="pd-rating">
+                                <i
+                                    class="mi"
+                                    aria-hidden="true"
+                                >
+                                    star
+                                </i>
+                                ${
+                                    productRating
+                                        ? productRating.toFixed(
+                                            1
+                                        )
+                                        : 'New'
+                                }
+                            </span>
+
+                            <span class="pd-divider"></span>
+
+                            <span>
+                                ${soldCount} sold
+                            </span>
+
+                        </div>
+
+                        <div class="pd-price-box">
+                            <strong
+                                class="pd-price"
+                                data-pd-price
+                            >
+                                ${peso(
+                                    product.price
+                                )}
+                            </strong>
+                        </div>
+
+                        ${
+                            shippingBadge ||
+                            voucherBadge
+                                ? `
+                                    <div class="pd-badges">
+                                        ${shippingBadge}
+                                        ${voucherBadge}
+                                    </div>
+                                `
+                                : ''
+                        }
+
+                        <div class="pd-overview">
+
+                            <div>
+                                <span>
+                                    Condition
+                                </span>
+
+                                <strong>
+                                    ${escapeHtml(
+                                        product.condition ||
+                                        'New'
+                                    )}
+                                </strong>
+                            </div>
+
+                            <div>
+                                <span>
+                                    Ships from
+                                </span>
+
+                                <strong>
+                                    ${escapeHtml(
+                                        sellerLocation
+                                    )}
+                                </strong>
+                            </div>
+
+                        </div>
+
+                        ${colorOptions}
+
+                        ${sizeOptions}
+
+                        <div
+                            class="pd-option-group pd-quantity-group"
+                        >
+
+                            <div class="pd-option-heading">
+                                <span>
+                                    Quantity
+                                </span>
+
+                                <small data-pd-stock>
+                                    ${baseStock}
+                                    pieces available
+                                </small>
+                            </div>
+
+                            <div class="pd-quantity-row">
+
+                                <div class="pd-stepper">
+
+                                    <button
+                                        type="button"
+                                        data-pd-minus
+                                        aria-label="Decrease quantity"
+                                    >
+                                        <i
+                                            class="mi"
+                                            aria-hidden="true"
+                                        >
+                                            remove
+                                        </i>
+                                    </button>
+
+                                    <span
+                                        data-pd-quantity
+                                    >
+                                        1
+                                    </span>
+
+                                    <button
+                                        type="button"
+                                        data-pd-plus
+                                        aria-label="Increase quantity"
+                                    >
+                                        <i
+                                            class="mi"
+                                            aria-hidden="true"
+                                        >
+                                            add
+                                        </i>
+                                    </button>
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                        <div class="pd-actions">
+
+                            <button
+                                type="button"
+                                class="pd-add-cart"
+                                data-pd-add-cart
+                            >
+                                <i
+                                    class="mi"
+                                    aria-hidden="true"
+                                >
+                                    shopping_cart
+                                </i>
+
+                                Add to Cart
+                            </button>
+
+                            <button
+                                type="button"
+                                class="pd-buy-now"
+                                data-pd-buy-now
+                            >
+                                Buy Now
+                            </button>
+
+                        </div>
+
+                        <div class="pd-action-note">
+                            <i
+                                class="mi"
+                                aria-hidden="true"
+                            >
+                                info
+                            </i>
+
+                            Frontend preview only —
+                            checkout and live
+                            inventory will be
+                            connected during
+                            backend integration.
+                        </div>
+
+                    </section>
+
+                </div>
+
+                <section class="pd-seller-card">
+
+                    <div class="pd-seller-avatar">
+                        ${sellerInitial}
+                    </div>
+
+                    <div class="pd-seller-info">
+
+                        <small>Sold by</small>
+
+                        <h3>
+                            ${escapeHtml(
+                                sellerName
+                            )}
+                        </h3>
+
+                        <div class="pd-seller-meta">
+
+                            <span>
+                                <i
+                                    class="mi"
+                                    aria-hidden="true"
+                                >
+                                    star
+                                </i>
+                                ${sellerRating}
+                                seller rating
+                            </span>
+
+                            <span>
+                                <i
+                                    class="mi"
+                                    aria-hidden="true"
+                                >
+                                    location_on
+                                </i>
+                                ${escapeHtml(
+                                    sellerLocation
+                                )}
+                            </span>
+
+                        </div>
+
+                    </div>
+
+                    <div class="pd-seller-actions">
+
+                        <button
+                            type="button"
+                            class="pd-shop-button"
+                            data-pd-chat
+                        >
+                            <i
+                                class="mi"
+                                aria-hidden="true"
+                            >
+                                chat_bubble
+                            </i>
+
+                            Chat
+                        </button>
+
+                        <button
+                            type="button"
+                            class="pd-shop-button"
+                            data-pd-shop
+                        >
+                            <i
+                                class="mi"
+                                aria-hidden="true"
+                            >
+                                storefront
+                            </i>
+
+                            View Shop
+                        </button>
+
+                    </div>
+
+                </section>
+
+                <section class="pd-description">
+
+                    <h3>
+                        Product Description
+                    </h3>
+
+                    <p>
+                        ${escapeHtml(
+                            product.description ||
+                            'No description available.'
+                        )}
+                    </p>
+
+                    <div class="pd-description-grid">
+
+                        <div>
+                            <span>
+                                Category
+                            </span>
+
+                            <strong>
+                                ${escapeHtml(
+                                    product.subcategory
+                                )}
+                            </strong>
+                        </div>
+
+                        <div>
+                            <span>
+                                Condition
+                            </span>
+
+                            <strong>
+                                ${escapeHtml(
+                                    product.condition ||
+                                    'New'
+                                )}
+                            </strong>
+                        </div>
+
+                        <div>
+                            <span>
+                                Color
+                            </span>
+
+                            <strong
+                                data-pd-description-color
+                            >
+                                ${escapeHtml(
+                                    selectedColor ||
+                                    '—'
+                                )}
+                            </strong>
+                        </div>
+
+                        <div>
+                            <span>
+                                Location
+                            </span>
+
+                            <strong>
+                                ${escapeHtml(
+                                    sellerLocation
+                                )}
+                            </strong>
+                        </div>
+
+                    </div>
+
+                </section>
+
+            </article>
+        `;
+
+        const mainPhoto =
+            detail.querySelector(
+                '.pd-main-photo'
+            );
+
+        const thumbPhoto =
+            detail.querySelector(
+                '.pd-thumb-photo'
+            );
+
+        if (mainPhoto) {
+            homePhotoStyle(
+                mainPhoto,
+                product
+            );
+        }
+
+        if (thumbPhoto) {
+            homePhotoStyle(
+                thumbPhoto,
+                product
+            );
+        }
+
+        function notify(message) {
+            let toast =
+                document.getElementById(
+                    'bc-preview-toast'
+                );
+
+            if (!toast) {
+                toast =
+                    document.createElement(
+                        'div'
+                    );
+
+                toast.id =
+                    'bc-preview-toast';
+
+                toast.className =
+                    'bc-preview-toast';
+
+                toast.setAttribute(
+                    'role',
+                    'status'
+                );
+
+                toast.setAttribute(
+                    'aria-live',
+                    'polite'
+                );
+
+                document.body.append(toast);
+            }
+
+            toast.textContent = message;
+            toast.classList.add(
+                'is-visible'
+            );
+
+            clearTimeout(
+                window.__bearlyPreviewToast
+            );
+
+            window.__bearlyPreviewToast =
+                setTimeout(() => {
+                    toast.classList.remove(
+                        'is-visible'
+                    );
+                }, 2400);
+        }
+
+        function currentVariant() {
+            return findVariant();
+        }
+
+        function currentStock() {
+            const variant =
+                currentVariant();
+
+            if (
+                variants.length &&
+                !variant
+            ) {
+                return 0;
+            }
+
+            if (
+                variant &&
+                Number.isFinite(
+                    Number(variant.stock)
+                )
+            ) {
+                return Math.max(
+                    0,
+                    Number(variant.stock)
+                );
+            }
+
+            return baseStock;
+        }
+
+        function currentPrice() {
+            const variant =
+                currentVariant();
+
+            if (
+                variant &&
+                Number.isFinite(
+                    Number(variant.price)
+                )
+            ) {
+                return Number(
+                    variant.price
+                );
+            }
+
+            return (
+                Number(product.price) ||
+                0
+            );
+        }
+
+        function syncProductSelection() {
+            const stock =
+                currentStock();
+
+            if (stock > 0) {
+                quantity = Math.max(
+                    1,
+                    Math.min(
+                        quantity,
+                        stock
+                    )
+                );
+            } else {
+                quantity = 1;
+            }
+
+            const priceNode =
+                detail.querySelector(
+                    '[data-pd-price]'
+                );
+
+            const stockNode =
+                detail.querySelector(
+                    '[data-pd-stock]'
+                );
+
+            const quantityNode =
+                detail.querySelector(
+                    '[data-pd-quantity]'
+                );
+
+            const minusButton =
+                detail.querySelector(
+                    '[data-pd-minus]'
+                );
+
+            const plusButton =
+                detail.querySelector(
+                    '[data-pd-plus]'
+                );
+
+            const addButton =
+                detail.querySelector(
+                    '[data-pd-add-cart]'
+                );
+
+            const buyButton =
+                detail.querySelector(
+                    '[data-pd-buy-now]'
+                );
+
+            if (priceNode) {
+                priceNode.textContent =
+                    peso(
+                        currentPrice()
+                    );
+            }
+
+            if (stockNode) {
+                stockNode.textContent =
+                    stock > 0
+                        ? `${stock} piece${
+                            stock === 1
+                                ? ''
+                                : 's'
+                        } available`
+                        : 'Out of stock';
+
+                stockNode.classList.toggle(
+                    'is-out',
+                    stock <= 0
+                );
+            }
+
+            if (quantityNode) {
+                quantityNode.textContent =
+                    quantity;
+            }
+
+            if (minusButton) {
+                minusButton.disabled =
+                    quantity <= 1 ||
+                    stock <= 0;
+            }
+
+            if (plusButton) {
+                plusButton.disabled =
+                    quantity >= stock ||
+                    stock <= 0;
+            }
+
+            if (addButton) {
+                addButton.disabled =
+                    stock <= 0;
+            }
+
+            if (buyButton) {
+                buyButton.disabled =
+                    stock <= 0;
+            }
+        }
+
+        detail
+            .querySelectorAll(
+                '[data-pd-size]'
+            )
+            .forEach(button => {
+                button.addEventListener(
+                    'click',
+                    () => {
+                        selectedSize =
+                            button.dataset
+                                .pdSize || '';
+
+                        detail
+                            .querySelectorAll(
+                                '[data-pd-size]'
+                            )
+                            .forEach(
+                                option => {
+                                    option.setAttribute(
+                                        'aria-pressed',
+                                        String(
+                                            option ===
+                                            button
+                                        )
+                                    );
+                                }
+                            );
+
+                        quantity = 1;
+
+                        syncProductSelection();
+                    }
+                );
+            });
+
+        detail
+            .querySelectorAll(
+                '[data-pd-color]'
+            )
+            .forEach(button => {
+                button.addEventListener(
+                    'click',
+                    () => {
+                        selectedColor =
+                            button.dataset
+                                .pdColor || '';
+
+                        detail
+                            .querySelectorAll(
+                                '[data-pd-color]'
+                            )
+                            .forEach(
+                                option => {
+                                    option.setAttribute(
+                                        'aria-pressed',
+                                        String(
+                                            option ===
+                                            button
+                                        )
+                                    );
+                                }
+                            );
+
+                        const colorLabel =
+                            detail.querySelector(
+                                '[data-pd-color-label]'
+                            );
+
+                        const descriptionColor =
+                            detail.querySelector(
+                                '[data-pd-description-color]'
+                            );
+
+                        if (colorLabel) {
+                            colorLabel.textContent =
+                                selectedColor;
+                        }
+
+                        if (
+                            descriptionColor
+                        ) {
+                            descriptionColor.textContent =
+                                selectedColor;
+                        }
+
+                        quantity = 1;
+
+                        syncProductSelection();
+                    }
+                );
+            });
+
+        detail
+            .querySelector(
+                '[data-pd-minus]'
+            )
+            ?.addEventListener(
+                'click',
+                () => {
+                    if (quantity > 1) {
+                        quantity--;
+                        syncProductSelection();
+                    }
+                }
+            );
+
+        detail
+            .querySelector(
+                '[data-pd-plus]'
+            )
+            ?.addEventListener(
+                'click',
+                () => {
+                    const stock =
+                        currentStock();
+
+                    if (
+                        quantity <
+                        stock
+                    ) {
+                        quantity++;
+                        syncProductSelection();
+                    }
+                }
+            );
+
+        detail
+            .querySelector(
+                '[data-pd-add-cart]'
+            )
+            ?.addEventListener(
+                'click',
+                () => {
+                    const stock =
+                        currentStock();
+
+                    if (stock <= 0) {
+                        notify(
+                            'This variation is out of stock.'
+                        );
+                        return;
+                    }
+
+                    const cartKey =
+                        'bearly-preview-cart-v1';
+
+                    let previewCart = [];
+
+                    try {
+                        const stored =
+                            JSON.parse(
+                                localStorage.getItem(
+                                    cartKey
+                                ) || '[]'
+                            );
+
+                        if (
+                            Array.isArray(
+                                stored
+                            )
+                        ) {
+                            previewCart =
+                                stored;
+                        }
+                    } catch {
+                        previewCart = [];
+                    }
+
+                    const itemKey = [
+                        product.id,
+                        selectedColor,
+                        selectedSize,
+                    ].join('-');
+
+                    const existing =
+                        previewCart.find(
+                            item =>
+                                item.key ===
+                                itemKey
+                        );
+
+                    if (existing) {
+                        existing.quantity =
+                            Math.min(
+                                stock,
+                                existing.quantity +
+                                quantity
+                            );
+                    } else {
+                        previewCart.push({
+                            key: itemKey,
+                            product_id:
+                                product.id,
+                            name:
+                                product.name,
+                            price:
+                                currentPrice(),
+                            color:
+                                selectedColor,
+                            size:
+                                selectedSize,
+                            quantity,
+                            photo:
+                                product.photo,
+                            seller_name:
+                                sellerName,
+                            frontend_preview:
+                                true,
+                        });
+                    }
+
+                    try {
+                        localStorage.setItem(
+                            cartKey,
+                            JSON.stringify(
+                                previewCart
+                            )
+                        );
+                    } catch {
+                        // LocalStorage unavailable.
+                    }
+
+                    const button =
+                        detail.querySelector(
+                            '[data-pd-add-cart]'
+                        );
+
+                    const original =
+                        button.innerHTML;
+
+                    button.innerHTML = `
+                        <i
+                            class="mi"
+                            aria-hidden="true"
+                        >
+                            check
+                        </i>
+                        Added to Cart
+                    `;
+
+                    notify(
+                        `${quantity} × ${product.name} added to the preview cart.`
+                    );
+
+                    setTimeout(() => {
+                        if (
+                            button.isConnected
+                        ) {
+                            button.innerHTML =
+                                original;
+                        }
+                    }, 1400);
+                }
+            );
+
+        detail
+            .querySelector(
+                '[data-pd-buy-now]'
+            )
+            ?.addEventListener(
+                'click',
+                () => {
+                    notify(
+                        'Buy Now is frontend-only for now. Checkout will be connected later.'
+                    );
+                }
+            );
+
+        detail
+            .querySelector(
+                '[data-pd-chat]'
+            )
+            ?.addEventListener(
+                'click',
+                () => {
+                    notify(
+                        'Seller chat will be connected during backend integration.'
+                    );
+                }
+            );
+
+        detail
+            .querySelector(
+                '[data-pd-shop]'
+            )
+            ?.addEventListener(
+                'click',
+                () => {
+                    notify(
+                        'Seller shop page will be connected later.'
+                    );
+                }
+            );
+
+        detail
+            .querySelector(
+                '[data-pd-size-guide]'
+            )
+            ?.addEventListener(
+                'click',
+                () => {
+                    notify(
+                        'Size guide preview can be added after the product details UI.'
+                    );
+                }
+            );
+
+        syncProductSelection();
+
+        if (!dialog.open) {
+            dialog.showModal();
+        }
+
+        document.body.style.overflow =
+            'hidden';
+
+        dialog.addEventListener(
+            'close',
+            () => {
+                document.body.style.overflow =
+                    '';
+            },
+            { once: true }
+        );
+    }
+
     document.addEventListener('click', event => {
         const category = event.target.closest('[data-category]');
 
         if (category) {
-            const dedicated = [
-                'men-s-apparel',
-                'women-s-apparel',
-                'electronics-and-gadgets',
-                'books-and-media',
-                'pet-supplies',
-                'sports-and-outdoors',
-                'jewelry-and-watches',
-            ];
+            event.preventDefault();
 
-            if (dedicated.includes(category.dataset.category)) {
-                event.preventDefault();
-                window.location.href = `/products?category=${category.dataset.category}`;
-                return;
-            }
+            const slug = category.dataset.category;
 
-            state.category = category.dataset.category;
-            state.search = '';
-            state.sort = 'featured';
+            if (!slug) return;
 
-            $('search-category').value = state.category;
-            $('search-input').value = '';
-            $('sort').value = 'featured';
+            window.location.href =
+                `/products?category=${encodeURIComponent(slug)}`;
 
-            if ($('sidebar').classList.contains('is-open')) {
-                menu(false);
-            }
-
-            change();
+            return;
         }
 
         const clear = event.target.closest('[data-clear]');
@@ -582,106 +1713,27 @@ function initialize() {
 
         if (productButton) {
             const product = products.find(
-                item => item.id === Number(productButton.dataset.product)
+                item =>
+                    String(item.id) ===
+                    String(productButton.dataset.product)
             );
 
             if (!product) return;
 
-            const productSizes = product.sizes || [];
-            const productColor = product.color || 'Default';
-            const productSubcategory = product.subcategory || product.category;
-            const productLocation = product.location || 'Metro Manila';
-
-            $('product-detail').innerHTML = `
-                <article class="home-product-detail">
-                    <section class="home-product-media">
-                        <div class="home-product-image">${photo(product)}</div>
-                        <div class="home-product-media-note"><span class="material-symbols-outlined" aria-hidden="true">verified</span>Product preview</div>
-                    </section>
-                    <section class="home-product-info">
-                        <p class="home-product-category">${escapeHtml(productSubcategory)}</p>
-                        <h2 id="product-title">${escapeHtml(product.name)}</h2>
-                        <div class="home-social-proof"><span>★ 4.8</span><i></i><span>75 sold</span></div>
-                        <strong class="home-product-price">${peso(product.price)}</strong>
-                        <div class="home-product-facts"><div><span>Condition</span><strong>${escapeHtml(product.condition || 'New')}</strong></div><div><span>Ships from</span><strong>${escapeHtml(productLocation)}</strong></div></div>
-                        <p class="home-product-description">${escapeHtml(product.description)}</p>
-                        <div class="home-product-options"><div class="home-option-heading"><strong>Color</strong><span>${escapeHtml(productColor)}</span></div><button type="button" class="home-color-option is-selected"><span></span>${escapeHtml(productColor)}</button></div>
-                        ${productSizes.length ? `<div class="home-product-options"><div class="home-option-heading"><strong>Size</strong><span>Choose an option</span></div><div class="home-option-list">${productSizes.map((size, index) => `<button type="button" class="home-size-option${index === 0 ? ' is-selected' : ''}" data-home-size="${escapeHtml(size)}">${escapeHtml(size)}</button>`).join('')}</div></div>` : ''}
-                        <div class="home-product-options"><div class="home-option-heading"><strong>Quantity</strong><span>10 pieces available</span></div><div class="home-quantity"><button type="button" data-home-minus aria-label="Decrease quantity">−</button><span data-home-quantity>1</span><button type="button" data-home-plus aria-label="Increase quantity">+</button></div></div>
-                        <div class="home-product-actions"><button type="button" class="button outline home-add-cart" data-home-add-cart><span class="material-symbols-outlined" aria-hidden="true">shopping_cart</span>Add to Cart</button><button type="button" class="button gold" data-home-buy-now>Buy Now</button></div>
-                        <small class="home-product-note">Preview product · Availability and seller details are illustrative.</small>
-                    </section>
-                </div>
-            `;
-
-            $('product-dialog').showModal();
-
-            let selectedSize = productSizes[0] || '';
-            let quantity = 1;
-            const stock = 10;
-            const quantityNode = $('product-detail').querySelector('[data-home-quantity]');
-            const updateQuantity = () => {
-                quantityNode.textContent = String(quantity);
-            };
-
-            $('product-detail').querySelectorAll('[data-home-size]').forEach(button => {
-                button.addEventListener('click', () => {
-                    selectedSize = button.dataset.homeSize;
-                    $('product-detail').querySelectorAll('[data-home-size]').forEach(option => option.classList.toggle('is-selected', option === button));
-                });
-            });
-            $('product-detail').querySelector('[data-home-minus]').addEventListener('click', () => {
-                quantity = Math.max(1, quantity - 1);
-                updateQuantity();
-            });
-            $('product-detail').querySelector('[data-home-plus]').addEventListener('click', () => {
-                quantity = Math.min(stock, quantity + 1);
-                updateQuantity();
-            });
-            $('product-detail').querySelector('[data-home-add-cart]').addEventListener('click', event => {
-                const cart = readPreviewCart();
-                const key = [product.id, productColor, selectedSize].join('-');
-                const existing = cart.find(item => item.key === key);
-                if (existing) {
-                    existing.quantity = Math.min(stock, existing.quantity + quantity);
-                } else {
-                    cart.push({ key, product_id: product.id, name: product.name, price: product.price, color: productColor, size: selectedSize, quantity, photo: product.photo, seller_name: 'Bearly seller', frontend_preview: true });
-                }
-                writePreviewCart(cart);
-                event.currentTarget.innerHTML = '<span class="material-symbols-outlined" aria-hidden="true">check</span>Added to Cart';
-                notify(`${quantity} × ${product.name} added to your cart.`);
-                setTimeout(() => {
-                    if (event.currentTarget.isConnected) event.currentTarget.innerHTML = '<span class="material-symbols-outlined" aria-hidden="true">shopping_cart</span>Add to Cart';
-                }, 1400);
-            });
-            $('product-detail').querySelector('[data-home-buy-now]').addEventListener('click', () => {
-                notify('Buy Now preview: your item is ready for checkout integration.');
-            });
+            showHomeProduct(product);
         }
 
         const info = event.target.closest('[data-info]');
 
         if (info) {
-            if (info.dataset.info === 'chat') {
-                setChatOpen(true);
-                return;
-            }
-
             const copy = {
                 orders: [
                     'Your orders',
-                    `<div class="demo-order-list"><article class="demo-order"><div><strong>Order #BR-1048</strong><span>Wireless headphones · 1 item</span></div><strong class="demo-order-status is-shipping">On the way</strong></article><article class="demo-order"><div><strong>Order #BR-1032</strong><span>Desk lamp · 1 item</span></div><strong class="demo-order-status is-complete">Delivered</strong></article></div>`,
-                    '<a class="button gold" href="#results">Continue shopping</a>',
+                    'Order tracking will connect to your buyer account in the next integration. This homepage preview does not create or display real orders.',
                 ],
                 chat: [
                     'Chat with sellers',
-                    '<div class="demo-empty"><span class="material-symbols-outlined" aria-hidden="true">forum</span><strong>No new messages</strong><p>Your seller conversations will appear here.</p></div>',
-                    '<button class="button gold" type="button" data-demo-action="chat">Start a conversation</button>',
-                ],
-                account: [
-                    'Mia Santos',
-                    '<div class="demo-account"><div class="demo-avatar">MS</div><div><strong>mia.santos@example.com</strong><span>Demo buyer account</span></div></div><div class="account-links"><button type="button" data-demo-action="profile"><span class="material-symbols-outlined" aria-hidden="true">person</span>Profile details</button><button type="button" data-demo-action="addresses"><span class="material-symbols-outlined" aria-hidden="true">location_on</span>Saved addresses</button><button type="button" data-demo-action="logout"><span class="material-symbols-outlined" aria-hidden="true">logout</span>Reset demo account</button></div>',
-                    '',
+                    'Seller messaging will connect to your buyer account. No messages are sent from this homepage preview.',
                 ],
                 about: [
                     'A find for everyone',
@@ -695,70 +1747,8 @@ function initialize() {
 
             if (copy) {
                 $('info-title').textContent = copy[0];
-                $('info-copy').innerHTML = copy[1];
-                $('info-actions').innerHTML = copy[2] || '';
+                $('info-copy').textContent = copy[1];
                 $('info-dialog').showModal();
-            }
-        }
-
-        const cartLink = event.target.closest('a[href="/cart"]');
-        if (cartLink) {
-            event.preventDefault();
-            setCartOpen(true);
-        }
-
-        const cartClose = event.target.closest('[data-cart-close]');
-        if (cartClose) setCartOpen(false);
-
-        const cart = readPreviewCart();
-        const cartItemKey = event.target.closest('[data-cart-increase], [data-cart-decrease], [data-cart-remove]')?.dataset;
-        if (cartItemKey) {
-            const key = cartItemKey.cartIncrease || cartItemKey.cartDecrease || cartItemKey.cartRemove;
-            const item = cart.find(entry => entry.key === key);
-            if (item) {
-                if (cartItemKey.cartIncrease) item.quantity += 1;
-                if (cartItemKey.cartDecrease) item.quantity = Math.max(1, item.quantity - 1);
-                if (cartItemKey.cartRemove) cart.splice(cart.indexOf(item), 1);
-                writePreviewCart(cart);
-                renderPreviewCart();
-            }
-        }
-
-        if (event.target.closest('[data-cart-clear]')) {
-            writePreviewCart([]);
-            renderPreviewCart();
-        }
-
-        if (event.target.closest('[data-cart-checkout]')) {
-            window.alert('Checkout preview: your cart is ready for the backend integration.');
-        }
-
-        const chatClose = event.target.closest('[data-chat-close]');
-
-        if (chatClose) {
-            setChatOpen(false);
-        }
-
-        const chatConversation = event.target.closest('[data-chat-conversation]');
-
-        if (chatConversation) {
-            renderChatConversation(chatConversation.dataset.chatConversation);
-        }
-
-        const demoAction = event.target.closest('[data-demo-action]');
-
-        if (demoAction) {
-            const messages = {
-                profile: ['Profile details', 'Mia Santos\nmia.santos@example.com\nMobile number: +63 917 000 1048'],
-                addresses: ['Saved addresses', 'Home\nQuezon City, Metro Manila\nDefault delivery address'],
-                chat: ['Chat with sellers', 'This static demo is ready for the real messaging integration.'],
-                logout: ['Demo account reset', 'The static buyer account stays available so you can continue reviewing the homepage functions.'],
-            }[demoAction.dataset.demoAction];
-
-            if (messages) {
-                $('info-title').textContent = messages[0];
-                $('info-copy').textContent = messages[1];
-                $('info-actions').innerHTML = '<button class="button gold" type="button" data-close>Close</button>';
             }
         }
 
@@ -791,7 +1781,10 @@ function initialize() {
         render();
     });
 
-    readUrl();
+    if (readUrl() === false) {
+        return;
+    }
+
     render();
 }
 
@@ -1359,38 +2352,6 @@ export const defaults = () => ({
     view: 'grid',
 });
 
-function subcategoryMatches(productSubcategory, selectedSubcategory) {
-    if (!productSubcategory || !selectedSubcategory) return false;
-
-    const normalize = value =>
-        value
-            .toLowerCase()
-            .replace(/[’']/g, '')
-            .replace(/[^a-z0-9]+/g, ' ')
-            .trim();
-
-    const productValue = normalize(productSubcategory);
-    const selectedValue = normalize(selectedSubcategory);
-
-    if (productValue === selectedValue) return true;
-
-    const groupedSubcategories = {
-        'fashion jewelry': ['necklaces', 'earrings', 'bracelets', 'rings'],
-    };
-
-    if (groupedSubcategories[selectedValue]) {
-        return groupedSubcategories[selectedValue].some(term =>
-            productValue.includes(term)
-        );
-    }
-
-    const selectedTerms = selectedValue
-        .split(' ')
-        .filter(term => term.length > 2 && !['and', 'for', 'the'].includes(term));
-
-    return selectedTerms.some(term => productValue.includes(term));
-}
-
 export function filterCatalog(products, state, savedIds = []) {
     const search = state.search.trim().toLowerCase();
 
@@ -1398,7 +2359,7 @@ export function filterCatalog(products, state, savedIds = []) {
         product =>
             (!search || product.name.toLowerCase().includes(search)) &&
             (!state.subcategory ||
-                subcategoryMatches(product.subcategory, state.subcategory)) &&
+                product.subcategory === state.subcategory) &&
             product.price >= state.min &&
             product.price <= state.max &&
             (!state.size.length ||
@@ -1435,7 +2396,7 @@ export function readState(params, products) {
     state.search = (params.get('q') || '').slice(0, 120);
 
     state.subcategory = products.some(
-        product => subcategoryMatches(product.subcategory, params.get('sub'))
+        product => product.subcategory === params.get('sub')
     )
         ? params.get('sub')
         : '';
@@ -1535,53 +2496,8 @@ function init() {
         products
     );
 
-    const initialLimit = products.length;
-    let limit = initialLimit;
+    let limit = 20;
     let saved = [];
-
-    const categoryChatKey = 'bearly-category-chat-v1';
-
-    const setupCategoryChat = () => {
-        const copy = $('bc-info-copy');
-        if (!copy) return;
-
-        const stored = JSON.parse(localStorage.getItem(categoryChatKey) || '[]');
-        copy.innerHTML = `
-            <div class="bc-chat-conversations">
-                <button type="button" class="bc-chat-conversation is-active" data-bc-chat-seller="Greenline Home"><strong>Greenline Home</strong><small>Your desk lamp is on the way.</small></button>
-                <button type="button" class="bc-chat-conversation" data-bc-chat-seller="Sundays Market"><strong>Sundays Market</strong><small>Thanks for your order!</small></button>
-            </div>
-            <div class="bc-chat-thread" data-bc-chat-thread>
-                <p class="bc-chat-message seller">Hi Mia! Your desk lamp has been handed to the courier.</p>
-                <p class="bc-chat-message buyer">Great, thank you for the update!</p>
-                ${stored.map(message => `<p class="bc-chat-message buyer" title="${message.time}">${categoryEscapeHtml(message.text)}</p>`).join('')}
-            </div>
-            <form class="bc-chat-form" data-bc-chat-form><input type="text" placeholder="Write a message..." maxlength="240" aria-label="Message seller"><button class="button gold" type="submit">Send</button></form>
-        `;
-
-        copy.querySelectorAll('[data-bc-chat-seller]').forEach(button => {
-            button.addEventListener('click', () => {
-                copy.querySelectorAll('[data-bc-chat-seller]').forEach(item => item.classList.toggle('is-active', item === button));
-            });
-        });
-
-        copy.querySelector('[data-bc-chat-form]')?.addEventListener('submit', event => {
-            event.preventDefault();
-            const input = event.currentTarget.querySelector('input');
-            const text = input.value.trim();
-            if (!text) return;
-
-            const message = { text, time: new Date().toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' }) };
-            stored.push(message);
-            localStorage.setItem(categoryChatKey, JSON.stringify(stored));
-            const bubble = document.createElement('p');
-            bubble.className = 'bc-chat-message buyer';
-            bubble.textContent = text;
-            bubble.title = message.time;
-            copy.querySelector('[data-bc-chat-thread]').append(bubble);
-            input.value = '';
-        });
-    };
 
     try {
         const stored = JSON.parse(
@@ -1610,10 +2526,7 @@ function init() {
     };
 
     function option(container, key, values) {
-        const target = $(container);
-        if (!target) return;
-
-        target.innerHTML = values
+        $(container).innerHTML = values
             .map(value => {
                 if (key === 'size') {
                     return `
@@ -1661,33 +2574,26 @@ function init() {
             .join('');
     }
 
-    const sizeValues = [...new Set(products.flatMap(product => product.sizes))];
-    if (sizeValues.length) {
-        option(
-            'bc-size-options',
-            'size',
-            sizeValues
-        );
-    }
+    option(
+        'bc-size-options',
+        'size',
+        [...new Set(products.flatMap(product => product.sizes))]
+    );
 
     for (const key of [
         'color',
         'condition',
         'location',
     ]) {
-        const values = [
-            ...new Set(
-                products.map(product => product[key])
-            ),
-        ];
-
-        if (values.length) {
-            option(
-                `bc-${key}-options`,
-                key,
-                values
-            );
-        }
+        option(
+            `bc-${key}-options`,
+            key,
+            [
+                ...new Set(
+                    products.map(product => product[key])
+                ),
+            ]
+        );
     }
 
     function chips() {
@@ -1772,15 +2678,73 @@ function init() {
         return result;
     }
 
+    const catalogImageSource =
+        getComputedStyle(document.body)
+            .getPropertyValue('--catalog-image');
+
+    // Most category atlases use 5 columns x 6 rows.
+    // Men's Apparel uses a 4 x 4 atlas.
+    const catalogColumns =
+        catalogImageSource.includes('mens-catalog-atlas.png')
+            ? 4
+            : 5;
+
+    const catalogRows =
+        catalogImageSource.includes('mens-catalog-atlas.png')
+            ? 4
+            : 6;
+
+    document.body.style.setProperty(
+        '--catalog-image-width',
+        `${catalogColumns * 100}%`
+    );
+
+    document.body.style.setProperty(
+        '--catalog-image-height',
+        `${catalogRows * 100}%`
+    );
+
     function photoStyle(element, product) {
+        if (!element) return;
+
+        if (product.image) {
+            element.style.backgroundImage =
+                `url("${product.image}")`;
+            element.style.backgroundSize = 'cover';
+            element.style.backgroundPosition = 'center';
+            element.style.backgroundRepeat = 'no-repeat';
+            return;
+        }
+
+        const photoIndex = Math.max(
+            0,
+            Number(product.photo) || 0
+        );
+
+        const column =
+            photoIndex % catalogColumns;
+
+        const row =
+            Math.floor(photoIndex / catalogColumns);
+
+        const x =
+            catalogColumns > 1
+                ? (column * 100) / (catalogColumns - 1)
+                : 0;
+
+        const y =
+            catalogRows > 1
+                ? (row * 100) / (catalogRows - 1)
+                : 0;
+
         element.style.setProperty(
             '--x',
-            `${(product.photo % 5) * 25}%`
+            `${x}%`
         );
 
         element.style.setProperty(
             '--y',
-            `${Math.floor(product.photo / 5) * 20}%`
+            `${y}%`
         );
     }
 
@@ -1993,7 +2957,6 @@ function init() {
 
     function writeUrl() {
         const url = new URL(location.href);
-        const currentCategory = new URLSearchParams(location.search).get('category') || 'men-s-apparel';
 
         const keys = [
             'q',
@@ -2018,7 +2981,7 @@ function init() {
 
         url.searchParams.set(
             'category',
-            currentCategory
+            'men-s-apparel'
         );
 
         if (state.search) {
@@ -2102,7 +3065,7 @@ function init() {
     }
 
     function change() {
-        limit = initialLimit;
+        limit = 20;
         syncInputs();
         render();
         writeUrl();
@@ -3729,11 +4692,11 @@ function init() {
                 const info = {
                     orders: [
                         'Your orders',
-                        '<div class="bc-order-list"><article><div><strong>Order #BR-1048</strong><small>Wireless headphones · 1 item</small></div><b>On the way</b></article><article><div><strong>Order #BR-1032</strong><small>Desk lamp · 1 item</small></div><b>Delivered</b></article></div>',
+                        'Order tracking will be connected to approved buyer accounts during backend integration. No orders are created in this preview.',
                     ],
                     chat: [
                         'Chat with sellers',
-                        '<span class="bc-chat-placeholder">Seller conversations</span>',
+                        'Messaging will be connected to buyer and seller accounts. This preview does not send messages.',
                     ],
                     help: [
                         'Explore Bearly',
@@ -3750,13 +4713,9 @@ function init() {
                         .textContent =
                         info[0];
 
-                    $('bc-info-copy').innerHTML = info[1];
-                    const infoAction = $('bc-info-dialog').querySelector('a.button');
-                    infoAction.hidden = true;
-
-                    if (button.dataset.info === 'chat') {
-                        setupCategoryChat();
-                    }
+                    $('bc-info-copy')
+                        .textContent =
+                        info[1];
 
                     $('bc-info-dialog')
                         .showModal();
@@ -3817,3 +4776,408 @@ function init() {
     syncInputs();
     render();
 }
+
+
+
+/* =========================================================
+   SHARED SEARCH HISTORY + PRODUCT SUGGESTIONS
+   Dashboard + all Category V2 pages
+   ========================================================= */
+
+function initBearlySearchExperience() {
+    const homeForm = document.getElementById('search-form');
+    const homeInput = document.getElementById('search-input');
+
+    const categoryForm = document.getElementById('bc-search-form');
+    const categoryInput = document.getElementById('bc-search');
+
+    const form = homeForm || categoryForm;
+    const input = homeInput || categoryInput;
+
+    if (!form || !input) return;
+
+    const STORAGE_KEY = 'bearly-search-history-v1';
+    const MAX_HISTORY = 8;
+    const MAX_SUGGESTIONS = 6;
+
+    form.setAttribute('autocomplete', 'off');
+    input.setAttribute('autocomplete', 'off');
+    input.setAttribute('aria-autocomplete', 'list');
+    input.setAttribute('aria-haspopup', 'listbox');
+
+    const panel = document.createElement('div');
+    panel.className = 'bearly-search-panel';
+    panel.id = 'bearly-search-panel';
+    panel.setAttribute('role', 'listbox');
+    panel.setAttribute('aria-label', 'Search suggestions');
+    panel.hidden = true;
+
+    document.body.appendChild(panel);
+    input.setAttribute('aria-controls', panel.id);
+    input.setAttribute('aria-expanded', 'false');
+
+    function escapeSearchHtml(value) {
+        return String(value).replace(
+            /[&<>"']/g,
+            char => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;',
+            })[char]
+        );
+    }
+
+    function readHistory() {
+        try {
+            const stored = JSON.parse(
+                localStorage.getItem(STORAGE_KEY) || '[]'
+            );
+
+            if (!Array.isArray(stored)) return [];
+
+            return stored
+                .filter(item => typeof item === 'string' && item.trim())
+                .map(item => item.trim())
+                .slice(0, MAX_HISTORY);
+        } catch {
+            return [];
+        }
+    }
+
+    function writeHistory(history) {
+        try {
+            localStorage.setItem(
+                STORAGE_KEY,
+                JSON.stringify(history.slice(0, MAX_HISTORY))
+            );
+        } catch {
+            // Search still works if storage is unavailable.
+        }
+    }
+
+    function saveSearch(term) {
+        const clean = String(term || '').trim();
+
+        if (!clean) return;
+
+        const history = readHistory().filter(
+            item => item.toLowerCase() !== clean.toLowerCase()
+        );
+
+        history.unshift(clean);
+        writeHistory(history);
+    }
+
+    function deleteSearch(term) {
+        writeHistory(
+            readHistory().filter(
+                item => item.toLowerCase() !== term.toLowerCase()
+            )
+        );
+    }
+
+    function getProducts() {
+        const source =
+            document.getElementById('bc-data') ||
+            document.getElementById('home-data');
+
+        if (!source) return [];
+
+        try {
+            const parsed = JSON.parse(source.textContent);
+
+            return Array.isArray(parsed)
+                ? parsed
+                : Array.isArray(parsed?.products)
+                    ? parsed.products
+                    : [];
+        } catch {
+            return [];
+        }
+    }
+
+    const products = getProducts();
+
+    function getSuggestions(query) {
+        const search = String(query || '').trim().toLowerCase();
+
+        if (!search) return [];
+
+        const seen = new Set();
+        const suggestions = [];
+
+        for (const product of products) {
+            const name = String(product?.name || '').trim();
+            const subcategory = String(product?.subcategory || '').trim();
+
+            const haystack =
+                `${name} ${subcategory}`.toLowerCase();
+
+            if (!name || !haystack.includes(search)) continue;
+
+            const key = name.toLowerCase();
+
+            if (seen.has(key)) continue;
+
+            seen.add(key);
+            suggestions.push(name);
+
+            if (suggestions.length >= MAX_SUGGESTIONS) break;
+        }
+
+        return suggestions;
+    }
+
+    function positionPanel() {
+        if (panel.hidden) return;
+
+        const formRect = form.getBoundingClientRect();
+        const inputRect = input.getBoundingClientRect();
+
+        const left = Math.max(12, inputRect.left);
+        const right = Math.min(
+            window.innerWidth - 12,
+            formRect.right
+        );
+
+        panel.style.left = `${left}px`;
+        panel.style.top = `${formRect.bottom + 7}px`;
+        panel.style.width = `${Math.max(260, right - left)}px`;
+    }
+
+    function closePanel() {
+        panel.hidden = true;
+        input.setAttribute('aria-expanded', 'false');
+    }
+
+    function openPanel() {
+        panel.hidden = false;
+        input.setAttribute('aria-expanded', 'true');
+        positionPanel();
+    }
+
+    function submitTerm(term) {
+        const clean = String(term || '').trim();
+
+        if (!clean) return;
+
+        input.value = clean;
+        saveSearch(clean);
+        closePanel();
+
+        if (typeof form.requestSubmit === 'function') {
+            form.requestSubmit();
+        } else {
+            form.dispatchEvent(
+                new Event('submit', {
+                    bubbles: true,
+                    cancelable: true,
+                })
+            );
+        }
+    }
+
+    function historyMarkup(history) {
+        if (!history.length) {
+            return `
+                <div class="bearly-search-empty">
+                    <strong>No recent searches yet</strong>
+                    <span>Your searches will appear here.</span>
+                </div>
+            `;
+        }
+
+        return `
+            <div class="bearly-search-panel-heading">
+                <span>Recent searches</span>
+                <button
+                    type="button"
+                    class="bearly-search-clear"
+                    data-search-clear-all
+                >
+                    Clear all
+                </button>
+            </div>
+
+            <div class="bearly-search-list">
+                ${history
+                    .map(
+                        term => `
+                            <div class="bearly-search-row">
+                                <button
+                                    type="button"
+                                    class="bearly-search-term"
+                                    data-search-term="${escapeSearchHtml(term)}"
+                                    role="option"
+                                >
+                                    <span class="bearly-search-leading" aria-hidden="true">↗</span>
+                                    <span>${escapeSearchHtml(term)}</span>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    class="bearly-search-delete"
+                                    data-search-delete="${escapeSearchHtml(term)}"
+                                    aria-label="Delete ${escapeSearchHtml(term)} from recent searches"
+                                >
+                                    ×
+                                </button>
+                            </div>
+                        `
+                    )
+                    .join('')}
+            </div>
+        `;
+    }
+
+    function suggestionsMarkup(query, suggestions) {
+        const recentMatches = readHistory()
+            .filter(item =>
+                item.toLowerCase().includes(
+                    query.trim().toLowerCase()
+                )
+            )
+            .slice(0, 3);
+
+        const combined = [];
+        const seen = new Set();
+
+        for (const term of [...recentMatches, ...suggestions]) {
+            const key = term.toLowerCase();
+
+            if (seen.has(key)) continue;
+
+            seen.add(key);
+            combined.push(term);
+
+            if (combined.length >= MAX_SUGGESTIONS) break;
+        }
+
+        if (!combined.length) {
+            return `
+                <div class="bearly-search-empty">
+                    <strong>No suggestions found</strong>
+                    <span>Press Enter to search for “${escapeSearchHtml(query)}”.</span>
+                </div>
+            `;
+        }
+
+        return `
+            <div class="bearly-search-panel-heading">
+                <span>Search suggestions</span>
+            </div>
+
+            <div class="bearly-search-list">
+                ${combined
+                    .map(
+                        term => `
+                            <div class="bearly-search-row">
+                                <button
+                                    type="button"
+                                    class="bearly-search-term"
+                                    data-search-term="${escapeSearchHtml(term)}"
+                                    role="option"
+                                >
+                                    <span class="bearly-search-leading" aria-hidden="true">⌕</span>
+                                    <span>${escapeSearchHtml(term)}</span>
+                                </button>
+                            </div>
+                        `
+                    )
+                    .join('')}
+            </div>
+        `;
+    }
+
+    function renderPanel() {
+        const query = input.value.trim();
+
+        panel.innerHTML = query
+            ? suggestionsMarkup(
+                query,
+                getSuggestions(query)
+            )
+            : historyMarkup(readHistory());
+
+        openPanel();
+    }
+
+    input.addEventListener('focus', renderPanel);
+    input.addEventListener('click', renderPanel);
+    input.addEventListener('input', renderPanel);
+
+    input.addEventListener('keydown', event => {
+        if (event.key === 'Escape') {
+            closePanel();
+            input.blur();
+        }
+    });
+
+    form.addEventListener('submit', () => {
+        const term = input.value.trim();
+
+        if (term) {
+            saveSearch(term);
+        }
+
+        closePanel();
+    });
+
+    panel.addEventListener('mousedown', event => {
+        // Prevent input blur before panel button click is processed.
+        event.preventDefault();
+    });
+
+    panel.addEventListener('click', event => {
+        const termButton =
+            event.target.closest('[data-search-term]');
+
+        if (termButton) {
+            submitTerm(termButton.dataset.searchTerm);
+            return;
+        }
+
+        const deleteButton =
+            event.target.closest('[data-search-delete]');
+
+        if (deleteButton) {
+            deleteSearch(deleteButton.dataset.searchDelete);
+            renderPanel();
+            input.focus();
+            return;
+        }
+
+        const clearButton =
+            event.target.closest('[data-search-clear-all]');
+
+        if (clearButton) {
+            writeHistory([]);
+            renderPanel();
+            input.focus();
+        }
+    });
+
+    document.addEventListener('pointerdown', event => {
+        if (
+            event.target === input ||
+            form.contains(event.target) ||
+            panel.contains(event.target)
+        ) {
+            return;
+        }
+
+        closePanel();
+    });
+
+    window.addEventListener('resize', positionPanel);
+    window.addEventListener('scroll', positionPanel, {
+        passive: true,
+    });
+}
+
+if (typeof document !== 'undefined') {
+    initBearlySearchExperience();
+}
+

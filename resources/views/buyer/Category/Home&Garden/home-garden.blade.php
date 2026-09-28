@@ -39,7 +39,7 @@
     @vite(['resources/css/buyer.css', 'resources/js/buyer.js'])
 </head>
 
-<body class="bc" style="--catalog-image:url('{{ asset('images/home-garden-catalog-atlas.png') }}')">
+<body class="bc" data-category="home-and-garden" style="--catalog-image:url('{{ asset('images/home-garden-catalog-atlas.png') }}')">
     <a href="#bc-main" class="skip">Skip to products</a>
 
     <header class="bc-header">
@@ -167,14 +167,25 @@
 
             <div class="shortcuts" aria-label="Explore subcategories">
                 @php
-                    $shortcutPhotos = [0, 10, 15, 21, 25, 29];
+                    $shortcutProductIds = [
+                        'Garden & Plants' => 1,
+                        'Furniture & Decor' => 11,
+                        'Kitchen & Storage' => 22,
+                        'Cleaning & Organization' => 26,
+                        'Tools & Home Improvement' => 29,
+                        'Outdoor Living' => 30,
+                    ];
                 @endphp
 
                 @foreach($subcategories as $i => $sub)
+                    @php
+                        $shortcutProduct = collect($catalog)->firstWhere('id', $shortcutProductIds[$sub] ?? 1);
+                        $shortcutImage = $shortcutProduct['image'] ?? '';
+                    @endphp
                     <button data-sub="{{ $sub }}">
                         <span
                             class="photo"
-                            style="--x:{{ ($shortcutPhotos[$i] % 5) * 25 }}%;--y:{{ floor($shortcutPhotos[$i] / 5) * 20 }}%"
+                            style="background-image:url('{{ asset(ltrim($shortcutImage, '/')) }}');background-size:contain;background-position:center;background-repeat:no-repeat;background-color:white;"
                             aria-hidden="true"
                         ></span>
 

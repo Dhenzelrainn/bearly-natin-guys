@@ -2335,11 +2335,11 @@ if (typeof document !== 'undefined') {
    CATEGORY PAGE V2
    ========================================================= */
 
-export const defaults = () => ({
+export const defaults = (priceLimit = 5000) => ({
     search: '',
     subcategory: '',
     min: 0,
-    max: 5000,
+    max: priceLimit,
     size: [],
     color: [],
     condition: [],
@@ -2352,6 +2352,41 @@ export const defaults = () => ({
     view: 'grid',
 });
 
+export function catalogWithFilterGroups(products, category) {
+    const groupsByCategory = {
+        'kids-and-baby': {
+            'Baby Clothing & Care': ['Baby Clothing', 'Diapers & Care'],
+            'Kids Clothing & Footwear': ['Kids Clothing', 'Kids Footwear'],
+            'Feeding Essentials': ['Feeding'],
+            'Strollers, Nursery & Gear': ['Nursery & Gear'],
+            'Toys & Learning': ['Toys & Learning', 'Books & Art'],
+            'Outdoor & Safety': ['Outdoor & Ride-On'],
+        },
+        'home-and-garden': {
+            'Garden & Plants': ['Garden & Plants'],
+            'Furniture & Decor': ['Furniture', 'Home Decor', 'Bedding'],
+            'Kitchen & Storage': ['Kitchen & Storage'],
+            'Cleaning & Organization': ['Cleaning Supplies', 'Laundry & Storage', 'Storage & Organization'],
+            'Tools & Home Improvement': ['Tools & Home Improvement'],
+            'Outdoor Living': ['Outdoor & Garden'],
+        },
+    };
+    const groups = groupsByCategory[category];
+    if (!groups) return products;
+
+    return products.map(product => ({
+        ...product,
+        filter_groups: Object.keys(groups).filter(group =>
+            groups[group].includes(product.subcategory)
+        ),
+    }));
+}
+
+export function matchesCatalogSubcategory(product, subcategory) {
+    return product.subcategory === subcategory ||
+        (product.filter_groups || []).includes(subcategory);
+}
+
 export function filterCatalog(products, state, savedIds = []) {
     const search = state.search.trim().toLowerCase();
 
@@ -2359,7 +2394,7 @@ export function filterCatalog(products, state, savedIds = []) {
         product =>
             (!search || product.name.toLowerCase().includes(search)) &&
             (!state.subcategory ||
-                product.subcategory === state.subcategory) &&
+                matchesCatalogSubcategory(product, state.subcategory)) &&
             product.price >= state.min &&
             product.price <= state.max &&
             (!state.size.length ||
@@ -2391,12 +2426,13 @@ export function filterCatalog(products, state, savedIds = []) {
 }
 
 export function readState(params, products) {
-    const state = defaults();
+    const priceLimit = catalogPriceLimit(products);
+    const state = defaults(priceLimit);
 
     state.search = (params.get('q') || '').slice(0, 120);
 
     state.subcategory = products.some(
-        product => product.subcategory === params.get('sub')
+        product => matchesCatalogSubcategory(product, params.get('sub'))
     )
         ? params.get('sub')
         : '';
@@ -2420,7 +2456,7 @@ export function readState(params, products) {
 
         if (Number.isFinite(value)) {
             state[key] = Math.min(
-                5000,
+                priceLimit,
                 Math.max(0, value)
             );
         }
@@ -2428,7 +2464,7 @@ export function readState(params, products) {
 
     if (state.min > state.max) {
         state.min = 0;
-        state.max = 5000;
+        state.max = priceLimit;
     }
 
     state.shipping = params.get('shipping') === '1';
@@ -2451,6 +2487,12 @@ export function readState(params, products) {
             : 'grid';
 
     return state;
+}
+
+export function catalogPriceLimit(products) {
+    return Math.max(5000, ...products.map(product =>
+        Math.ceil((Number(product.price) || 0) / 1000) * 1000
+    ));
 }
 
 const categoryEscapeHtml = value =>
@@ -2483,9 +2525,20 @@ if (
 function init() {
     const $ = id => document.getElementById(id);
 
-    const products = JSON.parse(
-        $('bc-data').textContent
+    const products = catalogWithFilterGroups(
+        JSON.parse($('bc-data').textContent),
+        document.body.dataset.category
     );
+    const priceLimit = catalogPriceLimit(products);
+
+    for (const id of ['bc-min', 'bc-max', 'bc-min-range', 'bc-max-range']) {
+        $(id).max = String(priceLimit);
+    }
+    $('bc-max').placeholder = String(priceLimit);
+    const upperPricePreset = document.querySelector('[data-price="1001,5000"]');
+    if (upperPricePreset) {
+        upperPricePreset.dataset.price = `1001,${priceLimit}`;
+    }
 
     const validIds = new Set(
         products.map(product => product.id)
@@ -2617,7 +2670,7 @@ function init() {
 
         if (
             state.min ||
-            state.max !== 5000
+            state.max !== priceLimit
         ) {
             result.push([
                 'price',
@@ -2981,7 +3034,9 @@ function init() {
 
         url.searchParams.set(
             'category',
-            'men-s-apparel'
+            document.body.dataset.category ||
+                url.searchParams.get('category') ||
+                'men-s-apparel'
         );
 
         if (state.search) {
@@ -3019,7 +3074,7 @@ function init() {
             );
         }
 
-        if (state.max !== 5000) {
+        if (state.max !== priceLimit) {
             url.searchParams.set(
                 'max',
                 state.max
@@ -3074,7 +3129,7 @@ function init() {
     function reset() {
         const view = state.view;
 
-        state = defaults();
+        state = defaults(priceLimit);
         state.view = view;
 
         change();
@@ -3156,7 +3211,7 @@ function init() {
 
         value = Math.round(
             Math.min(
-                5000,
+                priceLimit,
                 Math.max(0, value)
             )
         );
@@ -4604,10 +4659,10 @@ function init() {
                     key === 'price'
                 ) {
                     state.min = 0;
-                    state.max = 5000;
+                    state.max = priceLimit;
                 } else {
                     state[key] =
-                        defaults()[key];
+                        defaults(priceLimit)[key];
                 }
 
                 change();
@@ -5180,4 +5235,3 @@ function initBearlySearchExperience() {
 if (typeof document !== 'undefined') {
     initBearlySearchExperience();
 }
-

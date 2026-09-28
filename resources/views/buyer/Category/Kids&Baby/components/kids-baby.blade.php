@@ -39,7 +39,7 @@
     @vite(['resources/css/buyer.css', 'resources/js/buyer.js'])
 </head>
 
-<body class="bc" style="--catalog-image:url('{{ asset('images/kids-baby-catalog-atlas.png') }}')">
+<body class="bc" data-category="kids-and-baby" style="--catalog-image:url('{{ asset('images/kids-baby-catalog-atlas.png') }}')">
     <a href="#bc-main" class="skip">Skip to products</a>
 
     <header class="bc-header">

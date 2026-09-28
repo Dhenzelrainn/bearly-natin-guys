@@ -15,7 +15,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.8,
-    "description": "Decorative Indoor Plant sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Decorative Indoor Plant sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/home-garden/home-garden-01-01.jpg"
   },
   {
     "id": 2,
@@ -32,7 +33,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.6,
-    "description": "Ceramic Plant Pot Set sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Ceramic Plant Pot Set sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/home-garden/home-garden-02-01.jpg"
   },
   {
     "id": 3,
@@ -49,7 +51,8 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.4,
-    "description": "3-Piece Gardening Tool Set sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "3-Piece Gardening Tool Set sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/home-garden/home-garden-03-01.jpg"
   },
   {
     "id": 4,
@@ -66,7 +69,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.9,
-    "description": "Classic Watering Can sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Classic Watering Can sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/home-garden/home-garden-04-01.jpg"
   },
   {
     "id": 5,
@@ -83,7 +87,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.7,
-    "description": "All-Purpose Potting Soil sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "All-Purpose Potting Soil sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/home-garden/home-garden-05-01.jpg"
   },
   {
     "id": 6,
@@ -100,7 +105,8 @@
     "free_shipping": false,
     "voucher": true,
     "rating": 4.5,
-    "description": "All-Purpose Plant Fertilizer sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "All-Purpose Plant Fertilizer sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/home-garden/home-garden-06-01.jpg"
   },
   {
     "id": 7,
@@ -119,7 +125,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.3,
-    "description": "Protective Garden Gloves sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Protective Garden Gloves sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/home-garden/home-garden-07-01.jpg"
   },
   {
     "id": 8,
@@ -137,7 +144,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.8,
-    "description": "Flexible Garden Hose sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Flexible Garden Hose sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/home-garden/home-garden-08-01.jpg"
   },
   {
     "id": 9,
@@ -155,7 +163,8 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.6,
-    "description": "Solar Garden Path Light sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Solar Garden Path Light sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/home-garden/home-garden-09-01.jpg"
   },
   {
     "id": 10,
@@ -172,7 +181,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.4,
-    "description": "5-Tier Plant Shelf sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "5-Tier Plant Shelf sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/home-garden/home-garden-10-01.jpg"
   },
   {
     "id": 11,
@@ -189,7 +199,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.9,
-    "description": "Modern Dining Table Set sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Modern Dining Table Set sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/home-garden/home-garden-11-01.jpg"
   },
   {
     "id": 12,
@@ -206,7 +217,8 @@
     "free_shipping": false,
     "voucher": true,
     "rating": 4.7,
-    "description": "Compact Fabric Sofa sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Compact Fabric Sofa sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/home-garden/home-garden-12-01.jpg"
   },
   {
     "id": 13,
@@ -223,7 +235,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.5,
-    "description": "Industrial Coffee Table sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Industrial Coffee Table sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/home-garden/home-garden-13-01.jpg"
   },
   {
     "id": 14,
@@ -240,7 +253,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.3,
-    "description": "Wooden TV Stand sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Wooden TV Stand sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/home-garden/home-garden-14-01.jpg"
   },
   {
     "id": 15,
@@ -257,7 +271,8 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.8,
-    "description": "Wooden Bookshelf sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Wooden Bookshelf sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/home-garden/home-garden-15-01.jpg"
   },
   {
     "id": 16,
@@ -274,7 +289,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.6,
-    "description": "Wooden Table Lamp sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Wooden Table Lamp sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/home-garden/home-garden-16-01.jpg"
   },
   {
     "id": 17,
@@ -291,7 +307,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.4,
-    "description": "Blackout Curtain Pair sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Blackout Curtain Pair sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/home-garden/home-garden-17-01.jpg"
   },
   {
     "id": 18,
@@ -310,7 +327,8 @@
     "free_shipping": false,
     "voucher": true,
     "rating": 4.9,
-    "description": "Soft Cotton Bed Sheet Set sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Soft Cotton Bed Sheet Set sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/home-garden/home-garden-18-01.jpg"
   },
   {
     "id": 19,
@@ -327,7 +345,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.7,
-    "description": "Foldable Laundry Basket sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Foldable Laundry Basket sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/home-garden/home-garden-19-01.jpg"
   },
   {
     "id": 20,
@@ -344,7 +363,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.5,
-    "description": "Foldable Clothes Drying Rack sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Foldable Clothes Drying Rack sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/home-garden/home-garden-20-01.jpg"
   },
   {
     "id": 21,
@@ -362,7 +382,8 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.3,
-    "description": "Fabric Storage Box sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Fabric Storage Box sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/home-garden/home-garden-21-01.jpg"
   },
   {
     "id": 22,
@@ -379,7 +400,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.8,
-    "description": "Food Storage Container Set sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Food Storage Container Set sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/home-garden/home-garden-22-01.jpg"
   },
   {
     "id": 23,
@@ -396,7 +418,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.6,
-    "description": "4-Tier Shoe Rack sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "4-Tier Shoe Rack sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/home-garden/home-garden-23-01.jpg"
   },
   {
     "id": 24,
@@ -413,7 +436,8 @@
     "free_shipping": false,
     "voucher": true,
     "rating": 4.4,
-    "description": "Minimalist Wall Clock sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Minimalist Wall Clock sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/home-garden/home-garden-24-01.jpg"
   },
   {
     "id": 25,
@@ -431,7 +455,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.9,
-    "description": "Geometric Area Rug sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Geometric Area Rug sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/home-garden/home-garden-25-01.jpg"
   },
   {
     "id": 26,
@@ -448,7 +473,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.7,
-    "description": "Spin Mop and Bucket Set sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Spin Mop and Bucket Set sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/home-garden/home-garden-26-01.jpg"
   },
   {
     "id": 27,
@@ -465,7 +491,8 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.5,
-    "description": "Compact Vacuum Cleaner sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Compact Vacuum Cleaner sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/home-garden/home-garden-27-01.jpg"
   },
   {
     "id": 28,
@@ -482,7 +509,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.3,
-    "description": "Stainless Steel Trash Bin sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Stainless Steel Trash Bin sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/home-garden/home-garden-28-01.jpg"
   },
   {
     "id": 29,
@@ -499,7 +527,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.8,
-    "description": "Heavy-Duty Toolbox sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Heavy-Duty Toolbox sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/home-garden/home-garden-29-01.jpg"
   },
   {
     "id": 30,
@@ -516,6 +545,7 @@
     "free_shipping": false,
     "voucher": true,
     "rating": 4.6,
-    "description": "Outdoor Patio Table Set sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Outdoor Patio Table Set sample listing for the Bearly Home & Garden frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/home-garden/home-garden-30-01.jpg"
   }
 ]

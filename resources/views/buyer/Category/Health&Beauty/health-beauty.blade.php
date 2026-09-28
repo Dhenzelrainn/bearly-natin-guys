@@ -37,9 +37,31 @@
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Material+Symbols+Outlined:wght@400&display=swap" rel="stylesheet">
 
     @vite(['resources/css/buyer.css', 'resources/js/buyer.js'])
+
+<style>
+/* Bearly header Wishlist icon: matches the existing brown/gold navigation */
+.header-actions a[href$="/wishlist"],
+.bc-header a[href$="/wishlist"]{
+    color:inherit;
+    text-decoration:none;
+}
+.header-actions a[href$="/wishlist"] .material-symbols-outlined,
+.bc-header a[href$="/wishlist"] .mi{
+    color:#fff;
+    transition:color .18s ease, transform .18s ease;
+}
+.header-actions a[href$="/wishlist"]:hover .material-symbols-outlined,
+.bc-header a[href$="/wishlist"]:hover .mi,
+.header-actions a[href$="/wishlist"][aria-current="page"] .material-symbols-outlined,
+.bc-header a[href$="/wishlist"][aria-current="page"] .mi{
+    color:#f3ad24;
+    transform:scale(1.06);
+}
+</style>
+
 </head>
 
-<body class="bc" style="--catalog-image:url('{{ asset('images/health-beauty-catalog-atlas.png') }}')">
+<body class="bc" data-category="health-and-beauty" style="--catalog-image:url('{{ asset('images/health-beauty-catalog-atlas.png') }}')">
     <a href="#bc-main" class="skip">Skip to products</a>
 
     <header class="bc-header">
@@ -59,6 +81,11 @@
         </form>
 
         <nav aria-label="Account">
+            <a href="{{ url('/wishlist') }}" aria-label="Wishlist">
+                <i class="mi" aria-hidden="true">favorite</i>
+                Wishlist
+            </a>
+
             <button data-info="orders">
                 <i class="mi" aria-hidden="true">receipt_long</i>
                 Orders
@@ -167,14 +194,21 @@
 
             <div class="shortcuts" aria-label="Explore subcategories">
                 @php
-                    $shortcutPhotos = [0, 10, 16, 24, 8, 25];
+                    $shortcutPhotos = [
+                        'Skincare' => '/images/products/health-beauty/health-beauty-01-01.jpg',
+                        'Haircare' => '/images/products/health-beauty/health-beauty-13-01.jpg',
+                        'Makeup & Nail Care' => '/images/products/health-beauty/health-beauty-27-01.jpg',
+                        'Personal Care & Fragrance' => '/images/products/health-beauty/health-beauty-25-01.jpg',
+                        'Wellness & First Aid' => '/images/products/health-beauty/health-beauty-11-01.jpg',
+                        'Bath & Body' => '/images/products/health-beauty/health-beauty-20-01.jpg',
+                    ];
                 @endphp
 
                 @foreach($subcategories as $i => $sub)
                     <button data-sub="{{ $sub }}">
                         <span
                             class="photo"
-                            style="--x:{{ ($shortcutPhotos[$i] % 5) * 25 }}%;--y:{{ floor($shortcutPhotos[$i] / 5) * 20 }}%"
+                            style="background-image:url('{{ $shortcutPhotos[$sub] ?? '/images/products/health-beauty/health-beauty-01-01.jpg' }}');background-size:contain;background-position:center;background-repeat:no-repeat;background-color:#fff"
                             aria-hidden="true"
                         ></span>
 

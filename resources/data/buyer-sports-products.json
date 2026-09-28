@@ -14,7 +14,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.8,
-    "description": "Official Basketball sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Official Basketball sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/sports-outdoors/sports-outdoors-01-01.jpg"
   },
   {
     "id": 2,
@@ -31,7 +32,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.6,
-    "description": "Competition Volleyball sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Competition Volleyball sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/sports-outdoors/sports-outdoors-02-01.jpg"
   },
   {
     "id": 3,
@@ -48,7 +50,8 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.4,
-    "description": "Training Soccer Ball sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Training Soccer Ball sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/sports-outdoors/sports-outdoors-03-01.jpg"
   },
   {
     "id": 4,
@@ -65,7 +68,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.9,
-    "description": "Tennis Ball 3-Pack sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Tennis Ball 3-Pack sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/sports-outdoors/sports-outdoors-04-01.jpg"
   },
   {
     "id": 5,
@@ -82,7 +86,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.7,
-    "description": "Carbon Badminton Racket sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Carbon Badminton Racket sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/sports-outdoors/sports-outdoors-05-01.jpg"
   },
   {
     "id": 6,
@@ -99,7 +104,8 @@
     "free_shipping": false,
     "voucher": true,
     "rating": 4.5,
-    "description": "Table Tennis Paddle Set sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Table Tennis Paddle Set sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/sports-outdoors/sports-outdoors-06-01.jpg"
   },
   {
     "id": 7,
@@ -117,7 +123,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.3,
-    "description": "Cycling Safety Helmet sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Cycling Safety Helmet sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/sports-outdoors/sports-outdoors-07-01.jpg"
   },
   {
     "id": 8,
@@ -134,7 +141,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.8,
-    "description": "Sports Water Bottle sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Sports Water Bottle sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/sports-outdoors/sports-outdoors-08-01.jpg"
   },
   {
     "id": 9,
@@ -151,7 +159,8 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.6,
-    "description": "Duffel Gym Bag sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Duffel Gym Bag sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/sports-outdoors/sports-outdoors-09-01.jpg"
   },
   {
     "id": 10,
@@ -168,7 +177,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.4,
-    "description": "Non-Slip Yoga Mat sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Non-Slip Yoga Mat sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/sports-outdoors/sports-outdoors-10-01.jpg"
   },
   {
     "id": 11,
@@ -185,7 +195,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.9,
-    "description": "Resistance Band Set sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Resistance Band Set sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/sports-outdoors/sports-outdoors-11-01.jpg"
   },
   {
     "id": 12,
@@ -202,7 +213,8 @@
     "free_shipping": false,
     "voucher": true,
     "rating": 4.7,
-    "description": "Hex Dumbbell Pair sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Hex Dumbbell Pair sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/sports-outdoors/sports-outdoors-12-01.jpg"
   },
   {
     "id": 13,
@@ -219,7 +231,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.5,
-    "description": "Speed Jump Rope sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Speed Jump Rope sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/sports-outdoors/sports-outdoors-13-01.jpg"
   },
   {
     "id": 14,
@@ -236,7 +249,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.3,
-    "description": "Push-Up Bar Pair sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Push-Up Bar Pair sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/sports-outdoors/sports-outdoors-14-01.jpg"
   },
   {
     "id": 15,
@@ -253,7 +267,8 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.8,
-    "description": "Adjustable Workout Bench sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Adjustable Workout Bench sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/sports-outdoors/sports-outdoors-15-01.jpg"
   },
   {
     "id": 16,
@@ -270,7 +285,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.6,
-    "description": "Compact Folding Treadmill sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Compact Folding Treadmill sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/sports-outdoors/sports-outdoors-16-01.jpg"
   },
   {
     "id": 17,
@@ -287,7 +303,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.4,
-    "description": "Portable Sleeping Bag sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Portable Sleeping Bag sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/sports-outdoors/sports-outdoors-17-01.jpg"
   },
   {
     "id": 18,
@@ -304,7 +321,8 @@
     "free_shipping": false,
     "voucher": true,
     "rating": 4.9,
-    "description": "Waterproof Camping Tent sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Waterproof Camping Tent sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/sports-outdoors/sports-outdoors-18-01.jpg"
   },
   {
     "id": 19,
@@ -321,7 +339,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.7,
-    "description": "Folding Camping Chair sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Folding Camping Chair sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/sports-outdoors/sports-outdoors-19-01.jpg"
   },
   {
     "id": 20,
@@ -338,7 +357,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.5,
-    "description": "Insulated Cooler Box sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Insulated Cooler Box sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/sports-outdoors/sports-outdoors-20-01.jpg"
   },
   {
     "id": 21,
@@ -355,7 +375,8 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.3,
-    "description": "Hiking Backpack sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Hiking Backpack sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/sports-outdoors/sports-outdoors-21-01.jpg"
   },
   {
     "id": 22,
@@ -376,7 +397,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.8,
-    "description": "Hiking Shoes sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Hiking Shoes sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/sports-outdoors/sports-outdoors-22-01.jpg"
   },
   {
     "id": 23,
@@ -393,7 +415,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.6,
-    "description": "Adjustable Trekking Pole sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Adjustable Trekking Pole sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/sports-outdoors/sports-outdoors-23-01.jpg"
   },
   {
     "id": 24,
@@ -410,7 +433,8 @@
     "free_shipping": false,
     "voucher": true,
     "rating": 4.4,
-    "description": "Polarized Sports Sunglasses sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Polarized Sports Sunglasses sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/sports-outdoors/sports-outdoors-24-01.jpg"
   },
   {
     "id": 25,
@@ -427,7 +451,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.9,
-    "description": "GPS Sports Watch sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "GPS Sports Watch sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/sports-outdoors/sports-outdoors-25-01.jpg"
   },
   {
     "id": 26,
@@ -444,7 +469,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.7,
-    "description": "Rechargeable Headlamp sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Rechargeable Headlamp sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/sports-outdoors/sports-outdoors-26-01.jpg"
   },
   {
     "id": 27,
@@ -461,7 +487,8 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.5,
-    "description": "High-Density Foam Roller sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "High-Density Foam Roller sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/sports-outdoors/sports-outdoors-27-01.jpg"
   },
   {
     "id": 28,
@@ -481,7 +508,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.3,
-    "description": "Compression Knee Support sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Compression Knee Support sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/sports-outdoors/sports-outdoors-28-01.jpg"
   },
   {
     "id": 29,
@@ -498,7 +526,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.8,
-    "description": "Climbing Carabiner Set sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Climbing Carabiner Set sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/sports-outdoors/sports-outdoors-29-01.jpg"
   },
   {
     "id": 30,
@@ -515,6 +544,7 @@
     "free_shipping": false,
     "voucher": true,
     "rating": 4.6,
-    "description": "Portable Camping Stove sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Portable Camping Stove sample listing for the Bearly Sports & Outdoors frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/sports-outdoors/sports-outdoors-30-01.jpg"
   }
 ]

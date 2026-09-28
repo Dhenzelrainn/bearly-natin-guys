@@ -15,7 +15,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.8,
-    "description": "Modern Fabric Sofa sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Modern Fabric Sofa sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/furniture-office/furniture-office-01-01.jpg"
   },
   {
     "id": 2,
@@ -34,7 +35,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.6,
-    "description": "Upholstered Bed Frame sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Upholstered Bed Frame sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/furniture-office/furniture-office-02-01.jpg"
   },
   {
     "id": 3,
@@ -52,7 +54,8 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.4,
-    "description": "Wooden Dining Table Set sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Wooden Dining Table Set sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/furniture-office/furniture-office-03-01.jpg"
   },
   {
     "id": 4,
@@ -69,7 +72,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.9,
-    "description": "Industrial Coffee Table sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Industrial Coffee Table sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/furniture-office/furniture-office-04-01.jpg"
   },
   {
     "id": 5,
@@ -86,7 +90,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.7,
-    "description": "Wooden TV Stand sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Wooden TV Stand sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/furniture-office/furniture-office-05-01.jpg"
   },
   {
     "id": 6,
@@ -103,7 +108,8 @@
     "free_shipping": false,
     "voucher": true,
     "rating": 4.5,
-    "description": "5-Tier Bookshelf sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "5-Tier Bookshelf sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/furniture-office/furniture-office-06-01.jpg"
   },
   {
     "id": 7,
@@ -120,7 +126,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.3,
-    "description": "Wooden Wardrobe sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Wooden Wardrobe sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/furniture-office/furniture-office-07-01.jpg"
   },
   {
     "id": 8,
@@ -137,7 +144,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.8,
-    "description": "Ergonomic Office Chair sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Ergonomic Office Chair sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/furniture-office/furniture-office-08-01.jpg"
   },
   {
     "id": 9,
@@ -154,7 +162,8 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.6,
-    "description": "Minimalist Study Desk sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Minimalist Study Desk sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/furniture-office/furniture-office-09-01.jpg"
   },
   {
     "id": 10,
@@ -171,7 +180,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.4,
-    "description": "Steel Filing Cabinet sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Steel Filing Cabinet sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/furniture-office/furniture-office-10-01.jpg"
   },
   {
     "id": 11,
@@ -188,7 +198,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.9,
-    "description": "High-Back Gaming Chair sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "High-Back Gaming Chair sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/furniture-office/furniture-office-11-01.jpg"
   },
   {
     "id": 12,
@@ -205,7 +216,8 @@
     "free_shipping": false,
     "voucher": true,
     "rating": 4.7,
-    "description": "Padded Visitor Chair sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Padded Visitor Chair sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/furniture-office/furniture-office-12-01.jpg"
   },
   {
     "id": 13,
@@ -222,7 +234,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.5,
-    "description": "Conference Table Set sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Conference Table Set sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/furniture-office/furniture-office-13-01.jpg"
   },
   {
     "id": 14,
@@ -239,7 +252,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.3,
-    "description": "Height Adjustable Standing Desk sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Height Adjustable Standing Desk sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/furniture-office/furniture-office-14-01.jpg"
   },
   {
     "id": 15,
@@ -256,7 +270,8 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.8,
-    "description": "Desktop Organizer Shelf sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Desktop Organizer Shelf sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/furniture-office/furniture-office-15-01.jpg"
   },
   {
     "id": 16,
@@ -273,7 +288,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.6,
-    "description": "Adjustable Desk Lamp sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Adjustable Desk Lamp sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/furniture-office/furniture-office-16-01.jpg"
   },
   {
     "id": 17,
@@ -290,7 +306,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.4,
-    "description": "Wooden Tripod Floor Lamp sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Wooden Tripod Floor Lamp sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/furniture-office/furniture-office-17-01.jpg"
   },
   {
     "id": 18,
@@ -307,7 +324,8 @@
     "free_shipping": false,
     "voucher": true,
     "rating": 4.9,
-    "description": "Floating Wall Shelf Set sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Floating Wall Shelf Set sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/furniture-office/furniture-office-18-01.jpg"
   },
   {
     "id": 19,
@@ -324,7 +342,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.7,
-    "description": "Metal Storage Cabinet sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Metal Storage Cabinet sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/furniture-office/furniture-office-19-01.jpg"
   },
   {
     "id": 20,
@@ -341,7 +360,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.5,
-    "description": "3-Tier Utility Cart sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "3-Tier Utility Cart sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/furniture-office/furniture-office-20-01.jpg"
   },
   {
     "id": 21,
@@ -358,7 +378,8 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.3,
-    "description": "Office Laptop sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Office Laptop sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/furniture-office/furniture-office-21-01.jpg"
   },
   {
     "id": 22,
@@ -375,7 +396,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.8,
-    "description": "Desktop Computer Set sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Desktop Computer Set sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/furniture-office/furniture-office-22-01.jpg"
   },
   {
     "id": 23,
@@ -392,7 +414,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.6,
-    "description": "Color Inkjet Printer sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Color Inkjet Printer sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/furniture-office/furniture-office-23-01.jpg"
   },
   {
     "id": 24,
@@ -409,7 +432,8 @@
     "free_shipping": false,
     "voucher": true,
     "rating": 4.4,
-    "description": "Multifunction Photocopier sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Multifunction Photocopier sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/furniture-office/furniture-office-24-01.jpg"
   },
   {
     "id": 25,
@@ -426,7 +450,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.9,
-    "description": "24-Inch Office Monitor sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "24-Inch Office Monitor sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/furniture-office/furniture-office-25-01.jpg"
   },
   {
     "id": 26,
@@ -443,7 +468,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.7,
-    "description": "Keyboard & Mouse Combo sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Keyboard & Mouse Combo sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/furniture-office/furniture-office-26-01.jpg"
   },
   {
     "id": 27,
@@ -460,7 +486,8 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.5,
-    "description": "Backup UPS Power Supply sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Backup UPS Power Supply sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/furniture-office/furniture-office-27-01.jpg"
   },
   {
     "id": 28,
@@ -477,7 +504,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.3,
-    "description": "Office Paper Shredder sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Office Paper Shredder sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/furniture-office/furniture-office-28-01.jpg"
   },
   {
     "id": 29,
@@ -494,7 +522,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.8,
-    "description": "Mobile Office Whiteboard sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Mobile Office Whiteboard sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/furniture-office/furniture-office-29-01.jpg"
   },
   {
     "id": 30,
@@ -511,6 +540,7 @@
     "free_shipping": false,
     "voucher": true,
     "rating": 4.6,
-    "description": "Cork Bulletin Board sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Cork Bulletin Board sample listing for the Bearly Furniture & Office Equipment frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/furniture-office/furniture-office-30-01.jpg"
   }
 ]

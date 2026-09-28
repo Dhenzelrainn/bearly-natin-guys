@@ -192,6 +192,8 @@ for ($round = 0; $round < 5; $round++) {
 
 
 
+<a href="{{ url('/wishlist') }}" aria-label="Wishlist"><span class="material-symbols-outlined" aria-hidden="true">favorite</span><span>Wishlist</span></a>
+
 <button data-info="orders"><span class="material-symbols-outlined" aria-hidden="true">receipt_long</span><span>Orders</span></button>
 
 <button data-info="chat"><span class="material-symbols-outlined" aria-hidden="true">chat_bubble</span><span>Chat</span></button>

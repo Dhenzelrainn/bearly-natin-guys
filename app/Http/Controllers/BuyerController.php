@@ -440,16 +440,7 @@ class BuyerController extends Controller
 
     public function wishlist(): View
     {
-        if (! $this->hasBuyerTables()) {
-            return view('buyer.Dashboard.home');
-        }
-
-        $sessionId = session()->getId();
-        $wishlistItems = Wishlist::where('session_id', $sessionId)
-            ->with('product')
-            ->get();
-
-        return view('buyer.Dashboard.home', compact('wishlistItems'));
+        return view('buyer.wishlist');
     }
 
     public function toggleWishlist(Request $request): JsonResponse

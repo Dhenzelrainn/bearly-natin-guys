@@ -39,7 +39,7 @@
     @vite(['resources/css/buyer.css', 'resources/js/buyer.js'])
 </head>
 
-<body class="bc" style="--catalog-image:url('{{ asset('images/books-media-catalog-atlas.png') }}')">
+<body class="bc" data-category="books-and-media" style="--catalog-image:url('{{ asset('images/books-media-catalog-atlas.png') }}')">
     <a href="#bc-main" class="skip">Skip to products</a>
 
     <header class="bc-header">
@@ -59,6 +59,11 @@
         </form>
 
         <nav aria-label="Account">
+            <a href="{{ url('/wishlist') }}" aria-label="Wishlist">
+                <i class="mi" aria-hidden="true">favorite</i>
+                Wishlist
+            </a>
+
             <button data-info="orders">
                 <i class="mi" aria-hidden="true">receipt_long</i>
                 Orders
@@ -167,14 +172,21 @@
 
             <div class="shortcuts" aria-label="Explore subcategories">
                 @php
-                    $shortcutPhotos = [0, 5, 10, 13, 20, 26];
+                    $shortcutPhotos = [
+                        'Fiction & Non-Fiction Books' => '/images/products/books-media/books-media-01-01.jpg',
+                        'Children, Comics & Reference' => '/images/products/books-media/books-media-11-01.jpg',
+                        'Magazines & Stationery' => '/images/products/books-media/books-media-16-01.jpg',
+                        'Movies & Music' => '/images/products/books-media/books-media-21-01.jpg',
+                        'Educational Media' => '/images/products/books-media/books-media-26-01.jpg',
+                        'Games, Puzzles & Media Accessories' => '/images/products/books-media/books-media-27-01.jpg',
+                    ];
                 @endphp
 
                 @foreach($subcategories as $i => $sub)
                     <button data-sub="{{ $sub }}">
                         <span
                             class="photo"
-                            style="--x:{{ ($shortcutPhotos[$i] % 5) * 25 }}%;--y:{{ floor($shortcutPhotos[$i] / 5) * 20 }}%"
+                            style="background-image:url('{{ $shortcutPhotos[$sub] ?? '/images/products/books-media/books-media-01-01.jpg' }}');background-size:contain;background-position:center;background-repeat:no-repeat;background-color:#fff"
                             aria-hidden="true"
                         ></span>
 

@@ -37,6 +37,28 @@
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Material+Symbols+Outlined:wght@400&display=swap" rel="stylesheet">
 
     @vite(['resources/css/buyer.css', 'resources/js/buyer.js'])
+
+<style>
+/* Bearly header Wishlist icon: matches the existing brown/gold navigation */
+.header-actions a[href$="/wishlist"],
+.bc-header a[href$="/wishlist"]{
+    color:inherit;
+    text-decoration:none;
+}
+.header-actions a[href$="/wishlist"] .material-symbols-outlined,
+.bc-header a[href$="/wishlist"] .mi{
+    color:#fff;
+    transition:color .18s ease, transform .18s ease;
+}
+.header-actions a[href$="/wishlist"]:hover .material-symbols-outlined,
+.bc-header a[href$="/wishlist"]:hover .mi,
+.header-actions a[href$="/wishlist"][aria-current="page"] .material-symbols-outlined,
+.bc-header a[href$="/wishlist"][aria-current="page"] .mi{
+    color:#f3ad24;
+    transform:scale(1.06);
+}
+</style>
+
 </head>
 
 <body class="bc" style="--catalog-image:url('{{ asset('images/electronics-gadgets-catalog-atlas.png') }}')">
@@ -59,6 +81,11 @@
         </form>
 
         <nav aria-label="Account">
+            <a href="{{ url('/wishlist') }}" aria-label="Wishlist">
+                <i class="mi" aria-hidden="true">favorite</i>
+                Wishlist
+            </a>
+
             <button data-info="orders">
                 <i class="mi" aria-hidden="true">receipt_long</i>
                 Orders

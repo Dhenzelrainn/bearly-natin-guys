@@ -2370,6 +2370,46 @@ export function catalogWithFilterGroups(products, category) {
             'Tools & Home Improvement': ['Tools & Home Improvement'],
             'Outdoor Living': ['Outdoor & Garden'],
         },
+        'sports-and-outdoors': {
+            'Team & Racquet Sports': ['Team Sports', 'Racquet Sports'],
+            'Fitness Equipment': ['Fitness & Training'],
+            'Camping & Hiking Gear': ['Camping & Hiking'],
+            'Cycling & Outdoor Gear': ['Cycling'],
+            'Sports Accessories': ['Sports Accessories'],
+            'Recovery & Support': ['Recovery & Support'],
+        },
+        'health-and-beauty': {
+            'Skincare': ['Skin Care'],
+            'Haircare': ['Hair Care'],
+            'Makeup & Nail Care': ['Makeup', 'Nail Care'],
+            'Personal Care & Fragrance': ['Personal Care', 'Oral Care', 'Fragrance'],
+            'Wellness & First Aid': ['Wellness & First Aid'],
+            'Bath & Body': ['Bath & Body'],
+        },
+        'jewelry-and-watches': {
+            'Necklaces & Pendants': ['Necklaces'],
+            'Rings & Earrings': ['Rings', 'Earrings'],
+            'Bracelets & Bangles': ['Bracelets'],
+            'Watches for Men & Women': ["Men's Watches", "Women's Watches", 'Digital Watches'],
+            'Fashion Jewelry': ['Necklaces', 'Earrings', 'Bracelets', 'Rings'],
+            'Jewelry Storage & Care': ['Jewelry Storage & Care'],
+        },
+        'furniture-and-office-equipment': {
+            'Home Furniture': ['Home Furniture'],
+            'Office Desks & Chairs': ['Office Furniture'],
+            'Storage & Shelving': ['Storage & Organization'],
+            'Office Equipment': ['Office Equipment'],
+            'Lighting & Accessories': ['Office Accessories'],
+            'Meeting & Workspace Furniture': ['Office Furniture'],
+        },
+        'food-and-gourmet': {
+            'Pantry & Cooking Essentials': ['Pantry Staples', 'Canned & Packaged Food', 'Breakfast & Cereals', 'Milk & Dairy'],
+            'Coffee, Tea & Beverages': ['Snacks', 'Chocolates & Sweets', 'Dried Fruits & Nuts', 'Honey & Spreads'],
+            'Breakfast & Dairy': ['Beverages'],
+            'Snacks & Sweets': ['Coffee & Tea'],
+            'Baking, Spices & Condiments': ['Cooking Essentials', 'Sauces & Condiments', 'Spices & Seasoning', 'Baking Ingredients', 'Instant Meals'],
+            'Specialty & Gourmet': ['Gift Sets'],
+        },
     };
     const groups = groupsByCategory[category];
     if (!groups) return products;
@@ -2551,18 +2591,24 @@ function init() {
 
     let limit = 20;
     let saved = [];
+    const wishlistCategory =
+        document.body.dataset.category || 'unknown';
 
     try {
         const stored = JSON.parse(
             localStorage.getItem(
-                'bearly-category-saved-v1'
+                'bearly-category-saved-v2'
             ) || '[]'
         );
 
         if (Array.isArray(stored)) {
-            saved = stored.filter(id =>
-                validIds.has(id)
-            );
+            saved = stored
+                .filter(key =>
+                    typeof key === 'string' &&
+                    key.startsWith(`${wishlistCategory}:`)
+                )
+                .map(key => Number(key.split(':').pop()))
+                .filter(id => validIds.has(id));
         }
     } catch {
         saved = [];
@@ -4689,11 +4735,27 @@ function init() {
                         : [...saved, id];
 
                 try {
-                    localStorage.setItem(
-                        'bearly-category-saved-v1',
-                        JSON.stringify(
-                            saved
+                    const allSaved = JSON.parse(
+                        localStorage.getItem(
+                            'bearly-category-saved-v2'
+                        ) || '[]'
+                    );
+                    const otherCategories = Array.isArray(allSaved)
+                        ? allSaved.filter(key =>
+                            typeof key === 'string' &&
+                            !key.startsWith(`${wishlistCategory}:`)
                         )
+                        : [];
+                    const categoryKeys = saved.map(
+                        value => `${wishlistCategory}:${value}`
+                    );
+
+                    localStorage.setItem(
+                        'bearly-category-saved-v2',
+                        JSON.stringify([
+                            ...otherCategories,
+                            ...categoryKeys,
+                        ])
                     );
                 } catch {
                     // LocalStorage unavailable.

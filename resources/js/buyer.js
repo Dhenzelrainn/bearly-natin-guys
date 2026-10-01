@@ -1562,6 +1562,10 @@ function initialize() {
                             quantity,
                             photo:
                                 product.photo,
+                            image:
+                                product.image || '',
+                            category:
+                                document.body.dataset.category || '',
                             seller_name:
                                 sellerName,
                             frontend_preview:

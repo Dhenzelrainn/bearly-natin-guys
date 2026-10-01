@@ -53,7 +53,7 @@
 
 </head>
 
-<body class="bc" style="--catalog-image:url('{{ asset('images/womens-catalog-atlas.png') }}')">
+<body class="bc" data-category="womens-apparel" style="--catalog-image:url('{{ asset('images/womens-catalog-atlas.png') }}')">
     <a href="#bc-main" class="skip">Skip to products</a>
 
     <header class="bc-header">

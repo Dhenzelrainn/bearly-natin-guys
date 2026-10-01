@@ -39,7 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         message.textContent = 'Signed in as Mia Santos. Redirecting to your homepage...';
-        window.sessionStorage.setItem('bearly-demo-account', 'mia.santos@example.com');
+        window.localStorage.setItem('bearly-demo-account', 'mia.santos@example.com');
         window.setTimeout(() => {
             window.location.assign('/home');
         }, 250);

@@ -469,4 +469,14 @@ class BuyerController extends Controller
             'wishlist_count' => Wishlist::where('session_id', $sessionId)->count(),
         ]);
     }
+    public function profile(): View
+    {
+        return view('buyer.profile');
+    }
+
+    public function addresses(): View
+    {
+        return view('buyer.addresses');
+    }
+
 }

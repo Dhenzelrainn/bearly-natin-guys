@@ -39,7 +39,7 @@
 </style>
 
 </head>
-    <body class="bc" data-catalog-rows="4" style="--catalog-image:url('{{ asset('images/mens-catalog-atlas.png') }}');--catalog-image-height:400%">
+    <body class="bc" data-category="mens-apparel" data-catalog-rows="4" style="--catalog-image:url('{{ asset('images/mens-catalog-atlas.png') }}');--catalog-image-height:400%">
         <a href="#bc-main" class="skip">
             Skip to products
         </a>

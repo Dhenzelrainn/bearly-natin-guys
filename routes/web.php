@@ -86,3 +86,7 @@ Route::prefix('seller')->name('seller.')->group(function () {
     Route::put('/products/{product}', [SellerController::class, 'updateProduct'])->name('products.update');
     Route::patch('/products/{product}/archive', [SellerController::class, 'toggleProductArchive'])->name('products.archive');
 });
+
+Route::get('/addresses', [BuyerController::class, 'addresses'])->name('addresses');
+
+Route::get('/profile', [BuyerController::class, 'profile'])->name('buyer.profile');

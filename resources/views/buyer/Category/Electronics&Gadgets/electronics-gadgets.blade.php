@@ -61,7 +61,7 @@
 
 </head>
 
-<body class="bc" style="--catalog-image:url('{{ asset('images/electronics-gadgets-catalog-atlas.png') }}')">
+<body class="bc" data-category="electronics-and-gadgets" style="--catalog-image:url('{{ asset('images/electronics-gadgets-catalog-atlas.png') }}')">
     <a href="#bc-main" class="skip">Skip to products</a>
 
     <header class="bc-header">

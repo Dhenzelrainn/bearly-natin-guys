@@ -47,7 +47,18 @@ function renderWishlist(){
 grid.addEventListener('click',e=>{
  const remove=e.target.closest('.wl-remove');
  if(remove){const next=savedKeys().filter(k=>k!==remove.dataset.key);localStorage.setItem('bearly-category-saved-v2',JSON.stringify(next));renderWishlist();}
- const cart=e.target.closest('.wl-cart');if(cart){cart.textContent='Added to Cart';cart.disabled=true;}
+ const cart=e.target.closest('.wl-cart');if(cart){
+  const card=cart.closest('.wl-card'), name=card?.querySelector('.wl-name')?.textContent;
+  const p=catalog.find(item=>item.name===name);
+  if(p){
+   let items=[];try{const stored=JSON.parse(localStorage.getItem('bearly-preview-cart-v1')||'[]');items=Array.isArray(stored)?stored:[]}catch{}
+   const key='wishlist-'+p.key, existing=items.find(item=>item.key===key);
+   if(existing)existing.quantity=Number(existing.quantity||1)+1;
+   else items.push({key,product_id:p.key,name:p.name,price:p.price,color:'',size:'',quantity:1,image:p.image,seller_name:'Bearly Seller',frontend_preview:true});
+   localStorage.setItem('bearly-preview-cart-v1',JSON.stringify(items));
+   cart.textContent='Added to Cart';setTimeout(()=>cart.textContent='Add to Cart',1000);
+  }
+ }
 });
 renderWishlist();
 </script>

@@ -53,7 +53,7 @@
 
 </head>
 
-<body class="bc pet-supplies" style="--catalog-image:url('{{ asset('images/pet-supplies-catalog-atlas.png') }}')">
+<body class="bc pet-supplies" data-category="pet-supplies" style="--catalog-image:url('{{ asset('images/pet-supplies-catalog-atlas.png') }}')">
     <a href="#bc-main" class="skip">Skip to products</a>
 
     <header class="bc-header">

@@ -1,0 +1,1 @@
+document.addEventListener('DOMContentLoaded',()=>{const KEY='bearly-demo-account';if(!localStorage.getItem(KEY))localStorage.setItem(KEY,'mia.santos@example.com');document.querySelectorAll('[data-bearly-account]').forEach(a=>{a.href='/addresses';const label=a.querySelector('[data-account-label]');if(label)label.textContent='Mia Santos';});});

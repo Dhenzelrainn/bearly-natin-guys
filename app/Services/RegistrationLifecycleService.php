@@ -17,6 +17,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
 
 class RegistrationLifecycleService
@@ -95,7 +96,7 @@ class RegistrationLifecycleService
                             $application['business_category']
                             ?? $user->business_category
                         ),
-                    'status' => AccountStatus::Pending->value,
+                    'status' => 'submitted',
                     'submitted_at' => now(),
                 ]);
             } else {
@@ -114,7 +115,7 @@ class RegistrationLifecycleService
                             ?? $user->business_category
                         )
                         ?? $accountApplication->business_category_id,
-                    'status' => AccountStatus::Pending->value,
+                    'status' => 'submitted',
                     'submitted_at' =>
                         $accountApplication->submitted_at
                         ?? now(),
@@ -155,34 +156,52 @@ class RegistrationLifecycleService
     public function approve(
         User $user,
         User $approver
-    ): void {
-        DB::transaction(function () use ($user, $approver): void {
-            $application = $this->ensureLegacyApplication($user);
-            $role = $this->role((string) $user->role);
+    ): AccountApplication {
+        return DB::transaction(function () use ($user, $approver): AccountApplication {
+            $lockedUser = User::query()
+                ->lockForUpdate()
+                ->findOrFail($user->id);
 
-            $user->roles()->syncWithoutDetaching([
+            $application = $this->lockReviewableApplication($lockedUser);
+            $role = $application->requestedRole;
+
+            $this->ensureRequiredDocumentsAreVerified($application);
+
+            $lockedUser->roles()->syncWithoutDetaching([
                 $role->id => [
                     'assigned_by' => $approver->id,
                     'assigned_at' => now(),
                 ],
             ]);
 
-            if ($application) {
-                $application->forceFill([
-                    'status' => 'approved',
-                    'review_started_at' =>
-                        $application->review_started_at ?? now(),
-                    'decided_at' => now(),
-                    'reviewed_by' => $approver->id,
-                    'decision_reason' => null,
-                    'revision_notes' => null,
-                ])->save();
-            }
+            $application->forceFill([
+                'status' => 'approved',
+                'review_started_at' =>
+                    $application->review_started_at ?? now(),
+                'decided_at' => now(),
+                'reviewed_by' => $approver->id,
+                'decision_reason' => null,
+                'revision_notes' => null,
+            ])->save();
+
+            $lockedUser->forceFill([
+                'role' => $role->name,
+                'status' => AccountStatus::Active->value,
+                'approved_by' => $approver->id,
+                'approved_at' => now(),
+                'rejection_reason' => null,
+            ])->save();
 
             $this->createApprovedProfile(
-                $user,
+                $lockedUser,
                 $application
             );
+
+            return $application->fresh([
+                'user',
+                'requestedRole',
+                'documents',
+            ]);
         });
     }
 
@@ -190,17 +209,17 @@ class RegistrationLifecycleService
         User $user,
         User $reviewer,
         string $reason
-    ): void {
-        DB::transaction(function () use (
+    ): AccountApplication {
+        return DB::transaction(function () use (
             $user,
             $reviewer,
             $reason
-        ): void {
-            $application = $this->ensureLegacyApplication($user);
+        ): AccountApplication {
+            $lockedUser = User::query()
+                ->lockForUpdate()
+                ->findOrFail($user->id);
 
-            if (! $application) {
-                return;
-            }
+            $application = $this->lockReviewableApplication($lockedUser);
 
             $application->forceFill([
                 'status' => AccountStatus::Rejected->value,
@@ -209,8 +228,128 @@ class RegistrationLifecycleService
                 'decided_at' => now(),
                 'reviewed_by' => $reviewer->id,
                 'decision_reason' => $reason,
+                'revision_notes' => null,
             ])->save();
+
+            $lockedUser->forceFill([
+                'status' => AccountStatus::Rejected->value,
+                'approved_by' => $reviewer->id,
+                'approved_at' => now(),
+                'rejection_reason' => $reason,
+            ])->save();
+
+            return $application->fresh([
+                'user',
+                'requestedRole',
+                'documents',
+            ]);
         });
+    }
+
+    public function requestRevision(
+        User $user,
+        User $reviewer,
+        string $notes
+    ): AccountApplication {
+        return DB::transaction(function () use ($user, $reviewer, $notes): AccountApplication {
+            $lockedUser = User::query()
+                ->lockForUpdate()
+                ->findOrFail($user->id);
+
+            $application = $this->lockReviewableApplication($lockedUser);
+
+            $application->forceFill([
+                'status' => 'needs_revision',
+                'review_started_at' => $application->review_started_at ?? now(),
+                'reviewed_by' => $reviewer->id,
+                'revision_notes' => $notes,
+                'decision_reason' => null,
+                'decided_at' => null,
+            ])->save();
+
+            $lockedUser->forceFill([
+                'status' => AccountStatus::NeedsRevision->value,
+                'approved_by' => $reviewer->id,
+                'approved_at' => null,
+                'rejection_reason' => null,
+            ])->save();
+
+            return $application->fresh([
+                'user',
+                'requestedRole',
+                'documents',
+            ]);
+        });
+    }
+
+    private function lockReviewableApplication(User $user): AccountApplication
+    {
+        $application = $this->ensureLegacyApplication($user);
+
+        abort_unless($application, 422);
+
+        $application = AccountApplication::query()
+            ->with(['requestedRole', 'documents'])
+            ->lockForUpdate()
+            ->findOrFail($application->id);
+
+        if ($application->status === AccountStatus::Pending->value) {
+            $application->forceFill(['status' => 'submitted'])->save();
+        }
+
+        abort_unless(
+            $application->user_id === $user->id
+            && $application->requestedRole?->name === $user->role
+            && in_array(
+                $application->status,
+                ['submitted', 'under_review', 'needs_revision'],
+                true
+            ),
+            422
+        );
+
+        return $application;
+    }
+
+    private function applicationStatusForUser(User $user): string
+    {
+        return match ($user->status) {
+            AccountStatus::Active->value => 'approved',
+            AccountStatus::Rejected->value => 'rejected',
+            AccountStatus::NeedsRevision->value => 'needs_revision',
+            default => 'submitted',
+        };
+    }
+
+    private function ensureRequiredDocumentsAreVerified(
+        AccountApplication $application
+    ): void {
+        $required = match ($application->requestedRole->name) {
+            UserRole::Buyer->value => [
+                ['government_id', 'valid_id'],
+            ],
+            UserRole::Seller->value,
+            UserRole::Logistics->value => [
+                ['government_id', 'valid_id'],
+                ['business_permit'],
+            ],
+            default => [],
+        };
+
+        $documents = $application->documents->keyBy('document_type');
+        $unverified = collect($required)->filter(
+            fn (array $types): bool => ! collect($types)->contains(
+                fn (string $type): bool =>
+                    $documents->has($type)
+                    && $documents->get($type)->verification_status === 'verified'
+            )
+        );
+
+        if ($unverified->isNotEmpty()) {
+            throw ValidationException::withMessages([
+                'documents' => 'All required documents must be verified before approval.',
+            ]);
+        }
     }
 
     /**
@@ -277,7 +416,7 @@ class RegistrationLifecycleService
 
         if ($application) {
             $application->forceFill([
-                'status' => (string) $user->status,
+                'status' => $this->applicationStatusForUser($user),
                 'decided_at' =>
                     $user->status === AccountStatus::Rejected->value
                         ? (
@@ -383,10 +522,7 @@ class RegistrationLifecycleService
             'business_name' => $user->business_name,
             'business_category_id' =>
                 $this->categoryId($user->business_category),
-            'status' =>
-                $user->status === AccountStatus::Active->value
-                    ? 'approved'
-                    : (string) $user->status,
+            'status' => $this->applicationStatusForUser($user),
             'submitted_at' => $user->created_at ?? now(),
             'decided_at' =>
                 in_array(
@@ -480,6 +616,10 @@ class RegistrationLifecycleService
     ): void {
         $path = (string) ($document['path'] ?? '');
         $type = (string) ($document['type'] ?? '');
+
+        if ($type === 'valid_id') {
+            $type = 'government_id';
+        }
 
         if ($path === '' || $type === '') {
             return;

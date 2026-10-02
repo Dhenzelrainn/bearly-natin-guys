@@ -5,6 +5,7 @@ use App\Http\Controllers\auth\EmailVerificationController;
 use App\Http\Controllers\PostalCodeController;
 use App\Http\Controllers\AccountApprovalController;
 use App\Http\Controllers\AdminController;
+use App\Http\Controllers\AdminRegistrationController;
 use App\Http\Controllers\AdminRoleApplicationController;
 use App\Http\Controllers\AdminAnnouncementController;
 use App\Http\Controllers\AdminAuditLogController;
@@ -16,6 +17,7 @@ use App\Http\Controllers\AdminFinanceController;
 use App\Http\Controllers\AdminFulfillmentController;
 use App\Http\Controllers\AdminMessageController;
 use App\Http\Controllers\AdminReturnRefundController;
+use App\Http\Controllers\ApplicationDocumentController;
 use App\Http\Controllers\BuyerController;
 use App\Http\Controllers\LogisticsController;
 use App\Http\Controllers\ProductComplianceController;
@@ -190,13 +192,13 @@ Route::prefix('admin')
         Route::get('/registrations', [AdminController::class, 'registrations'])
             ->name('registrations');
 
-        Route::get('/registrations/buyers', [AdminRoleApplicationController::class, 'buyers'])
+        Route::get('/registrations/buyers', [AdminRegistrationController::class, 'buyers'])
             ->name('registrations.buyers');
 
-        Route::get('/registrations/sellers', [AdminRoleApplicationController::class, 'sellers'])
+        Route::get('/registrations/sellers', [AdminRegistrationController::class, 'sellers'])
             ->name('registrations.sellers');
 
-        Route::get('/registrations/logistics', [AdminRoleApplicationController::class, 'logistics'])
+        Route::get('/registrations/logistics', [AdminRegistrationController::class, 'logistics'])
             ->name('registrations.logistics');
 
         Route::get(
@@ -205,6 +207,16 @@ Route::prefix('admin')
         )
             ->where('type', 'valid-id|business-permit')
             ->name('applications.document');
+
+        Route::get(
+            '/application-documents/{application}/{document}',
+            [ApplicationDocumentController::class, 'show']
+        )->name('application-documents.show');
+
+        Route::patch(
+            '/application-documents/{application}/{document}',
+            [ApplicationDocumentController::class, 'update']
+        )->name('application-documents.update');
 
         /*
         |--------------------------------------------------------------------------
@@ -451,6 +463,11 @@ Route::prefix('admin')
             '/applications/{user}/approve',
             [AccountApprovalController::class, 'approveByAdmin']
         )->name('applications.approve');
+
+        Route::post(
+            '/applications/{user}/request-revision',
+            [AccountApprovalController::class, 'requestRevisionByAdmin']
+        )->name('applications.request-revision');
 
         Route::post(
             '/applications/{user}/reject',

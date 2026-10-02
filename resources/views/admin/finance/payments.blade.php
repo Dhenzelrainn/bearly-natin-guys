@@ -11,7 +11,7 @@
 @endphp
 
 <section class="page-hero">
-    <div><span class="eyebrow">Seller settlements</span><h1>Track who has been paid</h1><p>Monitor each seller payout after commission and refund adjustments. Status changes are saved in this browser for the front-end demo.</p></div>
+    <div><span class="eyebrow">Seller settlements</span><h1>Track who has been paid</h1><p>Monitor each seller payout after commission and refund adjustments. Payout status is controlled by the server-side settlement record.</p></div>
     <div class="hero-actions"><button class="button button-secondary" type="button" data-finance-export="payments"><i data-lucide="download"></i> Export payments</button></div>
 </section>
 
@@ -39,8 +39,8 @@
             <tr data-finance-row data-payment-id="{{ $payment['id'] }}" data-status="{{ $payment['status'] }}" data-search="{{ strtolower($payment['id'].' '.$payment['seller'].' '.$payment['period'].' '.$payment['reference']) }}">
                 <td><strong>{{ $payment['seller'] }}</strong><small class="table-subline">{{ $payment['id'] }}</small></td><td>{{ $payment['period'] }}</td>
                 <td class="align-right">₱{{ number_format($payment['gross'], 2) }}</td><td class="align-right commission-value">−₱{{ number_format($payment['commission'], 2) }}</td><td class="align-right">{{ $payment['adjustments'] < 0 ? '−' : '' }}₱{{ number_format(abs($payment['adjustments']), 2) }}</td><td class="align-right"><strong>₱{{ number_format($payment['net'], 2) }}</strong></td>
-                <td><strong>{{ date('M d, Y', strtotime($payment['due'])) }}</strong><small class="table-subline" data-payment-reference>{{ $payment['reference'] }}</small></td><td><span class="status-badge js-payment-status {{ $badge }}">{{ $payment['status'] }}</span></td>
-                <td class="align-right"><select class="select-field" data-payment-status aria-label="Change {{ $payment['id'] }} status"><option>Pending</option><option>Processing</option><option>Paid</option><option>On Hold</option></select></td>
+                <td><strong>{{ $payment['due'] ? date('M d, Y', strtotime($payment['due'])) : '—' }}</strong><small class="table-subline" data-payment-reference>{{ $payment['reference'] }}</small></td><td><span class="status-badge js-payment-status {{ $badge }}">{{ $payment['status'] }}</span></td>
+                <td class="align-right"><select class="select-field" data-payment-status aria-label="{{ $payment['id'] }} status" disabled title="Payout status changes require a verified settlement workflow"><option selected>{{ $payment['status'] }}</option></select></td>
             </tr>
         @endforeach
         </tbody>

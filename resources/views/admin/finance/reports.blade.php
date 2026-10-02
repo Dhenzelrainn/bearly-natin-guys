@@ -10,7 +10,7 @@
 </section>
 
 <section class="report-filter-bar panel">
-    <div><span class="section-label">Report period</span><div class="date-range-inline"><input class="date-field" type="date" value="2026-01-01" data-report-start><span>to</span><input class="date-field" type="date" value="2026-08-24" data-report-end></div></div>
+    <div><span class="section-label">Report period</span><div class="date-range-inline"><input class="date-field" type="date" value="{{ $reportStart }}" data-report-start><span>to</span><input class="date-field" type="date" value="{{ $reportEnd }}" data-report-end></div></div>
     <label class="form-field inline-filter"><span>Report type</span><select class="select-field" data-report-type><option>Sales Summary</option><option>Commission Report</option><option>Seller Settlement Report</option><option>Refund Report</option></select></label>
     <button class="button button-primary" type="button" data-apply-report-filters><i data-lucide="sliders-horizontal"></i> Apply filters</button>
 </section>
@@ -25,7 +25,7 @@
 
 <section class="dashboard-grid dashboard-grid-main" data-report-section="sales">
     <article class="panel panel-large">
-        <div class="panel-heading"><div><span class="eyebrow">Sales summary report</span><h2>Monthly sales performance</h2><p>Review marketplace sales performance for the selected reporting period.</p></div><span class="status-badge badge-success">+11.2%</span></div>
+        <div class="panel-heading"><div><span class="eyebrow">Sales summary report</span><h2>Monthly sales performance</h2><p>Review marketplace sales performance for the selected reporting period.</p></div><span class="status-badge badge-success">{{ $salesTrendLabel }}</span></div>
         <div class="line-chart-shell">
             <div class="line-chart-grid"></div>
             <svg class="line-chart-svg" viewBox="0 0 1100 320" preserveAspectRatio="none" aria-label="Sales trend chart">
@@ -44,8 +44,8 @@
     </article>
     <aside class="panel report-breakdown">
         <div class="panel-heading"><div><span class="eyebrow">Order channels</span><h2>Marketplace mix</h2></div></div>
-        <div class="donut-wrap"><div class="css-donut"><span>8,421<small>orders</small></span></div></div>
-        <div class="legend-list"><div><span class="legend-dot legend-a"></span><strong>Buyer marketplace</strong><em>68%</em></div><div><span class="legend-dot legend-b"></span><strong>Repeat purchases</strong><em>21%</em></div><div><span class="legend-dot legend-c"></span><strong>Promo-driven</strong><em>11%</em></div></div>
+        <div class="donut-wrap"><div class="css-donut"><span>{{ number_format($paidOrderCount) }}<small>orders</small></span></div></div>
+        <div class="legend-list"><div><span class="legend-dot legend-a"></span><strong>Buyer marketplace</strong><em>{{ $orderMix['marketplace'] }}%</em></div><div><span class="legend-dot legend-b"></span><strong>Repeat purchases</strong><em>{{ $orderMix['repeat'] }}%</em></div><div><span class="legend-dot legend-c"></span><strong>Promo-driven</strong><em>{{ $orderMix['promo'] }}%</em></div></div>
     </aside>
 </section>
 

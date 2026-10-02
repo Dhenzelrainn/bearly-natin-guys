@@ -96,7 +96,7 @@
             <a class="text-button" href="{{ route('admin.audit-logs') }}">View all</a>
         </div>
         <div class="activity-list">
-            @foreach ($activity as $item)
+            @forelse ($activity as $item)
                 <div class="activity-row">
                     <span class="activity-dot dot-{{ $item['type'] }}"></span>
                     <div>
@@ -105,7 +105,13 @@
                     </div>
                     <a class="icon-button subtle-icon" href="{{ route('admin.audit-logs') }}" aria-label="Open audit logs"><i data-lucide="chevron-right"></i></a>
                 </div>
-            @endforeach
+            @empty
+                <div class="table-empty">
+                    <i data-lucide="activity"></i>
+                    <strong>No administrative activity yet</strong>
+                    <span>New actions will appear here as they are recorded.</span>
+                </div>
+            @endforelse
         </div>
     </article>
 

@@ -301,11 +301,18 @@ Route::prefix('seller')
         Route::get('/store', [SellerController::class, 'store'])
             ->name('store');
 
+        Route::get('/store/documents/{type}', [SellerController::class, 'storeDocument'])
+            ->where('type', 'valid_id|business_permit')
+            ->name('store.documents.preview');
+
         Route::post('/store', [SellerController::class, 'saveStore'])
             ->name('store.save');
 
         Route::get('/store/appearance', [SellerController::class, 'storeAppearance'])
             ->name('store.appearance');
+
+        Route::post('/store/appearance', [SellerController::class, 'saveStoreAppearance'])
+            ->name('store.appearance.save');
 
         Route::get('/store/publication', [SellerController::class, 'publicationSettings'])
             ->name('store.publication');

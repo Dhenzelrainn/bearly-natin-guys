@@ -2,9 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Address;
+use App\Models\AccountApplication;
+use App\Models\StorePromotionalBanner;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class SellerController extends Controller
 {
@@ -473,75 +478,301 @@ class SellerController extends Controller
 
     public function store(Request $request): View
     {
-        $store = array_merge([
-            'name' => "Juan's Clothing Shop",
-            'location' => 'Santa Rosa City, Laguna',
-            'category' => 'Fashion and Apparel',
-            'description' => '',
-            'email' => 'juan@example.com',
-            'phone' => '+63 917 123 4567',
-            'profile_photo' => null,
-            'cover_photo' => null,
-            'published' => false,
-        ], $request->session()->get('seller.store', []));
+        $user = $request->user();
+        $sellerProfile = $user->sellerProfile;
 
-        $completed = 2 + (int) filled($store['profile_photo']) + (int) filled($store['cover_photo']) + (int) filled($store['description']);
+        abort_if($sellerProfile === null, 404, 'Seller profile not found.');
+
+        $store = $sellerProfile->store;
+
+        if ($store === null) {
+            $storeName = $user->business_name
+                ?: $sellerProfile->legal_business_name
+                ?: 'Bearly Store';
+
+            $store = $sellerProfile->store()->create([
+                'name' => $storeName,
+                'slug' => Str::slug($storeName).'-'.$sellerProfile->id,
+                'contact_email' => $user->email,
+                'contact_phone' => $user->contact_number ?: $user->phone,
+                'publication_status' => 'draft',
+            ]);
+        }
+
+        $pickupAddress = $sellerProfile->pickup_address_id
+            ? Address::find($sellerProfile->pickup_address_id)
+            : null;
+
+        $storeLocation = collect([
+            $pickupAddress?->city_municipality,
+            $pickupAddress?->province,
+        ])->filter()->implode(', ');
+
+        $application = AccountApplication::query()
+            ->with('documents')
+            ->where('user_id', $user->id)
+            ->latest('id')
+            ->first();
+
+        $documentLabels = [
+            'valid_id' => 'Valid ID',
+            'business_permit' => 'Business Permit',
+        ];
+
+        $documentStatusLabels = [
+            'pending' => 'Under Review',
+            'approved' => 'Approved',
+            'rejected' => 'Rejected',
+        ];
+
+        $documentStatusIcons = [
+            'pending' => 'clock-3',
+            'approved' => 'circle-check',
+            'rejected' => 'circle-x',
+            'not_submitted' => 'circle-alert',
+        ];
+
+        $documents = collect($documentLabels)->map(function (string $label, string $type) use (
+            $application,
+            $documentStatusLabels,
+            $documentStatusIcons
+        ): array {
+            $document = $application?->documents->firstWhere('document_type', $type);
+            $status = $document?->verification_status ?: 'not_submitted';
+
+            return [
+                'label' => $label,
+                'status' => $status,
+                'status_label' => $documentStatusLabels[$status] ?? ucfirst($status),
+                'status_icon' => $documentStatusIcons[$status] ?? 'circle-alert',
+                'file_name' => $document?->original_name,
+                'preview_url' => $document
+                    ? route('seller.store.documents.preview', ['type' => $type])
+                    : null,
+            ];
+        })->values()->all();
+
+        $storeData = [
+            'name' => $store->name,
+            'location' => $storeLocation ?: 'Pickup address not set',
+            'category' => $user->business_category ?: 'Marketplace Seller',
+            'description' => $store->description ?? '',
+            'email' => $store->contact_email ?? '',
+            'phone' => $store->contact_phone
+                ?: $user->contact_number
+                ?: $user->phone
+                ?: '',
+            'profile_photo' => $store->logo_path,
+            'cover_photo' => $store->banner_path,
+            'published' => $store->publication_status === 'published',
+        ];
+
+        $completed = 2
+            + (int) filled($storeData['profile_photo'])
+            + (int) filled($storeData['cover_photo'])
+            + (int) filled($storeData['description']);
 
         return view('seller.Store.store', [
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
-            'store' => $store,
+            'store' => $storeData,
+            'documents' => $documents,
             'completion' => $completed * 20,
         ]);
+    }
+
+    public function storeDocument(Request $request, string $type)
+    {
+        abort_unless(in_array($type, ['valid_id', 'business_permit'], true), 404);
+
+        $application = AccountApplication::query()
+            ->where('user_id', $request->user()->id)
+            ->latest('id')
+            ->first();
+
+        abort_if($application === null, 404, 'Application not found.');
+
+        $document = $application->documents()
+            ->where('document_type', $type)
+            ->first();
+
+        abort_if($document === null, 404, 'Document not found.');
+        abort_unless(Storage::disk('local')->exists($document->file_path), 404, 'Document file not found.');
+
+        return response()->file(
+            Storage::disk('local')->path($document->file_path),
+            [
+                'Content-Disposition' => 'inline; filename="'.basename($document->original_name).'"',
+                'X-Content-Type-Options' => 'nosniff',
+            ]
+        );
     }
 
     public function saveStore(Request $request): RedirectResponse
     {
         $validated = $request->validate([
-            'description' => ['nullable', 'string', 'max:500'],
             'email' => ['required', 'email', 'max:255'],
             'phone' => ['required', 'string', 'max:30'],
-            'profile_photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
-            'cover_photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
             'intent' => ['required', 'in:draft,publish'],
         ]);
 
-        $store = array_merge($request->session()->get('seller.store', []), [
-            'email' => $validated['email'],
-            'phone' => $validated['phone'],
+        $sellerProfile = $request->user()->sellerProfile;
+
+        abort_if($sellerProfile === null, 404, 'Seller profile not found.');
+
+        $store = $sellerProfile->store;
+
+        abort_if($store === null, 404, 'Store not found.');
+
+        $store->update([
+            'contact_email' => $validated['email'],
+            'contact_phone' => $validated['phone'],
         ]);
 
-        foreach (['profile_photo', 'cover_photo'] as $photo) {
-            if ($request->hasFile($photo)) {
-                $store[$photo] = $request->file($photo)->store('seller-store', 'public');
-            }
-        }
-
-        $complete = filled($store['description'] ?? null)
-            && filled($store['profile_photo'] ?? null)
-            && filled($store['cover_photo'] ?? null);
-        $store['published'] = $validated['intent'] === 'publish' && $complete;
-        $request->session()->put('seller.store', $store);
-
-        $message = $store['published'] ? 'Your store profile is now published.' : 'Your store profile was saved as a draft.';
-        return redirect()->route('seller.store')->with('success', $message);
+        return redirect()
+            ->route('seller.store')
+            ->with('success', 'Store contact details saved successfully.');
     }
 
     public function storeAppearance(Request $request): View
     {
-        $store = array_merge([
-            'name' => "Juan's Clothing Shop",
-            'category' => 'Fashion and Apparel',
-            'description' => 'Everyday clothing and accessories selected for comfort, quality, and practical style.',
-            'profile_photo' => null,
-            'cover_photo' => null,
-        ], $request->session()->get('seller.store', []));
+        $user = $request->user();
+        $sellerProfile = $user->sellerProfile;
+
+        abort_if($sellerProfile === null, 404, 'Seller profile not found.');
+
+        $storeRecord = $sellerProfile->store;
+
+        abort_if($storeRecord === null, 404, 'Store not found.');
+
+        $promoBanners = $storeRecord->promotionalBanners
+            ->map(fn (StorePromotionalBanner $banner): array => [
+                'id' => $banner->id,
+                'path' => $banner->image_path,
+                'title' => $banner->title ?? '',
+                'link' => $banner->link ?? '',
+            ])
+            ->values()
+            ->all();
+
+        if ($promoBanners === [] && filled($storeRecord->promo_banner_path)) {
+            $promoBanners[] = [
+                'id' => null,
+                'path' => $storeRecord->promo_banner_path,
+                'title' => $storeRecord->promo_banner_title ?? '',
+                'link' => $storeRecord->promo_banner_link ?? '',
+            ];
+        }
+
+        $store = [
+            'name' => $storeRecord->name,
+            'category' => $user->business_category ?: 'Marketplace Seller',
+            'description' => $storeRecord->description ?? '',
+            'announcement' => $storeRecord->announcement ?? '',
+            'operating_hours' => $storeRecord->operating_hours ?? '',
+            'profile_photo' => $storeRecord->logo_path,
+            'cover_photo' => $storeRecord->banner_path,
+            'promo_banner' => $storeRecord->promo_banner_path,
+            'promo_banner_title' => $storeRecord->promo_banner_title ?? '',
+            'promo_banner_link' => $storeRecord->promo_banner_link ?? '',
+            'promo_banners' => $promoBanners,
+            'shipping_policy' => $storeRecord->shipping_policy ?? '',
+            'return_policy' => $storeRecord->return_policy ?? '',
+            'warranty_policy' => $storeRecord->warranty_policy ?? '',
+        ];
 
         return view('seller.Store.appearance', [
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
             'store' => $store,
         ]);
+    }
+
+    public function saveStoreAppearance(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'description' => ['nullable', 'string', 'max:500'],
+            'announcement' => ['nullable', 'string', 'max:180'],
+            'operating_hours' => ['nullable', 'string', 'max:120'],
+            'profile_photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
+            'cover_photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:20480'],
+            'promo_banner_ids' => ['nullable', 'array'],
+            'promo_banner_ids.*' => ['nullable', 'integer'],
+            'promo_banners' => ['nullable', 'array'],
+            'promo_banners.*' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:20480'],
+            'promo_banner_titles' => ['nullable', 'array'],
+            'promo_banner_titles.*' => ['nullable', 'string', 'max:160'],
+            'promo_banner_links' => ['nullable', 'array'],
+            'promo_banner_links.*' => ['nullable', 'url', 'max:500'],
+            'shipping_policy' => ['nullable', 'string', 'max:3000'],
+            'return_policy' => ['nullable', 'string', 'max:3000'],
+            'warranty_policy' => ['nullable', 'string', 'max:3000'],
+        ]);
+
+        $sellerProfile = $request->user()->sellerProfile;
+
+        abort_if($sellerProfile === null, 404, 'Seller profile not found.');
+
+        $store = $sellerProfile->store;
+
+        abort_if($store === null, 404, 'Store not found.');
+
+        $updates = [
+            'description' => $validated['description'] ?? '',
+            'announcement' => $validated['announcement'] ?? '',
+            'operating_hours' => $validated['operating_hours'] ?? '',
+            'shipping_policy' => $validated['shipping_policy'] ?? '',
+            'return_policy' => $validated['return_policy'] ?? '',
+            'warranty_policy' => $validated['warranty_policy'] ?? '',
+        ];
+
+        if ($request->hasFile('profile_photo')) {
+            $updates['logo_path'] = $request->file('profile_photo')->store('seller-store', 'public');
+        }
+
+        if ($request->hasFile('cover_photo')) {
+            $updates['banner_path'] = $request->file('cover_photo')->store('seller-store', 'public');
+        }
+
+        $store->update($updates);
+
+        $existingIds = collect($validated['promo_banner_ids'] ?? [])
+            ->filter(fn ($id): bool => is_numeric($id))
+            ->map(fn ($id): int => (int) $id)
+            ->values();
+        $titles = $validated['promo_banner_titles'] ?? [];
+        $links = $validated['promo_banner_links'] ?? [];
+
+        $store->promotionalBanners()
+            ->whereNotIn('id', $existingIds->all())
+            ->delete();
+
+        foreach ($existingIds as $position => $id) {
+            $store->promotionalBanners()->whereKey($id)->update([
+                'title' => $titles[$position] ?? '',
+                'link' => $links[$position] ?? '',
+                'position' => $position,
+                'is_active' => true,
+            ]);
+        }
+
+        foreach ($request->file('promo_banners', []) as $position => $file) {
+            if ($file === null) {
+                continue;
+            }
+
+            $store->promotionalBanners()->create([
+                'image_path' => $file->store('seller-store', 'public'),
+                'title' => $titles[$position] ?? '',
+                'link' => $links[$position] ?? '',
+                'position' => $existingIds->count() + $position,
+                'is_active' => true,
+            ]);
+        }
+
+        return redirect()
+            ->route('seller.store.appearance')
+            ->with('success', 'Store appearance saved successfully.');
     }
 
     public function publicationSettings(Request $request): View

@@ -773,13 +773,75 @@ const bootSeller = () => {
     /* Store appearance — frontend-only image, description, and buyer preview. */
     const appearance = document.querySelector('[data-storefront-appearance]');
     if (appearance) {
+        const appearanceForm = appearance.closest('form');
+        const saveState = appearance.querySelector('[data-storefront-save-state]');
+        let hasUnsavedChanges = false;
+
+        const markAppearanceDirty = () => {
+            hasUnsavedChanges = true;
+            if (saveState) saveState.textContent = 'Unsaved changes';
+        };
+
+        appearanceForm?.addEventListener('input', markAppearanceDirty);
+        appearanceForm?.addEventListener('change', markAppearanceDirty);
+        appearanceForm?.addEventListener('submit', () => {
+            hasUnsavedChanges = false;
+            if (saveState) saveState.textContent = 'Saving changes…';
+        });
+        window.addEventListener('beforeunload', (event) => {
+            if (!hasUnsavedChanges) return;
+            event.preventDefault();
+            event.returnValue = '';
+        });
+
         const description = appearance.querySelector('[data-storefront-description]');
         const count = appearance.querySelector('[data-storefront-description-count]');
         const previewDescription = appearance.querySelector('[data-storefront-preview-description]');
+        const announcement = appearance.querySelector('[data-storefront-announcement]');
+        const previewAnnouncement = appearance.querySelector('[data-storefront-preview-announcement]');
+        const hours = appearance.querySelector('[data-storefront-hours]');
+        const previewHours = appearance.querySelector('[data-storefront-preview-hours]');
+        const promoTitle = appearance.querySelector('[name="promo_banner_title"]');
+        const previewPromoTitle = appearance.querySelector('[data-storefront-preview-promo-title]');
 
         description?.addEventListener('input', () => {
             if (count) count.textContent = description.value.length;
             if (previewDescription) previewDescription.textContent = description.value.trim() || 'Your store description will appear here.';
+        });
+
+        const syncStoreDetail = (input, preview) => {
+            if (!input || !preview) return;
+            const value = input.value.trim();
+            preview.hidden = !value;
+            preview.querySelector('span').textContent = value;
+        };
+
+        announcement?.addEventListener('input', () => syncStoreDetail(announcement, previewAnnouncement));
+        hours?.addEventListener('input', () => syncStoreDetail(hours, previewHours));
+        appearance.querySelectorAll('[data-storefront-policy]').forEach((input) => {
+            input.addEventListener('input', () => {
+                const preview = appearance.querySelector(`[data-preview-policy="${input.dataset.storefrontPolicy}"]`);
+                if (preview) preview.textContent = input.value.trim() || `No ${input.dataset.storefrontPolicy} policy added yet.`;
+            });
+        });
+
+        const previewTabs = appearance.querySelectorAll('[data-preview-tab]');
+        const previewPanels = appearance.querySelectorAll('[data-preview-panel]');
+        previewTabs.forEach((tab) => {
+            tab.addEventListener('click', () => {
+                const target = tab.dataset.previewTab;
+                previewTabs.forEach((item) => {
+                    const active = item === tab;
+                    item.classList.toggle('is-active', active);
+                    item.setAttribute('aria-selected', active ? 'true' : 'false');
+                });
+                previewPanels.forEach((panel) => { panel.hidden = panel.dataset.previewPanel !== target; });
+            });
+        });
+        promoTitle?.addEventListener('input', () => {
+            if (!previewPromoTitle) return;
+            previewPromoTitle.textContent = promoTitle.value.trim();
+            previewPromoTitle.hidden = !promoTitle.value.trim();
         });
 
         appearance.querySelectorAll('[data-storefront-image]').forEach((input) => {
@@ -787,11 +849,12 @@ const bootSeller = () => {
                 const file = input.files?.[0];
                 if (!file) return;
 
-                const maximum = input.dataset.storefrontImage === 'cover' ? 10 : 5;
+                const maximum = ['cover', 'promo'].includes(input.dataset.storefrontImage) ? 20 : 10;
                 if (file.size > maximum * 1024 * 1024) {
                     input.value = '';
                     if (toast) {
-                        toast.textContent = `${input.dataset.storefrontImage === 'cover' ? 'Cover' : 'Profile'} image must be ${maximum}MB or smaller.`;
+                        const imageLabel = input.dataset.storefrontImage === 'promo' ? 'Promotional banner' : input.dataset.storefrontImage === 'cover' ? 'Cover' : 'Profile';
+                        toast.textContent = `${imageLabel} image must be ${maximum}MB or smaller.`;
                         toast.classList.add('is-visible');
                     }
                     return;
@@ -808,27 +871,141 @@ const bootSeller = () => {
                     if (input.dataset.storefrontImage === 'profile') {
                         appearance.querySelector('[data-storefront-profile-placeholder]')?.replaceChildren(createPreview());
                         appearance.querySelector('[data-storefront-preview-profile]')?.replaceChildren(createPreview());
-                    } else {
+                    } else if (input.dataset.storefrontImage === 'cover') {
                         appearance.querySelector('[data-storefront-cover-placeholder]')?.replaceChildren(createPreview());
                         appearance.querySelector('[data-storefront-preview-cover]')?.replaceChildren(createPreview());
+                    } else if (input.dataset.storefrontImage === 'promo') {
+                        const preview = appearance.querySelector('[data-storefront-preview-promo]');
+                        const slide = preview?.querySelector('[data-storefront-promo-slide]');
+                        if (slide) {
+                            const title = slide.querySelector('[data-storefront-preview-promo-title]');
+                            slide.replaceChildren(createPreview(), title || document.createElement('span'));
+                            if (title) {
+                                title.className = 'buyer-store-promo-overlay';
+                                title.hidden = !promoTitle?.value.trim();
+                                title.textContent = promoTitle?.value.trim() || '';
+                                title.dataset.storefrontPreviewPromoTitle = '';
+                            }
+                        }
+                        if (preview) preview.hidden = false;
                     }
                 });
                 reader.readAsDataURL(file);
             });
         });
+
+        const promoPreview = appearance.querySelector('[data-storefront-preview-promo]');
+        const promoList = appearance.querySelector('[data-promo-banner-item]')?.parentElement;
+
+        const fileDataUrl = (file) => new Promise((resolve) => {
+            if (!file) return resolve(null);
+            const reader = new FileReader();
+            reader.addEventListener('load', () => resolve(reader.result));
+            reader.readAsDataURL(file);
+        });
+
+        const renderPromoCarousel = async () => {
+            if (!promoPreview || !promoList) return;
+
+            const items = Array.from(promoList.querySelectorAll('[data-promo-banner-item]'));
+            const slides = await Promise.all(items.map(async (item, index) => {
+                const input = item.querySelector('[data-storefront-image="promo"]');
+                const image = item.querySelector('[data-promo-image]');
+                const src = await fileDataUrl(input?.files?.[0]) || image?.src;
+                if (!src) return null;
+
+                const slide = document.createElement('div');
+                slide.className = `buyer-store-promo-slide${index === 0 ? ' is-active' : ''}`;
+                slide.hidden = index !== 0;
+                const previewImage = document.createElement('img');
+                previewImage.src = src;
+                previewImage.alt = item.querySelector('input[name="promo_banner_titles[]"]')?.value.trim() || 'Promotional banner preview';
+                const title = document.createElement('span');
+                title.className = 'buyer-store-promo-overlay';
+                title.textContent = item.querySelector('input[name="promo_banner_titles[]"]')?.value.trim() || '';
+                title.hidden = !title.textContent;
+                slide.append(previewImage, title);
+                return slide;
+            }));
+
+            const validSlides = slides.filter(Boolean);
+            const track = promoPreview.querySelector('.buyer-store-promo-track');
+            const dots = promoPreview.querySelector('[data-promo-preview-dots]');
+            const previous = promoPreview.querySelector('[data-promo-preview-prev]');
+            const next = promoPreview.querySelector('[data-promo-preview-next]');
+            if (!track || !dots || !previous || !next) return;
+
+            track.replaceChildren(...validSlides);
+            dots.replaceChildren(...validSlides.map((_, index) => {
+                const dot = document.createElement('button');
+                dot.type = 'button';
+                dot.className = index === 0 ? 'is-active' : '';
+                dot.ariaLabel = `Show promotional banner ${index + 1}`;
+                dot.dataset.slideIndex = String(index);
+                return dot;
+            }));
+            promoPreview.hidden = validSlides.length === 0;
+            previous.disabled = validSlides.length < 2;
+            next.disabled = validSlides.length < 2;
+
+            let activeIndex = 0;
+            const showSlide = (index) => {
+                activeIndex = (index + validSlides.length) % validSlides.length;
+                validSlides.forEach((slide, slideIndex) => {
+                    slide.classList.toggle('is-active', slideIndex === activeIndex);
+                    slide.hidden = slideIndex !== activeIndex;
+                });
+                dots.querySelectorAll('button').forEach((dot, dotIndex) => dot.classList.toggle('is-active', dotIndex === activeIndex));
+            };
+
+            previous.onclick = () => showSlide(activeIndex - 1);
+            next.onclick = () => showSlide(activeIndex + 1);
+            dots.querySelectorAll('button').forEach((dot) => dot.onclick = () => showSlide(Number(dot.dataset.slideIndex)));
+        };
+
+        appearance.addEventListener('change', (event) => {
+            if (event.target.matches('[data-storefront-image="promo"]')) renderPromoCarousel();
+        });
+        appearance.addEventListener('input', (event) => {
+            if (event.target.matches('input[name="promo_banner_titles[]"]')) renderPromoCarousel();
+        });
+        appearance.addEventListener('click', (event) => {
+            const addButton = event.target.closest('[data-add-promo-banner]');
+            const removeButton = event.target.closest('[data-remove-promo-banner]');
+
+            if (addButton && promoList) {
+                const template = promoList.querySelector('[data-promo-banner-item]');
+                if (!template) return;
+                const item = template.cloneNode(true);
+                item.querySelectorAll('input[type="hidden"]').forEach((field) => field.remove());
+                item.querySelectorAll('input[type="file"]').forEach((field) => { field.value = ''; });
+                item.querySelectorAll('input[type="text"], input[type="url"]').forEach((field) => { field.value = ''; });
+                const drop = item.querySelector('[data-promo-drop]');
+                if (drop) drop.innerHTML = '<i data-lucide="image-plus"></i><strong>Choose promotional banner</strong><small>JPG, PNG, or WebP · Up to 20MB</small>';
+                promoList.append(item);
+                window.lucide?.createIcons();
+            }
+
+            if (removeButton) {
+                const items = promoList?.querySelectorAll('[data-promo-banner-item]') || [];
+                const item = removeButton.closest('[data-promo-banner-item]');
+                if (item && items.length > 1) item.remove();
+                else if (item) {
+                    item.querySelectorAll('input[type="hidden"]').forEach((field) => field.remove());
+                    item.querySelectorAll('input[type="file"], input[type="text"], input[type="url"]').forEach((field) => { field.value = ''; });
+                    const drop = item.querySelector('[data-promo-drop]');
+                    if (drop) drop.innerHTML = '<i data-lucide="image-plus"></i><strong>Choose promotional banner</strong><small>JPG, PNG, or WebP · Up to 20MB</small>';
+                    window.lucide?.createIcons();
+                }
+                renderPromoCarousel();
+            }
+        });
+        renderPromoCarousel();
     }
 
     document.querySelector('[data-storefront-preview-toggle]')?.addEventListener('click', () => {
         document.querySelector('.storefront-preview-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
-    document.querySelector('[data-save-appearance]')?.addEventListener('click', () => {
-        if (!toast) return;
-        toast.textContent = 'Store appearance saved for this preview. It will reset after refresh.';
-        toast.classList.add('is-visible');
-        window.clearTimeout(window.sellerToastTimer);
-        window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3400);
-    });
-
     /* Publication settings — frontend-only visibility preview. */
     document.querySelector('[data-publication-toggle]')?.addEventListener('click', (event) => {
         const button = event.currentTarget;
@@ -1341,6 +1518,36 @@ const bootSeller = () => {
             window.clearTimeout(window.sellerToastTimer);
             window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3400);
         });
+    });
+
+    const documentPreviewModal = document.querySelector('[data-document-preview-modal]');
+    const documentPreviewFrame = documentPreviewModal?.querySelector('[data-document-preview-frame]');
+    const documentPreviewTitle = documentPreviewModal?.querySelector('[data-document-preview-title]');
+    const closeDocumentPreview = () => {
+        if (!documentPreviewModal) return;
+        documentPreviewModal.hidden = true;
+        if (documentPreviewFrame) documentPreviewFrame.src = 'about:blank';
+        document.body.style.overflow = '';
+    };
+
+    document.querySelectorAll('[data-document-preview]').forEach((link) => {
+        link.addEventListener('click', (event) => {
+            event.preventDefault();
+            if (!documentPreviewModal || !documentPreviewFrame) return;
+            if (documentPreviewTitle) documentPreviewTitle.textContent = link.dataset.documentPreview || 'Document Preview';
+            documentPreviewFrame.src = link.href;
+            documentPreviewModal.hidden = false;
+            document.body.style.overflow = 'hidden';
+            documentPreviewModal.querySelector('[data-document-preview-close]')?.focus();
+        });
+    });
+
+    documentPreviewModal?.querySelectorAll('[data-document-preview-close]').forEach((button) => {
+        button.addEventListener('click', closeDocumentPreview);
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && documentPreviewModal && !documentPreviewModal.hidden) closeDocumentPreview();
     });
 
     const serverToast = document.querySelector('[data-server-toast]');

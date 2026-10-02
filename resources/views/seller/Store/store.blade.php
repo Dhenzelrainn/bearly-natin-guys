@@ -80,25 +80,36 @@
                     </div>
 
                     <div class="store-registration-grid">
-                        <div class="store-document-status">
-                            <span aria-hidden="true">
-                                <i data-lucide="badge-check"></i>
-                            </span>
-                            <div>
-                                <strong>Valid ID</strong>
-                                <small><i data-lucide="circle-check"></i> Submitted</small>
+                        @foreach ($documents as $document)
+                            <div class="store-document-status">
+                                <span aria-hidden="true">
+                                    <i data-lucide="{{ $document['label'] === 'Valid ID' ? 'badge-check' : 'file-check-2' }}"></i>
+                                </span>
+                                <div>
+                                    <strong>{{ $document['label'] }}</strong>
+                                    <small class="document-status-{{ $document['status'] }}">
+                                        <i data-lucide="{{ $document['status_icon'] }}"></i>
+                                        {{ $document['status_label'] }}
+                                    </small>
+                                    @if ($document['file_name'])
+                                        <small class="document-file-meta">
+                                            <i data-lucide="file-check-2"></i>
+                                            Document uploaded
+                                        </small>
+                                    @endif
+                                    @if ($document['preview_url'])
+                                        <a
+                                            class="document-preview-link"
+                                            href="{{ $document['preview_url'] }}"
+                                            data-document-preview="{{ $document['label'] }}"
+                                        >
+                                            <i data-lucide="eye"></i>
+                                            Preview document
+                                        </a>
+                                    @endif
+                                </div>
                             </div>
-                        </div>
-
-                        <div class="store-document-status">
-                            <span aria-hidden="true">
-                                <i data-lucide="file-check-2"></i>
-                            </span>
-                            <div>
-                                <strong>Business Permit</strong>
-                                <small><i data-lucide="circle-check"></i> Submitted</small>
-                            </div>
-                        </div>
+                        @endforeach
 
                         <div class="store-admin-note">
                             <i data-lucide="info" aria-hidden="true"></i>
@@ -205,5 +216,23 @@
             </aside>
         </div>
     </form>
+
+    <div class="document-preview-modal" data-document-preview-modal hidden>
+        <div class="document-preview-backdrop" data-document-preview-close></div>
+        <section class="document-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="document-preview-title">
+            <header class="document-preview-header">
+                <div>
+                    <span class="section-kicker">Registration document</span>
+                    <h3 id="document-preview-title" data-document-preview-title>Document Preview</h3>
+                </div>
+                <button class="document-preview-close" type="button" aria-label="Close document preview" data-document-preview-close>
+                    <i data-lucide="x"></i>
+                </button>
+            </header>
+            <div class="document-preview-frame-wrap">
+                <iframe title="Registration document preview" data-document-preview-frame></iframe>
+            </div>
+        </section>
+    </div>
 </div>
 @endsection

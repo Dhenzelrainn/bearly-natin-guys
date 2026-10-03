@@ -61,16 +61,19 @@
 
             <form
                 class="panel-body"
-                data-preview-form="operatorProfile"
-                data-success="Operator profile saved in this preview."
+                method="POST"
+                action="{{ route('logistics.profile.update') }}"
             >
+                @csrf
+                @method('PATCH')
+
                 <div class="field-grid">
                     <div class="field">
                         <label>Full name</label>
 
                         <input
                             name="name"
-                            value="{{ $operator['name'] }}"
+                            value="{{ old('name', $operator['name']) }}"
                             required
                         >
                     </div>
@@ -81,7 +84,7 @@
                         <input
                             name="role"
                             value="{{ $operator['role'] }}"
-                            required
+                            readonly
                         >
                     </div>
 
@@ -92,7 +95,7 @@
                             type="email"
                             name="email"
                             value="{{ $operator['email'] }}"
-                            required
+                            readonly
                         >
                     </div>
 
@@ -101,7 +104,7 @@
 
                         <input
                             name="contact"
-                            value="{{ $operator['contact'] }}"
+                            value="{{ old('contact', $operator['contact']) }}"
                             required
                         >
                     </div>
@@ -130,15 +133,19 @@
                     <h3>Change password</h3>
 
                     <p>
-                        Use at least eight characters for the preview validation.
+                        Use at least eight characters for your new password.
                     </p>
                 </div>
             </div>
 
             <form
                 class="panel-body"
-                data-password-form
+                method="POST"
+                action="{{ route('logistics.profile.password.update') }}"
             >
+                @csrf
+                @method('PATCH')
+
                 <div class="field-grid">
                     <div class="field span-2">
                         <label>Current password</label>
@@ -146,6 +153,7 @@
                         <input
                             type="password"
                             name="current_password"
+                            autocomplete="current-password"
                             required
                         >
                     </div>
@@ -157,6 +165,7 @@
                             type="password"
                             name="new_password"
                             minlength="8"
+                            autocomplete="new-password"
                             required
                         >
                     </div>
@@ -168,6 +177,7 @@
                             type="password"
                             name="new_password_confirmation"
                             minlength="8"
+                            autocomplete="new-password"
                             required
                         >
                     </div>
@@ -217,23 +227,26 @@
                     <h3>Sorting facility</h3>
 
                     <p>
-                        Information used in pickup, intake, and dispatch previews.
+                        Information used in pickup, intake, sorting, and dispatch operations.
                     </p>
                 </div>
             </div>
 
             <form
                 class="panel-body"
-                data-preview-form="facilitySettings"
-                data-success="Facility settings saved in this preview."
+                method="POST"
+                action="{{ route('logistics.profile.facility.update') }}"
             >
+                @csrf
+                @method('PATCH')
+
                 <div class="field-grid">
                     <div class="field">
                         <label>Business / facility name</label>
 
                         <input
                             name="business_name"
-                            value="{{ $facility['business_name'] }}"
+                            value="{{ old('business_name', $facility['business_name']) }}"
                             required
                         >
                     </div>
@@ -243,7 +256,7 @@
 
                         <input
                             name="contact"
-                            value="{{ $facility['contact'] }}"
+                            value="{{ old('contact', $facility['contact']) }}"
                             required
                         >
                     </div>
@@ -254,7 +267,7 @@
                         <input
                             name="address"
                             value="{{ $facility['address'] }}"
-                            required
+                            readonly
                         >
                     </div>
 
@@ -263,7 +276,7 @@
 
                         <input
                             name="operating_hours"
-                            value="{{ $facility['operating_hours'] }}"
+                            value="{{ old('operating_hours', $facility['operating_hours']) }}"
                             required
                         >
                     </div>
@@ -275,7 +288,7 @@
                             type="number"
                             min="1"
                             name="daily_capacity"
-                            value="{{ $facility['daily_capacity'] }}"
+                            value="{{ old('daily_capacity', $facility['daily_capacity']) }}"
                             required
                         >
                     </div>

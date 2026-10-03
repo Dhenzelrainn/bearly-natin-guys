@@ -651,6 +651,15 @@ Route::prefix('logistics')->name('logistics.')->group(function () {
         Route::get('/messages', [LogisticsController::class, 'messages'])
             ->name('messages.index');
 
+        Route::patch('/account/profile', [LogisticsController::class, 'updateProfile'])
+            ->name('profile.update');
+
+        Route::patch('/account/password', [LogisticsController::class, 'updatePassword'])
+            ->name('profile.password.update');
+
+        Route::patch('/account/facility', [LogisticsController::class, 'updateFacility'])
+            ->name('profile.facility.update');
+
         Route::get('/account', [LogisticsController::class, 'account'])
             ->name('profile.index');
 

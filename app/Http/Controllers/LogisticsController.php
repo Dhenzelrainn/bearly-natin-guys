@@ -753,4 +753,135 @@ class LogisticsController extends Controller
             ]
         );
     }
+
+    public function updateProfile(Request $request)
+    {
+        /** @var User $operator */
+        $operator = $request->user();
+
+        $validated = $request->validate([
+            'name' => [
+                'required',
+                'string',
+                'max:160',
+            ],
+            'contact' => [
+                'required',
+                'string',
+                'max:30',
+            ],
+        ]);
+
+        $operator->update([
+            'name' => trim($validated['name']),
+            'contact_number' => trim($validated['contact']),
+        ]);
+
+        return redirect(
+            route('logistics.profile.index') . '#profile'
+        )->with(
+            'success',
+            'Operator profile updated successfully.'
+        );
+    }
+
+    public function updatePassword(Request $request)
+    {
+        /** @var User $operator */
+        $operator = $request->user();
+
+        $validated = $request->validate([
+            'current_password' => [
+                'required',
+                'string',
+            ],
+            'new_password' => [
+                'required',
+                'string',
+                'min:8',
+                'confirmed',
+            ],
+        ]);
+
+        if (! Hash::check(
+            $validated['current_password'],
+            $operator->password
+        )) {
+            return redirect(
+                route('logistics.profile.index') . '#security'
+            )->withErrors([
+                'current_password' =>
+                    'The current password is incorrect.',
+            ]);
+        }
+
+        $operator->update([
+            'password' => Hash::make(
+                $validated['new_password']
+            ),
+        ]);
+
+        return redirect(
+            route('logistics.profile.index') . '#security'
+        )->with(
+            'success',
+            'Password updated successfully.'
+        );
+    }
+
+    public function updateFacility(Request $request)
+    {
+        /** @var User $operator */
+        $operator = $request->user();
+
+        $center = $this->activeSortingCenter(
+            $operator
+        );
+
+        abort_unless($center, 404);
+
+        $validated = $request->validate([
+            'business_name' => [
+                'required',
+                'string',
+                'max:160',
+            ],
+            'contact' => [
+                'required',
+                'string',
+                'max:30',
+            ],
+            'operating_hours' => [
+                'required',
+                'string',
+                'max:100',
+            ],
+            'daily_capacity' => [
+                'required',
+                'integer',
+                'min:1',
+            ],
+        ]);
+
+        $center->update([
+            'name' => trim(
+                $validated['business_name']
+            ),
+            'contact_phone' => trim(
+                $validated['contact']
+            ),
+            'operating_hours' => trim(
+                $validated['operating_hours']
+            ),
+            'daily_capacity' =>
+                $validated['daily_capacity'],
+        ]);
+
+        return redirect(
+            route('logistics.profile.index') . '#facility'
+        )->with(
+            'success',
+            'Facility settings updated successfully.'
+        );
+    }
 }

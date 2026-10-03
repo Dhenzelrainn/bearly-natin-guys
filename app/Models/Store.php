@@ -20,4 +20,14 @@ class Store extends Model
     {
         return $this->hasMany(Product::class);
     }
+
+    public function promotionalBanners()
+    {
+        return $this->hasMany(StorePromotionalBanner::class)->orderBy('position');
+    }
+
+    public function pickupRequests()
+    {
+        return $this->hasMany(PickupRequest::class);
+    }
 }

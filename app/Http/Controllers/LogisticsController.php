@@ -3,12 +3,16 @@
 namespace App\Http\Controllers;
 
 use App\Enums\AccountStatus;
+use App\Enums\ShipmentStatus;
 use App\Enums\UserRole;
+use App\Models\PickupAssignment;
+use App\Models\PickupRequest;
 use App\Models\SortingCenter;
 use App\Models\SortingZone;
 use App\Models\AccountApplication;
 use App\Models\LogisticsProfile;
 use App\Models\RiderProfile;
+use App\Models\ShipmentEvent;
 use App\Models\User;
 use App\Services\EmailVerificationService;
 use App\Services\InternationalPhone;
@@ -16,6 +20,7 @@ use App\Services\RegistrationLifecycleService;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
@@ -365,6 +370,20 @@ class LogisticsController extends Controller
     {
         $shared = $this->shared();
 
+        /** @var User $operator */
+        $operator = Auth::user();
+
+        $profile = $this->currentLogisticsProfile(
+            $operator
+        );
+
+        $pendingPickupCount = $profile
+            ? PickupRequest::query()
+                ->forLogisticsProfile($profile->id)
+                ->where('status', 'requested')
+                ->count()
+            : 0;
+
         $recentRiderApplications = User::query()
             ->where('role', UserRole::Rider->value)
             ->where('logistics_id', Auth::id())
@@ -436,6 +455,7 @@ class LogisticsController extends Controller
                 ],
             ],
             'activity' => $recentRiderApplications,
+            'pendingPickupCount' => $pendingPickupCount,
         ]);
     }
 
@@ -987,36 +1007,491 @@ class LogisticsController extends Controller
         );
     }
 
-    public function pickups()
+    public function pickups(): View
     {
-        return view('logistics.pickups.index', $this->shared() + [
-            'pickups' => [
-                [
-                    'id' => 'PU-24091',
-                    'seller' => 'TechVault PH',
-                    'location' => 'Brgy. San Rafael, San Pablo City',
-                    'parcels' => 6,
-                    'window' => '2:30–3:30 PM',
-                    'status' => 'Pending',
+        /** @var User $operator */
+        $operator = Auth::user();
+
+        $profile = $this->currentLogisticsProfile(
+            $operator
+        );
+
+        abort_unless($profile, 404);
+
+        $pickupRequests = PickupRequest::query()
+            ->forLogisticsProfile($profile->id)
+            ->with([
+                'store.sellerProfile.user',
+                'pickupAddress',
+                'latestAssignment.riderProfile.user',
+                'parcels' => fn ($query) => $query
+                    ->whereHas(
+                        'shipment',
+                        fn ($shipmentQuery) =>
+                            $shipmentQuery->where(
+                                'logistics_profile_id',
+                                $profile->id
+                            )
+                    )
+                    ->with([
+                        'waybill',
+                        'shipment.sellerOrder',
+                    ]),
+            ])
+            ->orderByDesc('requested_date')
+            ->orderByDesc('id')
+            ->get();
+
+        $pickups = $pickupRequests
+            ->map(function (
+                PickupRequest $pickupRequest
+            ): array {
+                $assignment =
+                    $pickupRequest->latestAssignment;
+
+                $eligibleParcels =
+                    $pickupRequest->parcels
+                        ->filter(fn ($parcel) =>
+                            $parcel->shipment
+                                ?->logistics_profile_id
+                                === $pickupRequest
+                                    ->logistics_profile_id
+                            && $parcel->shipment
+                                ?->sellerOrder
+                                ?->store_id
+                                === $pickupRequest->store_id
+                        )
+                        ->values();
+
+                $pickupRequest->setRelation(
+                    'parcels',
+                    $eligibleParcels
+                );
+
+                return [
+                    'database_id' =>
+                        $pickupRequest->id,
+                    'id' =>
+                        $pickupRequest->pickup_no,
+                    'seller' =>
+                        $pickupRequest->store?->name
+                        ?: 'Unknown seller',
+                    'location' =>
+                        $this->formattedAddress(
+                            $pickupRequest->pickupAddress
+                        ),
+                    'parcels' =>
+                        $eligibleParcels->count(),
+                    'window' =>
+                        $pickupRequest->window_start
+                            ->format('M j, Y · g:i A')
+                        .'–'
+                        .$pickupRequest->window_end
+                            ->format('g:i A'),
+                    'status' =>
+                        $this->pickupStatusLabel(
+                            $pickupRequest->status
+                        ),
+                    'status_key' =>
+                        $pickupRequest->status,
+                    'contact' =>
+                        $pickupRequest->store
+                            ?->contact_phone
+                        ?: $pickupRequest->store
+                            ?->sellerProfile
+                            ?->user
+                            ?->contact_number
+                        ?: 'Not provided',
+                    'instructions' =>
+                        $pickupRequest
+                            ->seller_instructions
+                        ?: 'No seller instructions.',
+                    'rider' =>
+                        $assignment
+                            ?->riderProfile
+                            ?->user
+                            ?->name
+                        ?: 'Not assigned',
+                    'assignment_status' =>
+                        $assignment?->status,
+                    'parcel_details' =>
+                        $eligibleParcels
+                            ->map(fn ($parcel): array => [
+                                'parcel_no' =>
+                                    $parcel->parcel_no,
+                                'waybill_no' =>
+                                    $parcel->waybill
+                                        ?->waybill_no
+                                    ?: '—',
+                                'shipment_no' =>
+                                    $parcel->shipment
+                                        ?->shipment_no
+                                    ?: '—',
+                                'seller_order_no' =>
+                                    $parcel->shipment
+                                        ?->sellerOrder
+                                        ?->seller_order_no
+                                    ?: '—',
+                            ])
+                            ->values()
+                            ->all(),
+                ];
+            })
+            ->values();
+
+        $availableRiders = RiderProfile::query()
+            ->where('logistics_profile_id', $profile->id)
+            ->where('verification_status', 'approved')
+            ->where('availability_status', 'available')
+            ->whereHas(
+                'user',
+                fn ($query) => $query->where(
+                    'status',
+                    AccountStatus::Active->value
+                )
+            )
+            ->with('user')
+            ->get()
+            ->sortBy(fn (RiderProfile $rider) =>
+                strtolower($rider->user?->name ?? '')
+            )
+            ->map(fn (RiderProfile $rider): array => [
+                'id' => $rider->id,
+                'name' => $rider->user?->name
+                    ?: 'Unknown Rider',
+                'vehicle' => $rider->vehicle_type,
+                'plate' => $rider->plate_number,
+            ])
+            ->values()
+            ->all();
+
+        return view(
+            'logistics.pickups.index',
+            $this->shared() + [
+                'pickups' => $pickups->all(),
+                'availableRiders' => $availableRiders,
+                'pickupMetrics' => [
+                    'awaiting_review' =>
+                        $pickupRequests
+                            ->where('status', 'requested')
+                            ->count(),
+                    'scheduled_today' =>
+                        $pickupRequests
+                            ->filter(fn ($pickup) =>
+                                $pickup->status === 'scheduled'
+                                && $pickup->requested_date
+                                    ?->isToday()
+                            )
+                            ->count(),
+                    'scheduled_parcels' =>
+                        $pickupRequests
+                            ->filter(fn ($pickup) =>
+                                $pickup->status === 'scheduled'
+                                && $pickup->requested_date
+                                    ?->isToday()
+                            )
+                            ->sum(fn ($pickup) =>
+                                $pickup->parcels->count()
+                            ),
+                    'in_pickup' =>
+                        $pickupRequests
+                            ->filter(fn ($pickup) =>
+                                $pickup->status === 'scheduled'
+                                && in_array(
+                                    $pickup->latestAssignment?->status,
+                                    [
+                                        'accepted',
+                                        'arrived',
+                                        'picked_up',
+                                    ],
+                                    true
+                                )
+                            )
+                            ->count(),
+                    'collected_today' =>
+                        $pickupRequests
+                            ->filter(fn ($pickup) =>
+                                $pickup->status === 'completed'
+                                && $pickup->completed_at
+                                    ?->isToday()
+                            )
+                            ->sum(fn ($pickup) =>
+                                $pickup->parcels->count()
+                            ),
+                    'completed_sellers' =>
+                        $pickupRequests
+                            ->filter(fn ($pickup) =>
+                                $pickup->status === 'completed'
+                                && $pickup->completed_at
+                                    ?->isToday()
+                            )
+                            ->pluck('store_id')
+                            ->unique()
+                            ->count(),
                 ],
-                [
-                    'id' => 'PU-24090',
-                    'seller' => 'Mara Home Goods',
-                    'location' => 'Brgy. Del Remedio, San Pablo City',
-                    'parcels' => 5,
-                    'window' => '3:00–4:00 PM',
-                    'status' => 'Pending',
-                ],
-                [
-                    'id' => 'PU-24087',
-                    'seller' => 'Little Sprout',
-                    'location' => 'Brgy. Bagong Pook, Liliw',
-                    'parcels' => 3,
-                    'window' => '4:00–5:00 PM',
-                    'status' => 'Verified',
-                ],
+            ]
+        );
+    }
+
+    public function verifyPickup(
+        PickupRequest $pickupRequest
+    ): RedirectResponse {
+        /** @var User $operator */
+        $operator = Auth::user();
+
+        $pickupRequest = $this->ownedPickupRequest(
+            $operator,
+            $pickupRequest->id
+        );
+
+        abort_unless(
+            $pickupRequest->status === 'requested',
+            409
+        );
+
+        abort_unless(
+            $pickupRequest
+                ->parcels()
+                ->whereHas(
+                    'shipment',
+                    fn ($query) => $query
+                        ->where(
+                            'logistics_profile_id',
+                            $pickupRequest
+                                ->logistics_profile_id
+                        )
+                        ->whereHas(
+                            'sellerOrder',
+                            fn ($sellerOrderQuery) =>
+                                $sellerOrderQuery->where(
+                                    'store_id',
+                                    $pickupRequest->store_id
+                                )
+                        )
+                )
+                ->exists(),
+            409
+        );
+
+        $pickupRequest->update([
+            'status' => 'verified',
+            'verified_by' => $operator->id,
+            'verified_at' => now(),
+        ]);
+
+        return back()->with(
+            'success',
+            "{$pickupRequest->pickup_no} was verified."
+        );
+    }
+
+    public function cancelPickup(
+        Request $request,
+        PickupRequest $pickupRequest
+    ): RedirectResponse {
+        /** @var User $operator */
+        $operator = Auth::user();
+
+        $pickupRequest = $this->ownedPickupRequest(
+            $operator,
+            $pickupRequest->id
+        );
+
+        abort_unless(
+            in_array(
+                $pickupRequest->status,
+                ['requested', 'verified'],
+                true
+            ),
+            409
+        );
+
+        $validated = $request->validate([
+            'cancellation_reason' => [
+                'required',
+                'string',
+                'max:1000',
             ],
         ]);
+
+        $pickupRequest->update([
+            'status' => 'cancelled',
+            'cancelled_at' => now(),
+            'cancellation_reason' => trim(
+                $validated['cancellation_reason']
+            ),
+        ]);
+
+        return back()->with(
+            'success',
+            "{$pickupRequest->pickup_no} was rejected."
+        );
+    }
+
+    public function assignPickup(
+        Request $request,
+        PickupRequest $pickupRequest
+    ): RedirectResponse {
+        /** @var User $operator */
+        $operator = Auth::user();
+
+        $pickupRequest = $this->ownedPickupRequest(
+            $operator,
+            $pickupRequest->id
+        );
+
+        abort_unless(
+            $pickupRequest->status === 'verified',
+            409
+        );
+
+        $validated = $request->validate([
+            'rider_profile_id' => [
+                'required',
+                'integer',
+            ],
+            'notes' => [
+                'nullable',
+                'string',
+                'max:1000',
+            ],
+        ]);
+
+        $profile = $this->currentLogisticsProfile(
+            $operator
+        );
+
+        abort_unless($profile, 404);
+
+        $rider = RiderProfile::query()
+            ->whereKey($validated['rider_profile_id'])
+            ->where('logistics_profile_id', $profile->id)
+            ->where('verification_status', 'approved')
+            ->where('availability_status', 'available')
+            ->whereHas(
+                'user',
+                fn ($query) => $query->where(
+                    'status',
+                    AccountStatus::Active->value
+                )
+            )
+            ->firstOrFail();
+
+        DB::transaction(function () use (
+            $operator,
+            $pickupRequest,
+            $rider,
+            $validated,
+            $profile
+        ): void {
+            PickupAssignment::query()->create([
+                'pickup_request_id' =>
+                    $pickupRequest->id,
+                'rider_profile_id' =>
+                    $rider->id,
+                'status' => 'assigned',
+                'assigned_by' => $operator->id,
+                'assigned_at' => now(),
+                'notes' => isset($validated['notes'])
+                    ? trim($validated['notes'])
+                    : null,
+            ]);
+
+            $pickupRequest->update([
+                'status' => 'scheduled',
+            ]);
+
+            $shipments = $pickupRequest
+                ->parcels()
+                ->whereHas(
+                    'shipment',
+                    fn ($query) => $query
+                        ->where(
+                            'logistics_profile_id',
+                            $profile->id
+                        )
+                        ->where(
+                            'status',
+                            ShipmentStatus::ReadyForPickup->value
+                        )
+                        ->whereHas(
+                            'sellerOrder',
+                            fn ($sellerOrderQuery) =>
+                                $sellerOrderQuery->where(
+                                    'store_id',
+                                    $pickupRequest->store_id
+                                )
+                        )
+                )
+                ->with('shipment')
+                ->get()
+                ->pluck('shipment')
+                ->filter()
+                ->unique('id');
+
+            foreach ($shipments as $shipment) {
+                $fromStatus = $shipment->status;
+
+                $shipment->update([
+                    'status' =>
+                        ShipmentStatus::PickupAssigned->value,
+                ]);
+
+                ShipmentEvent::query()->create([
+                    'shipment_id' => $shipment->id,
+                    'event_type' => 'pickup_assigned',
+                    'from_status' => $fromStatus,
+                    'to_status' =>
+                        ShipmentStatus::PickupAssigned->value,
+                    'actor_user_id' => $operator->id,
+                    'source' => 'logistics',
+                    'notes' =>
+                        "Assigned through {$pickupRequest->pickup_no}.",
+                    'metadata' => [
+                        'pickup_request_id' =>
+                            $pickupRequest->id,
+                        'rider_profile_id' =>
+                            $rider->id,
+                    ],
+                    'occurred_at' => now(),
+                ]);
+            }
+        }, 3);
+
+        return back()->with(
+            'success',
+            "{$pickupRequest->pickup_no} was assigned for pickup."
+        );
+    }
+
+    private function ownedPickupRequest(
+        User $operator,
+        int $pickupRequestId
+    ): PickupRequest {
+        $profile = $this->currentLogisticsProfile(
+            $operator
+        );
+
+        abort_unless($profile, 404);
+
+        return PickupRequest::query()
+            ->forLogisticsProfile($profile->id)
+            ->findOrFail($pickupRequestId);
+    }
+
+    private function pickupStatusLabel(
+        string $status
+    ): string {
+        return match ($status) {
+            'requested' => 'Pending',
+            'verified' => 'Verified',
+            'scheduled' => 'Scheduled',
+            'completed' => 'Collected',
+            'cancelled' => 'Rejected',
+            default => ucwords(
+                str_replace('_', ' ', $status)
+            ),
+        };
     }
 
     public function incoming(): View

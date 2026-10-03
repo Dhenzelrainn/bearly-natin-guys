@@ -330,6 +330,9 @@ Route::prefix('logistics')
             Route::get('/riders/{id}', [LogisticsController::class, 'showRider'])->name('riders.show');
             Route::patch('/riders/{user}/assignment', [LogisticsController::class, 'updateRiderAssignment'])->name('riders.assignment.update');
             Route::get('/pickups', [LogisticsController::class, 'pickups'])->name('pickups.index');
+            Route::post('/pickups/{pickupRequest}/verify', [LogisticsController::class, 'verifyPickup'])->name('pickups.verify');
+            Route::patch('/pickups/{pickupRequest}/cancel', [LogisticsController::class, 'cancelPickup'])->name('pickups.cancel');
+            Route::post('/pickups/{pickupRequest}/assign', [LogisticsController::class, 'assignPickup'])->name('pickups.assign');
             Route::get('/incoming', [LogisticsController::class, 'incoming'])->name('sorting.incoming');
             Route::get('/sorting', [LogisticsController::class, 'sorting'])->name('sorting.center');
             Route::get('/dispatch', [LogisticsController::class, 'dispatch'])->name('dispatch.index');

@@ -81,11 +81,96 @@ function setupModals() {
 
 function setupTabs() {
     document.querySelectorAll('[data-tabs]').forEach((tabs) => {
-        tabs.querySelectorAll('[data-tab]').forEach((button) => button.addEventListener('click', () => {
-            tabs.querySelectorAll('[data-tab]').forEach((item) => item.classList.toggle('is-active', item === button));
-            const scope = tabs.closest('[data-tab-scope]') || document;
-            scope.querySelectorAll('[data-tab-panel]').forEach((panel) => { panel.hidden = panel.dataset.tabPanel !== button.dataset.tab; });
-        }));
+        const buttons = [
+            ...tabs.querySelectorAll('[data-tab]'),
+        ];
+
+        const scope =
+            tabs.closest('[data-tab-scope]') ||
+            document;
+
+        const panels = [
+            ...scope.querySelectorAll(
+                '[data-tab-panel]'
+            ),
+        ];
+
+        const activate = (
+            tabName,
+            updateHash = false
+        ) => {
+            const activeButton = buttons.find(
+                (button) =>
+                    button.dataset.tab === tabName
+            );
+
+            if (!activeButton) {
+                return;
+            }
+
+            buttons.forEach((button) => {
+                button.classList.toggle(
+                    'is-active',
+                    button === activeButton
+                );
+            });
+
+            panels.forEach((panel) => {
+                panel.hidden =
+                    panel.dataset.tabPanel !==
+                    tabName;
+            });
+
+            if (updateHash) {
+                history.replaceState(
+                    null,
+                    '',
+                    `#${tabName}`
+                );
+            }
+        };
+
+        buttons.forEach((button) => {
+            button.addEventListener(
+                'click',
+                () => {
+                    activate(
+                        button.dataset.tab,
+                        true
+                    );
+                }
+            );
+        });
+
+        const requestedTab =
+            window.location.hash
+                .replace('#', '');
+
+        if (
+            requestedTab &&
+            buttons.some(
+                (button) =>
+                    button.dataset.tab ===
+                    requestedTab
+            )
+        ) {
+            activate(requestedTab);
+
+            return;
+        }
+
+        const initialButton =
+            buttons.find((button) =>
+                button.classList.contains(
+                    'is-active'
+                )
+            ) || buttons[0];
+
+        if (initialButton) {
+            activate(
+                initialButton.dataset.tab
+            );
+        }
     });
 }
 

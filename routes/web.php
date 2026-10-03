@@ -328,6 +328,7 @@ Route::prefix('logistics')
             Route::get('/dashboard', [LogisticsController::class, 'dashboard'])->name('dashboard');
             Route::get('/riders', [LogisticsController::class, 'riders'])->name('riders.index');
             Route::get('/riders/{id}', [LogisticsController::class, 'showRider'])->name('riders.show');
+            Route::patch('/riders/{user}/assignment', [LogisticsController::class, 'updateRiderAssignment'])->name('riders.assignment.update');
             Route::get('/pickups', [LogisticsController::class, 'pickups'])->name('pickups.index');
             Route::get('/incoming', [LogisticsController::class, 'incoming'])->name('sorting.incoming');
             Route::get('/sorting', [LogisticsController::class, 'sorting'])->name('sorting.center');

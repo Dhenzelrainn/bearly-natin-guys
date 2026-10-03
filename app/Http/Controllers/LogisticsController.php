@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Enums\AccountStatus;
 use App\Enums\UserRole;
 use App\Models\SortingCenter;
+use App\Models\SortingZone;
 use App\Models\AccountApplication;
 use App\Models\LogisticsProfile;
 use App\Models\RiderProfile;
@@ -13,6 +14,7 @@ use App\Services\EmailVerificationService;
 use App\Services\InternationalPhone;
 use App\Services\RegistrationLifecycleService;
 use Illuminate\Http\Request;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
@@ -723,6 +725,64 @@ class LogisticsController extends Controller
                     $accountApplication->status
                 );
 
+        $assignmentCenters =
+            SortingCenter::query()
+                ->where(
+                    'logistics_profile_id',
+                    $profile->id
+                )
+                ->where(
+                    'status',
+                    'active'
+                )
+                ->with([
+                    'zones' => function ($query) {
+                        $query
+                            ->where(
+                                'status',
+                                'active'
+                            )
+                            ->orderBy('name');
+                    },
+                ])
+                ->orderBy('name')
+                ->get()
+                ->map(function (
+                    SortingCenter $center
+                ): array {
+                    return [
+                        'id' =>
+                            $center->id,
+
+                        'name' =>
+                            $center->name,
+
+                        'code' =>
+                            $center->code,
+
+                        'zones' =>
+                            $center->zones
+                                ->map(
+                                    fn (
+                                        SortingZone $zone
+                                    ): array => [
+                                        'id' =>
+                                            $zone->id,
+
+                                        'name' =>
+                                            $zone->name,
+
+                                        'code' =>
+                                            $zone->code,
+                                    ]
+                                )
+                                ->values()
+                                ->all(),
+                    ];
+                })
+                ->values()
+                ->all();
+
         return view(
             'logistics.riders.show',
             $this->shared() + [
@@ -796,10 +856,134 @@ class LogisticsController extends Controller
                     'status' =>
                         $displayStatus,
 
+                    'home_sorting_center_id' =>
+                        $riderProfile?->home_sorting_center_id,
+
+                    'current_zone_id' =>
+                        $riderProfile?->current_zone_id,
+
+                    'home_sorting_center' =>
+                        $riderProfile
+                            ?->homeSortingCenter
+                            ?->name
+                        ?? 'Not assigned',
+
+                    'current_zone' =>
+                        $riderProfile
+                            ?->currentZone
+                            ?->name
+                        ?? 'Not assigned',
+
+                    'can_manage_assignment' =>
+                        $accountApplication->status === 'approved'
+                        && $user->status === AccountStatus::Active->value
+                        && $riderProfile !== null,
+
                     'documents' =>
                         $documents,
                 ],
+
+                'assignmentCenters' =>
+                    $assignmentCenters,
             ]
+        );
+    }
+
+    public function updateRiderAssignment(
+        Request $request,
+        User $user
+    ): RedirectResponse {
+        /** @var User $operator */
+        $operator = Auth::user();
+
+        $logisticsProfile =
+            $this->currentLogisticsProfile(
+                $operator
+            );
+
+        abort_unless(
+            $logisticsProfile,
+            404
+        );
+
+        $riderProfile =
+            RiderProfile::query()
+                ->where(
+                    'user_id',
+                    $user->id
+                )
+                ->where(
+                    'logistics_profile_id',
+                    $logisticsProfile->id
+                )
+                ->firstOrFail();
+
+        $validated = $request->validate([
+            'home_sorting_center_id' => [
+                'required',
+                'integer',
+            ],
+
+            'current_zone_id' => [
+                'nullable',
+                'integer',
+            ],
+        ]);
+
+        $sortingCenter =
+            SortingCenter::query()
+                ->whereKey(
+                    $validated[
+                        'home_sorting_center_id'
+                    ]
+                )
+                ->where(
+                    'logistics_profile_id',
+                    $logisticsProfile->id
+                )
+                ->where(
+                    'status',
+                    'active'
+                )
+                ->firstOrFail();
+
+        $zoneId = null;
+
+        if (
+            ! empty(
+                $validated['current_zone_id']
+            )
+        ) {
+            $zone = SortingZone::query()
+                ->whereKey(
+                    $validated[
+                        'current_zone_id'
+                    ]
+                )
+                ->where(
+                    'sorting_center_id',
+                    $sortingCenter->id
+                )
+                ->where(
+                    'status',
+                    'active'
+                )
+                ->firstOrFail();
+
+            $zoneId = $zone->id;
+        }
+
+        $riderProfile->forceFill([
+            'home_sorting_center_id' =>
+                $sortingCenter->id,
+
+            'current_zone_id' =>
+                $zoneId,
+        ])->save();
+
+        return back()->with(
+            'success',
+            'Rider assignment was updated.'
         );
     }
 

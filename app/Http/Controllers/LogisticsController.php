@@ -5,6 +5,9 @@ namespace App\Http\Controllers;
 use App\Enums\AccountStatus;
 use App\Enums\UserRole;
 use App\Models\SortingCenter;
+use App\Models\AccountApplication;
+use App\Models\LogisticsProfile;
+use App\Models\RiderProfile;
 use App\Models\User;
 use App\Services\EmailVerificationService;
 use App\Services\InternationalPhone;
@@ -52,6 +55,76 @@ class LogisticsController extends Controller
             ])
             ->oldest('id')
             ->first();
+    }
+
+    private function currentLogisticsProfile(
+        ?User $operator
+    ): ?LogisticsProfile {
+        return $operator?->logisticsProfile;
+    }
+
+    private function riderApplicationStatus(
+        string $status
+    ): string {
+        return match ($status) {
+            'submitted' => 'Pending',
+
+            /*
+            * Keep the current UI vocabulary intact.
+            * Both states mean that Logistics attention
+            * is still required.
+            */
+            'under_review',
+            'needs_revision' => 'Needs Review',
+
+            'approved' => 'Approved',
+            'rejected' => 'Rejected',
+
+            default => ucwords(
+                str_replace('_', ' ', $status)
+            ),
+        };
+    }
+
+    private function riderAccountStatus(
+        string $status
+    ): string {
+        return match ($status) {
+            AccountStatus::Active->value =>
+                'Active',
+
+            AccountStatus::Suspended->value =>
+                'Suspended',
+
+            AccountStatus::Deactivated->value =>
+                'Deactivated',
+
+            AccountStatus::Rejected->value =>
+                'Rejected',
+
+            default => ucwords(
+                str_replace('_', ' ', $status)
+            ),
+        };
+    }
+
+    private function formattedAddress(
+        ?\App\Models\Address $address
+    ): string {
+        if (! $address) {
+            return 'Not provided';
+        }
+
+        return collect([
+            $address->house_number,
+            $address->street,
+            $address->barangay,
+            $address->city_municipality,
+            $address->province,
+            $address->postal_code,
+        ])
+            ->filter()
+            ->implode(', ');
     }
 
     private function facilityAddress(
@@ -366,115 +439,368 @@ class LogisticsController extends Controller
 
     public function riders()
     {
-        $applications = User::query()
-            ->where('role', UserRole::Rider->value)
-            ->where('logistics_id', Auth::id())
-            ->whereIn('status', [
-                AccountStatus::Pending->value,
-                AccountStatus::NeedsRevision->value,
-            ])
-            ->latest()
-            ->get()
-            ->map(fn (User $user) => [
-                'id' => 'RIDER-'.$user->id,
-                'user_id' => $user->id,
-                'name' => $user->name,
-                'vehicle' => $user->vehicle_type ?: 'Not specified',
-                'plate' => $user->plate_number ?: '—',
-                'area' => $user->city ?: '—',
-                'submitted' => $user->created_at?->format('M j, Y') ?? 'Recently',
-                'status' => $user->status === AccountStatus::NeedsRevision->value
-                    ? 'Needs Review'
-                    : 'Pending',
-            ])
-            ->all();
+        /** @var User $operator */
+        $operator = Auth::user();
 
-        $riders = User::query()
-            ->where('role', UserRole::Rider->value)
-            ->where('logistics_id', Auth::id())
-            ->whereIn('status', [
-                AccountStatus::Active->value,
-                AccountStatus::Suspended->value,
-                AccountStatus::Deactivated->value,
-            ])
-            ->latest('approved_at')
-            ->get()
-            ->map(fn (User $user) => [
-                'id' => $user->id,
-                'name' => $user->name,
-                'vehicle' => $user->vehicle_type ?: 'Not specified',
-                'zone' => $user->city ?: 'Not assigned',
-                'jobs' => 0,
-                'rating' => null,
-                'status' => match ($user->status) {
-                    AccountStatus::Active->value => 'Active',
-                    AccountStatus::Suspended->value => 'Suspended',
-                    AccountStatus::Deactivated->value => 'Deactivated',
-                    default => ucfirst(str_replace('_', ' ', $user->status)),
-                },
-            ])
-            ->all();
+        $profile = $this->currentLogisticsProfile(
+            $operator
+        );
 
-        return view('logistics.riders.index', $this->shared() + [
-            'applications' => $applications,
-            'riders' => $riders,
-        ]);
+        $applications = collect();
+
+        $riders = collect();
+
+        if ($profile) {
+            $applications = AccountApplication::query()
+                ->where(
+                    'sponsor_logistics_profile_id',
+                    $profile->id
+                )
+                ->whereHas(
+                    'requestedRole',
+                    fn ($query) => $query->where(
+                        'name',
+                        UserRole::Rider->value
+                    )
+                )
+                ->whereIn('status', [
+                    'submitted',
+                    'under_review',
+                    'needs_revision',
+                ])
+                ->with([
+                    'user.addresses',
+                    'documents',
+                ])
+                ->latest('submitted_at')
+                ->latest('id')
+                ->get()
+                ->map(function (
+                    AccountApplication $application
+                ): array {
+                    $user = $application->user;
+
+                    $address = $user?->addresses
+                        ?->sortByDesc('id')
+                        ->first();
+
+                    return [
+                        'id' =>
+                            $application->application_no,
+
+                        'application_id' =>
+                            $application->id,
+
+                        'user_id' =>
+                            $application->user_id,
+
+                        'name' =>
+                            $user?->name
+                            ?: 'Unknown Rider',
+
+                        'vehicle' =>
+                            $user?->vehicle_type
+                            ?: 'Not specified',
+
+                        'plate' =>
+                            $user?->plate_number
+                            ?: '—',
+
+                        'area' =>
+                            $address?->city_municipality
+                            ?: $user?->city
+                            ?: '—',
+
+                        'submitted' =>
+                            $application->submitted_at
+                                ?->format('M j, Y')
+                            ?? 'Recently',
+
+                        'status' =>
+                            $this->riderApplicationStatus(
+                                $application->status
+                            ),
+                    ];
+                });
+
+            $riders = RiderProfile::query()
+                ->where(
+                    'logistics_profile_id',
+                    $profile->id
+                )
+                ->whereHas(
+                    'user',
+                    fn ($query) => $query->whereIn(
+                        'status',
+                        [
+                            AccountStatus::Active->value,
+                            AccountStatus::Suspended->value,
+                            AccountStatus::Deactivated->value,
+                        ]
+                    )
+                )
+                ->with([
+                    'user',
+                    'homeSortingCenter',
+                    'currentZone',
+                ])
+                ->latest('id')
+                ->get()
+                ->map(function (
+                    RiderProfile $rider
+                ): array {
+                    return [
+                        /*
+                        * Keep route IDs as User IDs because
+                        * logistics.riders.show currently
+                        * accepts the Rider user ID.
+                        */
+                        'id' =>
+                            $rider->user_id,
+
+                        'profile_id' =>
+                            $rider->id,
+
+                        'name' =>
+                            $rider->user?->name
+                            ?: 'Unknown Rider',
+
+                        'vehicle' =>
+                            $rider->vehicle_type
+                            ?: 'Not specified',
+
+                        'zone' =>
+                            $rider->currentZone?->name
+                            ?: 'Not assigned',
+
+                        /*
+                        * Fulfillment jobs and ratings do not
+                        * have trustworthy sources yet.
+                        */
+                        'jobs' => 0,
+                        'rating' => null,
+
+                        'status' =>
+                            $this->riderAccountStatus(
+                                $rider->user?->status
+                                ?? AccountStatus::Active->value
+                            ),
+                    ];
+                });
+        }
+
+        return view(
+            'logistics.riders.index',
+            $this->shared() + [
+                'applications' =>
+                    $applications->all(),
+
+                'riders' =>
+                    $riders->all(),
+            ]
+        );
     }
 
-    public function showRider(string $id): View
-    {
-        abort_unless(ctype_digit($id), 404);
+    public function showRider(
+        string $id
+    ): View {
+        abort_unless(
+            ctype_digit($id),
+            404
+        );
 
-        $user = User::query()
-            ->whereKey((int) $id)
-            ->where('role', UserRole::Rider->value)
-            ->where('logistics_id', Auth::id())
-            ->firstOrFail();
+        /** @var User $operator */
+        $operator = Auth::user();
 
-        $documents = array_values(array_filter([
-            $user->driver_license_path
-                ? [
-                    'label' => "Driver's License / ID",
-                    'filename' => basename($user->driver_license_path),
-                    'status' => 'For review',
-                ]
-                : null,
-            $user->or_cr_path
-                ? [
-                    'label' => 'Vehicle OR/CR',
-                    'filename' => basename($user->or_cr_path),
-                    'status' => 'For review',
-                ]
-                : null,
-        ]));
+        $profile = $this->currentLogisticsProfile(
+            $operator
+        );
 
-        $address = collect([
-            $user->street_address,
-            $user->barangay,
-            $user->city,
-            $user->province,
-        ])->filter()->implode(', ');
+        abort_unless($profile, 404);
 
-        return view('logistics.riders.show', $this->shared() + [
-            'application' => [
-                'id' => 'RIDER-'.$user->id,
-                'user_id' => $user->id,
-                'name' => $user->name,
-                'email' => $user->email,
-                'contact' => $user->contact_number ?: '—',
-                'birthday' => $user->birthday?->format('F j, Y') ?? 'Not provided',
-                'sex' => $user->sex
-                    ? ucwords(str_replace('_', ' ', $user->sex))
-                    : 'Not provided',
-                'address' => $address ?: 'Not provided',
-                'vehicle' => $user->vehicle_type ?: 'Not specified',
-                'plate' => $user->plate_number ?: '—',
-                'area' => $user->city ?: '—',
-                'submitted' => $user->created_at?->format('M j, Y') ?? 'Recently',
-                'status' => ucwords(str_replace('_', ' ', $user->status)),
-                'documents' => $documents,
-            ],
-        ]);
+        $accountApplication =
+            AccountApplication::query()
+                ->where(
+                    'user_id',
+                    (int) $id
+                )
+                ->where(
+                    'sponsor_logistics_profile_id',
+                    $profile->id
+                )
+                ->whereHas(
+                    'requestedRole',
+                    fn ($query) => $query->where(
+                        'name',
+                        UserRole::Rider->value
+                    )
+                )
+                ->with([
+                    'user.addresses',
+                    'documents',
+                    'user.riderProfile.homeSortingCenter',
+                    'user.riderProfile.currentZone',
+                ])
+                ->latest('id')
+                ->firstOrFail();
+
+        $user = $accountApplication->user;
+
+        abort_unless($user, 404);
+
+        $riderProfile = $user->riderProfile;
+
+        $address = $user->addresses
+            ->sortByDesc('id')
+            ->first();
+
+        $documents = $accountApplication
+            ->documents
+            ->sortBy('id')
+            ->map(function ($document) use (
+                $accountApplication
+            ): array {
+                return [
+                    'id' =>
+                        $document->id,
+
+                    'application_id' =>
+                        $accountApplication->id,
+
+                    'type' =>
+                        $document->document_type,
+
+                    'label' => match (
+                        $document->document_type
+                    ) {
+                        'driver_license' =>
+                            "Driver's License / ID",
+
+                        'or_cr' =>
+                            'Vehicle OR/CR',
+
+                        default =>
+                            ucwords(
+                                str_replace(
+                                    '_',
+                                    ' ',
+                                    $document
+                                        ->document_type
+                                )
+                            ),
+                    },
+
+                    'filename' =>
+                        $document->original_name,
+
+                    'status' => match (
+                        $document
+                            ->verification_status
+                    ) {
+                        'verified' =>
+                            'Verified',
+
+                        'rejected' =>
+                            'Rejected',
+
+                        default =>
+                            'Pending',
+                    },
+
+                    'rejection_reason' =>
+                        $document->rejection_reason,
+                ];
+            })
+            ->values()
+            ->all();
+
+        $displayStatus =
+            $accountApplication->status === 'approved'
+                ? $this->riderAccountStatus(
+                    $user->status
+                )
+                : $this->riderApplicationStatus(
+                    $accountApplication->status
+                );
+
+        return view(
+            'logistics.riders.show',
+            $this->shared() + [
+                'application' => [
+                    'id' =>
+                        $accountApplication
+                            ->application_no,
+
+                    'application_id' =>
+                        $accountApplication->id,
+
+                    'user_id' =>
+                        $user->id,
+
+                    'name' =>
+                        $user->name,
+
+                    'email' =>
+                        $user->email,
+
+                    'contact' =>
+                        $user->contact_number
+                        ?: '—',
+
+                    'birthday' =>
+                        $user->birthday
+                            ?->format('F j, Y')
+                        ?? 'Not provided',
+
+                    'sex' =>
+                        $user->sex
+                            ? ucwords(
+                                str_replace(
+                                    '_',
+                                    ' ',
+                                    $user->sex
+                                )
+                            )
+                            : 'Not provided',
+
+                    'address' =>
+                        $this->formattedAddress(
+                            $address
+                        ),
+
+                    'vehicle' =>
+                        $riderProfile?->vehicle_type
+                        ?: $user->vehicle_type
+                        ?: 'Not specified',
+
+                    'plate' =>
+                        $riderProfile?->plate_number
+                        ?: $user->plate_number
+                        ?: '—',
+
+                    'area' =>
+                        $riderProfile
+                            ?->currentZone
+                            ?->name
+                        ?: $address
+                            ?->city_municipality
+                        ?: $user->city
+                        ?: '—',
+
+                    'submitted' =>
+                        $accountApplication
+                            ->submitted_at
+                            ?->format('M j, Y')
+                        ?? 'Recently',
+
+                    'status' =>
+                        $displayStatus,
+
+                    'documents' =>
+                        $documents,
+                ],
+            ]
+        );
     }
 
     public function pickups()

@@ -597,7 +597,7 @@ Route::prefix('seller')
             ->name('settings.notifications');
     });
 
-/*
+/**
 |--------------------------------------------------------------------------
 | Logistics
 |--------------------------------------------------------------------------
@@ -613,7 +613,9 @@ Route::prefix('logistics')->name('logistics.')->group(function () {
             ->name('register');
 
         Route::post('/register', [LogisticsController::class, 'submitRegistration'])
-            ->middleware('throttle:10,1')->block(30, 5)->name('register.submit');
+            ->middleware('throttle:10,1')
+            ->block(30, 5)
+            ->name('register.submit');
     });
 
     Route::redirect('/login', '/login')
@@ -669,11 +671,37 @@ Route::prefix('logistics')->name('logistics.')->group(function () {
         Route::post('/api/waybills/{identifier}/receive', [WaybillScanController::class, 'receive'])
             ->name('waybills.receive');
 
-        Route::post('/riders/{user}/approve', [AccountApprovalController::class, 'approveRider'])
-            ->name('riders.approve');
+        /*
+        |--------------------------------------------------------------------------
+        | Rider Application Documents
+        |--------------------------------------------------------------------------
+        */
 
-        Route::post('/riders/{user}/reject', [AccountApprovalController::class, 'rejectRider'])
-            ->name('riders.reject');
+        Route::get(
+            '/rider-applications/{application}/documents/{document}',
+            [ApplicationDocumentController::class, 'show']
+        )->name('rider-documents.show');
+
+        Route::patch(
+            '/rider-applications/{application}/documents/{document}',
+            [ApplicationDocumentController::class, 'update']
+        )->name('rider-documents.update');
+
+        /*
+        |--------------------------------------------------------------------------
+        | Rider Approval
+        |--------------------------------------------------------------------------
+        */
+
+        Route::post(
+            '/riders/{user}/approve',
+            [AccountApprovalController::class, 'approveRider']
+        )->name('riders.approve');
+
+        Route::post(
+            '/riders/{user}/reject',
+            [AccountApprovalController::class, 'rejectRider']
+        )->name('riders.reject');
     });
 });
 

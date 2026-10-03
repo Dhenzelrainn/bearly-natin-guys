@@ -20,4 +20,20 @@ class RiderProfile extends Model
     {
         return $this->belongsTo(LogisticsProfile::class);
     }
+
+    public function homeSortingCenter()
+    {
+        return $this->belongsTo(
+            SortingCenter::class,
+            'home_sorting_center_id'
+        );
+    }
+
+    public function currentZone()
+    {
+        return $this->belongsTo(
+            SortingZone::class,
+            'current_zone_id'
+        );
+    }
 }

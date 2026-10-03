@@ -638,6 +638,15 @@ Route::prefix('logistics')->name('logistics.')->group(function () {
         Route::get('/pickups', [LogisticsController::class, 'pickups'])
             ->name('pickups.index');
 
+        Route::post('/pickups/{pickupRequest}/verify', [LogisticsController::class, 'verifyPickup'])
+            ->name('pickups.verify');
+
+        Route::patch('/pickups/{pickupRequest}/cancel', [LogisticsController::class, 'cancelPickup'])
+            ->name('pickups.cancel');
+
+        Route::post('/pickups/{pickupRequest}/assign', [LogisticsController::class, 'assignPickup'])
+            ->name('pickups.assign');
+
         Route::get('/incoming', [LogisticsController::class, 'incoming'])
             ->name('sorting.incoming');
 

@@ -36,4 +36,9 @@ class RiderProfile extends Model
             'current_zone_id'
         );
     }
+
+    public function pickupAssignments()
+    {
+        return $this->hasMany(PickupAssignment::class);
+    }
 }

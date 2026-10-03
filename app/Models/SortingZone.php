@@ -10,6 +10,13 @@ class SortingZone extends Model
 
     protected function casts(): array
     {
-        return ['destination_rules' => 'array'];
+        return [
+            'destination_rules' => 'array',
+        ];
+    }
+
+    public function sortingCenter()
+    {
+        return $this->belongsTo(SortingCenter::class);
     }
 }

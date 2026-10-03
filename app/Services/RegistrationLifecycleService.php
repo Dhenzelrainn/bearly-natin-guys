@@ -12,6 +12,7 @@ use App\Models\LogisticsProfile;
 use App\Models\RiderProfile;
 use App\Models\Role;
 use App\Models\SellerProfile;
+use App\Models\SortingCenter;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -738,7 +739,7 @@ class RegistrationLifecycleService
             ->latest('id')
             ->first();
 
-        return LogisticsProfile::updateOrCreate(
+        $profile = LogisticsProfile::updateOrCreate(
             ['user_id' => $user->id],
             [
                 'application_id' => $application?->id,
@@ -757,6 +758,95 @@ class RegistrationLifecycleService
                 'status' => 'active',
             ]
         );
+
+        $this->ensureSortingCenter(
+            $user,
+            $profile
+        );
+
+        return $profile;
+    }
+
+    private function ensureSortingCenter(
+        User $user,
+        LogisticsProfile $profile
+    ): SortingCenter {
+        $address = Address::query()
+            ->where('user_id', $user->id)
+            ->where(
+                'label',
+                $this->addressLabel(
+                    UserRole::Logistics->value
+                )
+            )
+            ->latest('id')
+            ->first();
+
+        $address ??= Address::query()
+            ->where('user_id', $user->id)
+            ->where('is_default_pickup', true)
+            ->latest('id')
+            ->first();
+
+        $address ??= $user->addresses()
+            ->latest('id')
+            ->first();
+
+        if (! $address) {
+            $address = $this->storeAddress(
+                $user,
+                UserRole::Logistics->value,
+                [
+                    'street' =>
+                        $user->street_address
+                        ?: 'Not provided',
+                    'barangay' =>
+                        $user->barangay
+                        ?: 'Not provided',
+                    'municipality' =>
+                        $user->city
+                        ?: 'Not provided',
+                    'province' =>
+                        $user->province
+                        ?: 'Not provided',
+                ]
+            );
+        }
+
+        $center = SortingCenter::query()
+            ->where(
+                'logistics_profile_id',
+                $profile->id
+            )
+            ->oldest('id')
+            ->first();
+
+        if ($center) {
+            $center->forceFill([
+                'address_id' => $address->id,
+                'name' => $profile->display_name,
+                'contact_phone' => $profile->contact_phone,
+            ])->save();
+
+            return $center;
+        }
+
+        return SortingCenter::create([
+            'logistics_profile_id' => $profile->id,
+            'address_id' => $address->id,
+            'name' => $profile->display_name,
+            'code' => $this->sortingCenterCode(
+                $profile
+            ),
+            'contact_phone' => $profile->contact_phone,
+            'status' => 'active',
+        ]);
+    }
+
+    private function sortingCenterCode(
+        LogisticsProfile $profile
+    ): string {
+        return 'SC-' . $profile->id;
     }
 
     private function role(string $name): Role

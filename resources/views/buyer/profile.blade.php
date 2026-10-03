@@ -34,9 +34,11 @@
             <button class="account-tab" type="button" data-account-tab="likes"><span class="material-symbols-outlined">favorite</span>My Likes <span id="likes-nav-count" class="likes-nav-count">0</span></button>
             <div class="nav-section-gap"></div>
             <button class="account-tab nav-parent" type="button" data-account-tab="purchases"><span class="material-symbols-outlined">receipt_long</span>My Purchases</button>
+            <button class="account-tab nav-parent" type="button" data-account-tab="history"><span class="material-symbols-outlined">history</span>Order History</button>
             <button class="account-tab nav-parent" type="button" data-account-tab="reviews"><span class="material-symbols-outlined">star</span>Reviews & Ratings</button>
             <button class="account-tab nav-parent" type="button" data-account-tab="notifications"><span class="material-symbols-outlined">notifications</span>Notifications <span id="notifications-nav-count" class="notifications-nav-count">3</span></button>
-            <a class="nav-parent" href="#" onclick="return false"><span class="material-symbols-outlined">confirmation_number</span>My Vouchers</a>
+            <button class="account-tab nav-parent" type="button" data-account-tab="vouchers"><span class="material-symbols-outlined">confirmation_number</span>My Vouchers <span id="vouchers-nav-count" class="vouchers-nav-count" hidden>0</span></button>
+            <button class="account-tab nav-parent" type="button" data-account-tab="help"><span class="material-symbols-outlined">help</span>Help Center</button>
         </nav>
     </aside>
 
@@ -143,6 +145,25 @@
         </div>
     </section>
 
+    <section class="profile-card account-panel" id="history-panel" data-account-panel="history" hidden>
+        <div class="history-head">
+            <div><h1>Order History</h1><p>Review your completed and cancelled Bearly orders.</p></div>
+            <span id="history-count" class="purchase-count">0 orders</span>
+        </div>
+        <div class="history-tools">
+            <label class="history-search"><span class="material-symbols-outlined">search</span><input id="history-search" type="search" placeholder="Search order ID or product" autocomplete="off"></label>
+            <div class="history-filters" role="tablist" aria-label="Order history filters">
+                <button class="history-filter active" type="button" data-history-filter="all">All</button>
+                <button class="history-filter" type="button" data-history-filter="completed">Completed</button>
+                <button class="history-filter" type="button" data-history-filter="cancelled">Cancelled</button>
+            </div>
+        </div>
+        <div id="history-list" class="purchase-list"></div>
+        <div id="history-empty" class="purchases-empty" hidden>
+            <span class="material-symbols-outlined">history</span><h2>No order history found</h2><p>Completed and cancelled orders will appear here.</p>
+        </div>
+    </section>
+
     <section class="profile-card account-panel" id="tracking-panel" data-account-panel="tracking" hidden>
         <div class="tracking-head">
             <div><button id="tracking-back" class="tracking-back" type="button"><span class="material-symbols-outlined">arrow_back</span> My Purchases</button><h1>Order Tracking</h1><p>Follow your order from confirmation until delivery.</p></div>
@@ -166,6 +187,38 @@
         <div id="notifications-empty" class="notifications-empty" hidden>
             <span class="material-symbols-outlined">notifications_off</span><h2>No notifications here</h2><p>New Bearly updates will appear here.</p>
         </div>
+    </section>
+
+    <section class="profile-card account-panel" id="vouchers-panel" data-account-panel="vouchers" hidden>
+        <div class="vouchers-head">
+            <div><h1>My Vouchers</h1><p>Claim Bearly rewards and use them on eligible orders.</p></div>
+            <span id="voucher-claimed-count" class="voucher-claimed-count">0 claimed</span>
+        </div>
+        <div class="voucher-tabs" role="tablist" aria-label="Voucher filters">
+            <button class="voucher-filter active" type="button" data-voucher-filter="available">Available</button>
+            <button class="voucher-filter" type="button" data-voucher-filter="claimed">Claimed</button>
+        </div>
+        <div id="voucher-list" class="voucher-list"></div>
+        <div id="vouchers-empty" class="vouchers-empty" hidden><span class="material-symbols-outlined">confirmation_number</span><h2>No vouchers here</h2><p>New Bearly rewards will appear here.</p></div>
+    </section>
+
+    <section class="profile-card account-panel" id="help-panel" data-account-panel="help" hidden>
+        <div class="help-head">
+            <div><h1>Help Center</h1><p>Find quick answers about shopping with Bearly.</p></div>
+            <span class="material-symbols-outlined help-head-icon">support_agent</span>
+        </div>
+        <label class="help-search"><span class="material-symbols-outlined">search</span><input id="help-search" type="search" placeholder="Search orders, shipping, vouchers, account..." autocomplete="off"></label>
+        <div class="help-categories" aria-label="Help categories">
+            <button class="help-category active" type="button" data-help-category="all">All</button>
+            <button class="help-category" type="button" data-help-category="orders">Orders</button>
+            <button class="help-category" type="button" data-help-category="shipping">Shipping</button>
+            <button class="help-category" type="button" data-help-category="payments">Payments</button>
+            <button class="help-category" type="button" data-help-category="returns">Returns & Refunds</button>
+            <button class="help-category" type="button" data-help-category="account">Account</button>
+            <button class="help-category" type="button" data-help-category="vouchers">Vouchers</button>
+        </div>
+        <div id="help-list" class="help-list"></div>
+        <div id="help-empty" class="help-empty" hidden><span class="material-symbols-outlined">search_off</span><h2>No matching help topic</h2><p>Try another keyword or category.</p></div>
     </section>
 
     <section class="profile-card account-panel" id="reviews-panel" data-account-panel="reviews" hidden>

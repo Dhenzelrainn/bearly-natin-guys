@@ -13,16 +13,40 @@ use Illuminate\View\View;
 
 class BuyerController extends Controller
 {
+    private function normalizeCategorySlug(?string $slug): ?string
+    {
+        if (! is_string($slug)) {
+            return null;
+        }
+
+        $value = strtolower(trim($slug));
+
+        $legacyMap = [
+            'mens-apparel' => 'men-s-apparel',
+            'mens' => 'men-s-apparel',
+            'womens-apparel' => 'women-s-apparel',
+            'womens' => 'women-s-apparel',
+        ];
+
+        return $legacyMap[$value] ?? $value;
+    }
+
     private function hasBuyerTables(): bool
     {
-        return Schema::hasTable('products')
-            && Schema::hasTable('shops')
-            && Schema::hasTable('cart_items')
-            && Schema::hasTable('wishlist');
+        try {
+            return Schema::hasTable('products')
+                && Schema::hasTable('shops')
+                && Schema::hasTable('cart_items')
+                && Schema::hasTable('wishlist');
+        } catch (\Throwable $exception) {
+            return false;
+        }
     }
 
     public function home(Request $request): View|RedirectResponse
     {
+        $category = $this->normalizeCategorySlug($request->query('category'));
+
         $dedicatedCategories = [
             'electronics-and-gadgets',
             'books-and-media',
@@ -36,8 +60,8 @@ class BuyerController extends Controller
             'furniture-and-office-equipment',
         ];
 
-        if (in_array($request->query('category'), $dedicatedCategories, true)) {
-            return redirect()->route('products.index', ['category' => $request->query('category')]);
+        if (in_array($category, $dedicatedCategories, true)) {
+            return redirect()->route('products.index', ['category' => $category]);
         }
 
         $categories = [
@@ -297,6 +321,8 @@ class BuyerController extends Controller
         ];
 
         $category = $request->query('category');
+
+        $category = $this->normalizeCategorySlug($category);
 
         if (isset($categoryViews[$category])) {
             return view($categoryViews[$category]);

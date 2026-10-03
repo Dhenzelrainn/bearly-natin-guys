@@ -656,3 +656,6 @@ body:not(.bc) .bearly-promo-slider.is-running .bearly-slider-progress span {
         animation: none;
     }
 }
+
+/* BEAR-108 clickable voucher promotions */
+.bearly-promo-slide.bearly-promo-link.is-active{cursor:pointer}.bearly-promo-slide.bearly-promo-link.is-active:focus-visible{outline:3px solid #e9a321;outline-offset:-4px}

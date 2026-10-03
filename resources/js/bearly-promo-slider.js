@@ -46,6 +46,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 'aria-hidden',
                 active ? 'false' : 'true'
             );
+            if (slide.hasAttribute('data-voucher-promo')) slide.tabIndex = active ? 0 : -1;
         });
 
         dots.forEach((dot, i) => {
@@ -172,6 +173,24 @@ document.addEventListener('DOMContentLoaded', () => {
         },
         { passive: true }
     );
+
+    /*
+    |--------------------------------------------------------------------------
+    | Voucher promotion links
+    |--------------------------------------------------------------------------
+    */
+    slider.querySelectorAll('[data-voucher-promo]').forEach((slide) => {
+        slide.addEventListener('click', (event) => {
+            if (event.target.closest('.bearly-slider-arrow, .bearly-slider-dots')) return;
+            window.location.href = '/profile#vouchers';
+        });
+        slide.addEventListener('keydown', (event) => {
+            if ((event.key === 'Enter' || event.key === ' ') && slide.classList.contains('is-active')) {
+                event.preventDefault();
+                window.location.href = '/profile#vouchers';
+            }
+        });
+    });
 
     /*
     |--------------------------------------------------------------------------

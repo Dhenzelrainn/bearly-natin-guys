@@ -55,6 +55,27 @@ function save(){
  if(sidebarName) sidebarName.textContent=p.fullName||'Mia Santos';
  const t=$('#profile-toast'); if(t){ t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1700); }
 }
+
+const VOUCHER_KEY='bearly-claimed-vouchers-v1';
+const voucherCatalog=[
+ {id:'BEARLY100',kind:'discount',value:100,title:'₱100 Off',description:'Get ₱100 off when you spend at least ₱799.',minSpend:799,expiry:'Oct 31, 2026',icon:'confirmation_number'},
+ {id:'BEARLYSHIP',kind:'shipping',value:50,title:'Free Shipping',description:'Save up to ₱50 shipping on eligible Bearly orders.',minSpend:499,expiry:'Oct 31, 2026',icon:'local_shipping'},
+ {id:'PAYDAY30',kind:'percent',value:30,title:'30% Off Payday',description:'Save 30% up to ₱150 on selected everyday finds.',minSpend:599,cap:150,expiry:'Oct 15, 2026',icon:'sell'},
+ {id:'BEARLY50',kind:'discount',value:50,title:'₱50 Off',description:'₱50 off your next order with a ₱399 minimum spend.',minSpend:399,expiry:'Nov 15, 2026',icon:'redeem'}
+];
+function getClaimedVouchers(){try{const v=JSON.parse(localStorage.getItem(VOUCHER_KEY)||'[]');return Array.isArray(v)?v:[]}catch{return[]}}
+function saveClaimedVouchers(v){localStorage.setItem(VOUCHER_KEY,JSON.stringify(v));window.dispatchEvent(new CustomEvent('bearly:vouchers-changed'));}
+function initVouchers(){
+ const list=$('#voucher-list'); if(!list)return;
+ let filter='available';
+ const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+ const updateCount=()=>{const count=getClaimedVouchers().length;const badge=$('#vouchers-nav-count');if(badge){badge.textContent=count;badge.hidden=count===0}const label=$('#voucher-claimed-count');if(label)label.textContent=`${count} claimed`;};
+ const render=()=>{const claimed=getClaimedVouchers();const rows=voucherCatalog.filter(v=>filter==='claimed'?claimed.includes(v.id):!claimed.includes(v.id));list.innerHTML=rows.map(v=>`<article class="voucher-card"><div class="voucher-stub"><span class="material-symbols-outlined">${esc(v.icon)}</span><strong>${v.kind==='shipping'?'FREE':v.kind==='percent'?v.value+'%':'₱'+v.value}</strong><small>${v.kind==='shipping'?'SHIPPING':'OFF'}</small></div><div class="voucher-body"><h3>${esc(v.title)}</h3><p>${esc(v.description)}</p><span class="voucher-code">Code: ${esc(v.id)}</span><span class="voucher-expiry">Valid until ${esc(v.expiry)}</span><div class="voucher-actions">${claimed.includes(v.id)?'<a class="voucher-use" href="/checkout">Use Now</a>':`<button class="voucher-claim" type="button" data-claim-voucher="${esc(v.id)}">Claim</button>`}</div></div></article>`).join('');const empty=$('#vouchers-empty');if(empty)empty.hidden=rows.length!==0;updateCount();};
+ list.addEventListener('click',e=>{const b=e.target.closest('[data-claim-voucher]');if(!b)return;const claimed=getClaimedVouchers();if(!claimed.includes(b.dataset.claimVoucher)){claimed.push(b.dataset.claimVoucher);saveClaimedVouchers(claimed)}render();});
+ document.querySelectorAll('[data-voucher-filter]').forEach(btn=>btn.addEventListener('click',()=>{filter=btn.dataset.voucherFilter||'available';document.querySelectorAll('[data-voucher-filter]').forEach(x=>x.classList.toggle('active',x===btn));render();}));
+ window.renderVouchers=render;render();
+}
+
 const NOTIFICATION_KEY='bearly-notifications-v1';
 const notificationDefaults=[
  {id:'notif-order-shipped',type:'orders',icon:'local_shipping',title:'Your order is on the way',message:'Order #BRY-102841 has been shipped. Open My Purchases to follow its delivery status.',time:'Today, 10:24 AM',read:false,target:'purchases'},
@@ -93,6 +114,29 @@ function initNotifications(showAccountPanel){
  render();
 }
 
+
+const helpTopics=[
+ {category:'orders',icon:'receipt_long',question:'Where can I see my orders?',answer:'Open My Purchases to view orders by status. Order History keeps your completed and cancelled orders together.',action:'purchases',actionLabel:'Open My Purchases'},
+ {category:'orders',icon:'cancel',question:'Can I cancel an order?',answer:'Cancellation options depend on the order status. For this frontend demo, cancelled orders appear in Order History after their status is updated.'},
+ {category:'shipping',icon:'local_shipping',question:'How do I track my order?',answer:'Go to My Purchases, open the To Receive tab, then choose Track Order to see the delivery timeline.',action:'purchases',actionLabel:'Track from My Purchases'},
+ {category:'shipping',icon:'location_on',question:'How do I change my delivery address?',answer:'Open Addresses in My Account to add, edit, delete, or set your default delivery address.',action:'addresses',actionLabel:'Manage Addresses'},
+ {category:'payments',icon:'payments',question:'What payment methods are available?',answer:'Payment integration is still being prepared. The final payment options will appear during Checkout once the Payment feature is completed.'},
+ {category:'returns',icon:'assignment_return',question:'How do returns and refunds work?',answer:'Returns and refunds are not connected to a backend yet. This Help Center keeps the buyer flow ready for that feature without creating a fake transaction.'},
+ {category:'account',icon:'person',question:'How do I update my profile?',answer:'Open Profile, edit your buyer information, then save your changes. Demo profile details are stored locally in your browser.',action:'profile',actionLabel:'Open Profile'},
+ {category:'account',icon:'favorite',question:'Where can I find products I liked?',answer:'Open My Likes to see products saved with the heart button.',action:'likes',actionLabel:'Open My Likes'},
+ {category:'vouchers',icon:'confirmation_number',question:'How do I claim a voucher?',answer:'Open My Vouchers, choose an available reward, and press Claim. Claimed vouchers stay saved locally in this demo.',action:'vouchers',actionLabel:'Open My Vouchers'},
+ {category:'vouchers',icon:'shopping_cart_checkout',question:'How do I use a claimed voucher?',answer:'From My Vouchers, choose Use Now to continue to Checkout. Eligible claimed vouchers can be selected there.',action:'vouchers',actionLabel:'View Vouchers'}
+];
+function initHelpCenter(showAccountPanel){
+ const list=$('#help-list'); if(!list)return;
+ const search=$('#help-search'); let category='all';
+ const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+ const render=()=>{const q=(search?.value||'').trim().toLowerCase();const rows=helpTopics.filter(t=>(category==='all'||t.category===category)&&(!q||`${t.question} ${t.answer} ${t.category}`.toLowerCase().includes(q)));list.innerHTML=rows.map((t,i)=>`<article class="help-item"><button class="help-question" type="button" aria-expanded="false"><span class="help-topic-icon material-symbols-outlined">${esc(t.icon)}</span><span>${esc(t.question)}</span><span class="material-symbols-outlined help-chevron">expand_more</span></button><div class="help-answer" hidden><p>${esc(t.answer)}</p>${t.action?`<button class="help-action" type="button" data-help-action="${esc(t.action)}">${esc(t.actionLabel)}</button>`:''}</div></article>`).join('');const empty=$('#help-empty');if(empty)empty.hidden=rows.length!==0;};
+ list.addEventListener('click',e=>{const action=e.target.closest('[data-help-action]');if(action){showAccountPanel?.(action.dataset.helpAction);return}const q=e.target.closest('.help-question');if(!q)return;const answer=q.nextElementSibling;const open=q.getAttribute('aria-expanded')==='true';q.setAttribute('aria-expanded',String(!open));if(answer)answer.hidden=open;});
+ search?.addEventListener('input',render);document.querySelectorAll('[data-help-category]').forEach(btn=>btn.addEventListener('click',()=>{category=btn.dataset.helpCategory||'all';document.querySelectorAll('[data-help-category]').forEach(x=>x.classList.toggle('active',x===btn));render()}));
+ window.renderHelpCenter=render;render();
+}
+
 function initProfile(){
   if (window.bearlyProfileInitialized) return;
   window.bearlyProfileInitialized = true;
@@ -116,26 +160,36 @@ function initProfile(){
   const accountTabs=document.querySelectorAll('[data-account-tab]');
   const accountPanels=document.querySelectorAll('[data-account-panel]');
   function showAccountPanel(name){
-    accountTabs.forEach(b=>b.classList.toggle('active',b.dataset.accountTab===name));
-    accountPanels.forEach(p=>p.hidden=p.dataset.accountPanel!==name);
+    const tabs=document.querySelectorAll('[data-account-tab]');
+    const panels=document.querySelectorAll('[data-account-panel]');
+    tabs.forEach(b=>b.classList.toggle('active',b.dataset.accountTab===name));
+    panels.forEach(p=>p.hidden=p.dataset.accountPanel!==name);
     const hash=name==='profile'?'':`#${name}`;
     history.replaceState(null,'',`/profile${hash}`);
     if(name==='likes'&&typeof window.renderMyLikes==='function')window.renderMyLikes();
     if(name==='purchases'&&typeof window.renderMyPurchases==='function')window.renderMyPurchases();
+    if(name==='history'&&typeof window.renderOrderHistory==='function')window.renderOrderHistory();
     if(name==='reviews'&&typeof window.renderReviews==='function')window.renderReviews();
     if(name==='tracking'&&typeof window.renderOrderTracking==='function')window.renderOrderTracking();
+    if(name==='vouchers'&&typeof window.renderVouchers==='function')window.renderVouchers();
+    if(name==='help'&&typeof window.renderHelpCenter==='function')window.renderHelpCenter();
     window.bearlyCurrentAccountPanel=name;
   }
   initNotifications(showAccountPanel);
+  initVouchers();
+  initHelpCenter(showAccountPanel);
   if(accountTabs.length){
     accountTabs.forEach(b=>b.addEventListener('click',()=>showAccountPanel(b.dataset.accountTab)));
   }
   if(location.hash==='#addresses')showAccountPanel('addresses');
   if(location.hash==='#likes')showAccountPanel('likes');
   if(location.hash==='#purchases')showAccountPanel('purchases');
+  if(location.hash==='#history')showAccountPanel('history');
   if(location.hash==='#reviews')showAccountPanel('reviews');
   if(location.hash==='#notifications')showAccountPanel('notifications');
   if(location.hash==='#tracking')showAccountPanel('tracking');
+  if(location.hash==='#vouchers')showAccountPanel('vouchers');
+  if(location.hash==='#help')showAccountPanel('help');
   window.bearlyShowAccountPanel=showAccountPanel;
 }
 

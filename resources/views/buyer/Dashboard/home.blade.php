@@ -66,6 +66,17 @@ foreach ($categoryProductSources as $slug => $source) {
 
 
 
+$featuredProducts = [];
+foreach ($categoryProductSources as $slug => $source) {
+    $allCategoryProducts = json_decode(file_get_contents(resource_path('data/' . $source['file'])), true, 512, JSON_THROW_ON_ERROR);
+    foreach ($allCategoryProducts as $product) {
+        $product['featured_key'] = $slug . ':' . $product['id'];
+        $product['category'] = $source['name'];
+        $product['category_slug'] = $slug;
+        $featuredProducts[] = $product;
+    }
+}
+
 $homeProducts = [];
 
 for ($round = 0; $round < 5; $round++) {
@@ -286,7 +297,7 @@ for ($round = 0; $round < 5; $round++) {
 
 
 
-        <article class="bearly-promo-slide bearly-promo-voucher" aria-hidden="true">
+        <article class="bearly-promo-slide bearly-promo-voucher bearly-promo-link" aria-hidden="true" data-voucher-promo tabindex="-1" role="link" aria-label="Open Bearly vouchers">
 
             <div class="bearly-promo-copy">
 
@@ -338,7 +349,7 @@ for ($round = 0; $round < 5; $round++) {
 
 
 
-        <article class="bearly-promo-slide bearly-promo-shipping" aria-hidden="true">
+        <article class="bearly-promo-slide bearly-promo-shipping bearly-promo-link" aria-hidden="true" data-voucher-promo tabindex="-1" role="link" aria-label="Open Bearly free shipping vouchers">
 
             <div class="bearly-promo-copy">
 
@@ -496,6 +507,92 @@ for ($round = 0; $round < 5; $round++) {
 
 
 
+<section class="flash-deals-preview" aria-labelledby="flash-deals-title">
+    <div class="flash-deals-heading">
+        <div>
+            <p class="flash-kicker"><span class="material-symbols-outlined" aria-hidden="true">bolt</span> Limited-time offers</p>
+            <h2 id="flash-deals-title">Flash Deals</h2>
+        </div>
+        <div class="flash-deals-actions">
+            <div class="flash-countdown" data-flash-countdown aria-label="Flash deal countdown">
+                <span data-hours>00</span><b>:</b><span data-minutes>00</span><b>:</b><span data-seconds>00</span>
+            </div>
+            <a class="text-button flash-view-all" href="{{ url('/flash-deals') }}">View all <span aria-hidden="true">→</span></a>
+        </div>
+    </div>
+    <div class="flash-deal-grid flash-deal-grid-preview">
+        <article class="flash-deal-card" data-flash-product data-key="flash-earbuds" data-product-id="electronics-and-gadgets:7" data-name="Wireless Earbuds" data-price="599" data-original-price="799" data-image="/images/products/electronics/electronics-07-01.jpg" data-flash-category="Electronics & Gadgets">
+            <button type="button" class="flash-image" data-feature-open><img src="{{ asset('images/products/electronics/electronics-07-01.jpg') }}" alt="Wireless Earbuds"><span>25% OFF</span></button>
+            <div class="flash-copy"><small>Electronics & Gadgets</small><h3>Wireless Earbuds</h3><div class="flash-prices"><strong>₱599</strong><del>₱799</del></div><div class="flash-stock"><span style="--sold:72%"></span><small>72% claimed</small></div><button type="button" class="flash-add" data-flash-add>Add to Cart</button></div>
+        </article>
+        <article class="flash-deal-card" data-flash-product data-key="flash-cleanser" data-product-id="health-and-beauty:1" data-name="Gentle Facial Cleanser" data-price="349" data-original-price="499" data-image="/images/products/health-beauty/health-beauty-01-01.jpg" data-flash-category="Health & Beauty">
+            <button type="button" class="flash-image" data-feature-open><img src="{{ asset('images/products/health-beauty/health-beauty-01-01.jpg') }}" alt="Gentle Facial Cleanser"><span>30% OFF</span></button>
+            <div class="flash-copy"><small>Health & Beauty</small><h3>Gentle Facial Cleanser</h3><div class="flash-prices"><strong>₱349</strong><del>₱499</del></div><div class="flash-stock"><span style="--sold:64%"></span><small>64% claimed</small></div><button type="button" class="flash-add" data-flash-add>Add to Cart</button></div>
+        </article>
+        <article class="flash-deal-card" data-flash-product data-key="flash-tee" data-product-id="mens-apparel:1" data-name="Everyday Basic Tee" data-price="329" data-original-price="449" data-image="/images/products/men/mens-01-01.jpg" data-flash-category="Men's Apparel">
+            <button type="button" class="flash-image" data-feature-open><img src="{{ asset('images/products/men/mens-01-01.jpg') }}" alt="Everyday Basic Tee"><span>27% OFF</span></button>
+            <div class="flash-copy"><small>Men's Apparel</small><h3>Everyday Basic Tee</h3><div class="flash-prices"><strong>₱329</strong><del>₱449</del></div><div class="flash-stock"><span style="--sold:81%"></span><small>81% claimed</small></div><button type="button" class="flash-add" data-flash-add>Add to Cart</button></div>
+        </article>
+        <article class="flash-deal-card" data-flash-product data-key="flash-watch" data-product-id="jewelry-and-watches:21" data-name="Men's Silver Classic Watch" data-price="999" data-original-price="1499" data-image="/images/products/jewelry-watches/jewelry-watches-21-01.jpg" data-flash-category="Jewelry & Watches">
+            <button type="button" class="flash-image" data-feature-open><img src="{{ asset('images/products/jewelry-watches/jewelry-watches-21-01.jpg') }}" alt="Men's Silver Classic Watch"><span>33% OFF</span></button>
+            <div class="flash-copy"><small>Jewelry & Watches</small><h3>Men's Silver Classic Watch</h3><div class="flash-prices"><strong>₱999</strong><del>₱1,499</del></div><div class="flash-stock"><span style="--sold:58%"></span><small>58% claimed</small></div><button type="button" class="flash-add" data-flash-add>Add to Cart</button></div>
+        </article>
+    </div>
+</section>
+
+
+<section class="top-products-preview" aria-labelledby="top-products-title">
+<div class="top-products-heading"><div><p class="top-products-kicker"><span class="material-symbols-outlined">workspace_premium</span> Popular on Bearly</p><h2 id="top-products-title">Top Products</h2><p>Highly rated finds buyers keep coming back to.</p></div><a class="text-button top-view-all" href="{{ url('/top-products') }}">View all <span aria-hidden="true">→</span></a></div>
+<div class="top-products-grid top-products-grid-preview"><article class="top-product-card top-rank-podium" data-top-product data-key="top-electronics-and-gadgets-5" data-product-id="electronics-and-gadgets:5" data-name="Mouse" data-price="1499" data-image="/images/products/electronics/electronics-05-01.jpg" data-top-category="Electronics & Gadgets">
+    <div class="top-product-image"><img src="{{ asset('images/products/electronics/electronics-05-01.jpg') }}" alt="Mouse"><span class="top-rank">#1</span><button type="button" class="top-like" data-top-like aria-label="Save Mouse"><span class="material-symbols-outlined">favorite</span></button></div>
+    <div class="top-product-copy"><small>Electronics & Gadgets</small><h3>Mouse</h3><div class="top-product-meta"><span><b>★ 4.9</b></span><span>2.8k sold</span></div><div class="top-product-bottom"><strong>₱1,499</strong></div></div>
+</article>
+<article class="top-product-card top-rank-podium" data-top-product data-key="top-mens-apparel-4" data-product-id="mens-apparel:4" data-name="Classic Piqué Polo" data-price="549" data-image="/images/products/men/mens-04-01.jpg" data-top-category="Men's Apparel">
+    <div class="top-product-image"><img src="{{ asset('images/products/men/mens-04-01.jpg') }}" alt="Classic Piqué Polo"><span class="top-rank">#2</span><button type="button" class="top-like" data-top-like aria-label="Save Classic Piqué Polo"><span class="material-symbols-outlined">favorite</span></button></div>
+    <div class="top-product-copy"><small>Men's Apparel</small><h3>Classic Piqué Polo</h3><div class="top-product-meta"><span><b>★ 4.9</b></span><span>2.4k sold</span></div><div class="top-product-bottom"><strong>₱549</strong></div></div>
+</article>
+<article class="top-product-card top-rank-podium" data-top-product data-key="top-health-and-beauty-5" data-product-id="health-and-beauty:5" data-name="Sunscreen SPF 50+" data-price="499" data-image="/images/products/health-beauty/health-beauty-05-01.jpg" data-top-category="Health & Beauty">
+    <div class="top-product-image"><img src="{{ asset('images/products/health-beauty/health-beauty-05-01.jpg') }}" alt="Sunscreen SPF 50+"><span class="top-rank">#3</span><button type="button" class="top-like" data-top-like aria-label="Save Sunscreen SPF 50+"><span class="material-symbols-outlined">favorite</span></button></div>
+    <div class="top-product-copy"><small>Health & Beauty</small><h3>Sunscreen SPF 50+</h3><div class="top-product-meta"><span><b>★ 4.9</b></span><span>2.1k sold</span></div><div class="top-product-bottom"><strong>₱499</strong></div></div>
+</article>
+<article class="top-product-card" data-top-product data-key="top-home-and-garden-1" data-product-id="home-and-garden:1" data-name="Decorative Indoor Plant" data-price="599" data-image="/images/products/home-garden/home-garden-01-01.jpg" data-top-category="Home & Garden">
+    <div class="top-product-image"><img src="{{ asset('images/products/home-garden/home-garden-01-01.jpg') }}" alt="Decorative Indoor Plant"><span class="top-rank">#4</span><button type="button" class="top-like" data-top-like aria-label="Save Decorative Indoor Plant"><span class="material-symbols-outlined">favorite</span></button></div>
+    <div class="top-product-copy"><small>Home & Garden</small><h3>Decorative Indoor Plant</h3><div class="top-product-meta"><span><b>★ 4.8</b></span><span>1.9k sold</span></div><div class="top-product-bottom"><strong>₱599</strong></div></div>
+</article>
+<article class="top-product-card" data-top-product data-key="top-womens-apparel-6" data-product-id="womens-apparel:6" data-name="Classic White Blouse" data-price="499" data-image="/images/products/women/womens-06-01.jpg" data-top-category="Women's Apparel">
+    <div class="top-product-image"><img src="{{ asset('images/products/women/womens-06-01.jpg') }}" alt="Classic White Blouse"><span class="top-rank">#5</span><button type="button" class="top-like" data-top-like aria-label="Save Classic White Blouse"><span class="material-symbols-outlined">favorite</span></button></div>
+    <div class="top-product-copy"><small>Women's Apparel</small><h3>Classic White Blouse</h3><div class="top-product-meta"><span><b>★ 4.9</b></span><span>1.8k sold</span></div><div class="top-product-bottom"><strong>₱499</strong></div></div>
+</article>
+<article class="top-product-card" data-top-product data-key="top-sports-and-outdoors-11" data-product-id="sports-and-outdoors:11" data-name="Resistance Band Set" data-price="499" data-image="/images/products/sports-outdoors/sports-outdoors-11-01.jpg" data-top-category="Sports & Outdoors">
+    <div class="top-product-image"><img src="{{ asset('images/products/sports-outdoors/sports-outdoors-11-01.jpg') }}" alt="Resistance Band Set"><span class="top-rank">#6</span><button type="button" class="top-like" data-top-like aria-label="Save Resistance Band Set"><span class="material-symbols-outlined">favorite</span></button></div>
+    <div class="top-product-copy"><small>Sports & Outdoors</small><h3>Resistance Band Set</h3><div class="top-product-meta"><span><b>★ 4.9</b></span><span>1.7k sold</span></div><div class="top-product-bottom"><strong>₱499</strong></div></div>
+</article></div>
+</section>
+
+
+<section class="top-products-preview top-sales-preview" aria-labelledby="top-sales-title">
+<div class="top-products-heading"><div><p class="top-products-kicker"><span class="material-symbols-outlined">trending_up</span> Best sellers</p><h2 id="top-sales-title">Top Sales</h2><p>Products moving fastest across Bearly right now.</p></div><a class="text-button top-view-all" href="{{ url('/top-sales') }}">View all <span aria-hidden="true">→</span></a></div>
+<div class="top-products-grid top-products-grid-preview"><article class="top-product-card" data-top-product data-key="sales-sports-and-outdoors-11" data-product-id="sports-and-outdoors:11" data-name="Resistance Band Set" data-price="499" data-image="/images/products/sports-outdoors/sports-outdoors-11-01.jpg" data-top-category="Sports & Outdoors">
+    <div class="top-product-image"><img src="{{ asset('images/products/sports-outdoors/sports-outdoors-11-01.jpg') }}" alt="Resistance Band Set"><span class="top-rank">#1</span><button type="button" class="top-like" data-top-like aria-label="Save Resistance Band Set"><span class="material-symbols-outlined">favorite</span></button></div>
+    <div class="top-product-copy"><small>Sports & Outdoors</small><h3>Resistance Band Set</h3><div class="top-product-meta"><span><b>★ 4.9</b></span><span>4.6k sold</span></div><div class="top-product-bottom"><strong>₱499</strong></div></div>
+</article><article class="top-product-card top-rank-podium" data-top-product data-key="sales-electronics-and-gadgets-5" data-product-id="electronics-and-gadgets:5" data-name="Mouse" data-price="1499" data-image="/images/products/electronics/electronics-05-01.jpg" data-top-category="Electronics & Gadgets">
+    <div class="top-product-image"><img src="{{ asset('images/products/electronics/electronics-05-01.jpg') }}" alt="Mouse"><span class="top-rank">#2</span><button type="button" class="top-like" data-top-like aria-label="Save Mouse"><span class="material-symbols-outlined">favorite</span></button></div>
+    <div class="top-product-copy"><small>Electronics & Gadgets</small><h3>Mouse</h3><div class="top-product-meta"><span><b>★ 4.9</b></span><span>4.2k sold</span></div><div class="top-product-bottom"><strong>₱1,499</strong></div></div>
+</article><article class="top-product-card" data-top-product data-key="sales-kids-and-baby-2" data-product-id="kids-and-baby:2" data-name="Floral Baby Dress" data-price="499" data-image="/images/products/kids-baby/kids-baby-02-01.jpg" data-top-category="Kids & Baby">
+    <div class="top-product-image"><img src="{{ asset('images/products/kids-baby/kids-baby-02-01.jpg') }}" alt="Floral Baby Dress"><span class="top-rank">#3</span><button type="button" class="top-like" data-top-like aria-label="Save Floral Baby Dress"><span class="material-symbols-outlined">favorite</span></button></div>
+    <div class="top-product-copy"><small>Kids & Baby</small><h3>Floral Baby Dress</h3><div class="top-product-meta"><span><b>★ 4.9</b></span><span>3.9k sold</span></div><div class="top-product-bottom"><strong>₱499</strong></div></div>
+</article><article class="top-product-card" data-top-product data-key="sales-home-and-garden-1" data-product-id="home-and-garden:1" data-name="Decorative Indoor Plant" data-price="599" data-image="/images/products/home-garden/home-garden-01-01.jpg" data-top-category="Home & Garden">
+    <div class="top-product-image"><img src="{{ asset('images/products/home-garden/home-garden-01-01.jpg') }}" alt="Decorative Indoor Plant"><span class="top-rank">#4</span><button type="button" class="top-like" data-top-like aria-label="Save Decorative Indoor Plant"><span class="material-symbols-outlined">favorite</span></button></div>
+    <div class="top-product-copy"><small>Home & Garden</small><h3>Decorative Indoor Plant</h3><div class="top-product-meta"><span><b>★ 4.8</b></span><span>3.5k sold</span></div><div class="top-product-bottom"><strong>₱599</strong></div></div>
+</article><article class="top-product-card" data-top-product data-key="sales-foods-and-gourmet-5" data-product-id="foods-and-gourmet:5" data-name="Extra Virgin Olive Oil" data-price="599" data-image="/images/products/foods-gourmet/foods-gourmet-05-01.jpg" data-top-category="Foods & Gourmet">
+    <div class="top-product-image"><img src="{{ asset('images/products/foods-gourmet/foods-gourmet-05-01.jpg') }}" alt="Extra Virgin Olive Oil"><span class="top-rank">#5</span><button type="button" class="top-like" data-top-like aria-label="Save Extra Virgin Olive Oil"><span class="material-symbols-outlined">favorite</span></button></div>
+    <div class="top-product-copy"><small>Foods & Gourmet</small><h3>Extra Virgin Olive Oil</h3><div class="top-product-meta"><span><b>★ 4.9</b></span><span>3.2k sold</span></div><div class="top-product-bottom"><strong>₱599</strong></div></div>
+</article><article class="top-product-card top-rank-podium" data-top-product data-key="sales-mens-apparel-4" data-product-id="mens-apparel:4" data-name="Classic Piqué Polo" data-price="549" data-image="/images/products/men/mens-04-01.jpg" data-top-category="Men's Apparel">
+    <div class="top-product-image"><img src="{{ asset('images/products/men/mens-04-01.jpg') }}" alt="Classic Piqué Polo"><span class="top-rank">#6</span><button type="button" class="top-like" data-top-like aria-label="Save Classic Piqué Polo"><span class="material-symbols-outlined">favorite</span></button></div>
+    <div class="top-product-copy"><small>Men's Apparel</small><h3>Classic Piqué Polo</h3><div class="top-product-meta"><span><b>★ 4.9</b></span><span>2.9k sold</span></div><div class="top-product-bottom"><strong>₱549</strong></div></div>
+</article></div>
+</section>
+
 <section class="discover" id="results" aria-labelledby="results-title">
 
 <div class="section-heading"><div><h2 id="results-title">Daily discoveries</h2><p id="results-caption">Find something good across Bearly.</p></div><button class="text-button" id="view-all">View all <span aria-hidden="true">→</span></button></div>
@@ -621,6 +718,7 @@ for ($round = 0; $round < 5; $round++) {
 <dialog id="info-dialog" aria-labelledby="info-title"><button class="dialog-close icon-button" data-close aria-label="Close"><span class="material-symbols-outlined" aria-hidden="true">close</span></button><h2 id="info-title"></h2><div id="info-copy"></div><div class="info-actions" id="info-actions"></div></dialog>
 
 <script id="home-data" type="application/json">{!! json_encode(['categories' => $homeCategories, 'products' => $homeProducts], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR) !!}</script>
+<script id="featured-product-data" type="application/json">{!! json_encode($featuredProducts, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR) !!}</script>
 
 
 

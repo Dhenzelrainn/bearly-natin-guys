@@ -18,6 +18,9 @@ Route::get('/wishlist', [BuyerController::class, 'wishlist'])->name('wishlist.in
 Route::post('/wishlist/toggle', [BuyerController::class, 'toggleWishlist'])->name('wishlist.toggle');
 Route::get('/cart', [BuyerController::class, 'cart'])->name('cart.view');
 Route::get('/checkout', [BuyerController::class, 'checkout'])->name('checkout');
+Route::view('/flash-deals', 'buyer.flash-deals')->name('flash-deals');
+Route::view('/top-products', 'buyer.top-products')->name('top-products');
+Route::view('/top-sales', 'buyer.top-sales')->name('top-sales');
 Route::post('/cart/add', [BuyerController::class, 'addToCart'])->name('cart.add');
 Route::patch('/cart/{cartItem}', [BuyerController::class, 'updateCart'])->name('cart.update');
 Route::delete('/cart/{cartItem}', [BuyerController::class, 'removeFromCart'])->name('cart.remove');

@@ -1,4 +1,4 @@
-const CART_KEY='bearly-preview-cart-v1',SEL_KEY='bearly-checkout-selection-v1',ADDRESS_KEY='bearly-addresses-v1';
+const CART_KEY='bearly-preview-cart-v1',SEL_KEY='bearly-checkout-selection-v1',ADDRESS_KEY='bearly-addresses-v1',VOUCHER_KEY='bearly-claimed-vouchers-v1';
 const $=id=>document.getElementById(id),money=n=>'₱'+Number(n||0).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});
 const read=(k,d=[])=>{try{let v=JSON.parse(localStorage.getItem(k));return v??d}catch{return d}};
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -18,7 +18,24 @@ function render(){if(!items.length){$('checkout-empty').hidden=false;return}
 function choose(title,options,onPick){$('choice-title').textContent=title;$('choice-options').innerHTML=options.map((o,n)=>`<button class="choice-option" data-choice="${n}"><span>${esc(o.label)}</span><strong>${esc(o.note||'')}</strong></button>`).join('');$('choice-modal').hidden=false;$('choice-options').onclick=e=>{let b=e.target.closest('[data-choice]');if(!b)return;onPick(options[+b.dataset.choice]);$('choice-modal').hidden=true;render()}}
 document.querySelector('[data-close]').onclick=()=>$('choice-modal').hidden=true;
 $('change-shipping').onclick=()=>choose('Choose Shipping Option',[{label:'Standard Delivery',note:'₱50',price:50,days:'Estimated 3–7 days'},{label:'Economy Delivery',note:'₱35',price:35,days:'Estimated 5–10 days'},{label:'Express Delivery',note:'₱120',price:120,days:'Estimated 1–2 days'}],o=>{shipping=o.price;$('shipping-label').textContent=o.label;$('shipping-label').nextElementSibling.textContent=o.days});
-$('voucher-btn').onclick=()=>choose('Select Bearly Voucher',[{label:'No Voucher',note:'₱0 off',discount:0},{label:'BEARLY50',note:'₱50 off',discount:50},{label:'BEARLY100',note:'₱100 off',discount:100}],o=>{discount=Math.min(o.discount,subtotal());voucher=o.discount?o:null});
+$('voucher-btn').onclick=()=>{
+ const claimed=read(VOUCHER_KEY,[]);
+ const catalog=[
+  {id:'BEARLY50',label:'BEARLY50',note:'₱50 off · Min ₱399',discount:50,min:399},
+  {id:'BEARLY100',label:'BEARLY100',note:'₱100 off · Min ₱799',discount:100,min:799},
+  {id:'BEARLYSHIP',label:'BEARLYSHIP',note:'Free shipping up to ₱50 · Min ₱499',discount:50,min:499,shippingVoucher:true},
+  {id:'PAYDAY30',label:'PAYDAY30',note:'30% off up to ₱150 · Min ₱599',percent:30,cap:150,min:599}
+ ];
+ const eligible=catalog.filter(v=>claimed.includes(v.id));
+ const options=[{label:'No Voucher',note:'₱0 off',discount:0},...eligible];
+ if(!eligible.length){toast('Claim a voucher from My Vouchers first.');setTimeout(()=>window.location.href='/profile#vouchers',700);return}
+ choose('Select Bearly Voucher',options,o=>{
+   if(!o.id){discount=0;voucher=null;return}
+   if(subtotal()<o.min){discount=0;voucher=null;toast(`Minimum spend is ₱${o.min}.`);return}
+   discount=o.percent?Math.min(o.cap,subtotal()*(o.percent/100)):Math.min(o.discount,subtotal());
+   voucher=o;
+ });
+};
 $('payment-btn').onclick=()=>choose('Payment Method',[{label:'Cash on Delivery',note:'COD'},{label:'GCash',note:'Frontend preview'},{label:'Debit / Credit Card',note:'Frontend preview'}],o=>payment=o.label);
 $('change-address').onclick=()=>{let a=addresses();if(!a.length){window.location.href='/addresses';return}choose('Choose Delivery Address',a.map(x=>({label:x.name+' · '+x.phone,note:[x.street,x.barangay,x.city,x.province,x.postal].filter(Boolean).join(', '),...x})),o=>{$('address-name').textContent=o.name;$('address-phone').textContent=o.phone;$('address-text').textContent=o.note})};
 $('place-order').onclick=()=>toast('Order preview ready — database/order saving will be connected later.');

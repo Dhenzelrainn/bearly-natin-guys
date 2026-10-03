@@ -2,10 +2,11 @@
 /* Frontend-only catalog preview. No real checkout/account mutations yet. */
 
 export function selectProducts(products, { category = '', search = '', sort = 'featured' } = {}) {
+    const normalizedCategory = normalizeCategorySlug(category);
     const query = search.trim().toLocaleLowerCase();
     const selected = products.filter(
         p =>
-            (!category || p.category_slug === category) &&
+            (!normalizedCategory || normalizeCategorySlug(p.category_slug) === normalizedCategory) &&
             (!query || `${p.name} ${p.category}`.toLocaleLowerCase().includes(query))
     );
 
@@ -14,6 +15,20 @@ export function selectProducts(products, { category = '', search = '', sort = 'f
     if (sort === 'name') selected.sort((a, b) => a.name.localeCompare(b.name));
 
     return selected;
+}
+
+function normalizeCategorySlug(slug) {
+    const value = String(slug ?? '').trim().toLowerCase();
+
+    const legacyMap = {
+        'mens': 'men-s-apparel',
+        'mens-apparel': 'men-s-apparel',
+        'womens': 'women-s-apparel',
+        'womens-apparel': 'women-s-apparel',
+        'foods-and-gourmet': 'food-and-gourmet',
+    };
+
+    return legacyMap[value] ?? value;
 }
 
 export function photoPosition(index) {
@@ -165,7 +180,7 @@ function initialize() {
 
     function readUrl() {
         const params = new URLSearchParams(location.search);
-        const category = params.get('category') || '';
+        const category = normalizeCategorySlug(params.get('category') || '');
 
         if (
             category &&
@@ -1689,12 +1704,50 @@ function initialize() {
     }
 
     document.addEventListener('click', event => {
+        // Flash Deals and Top Products reuse the existing Bearly product-details UI.
+        const featuredCard = event.target.closest('[data-flash-product], [data-top-product]');
+        if (featuredCard && !event.target.closest('[data-flash-add], [data-top-add], [data-top-like]')) {
+            const source = document.getElementById('featured-product-data');
+            let featuredProducts = [];
+            try {
+                const parsed = JSON.parse(source?.textContent || '[]');
+                if (Array.isArray(parsed)) featuredProducts = parsed;
+            } catch {}
+
+            const rawFeaturedKey = String(featuredCard.dataset.productId || '');
+            const featuredAliases = {
+                'mens-apparel': 'men-s-apparel',
+                'womens-apparel': 'women-s-apparel',
+                'foods-and-gourmet': 'food-and-gourmet',
+            };
+            const [rawSlug, rawId] = rawFeaturedKey.split(':');
+            const canonicalFeaturedKey = rawId
+                ? `${featuredAliases[rawSlug] || rawSlug}:${rawId}`
+                : rawFeaturedKey;
+            const product = featuredProducts.find(item =>
+                String(item.featured_key || '') === canonicalFeaturedKey
+            );
+
+            if (product) {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                const previewProduct = { ...product };
+                if (featuredCard.matches('[data-flash-product]')) {
+                    previewProduct.original_price = Number(product.price || 0);
+                    previewProduct.price = Number(featuredCard.dataset.price || product.price || 0);
+                    previewProduct.flash_deal = true;
+                }
+                showHomeProduct(previewProduct);
+                return;
+            }
+        }
+
         const category = event.target.closest('[data-category]');
 
         if (category) {
             event.preventDefault();
 
-            const slug = category.dataset.category;
+            const slug = normalizeCategorySlug(category.dataset.category);
 
             if (!slug) return;
 
@@ -3084,7 +3137,7 @@ function init() {
 
         url.searchParams.set(
             'category',
-            document.body.dataset.category ||
+            normalizeCategorySlug(document.body.dataset.category) ||
                 url.searchParams.get('category') ||
                 'men-s-apparel'
         );
@@ -5300,4 +5353,1531 @@ function initBearlySearchExperience() {
 
 if (typeof document !== 'undefined') {
     initBearlySearchExperience();
+}
+
+
+/* Shared full product preview for Home featured sections and View All pages. */
+
+function featuredPhotoStyle(element, product) {
+    if (!element || !product) return;
+    if (product.image) {
+        element.style.backgroundImage = `url("${product.image}")`;
+        element.style.backgroundSize = 'cover';
+        element.style.backgroundPosition = 'center';
+        element.style.backgroundRepeat = 'no-repeat';
+        return;
+    }
+    const columns = Number(product.atlas_columns) || 6;
+    const rows = Number(product.atlas_rows) || 6;
+    const photoIndex = Math.max(0, Number(product.photo) || 0);
+    const column = photoIndex % columns;
+    const row = Math.floor(photoIndex / columns);
+    const x = columns > 1 ? (column * 100) / (columns - 1) : 0;
+    const y = rows > 1 ? (row * 100) / (rows - 1) : 0;
+    if (product.atlas) element.style.backgroundImage = `url("${product.atlas}")`;
+    element.style.backgroundSize = `${columns * 100}% ${rows * 100}%`;
+    element.style.backgroundPosition = `${x}% ${y}%`;
+    element.style.backgroundRepeat = 'no-repeat';
+}
+
+function showFeaturedProductFull(product) {
+    // This preview is also used on dedicated pages, outside the Home
+    // initialization scope. Keep its color palette local so it is always defined.
+    const featuredProductColors = {
+        Blue: '#305e94', Black: '#26292a', White: '#fff', Beige: '#d8c8a4',
+        Green: '#68745a', Gray: '#8a8b8e', Brown: '#79543b', Red: '#a8493d',
+        Pink: '#d8899b', Yellow: '#d8ad39', Orange: '#c97b37', Purple: '#79608f',
+        Navy: '#39485f',
+    };
+    const dialog =
+        document.getElementById('product-dialog');
+
+    const detail =
+        document.getElementById('product-detail');
+
+    const sizes =
+        Array.isArray(product.sizes)
+            ? product.sizes.filter(Boolean)
+            : [];
+
+    const productColors =
+        Array.isArray(product.colors) &&
+        product.colors.length
+            ? product.colors.filter(Boolean)
+            : [product.color].filter(Boolean);
+
+    const variants =
+        Array.isArray(product.variants)
+            ? product.variants
+            : [];
+
+    const productIdMatch =
+        String(product.id ?? '').match(/(\d+)$/);
+
+    const productId =
+        Number(productIdMatch?.[1]) || 1;
+
+    const sellerName =
+        product.seller_name ||
+        'Bearly Sample Seller';
+
+    const sellerLocation =
+        product.seller_location ||
+        product.location ||
+        'Philippines';
+
+    const sellerRating =
+        Number(
+            product.seller_rating ??
+            Math.min(
+                5,
+                (Number(product.rating) ||
+                    4.7) + 0.1
+            )
+        ).toFixed(1);
+
+    const fallbackStock =
+        12 + (productId % 9);
+
+    const baseStock =
+        Number.isFinite(
+            Number(product.stock)
+        )
+            ? Math.max(
+                0,
+                Number(product.stock)
+            )
+            : fallbackStock;
+
+    const soldCount =
+        Number.isFinite(
+            Number(product.sold)
+        )
+            ? Math.max(
+                0,
+                Number(product.sold)
+            )
+            : 24 +
+            ((productId * 17) %
+                180);
+
+    const productRating =
+        Number(product.rating) || 0;
+
+    let selectedSize =
+        sizes[0] || '';
+
+    let selectedColor =
+        productColors[0] || '';
+
+    let quantity = 1;
+
+    const findVariant = () => {
+        if (!variants.length) {
+            return null;
+        }
+
+        return (
+            variants.find(variant => {
+                const sizeMatches =
+                    !selectedSize ||
+                    !variant.size ||
+                    variant.size ===
+                    selectedSize;
+
+                const colorMatches =
+                    !selectedColor ||
+                    !variant.color ||
+                    variant.color ===
+                    selectedColor;
+
+                return (
+                    sizeMatches &&
+                    colorMatches
+                );
+            }) || null
+        );
+    };
+
+    const sizeOptions =
+        sizes.length
+            ? `
+                <div class="pd-option-group">
+                    <div class="pd-option-heading">
+                        <span>Size</span>
+                        <button
+                            type="button"
+                            class="pd-size-guide"
+                            data-pd-size-guide
+                        >
+                            Size guide
+                        </button>
+                    </div>
+
+                    <div
+                        class="pd-options"
+                        role="group"
+                        aria-label="Choose size"
+                    >
+                        ${sizes
+                            .map(
+                                (
+                                    size,
+                                    index
+                                ) => `
+                                    <button
+                                        type="button"
+                                        class="pd-option"
+                                        data-pd-size="${escapeHtml(
+                                            size
+                                        )}"
+                                        aria-pressed="${
+                                            index === 0
+                                                ? 'true'
+                                                : 'false'
+                                        }"
+                                    >
+                                        ${escapeHtml(
+                                            size
+                                        )}
+                                    </button>
+                                `
+                            )
+                            .join('')}
+                    </div>
+                </div>
+            `
+            : '';
+
+    const colorOptions =
+        productColors.length
+            ? `
+                <div class="pd-option-group">
+                    <div class="pd-option-heading">
+                        <span>Color</span>
+
+                        <strong data-pd-color-label>
+                            ${escapeHtml(
+                                selectedColor
+                            )}
+                        </strong>
+                    </div>
+
+                    <div
+                        class="pd-options pd-color-options"
+                        role="group"
+                        aria-label="Choose color"
+                    >
+                        ${productColors
+                            .map(
+                                (
+                                    color,
+                                    index
+                                ) => `
+                                    <button
+                                        type="button"
+                                        class="pd-option pd-color-option"
+                                        data-pd-color="${escapeHtml(
+                                            color
+                                        )}"
+                                        aria-pressed="${
+                                            index === 0
+                                                ? 'true'
+                                                : 'false'
+                                        }"
+                                    >
+                                        <span
+                                            class="pd-color-dot"
+                                            style="--pd-color:${
+                                                featuredProductColors[
+                                                    color
+                                                ] ||
+                                                '#aaa'
+                                            }"
+                                            aria-hidden="true"
+                                        ></span>
+
+                                        ${escapeHtml(
+                                            color
+                                        )}
+                                    </button>
+                                `
+                            )
+                            .join('')}
+                    </div>
+                </div>
+            `
+            : '';
+
+    const shippingBadge =
+        product.free_shipping
+            ? `
+                <span class="pd-badge">
+                    <i class="mi" aria-hidden="true">
+                        local_shipping
+                    </i>
+                    Free shipping
+                </span>
+            `
+            : '';
+
+    const voucherBadge =
+        product.voucher
+            ? `
+                <span class="pd-badge">
+                    <i class="mi" aria-hidden="true">
+                        sell
+                    </i>
+                    Voucher available
+                </span>
+            `
+            : '';
+
+    const sellerInitial =
+        escapeHtml(
+            sellerName
+                .charAt(0)
+                .toUpperCase()
+        );
+
+    detail.innerHTML = `
+        <article class="pd-shell">
+
+            <div class="pd-top">
+
+                <section class="pd-media">
+
+                    <div
+                        class="photo pd-main-photo"
+                        role="img"
+                        aria-label="${escapeHtml(
+                            product.name
+                        )}"
+                    ></div>
+
+                    <div class="pd-thumbnails">
+                        <button
+                            type="button"
+                            class="pd-thumbnail is-active"
+                            aria-label="View product image"
+                        >
+                            <span
+                                class="photo pd-thumb-photo"
+                                aria-hidden="true"
+                            ></span>
+                        </button>
+                    </div>
+
+                    <div class="pd-media-note">
+                        <i class="mi" aria-hidden="true">
+                            verified
+                        </i>
+                        Product preview
+                    </div>
+
+                </section>
+
+                <section class="pd-info">
+
+                    <p class="pd-category">
+                        ${escapeHtml(
+                            product.subcategory ||
+                            product.category ||
+                            'Product'
+                        )}
+                    </p>
+
+                    <h2 id="product-title">
+                        ${escapeHtml(
+                            product.name
+                        )}
+                    </h2>
+
+                    <div class="pd-social-proof">
+
+                        <span class="pd-rating">
+                            <i
+                                class="mi"
+                                aria-hidden="true"
+                            >
+                                star
+                            </i>
+                            ${
+                                productRating
+                                    ? productRating.toFixed(
+                                        1
+                                    )
+                                    : 'New'
+                            }
+                        </span>
+
+                        <span class="pd-divider"></span>
+
+                        <span>
+                            ${soldCount} sold
+                        </span>
+
+                    </div>
+
+                    <div class="pd-price-box">
+                        <strong
+                            class="pd-price"
+                            data-pd-price
+                        >
+                            ${peso(
+                                product.price
+                            )}
+                        </strong>
+                    </div>
+
+                    ${
+                        shippingBadge ||
+                        voucherBadge
+                            ? `
+                                <div class="pd-badges">
+                                    ${shippingBadge}
+                                    ${voucherBadge}
+                                </div>
+                            `
+                            : ''
+                    }
+
+                    <div class="pd-overview">
+
+                        <div>
+                            <span>
+                                Condition
+                            </span>
+
+                            <strong>
+                                ${escapeHtml(
+                                    product.condition ||
+                                    'New'
+                                )}
+                            </strong>
+                        </div>
+
+                        <div>
+                            <span>
+                                Ships from
+                            </span>
+
+                            <strong>
+                                ${escapeHtml(
+                                    sellerLocation
+                                )}
+                            </strong>
+                        </div>
+
+                    </div>
+
+                    ${colorOptions}
+
+                    ${sizeOptions}
+
+                    <div
+                        class="pd-option-group pd-quantity-group"
+                    >
+
+                        <div class="pd-option-heading">
+                            <span>
+                                Quantity
+                            </span>
+
+                            <small data-pd-stock>
+                                ${baseStock}
+                                pieces available
+                            </small>
+                        </div>
+
+                        <div class="pd-quantity-row">
+
+                            <div class="pd-stepper">
+
+                                <button
+                                    type="button"
+                                    data-pd-minus
+                                    aria-label="Decrease quantity"
+                                >
+                                    <i
+                                        class="mi"
+                                        aria-hidden="true"
+                                    >
+                                        remove
+                                    </i>
+                                </button>
+
+                                <span
+                                    data-pd-quantity
+                                >
+                                    1
+                                </span>
+
+                                <button
+                                    type="button"
+                                    data-pd-plus
+                                    aria-label="Increase quantity"
+                                >
+                                    <i
+                                        class="mi"
+                                        aria-hidden="true"
+                                    >
+                                        add
+                                    </i>
+                                </button>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                    <div class="pd-actions">
+
+                        <button
+                            type="button"
+                            class="pd-add-cart"
+                            data-pd-add-cart
+                        >
+                            <i
+                                class="mi"
+                                aria-hidden="true"
+                            >
+                                shopping_cart
+                            </i>
+
+                            Add to Cart
+                        </button>
+
+                        <button
+                            type="button"
+                            class="pd-buy-now"
+                            data-pd-buy-now
+                        >
+                            Buy Now
+                        </button>
+
+                    </div>
+
+                    <div class="pd-action-note">
+                        <i
+                            class="mi"
+                            aria-hidden="true"
+                        >
+                            info
+                        </i>
+
+                        Frontend preview only —
+                        checkout and live
+                        inventory will be
+                        connected during
+                        backend integration.
+                    </div>
+
+                </section>
+
+            </div>
+
+            <section class="pd-seller-card">
+
+                <div class="pd-seller-avatar">
+                    ${sellerInitial}
+                </div>
+
+                <div class="pd-seller-info">
+
+                    <small>Sold by</small>
+
+                    <h3>
+                        ${escapeHtml(
+                            sellerName
+                        )}
+                    </h3>
+
+                    <div class="pd-seller-meta">
+
+                        <span>
+                            <i
+                                class="mi"
+                                aria-hidden="true"
+                            >
+                                star
+                            </i>
+                            ${sellerRating}
+                            seller rating
+                        </span>
+
+                        <span>
+                            <i
+                                class="mi"
+                                aria-hidden="true"
+                            >
+                                location_on
+                            </i>
+                            ${escapeHtml(
+                                sellerLocation
+                            )}
+                        </span>
+
+                    </div>
+
+                </div>
+
+                <div class="pd-seller-actions">
+
+                    <button
+                        type="button"
+                        class="pd-shop-button"
+                        data-pd-chat
+                    >
+                        <i
+                            class="mi"
+                            aria-hidden="true"
+                        >
+                            chat_bubble
+                        </i>
+
+                        Chat
+                    </button>
+
+                    <button
+                        type="button"
+                        class="pd-shop-button"
+                        data-pd-shop
+                    >
+                        <i
+                            class="mi"
+                            aria-hidden="true"
+                        >
+                            storefront
+                        </i>
+
+                        View Shop
+                    </button>
+
+                </div>
+
+            </section>
+
+            <section class="pd-description">
+
+                <h3>
+                    Product Description
+                </h3>
+
+                <p>
+                    ${escapeHtml(
+                        product.description ||
+                        'No description available.'
+                    )}
+                </p>
+
+                <div class="pd-description-grid">
+
+                    <div>
+                        <span>
+                            Category
+                        </span>
+
+                        <strong>
+                            ${escapeHtml(
+                                product.subcategory
+                            )}
+                        </strong>
+                    </div>
+
+                    <div>
+                        <span>
+                            Condition
+                        </span>
+
+                        <strong>
+                            ${escapeHtml(
+                                product.condition ||
+                                'New'
+                            )}
+                        </strong>
+                    </div>
+
+                    <div>
+                        <span>
+                            Color
+                        </span>
+
+                        <strong
+                            data-pd-description-color
+                        >
+                            ${escapeHtml(
+                                selectedColor ||
+                                '—'
+                            )}
+                        </strong>
+                    </div>
+
+                    <div>
+                        <span>
+                            Location
+                        </span>
+
+                        <strong>
+                            ${escapeHtml(
+                                sellerLocation
+                            )}
+                        </strong>
+                    </div>
+
+                </div>
+
+            </section>
+
+        </article>
+    `;
+
+    const mainPhoto =
+        detail.querySelector(
+            '.pd-main-photo'
+        );
+
+    const thumbPhoto =
+        detail.querySelector(
+            '.pd-thumb-photo'
+        );
+
+    if (mainPhoto) {
+        featuredPhotoStyle(
+            mainPhoto,
+            product
+        );
+    }
+
+    if (thumbPhoto) {
+        featuredPhotoStyle(
+            thumbPhoto,
+            product
+        );
+    }
+
+    function notify(message) {
+        let toast =
+            document.getElementById(
+                'bc-preview-toast'
+            );
+
+        if (!toast) {
+            toast =
+                document.createElement(
+                    'div'
+                );
+
+            toast.id =
+                'bc-preview-toast';
+
+            toast.className =
+                'bc-preview-toast';
+
+            toast.setAttribute(
+                'role',
+                'status'
+            );
+
+            toast.setAttribute(
+                'aria-live',
+                'polite'
+            );
+
+            document.body.append(toast);
+        }
+
+        toast.textContent = message;
+        toast.classList.add(
+            'is-visible'
+        );
+
+        clearTimeout(
+            window.__bearlyPreviewToast
+        );
+
+        window.__bearlyPreviewToast =
+            setTimeout(() => {
+                toast.classList.remove(
+                    'is-visible'
+                );
+            }, 2400);
+    }
+
+    function currentVariant() {
+        return findVariant();
+    }
+
+    function currentStock() {
+        const variant =
+            currentVariant();
+
+        if (
+            variants.length &&
+            !variant
+        ) {
+            return 0;
+        }
+
+        if (
+            variant &&
+            Number.isFinite(
+                Number(variant.stock)
+            )
+        ) {
+            return Math.max(
+                0,
+                Number(variant.stock)
+            );
+        }
+
+        return baseStock;
+    }
+
+    function currentPrice() {
+        const variant =
+            currentVariant();
+
+        if (
+            variant &&
+            Number.isFinite(
+                Number(variant.price)
+            )
+        ) {
+            return Number(
+                variant.price
+            );
+        }
+
+        return (
+            Number(product.price) ||
+            0
+        );
+    }
+
+    function syncProductSelection() {
+        const stock =
+            currentStock();
+
+        if (stock > 0) {
+            quantity = Math.max(
+                1,
+                Math.min(
+                    quantity,
+                    stock
+                )
+            );
+        } else {
+            quantity = 1;
+        }
+
+        const priceNode =
+            detail.querySelector(
+                '[data-pd-price]'
+            );
+
+        const stockNode =
+            detail.querySelector(
+                '[data-pd-stock]'
+            );
+
+        const quantityNode =
+            detail.querySelector(
+                '[data-pd-quantity]'
+            );
+
+        const minusButton =
+            detail.querySelector(
+                '[data-pd-minus]'
+            );
+
+        const plusButton =
+            detail.querySelector(
+                '[data-pd-plus]'
+            );
+
+        const addButton =
+            detail.querySelector(
+                '[data-pd-add-cart]'
+            );
+
+        const buyButton =
+            detail.querySelector(
+                '[data-pd-buy-now]'
+            );
+
+        if (priceNode) {
+            priceNode.textContent =
+                peso(
+                    currentPrice()
+                );
+        }
+
+        if (stockNode) {
+            stockNode.textContent =
+                stock > 0
+                    ? `${stock} piece${
+                        stock === 1
+                            ? ''
+                            : 's'
+                    } available`
+                    : 'Out of stock';
+
+            stockNode.classList.toggle(
+                'is-out',
+                stock <= 0
+            );
+        }
+
+        if (quantityNode) {
+            quantityNode.textContent =
+                quantity;
+        }
+
+        if (minusButton) {
+            minusButton.disabled =
+                quantity <= 1 ||
+                stock <= 0;
+        }
+
+        if (plusButton) {
+            plusButton.disabled =
+                quantity >= stock ||
+                stock <= 0;
+        }
+
+        if (addButton) {
+            addButton.disabled =
+                stock <= 0;
+        }
+
+        if (buyButton) {
+            buyButton.disabled =
+                stock <= 0;
+        }
+    }
+
+    detail
+        .querySelectorAll(
+            '[data-pd-size]'
+        )
+        .forEach(button => {
+            button.addEventListener(
+                'click',
+                () => {
+                    selectedSize =
+                        button.dataset
+                            .pdSize || '';
+
+                    detail
+                        .querySelectorAll(
+                            '[data-pd-size]'
+                        )
+                        .forEach(
+                            option => {
+                                option.setAttribute(
+                                    'aria-pressed',
+                                    String(
+                                        option ===
+                                        button
+                                    )
+                                );
+                            }
+                        );
+
+                    quantity = 1;
+
+                    syncProductSelection();
+                }
+            );
+        });
+
+    detail
+        .querySelectorAll(
+            '[data-pd-color]'
+        )
+        .forEach(button => {
+            button.addEventListener(
+                'click',
+                () => {
+                    selectedColor =
+                        button.dataset
+                            .pdColor || '';
+
+                    detail
+                        .querySelectorAll(
+                            '[data-pd-color]'
+                        )
+                        .forEach(
+                            option => {
+                                option.setAttribute(
+                                    'aria-pressed',
+                                    String(
+                                        option ===
+                                        button
+                                    )
+                                );
+                            }
+                        );
+
+                    const colorLabel =
+                        detail.querySelector(
+                            '[data-pd-color-label]'
+                        );
+
+                    const descriptionColor =
+                        detail.querySelector(
+                            '[data-pd-description-color]'
+                        );
+
+                    if (colorLabel) {
+                        colorLabel.textContent =
+                            selectedColor;
+                    }
+
+                    if (
+                        descriptionColor
+                    ) {
+                        descriptionColor.textContent =
+                            selectedColor;
+                    }
+
+                    quantity = 1;
+
+                    syncProductSelection();
+                }
+            );
+        });
+
+    detail
+        .querySelector(
+            '[data-pd-minus]'
+        )
+        ?.addEventListener(
+            'click',
+            () => {
+                if (quantity > 1) {
+                    quantity--;
+                    syncProductSelection();
+                }
+            }
+        );
+
+    detail
+        .querySelector(
+            '[data-pd-plus]'
+        )
+        ?.addEventListener(
+            'click',
+            () => {
+                const stock =
+                    currentStock();
+
+                if (
+                    quantity <
+                    stock
+                ) {
+                    quantity++;
+                    syncProductSelection();
+                }
+            }
+        );
+
+    detail
+        .querySelector(
+            '[data-pd-add-cart]'
+        )
+        ?.addEventListener(
+            'click',
+            () => {
+                const stock =
+                    currentStock();
+
+                if (stock <= 0) {
+                    notify(
+                        'This variation is out of stock.'
+                    );
+                    return;
+                }
+
+                const cartKey =
+                    'bearly-preview-cart-v1';
+
+                let previewCart = [];
+
+                try {
+                    const stored =
+                        JSON.parse(
+                            localStorage.getItem(
+                                cartKey
+                            ) || '[]'
+                        );
+
+                    if (
+                        Array.isArray(
+                            stored
+                        )
+                    ) {
+                        previewCart =
+                            stored;
+                    }
+                } catch {
+                    previewCart = [];
+                }
+
+                const itemKey = [
+                    product.id,
+                    selectedColor,
+                    selectedSize,
+                ].join('-');
+
+                const existing =
+                    previewCart.find(
+                        item =>
+                            item.key ===
+                            itemKey
+                    );
+
+                if (existing) {
+                    existing.quantity =
+                        Math.min(
+                            stock,
+                            existing.quantity +
+                            quantity
+                        );
+                } else {
+                    previewCart.push({
+                        key: itemKey,
+                        product_id:
+                            product.id,
+                        name:
+                            product.name,
+                        price:
+                            currentPrice(),
+                        color:
+                            selectedColor,
+                        size:
+                            selectedSize,
+                        quantity,
+                        photo:
+                            product.photo,
+                        image:
+                            product.image || '',
+                        category:
+                            document.body.dataset.category || '',
+                        seller_name:
+                            sellerName,
+                        frontend_preview:
+                            true,
+                    });
+                }
+
+                try {
+                    localStorage.setItem(
+                        cartKey,
+                        JSON.stringify(
+                            previewCart
+                        )
+                    );
+                } catch {
+                    // LocalStorage unavailable.
+                }
+
+                const button =
+                    detail.querySelector(
+                        '[data-pd-add-cart]'
+                    );
+
+                const original =
+                    button.innerHTML;
+
+                button.innerHTML = `
+                    <i
+                        class="mi"
+                        aria-hidden="true"
+                    >
+                        check
+                    </i>
+                    Added to Cart
+                `;
+
+                notify(
+                    `${quantity} × ${product.name} added to the preview cart.`
+                );
+
+                setTimeout(() => {
+                    if (
+                        button.isConnected
+                    ) {
+                        button.innerHTML =
+                            original;
+                    }
+                }, 1400);
+            }
+        );
+
+    detail
+        .querySelector(
+            '[data-pd-buy-now]'
+        )
+        ?.addEventListener(
+            'click',
+            () => {
+                notify(
+                    'Buy Now is frontend-only for now. Checkout will be connected later.'
+                );
+            }
+        );
+
+    detail
+        .querySelector(
+            '[data-pd-chat]'
+        )
+        ?.addEventListener(
+            'click',
+            () => {
+                notify(
+                    'Seller chat will be connected during backend integration.'
+                );
+            }
+        );
+
+    detail
+        .querySelector(
+            '[data-pd-shop]'
+        )
+        ?.addEventListener(
+            'click',
+            () => {
+                notify(
+                    'Seller shop page will be connected later.'
+                );
+            }
+        );
+
+    detail
+        .querySelector(
+            '[data-pd-size-guide]'
+        )
+        ?.addEventListener(
+            'click',
+            () => {
+                notify(
+                    'Size guide preview can be added after the product details UI.'
+                );
+            }
+        );
+
+    syncProductSelection();
+
+    if (!dialog.open) {
+        dialog.showModal();
+    }
+
+    document.body.style.overflow =
+        'hidden';
+
+    dialog.addEventListener(
+        'close',
+        () => {
+            document.body.style.overflow =
+                '';
+        },
+        { once: true }
+    );
+}
+window.bearlyShowFeaturedProduct = showFeaturedProductFull;
+
+/* Shared preview for Flash Deals and Top Products */
+function openBearlyFeaturedPreview(card, kind = 'top') {
+    if (!card) return;
+
+    // Dedicated featured pages carry the same catalog JSON as Home. Resolve the
+    // card back to that real catalog item first so every surface uses Bearly's
+    // full existing product-details dialog instead of the lightweight fallback.
+    const source = document.getElementById('featured-product-data');
+    if (source && document.getElementById('product-dialog')) {
+        let featuredProducts = [];
+        try {
+            const parsed = JSON.parse(source.textContent || '[]');
+            if (Array.isArray(parsed)) featuredProducts = parsed;
+        } catch {}
+
+        const aliases = {
+            'mens-apparel': 'men-s-apparel',
+            'womens-apparel': 'women-s-apparel',
+            'foods-and-gourmet': 'food-and-gourmet',
+        };
+        const rawKey = String(card.dataset.productId || '');
+        const [rawSlug, rawId] = rawKey.split(':');
+        const canonicalKey = rawId ? `${aliases[rawSlug] || rawSlug}:${rawId}` : rawKey;
+        const product = featuredProducts.find(item => String(item.featured_key || '') === canonicalKey);
+
+        if (product) {
+            const previewProduct = { ...product };
+            if (kind === 'flash') {
+                previewProduct.original_price = Number(product.price || card.dataset.originalPrice || 0);
+                previewProduct.price = Number(card.dataset.price || product.price || 0);
+                previewProduct.flash_deal = true;
+            }
+            window.bearlyShowFeaturedProduct(previewProduct);
+            return;
+        }
+    }
+    const fallbackProduct = {
+        id: card.dataset.productId || card.dataset.key || 'featured-product',
+        name: card.dataset.name || 'Bearly Product',
+        category: kind === 'flash' ? (card.dataset.flashCategory || '') : (card.dataset.topCategory || ''),
+        subcategory: kind === 'flash' ? (card.dataset.flashCategory || '') : (card.dataset.topCategory || ''),
+        price: Number(card.dataset.price || 0),
+        original_price: Number(card.dataset.originalPrice || 0) || undefined,
+        image: card.dataset.image || '',
+        rating: Number(card.dataset.rating || 4.8),
+        sold: Number(card.dataset.sold || 41),
+        condition: 'New',
+        seller_name: 'Bearly Official',
+        seller_location: 'Laguna',
+        seller_rating: 4.9,
+        stock: 13,
+        colors: ['Default'],
+        sizes: [],
+        description: kind === 'flash'
+            ? 'Limited-time Bearly flash deal. The sale price is preserved when added to cart.'
+            : 'Bearly featured product preview.',
+        free_shipping: true,
+        voucher: kind === 'flash',
+        flash_deal: kind === 'flash',
+    };
+    window.bearlyShowFeaturedProduct(fallbackProduct);
+}
+// Direct card opener used by the dedicated featured pages. Keeping this on window
+// avoids relying on page-specific delegated listeners for the primary card action.
+window.bearlyOpenFeaturedCard = (card, kind = 'top') => {
+    if (!card) return;
+    openBearlyFeaturedPreview(card, kind);
+};
+
+function addBearlyFeaturedToCart(card, kind = 'top') {
+    const CART_KEY = 'bearly-preview-cart-v1';
+    let cart = [];
+    try { const saved = JSON.parse(localStorage.getItem(CART_KEY) || '[]'); if (Array.isArray(saved)) cart = saved; } catch {}
+    const key = card.dataset.key || `${kind}-${card.dataset.productId || Date.now()}`;
+    const existing = cart.find(item => item.key === key);
+    if (existing) existing.quantity = Number(existing.quantity || 1) + 1;
+    else cart.push({
+        key,
+        product_id: card.dataset.productId || key,
+        name: card.dataset.name || 'Bearly Product',
+        price: Number(card.dataset.price || 0),
+        original_price: Number(card.dataset.originalPrice || 0) || undefined,
+        color: '', size: '', quantity: 1,
+        image: card.dataset.image || '',
+        category: kind === 'flash' ? (card.dataset.flashCategory || '') : (card.dataset.topCategory || ''),
+        seller_name: 'Bearly Official',
+        flash_deal: kind === 'flash',
+        frontend_preview: true,
+    });
+    try { localStorage.setItem(CART_KEY, JSON.stringify(cart)); } catch {}
+}
+
+/* BEAR-110 Flash Deals */
+function initBearlyFlashDeals() {
+    const products = [...document.querySelectorAll('[data-flash-product]')];
+    const countdowns = [...document.querySelectorAll('[data-flash-countdown]')];
+    if (!products.length && !countdowns.length) return;
+
+    const CART_KEY = 'bearly-preview-cart-v1';
+    const END_KEY = 'bearly-flash-deal-end-v1';
+    const cycleMs = 6 * 60 * 60 * 1000;
+
+    const getEnd = () => {
+        const now = Date.now();
+        let end = Number(localStorage.getItem(END_KEY) || 0);
+        if (!Number.isFinite(end) || end <= now) {
+            end = now + cycleMs;
+            try { localStorage.setItem(END_KEY, String(end)); } catch {}
+        }
+        return end;
+    };
+
+    const end = getEnd();
+    const tick = () => {
+        const left = Math.max(0, end - Date.now());
+        const hours = Math.floor(left / 3600000);
+        const minutes = Math.floor((left % 3600000) / 60000);
+        const seconds = Math.floor((left % 60000) / 1000);
+        countdowns.forEach(box => {
+            const h = box.querySelector('[data-hours]');
+            const m = box.querySelector('[data-minutes]');
+            const s = box.querySelector('[data-seconds]');
+            if (h) h.textContent = String(hours).padStart(2, '0');
+            if (m) m.textContent = String(minutes).padStart(2, '0');
+            if (s) s.textContent = String(seconds).padStart(2, '0');
+        });
+    };
+    tick();
+    if (countdowns.length) window.setInterval(tick, 1000);
+
+    const toast = message => {
+        const el = document.querySelector('[data-flash-toast]');
+        if (!el) return;
+        el.textContent = message;
+        el.classList.add('show');
+        window.setTimeout(() => el.classList.remove('show'), 1600);
+    };
+
+    document.addEventListener('click', event => {
+        const card = event.target.closest('[data-flash-product]');
+        if (!card) return;
+        const button = event.target.closest('[data-flash-add]');
+        if (!button) {
+            event.preventDefault();
+            openBearlyFeaturedPreview(card, 'flash');
+            return;
+        }
+
+        let cart = [];
+        try {
+            const saved = JSON.parse(localStorage.getItem(CART_KEY) || '[]');
+            if (Array.isArray(saved)) cart = saved;
+        } catch {}
+
+        const key = card.dataset.key || `flash-${card.dataset.productId}`;
+        const existing = cart.find(item => item.key === key);
+        if (existing) {
+            existing.quantity = Number(existing.quantity || 1) + 1;
+            existing.price = Number(card.dataset.price || existing.price || 0);
+        } else {
+            cart.push({
+                key,
+                product_id: card.dataset.productId || key,
+                name: card.dataset.name || 'Flash Deal Product',
+                price: Number(card.dataset.price || 0),
+                original_price: Number(card.dataset.originalPrice || 0),
+                color: '', size: '', quantity: 1,
+                image: card.dataset.image || '',
+                category: card.dataset.flashCategory || '',
+                seller_name: 'Bearly Official',
+                flash_deal: true,
+                frontend_preview: true,
+            });
+        }
+
+        try { localStorage.setItem(CART_KEY, JSON.stringify(cart)); } catch {}
+        const old = button.textContent;
+        button.textContent = 'Added ✓';
+        button.classList.add('is-added');
+        window.setTimeout(() => { button.textContent = old; button.classList.remove('is-added'); }, 1000);
+        toast(`${card.dataset.name || 'Item'} added at the flash deal price.`);
+    });
+}
+
+if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initBearlyFlashDeals);
+    else initBearlyFlashDeals();
+}
+
+
+/* BEAR-111 Top Products */
+function initBearlyTopProducts() {
+    const cards = [...document.querySelectorAll('[data-top-product]')];
+    if (!cards.length) return;
+    const CART_KEY = 'bearly-preview-cart-v1';
+    const SAVED_KEY = 'bearly-category-saved-v2';
+    const toastEl = document.querySelector('[data-top-toast]');
+    const toast = message => {
+        if (!toastEl) return;
+        toastEl.textContent = message;
+        toastEl.classList.add('show');
+        window.setTimeout(() => toastEl.classList.remove('show'), 1500);
+    };
+    const readArray = key => {
+        try { const value = JSON.parse(localStorage.getItem(key) || '[]'); return Array.isArray(value) ? value : []; }
+        catch { return []; }
+    };
+    const saved = new Set(readArray(SAVED_KEY).filter(v => typeof v === 'string'));
+    const openProductPreview = card => openBearlyFeaturedPreview(card, 'top');
+
+
+    cards.forEach(card => {
+        card.tabIndex = 0;
+        card.style.cursor = 'pointer';
+        card.setAttribute('role', 'link');
+        card.setAttribute(
+            'aria-label',
+            `Preview ${card.dataset.name || 'product'}`
+        );
+        card.addEventListener('keydown', event => {
+            if (event.target !== card || !['Enter', ' '].includes(event.key)) return;
+            event.preventDefault();
+            openProductPreview(card);
+        });
+    });
+
+    const syncLikes = () => cards.forEach(card => {
+        const key = card.dataset.productId || '';
+        const btn = card.querySelector('[data-top-like]');
+        if (btn) btn.classList.toggle('is-liked', saved.has(key));
+    });
+    syncLikes();
+    document.addEventListener('click', event => {
+        const like = event.target.closest('[data-top-like]');
+        if (like) {
+            const card = like.closest('[data-top-product]'); if (!card) return;
+            const key = card.dataset.productId || '';
+            if (saved.has(key)) saved.delete(key); else saved.add(key);
+            try { localStorage.setItem(SAVED_KEY, JSON.stringify([...saved])); } catch {}
+            syncLikes();
+            toast(saved.has(key) ? 'Saved to My Likes.' : 'Removed from My Likes.');
+            return;
+        }
+        const add = event.target.closest('[data-top-add]');
+        const card = event.target.closest('[data-top-product]');
+        if (!card) return;
+        if (!add) {
+            openProductPreview(card);
+            return;
+        }
+        const cart = readArray(CART_KEY);
+        const key = card.dataset.key || `top-${card.dataset.productId}`;
+        const existing = cart.find(item => item.key === key);
+        if (existing) existing.quantity = Number(existing.quantity || 1) + 1;
+        else cart.push({key, product_id:card.dataset.productId||key, name:card.dataset.name||'Top Product', price:Number(card.dataset.price||0), color:'', size:'', quantity:1, image:card.dataset.image||'', category:card.dataset.topCategory||'', seller_name:'Bearly Official', frontend_preview:true});
+        try { localStorage.setItem(CART_KEY, JSON.stringify(cart)); } catch {}
+        const old=add.textContent; add.textContent='Added ✓'; add.classList.add('is-added');
+        window.setTimeout(()=>{add.textContent=old;add.classList.remove('is-added');},900);
+        toast(`${card.dataset.name || 'Item'} added to cart.`);
+    });
+    const filters=[...document.querySelectorAll('[data-top-filter]')];
+    filters.forEach(btn=>btn.addEventListener('click',()=>{
+        filters.forEach(x=>x.classList.toggle('is-active',x===btn));
+        const wanted=btn.dataset.topFilter||'All'; let shown=0;
+        cards.forEach(card=>{
+            const cat=card.dataset.topCategory||'';
+            const fashion=cat.includes('Apparel')||cat.includes('Jewelry');
+            const visible=wanted==='All'||cat===wanted||(wanted==='Fashion'&&fashion);
+            card.hidden=!visible; if(visible) shown++;
+        });
+        const empty=document.querySelector('[data-top-empty]'); if(empty) empty.hidden=shown!==0;
+    }));
+}
+if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initBearlyTopProducts);
+    else initBearlyTopProducts();
+}
+
+// Dedicated featured pages do not run initialize() because they have no #home-data.
+// Keep the shared product dialog's close button functional on those pages.
+if (typeof document !== 'undefined' && !document.getElementById('home-data')) {
+    document.addEventListener('click', event => {
+        const closeButton = event.target.closest('[data-close]');
+        if (!closeButton) return;
+
+        const dialog = closeButton.closest('dialog');
+        if (!dialog || !dialog.open) return;
+
+        event.preventDefault();
+        dialog.close();
+    });
 }

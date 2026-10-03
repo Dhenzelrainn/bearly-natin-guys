@@ -54,8 +54,8 @@ function renderOrderTracking(){
  root.innerHTML=`<div class="tracking-summary"><img src="${safeImage(item.image)}" alt="${item.name||'Product'}" onerror="this.src='/images/logo.png'"><div><span>${order.shop||'Bearly Official'}</span><h2>${item.name||'Product'}</h2><p>${item.variation||'Standard'} · x${item.qty||1}</p></div><strong>${peso(order.total)}</strong></div><div class="tracking-grid"><div class="tracking-timeline"><h3>Delivery Progress</h3>${trackingSteps(order)}</div><aside class="tracking-address"><h3>Delivery Address</h3><strong>${a?.name||'Mia Santos'}</strong>${a?.phone?`<p>${a.phone}</p>`:''}<p>${address}</p><div class="tracking-status-box"><span>Current Status</span><strong>${order.statusLabel||order.status}</strong></div></aside></div>`;
 }
 function initMyPurchases(){
-  if (window.bearlyPurchasesInitialized) return;
-  window.bearlyPurchasesInitialized = true;
+  if (window.bearlyMyPurchasesInitialized) return;
+  window.bearlyMyPurchasesInitialized = true;
 
   const filters=document.querySelectorAll('.purchase-filter');
   if(filters.length){
@@ -77,3 +77,40 @@ window.bearlyGetOrders=getOrders;
 window.bearlyDemoOrders=demoOrders;
 
 window.renderOrderTracking=renderOrderTracking;
+
+
+let historyFilter='all';
+let historyQuery='';
+function historyOrders(){
+ return getOrders().filter(o=>o.status==='completed'||o.status==='cancelled');
+}
+function historyMatches(order){
+ if(historyFilter!=='all'&&order.status!==historyFilter)return false;
+ if(!historyQuery)return true;
+ const hay=[order.id,order.shop,order.statusLabel,...(order.items||[]).flatMap(i=>[i.name,i.variation])].join(' ').toLowerCase();
+ return hay.includes(historyQuery.toLowerCase());
+}
+function renderOrderHistory(){
+ const list=document.querySelector('#history-list');
+ const empty=document.querySelector('#history-empty');
+ const count=document.querySelector('#history-count');
+ if(!list)return;
+ const all=historyOrders();
+ const shown=all.filter(historyMatches);
+ if(count)count.textContent=`${shown.length} ${shown.length===1?'order':'orders'}`;
+ list.innerHTML=shown.map(orderHTML).join('');
+ list.hidden=shown.length===0;
+ if(empty)empty.hidden=shown.length!==0;
+}
+function initOrderHistory(){
+ const search=document.querySelector('#history-search');
+ if(search)search.addEventListener('input',()=>{historyQuery=search.value.trim();renderOrderHistory();});
+ document.querySelectorAll('.history-filter').forEach(btn=>btn.addEventListener('click',()=>{
+   document.querySelectorAll('.history-filter').forEach(x=>x.classList.toggle('active',x===btn));
+   historyFilter=btn.dataset.historyFilter||'all';
+   renderOrderHistory();
+ }));
+ renderOrderHistory();
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',initOrderHistory);else initOrderHistory();
+window.renderOrderHistory=renderOrderHistory;

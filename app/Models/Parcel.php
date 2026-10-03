@@ -18,9 +18,26 @@ class Parcel extends Model
         return $this->belongsTo(Waybill::class);
     }
 
+    public function currentSortingCenter()
+    {
+        return $this->belongsTo(
+            SortingCenter::class,
+            'current_sorting_center_id'
+        );
+    }
+
+    public function currentZone()
+    {
+        return $this->belongsTo(
+            SortingZone::class,
+            'current_zone_id'
+        );
+    }
+
     public function events()
     {
-        return $this->hasMany(ShipmentEvent::class);
+        return $this->hasMany(ShipmentEvent::class)
+            ->orderBy('occurred_at');
     }
 
     public function pickupRequests()

@@ -12,6 +12,7 @@ use App\Models\SellerOrder;
 use App\Models\SellerProfile;
 use App\Models\Shipment;
 use App\Models\SortingCenter;
+use App\Models\SortingZone;
 use App\Models\Store;
 use App\Models\User;
 use App\Models\Waybill;
@@ -195,6 +196,26 @@ class WaybillIntakeTest extends TestCase
             ->assertStatus(409);
     }
 
+    public function test_intake_rejects_an_inactive_owned_sorting_center(): void
+    {
+        ['waybill' => $waybill] =
+            $this->makeShipmentFor($this->profileA, 'INACTIVE');
+        $this->centerA->update(['status' => 'inactive']);
+
+        $this->actingAs($this->logisticsA)
+            ->postJson(
+                route(
+                    'logistics.waybills.receive',
+                    $waybill->waybill_no
+                ),
+                [
+                    'sorting_center_id' => $this->centerA->id,
+                    'scan_method' => 'manual',
+                ]
+            )
+            ->assertStatus(409);
+    }
+
     public function test_service_rejects_foreign_shipment_even_when_called_directly(): void
     {
         ['waybill' => $waybill] =
@@ -226,6 +247,229 @@ class WaybillIntakeTest extends TestCase
             $this->centerB,
             $this->logisticsA,
             'manual'
+        );
+    }
+
+    public function test_logistics_can_receive_a_waybill_from_the_intake_form(): void
+    {
+        [
+            'waybill' => $waybill,
+            'parcel' => $parcel,
+        ] = $this->makeShipmentFor($this->profileA, 'FORM');
+
+        $this->actingAs($this->logisticsA)
+            ->post(
+                route('logistics.sorting.incoming.receive'),
+                [
+                    'identifier' => $waybill->barcode_value,
+                    'sorting_center_id' => $this->centerA->id,
+                ]
+            )
+            ->assertRedirect()
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('success');
+
+        $this->assertDatabaseHas('parcels', [
+            'id' => $parcel->id,
+            'status' => ParcelStatus::Received->value,
+            'current_sorting_center_id' => $this->centerA->id,
+        ]);
+    }
+
+    public function test_intake_ledger_only_displays_the_current_providers_parcels(): void
+    {
+        $own = $this->makeShipmentFor($this->profileA, 'LEDGER-OWN');
+        $foreign = $this->makeShipmentFor($this->profileB, 'LEDGER-FOREIGN');
+
+        app(ParcelIntakeService::class)->receive(
+            $own['waybill'],
+            $this->centerA,
+            $this->logisticsA,
+            'manual'
+        );
+        app(ParcelIntakeService::class)->receive(
+            $foreign['waybill'],
+            $this->centerB,
+            $this->logisticsB,
+            'manual'
+        );
+
+        $this->actingAs($this->logisticsA)
+            ->get(route('logistics.sorting.incoming'))
+            ->assertOk()
+            ->assertSee($own['waybill']->waybill_no)
+            ->assertSee('Store LEDGER-OWN')
+            ->assertDontSee($foreign['waybill']->waybill_no)
+            ->assertDontSee('Store LEDGER-FOREIGN')
+            ->assertDontSee('data-incoming-form', false)
+            ->assertDontSee('data-send-sorting', false);
+    }
+
+    public function test_sorting_queue_only_displays_owned_parcels_and_zones(): void
+    {
+        $own = $this->makeShipmentFor($this->profileA, 'QUEUE-OWN');
+        $foreign = $this->makeShipmentFor($this->profileB, 'QUEUE-FOREIGN');
+        $ownZone = $this->makeZone($this->centerA, 'OWN-ZONE');
+        $foreignZone = $this->makeZone($this->centerB, 'FOREIGN-ZONE');
+
+        app(ParcelIntakeService::class)->receive(
+            $own['waybill'],
+            $this->centerA,
+            $this->logisticsA,
+            'manual'
+        );
+        app(ParcelIntakeService::class)->receive(
+            $foreign['waybill'],
+            $this->centerB,
+            $this->logisticsB,
+            'manual'
+        );
+
+        $this->actingAs($this->logisticsA)
+            ->get(route('logistics.sorting.center'))
+            ->assertOk()
+            ->assertSee($own['parcel']->parcel_no)
+            ->assertSee($ownZone->code)
+            ->assertDontSee($foreign['parcel']->parcel_no)
+            ->assertDontSee($foreignZone->code)
+            ->assertDontSee('data-sort-parcel', false)
+            ->assertDontSee('data-set-status', false);
+    }
+
+    public function test_logistics_can_sort_an_owned_received_parcel(): void
+    {
+        $record = $this->makeShipmentFor($this->profileA, 'SORT');
+        $zone = $this->makeZone($this->centerA, 'SORT-ZONE');
+
+        app(ParcelIntakeService::class)->receive(
+            $record['waybill'],
+            $this->centerA,
+            $this->logisticsA,
+            'manual'
+        );
+
+        $this->actingAs($this->logisticsA)
+            ->patch(
+                route(
+                    'logistics.sorting.parcels.update',
+                    $record['parcel']
+                ),
+                ['sorting_zone_id' => $zone->id]
+            )
+            ->assertRedirect()
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('success');
+
+        $this->assertDatabaseHas('parcels', [
+            'id' => $record['parcel']->id,
+            'status' => ParcelStatus::Sorted->value,
+            'current_zone_id' => $zone->id,
+        ]);
+        $this->assertDatabaseHas('shipments', [
+            'id' => $record['shipment']->id,
+            'status' => ShipmentStatus::Sorted->value,
+        ]);
+        $this->assertDatabaseHas('shipment_events', [
+            'shipment_id' => $record['shipment']->id,
+            'parcel_id' => $record['parcel']->id,
+            'event_type' => 'parcel_sorted',
+            'sorting_center_id' => $this->centerA->id,
+            'sorting_zone_id' => $zone->id,
+            'actor_user_id' => $this->logisticsA->id,
+            'source' => 'logistics',
+        ]);
+    }
+
+    public function test_shipment_is_only_sorted_after_every_parcel_is_sorted(): void
+    {
+        $record = $this->makeShipmentFor($this->profileA, 'MULTI');
+        $secondParcel = Parcel::query()->create([
+            'shipment_id' => $record['shipment']->id,
+            'waybill_id' => $record['waybill']->id,
+            'parcel_no' => 'PARCEL-MULTI-2',
+            'piece_sequence' => 2,
+            'weight_kg' => 0.750,
+            'status' => ParcelStatus::PickedUp->value,
+        ]);
+        $record['waybill']->update([
+            'piece_count' => 2,
+            'total_weight_kg' => 2.000,
+        ]);
+        $zone = $this->makeZone($this->centerA, 'MULTI-ZONE');
+
+        app(ParcelIntakeService::class)->receive(
+            $record['waybill'],
+            $this->centerA,
+            $this->logisticsA,
+            'manual'
+        );
+
+        $this->actingAs($this->logisticsA)
+            ->patch(
+                route('logistics.sorting.parcels.update', $record['parcel']),
+                ['sorting_zone_id' => $zone->id]
+            )
+            ->assertRedirect();
+
+        $this->assertSame(
+            ShipmentStatus::AtSortingCenter->value,
+            $record['shipment']->fresh()->status
+        );
+
+        $this->actingAs($this->logisticsA)
+            ->patch(
+                route('logistics.sorting.parcels.update', $secondParcel),
+                ['sorting_zone_id' => $zone->id]
+            )
+            ->assertRedirect();
+
+        $this->assertSame(
+            ShipmentStatus::Sorted->value,
+            $record['shipment']->fresh()->status
+        );
+    }
+
+    public function test_sorting_rejects_foreign_parcels_and_wrong_center_zones(): void
+    {
+        $own = $this->makeShipmentFor($this->profileA, 'SECURE-OWN');
+        $foreign = $this->makeShipmentFor($this->profileB, 'SECURE-FOREIGN');
+        $ownZone = $this->makeZone($this->centerA, 'SECURE-OWN-ZONE');
+        $foreignZone = $this->makeZone($this->centerB, 'SECURE-FOREIGN-ZONE');
+
+        app(ParcelIntakeService::class)->receive(
+            $own['waybill'],
+            $this->centerA,
+            $this->logisticsA,
+            'manual'
+        );
+        app(ParcelIntakeService::class)->receive(
+            $foreign['waybill'],
+            $this->centerB,
+            $this->logisticsB,
+            'manual'
+        );
+
+        $this->actingAs($this->logisticsA)
+            ->patch(
+                route('logistics.sorting.parcels.update', $foreign['parcel']),
+                ['sorting_zone_id' => $ownZone->id]
+            )
+            ->assertNotFound();
+
+        $this->actingAs($this->logisticsA)
+            ->patch(
+                route('logistics.sorting.parcels.update', $own['parcel']),
+                ['sorting_zone_id' => $foreignZone->id]
+            )
+            ->assertNotFound();
+
+        $this->assertSame(
+            ParcelStatus::Received->value,
+            $own['parcel']->fresh()->status
+        );
+        $this->assertSame(
+            ParcelStatus::Received->value,
+            $foreign['parcel']->fresh()->status
         );
     }
 
@@ -279,6 +523,18 @@ class WaybillIntakeTest extends TestCase
         ]);
 
         return [$user, $profile, $center];
+    }
+
+    private function makeZone(
+        SortingCenter $center,
+        string $code
+    ): SortingZone {
+        return SortingZone::query()->create([
+            'sorting_center_id' => $center->id,
+            'name' => str_replace('-', ' ', $code),
+            'code' => $code,
+            'status' => 'active',
+        ]);
     }
 
     /**

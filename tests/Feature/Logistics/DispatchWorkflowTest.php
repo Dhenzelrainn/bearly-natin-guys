@@ -54,6 +54,374 @@ class DispatchWorkflowTest extends TestCase
         ] = $this->makeLogisticsProvider('B');
     }
 
+    public function test_monitoring_page_shows_only_owned_dispatch_batches(): void
+    {
+        $ownZone = $this->makeZone(
+            $this->centerA,
+            'MONITOR-OWN'
+        );
+
+        $foreignZone = $this->makeZone(
+            $this->centerB,
+            'MONITOR-FOREIGN'
+        );
+
+        $ownRider = $this->makeRider(
+            $this->profileA,
+            $this->centerA,
+            $ownZone,
+            'MONITOR-OWN',
+            10
+        );
+
+        $foreignRider = $this->makeRider(
+            $this->profileB,
+            $this->centerB,
+            $foreignZone,
+            'MONITOR-FOREIGN',
+            10
+        );
+
+        $this->makeReadyShipmentFor(
+            $this->profileA,
+            $this->centerA,
+            $ownZone,
+            'MONITOR-OWN'
+        );
+
+        $this->makeReadyShipmentFor(
+            $this->profileB,
+            $this->centerB,
+            $foreignZone,
+            'MONITOR-FOREIGN'
+        );
+
+        $ownBatch = app(DispatchService::class)
+            ->dispatchZone(
+                $ownZone,
+                $ownRider,
+                $this->logisticsA
+            );
+
+        $foreignBatch = app(DispatchService::class)
+            ->dispatchZone(
+                $foreignZone,
+                $foreignRider,
+                $this->logisticsB
+            );
+
+        $this->actingAs($this->logisticsA)
+            ->get(
+                route('logistics.dispatch.monitoring')
+            )
+            ->assertOk()
+            ->assertSee($ownBatch->batch_no)
+            ->assertSee($ownRider->user->name)
+            ->assertSee($ownZone->code)
+            ->assertDontSee($foreignBatch->batch_no)
+            ->assertDontSee($foreignRider->user->name)
+            ->assertDontSee($foreignZone->code)
+            ->assertDontSee('DL-8412')
+            ->assertDontSee('Nico Flores')
+            ->assertDontSee(
+                'data-set-status',
+                false
+            )
+            ->assertDontSee('Reassign delivery');
+    }
+
+    public function test_monitoring_derives_real_stages_progress_and_metrics(): void
+    {
+        $assignedZone = $this->makeZone(
+            $this->centerA,
+            'STAGE-ASSIGNED'
+        );
+
+        $outZone = $this->makeZone(
+            $this->centerA,
+            'STAGE-OUT'
+        );
+
+        $deliveredZone = $this->makeZone(
+            $this->centerA,
+            'STAGE-DELIVERED'
+        );
+
+        $failedZone = $this->makeZone(
+            $this->centerA,
+            'STAGE-FAILED'
+        );
+
+        $assignedRider = $this->makeRider(
+            $this->profileA,
+            $this->centerA,
+            $assignedZone,
+            'STAGE-ASSIGNED',
+            10
+        );
+
+        $outRider = $this->makeRider(
+            $this->profileA,
+            $this->centerA,
+            $outZone,
+            'STAGE-OUT',
+            10
+        );
+
+        $deliveredRider = $this->makeRider(
+            $this->profileA,
+            $this->centerA,
+            $deliveredZone,
+            'STAGE-DELIVERED',
+            10
+        );
+
+        $failedRider = $this->makeRider(
+            $this->profileA,
+            $this->centerA,
+            $failedZone,
+            'STAGE-FAILED',
+            10
+        );
+
+        $assignedRecord =
+            $this->makeReadyShipmentFor(
+                $this->profileA,
+                $this->centerA,
+                $assignedZone,
+                'STAGE-ASSIGNED'
+            );
+
+        $outRecord =
+            $this->makeReadyShipmentFor(
+                $this->profileA,
+                $this->centerA,
+                $outZone,
+                'STAGE-OUT'
+            );
+
+        $deliveredRecord =
+            $this->makeReadyShipmentFor(
+                $this->profileA,
+                $this->centerA,
+                $deliveredZone,
+                'STAGE-DELIVERED'
+            );
+
+        $failedRecord =
+            $this->makeReadyShipmentFor(
+                $this->profileA,
+                $this->centerA,
+                $failedZone,
+                'STAGE-FAILED'
+            );
+
+        $assignedBatch =
+            app(DispatchService::class)
+                ->dispatchZone(
+                    $assignedZone,
+                    $assignedRider,
+                    $this->logisticsA
+                );
+
+        $outBatch =
+            app(DispatchService::class)
+                ->dispatchZone(
+                    $outZone,
+                    $outRider,
+                    $this->logisticsA
+                );
+
+        $deliveredBatch =
+            app(DispatchService::class)
+                ->dispatchZone(
+                    $deliveredZone,
+                    $deliveredRider,
+                    $this->logisticsA
+                );
+
+        $failedBatch =
+            app(DispatchService::class)
+                ->dispatchZone(
+                    $failedZone,
+                    $failedRider,
+                    $this->logisticsA
+                );
+
+        $outRecord['parcel']->update([
+            'status' =>
+                ParcelStatus::OutForDelivery->value,
+
+            'last_event_at' =>
+                now(),
+        ]);
+
+        $deliveredRecord['parcel']->update([
+            'status' =>
+                ParcelStatus::Delivered->value,
+
+            'last_event_at' =>
+                now(),
+        ]);
+
+        $failedRecord['parcel']->update([
+            'status' =>
+                ParcelStatus::Failed->value,
+
+            'last_event_at' =>
+                now(),
+        ]);
+
+        $this->actingAs($this->logisticsA)
+            ->get(
+                route('logistics.dispatch.monitoring')
+            )
+            ->assertOk()
+            ->assertViewHas(
+                'deliveries',
+                function ($deliveries) use (
+                    $assignedBatch,
+                    $outBatch,
+                    $deliveredBatch,
+                    $failedBatch
+                ): bool {
+                    $rows = $deliveries->keyBy('id');
+
+                    if (
+                        ! $rows->has(
+                            $assignedBatch->batch_no
+                        )
+                        || ! $rows->has(
+                            $outBatch->batch_no
+                        )
+                        || ! $rows->has(
+                            $deliveredBatch->batch_no
+                        )
+                        || ! $rows->has(
+                            $failedBatch->batch_no
+                        )
+                    ) {
+                        return false;
+                    }
+
+                    $assigned =
+                        $rows[
+                            $assignedBatch->batch_no
+                        ];
+
+                    $out =
+                        $rows[
+                            $outBatch->batch_no
+                        ];
+
+                    $delivered =
+                        $rows[
+                            $deliveredBatch->batch_no
+                        ];
+
+                    $failed =
+                        $rows[
+                            $failedBatch->batch_no
+                        ];
+
+                    $assignedTimeline =
+                        collect(
+                            $assigned['timeline']
+                        )->pluck('label');
+
+                    return
+                        $assigned['status']
+                            === 'ASSIGNED_TO_RIDER'
+                        && $assigned['progress']
+                            === 0
+                        && $out['status']
+                            === 'OUT_FOR_DELIVERY'
+                        && $out['progress']
+                            === 0
+                        && $delivered['status']
+                            === 'DELIVERED'
+                        && $delivered['progress']
+                            === 100
+                        && $failed['status']
+                            === 'DELIVERY_FAILED'
+                        && $failed['progress']
+                            === 100
+                        && $assignedTimeline
+                            ->contains(
+                                'Assigned to rider'
+                            )
+                        && $assignedTimeline
+                            ->contains(
+                                'Released for delivery'
+                            );
+                }
+            )
+            ->assertViewHas(
+                'metrics',
+                fn (array $metrics) =>
+                    $metrics['assigned'] === 1
+                    && $metrics[
+                        'out_for_delivery_parcels'
+                    ] === 1
+                    && $metrics[
+                        'out_for_delivery_routes'
+                    ] === 1
+                    && $metrics[
+                        'delivered_today'
+                    ] === 1
+                    && $metrics[
+                        'exceptions'
+                    ] === 1
+            );
+
+        /*
+        * The untouched dispatch remains the assigned case.
+        */
+        $this->assertSame(
+            ParcelStatus::Dispatched->value,
+            $assignedRecord['parcel']
+                ->fresh()
+                ->status
+        );
+    }
+
+    public function test_monitoring_page_is_zero_safe_without_dispatch_batches(): void
+    {
+        $this->actingAs($this->logisticsA)
+            ->get(
+                route('logistics.dispatch.monitoring')
+            )
+            ->assertOk()
+            ->assertViewHas(
+                'deliveries',
+                fn ($deliveries) =>
+                    $deliveries->isEmpty()
+            )
+            ->assertViewHas(
+                'metrics',
+                fn (array $metrics) =>
+                    $metrics['assigned'] === 0
+                    && $metrics[
+                        'out_for_delivery_parcels'
+                    ] === 0
+                    && $metrics[
+                        'out_for_delivery_routes'
+                    ] === 0
+                    && $metrics[
+                        'delivered_today'
+                    ] === 0
+                    && $metrics[
+                        'exceptions'
+                    ] === 0
+            )
+            ->assertSee(
+                'No dispatch batches are'
+            )
+            ->assertSee(
+                'available for monitoring.'
+            );
+    }
+
     public function test_logistics_can_dispatch_sorted_parcels_to_an_eligible_rider(): void
     {
         $zone = $this->makeZone(

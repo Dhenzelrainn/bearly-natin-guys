@@ -29,6 +29,8 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\View\View;
 
 class LogisticsController extends Controller
@@ -2173,48 +2175,448 @@ class LogisticsController extends Controller
             );
     }
 
-    public function monitoring()
+    public function monitoring(): View
     {
-        return view('logistics.dispatch.monitoring', $this->shared() + [
-            'deliveries' => [
-                [
-                    'id' => 'DL-8412',
-                    'rider' => 'Nico Flores',
-                    'zone' => 'SP-N1',
-                    'parcels' => 8,
-                    'progress' => 72,
-                    'status' => 'OUT_FOR_DELIVERY',
-                    'last' => 'Brgy. San Lucas • 2:02 PM',
+        /** @var User $operator */
+        $operator = Auth::user();
+
+        $profile = $this->currentLogisticsProfile(
+            $operator
+        );
+
+        abort_unless($profile, 404);
+
+        /*
+        * Monitoring is read-only from the Logistics side.
+        *
+        * Delivery state comes from normalized dispatch batches,
+        * parcels, and future Rider delivery attempts.
+        */
+        $batches = DispatchBatch::query()
+            ->whereHas(
+                'sortingCenter',
+                fn ($query) => $query->where(
+                    'logistics_profile_id',
+                    $profile->id
+                )
+            )
+            ->where(
+                'status',
+                '!=',
+                'cancelled'
+            )
+            ->with([
+                'sortingZone:id,code,name',
+                'riderProfile.user:id,name',
+                'parcels',
+                'deliveryAttempts' => fn ($query) =>
+                    $query->orderBy('attempted_at'),
+            ])
+            ->orderByDesc('dispatched_at')
+            ->orderByDesc('id')
+            ->get();
+
+        $deliveries = $batches
+            ->map(function (DispatchBatch $batch): array {
+                $parcels = $batch->parcels;
+
+                $stage = $this->deliveryMonitoringStage(
+                    $parcels
+                );
+
+                $progress =
+                    $this->deliveryMonitoringProgress(
+                        $parcels
+                    );
+
+                $timeline =
+                    $this->deliveryMonitoringTimeline(
+                        $batch
+                    );
+
+                $latestUpdate =
+                    collect($timeline)
+                        ->sortByDesc('sort_at')
+                        ->first();
+
+                return [
+                    'id' =>
+                        $batch->batch_no,
+
+                    'rider' =>
+                        $batch
+                            ->riderProfile
+                            ?->user
+                            ?->name
+                        ?? 'Unassigned rider',
+
+                    'zone' =>
+                        $batch
+                            ->sortingZone
+                            ?->code
+                        ?? 'No zone',
+
+                    'area' =>
+                        $batch
+                            ->sortingZone
+                            ?->name
+                        ?? '',
+
+                    'parcels' =>
+                        $parcels->count(),
+
+                    'progress' =>
+                        $progress,
+
+                    'status' =>
+                        $stage,
+
+                    'last' =>
+                        $latestUpdate
+                            ? $latestUpdate['label']
+                                .' • '
+                                .$latestUpdate['time']
+                            : 'No recorded updates',
+
+                    'timeline' =>
+                        collect($timeline)
+                            ->sortBy('sort_at')
+                            ->values()
+                            ->all(),
+                ];
+            })
+            ->values();
+
+        /*
+        * Metrics remain provider-scoped.
+        */
+        $assigned = $deliveries
+            ->where(
+                'status',
+                'ASSIGNED_TO_RIDER'
+            )
+            ->count();
+
+        $outForDeliveryRoutes = $deliveries
+            ->where(
+                'status',
+                'OUT_FOR_DELIVERY'
+            )
+            ->count();
+
+        $outForDeliveryParcels =
+            Parcel::query()
+                ->whereHas(
+                    'shipment',
+                    fn ($query) => $query->where(
+                        'logistics_profile_id',
+                        $profile->id
+                    )
+                )
+                ->where(
+                    'status',
+                    ParcelStatus::OutForDelivery->value
+                )
+                ->count();
+
+        $deliveredToday =
+            Parcel::query()
+                ->whereHas(
+                    'shipment',
+                    fn ($query) => $query->where(
+                        'logistics_profile_id',
+                        $profile->id
+                    )
+                )
+                ->where(
+                    'status',
+                    ParcelStatus::Delivered->value
+                )
+                ->whereDate(
+                    'last_event_at',
+                    today()
+                )
+                ->count();
+
+        $exceptions =
+            Parcel::query()
+                ->whereHas(
+                    'shipment',
+                    fn ($query) => $query->where(
+                        'logistics_profile_id',
+                        $profile->id
+                    )
+                )
+                ->whereIn(
+                    'status',
+                    [
+                        ParcelStatus::Failed->value,
+                        ParcelStatus::Returned->value,
+                        ParcelStatus::Lost->value,
+                        ParcelStatus::Damaged->value,
+                    ]
+                )
+                ->count();
+
+        return view(
+            'logistics.dispatch.monitoring',
+            $this->shared() + [
+                'deliveries' =>
+                    $deliveries,
+
+                'metrics' => [
+                    'assigned' =>
+                        $assigned,
+
+                    'out_for_delivery_parcels' =>
+                        $outForDeliveryParcels,
+
+                    'out_for_delivery_routes' =>
+                        $outForDeliveryRoutes,
+
+                    'delivered_today' =>
+                        $deliveredToday,
+
+                    'exceptions' =>
+                        $exceptions,
                 ],
-                [
-                    'id' => 'DL-8411',
-                    'rider' => 'Anne Cruz',
-                    'zone' => 'SP-S2',
-                    'parcels' => 6,
-                    'progress' => 100,
-                    'status' => 'DELIVERED',
-                    'last' => 'Completed • 1:48 PM',
-                ],
-                [
-                    'id' => 'DL-8410',
-                    'rider' => 'Marco Lim',
-                    'zone' => 'PILA-1',
-                    'parcels' => 5,
-                    'progress' => 20,
-                    'status' => 'ASSIGNED_TO_RIDER',
-                    'last' => 'Sorting Center • 1:31 PM',
-                ],
-                [
-                    'id' => 'DL-8408',
-                    'rider' => 'Paolo Reyes',
-                    'zone' => 'CAL-1',
-                    'parcels' => 4,
-                    'progress' => 55,
-                    'status' => 'DELIVERY_FAILED',
-                    'last' => 'Customer unavailable • 12:54 PM',
-                ],
-            ],
-        ]);
+            ]
+        );
+    }
+
+    private function deliveryMonitoringStage(
+        Collection $parcels
+    ): string {
+        $statuses = $parcels->pluck('status');
+
+        if (
+            $statuses->contains(
+                fn ($status) => in_array(
+                    $status,
+                    [
+                        ParcelStatus::Failed->value,
+                        ParcelStatus::Returned->value,
+                        ParcelStatus::Lost->value,
+                        ParcelStatus::Damaged->value,
+                    ],
+                    true
+                )
+            )
+        ) {
+            return 'DELIVERY_FAILED';
+        }
+
+        if (
+            $statuses->isNotEmpty()
+            && $statuses->every(
+                fn ($status) =>
+                    $status
+                    === ParcelStatus::Delivered->value
+            )
+        ) {
+            return 'DELIVERED';
+        }
+
+        if (
+            $statuses->contains(
+                fn ($status) => in_array(
+                    $status,
+                    [
+                        ParcelStatus::OutForDelivery->value,
+                        ParcelStatus::Delivered->value,
+                    ],
+                    true
+                )
+            )
+        ) {
+            return 'OUT_FOR_DELIVERY';
+        }
+
+        return 'ASSIGNED_TO_RIDER';
+    }
+
+    private function deliveryMonitoringProgress(
+        Collection $parcels
+    ): int {
+        $total = $parcels->count();
+
+        if ($total === 0) {
+            return 0;
+        }
+
+        /*
+        * Completion means the parcel reached a terminal
+        * delivery outcome, successful or exceptional.
+        */
+        $resolved = $parcels
+            ->filter(
+                fn (Parcel $parcel) => in_array(
+                    $parcel->status,
+                    [
+                        ParcelStatus::Delivered->value,
+                        ParcelStatus::Failed->value,
+                        ParcelStatus::Returned->value,
+                        ParcelStatus::Lost->value,
+                        ParcelStatus::Damaged->value,
+                    ],
+                    true
+                )
+            )
+            ->count();
+
+        return (int) round(
+            ($resolved / $total) * 100
+        );
+    }
+
+    /**
+     * @return array<int, array{
+     *     time: string,
+     *     label: string,
+     *     detail: string,
+     *     sort_at: int
+     * }>
+     */
+    private function deliveryMonitoringTimeline(
+        DispatchBatch $batch
+    ): array {
+        $timeline = collect();
+
+        if ($batch->assigned_at) {
+            $timeline->push([
+                'time' =>
+                    $batch->assigned_at
+                        ->format('M j, g:i A'),
+
+                'label' =>
+                    'Assigned to rider',
+
+                'detail' =>
+                    'Dispatch manifest assigned to '
+                    .(
+                        $batch
+                            ->riderProfile
+                            ?->user
+                            ?->name
+                        ?? 'the selected rider'
+                    )
+                    .'.',
+
+                'sort_at' =>
+                    $batch->assigned_at->timestamp,
+            ]);
+        }
+
+        if ($batch->dispatched_at) {
+            $timeline->push([
+                'time' =>
+                    $batch->dispatched_at
+                        ->format('M j, g:i A'),
+
+                'label' =>
+                    'Released for delivery',
+
+                'detail' =>
+                    "{$batch->parcels->count()} "
+                    .str(
+                        'parcel'
+                    )->plural(
+                        $batch->parcels->count()
+                    )
+                    .' released from the sorting center.',
+
+                'sort_at' =>
+                    $batch->dispatched_at->timestamp,
+            ]);
+        }
+
+        /*
+        * Parcel status changes become visible even before
+        * the Rider module starts persisting DeliveryAttempt.
+        */
+        foreach ($batch->parcels as $parcel) {
+            if (
+                ! $parcel->last_event_at
+                || $parcel->status
+                    === ParcelStatus::Dispatched->value
+            ) {
+                continue;
+            }
+
+            $eventAt = Carbon::parse(
+                $parcel->last_event_at
+            );
+
+            $timeline->push([
+                'time' =>
+                    $eventAt->format(
+                        'M j, g:i A'
+                    ),
+
+                'label' =>
+                    $parcel->parcel_no
+                    .': '
+                    .str(
+                        $parcel->status
+                    )
+                        ->replace('_', ' ')
+                        ->title(),
+
+                'detail' =>
+                    'Latest recorded parcel status.',
+
+                'sort_at' =>
+                    $eventAt->timestamp,
+            ]);
+        }
+
+        /*
+        * Future Rider delivery attempts automatically
+        * appear here once Rider backend persistence exists.
+        */
+        foreach (
+            $batch->deliveryAttempts
+            as $attempt
+        ) {
+            $attemptAt =
+                $attempt->attempted_at
+                ?? $attempt->created_at;
+
+            if (! $attemptAt) {
+                continue;
+            }
+
+            $timeline->push([
+                'time' =>
+                    $attemptAt->format(
+                        'M j, g:i A'
+                    ),
+
+                'label' =>
+                    'Delivery attempt #'
+                    .$attempt->attempt_no
+                    .': '
+                    .str(
+                        $attempt->outcome
+                    )
+                        ->replace('_', ' ')
+                        ->title(),
+
+                'detail' =>
+                    $attempt->notes
+                    ?: (
+                        $attempt->failure_reason
+                            ? 'Reason: '
+                                .$attempt->failure_reason
+                            : 'Delivery attempt recorded.'
+                    ),
+
+                'sort_at' =>
+                    $attemptAt->timestamp,
+            ]);
+        }
+
+        return $timeline->values()->all();
     }
 
     public function reports()

@@ -30,7 +30,7 @@
     </form>
     <div class="lp-actions">
         <a class="lp-icon" href="{{ url('/login') }}" aria-label="Log in"><span class="material-symbols-outlined" aria-hidden="true">person</span></a>
-        <button class="lp-icon" type="button" data-saved-open aria-label="Saved sample products"><span class="material-symbols-outlined" aria-hidden="true">favorite</span><span class="lp-badge" data-saved-count hidden>0</span></button>
+        <button class="lp-icon" type="button" data-saved-open aria-label="Saved products"><span class="material-symbols-outlined" aria-hidden="true">favorite</span><span class="lp-badge" data-saved-count hidden>0</span></button>
         <a class="lp-icon" href="{{ url('/cart') }}" aria-label="Shopping cart"><span class="material-symbols-outlined" aria-hidden="true">shopping_bag</span></a>
     </div>
 </header>
@@ -81,7 +81,7 @@
             <div class="lp-filters" role="group" aria-label="Filter featured products"></div>
         </div>
         <div class="lp-product-grid" id="lp-products"></div>
-        <noscript><p>Enable JavaScript to browse the sample catalogue, or <a href="{{ url('/products') }}">visit the shop</a>.</p></noscript>
+        <noscript><p>Enable JavaScript to browse the catalogue, or <a href="{{ url('/products') }}">visit the shop</a>.</p></noscript>
         <div class="lp-guest-more">
             <a class="lp-guest-login" href="{{ url('/login') }}">Login to see more</a>
         </div>
@@ -91,15 +91,15 @@
     <section class="lp-signup"><div><h2>Make shopping Bearly a hassle.</h2><p>Create an account and start discovering.</p></div><a class="lp-button" href="{{ url('/register') }}">Create an account ↗</a></section>
 </main>
 <footer class="lp-footer">
-    <div class="lp-footer-grid"><div><a class="lp-footer-logo" href="{{ url('/') }}" aria-label="Bearly home"><img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly" width="205" height="64" loading="lazy"></a><p>Shopping should be easy.<br>Bearly stressful.</p></div>
+    <div class="lp-footer-grid"><div><a class="lp-footer-logo" href="{{ url('/') }}" aria-label="Bearly home"><img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly" width="205" height="64" loading="lazy"></a><p>Shopping should be easy.<br>Bearly stressful.</p></div>
         <nav aria-label="Shop links"><h2>Shop</h2><a href="{{ url('/products') }}">All Products</a><a href="#bl-featured">Featured Products</a><a href="#bl-categories">Categories</a></nav>
         <nav aria-label="About and support links"><h2>About & Support</h2><a href="{{ route('about') }}">Our Story</a><a href="{{ url('/register') }}">Sell on Bearly</a><a href="{{ route('contact') }}">Contact Us</a></nav>
         <div class="lp-newsletter"><h2>Be the first to know</h2><p>Get updates on new launches and special offers.</p><form data-newsletter><label class="lp-sr" for="lp-email">Your email</label><input id="lp-email" name="email" type="email" required maxlength="254" placeholder="Enter your email"><button type="submit">Subscribe</button></form><p class="lp-newsletter-status" data-newsletter-status role="status"></p></div>
     </div>
-    <div class="lp-footer-bottom"><span>© {{ date('Y') }} Bearly. All rights reserved.</span><div><button data-policy="privacy">Privacy Policy</button><button data-policy="terms">Terms of Service</button></div></div>
+    <div class="lp-footer-bottom"><span>© {{ date('Y') }} Bearly. All rights reserved.</span><div><a href="{{ route('privacy') }}">Privacy Policy</a><a href="{{ route('terms') }}">Terms of Service</a></div></div>
 </footer>
 <dialog class="lp-dialog lp-category-dialog" id="lp-categories" aria-labelledby="lp-explorer-title"><div class="lp-dialog-heading"><div><p class="lp-eyebrow">BEARLY MARKETPLACE</p><h2 id="lp-explorer-title">Shop by category</h2></div><button class="lp-round" data-close-dialog aria-label="Close categories">×</button></div><label class="lp-sr" for="lp-category-search">Search categories</label><input class="lp-category-search" id="lp-category-search" type="search" placeholder="Search categories and subcategories" autocomplete="off"><div data-category-groups></div><p data-category-empty hidden>No matching categories. Try another search.</p></dialog>
-<dialog class="lp-dialog" id="lp-detail" aria-labelledby="lp-detail-title"><div class="lp-dialog-heading"><h2 id="lp-detail-title"></h2><button class="lp-round" data-close-dialog aria-label="Close preview">×</button></div><div id="lp-detail-content"></div></dialog>
+<dialog class="lp-dialog" id="lp-detail" aria-labelledby="lp-detail-title"><div class="lp-dialog-heading"><h2 id="lp-detail-title"></h2><button class="lp-round" data-close-dialog aria-label="Close product details">×</button></div><div id="lp-detail-content"></div></dialog>
 <p class="lp-toast" role="status" data-toast hidden></p>
 <script id="lp-products-data" type="application/json">{!! json_encode($landingProducts, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR) !!}</script>
 <script id="lp-categories-data" type="application/json">{!! json_encode($homeCategories, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR) !!}</script>

@@ -1,4 +1,4 @@
-/* Bearly landing preview. Demo identities never become database/cart product IDs. */
+/* Bearly landing page interactions. */
 if (document.body.classList.contains("bearly-landing")) initializeLanding();
 
 function initializeLanding() {
@@ -18,6 +18,25 @@ function initializeLanding() {
                     "'": "&#39;",
                 })[c],
         );
+    const fallbackShops = {
+        Fashion: "Northline Goods",
+        Tech: "Daily Circuit",
+        Beauty: "Mysa Beauty",
+        Accessories: "Harbor & Thread",
+        Home: "Hearth & Co.",
+        Books: "Paper & Pine",
+        Sports: "Trail & Form",
+        Pets: "Paw & Home",
+    };
+
+    function productShop(product) {
+        const shop = String(product.shop || "").trim();
+
+        return shop && shop.toLowerCase() !== "sample item"
+            ? shop
+            : fallbackShops[product.group] || "Bearly Marketplace";
+    }
+
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
     const shop = document.body.dataset.shopUrl;
     const storageKey = "bearly-landing-saved-v2";
@@ -46,7 +65,7 @@ function initializeLanding() {
 
     function photo(p, extra = "") {
         const rows = p.atlas === "mixed" ? 3 : 4;
-        return `<span class="lp-product-photo ${extra}" data-atlas="${p.atlas}" style="--x:${((p.cell % 4) * 100) / 3}%;--y:${(Math.floor(p.cell / 4) * 100) / (rows - 1)}%" role="img" aria-label="Illustrative photo: ${escape(p.name)}"></span>`;
+        return `<span class="lp-product-photo ${extra}" data-atlas="${p.atlas}" style="--x:${((p.cell % 4) * 100) / 3}%;--y:${(Math.floor(p.cell / 4) * 100) / (rows - 1)}%" role="img" aria-label="Product photo: ${escape(p.name)}"></span>`;
     }
 
     function saveButton(p) {
@@ -124,7 +143,7 @@ function initializeLanding() {
         grid.innerHTML = visible
             .map(
                 (p) =>
-                    `<article class="lp-product"><button type="button" class="lp-product-open" data-product="${p.id}" aria-label="Preview ${escape(p.name)}">${photo(p)}<h3>${escape(p.name)}</h3></button><p>${escape(p.shop)}</p>${saveButton(p)}</article>`,
+                    `<article class="lp-product"><button type="button" class="lp-product-open" data-product="${p.id}" aria-label="View details for ${escape(p.name)}">${photo(p)}<h3>${escape(p.name)}</h3><span class="lp-product-view">View details <span class="material-symbols-outlined" aria-hidden="true">arrow_outward</span></span></button><p>${escape(productShop(p))}</p>${saveButton(p)}</article>`,
             )
             .join("");
 
@@ -197,7 +216,7 @@ function initializeLanding() {
         url.searchParams.set("search", p.name);
 
         detailTitle.textContent = p.name;
-        detailContent.innerHTML = `${photo(p, "lp-detail-image")}<p><strong>${escape(p.shop)}</strong> · ${escape(p.group)}</p><p>Sample catalogue preview. This photo is illustrative; price, stock and final specifications have not been confirmed.</p><div><button class="lp-button" type="button" data-detail-save="${p.id}">${saved.has(p.id) ? "Remove from saved" : "Save this product"}</button></div><a class="lp-text-link" href="${escape(url.href)}">Search the shop ↗</a>${p.source ? `<a class="lp-text-link" href="${escape(p.source)}" target="_blank" rel="noopener noreferrer">Retailer reference ↗</a>` : ""}`;
+        detailContent.innerHTML = `${photo(p, "lp-detail-image")}<p><strong>${escape(productShop(p))}</strong> · ${escape(p.group)}</p><p>Discover this find and browse more products from the Bearly marketplace.</p><div><button class="lp-button" type="button" data-detail-save="${p.id}">${saved.has(p.id) ? "Remove from saved" : "Save this product"}</button></div><a class="lp-text-link" href="${escape(url.href)}">Search similar products ↗</a>${p.source ? `<a class="lp-text-link" href="${escape(p.source)}" target="_blank" rel="noopener noreferrer">Visit retailer ↗</a>` : ""}`;
 
         if (!detail.open) openDialog(detail);
     }
@@ -205,11 +224,11 @@ function initializeLanding() {
     function showSaved() {
         detailTitle.textContent = "Saved products";
         detailContent.innerHTML = saved.size
-            ? `<p>Saved sample products on this device.</p>${products
+            ? `<p>Saved products on this device.</p>${products
                   .filter((p) => saved.has(p.id))
                   .map(
-                      (p) =>
-                          `<button type="button" class="lp-saved-item" data-product="${p.id}">${photo(p)}<span>${escape(p.name)}<br><small>${escape(p.shop)}</small></span></button>`,
+                       (p) =>
+                           `<button type="button" class="lp-saved-item" data-product="${p.id}">${photo(p)}<span>${escape(p.name)}<br><small>${escape(productShop(p))}</small></span></button>`,
                   )
                   .join("")}`
             : "<p>No saved products yet. Tap a heart on a product to keep it here.</p>";
@@ -412,17 +431,6 @@ function initializeLanding() {
         if (b.hasAttribute("data-hero-next"))
             setSlide(slide + 1);
 
-        if (b.hasAttribute("data-policy")) {
-            detailTitle.textContent =
-                b.dataset.policy === "privacy"
-                    ? "Privacy Policy"
-                    : "Terms of Service";
-
-            detailContent.innerHTML =
-                "<p>The full policy will be published before the marketplace begins accepting orders.</p><p>Saved sample products stay in this browser. Newsletter registration is not yet available.</p>";
-
-            openDialog(detail);
-        }
     });
 
     $("[data-newsletter]").addEventListener("submit", (e) => {

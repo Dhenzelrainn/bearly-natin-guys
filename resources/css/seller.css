@@ -6564,8 +6564,8 @@ svg {
     align-items: flex-start;
     text-align: left;
 }
-.seller-brand-logo { width: 118px; margin: 0; }
-.seller-brand-subtitle { margin: -3px 0 0 31px; font-size: 9px; }
+.seller-brand-logo { width: 140px; margin: 0; }
+.seller-brand-subtitle { margin: -3px 0 0 31px; font-size: 14px; }
 .seller-nav { gap: 2px; }
 .seller-nav > .seller-nav-link { margin-bottom: 7px; }
 .seller-nav-link {

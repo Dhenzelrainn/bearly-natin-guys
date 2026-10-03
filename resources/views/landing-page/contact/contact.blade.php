@@ -250,7 +250,7 @@
     <div class="public-footer-grid">
         <div>
             <a class="public-footer-logo" href="{{ url('/') }}" aria-label="Bearly home">
-                <img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly">
+                <img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly">
             </a>
             <p>Shopping should be easy.<br>Bearly stressful.</p>
         </div>

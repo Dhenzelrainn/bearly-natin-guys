@@ -66,7 +66,7 @@
                 <i class="seller-ui-icon" data-lucide="menu" aria-hidden="true"></i>
             </button>
             <a href="{{ route('seller.dashboard') }}" class="seller-brand" aria-label="Bearly Seller Center">
-                <img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly" class="seller-brand-logo">
+                <img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly" class="seller-brand-logo">
                 <span class="seller-brand-subtitle">Seller Center</span>
             </a>
         </div>

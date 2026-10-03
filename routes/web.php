@@ -341,6 +341,8 @@ Route::prefix('logistics')
             Route::get('/account', [LogisticsController::class, 'account'])->name('profile.index');
             Route::get('/api/waybills/{identifier}', [WaybillScanController::class, 'show'])->name('waybills.lookup');
             Route::post('/api/waybills/{identifier}/receive', [WaybillScanController::class, 'receive'])->name('waybills.receive');
+            Route::get('/rider-applications/{application}/documents/{document}', [ApplicationDocumentController::class, 'show'])->name('rider-documents.show');
+            Route::patch('/rider-applications/{application}/documents/{document}', [ApplicationDocumentController::class, 'update'])->name('rider-documents.update');
             Route::post('/riders/{user}/approve', [AccountApprovalController::class, 'approveRider'])->name('riders.approve');
             Route::post('/riders/{user}/reject', [AccountApprovalController::class, 'rejectRider'])->name('riders.reject');
         });

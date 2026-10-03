@@ -329,26 +329,40 @@ class RegistrationLifecycleService
             UserRole::Buyer->value => [
                 ['government_id', 'valid_id'],
             ],
+
             UserRole::Seller->value,
             UserRole::Logistics->value => [
                 ['government_id', 'valid_id'],
                 ['business_permit'],
             ],
+
+            UserRole::Rider->value => [
+                ['driver_license'],
+                ['or_cr'],
+            ],
+
             default => [],
         };
 
-        $documents = $application->documents->keyBy('document_type');
+        $documents = $application
+            ->documents
+            ->keyBy('document_type');
+
         $unverified = collect($required)->filter(
-            fn (array $types): bool => ! collect($types)->contains(
-                fn (string $type): bool =>
-                    $documents->has($type)
-                    && $documents->get($type)->verification_status === 'verified'
-            )
+            fn (array $types): bool =>
+                ! collect($types)->contains(
+                    fn (string $type): bool =>
+                        $documents->has($type)
+                        && $documents
+                            ->get($type)
+                            ->verification_status === 'verified'
+                )
         );
 
         if ($unverified->isNotEmpty()) {
             throw ValidationException::withMessages([
-                'documents' => 'All required documents must be verified before approval.',
+                'documents' =>
+                    'All required documents must be verified before approval.',
             ]);
         }
     }

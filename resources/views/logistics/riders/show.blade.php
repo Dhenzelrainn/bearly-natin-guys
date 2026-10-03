@@ -4,55 +4,336 @@
 @section('page-title', 'Rider Application Review')
 
 @section('content')
+@php
+    $documents = collect($application['documents']);
+
+    $requiredDocumentTypes = [
+        'driver_license',
+        'or_cr',
+    ];
+
+    $allRequiredDocumentsVerified = collect($requiredDocumentTypes)
+        ->every(function ($type) use ($documents) {
+            return $documents->contains(function ($document) use ($type) {
+                return $document['type'] === $type
+                    && strtolower($document['status']) === 'verified';
+            });
+        });
+
+    $applicationStatus = strtolower($application['status']);
+
+    $isReviewable = in_array(
+        $applicationStatus,
+        [
+            'pending',
+            'needs review',
+            'needs revision',
+        ],
+        true
+    );
+@endphp
+
 <div class="page-header">
     <div>
-        <p class="page-kicker">Application {{ $application['id'] }}</p>
+        <p class="page-kicker">
+            Rider {{ $application['id'] }}
+        </p>
+
         <h2>{{ $application['name'] }}</h2>
-        <p>Inspect the applicant profile, delivery coverage, vehicle, and submitted credentials before deciding.</p>
+
+        <p>
+            Inspect the Rider profile, vehicle, and submitted credentials.
+        </p>
     </div>
+
     <div class="page-actions">
-        <a class="button" href="{{ route('logistics.riders.index') }}"><i data-lucide="arrow-left"></i>Back to riders</a>
-        @if(isset($application['user_id']))
-            <form method="POST" action="{{ route('logistics.riders.reject', $application['user_id']) }}">@csrf<input type="hidden" name="reason" value="Rider credentials were not approved by the selected Logistics Center."><button class="button button-danger" type="submit"><i data-lucide="x-circle"></i>Disapprove</button></form>
-            <form method="POST" action="{{ route('logistics.riders.approve', $application['user_id']) }}">@csrf<button class="button button-primary" type="submit"><i data-lucide="badge-check"></i>Approve rider</button></form>
-        @else
-            <button class="button button-danger" type="button" data-preview-action data-success="Application disapproved in this front-end preview."><i data-lucide="x-circle"></i>Disapprove</button>
-            <button class="button button-primary" type="button" data-preview-action data-success="{{ $application['name'] }} approved as a Bearly rider."><i data-lucide="badge-check"></i>Approve rider</button>
+        <a
+            class="button"
+            href="{{ route('logistics.riders.index') }}"
+        >
+            <i data-lucide="arrow-left"></i>
+            Back to riders
+        </a>
+
+        @if($isReviewable)
+            <form
+                method="POST"
+                action="{{ route('logistics.riders.reject', $application['user_id']) }}"
+            >
+                @csrf
+
+                <input
+                    type="hidden"
+                    name="reason"
+                    value="Rider credentials were not approved by the selected Logistics Center."
+                >
+
+                <button
+                    class="button button-danger"
+                    type="submit"
+                >
+                    <i data-lucide="x-circle"></i>
+                    Disapprove
+                </button>
+            </form>
+
+            <form
+                method="POST"
+                action="{{ route('logistics.riders.approve', $application['user_id']) }}"
+            >
+                @csrf
+
+                <button
+                    class="button button-primary"
+                    type="submit"
+                    @disabled(! $allRequiredDocumentsVerified)
+                    @if(! $allRequiredDocumentsVerified)
+                        title="Verify both the Driver's License and Vehicle OR/CR before approving this Rider."
+                    @endif
+                >
+                    <i data-lucide="badge-check"></i>
+                    Approve rider
+                </button>
+            </form>
         @endif
     </div>
 </div>
 
 <div class="content-grid">
     <section class="panel">
-        <div class="panel-header"><div><h3>Applicant profile</h3><p>Personal and contact information.</p></div><span class="status-badge" data-status="{{ $application['status'] }}">{{ $application['status'] }}</span></div>
+        <div class="panel-header">
+            <div>
+                <h3>Rider profile</h3>
+                <p>
+                    Personal and contact information from the database.
+                </p>
+            </div>
+
+            <span
+                class="status-badge"
+                data-status="{{ $application['status'] }}"
+            >
+                {{ $application['status'] }}
+            </span>
+        </div>
+
         <div class="panel-body detail-list">
-            <div class="detail-item"><small>Full name</small><strong>{{ $application['name'] }}</strong></div>
-            <div class="detail-item"><small>Sex</small><strong>{{ $application['sex'] }}</strong></div>
-            <div class="detail-item"><small>Birthday</small><strong>{{ $application['birthday'] }}</strong></div>
-            <div class="detail-item"><small>Email</small><strong>{{ $application['email'] }}</strong></div>
-            <div class="detail-item"><small>Contact number</small><strong>{{ $application['contact'] }}</strong></div>
-            <div class="detail-item"><small>Home address</small><strong>{{ $application['address'] }}</strong></div>
+            <div class="detail-item">
+                <small>Full name</small>
+                <strong>{{ $application['name'] }}</strong>
+            </div>
+
+            <div class="detail-item">
+                <small>Sex</small>
+                <strong>{{ $application['sex'] }}</strong>
+            </div>
+
+            <div class="detail-item">
+                <small>Birthday</small>
+                <strong>{{ $application['birthday'] }}</strong>
+            </div>
+
+            <div class="detail-item">
+                <small>Email</small>
+                <strong>{{ $application['email'] }}</strong>
+            </div>
+
+            <div class="detail-item">
+                <small>Contact number</small>
+                <strong>{{ $application['contact'] }}</strong>
+            </div>
+
+            <div class="detail-item">
+                <small>Home address</small>
+                <strong>{{ $application['address'] }}</strong>
+            </div>
         </div>
     </section>
 
     <div class="section-stack">
         <section class="panel">
-            <div class="panel-header"><div><h3>Vehicle and assignment</h3><p>Proposed courier setup.</p></div></div>
+            <div class="panel-header">
+                <div>
+                    <h3>Vehicle and assignment</h3>
+                    <p>
+                        Registered Rider vehicle information.
+                    </p>
+                </div>
+            </div>
+
             <div class="panel-body detail-list">
-                <div class="detail-item"><small>Vehicle type</small><strong>{{ $application['vehicle'] }}</strong></div>
-                <div class="detail-item"><small>Plate number</small><strong>{{ $application['plate'] }}</strong></div>
-                <div class="detail-item"><small>Preferred area</small><strong>{{ $application['area'] }}</strong></div>
-                <div class="detail-item"><small>Submitted</small><strong>{{ $application['submitted'] }}</strong></div>
+                <div class="detail-item">
+                    <small>Vehicle type</small>
+                    <strong>{{ $application['vehicle'] }}</strong>
+                </div>
+
+                <div class="detail-item">
+                    <small>Plate number</small>
+                    <strong>{{ $application['plate'] }}</strong>
+                </div>
+
+                <div class="detail-item">
+                    <small>Area</small>
+                    <strong>{{ $application['area'] }}</strong>
+                </div>
+
+                <div class="detail-item">
+                    <small>Submitted</small>
+                    <strong>{{ $application['submitted'] }}</strong>
+                </div>
             </div>
         </section>
+
         <section class="panel">
-            <div class="panel-header"><div><h3>Submitted documents</h3><p>Front-end document verification preview.</p></div></div>
+            <div class="panel-header">
+                <div>
+                    <h3>Submitted documents</h3>
+                    <p>
+                        Review the credentials submitted during Rider registration.
+                    </p>
+                </div>
+            </div>
+
             <div class="panel-body attention-list">
-                @foreach($application['documents'] as $document)
-                    <button class="attention-item" type="button" data-preview-action data-success="Opened {{ $document['filename'] }} in preview mode.">
-                        <i data-lucide="file-check-2"></i><span><strong>{{ $document['label'] }}</strong><small>{{ $document['filename'] }}</small></span><span class="status-badge" data-status="{{ $document['status'] }}">{{ $document['status'] }}</span>
-                    </button>
-                @endforeach
+                @forelse($application['documents'] as $document)
+                    @php
+                        $documentStatus = strtolower(
+                            $document['status']
+                        );
+                    @endphp
+
+                    <div class="attention-item">
+                        <i data-lucide="file-check-2"></i>
+
+                        <span>
+                            <strong>
+                                {{ $document['label'] }}
+                            </strong>
+
+                            <small>
+                                {{ $document['filename'] }}
+                            </small>
+
+                            @if(
+                                $documentStatus === 'rejected'
+                                && ! empty($document['rejection_reason'])
+                            )
+                                <small>
+                                    Reason:
+                                    {{ $document['rejection_reason'] }}
+                                </small>
+                            @endif
+                        </span>
+
+                        <span
+                            class="status-badge"
+                            data-status="{{ $document['status'] }}"
+                        >
+                            {{ $document['status'] }}
+                        </span>
+
+                        <a
+                            class="button"
+                            href="{{ route(
+                                'logistics.rider-documents.show',
+                                [
+                                    'application' => $document['application_id'],
+                                    'document' => $document['id'],
+                                ]
+                            ) }}"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
+                            <i data-lucide="eye"></i>
+                            View
+                        </a>
+
+                        @if($isReviewable)
+                            @if($documentStatus !== 'verified')
+                                <form
+                                    method="POST"
+                                    action="{{ route(
+                                        'logistics.rider-documents.update',
+                                        [
+                                            'application' => $document['application_id'],
+                                            'document' => $document['id'],
+                                        ]
+                                    ) }}"
+                                >
+                                    @csrf
+                                    @method('PATCH')
+
+                                    <input
+                                        type="hidden"
+                                        name="verification_status"
+                                        value="verified"
+                                    >
+
+                                    <button
+                                        class="button button-primary"
+                                        type="submit"
+                                    >
+                                        <i data-lucide="check-circle-2"></i>
+                                        Verify
+                                    </button>
+                                </form>
+                            @endif
+
+                            @if($documentStatus !== 'rejected')
+                                <form
+                                    method="POST"
+                                    action="{{ route(
+                                        'logistics.rider-documents.update',
+                                        [
+                                            'application' => $document['application_id'],
+                                            'document' => $document['id'],
+                                        ]
+                                    ) }}"
+                                >
+                                    @csrf
+                                    @method('PATCH')
+
+                                    <input
+                                        type="hidden"
+                                        name="verification_status"
+                                        value="rejected"
+                                    >
+
+                                    <input
+                                        type="hidden"
+                                        name="rejection_reason"
+                                        value=""
+                                    >
+
+                                    <button
+                                        class="button button-danger"
+                                        type="submit"
+                                        onclick="
+                                            const reason = window.prompt(
+                                                'Enter the reason for rejecting this document:'
+                                            );
+
+                                            if (!reason || !reason.trim()) {
+                                                return false;
+                                            }
+
+                                            this.form.querySelector(
+                                                '[name=rejection_reason]'
+                                            ).value = reason.trim();
+                                        "
+                                    >
+                                        <i data-lucide="x-circle"></i>
+                                        Reject
+                                    </button>
+                                </form>
+                            @endif
+                        @endif
+                    </div>
+                @empty
+                    <p class="empty-copy">
+                        No registration documents were recorded.
+                    </p>
+                @endforelse
             </div>
         </section>
     </div>

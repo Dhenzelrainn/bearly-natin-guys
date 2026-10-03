@@ -11,6 +11,16 @@ class SortingCenter extends Model
 
     protected $guarded = [];
 
+    public function logisticsProfile()
+    {
+        return $this->belongsTo(LogisticsProfile::class);
+    }
+
+    public function address()
+    {
+        return $this->belongsTo(Address::class);
+    }
+
     public function zones()
     {
         return $this->hasMany(SortingZone::class);

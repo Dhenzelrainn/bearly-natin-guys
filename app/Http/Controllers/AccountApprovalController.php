@@ -7,6 +7,7 @@ use App\Enums\UserRole;
 use App\Models\AccountApplication;
 use App\Models\User;
 use App\Services\AccountApplicationReviewService;
+use App\Services\RegistrationLifecycleService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -61,44 +62,61 @@ class AccountApprovalController extends Controller
         return back()->with('success', "Revision was requested from {$application->user->name}.");
     }
 
-    public function approveRider(Request $request, User $user): RedirectResponse
-    {
-        abort_unless($user->role === UserRole::Rider->value, 422);
-        abort_unless($user->logistics_id === $request->user()->id, 403);
-        abort_unless(in_array($user->status, [AccountStatus::Pending->value, AccountStatus::NeedsRevision->value], true), 422);
+    public function approveRider(
+        Request $request,
+        User $user,
+        RegistrationLifecycleService $lifecycle
+    ): RedirectResponse {
+        $this->ensureRiderReviewable($request, $user);
 
-        $this->approveLegacyRider($user, $request->user());
+        $lifecycle->approve($user, $request->user());
 
         return back()->with('success', "{$user->name}'s Rider account was approved.");
     }
 
-    public function rejectRider(Request $request, User $user): RedirectResponse
-    {
-        abort_unless($user->role === UserRole::Rider->value, 422);
-        abort_unless($user->logistics_id === $request->user()->id, 403);
-        abort_unless(in_array($user->status, [AccountStatus::Pending->value, AccountStatus::NeedsRevision->value], true), 422);
+    public function rejectRider(
+        Request $request,
+        User $user,
+        RegistrationLifecycleService $lifecycle
+    ): RedirectResponse {
+        $this->ensureRiderReviewable($request, $user);
 
         $validated = $request->validate([
             'reason' => ['required', 'string', 'max:1000'],
         ]);
 
-        $user->forceFill([
-            'status' => AccountStatus::Rejected->value,
-            'approved_by' => $request->user()->id,
-            'approved_at' => now(),
-            'rejection_reason' => $validated['reason'],
-        ])->save();
+        $lifecycle->reject(
+            $user,
+            $request->user(),
+            $validated['reason']
+        );
 
         return back()->with('success', "{$user->name}'s Rider application was rejected.");
     }
 
-    private function approveLegacyRider(User $application, User $approver): void
+    private function ensureRiderReviewable(
+        Request $request,
+        User $user
+    ): void
     {
-        $application->forceFill([
-            'status' => AccountStatus::Active->value,
-            'approved_by' => $approver->id,
-            'approved_at' => now(),
-            'rejection_reason' => null,
-        ])->save();
+        abort_unless(
+            $user->role === UserRole::Rider->value,
+            422
+        );
+        abort_unless(
+            $user->logistics_id === $request->user()->id,
+            403
+        );
+        abort_unless(
+            in_array(
+                $user->status,
+                [
+                    AccountStatus::Pending->value,
+                    AccountStatus::NeedsRevision->value,
+                ],
+                true
+            ),
+            422
+        );
     }
 }

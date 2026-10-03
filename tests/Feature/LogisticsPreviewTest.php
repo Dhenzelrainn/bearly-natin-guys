@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\AccountStatus;
 use App\Enums\UserRole;
+use App\Models\LogisticsProfile;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -26,6 +27,14 @@ class LogisticsPreviewTest extends TestCase
             'status' => AccountStatus::Active->value,
         ]);
 
+        LogisticsProfile::query()->create([
+            'user_id' => $logistics->id,
+            'legal_name' => 'Preview Logistics',
+            'display_name' => 'Preview Logistics',
+            'contact_phone' => '09171234567',
+            'status' => 'active',
+        ]);
+
         $routes = [
             'logistics.dashboard',
             'logistics.riders.index',
@@ -43,9 +52,9 @@ class LogisticsPreviewTest extends TestCase
             $this->actingAs($logistics)->get(route($route))->assertOk();
         }
 
-        $this->actingAs($logistics)->get(route('logistics.riders.show', 'RA-1048'))
-            ->assertOk()
-            ->assertSee('Jared Molina');
+        $this->actingAs($logistics)
+            ->get(route('logistics.riders.show', 'RA-1048'))
+            ->assertNotFound();
     }
 
     public function test_logistics_registration_requires_the_erp_fields(): void

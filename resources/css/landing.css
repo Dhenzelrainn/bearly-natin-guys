@@ -394,12 +394,54 @@ body.bearly-landing .lp-dots {
     display: flex;
     align-items: center;
 }
-body.bearly-landing .lp-dots button,
-
-body.bearly-landing .lp-dots button:after,
-
-body.bearly-landing .lp-dots button[aria-current="true"]:after,
-
+body.bearly-landing .lp-dots button {
+    position: relative;
+    width: 24px;
+    height: 30px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+body.bearly-landing .lp-dots button:after {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: #c8c0b9;
+    transition:
+        width 0.22s ease,
+        background 0.22s ease;
+}
+body.bearly-landing .lp-dots button[aria-current="true"]:after {
+    width: 18px;
+    background: var(--lp-ink);
+}
+body.bearly-landing .lp-hero-toggle {
+    width: 34px;
+    height: 34px;
+    margin-left: 5px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #d8cec6;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.7);
+    color: var(--lp-ink);
+    transition:
+        background 0.18s ease,
+        border-color 0.18s ease;
+}
+body.bearly-landing .lp-hero-toggle:hover {
+    background: #fff;
+    border-color: #c8b9ad;
+}
+body.bearly-landing .lp-hero-toggle .material-symbols-outlined {
+    width: 18px;
+    height: 18px;
+    font-size: 18px;
+}
 body.bearly-landing .lp-hero-arrows {
     position: absolute;
     inset: 50% 0 auto;
@@ -1271,18 +1313,18 @@ body.bearly-landing.lp-animate .lp-reveal.is-visible {
     }
     body.bearly-landing .lp-slide {
         height: auto;
-        min-height: 800px;
+        min-height: 720px;
     }
     body.bearly-landing .lp-hero-copy {
         width: 100%;
         max-width: none;
-        padding: 32px 6% 335px;
+        padding: 32px 6% 285px;
     }
     body.bearly-landing .lp-hero-copy > p:not(.lp-eyebrow) {
         max-width: 400px;
     }
     body.bearly-landing .lp-hero-photo {
-        height: 370px;
+        height: 320px;
         top: auto;
         bottom: 0;
         object-position: right center;
@@ -1550,6 +1592,15 @@ body.bearly-landing.lp-animate .lp-reveal.is-visible {
     }
     body.bearly-landing .lp-campaign h2 {
         font-size: 40px !important;
+    }
+    body.bearly-landing .lp-slide {
+        min-height: 690px;
+    }
+    body.bearly-landing .lp-hero-copy {
+        padding-bottom: 250px;
+    }
+    body.bearly-landing .lp-hero-photo {
+        height: 290px;
     }
     body.bearly-landing .lp-category-dialog [data-category-groups] {
         grid-template-columns: 1fr;

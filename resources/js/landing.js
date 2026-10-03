@@ -253,21 +253,43 @@ function initializeLanding() {
 
     $("#lp-category-search").addEventListener("input", renderCategories);
 
-    // Hero carousel: automatic, no player/pause UI, faster rotation.
+    // Hero carousel: readable timing with explicit pause/play control.
     const hero = $(".lp-hero"),
-        slides = $$(".lp-slide");
+        slides = $$(".lp-slide"),
+        heroToggle = $("[data-hero-toggle]"),
+        heroToggleIcon = $("[data-hero-toggle-icon]");
 
-    const HERO_AUTOPLAY_MS = 3800;
+    const HERO_AUTOPLAY_MS = 5000;
 
     let slide = 0,
         timer,
-        touchX = null;
+        touchX = null,
+        isPaused = false,
+        isFocusInside = false;
+
+    function updateHeroToggle() {
+        if (!heroToggle) return;
+
+        heroToggle.setAttribute("aria-pressed", String(isPaused));
+        heroToggle.setAttribute(
+            "aria-label",
+            isPaused ? "Play slideshow" : "Pause slideshow",
+        );
+
+        if (heroToggleIcon)
+            heroToggleIcon.textContent = isPaused ? "play_arrow" : "pause";
+    }
 
     function scheduleHero() {
         clearTimeout(timer);
 
-        // Respect reduced-motion preferences and pause only when the tab is hidden.
-        if (!reduce.matches && !document.hidden) {
+        // Respect reduced motion, page visibility, keyboard focus, and manual pause.
+        if (
+            !reduce.matches &&
+            !document.hidden &&
+            !isPaused &&
+            !isFocusInside
+        ) {
             timer = setTimeout(() => setSlide(slide + 1), HERO_AUTOPLAY_MS);
         }
     }
@@ -286,6 +308,24 @@ function initializeLanding() {
 
         scheduleHero();
     }
+
+    hero.addEventListener("focusin", () => {
+        isFocusInside = true;
+        clearTimeout(timer);
+    });
+
+    hero.addEventListener("focusout", (e) => {
+        if (hero.contains(e.relatedTarget)) return;
+
+        isFocusInside = false;
+        scheduleHero();
+    });
+
+    heroToggle?.addEventListener("click", () => {
+        isPaused = !isPaused;
+        updateHeroToggle();
+        scheduleHero();
+    });
 
     hero.addEventListener("keydown", (e) => {
         if (e.target.matches("input,textarea")) return;
@@ -321,6 +361,7 @@ function initializeLanding() {
 
     document.addEventListener("visibilitychange", scheduleHero);
     reduce.addEventListener("change", scheduleHero);
+    updateHeroToggle();
     scheduleHero();
 
     document.addEventListener("click", (e) => {

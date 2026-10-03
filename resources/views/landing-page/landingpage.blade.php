@@ -52,7 +52,7 @@
                 <div class="lp-hero-copy"><p class="lp-eyebrow">EVERYDAY STYLE</p><h2>Shopping should<br>be easy.</h2><p>Bearly stressful. Find something that feels like you.</p><a class="lp-button" href="#bl-featured" data-hero-filter="Fashion">Explore fashion <span aria-hidden="true">↗</span></a><div class="lp-bear-note"><span class="lp-bear" aria-hidden="true"></span><p>A fresh little<br>upgrade.</p></div></div>
             </article>
         </div>
-        <div class="lp-hero-controls"><div class="lp-dots" aria-label="Choose hero slide"><button aria-label="Go to slide 1" aria-current="true" data-slide-to="0"></button><button aria-label="Go to slide 2" data-slide-to="1"></button><button aria-label="Go to slide 3" data-slide-to="2"></button></div></div>
+        <div class="lp-hero-controls"><div class="lp-dots" aria-label="Choose hero slide"><button type="button" aria-label="Go to slide 1" aria-current="true" data-slide-to="0"></button><button type="button" aria-label="Go to slide 2" data-slide-to="1"></button><button type="button" aria-label="Go to slide 3" data-slide-to="2"></button></div><button class="lp-hero-toggle" type="button" data-hero-toggle aria-pressed="false" aria-label="Pause slideshow"><span class="material-symbols-outlined" data-hero-toggle-icon aria-hidden="true">pause</span></button></div>
         <div class="lp-hero-arrows"><button class="lp-round" data-hero-prev aria-label="Previous slide">‹</button><button class="lp-round" data-hero-next aria-label="Next slide">›</button></div>
     </section>
     <div class="lp-brand-strip">Find more. Live better.</div>

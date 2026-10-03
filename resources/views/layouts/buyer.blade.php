@@ -39,6 +39,8 @@
         'resources/js/buyer.js'
     ])
 
+    @include('partials.session-safety')
+
 </head>
 
 <body>

@@ -19,6 +19,7 @@
         'resources/css/admin.css',
         'resources/js/admin.js'
     ])
+    @include('partials.session-safety')
 </head>
 
 <body class="admin-body">

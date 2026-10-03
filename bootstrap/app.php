@@ -1,10 +1,12 @@
 <?php
 
 use App\Http\Middleware\EnsureUserHasRole;
+use App\Http\Middleware\PreventBackCache;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -14,6 +16,10 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->web(append: [
+            PreventBackCache::class,
+        ]);
+
         $middleware->alias([
             'role' => EnsureUserHasRole::class,
         ]);
@@ -43,6 +49,23 @@ return Application::configure(basePath: dirname(__DIR__))
         });
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        $exceptions->render(function (HttpException $exception, Request $request) {
+            if ($exception->getStatusCode() !== 419) {
+                return null;
+            }
+
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'message' => 'Your session expired. Please refresh the page and try again.',
+                    'code' => 'CSRF_TOKEN_MISMATCH',
+                ], 419);
+            }
+
+            return redirect()
+                ->back(302, [], route('login'))
+                ->withErrors([
+                    'csrf' => 'Your session expired. The page was refreshed. Please submit the form again.',
+                ]);
+        });
     })
     ->create();

@@ -23,6 +23,8 @@
         'resources/js/bearly-auth.js'
     ])
 
+    @include('partials.session-safety')
+
     @stack('styles')
 </head>
 

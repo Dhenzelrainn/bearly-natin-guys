@@ -15,6 +15,7 @@
         'resources/js/seller.js',
         'resources/js/seller-polish.js'
     ])
+    @include('partials.session-safety')
 </head>
 <body class="seller-body">
 @php

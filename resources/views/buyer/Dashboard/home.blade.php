@@ -74,6 +74,8 @@ $buyerFirstName = $buyer?->first_name ?: (explode(' ', $buyerName)[0] ?? 'Buyer'
     'resources/js/bearly-promo-slider.js'
 ])
 
+@include('partials.session-safety')
+
 </head>
 <body class="bh" data-buyer-name="{{ $buyerName }}" data-buyer-first-name="{{ $buyerFirstName }}" data-buyer-email="{{ $buyer?->email }}" style="--buyer-product-atlas: url('{{ asset('images/product-atlas.png') }}'); --buyer-outdoor-banner: url('{{ asset('images/outdoor-banner.png') }}')">
 

@@ -5,6 +5,7 @@
     <title>@yield('title','Rider Center') | Bearly Marketplace</title>
     <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     @vite(['resources/css/rider.css','resources/js/rider.js'])
+    @include('partials.session-safety')
 </head>
 <body class="ops-body" data-module="rider">
 <div class="ops-shell">

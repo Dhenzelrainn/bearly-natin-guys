@@ -18,6 +18,7 @@
         'resources/css/rider.css',
         'resources/js/rider.js',
     ])
+    @include('partials.session-safety')
 </head>
 
 <body class="registration-body" data-module="rider">

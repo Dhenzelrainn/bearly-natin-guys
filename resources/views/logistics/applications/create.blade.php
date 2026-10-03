@@ -18,6 +18,7 @@
         'resources/css/logistics.css',
         'resources/js/logistics.js',
     ])
+    @include('partials.session-safety')
 </head>
 
 <body class="registration-body" data-module="logistics">

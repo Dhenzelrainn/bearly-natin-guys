@@ -36,4 +36,19 @@ class RiderProfile extends Model
             'current_zone_id'
         );
     }
+
+    public function earnings()
+    {
+        return $this->hasMany(RiderEarning::class);
+    }
+
+    public function pickupAssignments()
+    {
+        return $this->hasMany(PickupAssignment::class);
+    }
+
+    public function deliveryAttempts()
+    {
+        return $this->hasMany(DeliveryAttempt::class);
+    }
 }

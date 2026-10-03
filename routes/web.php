@@ -17,6 +17,7 @@ use App\Http\Controllers\AdminFinanceController;
 use App\Http\Controllers\AdminFulfillmentController;
 use App\Http\Controllers\AdminMessageController;
 use App\Http\Controllers\AdminReturnRefundController;
+use App\Http\Controllers\AdminUserController;
 use App\Http\Controllers\ApplicationDocumentController;
 use App\Http\Controllers\BuyerController;
 use App\Http\Controllers\LogisticsController;
@@ -225,20 +226,26 @@ Route::prefix('admin')
         | Keep Fusion implementation until account lifecycle reconciliation.
         */
 
-        Route::get('/users', [AdminController::class, 'users'])
+        Route::get('/users', [AdminUserController::class, 'index'])
             ->name('users');
 
-        Route::get('/users/buyers', [AdminController::class, 'buyerUsers'])
+        Route::get('/users/buyers', [AdminUserController::class, 'buyers'])
             ->name('users.buyers');
 
-        Route::get('/users/sellers', [AdminController::class, 'sellerUsers'])
+        Route::get('/users/sellers', [AdminUserController::class, 'sellers'])
             ->name('users.sellers');
 
-        Route::get('/users/logistics', [AdminController::class, 'logisticsUsers'])
+        Route::get('/users/logistics', [AdminUserController::class, 'logistics'])
             ->name('users.logistics');
 
-        Route::get('/users/riders', [AdminController::class, 'riderUsers'])
+        Route::get('/users/riders', [AdminUserController::class, 'riders'])
             ->name('users.riders');
+
+        Route::get('/users/{user}', [AdminUserController::class, 'show'])
+            ->name('users.show');
+
+        Route::patch('/users/{user}/status', [AdminUserController::class, 'updateStatus'])
+            ->name('users.status');
 
         /*
         |--------------------------------------------------------------------------

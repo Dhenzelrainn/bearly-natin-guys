@@ -17,6 +17,7 @@ Route::get('/products', [BuyerController::class, 'products'])->name('products.in
 Route::get('/wishlist', [BuyerController::class, 'wishlist'])->name('wishlist.index');
 Route::post('/wishlist/toggle', [BuyerController::class, 'toggleWishlist'])->name('wishlist.toggle');
 Route::get('/cart', [BuyerController::class, 'cart'])->name('cart.view');
+Route::get('/checkout', [BuyerController::class, 'checkout'])->name('checkout');
 Route::post('/cart/add', [BuyerController::class, 'addToCart'])->name('cart.add');
 Route::patch('/cart/{cartItem}', [BuyerController::class, 'updateCart'])->name('cart.update');
 Route::delete('/cart/{cartItem}', [BuyerController::class, 'removeFromCart'])->name('cart.remove');

@@ -46,7 +46,7 @@ class BearlyAuthController extends Controller
 
         $routes = [
             'admin' => 'admin.dashboard',
-            'buyer' => 'buyer.home',
+            'buyer' => 'home',
             'seller' => 'seller.dashboard',
             'courier' => 'courier.dashboard',
         ];

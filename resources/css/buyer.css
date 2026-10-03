@@ -4316,3 +4316,8 @@ body:not(.bc) #search-form #search-input{
     }
 }
 
+
+/* BEAR-91 notification shortcut */
+.notification-header-link{position:relative}
+.notification-badge{position:absolute;top:-7px;right:-8px;min-width:18px;height:18px;padding:0 5px;border-radius:10px;background:#e9a321;color:#432718!important;font:700 10px/18px Poppins,sans-serif;text-align:center;box-shadow:0 0 0 2px #432718}
+.notification-badge[hidden]{display:none!important}

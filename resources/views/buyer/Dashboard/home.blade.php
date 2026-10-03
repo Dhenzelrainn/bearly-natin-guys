@@ -192,7 +192,7 @@ for ($round = 0; $round < 5; $round++) {
 
 
 
-<a href="{{ url('/wishlist') }}" aria-label="Wishlist"><span class="material-symbols-outlined" aria-hidden="true">favorite</span><span>Wishlist</span></a>
+<a href="{{ url('/profile#notifications') }}" aria-label="Wishlist" class="notification-header-link"><span class="material-symbols-outlined" aria-hidden="true">notifications</span><span>Notifications</span><span class="notification-badge" data-notification-badge>3</span></a>
 
 <button data-info="orders"><span class="material-symbols-outlined" aria-hidden="true">receipt_long</span><span>Orders</span></button>
 
@@ -204,7 +204,7 @@ for ($round = 0; $round < 5; $round++) {
 
 
 
-<button class="account-action" data-info="account" aria-label="Open demo account"><span class="material-symbols-outlined" aria-hidden="true">person</span><span>Mia Santos</span></button>
+<a class="account-action" href="{{ url('/profile') }}" aria-label="Open Mia Santos profile"><span class="material-symbols-outlined" aria-hidden="true">person</span><span>Mia Santos</span></a>
 
 
 

@@ -13,7 +13,7 @@
 <div class="cart-brand-title"><span></span><strong>Shopping Cart</strong></div>
 <div class="cart-header-spacer"></div>
 <nav class="header-actions">
-<a href="{{ url('/wishlist') }}"><span class="material-symbols-outlined">favorite</span><span>Wishlist</span></a>
+<a href="{{ url('/profile#notifications') }}" class="notification-header-link"><span class="material-symbols-outlined">notifications</span><span>Notifications</span><span class="notification-badge" data-notification-badge>3</span></a>
 <button><span class="material-symbols-outlined">receipt_long</span><span>Orders</span></button>
 <button><span class="material-symbols-outlined">chat_bubble</span><span>Chat</span></button>
 <a class="cart-active" href="{{ url('/cart') }}"><span class="material-symbols-outlined">shopping_cart</span><span>Cart</span><b id="cart-header-count" class="cart-badge">0</b></a>

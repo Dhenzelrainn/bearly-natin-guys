@@ -367,9 +367,14 @@ class BuyerController extends Controller
         return view('products.show', compact('product', 'relatedProducts'));
     }
 
-    public function cart(): View|RedirectResponse
+    public function cart(): View
     {
-        return redirect()->route('home', ['cart' => 'open']);
+        return view('buyer.cart');
+    }
+
+    public function checkout(): View
+    {
+        return view('buyer.checkout');
     }
 
     public function addToCart(Request $request): JsonResponse

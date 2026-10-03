@@ -13,7 +13,7 @@
 <div class="checkout-brand-title"><span></span><strong>Checkout</strong></div>
 <div class="checkout-header-spacer"></div>
 <nav class="header-actions">
-<a href="{{ url('/wishlist') }}"><span class="material-symbols-outlined">favorite</span><span>Wishlist</span></a>
+<a href="{{ url('/profile#notifications') }}" class="notification-header-link"><span class="material-symbols-outlined">notifications</span><span>Notifications</span><span class="notification-badge" data-notification-badge>3</span></a>
 <a href="{{ url('/cart') }}"><span class="material-symbols-outlined">shopping_cart</span><span>Cart</span></a>
 <a href="{{ url('/login') }}"><span class="material-symbols-outlined">person</span><span>Sign in</span></a>
 </nav>

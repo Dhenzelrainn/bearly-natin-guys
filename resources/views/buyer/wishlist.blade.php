@@ -14,7 +14,7 @@
 <a class="brand" href="{{ url('/home') }}"><img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly" width="192" height="64"></a>
 <div style="flex:1"></div>
 <nav class="header-actions" aria-label="Account">
-<a href="{{ url('/wishlist') }}"><span class="material-symbols-outlined">favorite</span><span>Wishlist</span></a>
+<a href="{{ url('/profile#notifications') }}" class="notification-header-link"><span class="material-symbols-outlined">notifications</span><span>Notifications</span><span class="notification-badge" data-notification-badge>3</span></a>
 <button data-info="orders"><span class="material-symbols-outlined">receipt_long</span><span>Orders</span></button>
 <button data-info="chat"><span class="material-symbols-outlined">chat_bubble</span><span>Chat</span></button>
 <a href="{{ url('/cart') }}"><span class="material-symbols-outlined">shopping_cart</span><span>Cart</span></a>

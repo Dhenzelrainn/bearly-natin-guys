@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Enums\AccountStatus;
 use App\Enums\UserRole;
+use App\Models\SortingCenter;
 use App\Models\User;
 use App\Services\EmailVerificationService;
 use App\Services\InternationalPhone;
@@ -16,10 +17,78 @@ use Illuminate\View\View;
 
 class LogisticsController extends Controller
 {
+    private function activeSortingCenter(
+        ?User $operator
+    ): ?SortingCenter {
+        if (! $operator) {
+            return null;
+        }
+
+        $profile = $operator->logisticsProfile;
+
+        if (! $profile) {
+            return null;
+        }
+
+        $activeCenter = $profile
+            ->sortingCenters()
+            ->with([
+                'address',
+                'zones',
+            ])
+            ->where('status', 'active')
+            ->oldest('id')
+            ->first();
+
+        if ($activeCenter) {
+            return $activeCenter;
+        }
+
+        return $profile
+            ->sortingCenters()
+            ->with([
+                'address',
+                'zones',
+            ])
+            ->oldest('id')
+            ->first();
+    }
+
+    private function facilityAddress(
+        ?SortingCenter $center,
+        ?User $operator
+    ): string {
+        if ($center?->address) {
+            return collect([
+                $center->address->house_number,
+                $center->address->street,
+                $center->address->barangay,
+                $center->address->city_municipality,
+                $center->address->province,
+                $center->address->postal_code,
+            ])
+                ->filter()
+                ->implode(', ');
+        }
+
+        return collect([
+            $operator?->street_address,
+            $operator?->barangay,
+            $operator?->city,
+            $operator?->province,
+        ])
+            ->filter()
+            ->implode(', ');
+    }
+
     private function shared(): array
     {
         /** @var User|null $operator */
         $operator = Auth::user();
+
+        $activeFacility = $this->activeSortingCenter(
+            $operator
+        );
 
         $name = $operator?->name ?: 'Bearly Logistics';
         $initials = collect(preg_split('/\s+/', trim($name)))
@@ -46,8 +115,24 @@ class LogisticsController extends Controller
                 'name' => $name,
                 'initials' => $initials ?: 'BL',
                 'email' => $operator?->email ?: '',
+                'contact' =>
+                    $operator?->contact_number
+                    ?: $operator?->phone
+                    ?: '',
                 'role' => 'Logistics Operator',
-                'business_name' => $operator?->business_name ?: $name,
+                'business_name' =>
+                    $activeFacility?->name
+                    ?: $operator?->business_name
+                    ?: $name,
+            ],
+            'activeFacility' => [
+                'id' => $activeFacility?->id,
+                'name' =>
+                    $activeFacility?->name
+                    ?: $operator?->business_name
+                    ?: $name,
+                'code' => $activeFacility?->code,
+                'status' => $activeFacility?->status,
             ],
             'pendingRiderCount' => $pendingRiderCount,
             'topNotifications' => $pendingRiderCount > 0
@@ -628,26 +713,44 @@ class LogisticsController extends Controller
         ]);
     }
 
-    public function account()
+    public function account(): View
     {
         /** @var User $operator */
         $operator = Auth::user();
 
-        $address = collect([
-            $operator->street_address,
-            $operator->barangay,
-            $operator->city,
-            $operator->province,
-        ])->filter()->implode(', ');
+        $center = $this->activeSortingCenter(
+            $operator
+        );
 
-        return view('logistics.profile.index', $this->shared() + [
-            'facility' => [
-                'business_name' => $operator->business_name ?: $operator->name,
-                'contact' => $operator->contact_number ?: '',
-                'address' => $address,
-                'operating_hours' => '',
-                'daily_capacity' => '',
-            ],
-        ]);
+        return view(
+            'logistics.profile.index',
+            $this->shared() + [
+                'facility' => [
+                    'id' => $center?->id,
+                    'business_name' =>
+                        $center?->name
+                        ?: $operator->business_name
+                        ?: $operator->name,
+                    'code' => $center?->code ?: '',
+                    'contact' =>
+                        $center?->contact_phone
+                        ?: $operator->contact_number
+                        ?: '',
+                    'address' => $this->facilityAddress(
+                        $center,
+                        $operator
+                    ),
+                    'operating_hours' =>
+                        $center?->operating_hours
+                        ?: '',
+                    'daily_capacity' =>
+                        $center?->daily_capacity
+                        ?: '',
+                    'status' =>
+                        $center?->status
+                        ?: 'active',
+                ],
+            ]
+        );
     }
 }

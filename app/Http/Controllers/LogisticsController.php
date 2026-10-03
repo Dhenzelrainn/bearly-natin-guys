@@ -15,8 +15,10 @@ use App\Models\AccountApplication;
 use App\Models\LogisticsProfile;
 use App\Models\RiderProfile;
 use App\Models\ShipmentEvent;
+use App\Models\DispatchBatch;
 use App\Models\User;
 use App\Models\Waybill;
+use App\Services\DispatchService;
 use App\Services\EmailVerificationService;
 use App\Services\InternationalPhone;
 use App\Services\ParcelSortingService;
@@ -1840,30 +1842,335 @@ class LogisticsController extends Controller
         );
     }
 
-    public function dispatch()
+    public function dispatch(): View
     {
-        return view('logistics.dispatch.index', $this->shared() + [
-            'zones' => [
+        /** @var User $operator */
+        $operator = Auth::user();
+
+        $profile = $this->currentLogisticsProfile(
+            $operator
+        );
+
+        abort_unless($profile, 404);
+
+        $center = $this->activeSortingCenter(
+            $operator
+        );
+
+        /*
+        * Keep the page zero-safe for a valid Logistics account
+        * that currently has no provisioned facility.
+        */
+        if (! $center) {
+            return view(
+                'logistics.dispatch.index',
+                $this->shared() + [
+                    'zones' => collect(),
+                    'riderCapacities' => collect(),
+                    'metrics' => [
+                        'ready' => 0,
+                        'ready_zones' => 0,
+                        'available_riders' => 0,
+                        'active_routes' => 0,
+                        'in_transit' => 0,
+                    ],
+                    'dispatchCenter' => null,
+                ]
+            );
+        }
+
+        $zoneModels = $center
+            ->zones()
+            ->where('status', 'active')
+            ->orderBy('code')
+            ->get();
+
+        $zoneIds = $zoneModels->pluck('id');
+
+        /*
+        * Load only riders that are valid dispatch candidates
+        * for this provider and active Sorting Center.
+        *
+        * Their active batch parcel counts are used to derive
+        * remaining capacity.
+        */
+        $riders = RiderProfile::query()
+            ->where(
+                'logistics_profile_id',
+                $profile->id
+            )
+            ->where(
+                'home_sorting_center_id',
+                $center->id
+            )
+            ->whereIn(
+                'current_zone_id',
+                $zoneIds
+            )
+            ->where(
+                'verification_status',
+                'approved'
+            )
+            ->where(
+                'availability_status',
+                'available'
+            )
+            ->whereHas(
+                'user',
+                fn ($query) => $query->where(
+                    'status',
+                    AccountStatus::Active->value
+                )
+            )
+            ->with([
+                'user',
+                'dispatchBatches' => fn ($query) =>
+                    $query
+                        ->whereNotIn(
+                            'status',
+                            [
+                                'completed',
+                                'cancelled',
+                            ]
+                        )
+                        ->withCount('parcels'),
+            ])
+            ->orderBy('id')
+            ->get()
+            ->map(function (RiderProfile $rider): array {
+                $activeLoad = (int) $rider
+                    ->dispatchBatches
+                    ->sum('parcels_count');
+
+                $capacity = (int) (
+                    $rider->parcel_capacity ?? 0
+                );
+
+                return [
+                    'id' => $rider->id,
+
+                    'zone_id' =>
+                        $rider->current_zone_id,
+
+                    'name' =>
+                        $rider->user?->name
+                        ?? 'Unnamed rider',
+
+                    'load' =>
+                        $activeLoad,
+
+                    'capacity' =>
+                        $capacity,
+
+                    'remaining' =>
+                        max(
+                            0,
+                            $capacity - $activeLoad
+                        ),
+                ];
+            });
+
+        $ridersByZone = $riders
+            ->groupBy('zone_id');
+
+        $zones = $zoneModels
+            ->map(function (
+                SortingZone $zone
+            ) use (
+                $center,
+                $profile,
+                $ridersByZone
+            ): array {
+                $ready = Parcel::query()
+                    ->where(
+                        'current_sorting_center_id',
+                        $center->id
+                    )
+                    ->where(
+                        'current_zone_id',
+                        $zone->id
+                    )
+                    ->where(
+                        'status',
+                        ParcelStatus::Sorted->value
+                    )
+                    ->whereHas(
+                        'shipment',
+                        fn ($query) => $query
+                            ->where(
+                                'logistics_profile_id',
+                                $profile->id
+                            )
+                            ->where(
+                                'status',
+                                ShipmentStatus::Sorted->value
+                            )
+                    )
+                    ->whereDoesntHave(
+                        'dispatchBatches',
+                        fn ($query) =>
+                            $query->whereNotIn(
+                                'dispatch_batches.status',
+                                [
+                                    'completed',
+                                    'cancelled',
+                                ]
+                            )
+                    )
+                    ->count();
+
+                /*
+                * DispatchService releases the whole ready zone
+                * as one batch, so only show riders that can
+                * currently carry the entire ready parcel count.
+                */
+                $eligibleRiders = collect(
+                    $ridersByZone->get(
+                        $zone->id,
+                        collect()
+                    )
+                )
+                    ->filter(
+                        fn (array $rider) =>
+                            $ready > 0
+                            && $rider['remaining'] >= $ready
+                    )
+                    ->values();
+
+                return [
+                    'id' => $zone->id,
+                    'zone' => $zone->code,
+                    'area' => $zone->name,
+                    'ready' => $ready,
+                    'riders' => $eligibleRiders,
+                ];
+            })
+            ->values();
+
+        $readyTotal = (int) $zones->sum('ready');
+
+        $readyZoneCount = $zones
+            ->where('ready', '>', 0)
+            ->count();
+
+        $availableRiderCount = $riders
+            ->where('remaining', '>', 0)
+            ->count();
+
+        $activeRoutes =
+            DispatchBatch::query()
+                ->whereHas(
+                    'sortingCenter',
+                    fn ($query) => $query->where(
+                        'logistics_profile_id',
+                        $profile->id
+                    )
+                )
+                ->whereNotIn(
+                    'status',
+                    [
+                        'completed',
+                        'cancelled',
+                    ]
+                )
+                ->count();
+
+        $inTransit = Parcel::query()
+            ->whereHas(
+                'shipment',
+                fn ($query) => $query->where(
+                    'logistics_profile_id',
+                    $profile->id
+                )
+            )
+            ->whereIn(
+                'status',
                 [
-                    'zone' => 'SP-N1',
-                    'area' => 'San Pablo North',
-                    'ready' => 12,
-                    'riders' => ['Nico Flores', 'Jared Molina'],
+                    ParcelStatus::Dispatched->value,
+                    ParcelStatus::OutForDelivery->value,
+                ]
+            )
+            ->count();
+
+        return view(
+            'logistics.dispatch.index',
+            $this->shared() + [
+                'zones' => $zones,
+
+                'riderCapacities' =>
+                    $riders->values(),
+
+                'dispatchCenter' =>
+                    $center,
+
+                'metrics' => [
+                    'ready' =>
+                        $readyTotal,
+
+                    'ready_zones' =>
+                        $readyZoneCount,
+
+                    'available_riders' =>
+                        $availableRiderCount,
+
+                    'active_routes' =>
+                        $activeRoutes,
+
+                    'in_transit' =>
+                        $inTransit,
                 ],
-                [
-                    'zone' => 'SP-S2',
-                    'area' => 'San Pablo South',
-                    'ready' => 9,
-                    'riders' => ['Anne Cruz'],
-                ],
-                [
-                    'zone' => 'PILA-1',
-                    'area' => 'Pila',
-                    'ready' => 8,
-                    'riders' => ['Marco Lim', 'Lara Mendoza'],
-                ],
+            ]
+        );
+    }
+
+    public function dispatchZone(
+        Request $request,
+        SortingZone $zone,
+        DispatchService $dispatchService
+    ): RedirectResponse {
+        /** @var User $operator */
+        $operator = Auth::user();
+
+        abort_unless(
+            $operator instanceof User,
+            403
+        );
+
+        $validated = $request->validate([
+            'rider_profile_id' => [
+                'required',
+                'integer',
             ],
         ]);
+
+        /*
+        * The service still performs the authoritative
+        * provider / facility / zone checks.
+        */
+        $rider = RiderProfile::query()
+            ->findOrFail(
+                $validated['rider_profile_id']
+            );
+
+        $batch = $dispatchService
+            ->dispatchZone(
+                $zone,
+                $rider,
+                $operator
+            );
+
+        $riderName =
+            $batch->riderProfile
+                ?->user
+                ?->name
+            ?? 'the selected rider';
+
+        return redirect()
+            ->route('logistics.dispatch.index')
+            ->with(
+                'success',
+                "{$batch->batch_no} was dispatched to {$riderName}."
+            );
     }
 
     public function monitoring()

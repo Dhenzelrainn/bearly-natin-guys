@@ -33,4 +33,9 @@ class SortingCenter extends Model
             'current_sorting_center_id'
         );
     }
+
+    public function dispatchBatches()
+    {
+        return $this->hasMany(DispatchBatch::class);
+    }
 }

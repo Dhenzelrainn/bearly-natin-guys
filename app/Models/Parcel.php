@@ -47,4 +47,20 @@ class Parcel extends Model
             'pickup_request_parcels'
         )->withPivot('added_at');
     }
+
+    public function dispatchBatches()
+    {
+        return $this->belongsToMany(
+            DispatchBatch::class,
+            'dispatch_batch_parcels'
+        )->withPivot([
+            'sequence',
+            'loaded_at',
+        ]);
+    }
+
+    public function deliveryAttempts()
+    {
+        return $this->hasMany(DeliveryAttempt::class);
+    }
 }

@@ -302,22 +302,6 @@ function setupSorting() {
     });
 }
 
-function setupDispatch() {
-    const state = readState();
-    document.querySelectorAll('[data-dispatch-zone]').forEach((row) => {
-        const saved = state.dispatch?.[row.dataset.dispatchZone];
-        if (saved) { row.querySelector('[data-rider-select]').value = saved.rider; row.querySelector('[data-dispatch-status]').textContent = `Assigned to ${saved.rider}`; }
-    });
-    document.querySelectorAll('[data-dispatch-action]').forEach((button) => button.addEventListener('click', () => {
-        const row = button.closest('[data-dispatch-zone]');
-        const rider = row.querySelector('[data-rider-select]').value;
-        if (!rider) { toast('Choose an active rider before dispatching.'); return; }
-        updateState('dispatch', row.dataset.dispatchZone, { rider, status: 'ASSIGNED_TO_RIDER', updatedAt: new Date().toISOString() });
-        row.querySelector('[data-dispatch-status]').textContent = `Assigned to ${rider}`;
-        button.textContent = 'Reassign';
-        toast(`${row.dataset.dispatchZone} assigned to ${rider}.`);
-    }));
-}
 
 function setupReports() {
     document.querySelector('[data-report-apply]')?.addEventListener('click', () => toast('Report preview refreshed for the selected range.'));
@@ -1931,5 +1915,16 @@ function setupRegistration() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    setupShell(); setupModals(); setupTabs(); setupIncoming(); setupTables(); setupStatusActions(); setupSorting(); setupDispatch(); setupReports(); setupChat(); setupAccount(); setupRegistration(); refreshIcons();
+    setupShell();
+    setupModals();
+    setupTabs();
+    setupIncoming();
+    setupTables();
+    setupStatusActions();
+    setupSorting();
+    setupReports();
+    setupChat();
+    setupAccount();
+    setupRegistration();
+    refreshIcons();
 });

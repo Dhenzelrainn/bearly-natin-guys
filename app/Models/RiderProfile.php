@@ -51,4 +51,9 @@ class RiderProfile extends Model
     {
         return $this->hasMany(DeliveryAttempt::class);
     }
+
+    public function dispatchBatches()
+    {
+        return $this->hasMany(DispatchBatch::class);
+    }
 }

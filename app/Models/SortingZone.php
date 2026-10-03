@@ -27,4 +27,9 @@ class SortingZone extends Model
             'current_zone_id'
         );
     }
+
+    public function dispatchBatches()
+    {
+        return $this->hasMany(DispatchBatch::class);
+    }
 }

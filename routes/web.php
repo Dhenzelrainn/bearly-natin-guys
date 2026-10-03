@@ -669,6 +669,9 @@ Route::prefix('logistics')->name('logistics.')->group(function () {
         Route::get('/dispatch', [LogisticsController::class, 'dispatch'])
             ->name('dispatch.index');
 
+        Route::post('/dispatch/{zone}', [LogisticsController::class, 'dispatchZone'])
+            ->name('dispatch.store');
+
         Route::get('/monitoring', [LogisticsController::class, 'monitoring'])
             ->name('dispatch.monitoring');
 

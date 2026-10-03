@@ -31,6 +31,11 @@
         ],
         true
     );
+
+    $canManageAssignment = (bool) (
+        $application['can_manage_assignment']
+        ?? false
+    );
 @endphp
 
 <div class="page-header">
@@ -156,32 +161,138 @@
                 <div>
                     <h3>Vehicle and assignment</h3>
                     <p>
-                        Registered Rider vehicle information.
+                        Rider vehicle and operational assignment.
                     </p>
                 </div>
             </div>
 
-            <div class="panel-body detail-list">
-                <div class="detail-item">
-                    <small>Vehicle type</small>
-                    <strong>{{ $application['vehicle'] }}</strong>
-                </div>
+            @if($canManageAssignment)
+                <form
+                    method="POST"
+                    action="{{ route(
+                        'logistics.riders.assignment.update',
+                        $application['user_id']
+                    ) }}"
+                >
+                    @csrf
+                    @method('PATCH')
 
-                <div class="detail-item">
-                    <small>Plate number</small>
-                    <strong>{{ $application['plate'] }}</strong>
-                </div>
+                    <div class="panel-body detail-list">
+                        <div class="detail-item">
+                            <small>Vehicle type</small>
+                            <strong>{{ $application['vehicle'] }}</strong>
+                        </div>
 
-                <div class="detail-item">
-                    <small>Area</small>
-                    <strong>{{ $application['area'] }}</strong>
-                </div>
+                        <div class="detail-item">
+                            <small>Plate number</small>
+                            <strong>{{ $application['plate'] }}</strong>
+                        </div>
 
-                <div class="detail-item">
-                    <small>Submitted</small>
-                    <strong>{{ $application['submitted'] }}</strong>
+                        <div class="detail-item">
+                            <label for="rider-home-sorting-center">
+                                <small>Home sorting center</small>
+                            </label>
+
+                            <select
+                                id="rider-home-sorting-center"
+                                name="home_sorting_center_id"
+                                required
+                            >
+                                <option value="">Select sorting center</option>
+
+                                @foreach($assignmentCenters as $center)
+                                    <option
+                                        value="{{ $center['id'] }}"
+                                        @selected(
+                                            (int) ($application['home_sorting_center_id'] ?? 0)
+                                            === (int) $center['id']
+                                        )
+                                    >
+                                        {{ $center['name'] }}
+                                        @if(! empty($center['code']))
+                                            ({{ $center['code'] }})
+                                        @endif
+                                    </option>
+                                @endforeach
+                            </select>
+                        </div>
+
+                        <div class="detail-item">
+                            <label for="rider-current-zone">
+                                <small>Current zone</small>
+                            </label>
+
+                            <select
+                                id="rider-current-zone"
+                                name="current_zone_id"
+                            >
+                                <option value="">No current zone</option>
+
+                                @foreach($assignmentCenters as $center)
+                                    @foreach($center['zones'] as $zone)
+                                        <option
+                                            value="{{ $zone['id'] }}"
+                                            data-center-id="{{ $center['id'] }}"
+                                            @selected(
+                                                (int) ($application['current_zone_id'] ?? 0)
+                                                === (int) $zone['id']
+                                            )
+                                        >
+                                            {{ $zone['name'] }}
+                                            @if(! empty($zone['code']))
+                                                ({{ $zone['code'] }})
+                                            @endif
+                                        </option>
+                                    @endforeach
+                                @endforeach
+                            </select>
+                        </div>
+
+                        <div class="detail-item">
+                            <small>Current assignment</small>
+                            <strong>{{ $application['home_sorting_center'] }}</strong>
+                            <span>{{ $application['current_zone'] }}</span>
+                        </div>
+
+                        <div class="detail-item">
+                            <small>Submitted</small>
+                            <strong>{{ $application['submitted'] }}</strong>
+                        </div>
+
+                        <div class="detail-item">
+                            <button
+                                class="button button-primary"
+                                type="submit"
+                            >
+                                <i data-lucide="save"></i>
+                                Save assignment
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            @else
+                <div class="panel-body detail-list">
+                    <div class="detail-item">
+                        <small>Vehicle type</small>
+                        <strong>{{ $application['vehicle'] }}</strong>
+                    </div>
+
+                    <div class="detail-item">
+                        <small>Plate number</small>
+                        <strong>{{ $application['plate'] }}</strong>
+                    </div>
+
+                    <div class="detail-item">
+                        <small>Area</small>
+                        <strong>{{ $application['area'] }}</strong>
+                    </div>
+
+                    <div class="detail-item">
+                        <small>Submitted</small>
+                        <strong>{{ $application['submitted'] }}</strong>
+                    </div>
                 </div>
-            </div>
+            @endif
         </section>
 
         <section class="panel">
@@ -338,4 +449,45 @@
         </section>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const centerSelect = document.getElementById('rider-home-sorting-center');
+    const zoneSelect = document.getElementById('rider-current-zone');
+
+    if (!centerSelect || !zoneSelect) {
+        return;
+    }
+
+    const synchronizeZones = () => {
+        const selectedCenterId = centerSelect.value;
+        let selectedZoneStillValid = false;
+
+        Array.from(zoneSelect.options).forEach((option) => {
+            if (!option.value) {
+                option.hidden = false;
+                option.disabled = false;
+                return;
+            }
+
+            const belongsToCenter =
+                option.dataset.centerId === selectedCenterId;
+
+            option.hidden = !belongsToCenter;
+            option.disabled = !belongsToCenter;
+
+            if (option.selected && belongsToCenter) {
+                selectedZoneStillValid = true;
+            }
+        });
+
+        if (!selectedZoneStillValid) {
+            zoneSelect.value = '';
+        }
+    };
+
+    centerSelect.addEventListener('change', synchronizeZones);
+    synchronizeZones();
+});
+</script>
 @endsection

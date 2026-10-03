@@ -632,6 +632,9 @@ Route::prefix('logistics')->name('logistics.')->group(function () {
         Route::get('/riders/{id}', [LogisticsController::class, 'showRider'])
             ->name('riders.show');
 
+        Route::patch('/riders/{user}/assignment', [LogisticsController::class, 'updateRiderAssignment'])
+            ->name('riders.assignment.update');
+
         Route::get('/pickups', [LogisticsController::class, 'pickups'])
             ->name('pickups.index');
 

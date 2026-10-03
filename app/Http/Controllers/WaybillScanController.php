@@ -6,6 +6,7 @@ use App\Models\SortingCenter;
 use App\Models\Waybill;
 use App\Services\ParcelIntakeService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
 class WaybillScanController extends Controller
@@ -103,5 +104,54 @@ class WaybillScanController extends Controller
             'message' => 'Parcel received at sorting center.',
             'data' => $receivedWaybill,
         ]);
+    }
+
+    public function receiveForm(
+        Request $request,
+        ParcelIntakeService $service
+    ): RedirectResponse {
+        $data = $request->validate([
+            'identifier' => [
+                'required',
+                'string',
+                'max:120',
+            ],
+            'sorting_center_id' => [
+                'required',
+                'integer',
+            ],
+        ]);
+
+        $logisticsProfileId = $request
+            ->user()
+            ->logisticsProfile
+            ?->id;
+
+        abort_unless($logisticsProfileId, 403);
+
+        $waybill = Waybill::query()
+            ->forLogisticsProfile($logisticsProfileId)
+            ->matchingIdentifier(trim($data['identifier']))
+            ->firstOrFail();
+
+        $center = SortingCenter::query()
+            ->where(
+                'logistics_profile_id',
+                $logisticsProfileId
+            )
+            ->where('status', 'active')
+            ->findOrFail($data['sorting_center_id']);
+
+        $service->receive(
+            $waybill,
+            $center,
+            $request->user(),
+            'manual'
+        );
+
+        return back()->with(
+            'success',
+            "{$waybill->waybill_no} was received at {$center->name}."
+        );
     }
 }

@@ -19,4 +19,12 @@ class SortingZone extends Model
     {
         return $this->belongsTo(SortingCenter::class);
     }
+
+    public function parcels()
+    {
+        return $this->hasMany(
+            Parcel::class,
+            'current_zone_id'
+        );
+    }
 }

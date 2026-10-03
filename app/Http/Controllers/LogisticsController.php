@@ -3,8 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Enums\AccountStatus;
+use App\Enums\ParcelStatus;
 use App\Enums\ShipmentStatus;
 use App\Enums\UserRole;
+use App\Models\Parcel;
 use App\Models\PickupAssignment;
 use App\Models\PickupRequest;
 use App\Models\SortingCenter;
@@ -14,8 +16,10 @@ use App\Models\LogisticsProfile;
 use App\Models\RiderProfile;
 use App\Models\ShipmentEvent;
 use App\Models\User;
+use App\Models\Waybill;
 use App\Services\EmailVerificationService;
 use App\Services\InternationalPhone;
+use App\Services\ParcelSortingService;
 use App\Services\RegistrationLifecycleService;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
@@ -1496,62 +1500,344 @@ class LogisticsController extends Controller
 
     public function incoming(): View
     {
+        $profile = request()->user()->logisticsProfile;
+
+        abort_unless($profile, 404);
+
+        $sortingCenters = $profile->sortingCenters()
+            ->where('status', 'active')
+            ->orderBy('name')
+            ->get();
+        $centerIds = $sortingCenters->pluck('id');
+
+        $waybills = Waybill::query()
+            ->forLogisticsProfile($profile->id)
+            ->whereHas(
+                'parcels',
+                fn ($query) => $query->whereIn(
+                    'current_sorting_center_id',
+                    $centerIds
+                )
+            )
+            ->with([
+                'shipment.sellerOrder.order',
+                'shipment.sellerOrder.store',
+                'parcels' => fn ($query) => $query
+                    ->whereIn('current_sorting_center_id', $centerIds)
+                    ->with([
+                        'events',
+                        'pickupRequests.latestAssignment.riderProfile.user',
+                    ]),
+            ])
+            ->latest('updated_at')
+            ->get();
+
+        $exceptionStatuses = [
+            ParcelStatus::Failed->value,
+            ParcelStatus::Lost->value,
+            ParcelStatus::Damaged->value,
+        ];
+
+        $incomingParcels = $waybills->map(function (Waybill $waybill) use (
+            $exceptionStatuses
+        ): array {
+            $parcels = $waybill->parcels;
+            $order = $waybill->shipment?->sellerOrder?->order;
+            $assignment = $parcels
+                ->flatMap->pickupRequests
+                ->sortByDesc('created_at')
+                ->first()
+                ?->latestAssignment;
+            $receivedAt = $parcels
+                ->flatMap->events
+                ->where('event_type', 'received_at_center')
+                ->sortByDesc('occurred_at')
+                ->first()
+                ?->occurred_at;
+
+            $status = $parcels->contains(
+                fn (Parcel $parcel) => in_array(
+                    $parcel->status,
+                    $exceptionStatuses,
+                    true
+                )
+            )
+                ? 'Exception'
+                : ($parcels->isNotEmpty()
+                    && $parcels->every(
+                        fn (Parcel $parcel) =>
+                            $parcel->status === ParcelStatus::Sorted->value
+                    )
+                        ? 'Sorted'
+                        : 'Received');
+
+            return [
+                'waybill' => $waybill->waybill_no,
+                'order' => $waybill->shipment
+                    ?->sellerOrder
+                    ?->seller_order_no ?: '—',
+                'seller' => $waybill->shipment
+                    ?->sellerOrder
+                    ?->store
+                    ?->name ?: 'Unknown Seller',
+                'rider' => $assignment
+                    ?->riderProfile
+                    ?->user
+                    ?->name ?: 'Not recorded',
+                'received' => $receivedAt
+                    ?->format('M j, Y · g:i A') ?: 'Not recorded',
+                'pieces' => $parcels->count(),
+                'weight' => number_format(
+                    (float) $parcels->sum('weight_kg'),
+                    2
+                ).' kg',
+                'destination' => collect([
+                    $order?->city_municipality,
+                    $order?->province,
+                ])->filter()->implode(', ') ?: 'Not provided',
+                'status' => $status,
+            ];
+        })->values();
+
+        $receivedToday = Parcel::query()
+            ->whereIn('current_sorting_center_id', $centerIds)
+            ->whereHas(
+                'shipment',
+                fn ($query) => $query->where(
+                    'logistics_profile_id',
+                    $profile->id
+                )
+            )
+            ->whereHas(
+                'events',
+                fn ($query) => $query
+                    ->where('event_type', 'received_at_center')
+                    ->whereDate('occurred_at', today())
+            )
+            ->with('shipment.sellerOrder')
+            ->get();
+
         return view('logistics.sorting.incoming', $this->shared() + [
-            'incomingParcels' => [
-                ['waybill' => 'BRL-983428', 'order' => 'ORD-50214', 'seller' => 'Mara Home Goods', 'rider' => 'Nico Flores', 'received' => 'Sep 20, 2026 · 2:28 PM', 'pieces' => 2, 'weight' => '3.4 kg', 'destination' => 'San Pablo North', 'status' => 'AT_SORTING_CENTER'],
-                ['waybill' => 'BRL-983427', 'order' => 'ORD-50211', 'seller' => 'TechVault PH', 'rider' => 'Anne Cruz', 'received' => 'Sep 20, 2026 · 2:19 PM', 'pieces' => 1, 'weight' => '0.8 kg', 'destination' => 'Calauan / Bay', 'status' => 'AT_SORTING_CENTER'],
-                ['waybill' => 'BRL-983426', 'order' => 'ORD-50208', 'seller' => 'Everyday Finds', 'rider' => 'Nico Flores', 'received' => 'Sep 20, 2026 · 1:54 PM', 'pieces' => 4, 'weight' => '6.1 kg', 'destination' => 'Pila / Sta. Cruz', 'status' => 'Logged'],
-                ['waybill' => 'BRL-983425', 'order' => 'ORD-50202', 'seller' => 'Little Sprout', 'rider' => 'Marco Lim', 'received' => 'Sep 20, 2026 · 1:37 PM', 'pieces' => 1, 'weight' => '1.2 kg', 'destination' => 'San Pablo South', 'status' => 'Exception'],
+            'incomingParcels' => $incomingParcels,
+            'sortingCenters' => $sortingCenters,
+            'intakeMetrics' => [
+                'received_today' => $receivedToday->count(),
+                'seller_pickups' => $receivedToday
+                    ->pluck('shipment.sellerOrder.store_id')
+                    ->filter()
+                    ->unique()
+                    ->count(),
+                'awaiting_sorting' => Parcel::query()
+                    ->whereIn('current_sorting_center_id', $centerIds)
+                    ->whereHas(
+                        'shipment',
+                        fn ($query) => $query->where(
+                            'logistics_profile_id',
+                            $profile->id
+                        )
+                    )
+                    ->where('status', ParcelStatus::Received->value)
+                    ->count(),
+                'total_weight' => number_format(
+                    (float) $receivedToday->sum('weight_kg'),
+                    2
+                ),
+                'exceptions' => Parcel::query()
+                    ->whereIn('current_sorting_center_id', $centerIds)
+                    ->whereHas(
+                        'shipment',
+                        fn ($query) => $query->where(
+                            'logistics_profile_id',
+                            $profile->id
+                        )
+                    )
+                    ->whereIn('status', $exceptionStatuses)
+                    ->count(),
             ],
         ]);
     }
 
-    public function sorting()
+    public function sorting(): View
     {
+        $profile = request()->user()->logisticsProfile;
+
+        abort_unless($profile, 404);
+
+        $sortingCenters = $profile->sortingCenters()
+            ->where('status', 'active')
+            ->with([
+                'zones' => fn ($query) => $query
+                    ->where('status', 'active')
+                    ->orderBy('code'),
+            ])
+            ->orderBy('name')
+            ->get();
+        $centerIds = $sortingCenters->pluck('id');
+        $zonesByCenter = $sortingCenters->mapWithKeys(
+            fn (SortingCenter $center): array => [
+                $center->id => $center->zones
+                    ->map(fn (SortingZone $zone): array => [
+                        'id' => $zone->id,
+                        'code' => $zone->code,
+                        'name' => $zone->name,
+                    ])
+                    ->values()
+                    ->all(),
+            ]
+        );
+
+        $exceptionStatuses = [
+            ParcelStatus::Failed->value,
+            ParcelStatus::Lost->value,
+            ParcelStatus::Damaged->value,
+        ];
+
+        $parcelRecords = Parcel::query()
+            ->whereIn('current_sorting_center_id', $centerIds)
+            ->whereIn('status', [
+                ParcelStatus::Received->value,
+                ParcelStatus::Sorted->value,
+                ...$exceptionStatuses,
+            ])
+            ->whereHas(
+                'shipment',
+                fn ($query) => $query->where(
+                    'logistics_profile_id',
+                    $profile->id
+                )
+            )
+            ->with([
+                'waybill',
+                'shipment.sellerOrder.order',
+                'shipment.sellerOrder.store',
+                'currentZone',
+            ])
+            ->latest('last_event_at')
+            ->get();
+
+        $parcels = $parcelRecords->map(function (Parcel $parcel) use (
+            $exceptionStatuses,
+            $zonesByCenter
+        ): array {
+            $order = $parcel->shipment?->sellerOrder?->order;
+            $isException = in_array(
+                $parcel->status,
+                $exceptionStatuses,
+                true
+            );
+
+            return [
+                'id' => $parcel->id,
+                'waybill' => $parcel->waybill?->waybill_no
+                    ?: $parcel->parcel_no,
+                'parcel_no' => $parcel->parcel_no,
+                'seller' => $parcel->shipment
+                    ?->sellerOrder
+                    ?->store
+                    ?->name ?: 'Unknown Seller',
+                'destination' => collect([
+                    $order?->city_municipality,
+                    $order?->province,
+                ])->filter()->implode(', ') ?: 'Not provided',
+                'zone_id' => $parcel->current_zone_id,
+                'zone' => $parcel->currentZone?->code ?: '',
+                'zones' => $zonesByCenter
+                    ->get($parcel->current_sorting_center_id, []),
+                'size' => $parcel->size_class
+                    ? ucwords($parcel->size_class)
+                    : 'Not classified',
+                'status' => $isException
+                    ? 'Exception'
+                    : ucfirst($parcel->status),
+                'can_sort' => ! $isException,
+            ];
+        })->values();
+
         return view('logistics.sorting.center', $this->shared() + [
-            'parcels' => [
-                [
-                    'waybill' => 'BRL-983410',
-                    'seller' => 'TechVault PH',
-                    'destination' => 'San Pablo City',
-                    'zone' => 'SP-N1',
-                    'size' => 'Small',
-                    'status' => 'Received',
-                ],
-                [
-                    'waybill' => 'BRL-983411',
-                    'seller' => 'TechVault PH',
-                    'destination' => 'San Pablo City',
-                    'zone' => 'SP-N2',
-                    'size' => 'Medium',
-                    'status' => 'Sorted',
-                ],
-                [
-                    'waybill' => 'BRL-983412',
-                    'seller' => 'Mara Home Goods',
-                    'destination' => 'Pila',
-                    'zone' => 'PILA-1',
-                    'size' => 'Large',
-                    'status' => 'Received',
-                ],
-                [
-                    'waybill' => 'BRL-983413',
-                    'seller' => 'Little Sprout',
-                    'destination' => 'Calauan',
-                    'zone' => 'CAL-1',
-                    'size' => 'Small',
-                    'status' => 'Sorted',
-                ],
-                [
-                    'waybill' => 'BRL-983414',
-                    'seller' => 'Mara Home Goods',
-                    'destination' => 'Sta. Cruz',
-                    'zone' => 'STC-2',
-                    'size' => 'Medium',
-                    'status' => 'Exception',
-                ],
+            'parcels' => $parcels,
+            'sortingZones' => $sortingCenters
+                ->flatMap->zones
+                ->values(),
+            'sortingMetrics' => [
+                'unsorted' => $parcelRecords
+                    ->where('status', ParcelStatus::Received->value)
+                    ->count(),
+                'sorted_today' => ShipmentEvent::query()
+                    ->whereIn('sorting_center_id', $centerIds)
+                    ->whereHas(
+                        'shipment',
+                        fn ($query) => $query->where(
+                            'logistics_profile_id',
+                            $profile->id
+                        )
+                    )
+                    ->whereIn('event_type', [
+                        'parcel_sorted',
+                        'parcel_resorted',
+                    ])
+                    ->whereDate('occurred_at', today())
+                    ->count(),
+                'active_zones' => $sortingCenters
+                    ->sum(fn (SortingCenter $center) =>
+                        $center->zones->count()
+                    ),
+                'exceptions' => $parcelRecords
+                    ->whereIn('status', $exceptionStatuses)
+                    ->count(),
             ],
         ]);
+    }
+
+    public function sortParcel(
+        Request $request,
+        Parcel $parcel,
+        ParcelSortingService $service
+    ): RedirectResponse {
+        $data = $request->validate([
+            'sorting_zone_id' => [
+                'required',
+                'integer',
+            ],
+        ]);
+
+        $profile = $request->user()->logisticsProfile;
+
+        abort_unless($profile, 403);
+
+        $parcel = Parcel::query()
+            ->whereHas(
+                'shipment',
+                fn ($query) => $query->where(
+                    'logistics_profile_id',
+                    $profile->id
+                )
+            )
+            ->whereHas(
+                'currentSortingCenter',
+                fn ($query) => $query
+                    ->where('logistics_profile_id', $profile->id)
+                    ->where('status', 'active')
+            )
+            ->findOrFail($parcel->id);
+
+        $zone = SortingZone::query()
+            ->where('sorting_center_id', $parcel->current_sorting_center_id)
+            ->where('status', 'active')
+            ->whereHas(
+                'sortingCenter',
+                fn ($query) => $query->where(
+                    'logistics_profile_id',
+                    $profile->id
+                )
+            )
+            ->findOrFail($data['sorting_zone_id']);
+
+        $service->sort($parcel, $zone, $request->user());
+
+        return back()->with(
+            'success',
+            "{$parcel->parcel_no} was assigned to {$zone->code}."
+        );
     }
 
     public function dispatch()

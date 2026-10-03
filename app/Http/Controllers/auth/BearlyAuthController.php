@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Storage;
 use Throwable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Password;
@@ -32,8 +33,10 @@ class BearlyAuthController extends Controller
         return view('auth.login');
     }
 
-    public function showRegister(): View
+    public function showRegister(Request $request): View
     {
+        $this->activeGoogleRegistration($request);
+
         return view('auth.register');
     }
 
@@ -47,14 +50,25 @@ class BearlyAuthController extends Controller
         $email = strtolower(trim($credentials['email']));
         $request->merge(['email' => $email]);
 
-        $rateKey = 'login:' . hash_hmac(
+        $emailRateKey = 'login:email:' . hash_hmac(
             'sha256',
-            $email . '|' . $request->ip(),
+            $email,
+            (string) config('app.key')
+        );
+        $ipRateKey = 'login:ip:' . hash_hmac(
+            'sha256',
+            (string) $request->ip(),
             (string) config('app.key')
         );
 
-        if (RateLimiter::tooManyAttempts($rateKey, 5)) {
-            $seconds = RateLimiter::availableIn($rateKey);
+        if (
+            RateLimiter::tooManyAttempts($emailRateKey, 5)
+            || RateLimiter::tooManyAttempts($ipRateKey, 30)
+        ) {
+            $seconds = max(
+                RateLimiter::availableIn($emailRateKey),
+                RateLimiter::availableIn($ipRateKey)
+            );
 
             return back()
                 ->withInput($request->only('email'))
@@ -67,7 +81,8 @@ class BearlyAuthController extends Controller
             ['email' => $email, 'password' => $credentials['password']],
             $request->boolean('remember')
         )) {
-            RateLimiter::hit($rateKey, 60);
+            RateLimiter::hit($emailRateKey, 60);
+            RateLimiter::hit($ipRateKey, 60);
 
             return back()
                 ->withInput($request->only('email'))
@@ -76,7 +91,8 @@ class BearlyAuthController extends Controller
                 ]);
         }
 
-        RateLimiter::clear($rateKey);
+        RateLimiter::clear($emailRateKey);
+        RateLimiter::clear($ipRateKey);
 
         $request->session()->regenerate();
         $user = $request->user();
@@ -162,10 +178,11 @@ class BearlyAuthController extends Controller
             ? $googleUser->user
             : [];
 
-        if (
-            array_key_exists('email_verified', $rawGoogleUser)
-            && ! filter_var($rawGoogleUser['email_verified'], FILTER_VALIDATE_BOOLEAN)
-        ) {
+        $googleEmailVerified = $rawGoogleUser['email_verified']
+            ?? $rawGoogleUser['verified_email']
+            ?? false;
+
+        if (! filter_var($googleEmailVerified, FILTER_VALIDATE_BOOLEAN)) {
             return redirect()
                 ->route('login')
                 ->withErrors([
@@ -226,6 +243,9 @@ class BearlyAuthController extends Controller
             Auth::login($user);
             $request->session()->regenerate();
 
+            app(RegistrationLifecycleService::class)
+                ->syncActiveRole($user);
+
             $user->forceFill([
                 'last_login_at' => now(),
             ])->save();
@@ -275,10 +295,7 @@ class BearlyAuthController extends Controller
 
     public function register(Request $request): RedirectResponse
     {
-        $googleRegistration = $request->session()->get('google_registration');
-        $googleRegistration = is_array($googleRegistration)
-            ? $googleRegistration
-            : null;
+        $googleRegistration = $this->activeGoogleRegistration($request);
 
         $googleEmail = $googleRegistration
             ? strtolower(trim((string) ($googleRegistration['email'] ?? '')))
@@ -357,12 +374,13 @@ class BearlyAuthController extends Controller
             ? null
             : strtoupper(substr($data['middle_initial'], 0, 1)).'.';
 
-        $validIdPath = $request->file('valid_id')
-            ->store('registration-documents/valid-ids', 'local');
-
+        $validIdPath = null;
         $businessPermitPath = null;
 
         try {
+            $validIdPath = $request->file('valid_id')
+                ->store('registration-documents/valid-ids', 'local');
+
             $businessPermitPath = $data['role'] === UserRole::Seller->value
                 ? $request->file('business_permit')?->store(
                     'registration-documents/business-permits',
@@ -370,42 +388,87 @@ class BearlyAuthController extends Controller
                 )
                 : null;
 
-            $user = DB::transaction(fn () => User::create([
-                'name' => trim($data['first_name'].' '.($data['middle_initial'] ?? '').' '.$data['last_name']),
-                'first_name' => $data['first_name'],
-                'last_name' => $data['last_name'],
-                'middle_initial' => $data['middle_initial'] ?? null,
-                'sex' => $data['sex'],
-                'birthday' => $data['birthday'],
-                'email' => $data['email'],
-                'google_id' => $isGoogleRegistration
-                    ? (string) $googleRegistration['google_id']
-                    : null,
-                'contact_number' => $data['contact_number'],
-                'phone_country' => $data['phone_country'],
-                'phone_verified_at' => null,
-                'email_verified_at' => $verifiedAt,
-                'terms_accepted_at' => now(),
-                'terms_version' => config('bearly-policies.version'),
-                'privacy_version' => config('bearly-policies.version'),
-                'role' => $data['role'],
-                'status' => AccountStatus::Pending->value,
-                'province' => $data['province'],
-                'city' => $data['city'],
-                'barangay' => $data['barangay'],
-                'street_address' => trim(
-                    $data['house_number'].' '.$data['street_name']
-                ).', '.$data['postal_code'],
-                'business_name' => $data['role'] === UserRole::Seller->value
-                    ? ($data['business_name'] ?? null)
-                    : null,
-                'business_category' => $data['role'] === UserRole::Seller->value
-                    ? ($data['business_category'] ?? null)
-                    : null,
-                'valid_id_path' => $validIdPath,
-                'business_permit_path' => $businessPermitPath,
-                'password' => Hash::make($data['password']),
-            ]));
+            $user = DB::transaction(function () use (
+                $data,
+                $request,
+                $googleRegistration,
+                $isGoogleRegistration,
+                $verifiedAt,
+                $validIdPath,
+                $businessPermitPath
+            ): User {
+                $user = User::create([
+                    'name' => trim($data['first_name'].' '.($data['middle_initial'] ?? '').' '.$data['last_name']),
+                    'first_name' => $data['first_name'],
+                    'last_name' => $data['last_name'],
+                    'middle_initial' => $data['middle_initial'] ?? null,
+                    'sex' => $data['sex'],
+                    'birthday' => $data['birthday'],
+                    'email' => $data['email'],
+                    'google_id' => $isGoogleRegistration
+                        ? (string) $googleRegistration['google_id']
+                        : null,
+                    'contact_number' => $data['contact_number'],
+                    'phone_country' => $data['phone_country'],
+                    'phone_verified_at' => null,
+                    'email_verified_at' => $verifiedAt,
+                    'terms_accepted_at' => now(),
+                    'terms_version' => config('bearly-policies.version'),
+                    'privacy_version' => config('bearly-policies.version'),
+                    'role' => $data['role'],
+                    'status' => AccountStatus::Pending->value,
+                    'province' => $data['province'],
+                    'city' => $data['city'],
+                    'barangay' => $data['barangay'],
+                    'street_address' => trim(
+                        $data['house_number'].' '.$data['street_name']
+                    ).', '.$data['postal_code'],
+                    'business_name' => $data['role'] === UserRole::Seller->value
+                        ? ($data['business_name'] ?? null)
+                        : null,
+                    'business_category' => $data['role'] === UserRole::Seller->value
+                        ? ($data['business_category'] ?? null)
+                        : null,
+                    'valid_id_path' => $validIdPath,
+                    'business_permit_path' => $businessPermitPath,
+                    'password' => Hash::make($data['password']),
+                ]);
+
+                app(RegistrationLifecycleService::class)
+                    ->recordPendingApplication(
+                        $user,
+                        $data['role'],
+                        [
+                            'house_number' => $data['house_number'],
+                            'street_name' => $data['street_name'],
+                            'barangay' => $data['barangay'],
+                            'city' => $data['city'],
+                            'province' => $data['province'],
+                            'postal_code' => $data['postal_code'],
+                            'city_code' => $data['city_code'] ?? null,
+                        ],
+                        [
+                            'business_name' => $data['business_name'] ?? null,
+                            'business_category' => $data['business_category'] ?? null,
+                        ],
+                        array_values(array_filter([
+                            [
+                                'type' => 'valid_id',
+                                'path' => $validIdPath,
+                                'file' => $request->file('valid_id'),
+                            ],
+                            $businessPermitPath
+                                ? [
+                                    'type' => 'business_permit',
+                                    'path' => $businessPermitPath,
+                                    'file' => $request->file('business_permit'),
+                                ]
+                                : null,
+                        ]))
+                    );
+
+                return $user;
+            });
         } catch (Throwable $exception) {
             Storage::disk('local')->delete(
                 array_filter([$validIdPath, $businessPermitPath])
@@ -414,42 +477,6 @@ class BearlyAuthController extends Controller
             throw $exception;
         }
 
-        app(RegistrationLifecycleService::class)
-            ->recordPendingApplication(
-                $user,
-                $data['role'],
-                [
-                    'house_number' => $data['house_number'],
-                    'street_name' => $data['street_name'],
-                    'barangay' => $data['barangay'],
-                    'city' => $data['city'],
-                    'province' => $data['province'],
-                    'postal_code' => $data['postal_code'],
-                    'city_code' => $data['city_code'] ?? null,
-                ],
-                [
-                    'business_name' =>
-                        $data['business_name'] ?? null,
-                    'business_category' =>
-                        $data['business_category'] ?? null,
-                ],
-                array_values(array_filter([
-                    [
-                        'type' => 'valid_id',
-                        'path' => $validIdPath,
-                        'file' => $request->file('valid_id'),
-                    ],
-                    $businessPermitPath
-                        ? [
-                            'type' => 'business_permit',
-                            'path' => $businessPermitPath,
-                            'file' => $request->file(
-                                'business_permit'
-                            ),
-                        ]
-                        : null,
-                ]))
-            );
         $verification->forget($request);
 
         $request->session()->forget([
@@ -587,5 +614,34 @@ class BearlyAuthController extends Controller
         return redirect()->route('login')->withErrors([
             'email' => $messages[$status] ?? 'Your account is not available.',
         ]);
+    }
+
+    private function activeGoogleRegistration(Request $request): ?array
+    {
+        $registration = $request->session()->get('google_registration');
+
+        if (! is_array($registration)) {
+            return null;
+        }
+
+        try {
+            $verifiedAt = Carbon::parse((string) ($registration['verified_at'] ?? ''));
+        } catch (Throwable) {
+            $request->session()->forget('google_registration');
+
+            return null;
+        }
+
+        if (
+            $verifiedAt
+                ->addSeconds((int) config('auth.google_registration_ttl', 600))
+                ->isPast()
+        ) {
+            $request->session()->forget('google_registration');
+
+            return null;
+        }
+
+        return $registration;
     }
 }

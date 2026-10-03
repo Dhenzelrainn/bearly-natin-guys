@@ -13,6 +13,7 @@ use App\Models\RiderProfile;
 use App\Models\Role;
 use App\Models\SellerProfile;
 use App\Models\SortingCenter;
+use App\Models\SortingZone;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -727,21 +728,121 @@ class RegistrationLifecycleService
                 );
             }
 
-            RiderProfile::updateOrCreate(
-                ['user_id' => $user->id],
-                [
-                    'logistics_profile_id' =>
-                        $sponsorProfile->id,
-                    'vehicle_type' =>
-                        $user->vehicle_type
-                        ?: 'Not specified',
-                    'plate_number' =>
-                        $user->plate_number,
-                    'availability_status' => 'offline',
-                    'verification_status' => 'approved',
-                ]
+            $this->ensureRiderProfile(
+                $user,
+                $sponsorProfile
             );
+
+            return;
         }
+    }
+
+    private function ensureRiderProfile(
+        User $user,
+        LogisticsProfile $sponsorProfile
+    ): RiderProfile {
+        $profile = RiderProfile::query()
+            ->where(
+                'user_id',
+                $user->id
+            )
+            ->first();
+
+        $isNew = ! $profile;
+
+        if (! $profile) {
+            $profile = new RiderProfile([
+                'user_id' => $user->id,
+            ]);
+        }
+
+        $validHomeCenter = null;
+
+        if ($profile->home_sorting_center_id) {
+            $validHomeCenter =
+                SortingCenter::query()
+                    ->whereKey(
+                        $profile
+                            ->home_sorting_center_id
+                    )
+                    ->where(
+                        'logistics_profile_id',
+                        $sponsorProfile->id
+                    )
+                    ->where(
+                        'status',
+                        'active'
+                    )
+                    ->first();
+        }
+
+        if (! $validHomeCenter) {
+            $validHomeCenter =
+                SortingCenter::query()
+                    ->where(
+                        'logistics_profile_id',
+                        $sponsorProfile->id
+                    )
+                    ->where(
+                        'status',
+                        'active'
+                    )
+                    ->oldest('id')
+                    ->first();
+
+            $profile->home_sorting_center_id =
+                $validHomeCenter?->id;
+
+            $profile->current_zone_id = null;
+        }
+
+        if (
+            $profile->current_zone_id
+            && $profile->home_sorting_center_id
+        ) {
+            $currentZoneIsValid =
+                SortingZone::query()
+                    ->whereKey(
+                        $profile->current_zone_id
+                    )
+                    ->where(
+                        'sorting_center_id',
+                        $profile
+                            ->home_sorting_center_id
+                    )
+                    ->where(
+                        'status',
+                        'active'
+                    )
+                    ->exists();
+
+            if (! $currentZoneIsValid) {
+                $profile->current_zone_id =
+                    null;
+            }
+        }
+
+        $profile->logistics_profile_id =
+            $sponsorProfile->id;
+
+        $profile->vehicle_type =
+            $user->vehicle_type
+            ?: 'Not specified';
+
+        $profile->plate_number =
+            $user->plate_number;
+
+        if ($isNew) {
+            $profile->availability_status =
+                'offline';
+        }
+
+        $profile->verification_status =
+            'approved';
+
+        $profile->save();
+
+        return $profile->refresh();
     }
 
     private function ensureLogisticsProfile(

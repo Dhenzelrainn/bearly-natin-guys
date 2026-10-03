@@ -19,4 +19,22 @@ class ShipmentEvent extends Model
     {
         return $this->belongsTo(Shipment::class);
     }
+
+    public function parcel()
+    {
+        return $this->belongsTo(Parcel::class);
+    }
+
+    public function sortingCenter()
+    {
+        return $this->belongsTo(SortingCenter::class);
+    }
+
+    public function sortingZone()
+    {
+        return $this->belongsTo(
+            SortingZone::class,
+            'sorting_zone_id'
+        );
+    }
 }

@@ -25,4 +25,12 @@ class SortingCenter extends Model
     {
         return $this->hasMany(SortingZone::class);
     }
+
+    public function parcels()
+    {
+        return $this->hasMany(
+            Parcel::class,
+            'current_sorting_center_id'
+        );
+    }
 }

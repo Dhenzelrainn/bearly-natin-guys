@@ -657,8 +657,14 @@ Route::prefix('logistics')->name('logistics.')->group(function () {
         Route::get('/incoming', [LogisticsController::class, 'incoming'])
             ->name('sorting.incoming');
 
+        Route::post('/incoming/receive', [WaybillScanController::class, 'receiveForm'])
+            ->name('sorting.incoming.receive');
+
         Route::get('/sorting', [LogisticsController::class, 'sorting'])
             ->name('sorting.center');
+
+        Route::patch('/sorting/parcels/{parcel}', [LogisticsController::class, 'sortParcel'])
+            ->name('sorting.parcels.update');
 
         Route::get('/dispatch', [LogisticsController::class, 'dispatch'])
             ->name('dispatch.index');

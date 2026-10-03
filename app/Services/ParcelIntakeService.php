@@ -51,6 +51,12 @@ class ParcelIntakeService
                 );
             }
 
+            if ($center->status !== 'active') {
+                throw new ConflictHttpException(
+                    'Parcels can only be received into an active Sorting Center.'
+                );
+            }
+
             /*
              * Lock the waybill so concurrent scans of the same waybill
              * cannot both process its parcels.

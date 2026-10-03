@@ -335,6 +335,9 @@ Route::prefix('logistics')
             Route::get('/monitoring', [LogisticsController::class, 'monitoring'])->name('dispatch.monitoring');
             Route::get('/reports', [LogisticsController::class, 'reports'])->name('reports.index');
             Route::get('/messages', [LogisticsController::class, 'messages'])->name('messages.index');
+            Route::patch('/account/profile', [LogisticsController::class, 'updateProfile'])->name('profile.update');
+            Route::patch('/account/password', [LogisticsController::class, 'updatePassword'])->name('profile.password.update');
+            Route::patch('/account/facility', [LogisticsController::class, 'updateFacility'])->name('profile.facility.update');
             Route::get('/account', [LogisticsController::class, 'account'])->name('profile.index');
             Route::get('/api/waybills/{identifier}', [WaybillScanController::class, 'show'])->name('waybills.lookup');
             Route::post('/api/waybills/{identifier}/receive', [WaybillScanController::class, 'receive'])->name('waybills.receive');

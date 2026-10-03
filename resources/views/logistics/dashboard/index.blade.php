@@ -24,8 +24,8 @@
     <section class="panel">
         <div class="panel-header"><div><h3>Needs attention</h3><p>Items requiring an operator decision.</p></div></div>
         <div class="panel-body attention-list">
-            <a class="attention-item" href="{{ route('logistics.riders.index') }}"><i data-lucide="user-round-check"></i><span><strong>3 rider applications</strong><small>Credentials are ready for review</small></span><i data-lucide="chevron-right"></i></a>
-            <a class="attention-item" href="{{ route('logistics.pickups.index') }}"><i data-lucide="package-check"></i><span><strong>2 pickup requests</strong><small>Seller requests are awaiting verification</small></span><i data-lucide="chevron-right"></i></a>
+            <a class="attention-item" href="{{ route('logistics.riders.index') }}"><i data-lucide="user-round-check"></i><span><strong>{{ $pendingRiderCount }} rider {{ $pendingRiderCount === 1 ? 'application' : 'applications' }}</strong><small>Credentials are ready for review</small></span><i data-lucide="chevron-right"></i></a>
+            <a class="attention-item" href="{{ route('logistics.pickups.index') }}"><i data-lucide="package-check"></i><span><strong>{{ $pendingPickupCount }} pickup {{ $pendingPickupCount === 1 ? 'request' : 'requests' }}</strong><small>Seller requests are awaiting verification</small></span><i data-lucide="chevron-right"></i></a>
             <a class="attention-item" href="{{ route('logistics.sorting.center') }}"><i data-lucide="triangle-alert"></i><span><strong>1 sorting exception</strong><small>Destination zone needs correction</small></span><i data-lucide="chevron-right"></i></a>
         </div>
     </section>

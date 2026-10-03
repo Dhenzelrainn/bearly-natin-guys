@@ -22,4 +22,12 @@ class Parcel extends Model
     {
         return $this->hasMany(ShipmentEvent::class);
     }
+
+    public function pickupRequests()
+    {
+        return $this->belongsToMany(
+            PickupRequest::class,
+            'pickup_request_parcels'
+        )->withPivot('added_at');
+    }
 }

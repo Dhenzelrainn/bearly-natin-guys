@@ -30,4 +30,9 @@ class LogisticsProfile extends Model
     {
         return $this->hasMany(Shipment::class);
     }
+
+    public function pickupRequests()
+    {
+        return $this->hasMany(PickupRequest::class);
+    }
 }

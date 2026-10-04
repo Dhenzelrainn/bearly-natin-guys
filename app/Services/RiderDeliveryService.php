@@ -3,15 +3,19 @@
 namespace App\Services;
 
 use App\Enums\AccountStatus;
+use App\Enums\DeliveryAttemptOutcome;
 use App\Enums\ParcelStatus;
 use App\Enums\ShipmentStatus;
 use App\Enums\UserRole;
+use App\Models\DeliveryAttempt;
 use App\Models\DispatchBatch;
 use App\Models\Parcel;
 use App\Models\Shipment;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use InvalidArgumentException;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 class RiderDeliveryService
@@ -322,6 +326,250 @@ class RiderDeliveryService
                     'parcels',
                     'events',
                 ]);
+            },
+            3
+        );
+    }
+
+        /**
+     * @return Collection<int, DeliveryAttempt>
+     */
+    public function recordAttempt(
+        string $shipmentNo,
+        User $actor,
+        DeliveryAttemptOutcome $outcome,
+        ?string $failureReason = null,
+        ?string $notes = null,
+        ?float $latitude = null,
+        ?float $longitude = null,
+        mixed $nextAttemptAt = null
+    ): Collection {
+        return DB::transaction(
+            function () use (
+                $shipmentNo,
+                $actor,
+                $outcome,
+                $failureReason,
+                $notes,
+                $latitude,
+                $longitude,
+                $nextAttemptAt
+            ) {
+                if (
+                    $actor->role
+                        !== UserRole::Rider->value
+                    || $actor->status
+                        !== AccountStatus::Active->value
+                ) {
+                    throw new AuthorizationException(
+                        'Only an active Rider can record a delivery attempt.'
+                    );
+                }
+
+                $rider = $actor
+                    ->riderProfile()
+                    ->first();
+
+                if (
+                    ! $rider
+                    || $rider->verification_status
+                        !== 'approved'
+                ) {
+                    throw new AuthorizationException(
+                        'An approved Rider profile is required.'
+                    );
+                }
+
+                if (
+                    $outcome === DeliveryAttemptOutcome::Failed
+                    && blank($failureReason)
+                ) {
+                    throw new InvalidArgumentException(
+                        'A failure reason is required for a failed delivery attempt.'
+                    );
+                }
+
+                if (
+                    $outcome === DeliveryAttemptOutcome::Delivered
+                    && (
+                        filled($failureReason)
+                        || $nextAttemptAt !== null
+                    )
+                ) {
+                    throw new InvalidArgumentException(
+                        'Successful attempts cannot have a failure reason or retry schedule.'
+                    );
+                }
+
+                $shipment = Shipment::query()
+                    ->where(
+                        'shipment_no',
+                        $shipmentNo
+                    )
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                if (
+                    (int) $shipment->logistics_profile_id
+                    !== (int) $rider->logistics_profile_id
+                ) {
+                    throw new AuthorizationException(
+                        'This shipment does not belong to your Logistics provider.'
+                    );
+                }
+
+                $batches = DispatchBatch::query()
+                    ->where(
+                        'rider_profile_id',
+                        $rider->id
+                    )
+                    ->where(
+                        'status',
+                        'dispatched'
+                    )
+                    ->whereHas(
+                        'parcels',
+                        fn ($query) =>
+                            $query->where(
+                                'parcels.shipment_id',
+                                $shipment->id
+                            )
+                    )
+                    ->with([
+                        'parcels' =>
+                            fn ($query) =>
+                                $query->where(
+                                    'parcels.shipment_id',
+                                    $shipment->id
+                                ),
+                    ])
+                    ->lockForUpdate()
+                    ->get();
+
+                if ($batches->isEmpty()) {
+                    throw new AuthorizationException(
+                        'This shipment is not assigned to this Rider.'
+                    );
+                }
+
+                $parcelBatchIds = [];
+
+                foreach ($batches as $batch) {
+                    foreach ($batch->parcels as $parcel) {
+                        $parcelBatchIds[
+                            $parcel->id
+                        ] = $batch->id;
+                    }
+                }
+
+                $parcelIds = collect(
+                    array_keys(
+                        $parcelBatchIds
+                    )
+                );
+
+                if ($parcelIds->isEmpty()) {
+                    throw new AuthorizationException(
+                        'No assigned parcels were found.'
+                    );
+                }
+
+                /*
+                * Lock the parcel rows themselves.
+                *
+                * Attempt numbering is unique per
+                * parcel, so serializing access to
+                * these parcel rows protects the
+                * max(attempt_no) + 1 calculation.
+                */
+                $parcels = Parcel::query()
+                    ->whereIn(
+                        'id',
+                        $parcelIds
+                    )
+                    ->where(
+                        'shipment_id',
+                        $shipment->id
+                    )
+                    ->lockForUpdate()
+                    ->get();
+
+                if (
+                    $parcels->contains(
+                        fn (Parcel $parcel) =>
+                            $parcel->status
+                            !== ParcelStatus::OutForDelivery
+                                ->value
+                    )
+                ) {
+                    throw new ConflictHttpException(
+                        'Only out-for-delivery parcels can record a delivery attempt.'
+                    );
+                }
+
+                $now = now();
+
+                $attempts = collect();
+
+                foreach ($parcels as $parcel) {
+                    $latestAttemptNo =
+                        (int) DeliveryAttempt::query()
+                            ->where(
+                                'parcel_id',
+                                $parcel->id
+                            )
+                            ->max(
+                                'attempt_no'
+                            );
+
+                    $attempts->push(
+                        DeliveryAttempt::query()
+                            ->create([
+                                'parcel_id' =>
+                                    $parcel->id,
+
+                                'dispatch_batch_id' =>
+                                    $parcelBatchIds[
+                                        $parcel->id
+                                    ],
+
+                                'rider_profile_id' =>
+                                    $rider->id,
+
+                                'attempt_no' =>
+                                    $latestAttemptNo + 1,
+
+                                'outcome' =>
+                                    $outcome->value,
+
+                                'failure_reason' =>
+                                    $outcome
+                                        === DeliveryAttemptOutcome::Failed
+                                        ? $failureReason
+                                        : null,
+
+                                'notes' =>
+                                    $notes,
+
+                                'latitude' =>
+                                    $latitude,
+
+                                'longitude' =>
+                                    $longitude,
+
+                                'attempted_at' =>
+                                    $now,
+
+                                'next_attempt_at' =>
+                                    $outcome
+                                        === DeliveryAttemptOutcome::Failed
+                                        ? $nextAttemptAt
+                                        : null,
+                            ])
+                    );
+                }
+
+                return $attempts;
             },
             3
         );

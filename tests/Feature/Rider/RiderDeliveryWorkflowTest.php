@@ -3,39 +3,27 @@
 namespace Tests\Feature\Rider;
 
 use App\Enums\ParcelStatus;
-
 use App\Enums\ShipmentStatus;
-
 use App\Models\Address;
-
 use App\Models\DispatchBatch;
-
 use App\Models\LogisticsProfile;
-
 use App\Models\Order;
-
 use App\Models\Parcel;
-
 use App\Models\RiderProfile;
-
 use App\Models\SellerOrder;
-
 use App\Models\SellerProfile;
-
 use App\Models\Shipment;
-
 use App\Models\SortingCenter;
-
 use App\Models\SortingZone;
-
 use App\Models\Store;
-
 use App\Models\User;
-
 use App\Models\Waybill;
-
+use App\Enums\DeliveryAttemptOutcome;
+use App\Services\RiderDeliveryService;
+use Illuminate\Auth\Access\AuthorizationException;
+use InvalidArgumentException;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-
 use Tests\TestCase;
 
 class RiderDeliveryWorkflowTest extends TestCase
@@ -76,6 +64,306 @@ class RiderDeliveryWorkflowTest extends TestCase
 
         );
 
+    }
+
+    public function test_delivery_attempt_is_recorded_for_each_owned_parcel(): void
+    {
+        $rider = $this->makeRider(
+            'ATTEMPT'
+        );
+
+        $assignment =
+            $this->makeDispatchAssignment(
+                $rider,
+                'ATTEMPT',
+                2,
+                0,
+                'Attempt Recipient'
+            );
+
+        $service =
+            app(
+                RiderDeliveryService::class
+            );
+
+        $service->startDelivery(
+            $assignment[
+                'shipment'
+            ]->shipment_no,
+            $rider->user
+        );
+
+        $attempts =
+            $service->recordAttempt(
+                $assignment[
+                    'shipment'
+                ]->shipment_no,
+                $rider->user,
+                DeliveryAttemptOutcome::Delivered,
+                notes: 'Recipient was present.',
+                latitude: 14.0712,
+                longitude: 121.3250
+            );
+
+        $this->assertCount(
+            2,
+            $attempts
+        );
+
+        foreach (
+            $assignment['parcels']
+            as $parcel
+        ) {
+            $this->assertDatabaseHas(
+                'delivery_attempts',
+                [
+                    'parcel_id' =>
+                        $parcel->id,
+
+                    'dispatch_batch_id' =>
+                        $assignment[
+                            'batch'
+                        ]->id,
+
+                    'rider_profile_id' =>
+                        $rider->id,
+
+                    'attempt_no' =>
+                        1,
+
+                    'outcome' =>
+                        DeliveryAttemptOutcome::Delivered
+                            ->value,
+
+                    'failure_reason' =>
+                        null,
+                ]
+            );
+        }
+
+        /*
+        * Phase 6C records history only.
+        * Final state transition belongs to 6D.
+        */
+        foreach (
+            $assignment['parcels']
+            as $parcel
+        ) {
+            $this->assertDatabaseHas(
+                'parcels',
+                [
+                    'id' =>
+                        $parcel->id,
+
+                    'status' =>
+                        ParcelStatus::OutForDelivery
+                            ->value,
+                ]
+            );
+        }
+    }
+
+    public function test_delivery_attempt_numbers_increment_per_parcel(): void
+    {
+        $rider = $this->makeRider(
+            'NUMBER'
+        );
+
+        $assignment =
+            $this->makeDispatchAssignment(
+                $rider,
+                'NUMBER',
+                1,
+                0,
+                'Attempt Number Recipient'
+            );
+
+        $service =
+            app(
+                RiderDeliveryService::class
+            );
+
+        $service->startDelivery(
+            $assignment[
+                'shipment'
+            ]->shipment_no,
+            $rider->user
+        );
+
+        $service->recordAttempt(
+            $assignment[
+                'shipment'
+            ]->shipment_no,
+            $rider->user,
+            DeliveryAttemptOutcome::Failed,
+            failureReason: 'Recipient unavailable'
+        );
+
+        $service->recordAttempt(
+            $assignment[
+                'shipment'
+            ]->shipment_no,
+            $rider->user,
+            DeliveryAttemptOutcome::Failed,
+            failureReason: 'Recipient unavailable again'
+        );
+
+        $parcel =
+            $assignment[
+                'parcels'
+            ]->first();
+
+        $this->assertDatabaseHas(
+            'delivery_attempts',
+            [
+                'parcel_id' =>
+                    $parcel->id,
+
+                'attempt_no' =>
+                    1,
+            ]
+        );
+
+        $this->assertDatabaseHas(
+            'delivery_attempts',
+            [
+                'parcel_id' =>
+                    $parcel->id,
+
+                'attempt_no' =>
+                    2,
+            ]
+        );
+
+        $this->assertSame(
+            [
+                1,
+                2,
+            ],
+            $parcel
+                ->deliveryAttempts()
+                ->orderBy(
+                    'attempt_no'
+                )
+                ->pluck(
+                    'attempt_no'
+                )
+                ->all()
+        );
+    }
+
+    public function test_failed_delivery_attempt_requires_failure_reason(): void
+    {
+        $rider = $this->makeRider(
+            'REASON'
+        );
+
+        $assignment =
+            $this->makeDispatchAssignment(
+                $rider,
+                'REASON',
+                1,
+                0,
+                'Failure Reason Recipient'
+            );
+
+        $service =
+            app(
+                RiderDeliveryService::class
+            );
+
+        $service->startDelivery(
+            $assignment[
+                'shipment'
+            ]->shipment_no,
+            $rider->user
+        );
+
+        $this->expectException(
+            InvalidArgumentException::class
+        );
+
+        $service->recordAttempt(
+            $assignment[
+                'shipment'
+            ]->shipment_no,
+            $rider->user,
+            DeliveryAttemptOutcome::Failed
+        );
+    }
+
+    public function test_delivery_attempt_requires_out_for_delivery_parcels(): void
+    {
+        $rider = $this->makeRider(
+            'STATE'
+        );
+
+        $assignment =
+            $this->makeDispatchAssignment(
+                $rider,
+                'STATE',
+                1,
+                0,
+                'Wrong State Recipient'
+            );
+
+        $this->expectException(
+            ConflictHttpException::class
+        );
+
+        app(
+            RiderDeliveryService::class
+        )->recordAttempt(
+            $assignment[
+                'shipment'
+            ]->shipment_no,
+            $rider->user,
+            DeliveryAttemptOutcome::Delivered
+        );
+    }
+
+    public function test_rider_cannot_record_attempt_for_foreign_assignment(): void
+    {
+        $riderA = $this->makeRider(
+            'ATTEMPT-A'
+        );
+
+        $riderB = $this->makeRider(
+            'ATTEMPT-B'
+        );
+
+        $assignment =
+            $this->makeDispatchAssignment(
+                $riderB,
+                'ATTEMPT-FOREIGN',
+                1,
+                0,
+                'Foreign Attempt Recipient'
+            );
+
+        $service =
+            app(
+                RiderDeliveryService::class
+            );
+
+        $service->startDelivery(
+            $assignment[
+                'shipment'
+            ]->shipment_no,
+            $riderB->user
+        );
+
+        $this->expectException(
+            AuthorizationException::class
+        );
+
+        $service->recordAttempt(
+            $assignment[
+                'shipment'
+            ]->shipment_no,
+            $riderA->user,
+            DeliveryAttemptOutcome::Delivered
+        );
     }
 
     public function test_rider_dashboard_shows_only_own_dispatch_assignments(): void

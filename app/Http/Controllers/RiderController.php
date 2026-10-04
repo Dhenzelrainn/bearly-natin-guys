@@ -4,11 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Enums\AccountStatus;
 use App\Enums\UserRole;
+use App\Enums\ParcelStatus;
 use App\Models\User;
 use App\Services\EmailVerificationService;
 use App\Services\InternationalPhone;
 use App\Services\RegistrationLifecycleService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
@@ -56,6 +58,306 @@ class RiderController extends Controller
             ],
             'topNotifications' => [],
         ];
+    }
+
+    private function deliveryAssignmentsFor(
+        ?User $user
+    ): Collection {
+        if (! $user) {
+            return collect();
+        }
+
+        $profile = $user
+            ->riderProfile()
+            ->first();
+
+        if (! $profile) {
+            return collect();
+        }
+
+        $batches = $profile
+            ->dispatchBatches()
+            ->whereNotIn(
+                'status',
+                [
+                    'cancelled',
+                ]
+            )
+            ->with([
+                'sortingZone:id,code,name',
+
+                'parcels.shipment.waybill',
+
+                'parcels.shipment.sellerOrder.order',
+            ])
+            ->orderByDesc('dispatched_at')
+            ->orderByDesc('id')
+            ->get();
+
+        /*
+        * First create one row per
+        * batch + shipment combination.
+        */
+        $rows = $batches
+            ->flatMap(
+                function ($batch) {
+                    return $batch
+                        ->parcels
+                        ->groupBy('shipment_id')
+                        ->map(
+                            function (
+                                Collection $parcels
+                            ) use ($batch) {
+                                $shipment =
+                                    $parcels
+                                        ->first()
+                                        ?->shipment;
+
+                                $order =
+                                    $shipment
+                                        ?->sellerOrder
+                                        ?->order;
+
+                                if (
+                                    ! $shipment
+                                    || ! $order
+                                ) {
+                                    return null;
+                                }
+
+                                $address = collect([
+                                    $order->address_line,
+                                    $order->barangay,
+                                    $order->city_municipality,
+                                    $order->province,
+                                    $order->postal_code,
+                                ])
+                                    ->filter()
+                                    ->implode(', ');
+
+                                $codMinor =
+                                    (int) (
+                                        $shipment
+                                            ->cod_amount_minor
+                                        ?? 0
+                                    );
+
+                                return [
+                                    'shipment_id' =>
+                                        $shipment->id,
+
+                                    'id' =>
+                                        $shipment
+                                            ->shipment_no,
+
+                                    'waybill' =>
+                                        $shipment
+                                            ->waybill
+                                            ?->waybill_no
+                                        ?? 'No waybill',
+
+                                    'customer' =>
+                                        $order
+                                            ->recipient_name
+                                        ?: 'Recipient',
+
+                                    'contact' =>
+                                        $order
+                                            ->recipient_phone
+                                        ?: '',
+
+                                    'address' =>
+                                        $address
+                                        ?: 'Address unavailable',
+
+                                    'payment_status' =>
+                                        $order
+                                            ->payment_status
+                                        ?: 'unknown',
+
+                                    'cod_minor' =>
+                                        $codMinor,
+
+                                    'zone' =>
+                                        $batch
+                                            ->sortingZone
+                                            ?->code
+                                        ?? 'Unassigned',
+
+                                    'zone_name' =>
+                                        $batch
+                                            ->sortingZone
+                                            ?->name
+                                        ?? '',
+
+                                    'batch_no' =>
+                                        $batch->batch_no,
+
+                                    'dispatched_at' =>
+                                        $batch
+                                            ->dispatched_at,
+
+                                    'parcels' =>
+                                        $parcels
+                                            ->map(
+                                                fn ($parcel) => [
+                                                    'id' =>
+                                                        $parcel
+                                                            ->id,
+
+                                                    'parcel_no' =>
+                                                        $parcel
+                                                            ->parcel_no,
+
+                                                    'status' =>
+                                                        $parcel
+                                                            ->status,
+
+                                                    'size_class' =>
+                                                        $parcel
+                                                            ->size_class,
+
+                                                    'weight_kg' =>
+                                                        $parcel
+                                                            ->weight_kg,
+                                                ]
+                                            )
+                                            ->values(),
+                                ];
+                            }
+                        );
+                }
+            )
+            ->filter();
+
+        /*
+        * A shipment can theoretically appear in
+        * more than one dispatch batch. Merge those
+        * rows into one customer delivery stop.
+        */
+        return $rows
+            ->groupBy('shipment_id')
+            ->map(
+                function (Collection $rows) {
+                    $first =
+                        $rows->first();
+
+                    $parcels = $rows
+                        ->pluck('parcels')
+                        ->flatten(1)
+                        ->unique('id')
+                        ->values();
+
+                    $zones = $rows
+                        ->pluck('zone')
+                        ->filter()
+                        ->unique()
+                        ->values();
+
+                    $zoneNames = $rows
+                        ->pluck('zone_name')
+                        ->filter()
+                        ->unique()
+                        ->values();
+
+                    $batchNumbers = $rows
+                        ->pluck('batch_no')
+                        ->filter()
+                        ->unique()
+                        ->values();
+
+                    return array_merge(
+                        $first,
+                        [
+                            'parcels' =>
+                                $parcels,
+
+                            'parcel_count' =>
+                                $parcels->count(),
+
+                            'status' =>
+                                $this
+                                    ->deliveryAssignmentStatus(
+                                        $parcels
+                                    ),
+
+                            'zone' =>
+                                $zones->implode(', '),
+
+                            'zone_name' =>
+                                $zoneNames
+                                    ->implode(', '),
+
+                            'batch_no' =>
+                                $batchNumbers
+                                    ->implode(', '),
+
+                            'dispatched_at' =>
+                                $rows
+                                    ->pluck(
+                                        'dispatched_at'
+                                    )
+                                    ->filter()
+                                    ->sort()
+                                    ->first(),
+                        ]
+                    );
+                }
+            )
+            ->sortByDesc('dispatched_at')
+            ->values();
+    }
+
+    private function deliveryAssignmentStatus(
+        Collection $parcels
+    ): string {
+        $statuses =
+            $parcels->pluck('status');
+
+        if (
+            $statuses->contains(
+                fn ($status) => in_array(
+                    $status,
+                    [
+                        ParcelStatus::Failed->value,
+                        ParcelStatus::Returned->value,
+                        ParcelStatus::Lost->value,
+                        ParcelStatus::Damaged->value,
+                    ],
+                    true
+                )
+            )
+        ) {
+            return 'Delivery Failed';
+        }
+
+        if (
+            $statuses->isNotEmpty()
+            && $statuses->every(
+                fn ($status) =>
+                    $status
+                    === ParcelStatus::Delivered->value
+            )
+        ) {
+            return 'Delivered';
+        }
+
+        if (
+            $statuses->contains(
+                fn ($status) => in_array(
+                    $status,
+                    [
+                        ParcelStatus::OutForDelivery->value,
+                        ParcelStatus::Delivered->value,
+                    ],
+                    true
+                )
+            )
+        ) {
+            return 'Out for Delivery';
+        }
+
+        return 'Assigned';
     }
 
     public function landing()
@@ -260,43 +562,78 @@ class RiderController extends Controller
         ]);
     }
 
-    public function deliveriesDashboard()
+    public function deliveriesDashboard(): View
     {
-        return view('rider.dashboard.deliveries', $this->shared() + [
-            'deliveries' => [
-                [
-                    'id' => 'DL-8412',
-                    'waybill' => 'BRL-983410',
-                    'customer' => 'Karen Yu',
-                    'address' => 'Brgy. San Lucas 1, San Pablo City',
-                    'zone' => 'SP-N1',
-                    'cod' => '₱1,290',
-                    'status' => 'In Transit',
+        /** @var User|null $user */
+        $user = Auth::user();
+
+        $assignments =
+            $this->deliveryAssignmentsFor(
+                $user
+            );
+
+        $deliveries = $assignments
+            ->filter(
+                fn (array $delivery) =>
+                    in_array(
+                        $delivery['status'],
+                        [
+                            'Assigned',
+                            'Out for Delivery',
+                            'Delivery Failed',
+                        ],
+                        true
+                    )
+            )
+            ->values();
+
+        $parcels = $deliveries
+            ->pluck('parcels')
+            ->flatten(1);
+
+        $assignedParcels =
+            $parcels
+                ->where(
+                    'status',
+                    ParcelStatus::Dispatched->value
+                )
+                ->count();
+
+        $outForDelivery =
+            $parcels
+                ->where(
+                    'status',
+                    ParcelStatus::OutForDelivery->value
+                )
+                ->count();
+
+        $codMinor = $deliveries
+            ->sum(
+                fn (array $delivery) =>
+                    (int) $delivery['cod_minor']
+            );
+
+        return view(
+            'rider.dashboard.deliveries',
+            $this->shared() + [
+                'deliveries' =>
+                    $deliveries,
+
+                'metrics' => [
+                    'assigned_parcels' =>
+                        $assignedParcels,
+
+                    'out_for_delivery' =>
+                        $outForDelivery,
+
+                    'active_stops' =>
+                        $deliveries->count(),
+
+                    'cod_minor' =>
+                        $codMinor,
                 ],
-                [
-                    'id' => 'DL-8413',
-                    'waybill' => 'BRL-983411',
-                    'customer' => 'Alyssa Tan',
-                    'address' => 'Brgy. San Rafael, San Pablo City',
-                    'zone' => 'SP-N1',
-                    'cod' => 'Paid',
-                    'status' => 'Assigned',
-                ],
-                [
-                    'id' => 'DL-8414',
-                    'waybill' => 'BRL-983416',
-                    'customer' => 'Miguel Ramos',
-                    'address' => 'Brgy. San Antonio 2, San Pablo City',
-                    'zone' => 'SP-N1',
-                    'cod' => '₱680',
-                    'status' => 'Assigned',
-                ],
-            ],
-            'availablePickups' => [
-                ['id' => 'PU-24094', 'seller' => 'Mara Home Goods', 'area' => 'San Pablo South', 'parcels' => 4, 'distance' => '4.1 km'],
-                ['id' => 'PU-24095', 'seller' => 'Tiny Tails Pet Co.', 'area' => 'San Pablo North', 'parcels' => 3, 'distance' => '5.7 km'],
-            ],
-        ]);
+            ]
+        );
     }
 
     public function pickup(string $id)
@@ -339,31 +676,47 @@ class RiderController extends Controller
         );
     }
 
-    public function deliver(string $id)
-    {
-        return view('rider.orders.delivery', $this->shared() + [
-            'job' => [
-                'id' => $id,
-                'waybill' => 'BRL-983410',
-                'customer' => 'Karen Yu',
-                'contact' => '0918 441 2207',
-                'address' => 'Blk 7 Lot 12, Brgy. San Lucas 1, San Pablo City',
-                'payment' => 'Cash on Delivery',
-                'amount' => '₱1,290',
-                'notes' => 'Call upon arrival. Brown gate beside the pharmacy.',
-                'distance' => '3.8 km',
-                'estimated_time' => '14 minutes',
-                'coordinates' => '14.0717° N, 121.3256° E',
-            ],
-        ]);
+    public function deliver(
+        string $id
+    ): View {
+        /** @var User|null $user */
+        $user = Auth::user();
+
+        $job = $this
+            ->deliveryAssignmentsFor(
+                $user
+            )
+            ->firstWhere(
+                'id',
+                $id
+            );
+
+        abort_unless(
+            $job,
+            404
+        );
+
+        return view(
+            'rider.orders.delivery',
+            $this->shared() + [
+                'job' => $job,
+            ]
+        );
     }
 
-    public function confirmDelivery(Request $request, string $id)
-    {
-        return back()->with(
-            'job_status',
-            "Delivery {$id} confirmed. Earnings preview updated."
-        );
+    public function confirmDelivery(
+        Request $request,
+        string $id
+    ) {
+        return redirect()
+            ->route(
+                'rider.orders.delivery',
+                $id
+            )
+            ->with(
+                'job_status',
+                'Delivery completion is not enabled yet.'
+            );
     }
 
     public function earnings()

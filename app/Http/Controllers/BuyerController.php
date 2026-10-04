@@ -313,7 +313,7 @@ class BuyerController extends Controller
             'pet-supplies' => 'buyer.Category.Pet-Supplies.pet-supplies',
             'sports-and-outdoors' => 'buyer.Category.Sports&Outdoors.sports-outdoors',
             'jewelry-and-watches' => 'buyer.Category.Jewelry&Watches.jewelry-watches',
-            'kids-and-baby' => 'buyer.Category.Kids&Baby.components.kids-baby',
+            'kids-and-baby' => 'buyer.Category.Kids&Baby.kids-baby',
             'home-and-garden' => 'buyer.Category.Home&Garden.home-garden',
             'health-and-beauty' => 'buyer.Category.Health&Beauty.health-beauty',
             'food-and-gourmet' => 'buyer.Category.Foods&Gourmet.foods-gourmet',

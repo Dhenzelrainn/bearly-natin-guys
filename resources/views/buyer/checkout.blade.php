@@ -9,13 +9,15 @@
 </head>
 <body class="bh checkout-page">
 <header class="header checkout-header">
-<a class="brand" href="{{ url('/home') }}"><img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly"></a>
+<a class="brand" href="{{ url('/home') }}"><img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly"></a>
 <div class="checkout-brand-title"><span></span><strong>Checkout</strong></div>
 <div class="checkout-header-spacer"></div>
 <nav class="header-actions">
 <a href="{{ url('/profile#notifications') }}" class="notification-header-link"><span class="material-symbols-outlined">notifications</span><span>Notifications</span><span class="notification-badge" data-notification-badge>3</span></a>
+<a href="{{ url('/profile#tracking') }}"><span class="material-symbols-outlined">receipt_long</span><span>Orders</span></a>
+<a href="{{ url('/chat') }}"><span class="material-symbols-outlined">chat_bubble</span><span>Chat</span></a>
 <a href="{{ url('/cart') }}"><span class="material-symbols-outlined">shopping_cart</span><span>Cart</span></a>
-<a href="{{ url('/login') }}"><span class="material-symbols-outlined">person</span><span>Sign in</span></a>
+<a class="account-action" href="{{ url('/profile') }}"><span class="material-symbols-outlined">person</span><span>Mia Santos</span></a>
 </nav>
 </header>
 

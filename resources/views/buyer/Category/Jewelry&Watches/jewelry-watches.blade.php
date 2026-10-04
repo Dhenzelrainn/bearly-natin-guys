@@ -66,7 +66,7 @@
 
     <header class="bc-header">
         <a href="{{ route('home') }}" class="brand">
-            <img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly home" width="185" height="62">
+            <img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly home" width="185" height="62">
         </a>
 
         <form id="bc-search-form" class="search" role="search">
@@ -81,29 +81,30 @@
         </form>
 
         <nav aria-label="Account">
-            <a href="{{ url('/wishlist') }}" aria-label="Wishlist">
-                <i class="mi" aria-hidden="true">favorite</i>
-                Wishlist
+            <a href="{{ url('/profile#notifications') }}" aria-label="Notifications" class="category-notification-link">
+                <i class="mi" aria-hidden="true">notifications</i>
+                <span>Notifications</span>
+                <span class="category-notification-badge" data-notification-badge>3</span>
             </a>
 
             <button type="button" onclick="window.location.href='{{ url('/profile#tracking') }}'">
                 <i class="mi" aria-hidden="true">receipt_long</i>
-                Orders
+                <span>Orders</span>
             </button>
 
-            <button data-info="chat">
+            <a href="{{ url('/chat') }}">
                 <i class="mi" aria-hidden="true">chat_bubble</i>
-                Chat
-            </button>
+                <span>Chat</span>
+            </a>
 
             <a href="{{ url('/cart') }}">
                 <i class="mi" aria-hidden="true">shopping_cart</i>
-                Cart
+                <span>Cart</span>
             </a>
 
-            <a href="{{ url('/login') }}">
+            <a href="{{ url('/profile') }}" aria-label="Open Mia Santos profile">
                 <i class="mi" aria-hidden="true">person</i>
-                Sign in
+                <span>Mia Santos</span>
             </a>
         </nav>
     </header>
@@ -243,7 +244,7 @@
     </div>
 
     <footer>
-        <img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly" width="110" height="37">
+        <img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly" width="110" height="37">
         <span>Good finds. Happy spaces.</span>
 
         <nav>

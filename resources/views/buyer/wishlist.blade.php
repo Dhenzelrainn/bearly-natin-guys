@@ -11,7 +11,7 @@
 </head>
 <body class="bh wl-page">
 <header class="header">
-<a class="brand" href="{{ url('/home') }}"><img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly" width="192" height="64"></a>
+<a class="brand" href="{{ url('/home') }}"><img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly" width="192" height="64"></a>
 <div style="flex:1"></div>
 <nav class="header-actions" aria-label="Account">
 <a href="{{ url('/profile#notifications') }}" class="notification-header-link"><span class="material-symbols-outlined">notifications</span><span>Notifications</span><span class="notification-badge" data-notification-badge>3</span></a>
@@ -39,7 +39,7 @@ function renderWishlist(){
  count.textContent=items.length; grid.innerHTML=''; grid.style.display=items.length?'grid':'none'; empty.style.display=items.length?'none':'block';
  items.forEach(p=>{
   const card=document.createElement('article');card.className='wl-card';
-  const image=p.image ? p.image : '/images/bearly-logo.png';
+  const image=p.image ? p.image : '/images/bearly-logo-2.png';
   card.innerHTML=`<div class="wl-img"><img src="${image}" alt=""><button class="wl-remove" aria-label="Remove ${p.name}" data-key="${p.key}"><span class="material-symbols-outlined">favorite</span></button></div><div class="wl-copy"><div class="wl-cat">${p.category}</div><div class="wl-name">${p.name}</div><div class="wl-price">${money(p.price)}</div><div class="wl-meta">★ ${p.rating} · ${p.condition}</div><button class="wl-cart">Add to Cart</button></div>`;
   grid.appendChild(card);
  });

@@ -37,7 +37,7 @@ foreach($categoryProductSources as $slug=>$source){
 </head>
 <body class="bh flash-page">
 <header class="header">
-    <a class="brand" href="{{ url('/home') }}" aria-label="Bearly home"><img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly" width="192" height="64"></a>
+    <a class="brand" href="{{ url('/home') }}" aria-label="Bearly home"><img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly" width="192" height="64"></a>
 
     <form class="search" id="search-form" role="search" action="{{ url('/home') }}" method="get">
         <label class="sr-only" for="search-category">Search category</label>
@@ -83,7 +83,7 @@ $deals = [
 @endforeach
     </section>
 </main>
-<footer class="footer"><a href="{{ url('/home') }}"><img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly home" width="110" height="37"></a><p>Good finds. Happy spaces.</p><span>Flash Deals preview</span></footer>
+<footer class="footer"><a href="{{ url('/home') }}"><img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly home" width="110" height="37"></a><p>Good finds. Happy spaces.</p><span>Flash Deals preview</span></footer>
 <div class="flash-toast" data-flash-toast role="status" aria-live="polite"></div>
 <dialog id="product-dialog" aria-labelledby="product-title"><button class="dialog-close icon-button" data-close aria-label="Close product details"><span class="material-symbols-outlined">close</span></button><div id="product-detail"></div></dialog><dialog id="info-dialog" aria-labelledby="info-title"><button class="dialog-close icon-button" data-close aria-label="Close"><span class="material-symbols-outlined">close</span></button><h2 id="info-title"></h2><div id="info-copy"></div><div class="info-actions" id="info-actions"></div></dialog><script id="featured-product-data" type="application/json">{!! json_encode($featuredProducts, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR) !!}</script>
 </body>

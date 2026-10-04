@@ -1,3 +1,18 @@
+
+function bindPhilippinePhone(input){
+ if(!input)return;
+ const normalize=()=>{
+  let digits=input.value.replace(/\D/g,'');
+  if(digits.startsWith('63')){digits=digits.slice(0,12);input.value='+63'+digits.slice(2);}
+  else if(digits.startsWith('0')){input.value=digits.slice(0,11);}
+  else{digits=digits.slice(0,10);input.value=digits?'+63'+digits:'';}
+  const raw=input.value.replace(/\D/g,'');
+  const valid=input.value.startsWith('+63') ? raw.length===12 : /^0\d{10}$/.test(input.value);
+  input.setCustomValidity(input.value && !valid ? 'Enter 10 digits after +63, or an 11-digit number starting with 0.' : '');
+ };
+ input.addEventListener('input',normalize); input.addEventListener('blur',normalize); normalize();
+}
+
 const KEY='bearly-demo-profile-v1';
 const defaults={username:'miasantos',fullName:'Mia Santos',email:'mia.santos@example.com',phone:'',gender:'',birthMonth:'',birthDay:'',birthYear:'',photo:''};
 const $=s=>document.querySelector(s);
@@ -15,9 +30,11 @@ function getProfile(){try{return {...defaults,...JSON.parse(localStorage.getItem
 function avatar(photo){
  const profileAvatar=$('#profile-avatar');
  const sidebarAvatar=$('#sidebar-avatar');
+ const navbarAvatar=$('#navbar-avatar');
  const html=photo?`<img src="${photo}" alt="Profile photo">`:`<span class="material-symbols-outlined">person</span>`;
  if(profileAvatar) profileAvatar.innerHTML=html;
  if(sidebarAvatar) sidebarAvatar.innerHTML=html;
+ if(navbarAvatar) navbarAvatar.innerHTML=html;
 }
 function load(){
  const p=getProfile();
@@ -148,13 +165,23 @@ function initProfile(){
   const editProfile=$('#edit-profile');
   if(editProfile) editProfile.addEventListener('click',()=>$('#full-name')?.focus());
   const selectPhoto=$('#select-photo');
+  const profileAvatarButton=$('#profile-avatar');
   if(selectPhoto) selectPhoto.addEventListener('click',()=>$('#photo-input')?.click());
+  if(profileAvatarButton) profileAvatarButton.addEventListener('click',()=>$('#photo-input')?.click());
   const photoInput=$('#photo-input');
   if(photoInput) photoInput.addEventListener('change',e=>{
    const f=e.target.files?.[0]; if(!f)return;
-   if(f.size>1024*1024){alert('Please choose an image smaller than 1 MB.');e.target.value='';return}
-   if(!['image/jpeg','image/png'].includes(f.type)){alert('JPEG and PNG images only.');e.target.value='';return}
+   if(f.size>5*1024*1024){alert('Please choose an image smaller than 5 MB.');e.target.value='';return}
+   if(!['image/jpeg','image/png','image/webp'].includes(f.type)){alert('JPG, PNG, and WEBP images only.');e.target.value='';return}
    const r=new FileReader(); r.onload=()=>{const p=getProfile();p.photo=r.result;localStorage.setItem(KEY,JSON.stringify(p));avatar(p.photo)};r.readAsDataURL(f);
+  });
+  const removePhoto=$('#remove-photo');
+  if(removePhoto) removePhoto.addEventListener('click',()=>{
+    const p=getProfile();
+    p.photo='';
+    localStorage.setItem(KEY,JSON.stringify(p));
+    avatar('');
+    if(photoInput) photoInput.value='';
   });
 
   const accountTabs=document.querySelectorAll('[data-account-tab]');
@@ -198,3 +225,50 @@ if(document.readyState === 'loading'){
 } else {
   initProfile();
 }
+
+/* Bearly global navbar state: keeps notification/cart badges in sync across buyer pages. */
+(function initBearlyGlobalNavbarState(){
+  const CART_KEY='bearly-preview-cart-v1';
+  const NOTIFICATION_KEY='bearly-notifications-v1';
+  function cartCount(){
+    try{const x=JSON.parse(localStorage.getItem(CART_KEY)||'[]');return Array.isArray(x)?x.reduce((n,i)=>n+Math.max(0,Number(i?.quantity||0)),0):0}catch{return 0}
+  }
+  function notificationCount(){
+    try{
+      const raw=localStorage.getItem(NOTIFICATION_KEY);
+      if(!raw){const existing=document.querySelector('[data-notification-badge]');return Number(existing?.textContent||3)||0}
+      const x=JSON.parse(raw);return Array.isArray(x)?x.filter(i=>!i?.read).length:0;
+    }catch{return 0}
+  }
+  function ensureBadge(link,type){
+    if(!link)return null;
+    const selector=type==='cart'?'[data-global-cart-badge]':'[data-notification-badge]';
+    let badge=link.querySelector(selector);
+    /* Reuse older page-specific cart counters instead of creating a second badge. */
+    if(!badge && type==='cart') badge=link.querySelector('#cart-header-count,.cart-badge');
+    if(!badge){
+      badge=document.createElement('span');
+      badge.setAttribute(type==='cart'?'data-global-cart-badge':'data-notification-badge','');
+      link.appendChild(badge);
+    } else if(type==='cart') {
+      badge.setAttribute('data-global-cart-badge','');
+    }
+    Object.assign(badge.style,{position:'absolute',top:'-7px',right:'0',minWidth:'17px',height:'17px',padding:'0 4px',borderRadius:'999px',background:'#e9a321',color:'#432718',fontSize:'10px',fontWeight:'800',lineHeight:'17px',textAlign:'center',zIndex:'3'});
+    link.style.position='relative';
+    return badge;
+  }
+  function sync(){
+    document.querySelectorAll('a[href$="/cart"],a[href="/cart"]').forEach(link=>{const b=ensureBadge(link,'cart');const n=cartCount();b.textContent=n;b.hidden=n===0;b.style.display=n===0?'none':''});
+    document.querySelectorAll('a[href*="#notifications"]').forEach(link=>{const b=ensureBadge(link,'notification');const n=notificationCount();b.textContent=n;b.hidden=n===0;b.style.display=n===0?'none':''});
+    document.querySelectorAll('[data-notification-badge]').forEach(b=>{const n=notificationCount();b.textContent=n;b.hidden=n===0;if(b.style)b.style.display=n===0?'none':''});
+    /* Profile header must follow Home: logo left, actions pushed to the far right. */
+    document.querySelectorAll('.profile-top-actions').forEach(el=>{el.style.marginLeft='auto'});
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',sync);else sync();
+  window.addEventListener('storage',sync);
+  window.addEventListener('focus',sync);
+  setInterval(sync,700);
+  window.BearlyNavbarState={sync};
+})();
+
+document.addEventListener('DOMContentLoaded',()=>{bindPhilippinePhone(document.getElementById('phone'));bindPhilippinePhone(document.getElementById('address-phone-number'));});

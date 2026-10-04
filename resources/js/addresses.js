@@ -1,3 +1,30 @@
+
+function bindPhilippinePhone(input){
+ if(!input)return;
+ const normalize=()=>{
+  let digits=input.value.replace(/\D/g,'');
+  if(digits.startsWith('63')){
+   digits=digits.slice(0,12);
+   input.value='+63'+digits.slice(2);
+  }else if(digits.startsWith('0')){
+   input.value=digits.slice(0,11);
+  }else{
+   digits=digits.slice(0,10);
+   input.value=digits?'+63'+digits:'';
+  }
+  const raw=input.value.replace(/\D/g,'');
+  const valid=input.value.startsWith('+63') ? raw.length===12 : /^0\d{10}$/.test(input.value);
+  input.setCustomValidity(input.value && !valid ? 'Enter 10 digits after +63, or an 11-digit number starting with 0.' : '');
+ };
+ input.addEventListener('input',normalize);
+ input.addEventListener('blur',normalize);
+ normalize();
+}
+function bindDigitsOnly(input,maxLength){
+ if(!input)return;
+ input.addEventListener('input',()=>{input.value=input.value.replace(/\D/g,'').slice(0,maxLength)});
+}
+
 const ADDRESS_KEY='bearly-addresses-v1';
 const $=id=>document.getElementById(id);
 let activeLabel='Home',pendingDelete=null;
@@ -20,3 +47,30 @@ $('confirm-delete').onclick=()=>{let all=read(),wasDefault=all.find(x=>x.id===pe
 $('address-modal').onclick=e=>{if(e.target===$('address-modal'))closeForm()};
 $('delete-modal').onclick=e=>{if(e.target===$('delete-modal')){$('delete-modal').hidden=true;pendingDelete=null}};
 render();
+
+bindPhilippinePhone($('phone-number'));
+bindDigitsOnly($('postal-code'),4);
+
+
+// Task 8: keep standalone Addresses navbar badges in sync with the buyer UI.
+document.addEventListener('DOMContentLoaded', () => {
+  const readArray = (key) => {
+    try {
+      const value = JSON.parse(localStorage.getItem(key) || '[]');
+      return Array.isArray(value) ? value : [];
+    } catch (_) { return []; }
+  };
+  const cartCount = readArray('bearlyCart').reduce((sum, item) => sum + Math.max(1, Number(item?.qty || item?.quantity || 1)), 0);
+  const cartLink = [...document.querySelectorAll('.header-actions a')].find(a => a.textContent.trim().includes('Cart'));
+  if (cartLink) {
+    let badge = cartLink.querySelector('[data-cart-badge]');
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.className = 'cart-badge';
+      badge.dataset.cartBadge = '';
+      cartLink.appendChild(badge);
+    }
+    badge.textContent = String(cartCount);
+    badge.hidden = cartCount < 1;
+  }
+});

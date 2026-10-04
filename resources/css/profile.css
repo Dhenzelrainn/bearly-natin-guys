@@ -45,3 +45,255 @@
 
 /* BEAR-109 Help Center */
 .help-head{display:flex;align-items:center;justify-content:space-between;gap:18px;padding-bottom:20px;border-bottom:1px solid var(--line)}.help-head h1{font-size:24px;margin:0 0 3px}.help-head p{margin:0;color:var(--muted);font-size:13px}.help-head-icon{font-size:36px;color:var(--brown2)}.help-search{margin:20px 0 14px;display:flex;align-items:center;gap:9px;border:1px solid #ddd4ce;border-radius:10px;padding:0 14px;height:46px;background:#fff}.help-search:focus-within{border-color:#a66b45;box-shadow:0 0 0 3px rgba(166,107,69,.09)}.help-search .material-symbols-outlined{color:#8a7468}.help-search input{border:0;outline:0;width:100%;font:inherit;font-size:13px;background:transparent}.help-categories{display:flex;gap:8px;flex-wrap:wrap;padding-bottom:18px}.help-category{border:1px solid var(--line);background:#fff;border-radius:20px;padding:8px 13px;font:inherit;font-size:11px;cursor:pointer;color:#665952}.help-category.active{background:var(--brown);border-color:var(--brown);color:#fff}.help-list{border-top:1px solid var(--line)}.help-item{border-bottom:1px solid var(--line)}.help-question{width:100%;border:0;background:#fff;display:grid;grid-template-columns:34px 1fr 24px;align-items:center;gap:10px;padding:17px 6px;text-align:left;color:var(--ink);font:inherit;font-size:13px;font-weight:600;cursor:pointer}.help-question:hover{background:#fcfaf8}.help-topic-icon{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;background:#f3ebe5;color:var(--brown2);font-size:18px}.help-chevron{font-size:20px;color:#9a8c84;transition:.18s}.help-question[aria-expanded=true] .help-chevron{transform:rotate(180deg)}.help-answer{padding:0 48px 18px}.help-answer p{margin:0;color:var(--muted);font-size:12px;line-height:1.65}.help-action{margin-top:11px;border:1px solid var(--brown);border-radius:7px;background:#fff;color:var(--brown);padding:8px 12px;font:inherit;font-size:11px;font-weight:700;cursor:pointer}.help-action:hover{background:var(--brown);color:#fff}.help-empty{text-align:center;padding:70px 20px;color:var(--muted)}.help-empty>.material-symbols-outlined{font-size:54px;color:#d8cbc2}.help-empty h2{margin:8px 0 4px;color:var(--ink);font-size:18px}@media(max-width:700px){.help-head-icon{display:none}.help-answer{padding-left:6px}.help-question{grid-template-columns:32px 1fr 22px}}
+
+/* =========================================================
+   BEAR-107 / TASK 5 — Compact Buyer Account UI
+   Home-scale desktop density; functionality unchanged.
+   ========================================================= */
+@media (min-width: 1001px){
+  .account-layout{max-width:1440px;margin:18px auto;padding:0 28px;grid-template-columns:220px minmax(0,1fr);gap:20px}
+  .account-sidebar{padding:8px 8px}
+  .account-user{gap:10px;padding:5px 3px 14px}
+  .sidebar-avatar{width:44px;height:44px}
+  .account-user strong{font-size:14px}.account-user span{font-size:11px;margin-top:1px}
+  .sidebar-divider{margin-bottom:12px}.sidebar-title{font-size:13px;margin:0 7px 5px;gap:7px}.sidebar-title .material-symbols-outlined{font-size:18px}
+  .account-tab,.account-nav a{min-height:36px;padding:7px 10px 7px 38px!important;font-size:12.5px!important;border-radius:8px}
+  .account-tab .material-symbols-outlined,.account-nav a .material-symbols-outlined{font-size:18px!important}
+  .nav-section-gap{height:5px!important}
+  .likes-nav-count,.notifications-nav-count,.vouchers-nav-count{min-width:19px;height:19px;padding:0 5px;font-size:10px}
+
+  .profile-card{border-radius:11px;padding:20px 26px;min-height:calc(100vh - 118px);box-shadow:0 3px 12px rgba(65,39,24,.045)}
+  .profile-heading,.notifications-head,.vouchers-head,.help-head,.history-head{padding-bottom:13px}
+  .profile-heading h1,.notifications-head h1,.vouchers-head h1,.help-head h1,.history-head h1{font-size:20px!important}
+  .profile-heading p,.notifications-head p,.vouchers-head p,.help-head p,.history-head p{font-size:11.5px!important}
+
+  .profile-form{grid-template-columns:minmax(0,1fr) 230px;gap:28px;padding-top:18px}
+  .profile-fields{max-width:760px}
+  .field-row{grid-template-columns:125px 1fr;gap:14px;margin-bottom:12px}
+  .field-row>span{font-size:12px}
+  .field-row input[type=text],.field-row input[type=email],.field-row input[type=tel],.birthday-row select{height:38px;padding:0 11px;font-size:12px}
+  .radio-row{gap:18px}.radio-row label{font-size:12px}
+  .profile-buttons{margin-left:139px;margin-top:5px;gap:8px}
+  .primary-btn,.secondary-btn,.photo-btn{height:36px;padding:0 16px;font-size:12px}
+  .photo-panel{padding:14px 0 0 24px}.profile-avatar{width:100px;height:100px;margin-bottom:12px}
+
+  /* Common account panels */
+  .account-panel h2{font-size:18px}
+  .purchase-tabs,.review-tabs,.notification-filters,.voucher-tabs{padding:12px 0!important;gap:6px!important}
+  .notification-filter,.voucher-filter,.history-filter{padding:6px 11px!important;font-size:10.5px!important}
+  .notification-item{grid-template-columns:38px 1fr auto;gap:10px;padding:11px 6px}
+  .notification-icon{width:34px;height:34px}.notification-icon .material-symbols-outlined{font-size:18px}
+  .notification-copy strong{font-size:12px}.notification-copy p{font-size:11px;line-height:1.4}.notification-copy time{margin-top:3px}
+  .notification-dot{margin:5px}
+
+  .history-tools{padding:12px 0;gap:10px}.history-search{padding:7px 11px;min-width:min(320px,100%);border-radius:8px}.history-filter{padding:7px 12px!important}
+
+  .voucher-list{gap:11px}.voucher-card{grid-template-columns:96px 1fr;min-height:124px;border-radius:10px}.voucher-stub{padding:10px}.voucher-stub .material-symbols-outlined{font-size:24px}.voucher-stub strong{font-size:18px}.voucher-body{padding:11px}.voucher-body h3{font-size:12px}.voucher-body p{font-size:10px}.voucher-actions{margin-top:7px}.voucher-actions button,.voucher-actions a{padding:6px 10px;font-size:10px}
+
+  .help-head-icon{font-size:30px}.help-search{margin:13px 0 10px;height:38px;padding:0 11px}.help-search input{font-size:11.5px}.help-categories{gap:6px;padding-bottom:11px}.help-category{padding:6px 10px;font-size:10px}.help-question{grid-template-columns:30px 1fr 20px;gap:8px;padding:11px 5px;font-size:11.5px}.help-topic-icon{width:28px;height:28px;font-size:16px}.help-answer{padding:0 40px 12px}.help-answer p{font-size:11px;line-height:1.5}
+
+  .tracking-empty,.notifications-empty,.vouchers-empty,.help-empty{padding:48px 18px}
+  .tracking-timeline,.tracking-address{padding:14px}.tracking-timeline h3,.tracking-address h3{margin-bottom:13px}.tracking-step{min-height:62px}.tracking-step:not(:last-child):before{height:35px}
+}
+
+
+/* =========================================================
+   TASK 5.1 — Buyer Account second compact pass
+   Desktop density aligned closer to Home UI.
+   Layout/CSS only; account functionality is unchanged.
+   ========================================================= */
+@media (min-width: 1180px){
+  .account-layout{
+    max-width:1480px;
+    margin:14px auto;
+    padding:0 24px;
+    grid-template-columns:205px minmax(0,1fr);
+    gap:18px;
+  }
+
+  .account-sidebar{padding:6px}
+  .account-user{padding:4px 2px 11px}
+  .sidebar-avatar{width:40px;height:40px}
+  .sidebar-divider{margin-bottom:9px}
+  .sidebar-title{font-size:12px;margin-bottom:3px}
+  .account-tab,.account-nav a{
+    min-height:32px;
+    padding:5px 8px 5px 34px!important;
+    font-size:11.5px!important;
+  }
+  .account-tab .material-symbols-outlined,
+  .account-nav a .material-symbols-outlined{font-size:17px!important}
+
+  .profile-card{
+    padding:17px 24px;
+    min-height:calc(100vh - 106px);
+  }
+
+  /* Panel headings */
+  .likes-panel-head,.purchases-head,.reviews-head,
+  .notifications-head,.vouchers-head,.help-head,.history-head{
+    padding-bottom:10px!important;
+    margin-bottom:12px!important;
+  }
+  .likes-panel-head h1,.purchases-head h1,.reviews-head h1,
+  .notifications-head h1,.vouchers-head h1,.help-head h1,.history-head h1{
+    font-size:19px!important;
+  }
+  .likes-panel-head p,.purchases-head p,.reviews-head p,
+  .notifications-head p,.vouchers-head p,.help-head p,.history-head p,
+  .likes-count,.purchase-count,.reviews-count{
+    font-size:10.5px!important;
+  }
+
+  /* My Likes: 6-up desktop grid instead of oversized 4-up cards */
+  .likes-grid{
+    grid-template-columns:repeat(6,minmax(0,1fr));
+    gap:10px;
+  }
+  .like-card{border-radius:9px}
+  .like-image{aspect-ratio:1/0.88}
+  .like-image img{object-fit:contain;padding:7px}
+  .like-remove{
+    right:6px;top:6px;width:28px;height:28px;
+  }
+  .like-remove .material-symbols-outlined{font-size:18px}
+  .like-copy{padding:9px;gap:3px}
+  .like-category{font-size:9.5px}
+  .like-copy h3{font-size:11.5px;min-height:31px;line-height:1.3}
+  .like-copy strong{font-size:14px}
+  .like-copy small{font-size:9.5px}
+  .like-cart{height:30px;margin-top:4px;font-size:10.5px}
+  .likes-empty{padding:48px 18px}
+  .likes-empty>.material-symbols-outlined{font-size:44px}
+  .likes-empty h2{font-size:17px;margin:7px 0 3px}
+
+  /* Purchases: reduce tab/product whitespace */
+  .purchase-tabs{
+    margin:0 -24px 12px;
+    padding:0 24px!important;
+  }
+  .purchase-filter{height:40px;font-size:11px}
+  .purchase-list{gap:10px}
+  .order-card{border-radius:9px}
+  .order-card-head{min-height:38px;padding:7px 12px}
+  .order-shop{font-size:11px}
+  .order-status{font-size:10px}
+  .order-product{
+    grid-template-columns:62px 1fr auto;
+    gap:10px;
+    padding:9px 12px;
+  }
+  .order-product img{width:62px;height:62px;border-radius:7px;object-fit:contain}
+  .order-product h3{font-size:11.5px;margin-bottom:2px}
+  .order-product p{font-size:10px;margin:1px 0}
+  .order-price strong{font-size:12px}
+  .order-card-foot{padding:8px 12px;gap:7px}
+  .order-total{font-size:10.5px}
+  .order-total strong{font-size:14px}
+  .order-btn{height:30px;padding:0 11px;font-size:10px}
+  .purchases-empty{padding:48px 18px}
+
+  /* Reviews: compact both empty and populated states */
+  .reviews-head{margin-bottom:10px!important}
+  .review-list{gap:9px}
+  .review-card{
+    grid-template-columns:64px 1fr auto;
+    gap:11px;
+    padding:10px;
+    border-radius:9px;
+  }
+  .review-card>img{width:64px;height:64px;object-fit:contain}
+  .review-main h3{font-size:12px;margin:2px 0 4px}
+  .review-meta,.submitted-rating{font-size:9.5px}
+  .review-prompt,.review-copy{font-size:10.5px;line-height:1.4;margin:3px 0}
+  .review-static-stars{font-size:15px}
+  .reviews-empty{
+    min-height:360px;
+    padding:78px 18px 48px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:flex-start;
+  }
+  .reviews-empty>.material-symbols-outlined{font-size:42px}
+  .reviews-empty h2{font-size:18px;margin:6px 0 2px}
+  .reviews-empty p{font-size:11px;margin:2px 0}
+  .reviews-empty button{margin-top:8px;padding:7px 13px;font-size:10.5px}
+
+  /* Help Center: tighter rows so more FAQs are visible without scrolling */
+  .help-search{margin:10px 0 8px;height:34px}
+  .help-categories{padding-bottom:8px}
+  .help-category{padding:5px 9px}
+  .help-question{
+    grid-template-columns:26px 1fr 18px;
+    gap:7px;
+    padding:8px 4px;
+    font-size:10.8px;
+  }
+  .help-topic-icon{width:25px;height:25px;font-size:15px}
+  .help-chevron{font-size:17px}
+  .help-answer{padding:0 34px 9px}
+  .help-answer p{font-size:10.3px;line-height:1.4}
+
+  /* Notifications / vouchers / history: match same density */
+  .notification-item{padding:8px 5px}
+  .notification-copy strong{font-size:11px}
+  .notification-copy p{font-size:10px}
+  .voucher-list{gap:9px}
+  .voucher-card{grid-template-columns:88px 1fr;min-height:112px}
+  .voucher-body{padding:9px}
+  .history-tools{padding:9px 0}
+}
+
+/* Keep the grid comfortable on smaller desktop widths. */
+@media (min-width:1001px) and (max-width:1179px){
+  .likes-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:11px}
+  .like-image img{object-fit:contain;padding:7px}
+}
+
+
+/* Task 8 — buyer profile photo polish */
+.profile-avatar-button{
+  border:0;
+  padding:0;
+  cursor:pointer;
+  overflow:hidden;
+}
+.profile-avatar img,
+.sidebar-avatar img,
+.navbar-profile-avatar img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  object-position:center;
+  display:block;
+}
+.photo-actions{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
+  flex-wrap:wrap;
+}
+.photo-remove-btn{
+  min-height:31px;
+  padding:5px 11px;
+  border:1px solid #d8cec3;
+  border-radius:6px;
+  background:#fff;
+  color:#6c5a50;
+  font:inherit;
+  font-size:10.5px;
+  cursor:pointer;
+}
+.navbar-profile-avatar{
+  width:20px;
+  height:20px;
+  border-radius:50%;
+  overflow:hidden;
+  display:inline-grid;
+  place-items:center;
+  flex:0 0 20px;
+  background:rgba(255,255,255,.12);
+}
+.navbar-profile-avatar .material-symbols-outlined{font-size:18px}

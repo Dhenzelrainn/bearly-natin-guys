@@ -1,3 +1,30 @@
+
+function bindPhilippinePhoneA(input){
+ if(!input)return;
+ const normalize=()=>{
+  let digits=input.value.replace(/\D/g,'');
+  if(digits.startsWith('63')){
+   digits=digits.slice(0,12);
+   input.value='+63'+digits.slice(2);
+  }else if(digits.startsWith('0')){
+   input.value=digits.slice(0,11);
+  }else{
+   digits=digits.slice(0,10);
+   input.value=digits?'+63'+digits:'';
+  }
+  const raw=input.value.replace(/\D/g,'');
+  const valid=input.value.startsWith('+63') ? raw.length===12 : /^0\d{10}$/.test(input.value);
+  input.setCustomValidity(input.value && !valid ? 'Enter 10 digits after +63, or an 11-digit number starting with 0.' : '');
+ };
+ input.addEventListener('input',normalize);
+ input.addEventListener('blur',normalize);
+ normalize();
+}
+function bindDigitsOnlyA(input,maxLength){
+ if(!input)return;
+ input.addEventListener('input',()=>{input.value=input.value.replace(/\D/g,'').slice(0,maxLength)});
+}
+
 const ADDRESS_KEY='bearly-addresses-v1';
 const A=id=>document.getElementById(id);let activeLabel='Home',pendingDelete=null;
 const readA=()=>{try{const a=JSON.parse(localStorage.getItem(ADDRESS_KEY)||'[]');return Array.isArray(a)?a:[]}catch{return[]}};const writeA=a=>localStorage.setItem(ADDRESS_KEY,JSON.stringify(a));
@@ -11,3 +38,6 @@ function closeFormA(){A('address-modal').hidden=true;A('address-form').reset();A
 A('add-address').onclick=()=>openFormA();A('empty-add-address').onclick=()=>openFormA();A('close-address-modal').onclick=closeFormA;A('cancel-address').onclick=closeFormA;document.querySelectorAll('.label-choice').forEach(b=>b.onclick=()=>setLabelA(b.dataset.label));
 A('address-form').onsubmit=e=>{e.preventDefault();let all=readA(),id=A('address-editing-id').value,isNew=!id,makeDefault=A('address-set-default').checked||all.length===0;let data={id:id||uidA(),name:A('address-full-name').value.trim(),phone:A('address-phone-number').value.trim(),province:A('address-province').value.trim(),city:A('address-city').value.trim(),barangay:A('address-barangay').value.trim(),postal:A('address-postal-code').value.trim(),street:A('address-street').value.trim(),label:activeLabel,isDefault:makeDefault};if(makeDefault)all=all.map(x=>({...x,isDefault:false}));if(isNew)all.push(data);else all=all.map(x=>x.id===id?data:x);writeA(all);closeFormA();renderA();toastA(isNew?'Address added':'Address updated')};
 A('address-list').onclick=e=>{let row=e.target.closest('.address-item');if(!row)return;let id=row.dataset.id,all=readA(),a=all.find(x=>x.id===id);if(e.target.closest('[data-edit]'))openFormA(a);if(e.target.closest('[data-delete]')){pendingDelete=id;A('delete-modal').hidden=false}if(e.target.closest('[data-default]')){all=all.map(x=>({...x,isDefault:x.id===id}));writeA(all);renderA();toastA('Default address updated')}};A('cancel-delete').onclick=()=>{A('delete-modal').hidden=true;pendingDelete=null};A('confirm-delete').onclick=()=>{let all=readA(),wasDefault=all.find(x=>x.id===pendingDelete)?.isDefault;all=all.filter(x=>x.id!==pendingDelete);if(wasDefault&&all.length)all[0].isDefault=true;writeA(all);A('delete-modal').hidden=true;pendingDelete=null;renderA();toastA('Address deleted')};renderA();
+
+bindPhilippinePhoneA(A('address-phone-number'));
+bindDigitsOnlyA(A('address-postal-code'),4);

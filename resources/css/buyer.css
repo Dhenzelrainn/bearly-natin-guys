@@ -4374,3 +4374,154 @@ body:not(.bc) button.flash-image{width:100%;padding:0;border:0;font:inherit;text
 
 /* BEAR-113 Top Sales */
 .top-sales-preview{margin-top:38px}.top-sales-hero{background:linear-gradient(120deg,#38251a,#70452d)}.top-sales-hero .top-products-trophy .material-symbols-outlined{color:#f1c66e}
+
+/* =========================================================
+   TASK 1 — CATEGORY HEADER = HOME HEADER SCALE
+   Home is the buyer-side visual source of truth.
+   ========================================================= */
+@media (min-width:981px){
+    body.bc{--header:68px}
+    body.bc .bc-header{
+        min-height:68px;
+        height:68px;
+        padding:10px 22px;
+        gap:24px;
+        background:#3a2418;
+        border-bottom:0;
+    }
+    body.bc .brand{flex:0 0 125px}
+    body.bc .brand img{
+        width:125px;
+        height:auto;
+        max-height:48px;
+        object-fit:contain;
+    }
+    body.bc .search{
+        height:38px;
+        border:0;
+        border-radius:6px;
+    }
+    body.bc .search>span{
+        min-width:0;
+        padding:0 12px;
+        font-size:10px;
+    }
+    body.bc .search input{
+        padding:0 12px;
+        font-size:12px;
+    }
+    body.bc .search button{width:40px}
+    body.bc .bc-header nav{
+        align-items:center;
+        gap:16px;
+    }
+    body.bc .bc-header nav a,
+    body.bc .bc-header nav button{
+        position:relative;
+        min-width:34px;
+        gap:2px;
+        color:#fff;
+        font-size:10px;
+        line-height:1.15;
+        text-decoration:none;
+        white-space:nowrap;
+    }
+    body.bc .bc-header nav .mi{font-size:20px}
+    body.bc .category-notification-badge{
+        position:absolute;
+        top:-7px;
+        right:2px;
+        min-width:16px;
+        height:16px;
+        padding:0 4px;
+        border-radius:999px;
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        background:#f3ad24;
+        color:#3a2418;
+        font-size:9px;
+        font-weight:700;
+        line-height:1;
+    }
+    body.bc .bc-sidebar{
+        top:68px;
+        height:calc(100dvh - 68px);
+    }
+}
+
+/* TASK 3.3 — final buyer navbar polish. Home remains the alignment reference. */
+@media (min-width:981px){
+    body.profile-page .buyer-standard-header{display:flex;align-items:center;width:100%;}
+    body.profile-page .buyer-standard-header .buyer-header-spacer{display:block;flex:1 1 auto;min-width:24px;}
+    body.profile-page .buyer-standard-header .header-actions{margin-left:auto;flex:0 0 auto;}
+}
+
+
+/* =========================================================
+   TASK 7.1 — Kids & Baby / category product preview viewport fit
+   Keeps purchase controls above the fold on desktop and prevents
+   product photography from being cropped. Seller/description remain
+   in the scrollable lower section.
+   ========================================================= */
+@media (min-width: 901px) and (min-height: 650px) {
+  body.bc #bc-product-dialog{
+    width:min(980px,calc(100% - 32px));
+    max-width:980px;
+    max-height:90dvh;
+  }
+  body.bc #bc-product-detail{max-height:90dvh}
+  body.bc .pd-shell{padding:20px 22px 24px}
+  body.bc .pd-top{
+    grid-template-columns:minmax(300px,.88fr) minmax(390px,1.12fr);
+    gap:24px;
+  }
+  body.bc .pd-media{top:0}
+  body.bc .pd-main-photo{
+    aspect-ratio:auto;
+    height:min(390px,48dvh);
+    min-height:300px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:#f8f6f2;
+  }
+  body.bc .pd-main-photo img,
+  body.bc .pd-main-photo .pd-photo,
+  body.bc .pd-main-photo [style*="background-image"]{
+    width:100%;
+    height:100%;
+    object-fit:contain!important;
+    object-position:center!important;
+    background-size:contain!important;
+    background-position:center!important;
+    background-repeat:no-repeat!important;
+  }
+  body.bc .pd-thumbnails{margin-top:7px}
+  body.bc .pd-thumbnail{width:52px;height:52px}
+  body.bc .pd-media-note{margin-top:7px;font-size:10px}
+  body.bc .pd-info{padding-top:0}
+  body.bc .pd-category{margin-bottom:3px;font-size:10.5px}
+  body.bc .pd-info h2{font-size:22px;line-height:1.15}
+  body.bc .pd-rating{margin-top:5px}
+  body.bc .pd-price{font-size:24px;margin-top:5px}
+  body.bc .pd-overview{margin-top:8px;padding:7px 9px}
+  body.bc .pd-options{margin-top:9px;gap:6px}
+  body.bc .pd-option-group{gap:5px}
+  body.bc .pd-option-label{font-size:10.5px}
+  body.bc .pd-option{min-height:30px;padding:5px 9px;font-size:10.5px}
+  body.bc .pd-quantity-row{margin-top:8px}
+  body.bc .pd-quantity{min-height:32px}
+  body.bc .pd-actions{margin-top:9px;gap:8px}
+  body.bc .pd-add-cart,
+  body.bc .pd-buy-now{min-height:38px;font-size:11.5px}
+  body.bc .pd-seller-card{margin-top:18px}
+  body.bc .pd-description{margin-top:14px}
+}
+
+/* Product photography must always show the whole item. */
+body.bc .pd-main-photo img,
+body.bc .pd-thumb-photo{
+  object-fit:contain!important;
+  object-position:center!important;
+}

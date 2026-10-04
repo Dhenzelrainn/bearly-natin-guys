@@ -7,3 +7,53 @@
 .bearly-chat-page{margin:0;background:#f7f4ef;color:#2e2019;font-family:Poppins,sans-serif}.bearly-chat-topbar{height:76px;background:var(--bc-brown);display:flex;align-items:center;justify-content:space-between;padding:0 34px;color:#fff}.bearly-chat-brand img{width:112px;display:block}.bearly-chat-topbar nav{display:flex;align-items:center;gap:18px}.bearly-chat-topbar nav a{color:#fff;text-decoration:none;display:grid;place-items:center;gap:2px;min-width:52px;opacity:.85}.bearly-chat-topbar nav a.active{opacity:1}.bearly-chat-topbar nav small{font-size:10px}.bearly-chat-page-shell{width:min(1180px,calc(100% - 48px));height:calc(100vh - 116px);margin:20px auto;display:grid;grid-template-columns:340px 1fr;background:#fff;border:1px solid var(--bc-line);border-radius:18px;overflow:hidden;box-shadow:0 10px 30px rgba(53,37,30,.07)}.bearly-chat-page-sidebar{min-height:0;display:flex;flex-direction:column;border-right:1px solid var(--bc-line)}.bearly-chat-page-title{padding:22px 22px 14px;display:flex;align-items:center;justify-content:space-between}.bearly-chat-page-title span:first-child{font-size:11px;color:var(--bc-muted);text-transform:uppercase;letter-spacing:.1em}.bearly-chat-page-title h1{margin:2px 0 0;font-size:28px}.bearly-chat-search{margin:0 16px 10px;border:1px solid var(--bc-line);border-radius:12px;display:flex;align-items:center;padding:0 11px}.bearly-chat-search input{border:0;outline:0;width:100%;padding:11px 8px;font:12px Poppins,sans-serif}.bearly-chat-page-sidebar .bearly-chat-list{flex:1;border-right:0;padding:8px 12px 16px}.bearly-chat-page-sidebar .bearly-chat-item{grid-template-columns:46px minmax(0,1fr);padding:12px}.bearly-chat-page-sidebar .bearly-chat-item.is-assistant{padding:15px 12px}.bearly-chat-page-sidebar .bearly-chat-avatar{width:44px;height:44px}.bearly-chat-page-sidebar .is-assistant .bearly-chat-avatar{width:48px;height:48px}.bearly-chat-page-sidebar .bearly-chat-item-copy strong{font-size:13px}.bearly-chat-page-thread .bearly-chat-thread-head{min-height:78px;padding:14px 22px}.bearly-chat-page-thread .bearly-chat-thread-head strong{font-size:16px}.bearly-chat-page-thread .bearly-chat-messages{padding:24px}.bearly-chat-page-thread .bearly-message{font-size:13px;max-width:68%}.bearly-chat-page-thread .bearly-chat-quick{padding:10px 20px}.bearly-chat-page-thread .bearly-chat-composer{padding:14px 20px}.bearly-chat-page-thread .bearly-chat-composer input{font-size:13px;padding:12px 16px}
 @media(max-width:760px){.bearly-chat-drawer{left:10px;bottom:10px;width:calc(100vw - 20px);height:calc(100vh - 20px)}.bearly-chat-compact{grid-template-columns:125px 1fr}.bearly-chat-page-shell{width:calc(100% - 20px);grid-template-columns:130px 1fr}.bearly-chat-topbar{padding:0 14px}.bearly-chat-topbar nav a small{display:none}.bearly-chat-topbar nav{gap:8px}.bearly-chat-page-title{padding:14px}.bearly-chat-page-title h1{font-size:20px}.bearly-chat-search{display:none}}
 .help-chat-bearly{display:flex;align-items:center;gap:8px;color:#8b4317;text-decoration:none;font-size:12px;font-weight:600;padding:8px 10px;border-radius:10px;background:#faf1e9;border:1px solid #ead8ca}.help-chat-bearly:hover{background:#f3e3d7}.help-chat-bearly .help-head-icon{font-size:22px}
+
+/* TASK 3 — Full chat page compact scale. Home remains the visual reference. */
+.bearly-chat-page{min-height:100vh;overflow:hidden}
+.bearly-chat-page-shell{width:min(1320px,calc(100% - 40px));height:calc(100vh - 96px);margin:14px auto;grid-template-columns:280px minmax(0,1fr);border-radius:14px}
+.bearly-chat-page-title{padding:14px 16px 9px}
+.bearly-chat-page-title span:first-child{font-size:9px;letter-spacing:.08em}
+.bearly-chat-page-title h1{margin:1px 0 0;font-size:21px;line-height:1.15}
+.bearly-chat-page-title>.material-symbols-outlined{font-size:20px}
+.bearly-chat-search{margin:0 12px 8px;border-radius:10px;padding:0 9px}
+.bearly-chat-search>.material-symbols-outlined{font-size:19px}
+.bearly-chat-search input{padding:8px 6px;font-size:11px}
+.bearly-chat-page-sidebar .bearly-chat-list{padding:6px 9px 10px}
+.bearly-chat-page-sidebar .bearly-chat-item{grid-template-columns:38px minmax(0,1fr);gap:8px;padding:8px 9px;margin-bottom:3px;border-radius:10px}
+.bearly-chat-page-sidebar .bearly-chat-item.is-assistant{padding:10px 9px;margin-bottom:7px}
+.bearly-chat-page-sidebar .bearly-chat-avatar{width:36px;height:36px;font-size:10px}
+.bearly-chat-page-sidebar .is-assistant .bearly-chat-avatar{width:40px;height:40px;font-size:17px}
+.bearly-chat-page-sidebar .bearly-chat-item-copy strong{font-size:11px}
+.bearly-chat-page-sidebar .bearly-chat-item-copy small{font-size:9px}
+.bearly-chat-page-sidebar .bearly-chat-official{font-size:8px}
+.bearly-chat-page-thread .bearly-chat-thread-head{min-height:58px;padding:9px 16px}
+.bearly-chat-page-thread .bearly-chat-thread-head .bearly-chat-avatar{width:36px;height:36px}
+.bearly-chat-page-thread .bearly-chat-thread-head strong{font-size:13px}
+.bearly-chat-page-thread .bearly-chat-thread-head small{font-size:9px}
+.bearly-chat-page-thread .bearly-chat-messages{padding:14px 18px;gap:7px}
+.bearly-chat-page-thread .bearly-message{font-size:11px;line-height:1.4;max-width:62%;padding:8px 10px;border-radius:12px}
+.bearly-chat-page-thread .bearly-message-time{font-size:8px;margin-top:2px}
+.bearly-chat-page-thread .bearly-chat-quick{padding:7px 14px;display:flex;flex-wrap:wrap;gap:5px;overflow-x:hidden;align-content:center}
+.bearly-chat-page-thread .bearly-chat-quick button,.bearly-chat-page-thread .bearly-chat-action{font-size:9px;padding:5px 8px}
+.bearly-chat-page-thread .bearly-chat-composer{padding:9px 14px;gap:7px}
+.bearly-chat-page-thread .bearly-chat-composer input{font-size:11px;padding:9px 12px}
+.bearly-chat-page-thread .bearly-chat-composer button{width:34px;height:34px;flex:0 0 34px}
+.bearly-chat-page-thread .bearly-chat-composer button .material-symbols-outlined{font-size:19px}
+@media(max-width:900px){.bearly-chat-page-shell{width:calc(100% - 20px);grid-template-columns:220px minmax(0,1fr);height:calc(100vh - 90px);margin:11px auto}.bearly-chat-page-thread .bearly-message{max-width:78%}}
+@media(max-width:760px){.bearly-chat-page{overflow:auto}.bearly-chat-page-shell{grid-template-columns:130px 1fr}.bearly-chat-page-title{padding:10px}.bearly-chat-page-title h1{font-size:18px}.bearly-chat-page-thread .bearly-chat-quick{flex-wrap:nowrap;overflow-x:auto}}
+
+/* BEAR-UI Task 3.1: keep Chat chrome aligned exactly like the Home header. */
+body.bh.bearly-chat-page > .buyer-standard-header{
+    display:flex;
+    align-items:center;
+    width:100%;
+}
+body.bh.bearly-chat-page > .buyer-standard-header .buyer-header-spacer{
+    display:block;
+    flex:1 1 auto;
+    min-width:24px;
+}
+body.bh.bearly-chat-page > .buyer-standard-header .header-actions{
+    margin-left:auto;
+    flex:0 0 auto;
+}

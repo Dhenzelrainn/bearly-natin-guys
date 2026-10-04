@@ -8,13 +8,15 @@
 @vite(['resources/css/buyer.css','resources/css/addresses.css','resources/js/addresses.js'])
 </head>
 <body class="bh address-page">
-<header class="header">
-<a class="brand" href="{{ url('/home') }}"><img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly"></a>
-<div class="address-header-spacer"></div>
-<nav class="header-actions">
+<header class="header buyer-standard-header">
+<a class="brand" href="{{ url('/home') }}" aria-label="Bearly home"><img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly"></a>
+<div class="buyer-header-spacer"></div>
+<nav class="header-actions" aria-label="Account">
 <a href="{{ url('/profile#notifications') }}" class="notification-header-link"><span class="material-symbols-outlined">notifications</span><span>Notifications</span><span class="notification-badge" data-notification-badge>3</span></a>
+<a href="{{ url('/profile#tracking') }}"><span class="material-symbols-outlined">receipt_long</span><span>Orders</span></a>
+<a href="{{ url('/chat') }}"><span class="material-symbols-outlined">chat_bubble</span><span>Chat</span></a>
 <a href="{{ url('/cart') }}"><span class="material-symbols-outlined">shopping_cart</span><span>Cart</span></a>
-<a class="address-active" href="{{ url('/addresses') }}"><span class="material-symbols-outlined">person</span><span>Mia Santos</span></a>
+<a class="account-action active" href="{{ url('/profile') }}"><span class="material-symbols-outlined">person</span><span>Mia Santos</span></a>
 </nav>
 </header>
 
@@ -48,7 +50,7 @@
 <input id="editing-id" type="hidden">
 <div class="form-grid two">
 <label><span>Full Name</span><input id="full-name" required placeholder="Mia Santos"></label>
-<label><span>Phone Number</span><input id="phone-number" required placeholder="+63 900 000 0000"></label>
+<label><span>Phone Number</span><input id="phone-number" type="tel" inputmode="numeric" autocomplete="tel" required placeholder="+63 9123456789 or 09123456789"></label>
 </div>
 <div class="form-grid">
 <label><span>Province</span><input id="province" required placeholder="Laguna"></label>
@@ -58,7 +60,7 @@
 <label><span>Barangay</span><input id="barangay" required placeholder="Barangay"></label>
 </div>
 <div class="form-grid">
-<label><span>Postal Code</span><input id="postal-code" required placeholder="Postal Code"></label>
+<label><span>Postal Code</span><input id="postal-code" inputmode="numeric" maxlength="4" pattern="\d{4}" required placeholder="Postal Code"></label>
 <label><span>Street Name, Building, House No.</span><input id="street" required placeholder="Street Name, Building, House No."></label>
 </div>
 

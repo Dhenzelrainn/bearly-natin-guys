@@ -9,15 +9,16 @@
     @vite(['resources/css/buyer.css','resources/css/profile.css','resources/css/addresses.css','resources/css/bearly-chat.css','resources/js/profile.js','resources/js/account-addresses.js','resources/js/my-likes.js','resources/js/my-purchases.js','resources/js/reviews-ratings.js','resources/js/bearly-chat.js'])
 </head>
 <body class="bh profile-page">
-<header class="profile-topbar">
-    <a class="profile-brand" href="{{ url('/home') }}">
-        <span class="brand-mark">🧸</span><span>bearly</span>
-    </a>
-    <div class="profile-top-actions">
-        <a href="{{ url('/profile#notifications') }}" class="notification-header-link"><span class="material-symbols-outlined">notifications</span><small>Notifications</small><span class="notification-badge" data-notification-badge>3</span></a>
-        <a href="{{ url('/cart') }}"><span class="material-symbols-outlined">shopping_cart</span><small>Cart</small></a>
-        <a class="active" href="{{ url('/profile') }}"><span class="material-symbols-outlined">person</span><small>Mia Santos</small></a>
-    </div>
+<header class="header buyer-standard-header">
+    <a class="brand" href="{{ url('/home') }}" aria-label="Bearly home"><img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly"></a>
+    <div class="buyer-header-spacer"></div>
+    <nav class="header-actions" aria-label="Account">
+        <a href="{{ url('/profile#notifications') }}" class="notification-header-link"><span class="material-symbols-outlined">notifications</span><span>Notifications</span><span class="notification-badge" data-notification-badge>3</span></a>
+        <a href="{{ url('/profile#tracking') }}"><span class="material-symbols-outlined">receipt_long</span><span>Orders</span></a>
+        <a href="{{ url('/chat') }}"><span class="material-symbols-outlined">chat_bubble</span><span>Chat</span></a>
+        <a href="{{ url('/cart') }}"><span class="material-symbols-outlined">shopping_cart</span><span>Cart</span></a>
+        <a class="account-action active" href="{{ url('/profile') }}"><span id="navbar-avatar" class="navbar-profile-avatar"><span class="material-symbols-outlined">person</span></span><span>Mia Santos</span></a>
+    </nav>
 </header>
 
 <main class="account-layout">
@@ -64,7 +65,7 @@
                 </label>
                 <label class="field-row">
                     <span>Phone Number</span>
-                    <input id="phone" type="tel" placeholder="+63 900 000 0000">
+                    <input id="phone" type="tel" inputmode="numeric" autocomplete="tel" placeholder="+63 9123456789 or 09123456789">
                 </label>
 
                 <div class="field-row">
@@ -92,10 +93,13 @@
             </div>
 
             <div class="photo-panel">
-                <div id="profile-avatar" class="profile-avatar"><span class="material-symbols-outlined">person</span></div>
-                <input id="photo-input" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" hidden>
-                <button id="select-photo" type="button" class="photo-btn">Select Image</button>
-                <p>File size: maximum 1 MB<br>File extension: .JPEG, .PNG</p>
+                <button id="profile-avatar" class="profile-avatar profile-avatar-button" type="button" aria-label="Change profile photo"><span class="material-symbols-outlined">person</span></button>
+                <input id="photo-input" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" hidden>
+                <div class="photo-actions">
+                    <button id="select-photo" type="button" class="photo-btn">Change Photo</button>
+                    <button id="remove-photo" type="button" class="photo-remove-btn">Remove</button>
+                </div>
+                <p>Maximum 5 MB<br>JPG, JPEG, PNG or WEBP</p>
             </div>
         </form>
     </section>

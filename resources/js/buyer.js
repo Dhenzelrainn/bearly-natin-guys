@@ -6881,3 +6881,48 @@ if (typeof document !== 'undefined' && !document.getElementById('home-data')) {
         dialog.close();
     });
 }
+
+/* Bearly global navbar state: keeps notification/cart badges in sync across buyer pages. */
+(function initBearlyGlobalNavbarState(){
+  const CART_KEY='bearly-preview-cart-v1';
+  const NOTIFICATION_KEY='bearly-notifications-v1';
+  function cartCount(){
+    try{const x=JSON.parse(localStorage.getItem(CART_KEY)||'[]');return Array.isArray(x)?x.reduce((n,i)=>n+Math.max(0,Number(i?.quantity||0)),0):0}catch{return 0}
+  }
+  function notificationCount(){
+    try{
+      const raw=localStorage.getItem(NOTIFICATION_KEY);
+      if(!raw){const existing=document.querySelector('[data-notification-badge]');return Number(existing?.textContent||3)||0}
+      const x=JSON.parse(raw);return Array.isArray(x)?x.filter(i=>!i?.read).length:0;
+    }catch{return 0}
+  }
+  function ensureBadge(link,type){
+    if(!link)return null;
+    const selector=type==='cart'?'[data-global-cart-badge]':'[data-notification-badge]';
+    let badge=link.querySelector(selector);
+    /* Reuse older page-specific cart counters instead of creating a second badge. */
+    if(!badge && type==='cart') badge=link.querySelector('#cart-header-count,.cart-badge');
+    if(!badge){
+      badge=document.createElement('span');
+      badge.setAttribute(type==='cart'?'data-global-cart-badge':'data-notification-badge','');
+      link.appendChild(badge);
+    } else if(type==='cart') {
+      badge.setAttribute('data-global-cart-badge','');
+    }
+    Object.assign(badge.style,{position:'absolute',top:'-7px',right:'0',minWidth:'17px',height:'17px',padding:'0 4px',borderRadius:'999px',background:'#e9a321',color:'#432718',fontSize:'10px',fontWeight:'800',lineHeight:'17px',textAlign:'center',zIndex:'3'});
+    link.style.position='relative';
+    return badge;
+  }
+  function sync(){
+    document.querySelectorAll('a[href$="/cart"],a[href="/cart"]').forEach(link=>{const b=ensureBadge(link,'cart');const n=cartCount();b.textContent=n;b.hidden=n===0;b.style.display=n===0?'none':''});
+    document.querySelectorAll('a[href*="#notifications"]').forEach(link=>{const b=ensureBadge(link,'notification');const n=notificationCount();b.textContent=n;b.hidden=n===0;b.style.display=n===0?'none':''});
+    document.querySelectorAll('[data-notification-badge]').forEach(b=>{const n=notificationCount();b.textContent=n;b.hidden=n===0;if(b.style)b.style.display=n===0?'none':''});
+    /* Profile header must follow Home: logo left, actions pushed to the far right. */
+    document.querySelectorAll('.profile-top-actions').forEach(el=>{el.style.marginLeft='auto'});
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',sync);else sync();
+  window.addEventListener('storage',sync);
+  window.addEventListener('focus',sync);
+  setInterval(sync,700);
+  window.BearlyNavbarState={sync};
+})();

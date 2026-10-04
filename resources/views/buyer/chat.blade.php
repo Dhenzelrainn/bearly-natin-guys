@@ -7,10 +7,17 @@
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Material+Symbols+Outlined:wght@400&display=swap" rel="stylesheet">
     @vite(['resources/css/buyer.css','resources/css/bearly-chat.css','resources/js/bearly-chat.js'])
 </head>
-<body class="bearly-chat-page">
-<header class="bearly-chat-topbar">
-    <a class="bearly-chat-brand" href="{{ url('/home') }}"><img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly"></a>
-    <nav><a href="{{ url('/profile#notifications') }}"><span class="material-symbols-outlined">notifications</span><small>Notifications</small></a><a href="{{ url('/profile#tracking') }}"><span class="material-symbols-outlined">receipt_long</span><small>Orders</small></a><a class="active" href="{{ url('/chat') }}"><span class="material-symbols-outlined">chat_bubble</span><small>Chat</small></a><a href="{{ url('/cart') }}"><span class="material-symbols-outlined">shopping_cart</span><small>Cart</small></a><a href="{{ url('/profile') }}"><span class="material-symbols-outlined">person</span><small>Mia Santos</small></a></nav>
+<body class="bh bearly-chat-page">
+<header class="header buyer-standard-header">
+    <a class="brand" href="{{ url('/home') }}" aria-label="Bearly home"><img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly"></a>
+    <div class="buyer-header-spacer"></div>
+    <nav class="header-actions" aria-label="Account">
+        <a href="{{ url('/profile#notifications') }}"><span class="material-symbols-outlined">notifications</span><span>Notifications</span></a>
+        <a href="{{ url('/profile#tracking') }}"><span class="material-symbols-outlined">receipt_long</span><span>Orders</span></a>
+        <a class="active" href="{{ url('/chat') }}"><span class="material-symbols-outlined">chat_bubble</span><span>Chat</span></a>
+        <a href="{{ url('/cart') }}"><span class="material-symbols-outlined">shopping_cart</span><span>Cart</span></a>
+        <a href="{{ url('/profile') }}"><span class="material-symbols-outlined">person</span><span>Mia Santos</span></a>
+    </nav>
 </header>
 <main class="bearly-chat-page-shell" data-bearly-chat-root data-chat-mode="page">
     <aside class="bearly-chat-page-sidebar">

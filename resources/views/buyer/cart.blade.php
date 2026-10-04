@@ -9,15 +9,15 @@
 </head>
 <body class="bh cart-page">
 <header class="header">
-<a class="brand" href="{{ url('/home') }}"><img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly"></a>
+<a class="brand" href="{{ url('/home') }}"><img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly"></a>
 <div class="cart-brand-title"><span></span><strong>Shopping Cart</strong></div>
 <div class="cart-header-spacer"></div>
 <nav class="header-actions">
 <a href="{{ url('/profile#notifications') }}" class="notification-header-link"><span class="material-symbols-outlined">notifications</span><span>Notifications</span><span class="notification-badge" data-notification-badge>3</span></a>
 <button type="button" onclick="window.location.href='{{ url('/profile#tracking') }}'"><span class="material-symbols-outlined">receipt_long</span><span>Orders</span></button>
-<button><span class="material-symbols-outlined">chat_bubble</span><span>Chat</span></button>
+<a href="{{ url('/chat') }}"><span class="material-symbols-outlined">chat_bubble</span><span>Chat</span></a>
 <a class="cart-active" href="{{ url('/cart') }}"><span class="material-symbols-outlined">shopping_cart</span><span>Cart</span><b id="cart-header-count" class="cart-badge">0</b></a>
-<a href="{{ url('/login') }}"><span class="material-symbols-outlined">person</span><span>Sign in</span></a>
+<a class="account-action" href="{{ url('/profile') }}"><span class="material-symbols-outlined">person</span><span>Mia Santos</span></a>
 </nav>
 </header>
 

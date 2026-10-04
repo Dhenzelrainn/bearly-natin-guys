@@ -232,6 +232,14 @@ class LogisticsReportsTest extends TestCase
             '2026-09-16 13:00:00'
         );
 
+        $this->recordParcelEvent(
+            $second['shipment'],
+            $second['parcel'],
+            'parcel_delivery_retried',
+            ParcelStatus::OutForDelivery->value,
+            '2026-09-16 14:00:00'
+        );
+
         /*
         * Own parcel #3 contributes to throughput only.
         */
@@ -317,6 +325,59 @@ class LogisticsReportsTest extends TestCase
                         ] === 2
                         && $summary['avg_sort_time']
                             === '45m';
+                }
+            )
+
+            ->assertViewHas(
+                'dailyVolumes',
+                [
+                    0,
+                    1,
+                    1,
+                    1,
+                    0,
+                    0,
+                    0,
+                ]
+            )
+            ->assertViewHas(
+                'dailyLabels',
+                [
+                    'Sep 14',
+                    'Sep 15',
+                    'Sep 16',
+                    'Sep 17',
+                    'Sep 18',
+                    'Sep 19',
+                    'Sep 20',
+                ]
+            )
+            ->assertViewHas(
+                'statusBreakdown',
+                function (array $items): bool {
+                    $breakdown = collect($items)
+                        ->keyBy('label');
+
+                    return
+                        $breakdown['Delivered']['value'] === 1
+                        && (float) $breakdown[
+                            'Delivered'
+                        ]['share'] === 50.0
+
+                        && $breakdown[
+                            'Out for Delivery'
+                        ]['value'] === 1
+                        && (float) $breakdown[
+                            'Out for Delivery'
+                        ]['share'] === 50.0
+
+                        && $breakdown[
+                            'Delivery Failed'
+                        ]['value'] === 0
+
+                        && $breakdown[
+                            'Returned'
+                        ]['value'] === 0;
                 }
             );
     }

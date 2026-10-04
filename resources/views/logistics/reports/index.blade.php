@@ -205,15 +205,6 @@
                         collect($dailyVolumes)->max() ?? 0
                     );
 
-                    $weekdayLabels = [
-                        'Mon',
-                        'Tue',
-                        'Wed',
-                        'Thu',
-                        'Fri',
-                        'Sat',
-                        'Sun',
-                    ];
                 @endphp
 
                 <div class="bar-chart">
@@ -235,7 +226,7 @@
                             ></div>
 
                             <small>
-                                {{ $weekdayLabels[$index] ?? '' }}
+                                {{ $dailyLabels[$index] ?? '' }}
                             </small>
                         </div>
                     @endforeach

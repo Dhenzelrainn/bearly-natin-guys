@@ -3147,7 +3147,7 @@ class LogisticsController extends Controller
         * Throughput represents unique parcels received by
         * this provider during the selected reporting period.
         */
-        $throughput = $ownedEventQuery()
+        $throughputEvents = $ownedEventQuery()
             ->where(
                 'event_type',
                 'received_at_center'
@@ -3160,9 +3160,16 @@ class LogisticsController extends Controller
                     $reportTo,
                 ]
             )
-            ->distinct()
-            ->count('parcel_id');
+            ->orderBy('occurred_at')
+            ->get([
+                'parcel_id',
+                'occurred_at',
+            ]);
 
+        $throughput = $throughputEvents
+            ->pluck('parcel_id')
+            ->unique()
+            ->count();
         /*
         * Delivered represents unique parcels completed
         * during the selected reporting period.
@@ -3341,6 +3348,136 @@ class LogisticsController extends Controller
                 ).'m'
                 : '—';
 
+        /*
+        * Build one throughput bucket for every day in the
+        * selected reporting period, including zero-volume days.
+        */
+        $dailyVolumeByDate = $throughputEvents
+            ->groupBy(
+                fn (ShipmentEvent $event) =>
+                    $event->occurred_at
+                        ->copy()
+                        ->timezone('Asia/Manila')
+                        ->format('Y-m-d')
+            )
+            ->map(
+                fn ($events) =>
+                    $events
+                        ->pluck('parcel_id')
+                        ->unique()
+                        ->count()
+            );
+
+        $dailyVolumes = [];
+        $dailyLabels = [];
+
+        for (
+            $day = $reportFrom
+                ->copy()
+                ->startOfDay();
+            $day->lte($reportTo);
+            $day->addDay()
+        ) {
+            $dateKey = $day->format('Y-m-d');
+
+            $dailyLabels[] =
+                $day->format('M j');
+
+            $dailyVolumes[] =
+                (int) $dailyVolumeByDate->get(
+                    $dateKey,
+                    0
+                );
+        }
+
+        /*
+        * Delivery breakdown uses the latest delivery-relevant
+        * state reached by each owned parcel during the period.
+        *
+        * This avoids counting a failed attempt twice when the
+        * same parcel is subsequently retried.
+        */
+        $statusLabels = [
+            ParcelStatus::Delivered->value =>
+                'Delivered',
+
+            ParcelStatus::OutForDelivery->value =>
+                'Out for Delivery',
+
+            ParcelStatus::Failed->value =>
+                'Delivery Failed',
+
+            ParcelStatus::Returned->value =>
+                'Returned',
+        ];
+
+        $latestDeliveryStatuses =
+            $ownedEventQuery()
+                ->whereNotNull('parcel_id')
+                ->whereBetween(
+                    'occurred_at',
+                    [
+                        $reportFrom,
+                        $reportTo,
+                    ]
+                )
+                ->whereIn(
+                    'to_status',
+                    array_keys($statusLabels)
+                )
+                ->orderBy('occurred_at')
+                ->orderBy('id')
+                ->get([
+                    'id',
+                    'parcel_id',
+                    'to_status',
+                    'occurred_at',
+                ])
+                ->groupBy('parcel_id')
+                ->map(
+                    fn ($events) =>
+                        $events->last()->to_status
+                );
+
+        $statusTotal =
+            $latestDeliveryStatuses->count();
+
+        $statusBreakdown = collect($statusLabels)
+            ->map(
+                function (
+                    string $label,
+                    string $status
+                ) use (
+                    $latestDeliveryStatuses,
+                    $statusTotal
+                ): array {
+                    $value =
+                        $latestDeliveryStatuses
+                            ->filter(
+                                fn ($currentStatus) =>
+                                    $currentStatus === $status
+                            )
+                            ->count();
+
+                    return [
+                        'label' => $label,
+
+                        'value' => $value,
+
+                        'share' =>
+                            $statusTotal > 0
+                                ? round(
+                                    ($value / $statusTotal)
+                                    * 100,
+                                    1
+                                )
+                                : 0,
+                    ];
+                }
+            )
+            ->values()
+            ->all();
+
         return view(
             'logistics.reports.index',
             $this->shared() + [
@@ -3397,38 +3534,14 @@ class LogisticsController extends Controller
                     ],
                 ],
 
-                'dailyVolumes' => [
-                    118,
-                    136,
-                    129,
-                    151,
-                    164,
-                    143,
-                    158,
-                ],
+                'dailyVolumes' =>
+                    $dailyVolumes,
 
-                'statusBreakdown' => [
-                    [
-                        'label' => 'Delivered',
-                        'value' => 1176,
-                        'share' => 91.6,
-                    ],
-                    [
-                        'label' => 'Out for Delivery',
-                        'value' => 61,
-                        'share' => 4.8,
-                    ],
-                    [
-                        'label' => 'Delivery Failed',
-                        'value' => 29,
-                        'share' => 2.3,
-                    ],
-                    [
-                        'label' => 'Returned',
-                        'value' => 18,
-                        'share' => 1.3,
-                    ],
-                ],
+                'dailyLabels' =>
+                    $dailyLabels,
+
+                'statusBreakdown' =>
+                    $statusBreakdown,
             ]
         );
     }

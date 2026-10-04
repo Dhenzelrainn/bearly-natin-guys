@@ -36,7 +36,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Material+Symbols+Outlined:wght@400&display=swap" rel="stylesheet">
 
-    @vite(['resources/css/buyer.css', 'resources/js/buyer.js'])
+    @vite(['resources/css/buyer.css', 'resources/css/bearly-chat.css', 'resources/js/buyer.js', 'resources/js/bearly-chat.js'])
 
 <style>
 /* Bearly header Wishlist icon: matches the existing brown/gold navigation */
@@ -86,12 +86,12 @@
                 Wishlist
             </a>
 
-            <button data-info="orders">
+            <button type="button" onclick="window.location.href='{{ url('/profile#tracking') }}'">
                 <i class="mi" aria-hidden="true">receipt_long</i>
                 Orders
             </button>
 
-            <button data-info="chat">
+            <button onclick="window.location.href='{{ url('/chat') }}'">
                 <i class="mi" aria-hidden="true">chat_bubble</i>
                 Chat
             </button>
@@ -247,7 +247,7 @@
         <small>Frontend preview</small>
     </footer>
 
-    <button class="chat" data-info="chat">
+    <button class="chat" data-bearly-chat-launcher>
         <i class="mi" aria-hidden="true">chat_bubble</i>
         Chat
     </button>
@@ -296,5 +296,6 @@
     <script type="application/json" id="bc-data">
         {!! json_encode($catalog, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR) !!}
     </script>
+@include('buyer.partials.chat-drawer')
 </body>
 </html>

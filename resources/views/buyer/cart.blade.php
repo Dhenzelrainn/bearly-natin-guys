@@ -14,7 +14,7 @@
 <div class="cart-header-spacer"></div>
 <nav class="header-actions">
 <a href="{{ url('/profile#notifications') }}" class="notification-header-link"><span class="material-symbols-outlined">notifications</span><span>Notifications</span><span class="notification-badge" data-notification-badge>3</span></a>
-<button><span class="material-symbols-outlined">receipt_long</span><span>Orders</span></button>
+<button type="button" onclick="window.location.href='{{ url('/profile#tracking') }}'"><span class="material-symbols-outlined">receipt_long</span><span>Orders</span></button>
 <button><span class="material-symbols-outlined">chat_bubble</span><span>Chat</span></button>
 <a class="cart-active" href="{{ url('/cart') }}"><span class="material-symbols-outlined">shopping_cart</span><span>Cart</span><b id="cart-header-count" class="cart-badge">0</b></a>
 <a href="{{ url('/login') }}"><span class="material-symbols-outlined">person</span><span>Sign in</span></a>

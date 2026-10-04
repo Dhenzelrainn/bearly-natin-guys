@@ -48,7 +48,7 @@
 </section>
 
 <section class="checkout-card payment-card">
-<div class="payment-head"><h2>Payment Method</h2><div><strong id="payment-label">Cash on Delivery</strong><button id="payment-btn" class="link-btn" type="button">Change</button></div></div>
+<div class="payment-head"><h2>Payment Method</h2><div class="cod-payment"><span class="material-symbols-outlined">payments</span><span><strong id="payment-label">Cash on Delivery</strong><small>Pay with cash when your order is delivered.</small></span></div></div>
 <div class="summary">
 <div><span>Merchandise Subtotal</span><strong id="summary-subtotal">₱0.00</strong></div>
 <div><span>Shipping Subtotal</span><strong id="summary-shipping">₱50.00</strong></div>

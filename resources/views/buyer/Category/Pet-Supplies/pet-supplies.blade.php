@@ -74,7 +74,7 @@
                 Wishlist
             </a>
 
-            <button data-info="orders"><i class="mi">receipt_long</i> Orders</button>
+            <button type="button" onclick="window.location.href='{{ url('/profile#tracking') }}'"><i class="mi">receipt_long</i> Orders</button>
             <button data-info="chat"><i class="mi">chat_bubble</i> Chat</button>
             <a href="{{ url('/cart') }}"><i class="mi">shopping_cart</i> Cart</a>
             <a href="{{ url('/login') }}"><i class="mi">person</i> Sign in</a>

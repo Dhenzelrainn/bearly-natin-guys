@@ -86,7 +86,7 @@
                 Wishlist
             </a>
 
-            <button data-info="orders">
+            <button type="button" onclick="window.location.href='{{ url('/profile#tracking') }}'">
                 <i class="mi" aria-hidden="true">receipt_long</i>
                 Orders
             </button>

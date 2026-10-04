@@ -144,10 +144,12 @@ for ($round = 0; $round < 5; $round++) {
     'resources/css/buyer.css',
 
     'resources/css/bearly-promo-slider.css',
+    'resources/css/bearly-chat.css',
 
     'resources/js/buyer.js',
 
-    'resources/js/bearly-promo-slider.js'
+    'resources/js/bearly-promo-slider.js',
+    'resources/js/bearly-chat.js'
 
 ])
 
@@ -205,9 +207,9 @@ for ($round = 0; $round < 5; $round++) {
 
 <a href="{{ url('/profile#notifications') }}" aria-label="Wishlist" class="notification-header-link"><span class="material-symbols-outlined" aria-hidden="true">notifications</span><span>Notifications</span><span class="notification-badge" data-notification-badge>3</span></a>
 
-<button data-info="orders"><span class="material-symbols-outlined" aria-hidden="true">receipt_long</span><span>Orders</span></button>
+<button type="button" onclick="window.location.href='{{ url('/profile#tracking') }}'"><span class="material-symbols-outlined" aria-hidden="true">receipt_long</span><span>Orders</span></button>
 
-<button data-info="chat"><span class="material-symbols-outlined" aria-hidden="true">chat_bubble</span><span>Chat</span></button>
+<a href="{{ url('/chat') }}"><span class="material-symbols-outlined" aria-hidden="true">chat_bubble</span><span>Chat</span></a>
 
 
 
@@ -241,7 +243,7 @@ for ($round = 0; $round < 5; $round++) {
 
 <nav id="category-nav" aria-label="Shop by category"></nav>
 
-<button class="chat-button" data-info="chat" aria-controls="chat-drawer" aria-expanded="false"><span class="material-symbols-outlined" aria-hidden="true">chat_bubble</span>Chat</button>
+<button class="chat-button" type="button" data-bearly-chat-launcher aria-label="Open chat"><span class="material-symbols-outlined" aria-hidden="true">chat_bubble</span>Chat</button>
 
 
 
@@ -639,67 +641,7 @@ for ($round = 0; $round < 5; $round++) {
 
 
 
-<div class="chat-drawer-backdrop" id="chat-drawer-backdrop" data-chat-close hidden></div>
-
-<aside class="chat-drawer" id="chat-drawer" aria-label="Chat with sellers" aria-hidden="true">
-
-    <header class="chat-drawer-header">
-
-        <div><p class="eyebrow">Buyer messages</p><h2>Chat</h2></div>
-
-        <button class="icon-button" type="button" data-chat-close aria-label="Close chat"><span class="material-symbols-outlined" aria-hidden="true">close</span></button>
-
-    </header>
-
-    <div class="chat-drawer-body">
-
-        <div class="chat-conversations" aria-label="Seller conversations">
-
-            <button class="chat-conversation is-active" type="button" data-chat-conversation="Greenline Home">
-
-                <span class="chat-store-avatar">GH</span><span><strong>Greenline Home</strong><small>Your desk lamp is on the way.</small></span><time>2m</time>
-
-            </button>
-
-            <button class="chat-conversation" type="button" data-chat-conversation="Sundays Market">
-
-                <span class="chat-store-avatar is-sand">SM</span><span><strong>Sundays Market</strong><small>Thanks for your order!</small></span><time>Yesterday</time>
-
-            </button>
-
-        </div>
-
-        <section class="chat-thread" aria-label="Current conversation">
-
-            <div class="chat-thread-heading"><span class="chat-store-avatar">GH</span><div><strong>Greenline Home</strong><small>Usually replies within an hour</small></div></div>
-
-            <div class="chat-messages" data-chat-messages>
-
-                <p class="chat-date">Today</p>
-
-                <div class="chat-bubble seller">Hi Mia! Your desk lamp has been handed to the courier.</div>
-
-                <div class="chat-bubble buyer">Great, thank you for the update!</div>
-
-            </div>
-
-            <form class="chat-composer" data-chat-form>
-
-                <label class="sr-only" for="chat-message">Message seller</label>
-
-                <input id="chat-message" type="text" placeholder="Write a message..." autocomplete="off" maxlength="240">
-
-                <button type="submit" aria-label="Send message"><span class="material-symbols-outlined" aria-hidden="true">send</span></button>
-
-            </form>
-
-        </section>
-
-    </div>
-
-</aside>
-
-
+@include('buyer.partials.chat-drawer')
 
 <div class="cart-drawer-backdrop" id="cart-drawer-backdrop" data-cart-close hidden></div>
 

@@ -16,17 +16,54 @@ Route::get('/home', [BuyerController::class, 'home'])->name('home');
 Route::get('/products', [BuyerController::class, 'products'])->name('products.index');
 Route::get('/wishlist', [BuyerController::class, 'wishlist'])->name('wishlist.index');
 Route::post('/wishlist/toggle', [BuyerController::class, 'toggleWishlist'])->name('wishlist.toggle');
+
 Route::get('/cart', [BuyerController::class, 'cart'])->name('cart.view');
 Route::get('/checkout', [BuyerController::class, 'checkout'])->name('checkout');
+
+/*
+|--------------------------------------------------------------------------
+| Buyer Featured Pages
+|--------------------------------------------------------------------------
+*/
+
 Route::view('/flash-deals', 'buyer.flash-deals')->name('flash-deals');
 Route::view('/top-products', 'buyer.top-products')->name('top-products');
 Route::view('/top-sales', 'buyer.top-sales')->name('top-sales');
+
+/*
+|--------------------------------------------------------------------------
+| Buyer Chat
+|--------------------------------------------------------------------------
+|
+| Used by:
+| - Navbar Chat
+| - Help Center -> Chat with Bearly
+|
+| Floating chat does not need this route because it opens as an overlay.
+|
+*/
+
+Route::view('/chat', 'buyer.chat')->name('buyer.chat');
+
+/*
+|--------------------------------------------------------------------------
+| Buyer Cart
+|--------------------------------------------------------------------------
+*/
+
 Route::post('/cart/add', [BuyerController::class, 'addToCart'])->name('cart.add');
 Route::patch('/cart/{cartItem}', [BuyerController::class, 'updateCart'])->name('cart.update');
 Route::delete('/cart/{cartItem}', [BuyerController::class, 'removeFromCart'])->name('cart.remove');
 Route::delete('/cart', [BuyerController::class, 'clearCart'])->name('cart.clear');
 
-Route::get('/forgot-password', fn () => redirect()->route('login'))->name('password.request');
+Route::get('/forgot-password', fn () => redirect()->route('login'))
+    ->name('password.request');
+
+/*
+|--------------------------------------------------------------------------
+| PSGC API
+|--------------------------------------------------------------------------
+*/
 
 Route::prefix('api/psgc')
     ->middleware('throttle:60,1')
@@ -45,52 +82,149 @@ Route::prefix('api/psgc')
         )->name('psgc.barangays');
     });
 
-Route::middleware('auth')->prefix('admin')->name('admin.')->group(function () {
-    Route::redirect('/', '/admin/dashboard');
+/*
+|--------------------------------------------------------------------------
+| Admin
+|--------------------------------------------------------------------------
+*/
 
-    Route::get('/dashboard', [AdminController::class, 'dashboard'])->name('dashboard');
-    Route::get('/registrations', [AdminController::class, 'registrations'])->name('registrations');
-    Route::get('/users', [AdminController::class, 'users'])->name('users');
-    Route::get('/compliance', [AdminController::class, 'compliance'])->name('compliance');
-    Route::get('/disputes', [AdminController::class, 'disputes'])->name('disputes');
-    Route::get('/commissions', [AdminController::class, 'commissions'])->name('commissions');
-    Route::get('/reports', [AdminController::class, 'reports'])->name('reports');
-    Route::get('/settings', [AdminController::class, 'settings'])->name('settings');
-    Route::get('/messages', [AdminController::class, 'messages'])->name('messages');
-    Route::get('/account', [AdminController::class, 'account'])->name('account');
-});
+Route::middleware('auth')
+    ->prefix('admin')
+    ->name('admin.')
+    ->group(function () {
+        Route::redirect('/', '/admin/dashboard');
 
-Route::prefix('courier')->name('courier.')->group(function () {
-    Route::redirect('/', '/courier/dashboard');
+        Route::get('/dashboard', [AdminController::class, 'dashboard'])
+            ->name('dashboard');
 
-    Route::get('/register', [CourierController::class, 'register'])->name('register');
-    Route::get('/pending', [CourierController::class, 'pending'])->name('pending');
-    Route::get('/dashboard', [CourierController::class, 'dashboard'])->name('dashboard');
-    Route::get('/requests', [CourierController::class, 'requests'])->name('requests');
-    Route::get('/pickup', [CourierController::class, 'pickup'])->name('pickup');
-    Route::get('/transit', [CourierController::class, 'transit'])->name('transit');
-    Route::get('/complete', [CourierController::class, 'complete'])->name('complete');
-    Route::get('/earnings', [CourierController::class, 'earnings'])->name('earnings');
-    Route::get('/history', [CourierController::class, 'history'])->name('history');
-    Route::get('/messages', [CourierController::class, 'messages'])->name('messages');
-    Route::get('/account', [CourierController::class, 'account'])->name('account');
-});
+        Route::get('/registrations', [AdminController::class, 'registrations'])
+            ->name('registrations');
 
-Route::prefix('seller')->name('seller.')->group(function () {
-    Route::redirect('/', '/seller/dashboard');
-    Route::get('/dashboard', [SellerController::class, 'dashboard'])->name('dashboard');
-    Route::get('/store', [SellerController::class, 'store'])->name('store');
-    Route::post('/store', [SellerController::class, 'saveStore'])->name('store.save');
-    Route::get('/products', [SellerController::class, 'products'])->name('products');
-    Route::get('/orders', [SellerController::class, 'orders'])->name('orders');
-    Route::get('/inventory', [SellerController::class, 'inventory'])->name('inventory');
-    Route::get('/products/create', [SellerController::class, 'createProduct'])->name('products.create');
-    Route::post('/products', [SellerController::class, 'addProduct'])->name('products.add');
-    Route::get('/products/{product}/edit', [SellerController::class, 'editProduct'])->name('products.edit');
-    Route::put('/products/{product}', [SellerController::class, 'updateProduct'])->name('products.update');
-    Route::patch('/products/{product}/archive', [SellerController::class, 'toggleProductArchive'])->name('products.archive');
-});
+        Route::get('/users', [AdminController::class, 'users'])
+            ->name('users');
 
-Route::get('/addresses', [BuyerController::class, 'addresses'])->name('addresses');
+        Route::get('/compliance', [AdminController::class, 'compliance'])
+            ->name('compliance');
 
-Route::get('/profile', [BuyerController::class, 'profile'])->name('buyer.profile');
+        Route::get('/disputes', [AdminController::class, 'disputes'])
+            ->name('disputes');
+
+        Route::get('/commissions', [AdminController::class, 'commissions'])
+            ->name('commissions');
+
+        Route::get('/reports', [AdminController::class, 'reports'])
+            ->name('reports');
+
+        Route::get('/settings', [AdminController::class, 'settings'])
+            ->name('settings');
+
+        Route::get('/messages', [AdminController::class, 'messages'])
+            ->name('messages');
+
+        Route::get('/account', [AdminController::class, 'account'])
+            ->name('account');
+    });
+
+/*
+|--------------------------------------------------------------------------
+| Courier
+|--------------------------------------------------------------------------
+*/
+
+Route::prefix('courier')
+    ->name('courier.')
+    ->group(function () {
+        Route::redirect('/', '/courier/dashboard');
+
+        Route::get('/register', [CourierController::class, 'register'])
+            ->name('register');
+
+        Route::get('/pending', [CourierController::class, 'pending'])
+            ->name('pending');
+
+        Route::get('/dashboard', [CourierController::class, 'dashboard'])
+            ->name('dashboard');
+
+        Route::get('/requests', [CourierController::class, 'requests'])
+            ->name('requests');
+
+        Route::get('/pickup', [CourierController::class, 'pickup'])
+            ->name('pickup');
+
+        Route::get('/transit', [CourierController::class, 'transit'])
+            ->name('transit');
+
+        Route::get('/complete', [CourierController::class, 'complete'])
+            ->name('complete');
+
+        Route::get('/earnings', [CourierController::class, 'earnings'])
+            ->name('earnings');
+
+        Route::get('/history', [CourierController::class, 'history'])
+            ->name('history');
+
+        Route::get('/messages', [CourierController::class, 'messages'])
+            ->name('messages');
+
+        Route::get('/account', [CourierController::class, 'account'])
+            ->name('account');
+    });
+
+/*
+|--------------------------------------------------------------------------
+| Seller
+|--------------------------------------------------------------------------
+*/
+
+Route::prefix('seller')
+    ->name('seller.')
+    ->group(function () {
+        Route::redirect('/', '/seller/dashboard');
+
+        Route::get('/dashboard', [SellerController::class, 'dashboard'])
+            ->name('dashboard');
+
+        Route::get('/store', [SellerController::class, 'store'])
+            ->name('store');
+
+        Route::post('/store', [SellerController::class, 'saveStore'])
+            ->name('store.save');
+
+        Route::get('/products', [SellerController::class, 'products'])
+            ->name('products');
+
+        Route::get('/orders', [SellerController::class, 'orders'])
+            ->name('orders');
+
+        Route::get('/inventory', [SellerController::class, 'inventory'])
+            ->name('inventory');
+
+        Route::get('/products/create', [SellerController::class, 'createProduct'])
+            ->name('products.create');
+
+        Route::post('/products', [SellerController::class, 'addProduct'])
+            ->name('products.add');
+
+        Route::get('/products/{product}/edit', [SellerController::class, 'editProduct'])
+            ->name('products.edit');
+
+        Route::put('/products/{product}', [SellerController::class, 'updateProduct'])
+            ->name('products.update');
+
+        Route::patch(
+            '/products/{product}/archive',
+            [SellerController::class, 'toggleProductArchive']
+        )->name('products.archive');
+    });
+
+/*
+|--------------------------------------------------------------------------
+| Buyer Account
+|--------------------------------------------------------------------------
+*/
+
+Route::get('/addresses', [BuyerController::class, 'addresses'])
+    ->name('addresses');
+
+Route::get('/profile', [BuyerController::class, 'profile'])
+    ->name('buyer.profile');

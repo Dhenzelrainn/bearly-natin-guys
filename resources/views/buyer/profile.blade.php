@@ -6,7 +6,7 @@
     <title>My Profile | Bearly</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Material+Symbols+Outlined:wght@400&display=swap" rel="stylesheet">
-    @vite(['resources/css/buyer.css','resources/css/profile.css','resources/css/addresses.css','resources/js/profile.js','resources/js/account-addresses.js','resources/js/my-likes.js','resources/js/my-purchases.js','resources/js/reviews-ratings.js'])
+    @vite(['resources/css/buyer.css','resources/css/profile.css','resources/css/addresses.css','resources/css/bearly-chat.css','resources/js/profile.js','resources/js/account-addresses.js','resources/js/my-likes.js','resources/js/my-purchases.js','resources/js/reviews-ratings.js','resources/js/bearly-chat.js'])
 </head>
 <body class="bh profile-page">
 <header class="profile-topbar">
@@ -205,7 +205,7 @@
     <section class="profile-card account-panel" id="help-panel" data-account-panel="help" hidden>
         <div class="help-head">
             <div><h1>Help Center</h1><p>Find quick answers about shopping with Bearly.</p></div>
-            <span class="material-symbols-outlined help-head-icon">support_agent</span>
+            <a class="help-chat-bearly" href="{{ url('/chat?conversation=bearly') }}" title="Chat with Bearly Assistant"><span class="material-symbols-outlined help-head-icon">support_agent</span><span>Chat with Bearly</span></a>
         </div>
         <label class="help-search"><span class="material-symbols-outlined">search</span><input id="help-search" type="search" placeholder="Search orders, shipping, vouchers, account..." autocomplete="off"></label>
         <div class="help-categories" aria-label="Help categories">

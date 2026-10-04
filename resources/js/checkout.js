@@ -1,4 +1,4 @@
-const CART_KEY='bearly-preview-cart-v1',SEL_KEY='bearly-checkout-selection-v1',ADDRESS_KEY='bearly-addresses-v1',VOUCHER_KEY='bearly-claimed-vouchers-v1';
+const CART_KEY='bearly-preview-cart-v1',SEL_KEY='bearly-checkout-selection-v1',ADDRESS_KEY='bearly-addresses-v1',VOUCHER_KEY='bearly-claimed-vouchers-v1',ORDERS_KEY='bearly-orders-v1';
 const $=id=>document.getElementById(id),money=n=>'₱'+Number(n||0).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});
 const read=(k,d=[])=>{try{let v=JSON.parse(localStorage.getItem(k));return v??d}catch{return d}};
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -36,7 +36,45 @@ $('voucher-btn').onclick=()=>{
    voucher=o;
  });
 };
-$('payment-btn').onclick=()=>choose('Payment Method',[{label:'Cash on Delivery',note:'COD'},{label:'GCash',note:'Frontend preview'},{label:'Debit / Credit Card',note:'Frontend preview'}],o=>payment=o.label);
+
 $('change-address').onclick=()=>{let a=addresses();if(!a.length){window.location.href='/addresses';return}choose('Choose Delivery Address',a.map(x=>({label:x.name+' · '+x.phone,note:[x.street,x.barangay,x.city,x.province,x.postal].filter(Boolean).join(', '),...x})),o=>{$('address-name').textContent=o.name;$('address-phone').textContent=o.phone;$('address-text').textContent=o.note})};
-$('place-order').onclick=()=>toast('Order preview ready — database/order saving will be connected later.');
+$('place-order').onclick=()=>{
+ if(!items.length){toast('No items selected for checkout.');return}
+ const a=addresses(),address=a.find(x=>x.isDefault)||a[0]||null;
+ if(!address){toast('Please add a delivery address first.');setTimeout(()=>window.location.href='/addresses',700);return}
+ const sub=subtotal(),total=Math.max(0,sub+shipping-discount);
+ const now=new Date();
+ const id='BRY-'+String(now.getTime()).slice(-6);
+ const order={
+   id,
+   status:'to-ship',
+   statusLabel:'To Ship',
+   shop:'Bearly Official',
+   date:now.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}),
+   subtotal:sub,
+   shipping,
+   discount,
+   total,
+   paymentMethod:'Cash on Delivery',
+   paymentStatus:'Cash on Delivery',
+   voucher:voucher?.id||null,
+   sellerMessage:$('seller-message')?.value?.trim()||'',
+   shippingOption:$('shipping-label')?.textContent?.trim()||'Standard Delivery',
+   address:{...address},
+   items:items.map(i=>({
+     name:i.name||'Product',
+     variation:[i.color,i.size].filter(Boolean).join(' · ')||'Standard',
+     color:i.color||'',size:i.size||'',qty:Number(i.quantity||1),price:Number(i.price||0),
+     image:img(i.image||i.photo),product_id:i.product_id??i.id??null
+   }))
+ };
+ const existing=read(ORDERS_KEY,[]);
+ localStorage.setItem(ORDERS_KEY,JSON.stringify([order,...existing]));
+ const selected=new Set(selectedKeys.map(String));
+ const remaining=cart.filter((i,n)=>!selected.has(itemKey(i,n)));
+ localStorage.setItem(CART_KEY,JSON.stringify(remaining));
+ localStorage.removeItem(SEL_KEY);
+ toast('Order placed! Pay with cash upon delivery.');
+ setTimeout(()=>window.location.href='/profile#purchases',900);
+};
 loadDefaultAddress();render();

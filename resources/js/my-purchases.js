@@ -18,7 +18,7 @@ function actionButtons(order){
 }
 function orderHTML(o){
  const items=(o.items||[]).map(i=>`<div class="order-product"><img src="${safeImage(i.image)}" alt="${i.name||'Product'}" onerror="this.src='/images/logo.png'"><div><h3>${i.name||'Product'}</h3><p>Variation: ${i.variation||'Standard'}</p><p>x${i.qty||1}</p></div><div class="order-price"><strong>${peso(i.price)}</strong></div></div>`).join('');
- return `<article class="order-card"><div class="order-card-head"><div class="order-shop"><span class="material-symbols-outlined">storefront</span>${o.shop||'Bearly'} <span style="font-weight:400;color:#948881">#${o.id||''}</span></div><span class="order-status ${o.status==='cancelled'?'cancelled':''}">${o.statusLabel||o.status}</span></div>${items}<div class="order-card-foot"><span class="order-total">Order Total: <strong>${peso(o.total)}</strong></span>${actionButtons(o)}</div></article>`;
+ return `<article class="order-card"><div class="order-card-head"><div class="order-shop"><span class="material-symbols-outlined">storefront</span>${o.shop||'Bearly'} <span style="font-weight:400;color:#948881">#${o.id||''}</span></div><span class="order-status ${o.status==='cancelled'?'cancelled':''}">${o.statusLabel||o.status}</span></div>${items}<div class="order-card-foot"><span class="order-total">${o.paymentMethod?`<small style="display:block;color:#8b7d75;margin-bottom:3px">${o.paymentMethod}</small>`:''}Order Total: <strong>${peso(o.total)}</strong></span>${actionButtons(o)}</div></article>`;
 }
 function renderMyPurchases(){
  const list=document.querySelector('#purchase-list'),empty=document.querySelector('#purchases-empty'),count=document.querySelector('#purchase-count');if(!list)return;
@@ -36,7 +36,7 @@ function readTrackingAddress(){try{const all=JSON.parse(localStorage.getItem('be
 function trackingSteps(order){
  const steps=[
   ['Order Placed','Your order was placed successfully.',order?.date||''],
-  ['Payment Confirmed','Payment has been confirmed.',''],
+  [order?.paymentMethod==='Cash on Delivery'?'Cash on Delivery':'Payment Confirmed',order?.paymentMethod==='Cash on Delivery'?'Payment will be collected when your order is delivered.':'Payment has been confirmed.',''],
   ['Preparing to Ship','Bearly Official is preparing your parcel.',''],
   ['Shipped','Your parcel has left the seller.',''],
   ['Out for Delivery','Your parcel is on the way to you.',''],

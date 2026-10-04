@@ -15,7 +15,7 @@
 <div style="flex:1"></div>
 <nav class="header-actions" aria-label="Account">
 <a href="{{ url('/profile#notifications') }}" class="notification-header-link"><span class="material-symbols-outlined">notifications</span><span>Notifications</span><span class="notification-badge" data-notification-badge>3</span></a>
-<button data-info="orders"><span class="material-symbols-outlined">receipt_long</span><span>Orders</span></button>
+<button type="button" onclick="window.location.href='{{ url('/profile#tracking') }}'"><span class="material-symbols-outlined">receipt_long</span><span>Orders</span></button>
 <button data-info="chat"><span class="material-symbols-outlined">chat_bubble</span><span>Chat</span></button>
 <a href="{{ url('/cart') }}"><span class="material-symbols-outlined">shopping_cart</span><span>Cart</span></a>
 <button class="account-action"><span class="material-symbols-outlined">person</span><span>Mia Santos</span></button>

@@ -49,8 +49,8 @@ foreach($categoryProductSources as $slug=>$source){
 
     <nav class="header-actions" aria-label="Account">
         <a href="{{ url('/profile#notifications') }}" class="notification-header-link"><span class="material-symbols-outlined" aria-hidden="true">notifications</span><span>Notifications</span><span class="notification-badge" data-notification-badge>3</span></a>
-        <a href="{{ url('/profile#purchases') }}"><span class="material-symbols-outlined" aria-hidden="true">receipt_long</span><span>Orders</span></a>
-        <button type="button" data-info="chat"><span class="material-symbols-outlined" aria-hidden="true">chat_bubble</span><span>Chat</span></button>
+        <a href="{{ url('/profile#tracking') }}"><span class="material-symbols-outlined" aria-hidden="true">receipt_long</span><span>Orders</span></a>
+        <a href="{{ url('/chat') }}"><span class="material-symbols-outlined" aria-hidden="true">chat_bubble</span><span>Chat</span></a>
         <a href="{{ url('/cart') }}"><span class="material-symbols-outlined" aria-hidden="true">shopping_cart</span><span>Cart</span></a>
         <a class="account-action" href="{{ url('/profile') }}" aria-label="Open Mia Santos profile"><span class="material-symbols-outlined" aria-hidden="true">person</span><span>Mia Santos</span></a>
     </nav>
@@ -76,7 +76,7 @@ $deals = [
 ];
 @endphp
 @foreach($deals as $d)
-        <article class="flash-deal-card" data-flash-product data-key="{{ $d[0] }}" data-product-id="{{ $d[1] }}" data-name="{{ $d[2] }}" data-price="{{ $d[3] }}" data-original-price="{{ $d[4] }}" data-image="{{ asset('images/products/'.$d[5]) }}" data-flash-category="{{ $d[6] }}" onclick="if (!event.target.closest('[data-top-like], [data-top-add], [data-flash-add]')) window.bearlyOpenFeaturedCard?.(this, 'flash')">
+        <article class="flash-deal-card" data-flash-product data-key="{{ $d[0] }}" data-product-id="{{ $d[1] }}" data-name="{{ $d[2] }}" data-price="{{ $d[3] }}" data-original-price="{{ $d[4] }}" data-image="{{ asset('images/products/'.$d[5]) }}" data-flash-category="{{ $d[6] }}">
             <button type="button" class="flash-image" data-feature-open><img src="{{ asset('images/products/'.$d[5]) }}" alt="{{ $d[2] }}"><span>{{ $d[7] }}% OFF</span></button>
             <div class="flash-copy"><small>{{ $d[6] }}</small><h3>{{ $d[2] }}</h3><div class="flash-prices"><strong>₱{{ number_format($d[3]) }}</strong><del>₱{{ number_format($d[4]) }}</del></div><div class="flash-stock"><span style="--sold:{{ $d[8] }}%"></span><small>{{ $d[8] }}% claimed</small></div><button type="button" class="flash-add" data-flash-add>Add to Cart</button></div>
         </article>

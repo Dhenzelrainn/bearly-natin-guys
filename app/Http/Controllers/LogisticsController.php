@@ -19,6 +19,7 @@ use App\Models\Shipment;
 use App\Models\ShipmentEvent;
 use App\Models\DispatchBatch;
 use App\Models\User;
+use App\Models\Conversation;
 use App\Models\Waybill;
 use App\Services\DispatchService;
 use App\Services\EmailVerificationService;
@@ -3744,36 +3745,269 @@ class LogisticsController extends Controller
         );
     }
 
-    public function messages()
-    {
-        return view('logistics.messages.index', $this->shared() + [
-            'conversations' => [
-                [
-                    'id' => 'techvault-ph',
-                    'name' => 'TechVault PH',
-                    'role' => 'Seller',
-                    'initials' => 'TP',
-                    'preview' => 'Pickup batch is ready at our counter.',
-                    'time' => '2:07 PM',
-                ],
-                [
-                    'id' => 'nico-flores',
-                    'name' => 'Nico Flores',
-                    'role' => 'Rider',
-                    'initials' => 'NF',
-                    'preview' => 'I finished the SP-N1 route.',
-                    'time' => '1:51 PM',
-                ],
-                [
-                    'id' => 'bearly-admin',
-                    'name' => 'Bearly Admin',
-                    'role' => 'Administrator',
-                    'initials' => 'BA',
-                    'preview' => 'Please review the pending rider credentials.',
-                    'time' => '11:24 AM',
-                ],
-            ],
-        ]);
+    public function messages(
+        Request $request
+    ): View {
+        /** @var User $operator */
+        $operator = $request->user();
+
+        $records = Conversation::query()
+            ->whereHas(
+                'participants',
+                fn ($query) =>
+                    $query->where(
+                        'users.id',
+                        $operator->id
+                    )
+            )
+            ->with([
+                'participants',
+
+                'latestMessage',
+
+                'messages' => fn ($query) =>
+                    $query
+                        ->orderBy('sent_at')
+                        ->orderBy('id'),
+            ])
+            ->orderByDesc('last_message_at')
+            ->orderByDesc('id')
+            ->get();
+
+        $conversations = $records
+            ->map(function (
+                Conversation $conversation
+            ) use (
+                $operator
+            ): array {
+                $operatorParticipant =
+                    $conversation
+                        ->participants
+                        ->first(
+                            fn (User $participant): bool =>
+                                (int) $participant->id
+                                === (int) $operator->id
+                        );
+
+                $otherParticipant =
+                    $conversation
+                        ->participants
+                        ->first(
+                            fn (User $participant): bool =>
+                                (int) $participant->id
+                                !== (int) $operator->id
+                        );
+
+                $participantRole = strtolower(
+                    (string) (
+                        $otherParticipant
+                            ?->pivot
+                            ?->participant_role
+                        ?? $otherParticipant?->role
+                        ?? 'participant'
+                    )
+                );
+
+                $role = match ($participantRole) {
+                    'admin' =>
+                        'Administrator',
+
+                    'buyer' =>
+                        'Buyer',
+
+                    'seller' =>
+                        'Seller',
+
+                    'logistics' =>
+                        'Logistics',
+
+                    'rider' =>
+                        'Rider',
+
+                    default =>
+                        ucwords(
+                            str_replace(
+                                '_',
+                                ' ',
+                                $participantRole
+                            )
+                        ),
+                };
+
+                $name =
+                    $otherParticipant?->name
+                    ?: 'Conversation';
+
+                $initials = collect(
+                    preg_split(
+                        '/\s+/',
+                        trim($name)
+                    ) ?: []
+                )
+                    ->filter()
+                    ->take(2)
+                    ->map(
+                        fn (string $part): string =>
+                            strtoupper(
+                                substr(
+                                    $part,
+                                    0,
+                                    1
+                                )
+                            )
+                    )
+                    ->implode('');
+
+                if ($initials === '') {
+                    $initials = '?';
+                }
+
+                $lastReadValue =
+                    $operatorParticipant
+                        ?->pivot
+                        ?->last_read_at;
+
+                $lastReadAt =
+                    $lastReadValue
+                        ? Carbon::parse(
+                            $lastReadValue
+                        )
+                        : null;
+
+                $unread = $conversation
+                    ->messages
+                    ->filter(
+                        function (
+                            $message
+                        ) use (
+                            $operator,
+                            $lastReadAt
+                        ): bool {
+                            if (
+                                (int) $message->sender_id
+                                === (int) $operator->id
+                            ) {
+                                return false;
+                            }
+
+                            if (! $message->sent_at) {
+                                return false;
+                            }
+
+                            return
+                                ! $lastReadAt
+                                || $message
+                                    ->sent_at
+                                    ->isAfter(
+                                        $lastReadAt
+                                    );
+                        }
+                    )
+                    ->count();
+
+                $latestMessage =
+                    $conversation
+                        ->latestMessage;
+
+                $latestBody = trim(
+                    (string) (
+                        $latestMessage?->body
+                        ?? ''
+                    )
+                );
+
+                return [
+                    'id' =>
+                        $conversation->id,
+
+                    'name' =>
+                        $name,
+
+                    'role' =>
+                        $role,
+
+                    'initials' =>
+                        $initials,
+
+                    'preview' =>
+                        $latestBody !== ''
+                            ? $latestBody
+                            : (
+                                $latestMessage
+                                    ? 'Attachment'
+                                    : 'No messages yet.'
+                            ),
+
+                    'time' =>
+                        $latestMessage
+                            ?->sent_at
+                            ?->copy()
+                            ->timezone(
+                                'Asia/Manila'
+                            )
+                            ->format(
+                                'M j, g:i A'
+                            )
+                        ?? '',
+
+                    'unread' =>
+                        $unread,
+
+                    'subject' =>
+                        $conversation->subject,
+
+                    'status' =>
+                        $conversation->status,
+
+                    'type' =>
+                        $conversation->type,
+
+                    'messages' =>
+                        $conversation
+                            ->messages
+                            ->map(
+                                fn ($message): array => [
+                                    'id' =>
+                                        $message->id,
+
+                                    'mine' =>
+                                        (int) $message->sender_id
+                                        === (int) $operator->id,
+
+                                    'text' =>
+                                        $message->body,
+
+                                    'time' =>
+                                        $message
+                                            ->sent_at
+                                            ?->copy()
+                                            ->timezone(
+                                                'Asia/Manila'
+                                            )
+                                            ->format(
+                                                'M j, g:i A'
+                                            )
+                                        ?? '',
+                                ]
+                            )
+                            ->values()
+                            ->all(),
+                ];
+            })
+            ->values();
+
+        return view(
+            'logistics.messages.index',
+            $this->shared() + [
+                'conversations' =>
+                    $conversations->all(),
+
+                'conversationData' =>
+                    $conversations
+                        ->keyBy('id')
+                        ->all(),
+            ]
+        );
     }
 
     public function account(): View

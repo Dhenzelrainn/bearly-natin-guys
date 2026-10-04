@@ -318,44 +318,157 @@ function setupReports() {
 }
 
 function setupChat() {
-    const conversations = [...document.querySelectorAll('[data-conversation]')];
-    const name = document.querySelector('[data-chat-name]');
-    const role = document.querySelector('[data-chat-role]');
-    const messages = document.querySelector('[data-chat-messages]');
-    const input = document.querySelector('[data-chat-input]');
-    if (!conversations.length || !messages) return;
-    let active = conversations[0].dataset.conversation;
-    const baseThreads = {
-        'techvault-ph': [{ mine:false, text:'Good afternoon! Our six-parcel pickup batch is ready at the counter.', time:'2:07 PM' },{ mine:true, text:'Received. The request is verified and a rider will arrive within your selected window.', time:'2:10 PM' }],
-        'nico-flores': [{ mine:false, text:'I finished the SP-N1 route. All eight parcels were delivered.', time:'1:51 PM' }],
-        'bearly-admin': [{ mine:false, text:'Please review the three pending rider credentials before the 4 PM dispatch.', time:'11:24 AM' }],
-    };
+    const conversations = [
+        ...document.querySelectorAll(
+            '[data-conversation]'
+        ),
+    ];
+
+    const name =
+        document.querySelector(
+            '[data-chat-name]'
+        );
+
+    const role =
+        document.querySelector(
+            '[data-chat-role]'
+        );
+
+    const messages =
+        document.querySelector(
+            '[data-chat-messages]'
+        );
+
+    if (!messages) {
+        return;
+    }
+
+    const conversationData =
+        window.bearlyLogisticsConversations
+        || {};
+
+    if (!conversations.length) {
+        if (name) {
+            name.textContent =
+                'No conversation selected';
+        }
+
+        if (role) {
+            role.textContent = '';
+        }
+
+        messages.innerHTML = `
+            <div class="table-empty">
+                Your Logistics conversations
+                will appear here.
+            </div>
+        `;
+
+        return;
+    }
+
+    let active = String(
+        conversations[0]
+            .dataset
+            .conversation
+    );
+
     const render = () => {
-        const button = conversations.find((item) => item.dataset.conversation === active);
-        if (name) name.textContent = button?.dataset.name || 'Conversation';
-        if (role) role.textContent = button?.dataset.role || '';
-        const saved = readState().messages?.[active] || [];
-        messages.innerHTML = [...(baseThreads[active] || []), ...saved].map((item) => `<div class="message-bubble ${item.mine ? 'is-mine' : ''}">${escapeHtml(item.text)}<small>${escapeHtml(item.time)}</small></div>`).join('');
-        messages.scrollTop = messages.scrollHeight;
+        const button =
+            conversations.find(
+                (item) =>
+                    String(
+                        item.dataset.conversation
+                    ) === active
+            );
+
+        const conversation =
+            conversationData[active]
+            || {};
+
+        if (name) {
+            name.textContent =
+                conversation.name
+                || button?.dataset.name
+                || 'Conversation';
+        }
+
+        if (role) {
+            role.textContent =
+                conversation.role
+                || button?.dataset.role
+                || '';
+        }
+
+        const thread =
+            Array.isArray(
+                conversation.messages
+            )
+                ? conversation.messages
+                : [];
+
+        messages.innerHTML =
+            thread.length
+                ? thread
+                    .map(
+                        (item) => `
+                            <div
+                                class="
+                                    message-bubble
+                                    ${
+                                        item.mine
+                                            ? 'is-mine'
+                                            : ''
+                                    }
+                                "
+                            >
+                                ${escapeHtml(
+                                    item.text
+                                )}
+
+                                <small>
+                                    ${escapeHtml(
+                                        item.time
+                                    )}
+                                </small>
+                            </div>
+                        `
+                    )
+                    .join('')
+                : `
+                    <div class="table-empty">
+                        No messages yet.
+                    </div>
+                `;
+
+        messages.scrollTop =
+            messages.scrollHeight;
     };
-    conversations.forEach((button) => button.addEventListener('click', () => {
-        active = button.dataset.conversation;
-        conversations.forEach((item) => item.classList.toggle('is-active', item === button));
-        render();
-    }));
-    const send = () => {
-        const text = input?.value.trim();
-        if (!text) return;
-        const state = readState();
-        state.messages = state.messages || {};
-        state.messages[active] = state.messages[active] || [];
-        state.messages[active].push({ mine:true, text, time:new Date().toLocaleTimeString([], { hour:'numeric', minute:'2-digit' }) });
-        writeState(state);
-        input.value = '';
-        render();
-    };
-    document.querySelector('[data-chat-send]')?.addEventListener('click', send);
-    input?.addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); send(); } });
+
+    conversations.forEach(
+        (button) =>
+            button.addEventListener(
+                'click',
+                () => {
+                    active = String(
+                        button
+                            .dataset
+                            .conversation
+                    );
+
+                    conversations.forEach(
+                        (item) =>
+                            item.classList.toggle(
+                                'is-active',
+                                item === button
+                            )
+                    );
+
+                    render();
+                }
+            )
+    );
+
     render();
 }
 

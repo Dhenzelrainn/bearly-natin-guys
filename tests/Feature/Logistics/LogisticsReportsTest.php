@@ -6,6 +6,13 @@ use App\Enums\AccountStatus;
 use App\Enums\UserRole;
 use App\Enums\ParcelStatus;
 use App\Enums\ShipmentStatus;
+use App\Enums\DeliveryAttemptOutcome;
+use App\Models\Address;
+use App\Models\DeliveryAttempt;
+use App\Models\DispatchBatch;
+use App\Models\RiderProfile;
+use App\Models\SortingCenter;
+use App\Models\SortingZone;
 use App\Models\LogisticsProfile;
 use App\Models\User;
 use App\Models\Order;
@@ -382,6 +389,292 @@ class LogisticsReportsTest extends TestCase
             );
     }
 
+    public function test_reports_use_real_provider_scoped_rider_performance(): void
+    {
+        $ownUser = $this->makeLogisticsOperator(
+            'RIDER',
+            'reports-rider@example.test'
+        );
+
+        $foreignUser = $this->makeLogisticsOperator(
+            'FOREIGN-RIDER',
+            'reports-foreign-rider@example.test'
+        );
+
+        $ownProfile = LogisticsProfile::query()
+            ->where('user_id', $ownUser->id)
+            ->firstOrFail();
+
+        $foreignProfile = LogisticsProfile::query()
+            ->where('user_id', $foreignUser->id)
+            ->firstOrFail();
+
+        $ownFacility = $this->makeReportFacility(
+            $ownUser,
+            $ownProfile,
+            'OWN'
+        );
+
+        $foreignFacility = $this->makeReportFacility(
+            $foreignUser,
+            $foreignProfile,
+            'FOREIGN'
+        );
+
+        $primaryRider = $this->makeReportRider(
+            $ownProfile,
+            $ownFacility['center'],
+            $ownFacility['zone'],
+            'Alpha'
+        );
+
+        $zeroOutcomeRider = $this->makeReportRider(
+            $ownProfile,
+            $ownFacility['center'],
+            $ownFacility['zone'],
+            'Zero'
+        );
+
+        $foreignRider = $this->makeReportRider(
+            $foreignProfile,
+            $foreignFacility['center'],
+            $foreignFacility['zone'],
+            'Foreign'
+        );
+
+        /*
+        * Primary owned rider receives three parcels
+        * inside the selected period.
+        */
+        $first = $this->makeReportParcel(
+            $ownProfile,
+            'RIDER-O1'
+        );
+
+        $second = $this->makeReportParcel(
+            $ownProfile,
+            'RIDER-O2'
+        );
+
+        $third = $this->makeReportParcel(
+            $ownProfile,
+            'RIDER-O3'
+        );
+
+        $primaryBatch = $this->makeReportDispatchBatch(
+            $ownFacility['center'],
+            $ownFacility['zone'],
+            $primaryRider,
+            $ownUser,
+            'OWN-A',
+            '2026-09-15 08:00:00'
+        );
+
+        $primaryBatch->parcels()->attach([
+            $first['parcel']->id => [
+                'sequence' => 1,
+                'loaded_at' => '2026-09-15 08:10:00',
+            ],
+
+            $second['parcel']->id => [
+                'sequence' => 2,
+                'loaded_at' => '2026-09-15 08:11:00',
+            ],
+
+            $third['parcel']->id => [
+                'sequence' => 3,
+                'loaded_at' => '2026-09-15 08:12:00',
+            ],
+        ]);
+
+        /*
+        * First parcel succeeds immediately.
+        */
+        $this->recordDeliveryAttempt(
+            $first['parcel'],
+            $primaryBatch,
+            $primaryRider,
+            1,
+            DeliveryAttemptOutcome::Delivered,
+            '2026-09-15 12:00:00'
+        );
+
+        /*
+        * Second parcel fails once, then succeeds on retry.
+        *
+        * This should produce:
+        * delivered = 2
+        * failed = 1
+        * rate = 66.7%
+        */
+        $this->recordDeliveryAttempt(
+            $second['parcel'],
+            $primaryBatch,
+            $primaryRider,
+            1,
+            DeliveryAttemptOutcome::Failed,
+            '2026-09-16 13:00:00'
+        );
+
+        $this->recordDeliveryAttempt(
+            $second['parcel'],
+            $primaryBatch,
+            $primaryRider,
+            2,
+            DeliveryAttemptOutcome::Delivered,
+            '2026-09-17 10:00:00'
+        );
+
+        /*
+        * Second owned rider has an assigned parcel but no
+        * resolved delivery attempt during the period.
+        */
+        $zeroParcel = $this->makeReportParcel(
+            $ownProfile,
+            'RIDER-ZERO'
+        );
+
+        $zeroBatch = $this->makeReportDispatchBatch(
+            $ownFacility['center'],
+            $ownFacility['zone'],
+            $zeroOutcomeRider,
+            $ownUser,
+            'OWN-Z',
+            '2026-09-18 09:00:00'
+        );
+
+        $zeroBatch->parcels()->attach(
+            $zeroParcel['parcel']->id,
+            [
+                'sequence' => 1,
+                'loaded_at' => '2026-09-18 09:10:00',
+            ]
+        );
+
+        /*
+        * Owned activity before the selected period must
+        * not affect assigned or outcome counts.
+        */
+        $outsideRange = $this->makeReportParcel(
+            $ownProfile,
+            'RIDER-OLD'
+        );
+
+        $outsideBatch = $this->makeReportDispatchBatch(
+            $ownFacility['center'],
+            $ownFacility['zone'],
+            $primaryRider,
+            $ownUser,
+            'OWN-OLD',
+            '2026-09-13 08:00:00'
+        );
+
+        $outsideBatch->parcels()->attach(
+            $outsideRange['parcel']->id,
+            [
+                'sequence' => 1,
+                'loaded_at' => '2026-09-13 08:10:00',
+            ]
+        );
+
+        $this->recordDeliveryAttempt(
+            $outsideRange['parcel'],
+            $outsideBatch,
+            $primaryRider,
+            1,
+            DeliveryAttemptOutcome::Delivered,
+            '2026-09-13 12:00:00'
+        );
+
+        /*
+        * Foreign-provider rider activity inside the period
+        * must not appear in the authenticated provider report.
+        */
+        $foreignParcel = $this->makeReportParcel(
+            $foreignProfile,
+            'RIDER-F1'
+        );
+
+        $foreignBatch = $this->makeReportDispatchBatch(
+            $foreignFacility['center'],
+            $foreignFacility['zone'],
+            $foreignRider,
+            $foreignUser,
+            'FOREIGN',
+            '2026-09-16 07:00:00'
+        );
+
+        $foreignBatch->parcels()->attach(
+            $foreignParcel['parcel']->id,
+            [
+                'sequence' => 1,
+                'loaded_at' => '2026-09-16 07:10:00',
+            ]
+        );
+
+        $this->recordDeliveryAttempt(
+            $foreignParcel['parcel'],
+            $foreignBatch,
+            $foreignRider,
+            1,
+            DeliveryAttemptOutcome::Delivered,
+            '2026-09-16 11:00:00'
+        );
+
+        $response = $this
+            ->actingAs($ownUser)
+            ->get(
+                route(
+                    'logistics.reports.index',
+                    [
+                        'from' => '2026-09-14',
+                        'to' => '2026-09-20',
+                    ]
+                )
+            );
+
+        $response
+            ->assertOk()
+            ->assertViewHas(
+                'riderStats',
+                function (array $items): bool {
+                    $riders = collect($items)
+                        ->keyBy('name');
+
+                    if ($riders->count() !== 2) {
+                        return false;
+                    }
+
+                    $primary = $riders->get(
+                        'Report Rider Alpha'
+                    );
+
+                    $zero = $riders->get(
+                        'Report Rider Zero'
+                    );
+
+                    if (! $primary || ! $zero) {
+                        return false;
+                    }
+
+                    return
+                        $primary['assigned'] === 3
+                        && $primary['delivered'] === 2
+                        && $primary['failed'] === 1
+                        && $primary['rate'] === '66.7%'
+
+                        && $zero['assigned'] === 1
+                        && $zero['delivered'] === 0
+                        && $zero['failed'] === 0
+                        && $zero['rate'] === '0.0%'
+
+                        && ! $riders->has(
+                            'Report Rider Foreign'
+                        );
+                }
+            );
+    }
+
     public function test_reports_summary_is_zero_safe_without_activity(): void
     {
         $user = $this->makeLogisticsOperator(
@@ -674,6 +967,184 @@ class LogisticsReportsTest extends TestCase
 
             'occurred_at' =>
                 $occurredAt,
+        ]);
+    }
+
+    /**
+     * @return array{
+     *     center: SortingCenter,
+     *     zone: SortingZone
+     * }
+     */
+    private function makeReportFacility(
+        User $user,
+        LogisticsProfile $profile,
+        string $suffix
+    ): array {
+        $address = Address::query()->create([
+            'user_id' => $user->id,
+            'label' => "Report Sorting Center {$suffix}",
+            'recipient_name' => $user->name,
+            'phone' => $profile->contact_phone,
+            'house_number' => '10',
+            'street' => "Report Hub Road {$suffix}",
+            'barangay' => 'San Rafael',
+            'city_municipality' => 'San Pablo City',
+            'province' => 'Laguna',
+            'postal_code' => '4000',
+        ]);
+
+        $center = SortingCenter::query()->create([
+            'logistics_profile_id' => $profile->id,
+            'address_id' => $address->id,
+            'name' => "Report Sorting Center {$suffix}",
+            'code' => "REPORT-CENTER-{$suffix}",
+            'contact_phone' => $profile->contact_phone,
+            'status' => 'active',
+        ]);
+
+        $zone = SortingZone::query()->create([
+            'sorting_center_id' => $center->id,
+            'code' => "REPORT-ZONE-{$suffix}",
+            'name' => "Report Zone {$suffix}",
+            'destination_rules' => [],
+            'status' => 'active',
+        ]);
+
+        return [
+            'center' => $center,
+            'zone' => $zone,
+        ];
+    }
+
+    private function makeReportRider(
+        LogisticsProfile $profile,
+        SortingCenter $center,
+        SortingZone $zone,
+        string $suffix
+    ): RiderProfile {
+        $user = User::factory()->create([
+            'name' => "Report Rider {$suffix}",
+
+            'email' =>
+                'report-rider-'
+                .strtolower($suffix)
+                .'-'
+                .$profile->id
+                .'@example.test',
+
+            'role' =>
+                UserRole::Rider->value,
+
+            'status' =>
+                AccountStatus::Active->value,
+
+            'vehicle_type' =>
+                'Motorcycle',
+
+            'plate_number' =>
+                "REPORT-{$suffix}-{$profile->id}",
+        ]);
+
+        return RiderProfile::query()->create([
+            'user_id' =>
+                $user->id,
+
+            'logistics_profile_id' =>
+                $profile->id,
+
+            'home_sorting_center_id' =>
+                $center->id,
+
+            'current_zone_id' =>
+                $zone->id,
+
+            'vehicle_type' =>
+                'Motorcycle',
+
+            'plate_number' =>
+                "REPORT-{$suffix}-{$profile->id}",
+
+            'parcel_capacity' =>
+                20,
+
+            'availability_status' =>
+                'available',
+
+            'verification_status' =>
+                'approved',
+        ]);
+    }
+
+    private function makeReportDispatchBatch(
+        SortingCenter $center,
+        SortingZone $zone,
+        RiderProfile $rider,
+        User $operator,
+        string $suffix,
+        string $assignedAt
+    ): DispatchBatch {
+        return DispatchBatch::query()->create([
+            'batch_no' =>
+                "REPORT-BATCH-{$suffix}",
+
+            'sorting_center_id' =>
+                $center->id,
+
+            'sorting_zone_id' =>
+                $zone->id,
+
+            'rider_profile_id' =>
+                $rider->id,
+
+            'status' =>
+                'dispatched',
+
+            'prepared_by' =>
+                $operator->id,
+
+            'prepared_at' =>
+                $assignedAt,
+
+            'assigned_at' =>
+                $assignedAt,
+
+            'dispatched_at' =>
+                $assignedAt,
+        ]);
+    }
+
+    private function recordDeliveryAttempt(
+        Parcel $parcel,
+        DispatchBatch $batch,
+        RiderProfile $rider,
+        int $attemptNo,
+        DeliveryAttemptOutcome $outcome,
+        string $attemptedAt
+    ): DeliveryAttempt {
+        return DeliveryAttempt::query()->create([
+            'parcel_id' =>
+                $parcel->id,
+
+            'dispatch_batch_id' =>
+                $batch->id,
+
+            'rider_profile_id' =>
+                $rider->id,
+
+            'attempt_no' =>
+                $attemptNo,
+
+            'outcome' =>
+                $outcome->value,
+
+            'failure_reason' =>
+                $outcome === DeliveryAttemptOutcome::Failed
+                    ? 'recipient_unavailable'
+                    : null,
+
+            'attempted_at' =>
+                $attemptedAt,
         ]);
     }
 }

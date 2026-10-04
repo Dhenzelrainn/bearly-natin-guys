@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Enums\AccountStatus;
 use App\Enums\ParcelStatus;
 use App\Enums\ShipmentStatus;
+use App\Enums\DeliveryAttemptOutcome;
 use App\Enums\UserRole;
 use App\Models\Parcel;
 use App\Models\PickupAssignment;
@@ -3478,6 +3479,228 @@ class LogisticsController extends Controller
             ->values()
             ->all();
 
+        /*
+        * Rider performance is scoped to riders owned by the
+        * authenticated Logistics provider.
+        *
+        * Assigned counts unique parcels from non-cancelled
+        * dispatch batches assigned during the selected period.
+        *
+        * Delivered and failed represent persisted delivery
+        * attempt outcomes during the same reporting period.
+        */
+        $riderStats = RiderProfile::query()
+            ->where(
+                'logistics_profile_id',
+                $profile->id
+            )
+            ->where(function ($query) use (
+                $reportFrom,
+                $reportTo,
+                $profile
+            ): void {
+                $query
+                    ->whereHas(
+                        'dispatchBatches',
+                        fn ($batchQuery) =>
+                            $batchQuery
+                                ->whereNotNull(
+                                    'assigned_at'
+                                )
+                                ->whereBetween(
+                                    'assigned_at',
+                                    [
+                                        $reportFrom,
+                                        $reportTo,
+                                    ]
+                                )
+                                ->where(
+                                    'status',
+                                    '!=',
+                                    'cancelled'
+                                )
+                    )
+                    ->orWhereHas(
+                        'deliveryAttempts',
+                        fn ($attemptQuery) =>
+                            $attemptQuery
+                                ->whereBetween(
+                                    'attempted_at',
+                                    [
+                                        $reportFrom,
+                                        $reportTo,
+                                    ]
+                                )
+                                ->whereIn(
+                                    'outcome',
+                                    [
+                                        DeliveryAttemptOutcome
+                                            ::Delivered
+                                            ->value,
+
+                                        DeliveryAttemptOutcome
+                                            ::Failed
+                                            ->value,
+                                    ]
+                                )
+                                ->whereHas(
+                                    'parcel.shipment',
+                                    fn ($shipmentQuery) =>
+                                        $shipmentQuery->where(
+                                            'logistics_profile_id',
+                                            $profile->id
+                                        )
+                                )
+                    );
+            })
+            ->with([
+                'user:id,name',
+
+                'dispatchBatches' => function (
+                    $batchQuery
+                ) use (
+                    $reportFrom,
+                    $reportTo,
+                    $profile
+                ): void {
+                    $batchQuery
+                        ->whereNotNull('assigned_at')
+                        ->whereBetween(
+                            'assigned_at',
+                            [
+                                $reportFrom,
+                                $reportTo,
+                            ]
+                        )
+                        ->where(
+                            'status',
+                            '!=',
+                            'cancelled'
+                        )
+                        ->with([
+                            'parcels' => fn ($parcelQuery) =>
+                                $parcelQuery->whereHas(
+                                    'shipment',
+                                    fn ($shipmentQuery) =>
+                                        $shipmentQuery->where(
+                                            'logistics_profile_id',
+                                            $profile->id
+                                        )
+                                ),
+                        ]);
+                },
+
+                'deliveryAttempts' => function (
+                    $attemptQuery
+                ) use (
+                    $reportFrom,
+                    $reportTo,
+                    $profile
+                ): void {
+                    $attemptQuery
+                        ->whereBetween(
+                            'attempted_at',
+                            [
+                                $reportFrom,
+                                $reportTo,
+                            ]
+                        )
+                        ->whereIn(
+                            'outcome',
+                            [
+                                DeliveryAttemptOutcome
+                                    ::Delivered
+                                    ->value,
+
+                                DeliveryAttemptOutcome
+                                    ::Failed
+                                    ->value,
+                            ]
+                        )
+                        ->whereHas(
+                            'parcel.shipment',
+                            fn ($shipmentQuery) =>
+                                $shipmentQuery->where(
+                                    'logistics_profile_id',
+                                    $profile->id
+                                )
+                        );
+                },
+            ])
+            ->get()
+            ->map(function (
+                RiderProfile $rider
+            ): array {
+                $assigned = $rider
+                    ->dispatchBatches
+                    ->flatMap(
+                        fn (DispatchBatch $batch) =>
+                            $batch->parcels
+                    )
+                    ->pluck('id')
+                    ->unique()
+                    ->count();
+
+                $delivered = $rider
+                    ->deliveryAttempts
+                    ->where(
+                        'outcome',
+                        DeliveryAttemptOutcome
+                            ::Delivered
+                            ->value
+                    )
+                    ->count();
+
+                $failed = $rider
+                    ->deliveryAttempts
+                    ->where(
+                        'outcome',
+                        DeliveryAttemptOutcome
+                            ::Failed
+                            ->value
+                    )
+                    ->count();
+
+                $resolved =
+                    $delivered + $failed;
+
+                $rate =
+                    $resolved > 0
+                        ? round(
+                            ($delivered / $resolved)
+                            * 100,
+                            1
+                        )
+                        : 0;
+
+                return [
+                    'name' =>
+                        $rider->user?->name
+                        ?: 'Unknown Rider',
+
+                    'assigned' =>
+                        $assigned,
+
+                    'delivered' =>
+                        $delivered,
+
+                    'failed' =>
+                        $failed,
+
+                    'rate' =>
+                        number_format(
+                            $rate,
+                            1
+                        ).'%',
+                ];
+            })
+            ->sortBy(
+                fn (array $rider) =>
+                    strtolower($rider['name'])
+            )
+            ->values()
+            ->all();
+
         return view(
             'logistics.reports.index',
             $this->shared() + [
@@ -3506,33 +3729,8 @@ class LogisticsController extends Controller
                         $averageSortTime,
                 ],
 
-                /*
-                * 7B-3 and 7B-4 will replace these remaining
-                * temporary report datasets with real data.
-                */
-                'riderStats' => [
-                    [
-                        'name' => 'Nico Flores',
-                        'assigned' => 91,
-                        'delivered' => 88,
-                        'failed' => 3,
-                        'rate' => '96.7%',
-                    ],
-                    [
-                        'name' => 'Anne Cruz',
-                        'assigned' => 84,
-                        'delivered' => 80,
-                        'failed' => 4,
-                        'rate' => '95.2%',
-                    ],
-                    [
-                        'name' => 'Marco Lim',
-                        'assigned' => 76,
-                        'delivered' => 70,
-                        'failed' => 6,
-                        'rate' => '92.1%',
-                    ],
-                ],
+                'riderStats' =>
+                    $riderStats,
 
                 'dailyVolumes' =>
                     $dailyVolumes,

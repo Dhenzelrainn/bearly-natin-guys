@@ -283,8 +283,8 @@
                 </h3>
 
                 <p>
-                    Completed assignments and delivery
-                    success rates.
+                    Assigned parcels and delivery attempt
+                    outcomes for the selected period.
                 </p>
             </div>
         </div>

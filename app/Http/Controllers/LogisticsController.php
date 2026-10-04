@@ -14,6 +14,7 @@ use App\Models\SortingZone;
 use App\Models\AccountApplication;
 use App\Models\LogisticsProfile;
 use App\Models\RiderProfile;
+use App\Models\Shipment;
 use App\Models\ShipmentEvent;
 use App\Models\DispatchBatch;
 use App\Models\User;
@@ -70,6 +71,18 @@ class LogisticsController extends Controller
             ])
             ->oldest('id')
             ->first();
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function sortingExceptionStatuses(): array
+    {
+        return [
+            ParcelStatus::Failed->value,
+            ParcelStatus::Lost->value,
+            ParcelStatus::Damaged->value,
+        ];
     }
 
     private function currentLogisticsProfile(
@@ -187,15 +200,33 @@ class LogisticsController extends Controller
 
         $pendingRiderCount = 0;
 
-        if ($operator && Schema::hasTable('users')) {
-            $pendingRiderCount = User::query()
-                ->where('role', UserRole::Rider->value)
-                ->where('logistics_id', $operator->id)
-                ->whereIn('status', [
-                    AccountStatus::Pending->value,
-                    AccountStatus::NeedsRevision->value,
-                ])
-                ->count();
+        $profile = $this->currentLogisticsProfile(
+            $operator
+        );
+
+        if (
+            $profile
+            && Schema::hasTable('account_applications')
+        ) {
+            $pendingRiderCount =
+                AccountApplication::query()
+                    ->where(
+                        'sponsor_logistics_profile_id',
+                        $profile->id
+                    )
+                    ->whereHas(
+                        'requestedRole',
+                        fn ($query) => $query->where(
+                            'name',
+                            UserRole::Rider->value
+                        )
+                    )
+                    ->whereIn('status', [
+                        'submitted',
+                        'under_review',
+                        'needs_revision',
+                    ])
+                    ->count();
         }
 
         return [
@@ -385,6 +416,258 @@ class LogisticsController extends Controller
             $operator
         );
 
+        $center = $this->activeSortingCenter(
+            $operator
+        );
+
+        $receivedTodayCount = 0;
+        $awaitingSortingCount = 0;
+        $sortedReadyCount = 0;
+        $dispatchedShipmentCount = 0;
+        $activeRouteCount = 0;
+        $zones = collect();
+        $sortingExceptionCount = 0;
+
+        if ($profile && $center) {
+            $ownedParcels = fn () =>
+                Parcel::query()
+                    ->where(
+                        'current_sorting_center_id',
+                        $center->id
+                    )
+                    ->whereHas(
+                        'shipment',
+                        fn ($query) => $query->where(
+                            'logistics_profile_id',
+                            $profile->id
+                        )
+                    );
+
+            $sortingExceptionCount =
+                $ownedParcels()
+                    ->whereIn(
+                        'status',
+                        $this->sortingExceptionStatuses()
+                    )
+                    ->count();
+
+            $receivedTodayCount = $ownedParcels()
+                ->whereHas(
+                    'events',
+                    fn ($query) => $query
+                        ->where(
+                            'event_type',
+                            'received_at_center'
+                        )
+                        ->whereDate(
+                            'occurred_at',
+                            today()
+                        )
+                )
+                ->count();
+
+            $awaitingSortingCount = $ownedParcels()
+                ->where(
+                    'status',
+                    ParcelStatus::Received->value
+                )
+                ->count();
+
+            $sortedReadyCount = $ownedParcels()
+                ->where(
+                    'status',
+                    ParcelStatus::Sorted->value
+                )
+                ->whereHas(
+                    'shipment',
+                    fn ($query) => $query
+                        ->where(
+                            'logistics_profile_id',
+                            $profile->id
+                        )
+                        ->where(
+                            'status',
+                            ShipmentStatus::Sorted->value
+                        )
+                )
+                ->whereDoesntHave(
+                    'dispatchBatches',
+                    fn ($query) => $query
+                        ->whereNotIn(
+                            'dispatch_batches.status',
+                            [
+                                'completed',
+                                'cancelled',
+                            ]
+                        )
+                )
+                ->count();
+
+            $dispatchedShipmentCount =
+                Shipment::query()
+                    ->where(
+                        'logistics_profile_id',
+                        $profile->id
+                    )
+                    ->whereIn('status', [
+                        ShipmentStatus::Dispatched->value,
+                        ShipmentStatus::OutForDelivery->value,
+                    ])
+                    ->count();
+
+            $activeRouteCount =
+                DispatchBatch::query()
+                    ->where(
+                        'sorting_center_id',
+                        $center->id
+                    )
+                    ->whereNotIn('status', [
+                        'completed',
+                        'cancelled',
+                    ])
+                    ->count();
+
+            $zoneModels = SortingZone::query()
+                ->where(
+                    'sorting_center_id',
+                    $center->id
+                )
+                ->where(
+                    'status',
+                    'active'
+                )
+                ->orderBy('code')
+                ->get();
+
+            $zoneIds = $zoneModels->pluck('id');
+
+            $availableRidersByZone =
+                RiderProfile::query()
+                    ->where(
+                        'logistics_profile_id',
+                        $profile->id
+                    )
+                    ->where(
+                        'home_sorting_center_id',
+                        $center->id
+                    )
+                    ->whereIn(
+                        'current_zone_id',
+                        $zoneIds
+                    )
+                    ->where(
+                        'verification_status',
+                        'approved'
+                    )
+                    ->where(
+                        'availability_status',
+                        'available'
+                    )
+                    ->whereHas(
+                        'user',
+                        fn ($query) => $query->where(
+                            'status',
+                            AccountStatus::Active->value
+                        )
+                    )
+                    ->get([
+                        'id',
+                        'current_zone_id',
+                    ])
+                    ->groupBy('current_zone_id')
+                    ->map(
+                        fn ($riders) =>
+                            $riders->count()
+                    );
+
+            $zones = $zoneModels
+                ->map(function (
+                    SortingZone $zone
+                ) use (
+                    $center,
+                    $profile,
+                    $availableRidersByZone
+                ): array {
+                    $parcelQuery = fn () =>
+                        Parcel::query()
+                            ->where(
+                                'current_sorting_center_id',
+                                $center->id
+                            )
+                            ->where(
+                                'current_zone_id',
+                                $zone->id
+                            )
+                            ->where(
+                                'status',
+                                ParcelStatus::Sorted->value
+                            )
+                            ->whereHas(
+                                'shipment',
+                                fn ($query) => $query->where(
+                                    'logistics_profile_id',
+                                    $profile->id
+                                )
+                            );
+
+                    $parcelCount =
+                        $parcelQuery()->count();
+
+                    $readyCount =
+                        $parcelQuery()
+                            ->whereHas(
+                                'shipment',
+                                fn ($query) => $query
+                                    ->where(
+                                        'logistics_profile_id',
+                                        $profile->id
+                                    )
+                                    ->where(
+                                        'status',
+                                        ShipmentStatus::Sorted->value
+                                    )
+                            )
+                            ->whereDoesntHave(
+                                'dispatchBatches',
+                                fn ($query) =>
+                                    $query->whereNotIn(
+                                        'dispatch_batches.status',
+                                        [
+                                            'completed',
+                                            'cancelled',
+                                        ]
+                                    )
+                            )
+                            ->count();
+
+                    return [
+                        'id' =>
+                            $zone->id,
+
+                        'zone' =>
+                            $zone->name
+                            ?: $zone->code,
+
+                        'code' =>
+                            $zone->code,
+
+                        'parcels' =>
+                            $parcelCount,
+
+                        'ready' =>
+                            $readyCount,
+
+                        'riders' =>
+                            (int) $availableRidersByZone
+                                ->get(
+                                    $zone->id,
+                                    0
+                                ),
+                    ];
+                })
+                ->values();
+        }
+
         $pendingPickupCount = $profile
             ? PickupRequest::query()
                 ->forLogisticsProfile($profile->id)
@@ -392,22 +675,184 @@ class LogisticsController extends Controller
                 ->count()
             : 0;
 
-        $recentRiderApplications = User::query()
-            ->where('role', UserRole::Rider->value)
-            ->where('logistics_id', Auth::id())
-            ->whereIn('status', [
-                AccountStatus::Pending->value,
-                AccountStatus::NeedsRevision->value,
-            ])
-            ->latest()
-            ->take(4)
-            ->get()
-            ->map(fn (User $user) => [
-                'time' => $user->created_at?->diffForHumans() ?? 'Recently',
-                'title' => 'Rider application received',
-                'detail' => $user->name.' • '.($user->vehicle_type ?: 'Vehicle not specified'),
-            ])
-            ->all();
+        $recentRiderActivity = collect();
+
+        if ($profile) {
+            $recentRiderActivity =
+                AccountApplication::query()
+                    ->where(
+                        'sponsor_logistics_profile_id',
+                        $profile->id
+                    )
+                    ->whereHas(
+                        'requestedRole',
+                        fn ($query) => $query->where(
+                            'name',
+                            UserRole::Rider->value
+                        )
+                    )
+                    ->with('user')
+                    ->latest('submitted_at')
+                    ->latest('id')
+                    ->take(6)
+                    ->get()
+                    ->map(function (
+                        AccountApplication $application
+                    ): array {
+                        $occurredAt =
+                            $application->submitted_at
+                            ?? $application->created_at;
+
+                        return [
+                            'time' =>
+                                $occurredAt
+                                    ?->diffForHumans()
+                                ?? 'Recently',
+
+                            'title' =>
+                                'Rider application received',
+
+                            'detail' =>
+                                ($application->user?->name
+                                    ?: 'Unknown Rider')
+                                .' • '
+                                .($application->user?->vehicle_type
+                                    ?: 'Vehicle not specified'),
+
+                            'occurred_at' =>
+                                $occurredAt,
+                        ];
+                    });
+        }
+
+        $recentFulfillmentActivity = collect();
+
+        if ($profile && $center) {
+            $recentFulfillmentActivity =
+                ShipmentEvent::query()
+                    ->whereHas(
+                        'shipment',
+                        fn ($query) => $query->where(
+                            'logistics_profile_id',
+                            $profile->id
+                        )
+                    )
+                    ->where(function ($query) use (
+                        $center
+                    ): void {
+                        $query
+                            ->whereNull(
+                                'sorting_center_id'
+                            )
+                            ->orWhere(
+                                'sorting_center_id',
+                                $center->id
+                            );
+                    })
+                    ->with([
+                        'parcel:id,parcel_no',
+                        'shipment:id,shipment_no',
+                    ])
+                    ->latest('occurred_at')
+                    ->latest('id')
+                    ->take(10)
+                    ->get()
+                    ->map(function (
+                        ShipmentEvent $event
+                    ): array {
+                        $title = match (
+                            $event->event_type
+                        ) {
+                            'received_at_center' =>
+                                'Parcel received at center',
+
+                            'parcel_sorted' =>
+                                'Parcel sorted',
+
+                            'parcel_resorted' =>
+                                'Parcel reassigned to zone',
+
+                            'pickup_assigned' =>
+                                'Pickup assigned',
+
+                            'parcel_dispatched' =>
+                                'Parcel dispatched',
+
+                            'parcel_out_for_delivery' =>
+                                'Parcel out for delivery',
+
+                            'parcel_delivered' =>
+                                'Parcel delivered',
+
+                            'parcel_delivery_failed' =>
+                                'Delivery attempt failed',
+
+                            'parcel_delivery_retried' =>
+                                'Delivery retry started',
+
+                            default =>
+                                str($event->event_type)
+                                    ->replace('_', ' ')
+                                    ->title()
+                                    ->toString(),
+                        };
+
+                        $reference =
+                            $event->parcel?->parcel_no
+                            ?: $event->shipment?->shipment_no
+                            ?: 'Shipment activity';
+
+                        return [
+                            'time' =>
+                                $event->occurred_at
+                                    ?->diffForHumans()
+                                ?? 'Recently',
+
+                            'title' =>
+                                $title,
+
+                            'detail' =>
+                                $reference
+                                .($event->notes
+                                    ? ' • '.$event->notes
+                                    : ''),
+
+                            'occurred_at' =>
+                                $event->occurred_at
+                                ?? $event->created_at,
+                        ];
+                    });
+        }
+
+        $recentActivity =
+            $recentRiderActivity
+                ->concat(
+                    $recentFulfillmentActivity
+                )
+                ->sortByDesc(
+                    fn (array $item) =>
+                        $item['occurred_at']
+                            ?->timestamp
+                        ?? 0
+                )
+                ->take(6)
+                ->map(function (array $item): array {
+                    unset(
+                        $item['occurred_at']
+                    );
+
+                    return $item;
+                })
+                ->values()
+                ->all();
+
+        $hour = Carbon::now('Asia/Manila')->hour;
+
+        $greeting = match (true) {
+            $hour < 12 => 'Good morning',
+            $hour < 18 => 'Good afternoon',
+            default => 'Good evening',
+        };
 
         return view('logistics.dashboard.index', $shared + [
             'metrics' => [
@@ -419,51 +864,37 @@ class LogisticsController extends Controller
                 ],
                 [
                     'label' => 'Incoming Parcels',
-                    'value' => 146,
+                    'value' => $receivedTodayCount,
                     'icon' => 'package-open',
-                    'trend' => '+18 since 8 AM',
+                    'trend' =>
+                        $awaitingSortingCount
+                        .' awaiting sorting',
                 ],
                 [
                     'label' => 'Active Sorting Queue',
-                    'value' => 39,
+                    'value' => $awaitingSortingCount,
                     'icon' => 'truck',
-                    'trend' => '31 on schedule',
+                    'trend' =>
+                        $sortedReadyCount
+                        .' sorted & ready',
                 ],
                 [
                     'label' => 'Dispatched Shipments',
-                    'value' => 17,
+                    'value' => $dispatchedShipmentCount,
                     'icon' => 'route',
-                    'trend' => 'Needs dispatch',
+                    'trend' =>
+                        $activeRouteCount
+                        .' active '
+                        .($activeRouteCount === 1
+                            ? 'route'
+                            : 'routes'),
                 ],
             ],
-            'zones' => [
-                [
-                    'zone' => 'San Pablo North',
-                    'parcels' => 38,
-                    'ready' => 31,
-                    'riders' => 6,
-                ],
-                [
-                    'zone' => 'San Pablo South',
-                    'parcels' => 41,
-                    'ready' => 35,
-                    'riders' => 7,
-                ],
-                [
-                    'zone' => 'Calauan / Bay',
-                    'parcels' => 29,
-                    'ready' => 22,
-                    'riders' => 4,
-                ],
-                [
-                    'zone' => 'Pila / Sta. Cruz',
-                    'parcels' => 38,
-                    'ready' => 30,
-                    'riders' => 5,
-                ],
-            ],
-            'activity' => $recentRiderApplications,
+            'zones' => $zones,
+            'activity' => $recentActivity,
             'pendingPickupCount' => $pendingPickupCount,
+            'sortingExceptionCount' => $sortingExceptionCount,
+            'greeting' => $greeting,
         ]);
     }
 
@@ -1536,11 +1967,8 @@ class LogisticsController extends Controller
             ->latest('updated_at')
             ->get();
 
-        $exceptionStatuses = [
-            ParcelStatus::Failed->value,
-            ParcelStatus::Lost->value,
-            ParcelStatus::Damaged->value,
-        ];
+        $exceptionStatuses =
+            $this->sortingExceptionStatuses();
 
         $incomingParcels = $waybills->map(function (Waybill $waybill) use (
             $exceptionStatuses
@@ -1690,11 +2118,8 @@ class LogisticsController extends Controller
             ]
         );
 
-        $exceptionStatuses = [
-            ParcelStatus::Failed->value,
-            ParcelStatus::Lost->value,
-            ParcelStatus::Damaged->value,
-        ];
+        $exceptionStatuses =
+            $this->sortingExceptionStatuses();
 
         $parcelRecords = Parcel::query()
             ->whereIn('current_sorting_center_id', $centerIds)

@@ -13,6 +13,7 @@ use App\Models\RiderProfile;
 use App\Models\SellerOrder;
 use App\Models\SellerProfile;
 use App\Models\Shipment;
+use App\Models\ShipmentEvent;
 use App\Models\SortingCenter;
 use App\Models\SortingZone;
 use App\Models\Store;
@@ -52,6 +53,637 @@ class DispatchWorkflowTest extends TestCase
             $this->profileB,
             $this->centerB,
         ] = $this->makeLogisticsProvider('B');
+    }
+
+    public function test_dashboard_recent_activity_uses_real_owned_fulfillment_events(): void
+    {
+        $ownZone = $this->makeZone(
+            $this->centerA,
+            'DASH-ACTIVITY-OWN'
+        );
+
+        $foreignZone = $this->makeZone(
+            $this->centerB,
+            'DASH-ACTIVITY-FOREIGN'
+        );
+
+        $own =
+            $this->makeReadyShipmentFor(
+                $this->profileA,
+                $this->centerA,
+                $ownZone,
+                'DASH-ACTIVITY-OWN'
+            );
+
+        ShipmentEvent::query()->create([
+            'shipment_id' =>
+                $own['shipment']->id,
+
+            'parcel_id' =>
+                $own['parcel']->id,
+
+            'event_type' =>
+                'received_at_center',
+
+            'from_status' =>
+                ParcelStatus::PickedUp->value,
+
+            'to_status' =>
+                ParcelStatus::Received->value,
+
+            'sorting_center_id' =>
+                $this->centerA->id,
+
+            'sorting_zone_id' =>
+                $ownZone->id,
+
+            'actor_user_id' =>
+                $this->logisticsA->id,
+
+            'source' =>
+                'logistics',
+
+            'notes' =>
+                'Owned dashboard activity.',
+
+            'occurred_at' =>
+                now(),
+        ]);
+
+        $foreign =
+            $this->makeReadyShipmentFor(
+                $this->profileB,
+                $this->centerB,
+                $foreignZone,
+                'DASH-ACTIVITY-FOREIGN'
+            );
+
+        ShipmentEvent::query()->create([
+            'shipment_id' =>
+                $foreign['shipment']->id,
+
+            'parcel_id' =>
+                $foreign['parcel']->id,
+
+            'event_type' =>
+                'received_at_center',
+
+            'from_status' =>
+                ParcelStatus::PickedUp->value,
+
+            'to_status' =>
+                ParcelStatus::Received->value,
+
+            'sorting_center_id' =>
+                $this->centerB->id,
+
+            'sorting_zone_id' =>
+                $foreignZone->id,
+
+            'actor_user_id' =>
+                $this->logisticsB->id,
+
+            'source' =>
+                'logistics',
+
+            'notes' =>
+                'Foreign dashboard activity.',
+
+            'occurred_at' =>
+                now()->subMinute(),
+        ]);
+
+        $this
+            ->actingAs($this->logisticsA)
+            ->get(route('logistics.dashboard'))
+            ->assertOk()
+            ->assertViewHas(
+                'activity',
+                function (array $activity): bool {
+                    $details = collect(
+                        $activity
+                    )->pluck('detail');
+
+                    return $details->contains(
+                        fn (string $detail) =>
+                            str_contains(
+                                $detail,
+                                'Owned dashboard activity.'
+                            )
+                    )
+                        && ! $details->contains(
+                            fn (string $detail) =>
+                                str_contains(
+                                    $detail,
+                                    'Foreign dashboard activity.'
+                                )
+                        );
+                }
+            )
+            ->assertSee(
+                'Parcel received at center'
+            )
+            ->assertSee(
+                'Owned dashboard activity.'
+            )
+            ->assertDontSee(
+                'Foreign dashboard activity.'
+            );
+    }
+
+    public function test_dashboard_uses_real_owned_sorting_exception_count(): void
+    {
+        $ownZone = $this->makeZone(
+            $this->centerA,
+            'DASH-EXCEPTION-OWN'
+        );
+
+        $foreignZone = $this->makeZone(
+            $this->centerB,
+            'DASH-EXCEPTION-FOREIGN'
+        );
+
+        /*
+        * These two are real sorting exceptions.
+        */
+        $failed =
+            $this->makeReadyShipmentFor(
+                $this->profileA,
+                $this->centerA,
+                $ownZone,
+                'DASH-EXCEPTION-FAILED'
+            );
+
+        $failed['parcel']->update([
+            'status' =>
+                ParcelStatus::Failed->value,
+        ]);
+
+        $damaged =
+            $this->makeReadyShipmentFor(
+                $this->profileA,
+                $this->centerA,
+                $ownZone,
+                'DASH-EXCEPTION-DAMAGED'
+            );
+
+        $damaged['parcel']->update([
+            'status' =>
+                ParcelStatus::Damaged->value,
+        ]);
+
+        /*
+        * Returned is intentionally NOT a sorting
+        * exception under the existing rules.
+        */
+        $returned =
+            $this->makeReadyShipmentFor(
+                $this->profileA,
+                $this->centerA,
+                $ownZone,
+                'DASH-EXCEPTION-RETURNED'
+            );
+
+        $returned['parcel']->update([
+            'status' =>
+                ParcelStatus::Returned->value,
+        ]);
+
+        /*
+        * Foreign provider exception must not count.
+        */
+        $foreign =
+            $this->makeReadyShipmentFor(
+                $this->profileB,
+                $this->centerB,
+                $foreignZone,
+                'DASH-EXCEPTION-FOREIGN'
+            );
+
+        $foreign['parcel']->update([
+            'status' =>
+                ParcelStatus::Lost->value,
+        ]);
+
+        $this
+            ->actingAs($this->logisticsA)
+            ->get(route('logistics.dashboard'))
+            ->assertOk()
+            ->assertViewHas(
+                'sortingExceptionCount',
+                2
+            )
+            ->assertSee(
+                '2'
+            )
+            ->assertSee(
+                'sorting'
+            )
+            ->assertSee(
+                'exceptions'
+            )
+            ->assertSee(
+                'Parcels requiring sorting review'
+            );
+    }
+
+    public function test_dashboard_uses_real_owned_zone_readiness(): void
+    {
+        $readyZone = $this->makeZone(
+            $this->centerA,
+            'DASH-ZONE-READY'
+        );
+
+        $emptyZone = $this->makeZone(
+            $this->centerA,
+            'DASH-ZONE-EMPTY'
+        );
+
+        $inactiveZone = $this->makeZone(
+            $this->centerA,
+            'DASH-ZONE-INACTIVE'
+        );
+
+        $inactiveZone->update([
+            'status' => 'inactive',
+        ]);
+
+        $foreignZone = $this->makeZone(
+            $this->centerB,
+            'DASH-ZONE-FOREIGN'
+        );
+
+        /*
+        * One fully ready parcel.
+        */
+        $this->makeReadyShipmentFor(
+            $this->profileA,
+            $this->centerA,
+            $readyZone,
+            'DASH-ZONE-READY-1'
+        );
+
+        /*
+        * One parcel is already sorted into the zone,
+        * but its shipment is not fully sorted yet.
+        */
+        $staged = $this->makeReadyShipmentFor(
+            $this->profileA,
+            $this->centerA,
+            $readyZone,
+            'DASH-ZONE-STAGED'
+        );
+
+        $staged['shipment']->update([
+            'status' =>
+                ShipmentStatus::AtSortingCenter->value,
+        ]);
+
+        /*
+        * Only one of these two riders is currently
+        * available.
+        */
+        $this->makeRider(
+            $this->profileA,
+            $this->centerA,
+            $readyZone,
+            'DASH-ZONE-AVAILABLE',
+            10
+        );
+
+        $offlineRider = $this->makeRider(
+            $this->profileA,
+            $this->centerA,
+            $readyZone,
+            'DASH-ZONE-OFFLINE',
+            10
+        );
+
+        $offlineRider->update([
+            'availability_status' =>
+                'offline',
+        ]);
+
+        /*
+        * Empty zone still has one available Rider.
+        * This also verifies zero-safe readiness.
+        */
+        $this->makeRider(
+            $this->profileA,
+            $this->centerA,
+            $emptyZone,
+            'DASH-ZONE-EMPTY',
+            10
+        );
+
+        /*
+        * Foreign provider data must never appear.
+        */
+        $this->makeReadyShipmentFor(
+            $this->profileB,
+            $this->centerB,
+            $foreignZone,
+            'DASH-ZONE-FOREIGN'
+        );
+
+        $this->makeRider(
+            $this->profileB,
+            $this->centerB,
+            $foreignZone,
+            'DASH-ZONE-FOREIGN',
+            10
+        );
+
+        $this
+            ->actingAs($this->logisticsA)
+            ->get(route('logistics.dashboard'))
+            ->assertOk()
+            ->assertViewHas(
+                'zones',
+                function ($zones) use (
+                    $readyZone,
+                    $emptyZone,
+                    $inactiveZone,
+                    $foreignZone
+                ): bool {
+                    $rows = collect($zones)
+                        ->keyBy('id');
+
+                    if (
+                        ! $rows->has($readyZone->id)
+                        || ! $rows->has($emptyZone->id)
+                        || $rows->has($inactiveZone->id)
+                        || $rows->has($foreignZone->id)
+                    ) {
+                        return false;
+                    }
+
+                    $ready =
+                        $rows[$readyZone->id];
+
+                    $empty =
+                        $rows[$emptyZone->id];
+
+                    return $ready['parcels'] === 2
+                        && $ready['ready'] === 1
+                        && $ready['riders'] === 1
+                        && $empty['parcels'] === 0
+                        && $empty['ready'] === 0
+                        && $empty['riders'] === 1;
+                }
+            )
+            ->assertSee(
+                'Dispatch Zone DASH-ZONE-READY'
+            )
+            ->assertSee(
+                'Dispatch Zone DASH-ZONE-EMPTY'
+            )
+            ->assertDontSee(
+                'Dispatch Zone DASH-ZONE-INACTIVE'
+            )
+            ->assertDontSee(
+                'Dispatch Zone DASH-ZONE-FOREIGN'
+            );
+    }
+
+    public function test_dashboard_uses_real_owned_fulfillment_metrics(): void
+    {
+        $receivedZone = $this->makeZone(
+            $this->centerA,
+            'DASH-RECEIVED'
+        );
+
+        $readyZone = $this->makeZone(
+            $this->centerA,
+            'DASH-READY'
+        );
+
+        $dispatchZone = $this->makeZone(
+            $this->centerA,
+            'DASH-DISPATCH'
+        );
+
+        $foreignReceivedZone = $this->makeZone(
+            $this->centerB,
+            'DASH-FOREIGN-RECEIVED'
+        );
+
+        $foreignDispatchZone = $this->makeZone(
+            $this->centerB,
+            'DASH-FOREIGN-DISPATCH'
+        );
+
+        /*
+        * One owned parcel received today.
+        */
+        $received = $this->makeReadyShipmentFor(
+            $this->profileA,
+            $this->centerA,
+            $receivedZone,
+            'DASH-RECEIVED'
+        );
+
+        $received['shipment']->update([
+            'status' =>
+                ShipmentStatus::AtSortingCenter->value,
+        ]);
+
+        $received['parcel']->update([
+            'status' =>
+                ParcelStatus::Received->value,
+
+            'last_event_at' =>
+                now(),
+        ]);
+
+        ShipmentEvent::query()->create([
+            'shipment_id' =>
+                $received['shipment']->id,
+
+            'parcel_id' =>
+                $received['parcel']->id,
+
+            'event_type' =>
+                'received_at_center',
+
+            'from_status' =>
+                ParcelStatus::PickedUp->value,
+
+            'to_status' =>
+                ParcelStatus::Received->value,
+
+            'sorting_center_id' =>
+                $this->centerA->id,
+
+            'sorting_zone_id' =>
+                $receivedZone->id,
+
+            'actor_user_id' =>
+                $this->logisticsA->id,
+
+            'source' =>
+                'logistics',
+
+            'occurred_at' =>
+                now(),
+        ]);
+
+        /*
+        * One owned parcel sorted and ready.
+        */
+        $this->makeReadyShipmentFor(
+            $this->profileA,
+            $this->centerA,
+            $readyZone,
+            'DASH-READY'
+        );
+
+        /*
+        * One owned dispatched shipment / active route.
+        */
+        $this->makeReadyShipmentFor(
+            $this->profileA,
+            $this->centerA,
+            $dispatchZone,
+            'DASH-DISPATCH'
+        );
+
+        $rider = $this->makeRider(
+            $this->profileA,
+            $this->centerA,
+            $dispatchZone,
+            'DASH-DISPATCH',
+            10
+        );
+
+        app(DispatchService::class)
+            ->dispatchZone(
+                $dispatchZone,
+                $rider,
+                $this->logisticsA
+            );
+
+        /*
+        * Foreign received parcel must not affect
+        * this provider's dashboard.
+        */
+        $foreignReceived =
+            $this->makeReadyShipmentFor(
+                $this->profileB,
+                $this->centerB,
+                $foreignReceivedZone,
+                'DASH-FOREIGN-RECEIVED'
+            );
+
+        $foreignReceived['shipment']->update([
+            'status' =>
+                ShipmentStatus::AtSortingCenter->value,
+        ]);
+
+        $foreignReceived['parcel']->update([
+            'status' =>
+                ParcelStatus::Received->value,
+
+            'last_event_at' =>
+                now(),
+        ]);
+
+        ShipmentEvent::query()->create([
+            'shipment_id' =>
+                $foreignReceived['shipment']->id,
+
+            'parcel_id' =>
+                $foreignReceived['parcel']->id,
+
+            'event_type' =>
+                'received_at_center',
+
+            'from_status' =>
+                ParcelStatus::PickedUp->value,
+
+            'to_status' =>
+                ParcelStatus::Received->value,
+
+            'sorting_center_id' =>
+                $this->centerB->id,
+
+            'sorting_zone_id' =>
+                $foreignReceivedZone->id,
+
+            'actor_user_id' =>
+                $this->logisticsB->id,
+
+            'source' =>
+                'logistics',
+
+            'occurred_at' =>
+                now(),
+        ]);
+
+        /*
+        * Foreign dispatched shipment must also
+        * remain excluded.
+        */
+        $this->makeReadyShipmentFor(
+            $this->profileB,
+            $this->centerB,
+            $foreignDispatchZone,
+            'DASH-FOREIGN-DISPATCH'
+        );
+
+        $foreignRider = $this->makeRider(
+            $this->profileB,
+            $this->centerB,
+            $foreignDispatchZone,
+            'DASH-FOREIGN-DISPATCH',
+            10
+        );
+
+        app(DispatchService::class)
+            ->dispatchZone(
+                $foreignDispatchZone,
+                $foreignRider,
+                $this->logisticsB
+            );
+
+        $this
+            ->actingAs($this->logisticsA)
+            ->get(route('logistics.dashboard'))
+            ->assertOk()
+            ->assertViewHas(
+                'metrics',
+                function (array $metrics): bool {
+                    $rows = collect($metrics)
+                        ->keyBy('label');
+
+                    return $rows[
+                        'Incoming Parcels'
+                    ]['value'] === 1
+
+                        && $rows[
+                            'Incoming Parcels'
+                        ]['trend']
+                            === '1 awaiting sorting'
+
+                        && $rows[
+                            'Active Sorting Queue'
+                        ]['value'] === 1
+
+                        && $rows[
+                            'Active Sorting Queue'
+                        ]['trend']
+                            === '1 sorted & ready'
+
+                        && $rows[
+                            'Dispatched Shipments'
+                        ]['value'] === 1
+
+                        && $rows[
+                            'Dispatched Shipments'
+                        ]['trend']
+                            === '1 active route';
+                }
+            );
     }
 
     public function test_monitoring_page_shows_only_owned_dispatch_batches(): void

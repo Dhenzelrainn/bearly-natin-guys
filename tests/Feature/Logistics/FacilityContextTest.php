@@ -9,6 +9,7 @@ use App\Models\LogisticsProfile;
 use App\Models\SortingCenter;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
 class FacilityContextTest extends TestCase
@@ -99,6 +100,41 @@ class FacilityContextTest extends TestCase
                         === 'active';
             }
         );
+    }
+
+    public function test_dashboard_uses_manila_time_for_greeting(): void
+    {
+        [
+            'user' => $user,
+        ] = $this->makeLogisticsFacility();
+
+        Carbon::setTestNow(
+            Carbon::create(
+                2026,
+                10,
+                4,
+                21,
+                0,
+                0,
+                'Asia/Manila'
+            )
+        );
+
+        try {
+            $this
+                ->actingAs($user)
+                ->get(route('logistics.dashboard'))
+                ->assertOk()
+                ->assertViewHas(
+                    'greeting',
+                    'Good evening'
+                )
+                ->assertSee(
+                    'Good evening'
+                );
+        } finally {
+            Carbon::setTestNow();
+        }
     }
 
     public function test_facility_context_is_scoped_to_authenticated_logistics_profile(): void

@@ -26,6 +26,75 @@ class RiderManagementDataTest extends TestCase
         $this->seed(DatabaseSeeder::class);
     }
 
+    public function test_dashboard_pending_rider_metric_uses_normalized_sponsored_applications(): void
+    {
+        $providerA = $this->makeLogisticsProvider(
+            'DASH-A',
+            'dashboard-a@example.test'
+        );
+
+        $providerB = $this->makeLogisticsProvider(
+            'DASH-B',
+            'dashboard-b@example.test'
+        );
+
+        $riderA = $this->makePendingRider(
+            $providerA['user'],
+            'DASH-A',
+            'San Pablo City'
+        );
+
+        $riderB = $this->makePendingRider(
+            $providerB['user'],
+            'DASH-B',
+            'Calamba City'
+        );
+
+        /*
+        * Deliberately make the legacy logistics_id values
+        * misleading. The dashboard must use the normalized
+        * sponsored AccountApplication instead.
+        */
+        $riderA['user']->forceFill([
+            'logistics_id' => $providerB['user']->id,
+        ])->save();
+
+        $riderB['user']->forceFill([
+            'logistics_id' => $providerA['user']->id,
+        ])->save();
+
+        $this
+            ->actingAs($providerA['user'])
+            ->get(route('logistics.dashboard'))
+            ->assertOk()
+            ->assertViewHas(
+                'pendingRiderCount',
+                1
+            )
+            ->assertViewHas(
+                'metrics',
+                function (array $metrics): bool {
+                    $rows = collect($metrics)
+                        ->keyBy('label');
+
+                    return $rows[
+                        'Pending Rider Applications'
+                    ]['value'] === 1
+                        && $rows[
+                            'Pending Rider Applications'
+                        ]['trend'] === 'Needs review';
+                }
+            )
+            ->assertViewHas(
+                'topNotifications',
+                function (array $notifications): bool {
+                    return count($notifications) === 1
+                        && $notifications[0]['title']
+                            === '1 rider application awaiting review';
+                }
+            );
+    }
+
     public function test_rider_management_uses_sponsored_normalized_application_and_hides_foreign_applications(): void
     {
         $providerA = $this->makeLogisticsProvider(

@@ -385,6 +385,106 @@ class DispatchWorkflowTest extends TestCase
         );
     }
 
+    public function test_monitoring_keeps_mixed_failed_and_active_route_out_for_delivery(): void
+    {
+        $zone = $this->makeZone(
+            $this->centerA,
+            'MONITOR-MIXED'
+        );
+
+        $rider = $this->makeRider(
+            $this->profileA,
+            $this->centerA,
+            $zone,
+            'MONITOR-MIXED',
+            10
+        );
+
+        $record = $this->makeReadyShipmentFor(
+            $this->profileA,
+            $this->centerA,
+            $zone,
+            'MONITOR-MIXED',
+            2
+        );
+
+        $batch = app(DispatchService::class)
+            ->dispatchZone(
+                $zone,
+                $rider,
+                $this->logisticsA
+            );
+
+        $parcels = Parcel::query()
+            ->where(
+                'shipment_id',
+                $record['parcel']->shipment_id
+            )
+            ->orderBy('id')
+            ->get();
+
+        $this->assertCount(
+            2,
+            $parcels
+        );
+
+        $parcels[0]->update([
+            'status' =>
+                ParcelStatus::Failed->value,
+
+            'last_event_at' =>
+                now(),
+        ]);
+
+        $parcels[1]->update([
+            'status' =>
+                ParcelStatus::OutForDelivery->value,
+
+            'last_event_at' =>
+                now(),
+        ]);
+
+        $this
+            ->actingAs($this->logisticsA)
+            ->get(
+                route(
+                    'logistics.dispatch.monitoring'
+                )
+            )
+            ->assertOk()
+            ->assertViewHas(
+                'deliveries',
+                function ($deliveries) use (
+                    $batch
+                ): bool {
+                    $delivery =
+                        $deliveries->firstWhere(
+                            'id',
+                            $batch->batch_no
+                        );
+
+                    return $delivery !== null
+                        && $delivery['status']
+                            === 'OUT_FOR_DELIVERY'
+                        && $delivery['progress']
+                            === 50;
+                }
+            )
+            ->assertViewHas(
+                'metrics',
+                fn (array $metrics) =>
+                    $metrics[
+                        'out_for_delivery_parcels'
+                    ] === 1
+                    && $metrics[
+                        'out_for_delivery_routes'
+                    ] === 1
+                    && $metrics[
+                        'exceptions'
+                    ] === 1
+            );
+    }
+
     public function test_monitoring_page_is_zero_safe_without_dispatch_batches(): void
     {
         $this->actingAs($this->logisticsA)

@@ -2389,46 +2389,80 @@ class LogisticsController extends Controller
     ): string {
         $statuses = $parcels->pluck('status');
 
-        if (
-            $statuses->contains(
-                fn ($status) => in_array(
-                    $status,
-                    [
-                        ParcelStatus::Failed->value,
-                        ParcelStatus::Returned->value,
-                        ParcelStatus::Lost->value,
-                        ParcelStatus::Damaged->value,
-                    ],
-                    true
-                )
+        if ($statuses->isEmpty()) {
+            return 'ASSIGNED_TO_RIDER';
+        }
+
+        $terminalStatuses = [
+            ParcelStatus::Delivered->value,
+            ParcelStatus::Failed->value,
+            ParcelStatus::Returned->value,
+            ParcelStatus::Lost->value,
+            ParcelStatus::Damaged->value,
+        ];
+
+        $exceptionStatuses = [
+            ParcelStatus::Failed->value,
+            ParcelStatus::Returned->value,
+            ParcelStatus::Lost->value,
+            ParcelStatus::Damaged->value,
+        ];
+
+        $allDelivered = $statuses->every(
+            fn ($status) =>
+                $status
+                === ParcelStatus::Delivered->value
+        );
+
+        if ($allDelivered) {
+            return 'DELIVERED';
+        }
+
+        $allResolved = $statuses->every(
+            fn ($status) => in_array(
+                $status,
+                $terminalStatuses,
+                true
             )
+        );
+
+        $hasException = $statuses->contains(
+            fn ($status) => in_array(
+                $status,
+                $exceptionStatuses,
+                true
+            )
+        );
+
+        if (
+            $allResolved
+            && $hasException
         ) {
             return 'DELIVERY_FAILED';
         }
 
-        if (
-            $statuses->isNotEmpty()
-            && $statuses->every(
-                fn ($status) =>
-                    $status
-                    === ParcelStatus::Delivered->value
+        /*
+        * Once any parcel in the route has entered an
+        * active or resolved delivery state, the route
+        * remains in progress while unresolved parcels
+        * still exist.
+        */
+        $hasDeliveryActivity = $statuses->contains(
+            fn ($status) => in_array(
+                $status,
+                [
+                    ParcelStatus::OutForDelivery->value,
+                    ParcelStatus::Delivered->value,
+                    ParcelStatus::Failed->value,
+                    ParcelStatus::Returned->value,
+                    ParcelStatus::Lost->value,
+                    ParcelStatus::Damaged->value,
+                ],
+                true
             )
-        ) {
-            return 'DELIVERED';
-        }
+        );
 
-        if (
-            $statuses->contains(
-                fn ($status) => in_array(
-                    $status,
-                    [
-                        ParcelStatus::OutForDelivery->value,
-                        ParcelStatus::Delivered->value,
-                    ],
-                    true
-                )
-            )
-        ) {
+        if ($hasDeliveryActivity) {
             return 'OUT_FOR_DELIVERY';
         }
 
@@ -2571,8 +2605,8 @@ class LogisticsController extends Controller
         }
 
         /*
-        * Future Rider delivery attempts automatically
-        * appear here once Rider backend persistence exists.
+        * Persisted Rider delivery attempts are included
+        * in the Logistics monitoring timeline.
         */
         foreach (
             $batch->deliveryAttempts

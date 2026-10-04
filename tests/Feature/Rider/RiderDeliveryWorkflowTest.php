@@ -2044,6 +2044,176 @@ class RiderDeliveryWorkflowTest extends TestCase
 
     }
 
+    public function test_logistics_monitoring_reflects_failed_attempt_and_retry(): void
+    {
+        $rider = $this->makeRider(
+            'MONITOR-RETRY'
+        );
+
+        $assignment =
+            $this->makeDispatchAssignment(
+                $rider,
+                'MONITOR-RETRY',
+                1,
+                0,
+                'Monitoring Retry Recipient'
+            );
+
+        $service =
+            app(RiderDeliveryService::class);
+
+        $service->startDelivery(
+            $assignment['shipment']->shipment_no,
+            $rider->user
+        );
+
+        $service->failDelivery(
+            $assignment['shipment']->shipment_no,
+            $rider->user,
+            'Recipient unavailable.',
+            'First delivery attempt failed.'
+        );
+
+        $parcel =
+            $assignment['parcels'][0];
+
+        /*
+        * Failure creates the first real attempt.
+        */
+        $this->assertSame(
+            1,
+            $parcel
+                ->deliveryAttempts()
+                ->count()
+        );
+
+        /*
+        * Logistics must immediately see the failed
+        * route and the persisted Rider attempt.
+        */
+        $this
+            ->actingAs($this->logistics)
+            ->get(
+                route(
+                    'logistics.dispatch.monitoring'
+                )
+            )
+            ->assertOk()
+            ->assertViewHas(
+                'deliveries',
+                function ($deliveries) use (
+                    $assignment
+                ): bool {
+                    $delivery =
+                        $deliveries->firstWhere(
+                            'id',
+                            $assignment[
+                                'batch'
+                            ]->batch_no
+                        );
+
+                    if ($delivery === null) {
+                        return false;
+                    }
+
+                    $timelineLabels =
+                        collect(
+                            $delivery['timeline']
+                        )->pluck('label');
+
+                    return $delivery['status']
+                            === 'DELIVERY_FAILED'
+                        && $delivery['progress']
+                            === 100
+                        && $timelineLabels->contains(
+                            'Delivery attempt #1: Failed'
+                        );
+                }
+            )
+            ->assertViewHas(
+                'metrics',
+                fn (array $metrics) =>
+                    $metrics['exceptions'] === 1
+                    && $metrics[
+                        'out_for_delivery_parcels'
+                    ] === 0
+                    && $metrics[
+                        'out_for_delivery_routes'
+                    ] === 0
+            );
+
+        /*
+        * Retry reopens the delivery, but retry itself
+        * must not create delivery attempt #2.
+        */
+        $service->retryDelivery(
+            $assignment['shipment']->shipment_no,
+            $rider->user
+        );
+
+        $this->assertSame(
+            1,
+            $parcel
+                ->deliveryAttempts()
+                ->count()
+        );
+
+        /*
+        * Logistics must now see the route active again,
+        * while retaining attempt #1 in the timeline.
+        */
+        $this
+            ->actingAs($this->logistics)
+            ->get(
+                route(
+                    'logistics.dispatch.monitoring'
+                )
+            )
+            ->assertOk()
+            ->assertViewHas(
+                'deliveries',
+                function ($deliveries) use (
+                    $assignment
+                ): bool {
+                    $delivery =
+                        $deliveries->firstWhere(
+                            'id',
+                            $assignment[
+                                'batch'
+                            ]->batch_no
+                        );
+
+                    if ($delivery === null) {
+                        return false;
+                    }
+
+                    $timelineLabels =
+                        collect(
+                            $delivery['timeline']
+                        )->pluck('label');
+
+                    return $delivery['status']
+                            === 'OUT_FOR_DELIVERY'
+                        && $delivery['progress']
+                            === 0
+                        && $timelineLabels->contains(
+                            'Delivery attempt #1: Failed'
+                        );
+                }
+            )
+            ->assertViewHas(
+                'metrics',
+                fn (array $metrics) =>
+                    $metrics['exceptions'] === 0
+                    && $metrics[
+                        'out_for_delivery_parcels'
+                    ] === 1
+                    && $metrics[
+                        'out_for_delivery_routes'
+                    ] === 1
+            );
+    }
+
     public function test_rider_can_complete_delivery_with_private_photo_proof(): void
     {
         Storage::fake('local');

@@ -781,6 +781,12 @@ Route::prefix('rider')->name('rider.')->group(function () {
         Route::post('/deliver/{id}/confirm', [RiderController::class, 'confirmDelivery'])
             ->name('orders.delivery.confirm');
 
+        Route::post('/deliver/{id}/fail', [RiderController::class, 'failDelivery'])
+            ->name('orders.delivery.fail');
+
+        Route::post('/deliver/{id}/retry', [RiderController::class, 'retryDelivery'])
+            ->name('orders.delivery.retry');
+
         Route::get('/earnings', [RiderController::class, 'earnings'])
             ->name('earnings.index');
 

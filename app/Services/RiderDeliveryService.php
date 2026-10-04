@@ -10,6 +10,7 @@ use App\Enums\UserRole;
 use App\Models\DispatchBatch;
 use App\Models\Parcel;
 use App\Models\Shipment;
+use App\Models\ShipmentEvent;
 use App\Models\DeliveryAttempt;
 use App\Models\DeliveryProof;
 use App\Models\User;
@@ -579,6 +580,591 @@ class RiderDeliveryService
         );
     }
 
+    public function failDelivery(
+        string $shipmentNo,
+        User $actor,
+        string $failureReason,
+        ?string $notes = null,
+        ?float $latitude = null,
+        ?float $longitude = null,
+        mixed $nextAttemptAt = null
+    ): Shipment {
+        return DB::transaction(
+            function () use (
+                $shipmentNo,
+                $actor,
+                $failureReason,
+                $notes,
+                $latitude,
+                $longitude,
+                $nextAttemptAt
+            ) {
+                if (
+                    $actor->role !== UserRole::Rider->value
+                    || $actor->status !== AccountStatus::Active->value
+                ) {
+                    throw new AuthorizationException(
+                        'Only an active Rider can record delivery failure.'
+                    );
+                }
+
+                $rider = $actor
+                    ->riderProfile()
+                    ->first();
+
+                if (
+                    ! $rider
+                    || $rider->verification_status !== 'approved'
+                ) {
+                    throw new AuthorizationException(
+                        'An approved Rider profile is required.'
+                    );
+                }
+
+                $failureReason = trim($failureReason);
+
+                if ($failureReason === '') {
+                    throw new InvalidArgumentException(
+                        'A failure reason is required.'
+                    );
+                }
+
+                $shipment = Shipment::query()
+                    ->where('shipment_no', $shipmentNo)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                if (
+                    (int) $shipment->logistics_profile_id
+                    !== (int) $rider->logistics_profile_id
+                ) {
+                    throw new AuthorizationException(
+                        'This shipment does not belong to your logistics provider.'
+                    );
+                }
+
+                $batches = DispatchBatch::query()
+                    ->where(
+                        'rider_profile_id',
+                        $rider->id
+                    )
+                    ->where(
+                        'status',
+                        'dispatched'
+                    )
+                    ->whereHas(
+                        'parcels',
+                        fn ($query) => $query
+                            ->where(
+                                'parcels.shipment_id',
+                                $shipment->id
+                            )
+                    )
+                    ->with([
+                        'parcels' => fn ($query) =>
+                            $query->where(
+                                'parcels.shipment_id',
+                                $shipment->id
+                            ),
+                    ])
+                    ->lockForUpdate()
+                    ->get();
+
+                if ($batches->isEmpty()) {
+                    throw new AuthorizationException(
+                        'This delivery is not assigned to the Rider.'
+                    );
+                }
+
+                $parcelBatchIds = collect();
+
+                foreach ($batches as $batch) {
+                    foreach ($batch->parcels as $parcel) {
+                        $parcelBatchIds->put(
+                            $parcel->id,
+                            $batch->id
+                        );
+                    }
+                }
+
+                $parcels = Parcel::query()
+                    ->where(
+                        'shipment_id',
+                        $shipment->id
+                    )
+                    ->whereIn(
+                        'id',
+                        $parcelBatchIds->keys()
+                    )
+                    ->lockForUpdate()
+                    ->get();
+
+                if ($parcels->isEmpty()) {
+                    throw new AuthorizationException(
+                        'No assigned parcels were found for this delivery.'
+                    );
+                }
+
+                foreach ($parcels as $parcel) {
+                    if (
+                        $parcel->status
+                        !== ParcelStatus::OutForDelivery->value
+                    ) {
+                        throw new ConflictHttpException(
+                            'Only out-for-delivery parcels can be marked as failed.'
+                        );
+                    }
+                }
+
+                $now = now();
+
+                foreach ($parcels as $parcel) {
+                    $attemptNo =
+                        (int) DeliveryAttempt::query()
+                            ->where(
+                                'parcel_id',
+                                $parcel->id
+                            )
+                            ->max('attempt_no')
+                        + 1;
+
+                    $attempt =
+                        DeliveryAttempt::query()->create([
+                            'parcel_id' =>
+                                $parcel->id,
+
+                            'dispatch_batch_id' =>
+                                $parcelBatchIds->get(
+                                    $parcel->id
+                                ),
+
+                            'rider_profile_id' =>
+                                $rider->id,
+
+                            'attempt_no' =>
+                                $attemptNo,
+
+                            'outcome' =>
+                                DeliveryAttemptOutcome::Failed
+                                    ->value,
+
+                            'failure_reason' =>
+                                $failureReason,
+
+                            'notes' =>
+                                $notes,
+
+                            'latitude' =>
+                                $latitude,
+
+                            'longitude' =>
+                                $longitude,
+
+                            'attempted_at' =>
+                                $now,
+
+                            'next_attempt_at' =>
+                                $nextAttemptAt,
+                        ]);
+
+                    $parcel->forceFill([
+                        'status' =>
+                            ParcelStatus::Failed->value,
+
+                        'last_event_at' =>
+                            $now,
+                    ])->save();
+
+                    ShipmentEvent::query()->create([
+                        'shipment_id' =>
+                            $shipment->id,
+
+                        'parcel_id' =>
+                            $parcel->id,
+
+                        'event_type' =>
+                            'parcel_delivery_failed',
+
+                        'from_status' =>
+                            ParcelStatus::OutForDelivery
+                                ->value,
+
+                        'to_status' =>
+                            ParcelStatus::Failed
+                                ->value,
+
+                        'sorting_center_id' =>
+                            $parcel
+                                ->current_sorting_center_id,
+
+                        'sorting_zone_id' =>
+                            $parcel->current_zone_id,
+
+                        'actor_user_id' =>
+                            $actor->id,
+
+                        'source' =>
+                            'rider',
+
+                        'occurred_at' =>
+                            $now,
+
+                        'metadata' => [
+                            'dispatch_batch_id' =>
+                                $parcelBatchIds->get(
+                                    $parcel->id
+                                ),
+
+                            'rider_profile_id' =>
+                                $rider->id,
+
+                            'delivery_attempt_id' =>
+                                $attempt->id,
+                        ],
+                    ]);
+                }
+
+                $shipmentParcels =
+                    Parcel::query()
+                        ->where(
+                            'shipment_id',
+                            $shipment->id
+                        )
+                        ->lockForUpdate()
+                        ->get();
+
+                $terminalStatuses = [
+                    ParcelStatus::Delivered->value,
+                    ParcelStatus::Failed->value,
+                ];
+
+                $failureStatuses = [
+                    ParcelStatus::Failed->value,
+                ];
+
+                $allTerminal =
+                    $shipmentParcels->isNotEmpty()
+                    && $shipmentParcels->every(
+                        fn (Parcel $parcel) =>
+                            in_array(
+                                $parcel->status,
+                                $terminalStatuses,
+                                true
+                            )
+                    );
+
+                $hasFailure =
+                    $shipmentParcels->contains(
+                        fn (Parcel $parcel) =>
+                            in_array(
+                                $parcel->status,
+                                $failureStatuses,
+                                true
+                            )
+                    );
+
+                if (
+                    $allTerminal
+                    && $hasFailure
+                    && $shipment->status
+                        !== ShipmentStatus::DeliveryFailed->value
+                ) {
+                    $fromStatus =
+                        $shipment->status;
+
+                    $shipment->forceFill([
+                        'status' =>
+                            ShipmentStatus::DeliveryFailed
+                                ->value,
+                    ])->save();
+
+                    ShipmentEvent::query()->create([
+                        'shipment_id' =>
+                            $shipment->id,
+
+                        'parcel_id' =>
+                            null,
+
+                        'event_type' =>
+                            'shipment_delivery_failed',
+
+                        'from_status' =>
+                            $fromStatus,
+
+                        'to_status' =>
+                            ShipmentStatus::DeliveryFailed
+                                ->value,
+
+                        'actor_user_id' =>
+                            $actor->id,
+
+                        'source' =>
+                            'rider',
+
+                        'occurred_at' =>
+                            $now,
+
+                        'metadata' => [
+                            'rider_profile_id' =>
+                                $rider->id,
+
+                            'dispatch_batch_ids' =>
+                                $parcelBatchIds
+                                    ->values()
+                                    ->unique()
+                                    ->values()
+                                    ->all(),
+                        ],
+                    ]);
+                }
+
+                return $shipment
+                    ->fresh([
+                        'parcels',
+                        'events',
+                    ]);
+            },
+            3
+        );
+    }
+
+    public function retryDelivery(
+        string $shipmentNo,
+        User $actor
+    ): Shipment {
+        return DB::transaction(
+            function () use (
+                $shipmentNo,
+                $actor
+            ) {
+                if (
+                    $actor->role !== UserRole::Rider->value
+                    || $actor->status !== AccountStatus::Active->value
+                ) {
+                    throw new AuthorizationException(
+                        'Only an active Rider can retry delivery.'
+                    );
+                }
+
+                $rider = $actor
+                    ->riderProfile()
+                    ->first();
+
+                if (
+                    ! $rider
+                    || $rider->verification_status !== 'approved'
+                ) {
+                    throw new AuthorizationException(
+                        'An approved Rider profile is required.'
+                    );
+                }
+
+                $shipment = Shipment::query()
+                    ->where(
+                        'shipment_no',
+                        $shipmentNo
+                    )
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                if (
+                    (int) $shipment->logistics_profile_id
+                    !== (int) $rider->logistics_profile_id
+                ) {
+                    throw new AuthorizationException(
+                        'This shipment does not belong to your logistics provider.'
+                    );
+                }
+
+                $batches = DispatchBatch::query()
+                    ->where(
+                        'rider_profile_id',
+                        $rider->id
+                    )
+                    ->where(
+                        'status',
+                        'dispatched'
+                    )
+                    ->whereHas(
+                        'parcels',
+                        fn ($query) => $query
+                            ->where(
+                                'parcels.shipment_id',
+                                $shipment->id
+                            )
+                    )
+                    ->with([
+                        'parcels' => fn ($query) =>
+                            $query->where(
+                                'parcels.shipment_id',
+                                $shipment->id
+                            ),
+                    ])
+                    ->lockForUpdate()
+                    ->get();
+
+                if ($batches->isEmpty()) {
+                    throw new AuthorizationException(
+                        'This delivery is not assigned to the Rider.'
+                    );
+                }
+
+                $parcelBatchIds = collect();
+
+                foreach ($batches as $batch) {
+                    foreach ($batch->parcels as $parcel) {
+                        $parcelBatchIds->put(
+                            $parcel->id,
+                            $batch->id
+                        );
+                    }
+                }
+
+                $parcels = Parcel::query()
+                    ->where(
+                        'shipment_id',
+                        $shipment->id
+                    )
+                    ->whereIn(
+                        'id',
+                        $parcelBatchIds->keys()
+                    )
+                    ->lockForUpdate()
+                    ->get();
+
+                if ($parcels->isEmpty()) {
+                    throw new AuthorizationException(
+                        'No assigned parcels were found for this delivery.'
+                    );
+                }
+
+                foreach ($parcels as $parcel) {
+                    if (
+                        $parcel->status
+                        !== ParcelStatus::Failed->value
+                    ) {
+                        throw new ConflictHttpException(
+                            'Only failed parcels can retry delivery.'
+                        );
+                    }
+                }
+
+                $now = now();
+
+                foreach ($parcels as $parcel) {
+                    $parcel->forceFill([
+                        'status' =>
+                            ParcelStatus::OutForDelivery->value,
+
+                        'last_event_at' =>
+                            $now,
+                    ])->save();
+
+                    ShipmentEvent::query()->create([
+                        'shipment_id' =>
+                            $shipment->id,
+
+                        'parcel_id' =>
+                            $parcel->id,
+
+                        'event_type' =>
+                            'parcel_delivery_retried',
+
+                        'from_status' =>
+                            ParcelStatus::Failed->value,
+
+                        'to_status' =>
+                            ParcelStatus::OutForDelivery->value,
+
+                        'sorting_center_id' =>
+                            $parcel
+                                ->current_sorting_center_id,
+
+                        'sorting_zone_id' =>
+                            $parcel->current_zone_id,
+
+                        'actor_user_id' =>
+                            $actor->id,
+
+                        'source' =>
+                            'rider',
+
+                        'occurred_at' =>
+                            $now,
+
+                        'metadata' => [
+                            'dispatch_batch_id' =>
+                                $parcelBatchIds->get(
+                                    $parcel->id
+                                ),
+
+                            'rider_profile_id' =>
+                                $rider->id,
+                        ],
+                    ]);
+                }
+
+                if (
+                    $shipment->status
+                    !== ShipmentStatus::OutForDelivery->value
+                ) {
+                    $fromStatus =
+                        $shipment->status;
+
+                    $shipment->forceFill([
+                        'status' =>
+                            ShipmentStatus::OutForDelivery->value,
+                    ])->save();
+
+                    ShipmentEvent::query()->create([
+                        'shipment_id' =>
+                            $shipment->id,
+
+                        'parcel_id' =>
+                            null,
+
+                        'event_type' =>
+                            'shipment_delivery_retried',
+
+                        'from_status' =>
+                            $fromStatus,
+
+                        'to_status' =>
+                            ShipmentStatus::OutForDelivery->value,
+
+                        'actor_user_id' =>
+                            $actor->id,
+
+                        'source' =>
+                            'rider',
+
+                        'occurred_at' =>
+                            $now,
+
+                        'metadata' => [
+                            'rider_profile_id' =>
+                                $rider->id,
+
+                            'dispatch_batch_ids' =>
+                                $parcelBatchIds
+                                    ->values()
+                                    ->unique()
+                                    ->values()
+                                    ->all(),
+                        ],
+                    ]);
+                }
+
+                return $shipment
+                    ->fresh([
+                        'parcels',
+                        'events',
+                    ]);
+            },
+            3
+        );
+    }
+
     public function completeDelivery(
         string $shipmentNo,
         User $actor,
@@ -885,23 +1471,73 @@ class RiderDeliveryService
                             ]);
                     }
 
-                    $hasUndeliveredParcels =
-                        $shipment
-                            ->parcels()
-                            ->where(
-                                'status',
-                                '!=',
-                                ParcelStatus::Delivered->value
-                            )
-                            ->exists();
+                    $shipmentParcels = $shipment
+                        ->parcels()
+                        ->lockForUpdate()
+                        ->get([
+                            'id',
+                            'status',
+                        ]);
 
-                    if (! $hasUndeliveredParcels) {
+                    $allDelivered =
+                        $shipmentParcels->isNotEmpty()
+                        && $shipmentParcels->every(
+                            fn (Parcel $parcel) =>
+                                $parcel->status
+                                    === ParcelStatus::Delivered->value
+                        );
+
+                    $allDeliveryAttemptsResolved =
+                        $shipmentParcels->isNotEmpty()
+                        && $shipmentParcels->every(
+                            fn (Parcel $parcel) =>
+                                in_array(
+                                    $parcel->status,
+                                    [
+                                        ParcelStatus::Delivered->value,
+                                        ParcelStatus::Failed->value,
+                                    ],
+                                    true
+                                )
+                        );
+
+                    $hasFailedParcel =
+                        $shipmentParcels->contains(
+                            fn (Parcel $parcel) =>
+                                $parcel->status
+                                    === ParcelStatus::Failed->value
+                        );
+
+                    $aggregateStatus = null;
+                    $aggregateEventType = null;
+
+                    if ($allDelivered) {
+                        $aggregateStatus =
+                            ShipmentStatus::Delivered->value;
+
+                        $aggregateEventType =
+                            'shipment_delivered';
+                    } elseif (
+                        $allDeliveryAttemptsResolved
+                        && $hasFailedParcel
+                    ) {
+                        $aggregateStatus =
+                            ShipmentStatus::DeliveryFailed->value;
+
+                        $aggregateEventType =
+                            'shipment_delivery_failed';
+                    }
+
+                    if (
+                        $aggregateStatus !== null
+                        && $shipment->status !== $aggregateStatus
+                    ) {
                         $fromStatus =
                             $shipment->status;
 
                         $shipment->update([
                             'status' =>
-                                ShipmentStatus::Delivered->value,
+                                $aggregateStatus,
                         ]);
 
                         $centerIds = $parcels
@@ -924,13 +1560,13 @@ class RiderDeliveryService
                             ->events()
                             ->create([
                                 'event_type' =>
-                                    'shipment_delivered',
+                                    $aggregateEventType,
 
                                 'from_status' =>
                                     $fromStatus,
 
                                 'to_status' =>
-                                    ShipmentStatus::Delivered->value,
+                                    $aggregateStatus,
 
                                 'sorting_center_id' =>
                                     $centerIds->count() === 1

@@ -795,6 +795,94 @@ class RiderController extends Controller
             );
     }
 
+    public function failDelivery(
+        Request $request,
+        string $id,
+        RiderDeliveryService $deliveryService
+    ): RedirectResponse {
+        $validated = $request->validate([
+            'failure_reason' => [
+                'required',
+                'string',
+                'max:500',
+            ],
+
+            'notes' => [
+                'nullable',
+                'string',
+                'max:1000',
+            ],
+
+            'next_attempt_at' => [
+                'nullable',
+                'date',
+                'after:now',
+            ],
+
+            'latitude' => [
+                'nullable',
+                'numeric',
+                'between:-90,90',
+            ],
+
+            'longitude' => [
+                'nullable',
+                'numeric',
+                'between:-180,180',
+            ],
+        ]);
+
+        /** @var User $user */
+        $user = Auth::user();
+
+        $deliveryService->failDelivery(
+            $id,
+            $user,
+            $validated['failure_reason'],
+            $validated['notes'] ?? null,
+            isset($validated['latitude'])
+                ? (float) $validated['latitude']
+                : null,
+            isset($validated['longitude'])
+                ? (float) $validated['longitude']
+                : null,
+            $validated['next_attempt_at'] ?? null
+        );
+
+        return redirect()
+            ->route(
+                'rider.orders.delivery',
+                $id
+            )
+            ->with(
+                'job_status',
+                'Failed delivery attempt recorded.'
+            );
+    }
+
+    public function retryDelivery(
+        string $id,
+        RiderDeliveryService $deliveryService
+    ): RedirectResponse {
+        /** @var User $user */
+        $user = Auth::user();
+
+        $deliveryService->retryDelivery(
+            $id,
+            $user
+        );
+
+        return redirect()
+            ->route(
+                'rider.orders.delivery',
+                $id
+            )
+            ->with(
+                'job_status',
+                'Delivery retry started.'
+            );
+    }
+
     public function earnings()
     {
         return view('rider.earnings.index', $this->shared() + [

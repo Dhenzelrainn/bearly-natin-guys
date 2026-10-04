@@ -391,6 +391,86 @@
                             Confirm delivery
                         </button>
                     </form>
+                    <form
+                        method="POST"
+                        action="{{ route(
+                            'rider.orders.delivery.fail',
+                            $job['id']
+                        ) }}"
+                        style="width:100%; margin-top:14px"
+                    >
+                        @csrf
+
+                        <div
+                            style="
+                                display:grid;
+                                gap:12px;
+                                margin-bottom:14px;
+                            "
+                        >
+                            <label>
+                                <span>Failure reason</span>
+
+                                <textarea
+                                    name="failure_reason"
+                                    rows="3"
+                                    maxlength="500"
+                                    required
+                                >{{ old('failure_reason') }}</textarea>
+                            </label>
+
+                            <label>
+                                <span>Retry schedule (optional)</span>
+
+                                <input
+                                    type="datetime-local"
+                                    name="next_attempt_at"
+                                    value="{{ old('next_attempt_at') }}"
+                                >
+                            </label>
+
+                            <label>
+                                <span>Notes (optional)</span>
+
+                                <textarea
+                                    name="notes"
+                                    rows="3"
+                                    maxlength="1000"
+                                >{{ old('notes') }}</textarea>
+                            </label>
+                        </div>
+
+                        <button
+                            class="button"
+                            style="width:100%"
+                            type="submit"
+                        >
+                            <i data-lucide="triangle-alert"></i>
+                            Report failed delivery
+                        </button>
+                    </form>
+
+                @elseif($job['status'] === 'Delivery Failed')
+                    <form
+                        method="POST"
+                        action="{{ route(
+                            'rider.orders.delivery.retry',
+                            $job['id']
+                        ) }}"
+                        style="width:100%"
+                    >
+                        @csrf
+
+                        <button
+                            class="button button-primary"
+                            style="width:100%"
+                            type="submit"
+                        >
+                            <i data-lucide="rotate-ccw"></i>
+                            Retry delivery
+                        </button>
+                    </form>
+
                 @elseif($job['status'] === 'Delivered')
                     <button
                         class="button button-primary"

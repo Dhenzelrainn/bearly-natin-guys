@@ -2407,6 +2407,796 @@ class RiderDeliveryWorkflowTest extends TestCase
         );
     }
 
+    public function test_rider_can_fail_own_out_for_delivery_assignment(): void
+    {
+        $rider = $this->makeRider('FAIL');
+
+        $assignment = $this->makeDispatchAssignment(
+            $rider,
+            'FAIL',
+            2,
+            0,
+            'Failed Recipient'
+        );
+
+        $service = app(RiderDeliveryService::class);
+
+        $service->startDelivery(
+            $assignment['shipment']->shipment_no,
+            $rider->user
+        );
+
+        $nextAttemptAt = now()->addDay();
+
+        $shipment = $service->failDelivery(
+            $assignment['shipment']->shipment_no,
+            $rider->user,
+            'Recipient was unavailable.',
+            'Called the recipient twice.',
+            14.0712,
+            121.3250,
+            $nextAttemptAt
+        );
+
+        $this->assertSame(
+            ShipmentStatus::DeliveryFailed->value,
+            $shipment->status
+        );
+
+        foreach ($assignment['parcels'] as $parcel) {
+            $this->assertDatabaseHas('parcels', [
+                'id' => $parcel->id,
+                'status' => ParcelStatus::Failed->value,
+            ]);
+
+            $attempt = $parcel
+                ->deliveryAttempts()
+                ->latest('id')
+                ->firstOrFail();
+
+            $this->assertSame(
+                DeliveryAttemptOutcome::Failed->value,
+                $attempt->outcome
+            );
+
+            $this->assertSame(
+                1,
+                $attempt->attempt_no
+            );
+
+            $this->assertSame(
+                'Recipient was unavailable.',
+                $attempt->failure_reason
+            );
+
+            $this->assertNotNull(
+                $attempt->next_attempt_at
+            );
+
+            $this->assertDatabaseHas('shipment_events', [
+                'shipment_id' => $assignment['shipment']->id,
+                'parcel_id' => $parcel->id,
+                'event_type' => 'parcel_delivery_failed',
+                'from_status' => ParcelStatus::OutForDelivery->value,
+                'to_status' => ParcelStatus::Failed->value,
+                'actor_user_id' => $rider->user_id,
+                'source' => 'rider',
+            ]);
+        }
+
+        $this->assertDatabaseHas('shipment_events', [
+            'shipment_id' => $assignment['shipment']->id,
+            'parcel_id' => null,
+            'event_type' => 'shipment_delivery_failed',
+            'to_status' => ShipmentStatus::DeliveryFailed->value,
+            'actor_user_id' => $rider->user_id,
+            'source' => 'rider',
+        ]);
+    }
+
+    public function test_fail_delivery_route_records_failed_attempt(): void
+    {
+        $rider = $this->makeRider('FAIL-HTTP');
+
+        $assignment = $this->makeDispatchAssignment(
+            $rider,
+            'FAIL-HTTP',
+            1,
+            0,
+            'Failure Route Recipient'
+        );
+
+        app(RiderDeliveryService::class)->startDelivery(
+            $assignment['shipment']->shipment_no,
+            $rider->user
+        );
+
+        $response = $this
+            ->actingAs($rider->user)
+            ->post(
+                route(
+                    'rider.orders.delivery.fail',
+                    $assignment['shipment']->shipment_no
+                ),
+                [
+                    'failure_reason' =>
+                        'Customer could not be reached.',
+
+                    'notes' =>
+                        'Will retry tomorrow.',
+
+                    'next_attempt_at' =>
+                        now()
+                            ->addDay()
+                            ->format('Y-m-d H:i:s'),
+                ]
+            );
+
+        $response
+            ->assertRedirect(
+                route(
+                    'rider.orders.delivery',
+                    $assignment['shipment']->shipment_no
+                )
+            )
+            ->assertSessionHas(
+                'job_status',
+                'Failed delivery attempt recorded.'
+            );
+
+        $this->assertDatabaseHas('parcels', [
+            'id' => $assignment['parcels'][0]->id,
+            'status' => ParcelStatus::Failed->value,
+        ]);
+
+        $this->assertDatabaseHas('delivery_attempts', [
+            'parcel_id' => $assignment['parcels'][0]->id,
+            'outcome' => DeliveryAttemptOutcome::Failed->value,
+            'failure_reason' => 'Customer could not be reached.',
+        ]);
+
+        $this->assertDatabaseHas('shipments', [
+            'id' => $assignment['shipment']->id,
+            'status' => ShipmentStatus::DeliveryFailed->value,
+        ]);
+    }
+
+    public function test_fail_delivery_requires_failure_reason(): void
+    {
+        $rider = $this->makeRider('FAIL-VALIDATE');
+
+        $assignment = $this->makeDispatchAssignment(
+            $rider,
+            'FAIL-VALIDATE',
+            1,
+            0,
+            'Validation Recipient'
+        );
+
+        app(RiderDeliveryService::class)->startDelivery(
+            $assignment['shipment']->shipment_no,
+            $rider->user
+        );
+
+        $this
+            ->actingAs($rider->user)
+            ->post(
+                route(
+                    'rider.orders.delivery.fail',
+                    $assignment['shipment']->shipment_no
+                ),
+                []
+            )
+            ->assertSessionHasErrors([
+                'failure_reason',
+            ]);
+
+        $this->assertDatabaseCount(
+            'delivery_attempts',
+            0
+        );
+
+        $this->assertDatabaseHas('parcels', [
+            'id' => $assignment['parcels'][0]->id,
+            'status' => ParcelStatus::OutForDelivery->value,
+        ]);
+    }
+
+    public function test_failed_delivery_cannot_be_failed_again(): void
+    {
+        $rider = $this->makeRider('FAIL-ONCE');
+
+        $assignment = $this->makeDispatchAssignment(
+            $rider,
+            'FAIL-ONCE',
+            1,
+            0,
+            'Fail Once Recipient'
+        );
+
+        $service = app(RiderDeliveryService::class);
+
+        $service->startDelivery(
+            $assignment['shipment']->shipment_no,
+            $rider->user
+        );
+
+        $service->failDelivery(
+            $assignment['shipment']->shipment_no,
+            $rider->user,
+            'Recipient unavailable.'
+        );
+
+        $this->assertDatabaseCount(
+            'delivery_attempts',
+            1
+        );
+
+        try {
+            $service->failDelivery(
+                $assignment['shipment']->shipment_no,
+                $rider->user,
+                'Another failure.'
+            );
+
+            $this->fail(
+                'Expected repeat failure to be rejected.'
+            );
+        } catch (ConflictHttpException) {
+            // Expected.
+        }
+
+        $this->assertDatabaseCount(
+            'delivery_attempts',
+            1
+        );
+
+        $this->assertSame(
+            1,
+            $assignment['shipment']
+                ->events()
+                ->where(
+                    'event_type',
+                    'shipment_delivery_failed'
+                )
+                ->count()
+        );
+    }
+
+    public function test_split_shipment_becomes_failed_after_remaining_rider_completes(): void
+    {
+        Storage::fake('local');
+
+        $riderA = $this->makeRider('FAIL-SPLIT-A');
+        $riderB = $this->makeRider('FAIL-SPLIT-B');
+
+        $assignment = $this->makeDispatchAssignment(
+            $riderA,
+            'FAIL-SPLIT',
+            2,
+            0,
+            'Split Failure Recipient'
+        );
+
+        $firstParcel = $assignment['parcels'][0];
+        $secondParcel = $assignment['parcels'][1];
+
+        $assignment['batch']
+            ->parcels()
+            ->detach($secondParcel->id);
+
+        $secondBatch = DispatchBatch::query()->create([
+            'batch_no' => 'RIDER-BATCH-FAIL-SPLIT-B',
+            'sorting_center_id' => $this->center->id,
+            'sorting_zone_id' => $this->zone->id,
+            'rider_profile_id' => $riderB->id,
+            'status' => 'dispatched',
+            'prepared_by' => $this->logistics->id,
+            'prepared_at' => now(),
+            'assigned_at' => now(),
+            'dispatched_at' => now(),
+        ]);
+
+        $secondBatch->parcels()->attach(
+            $secondParcel->id,
+            [
+                'sequence' => 1,
+                'loaded_at' => now(),
+            ]
+        );
+
+        $service = app(RiderDeliveryService::class);
+
+        $service->startDelivery(
+            $assignment['shipment']->shipment_no,
+            $riderA->user
+        );
+
+        $service->startDelivery(
+            $assignment['shipment']->shipment_no,
+            $riderB->user
+        );
+
+        $service->failDelivery(
+            $assignment['shipment']->shipment_no,
+            $riderA->user,
+            'Recipient unavailable.'
+        );
+
+        $this->assertDatabaseHas('parcels', [
+            'id' => $firstParcel->id,
+            'status' => ParcelStatus::Failed->value,
+        ]);
+
+        $this->assertDatabaseHas('parcels', [
+            'id' => $secondParcel->id,
+            'status' => ParcelStatus::OutForDelivery->value,
+        ]);
+
+        $this->assertDatabaseHas('shipments', [
+            'id' => $assignment['shipment']->id,
+            'status' => ShipmentStatus::OutForDelivery->value,
+        ]);
+
+        $this->assertDatabaseMissing('shipment_events', [
+            'shipment_id' => $assignment['shipment']->id,
+            'event_type' => 'shipment_delivery_failed',
+        ]);
+
+        $service->completeDelivery(
+            $assignment['shipment']->shipment_no,
+            $riderB->user,
+            $this->fakeProofPhoto(
+                'split-failure-proof.png'
+            ),
+            'Split Failure Recipient'
+        );
+
+        $this->assertDatabaseHas('parcels', [
+            'id' => $secondParcel->id,
+            'status' => ParcelStatus::Delivered->value,
+        ]);
+
+        $this->assertDatabaseHas('shipments', [
+            'id' => $assignment['shipment']->id,
+            'status' => ShipmentStatus::DeliveryFailed->value,
+        ]);
+
+        $this->assertSame(
+            1,
+            $assignment['shipment']
+                ->events()
+                ->where(
+                    'event_type',
+                    'shipment_delivery_failed'
+                )
+                ->count()
+        );
+    }
+
+    public function test_rider_can_retry_own_failed_delivery(): void
+    {
+        $rider = $this->makeRider('RETRY');
+
+        $assignment = $this->makeDispatchAssignment(
+            $rider,
+            'RETRY',
+            1,
+            0,
+            'Retry Recipient'
+        );
+
+        $service = app(RiderDeliveryService::class);
+
+        $service->startDelivery(
+            $assignment['shipment']->shipment_no,
+            $rider->user
+        );
+
+        $service->failDelivery(
+            $assignment['shipment']->shipment_no,
+            $rider->user,
+            'Recipient unavailable.'
+        );
+
+        $this->assertDatabaseCount(
+            'delivery_attempts',
+            1
+        );
+
+        $shipment = $service->retryDelivery(
+            $assignment['shipment']->shipment_no,
+            $rider->user
+        );
+
+        $this->assertSame(
+            ShipmentStatus::OutForDelivery->value,
+            $shipment->status
+        );
+
+        $this->assertDatabaseHas('parcels', [
+            'id' => $assignment['parcels'][0]->id,
+            'status' => ParcelStatus::OutForDelivery->value,
+        ]);
+
+        /*
+        * Retrying is not itself a delivery attempt.
+        */
+        $this->assertDatabaseCount(
+            'delivery_attempts',
+            1
+        );
+
+        $this->assertDatabaseHas('shipment_events', [
+            'shipment_id' => $assignment['shipment']->id,
+            'parcel_id' => $assignment['parcels'][0]->id,
+            'event_type' => 'parcel_delivery_retried',
+            'from_status' => ParcelStatus::Failed->value,
+            'to_status' => ParcelStatus::OutForDelivery->value,
+            'actor_user_id' => $rider->user_id,
+            'source' => 'rider',
+        ]);
+
+        $this->assertDatabaseHas('shipment_events', [
+            'shipment_id' => $assignment['shipment']->id,
+            'parcel_id' => null,
+            'event_type' => 'shipment_delivery_retried',
+            'from_status' => ShipmentStatus::DeliveryFailed->value,
+            'to_status' => ShipmentStatus::OutForDelivery->value,
+            'actor_user_id' => $rider->user_id,
+            'source' => 'rider',
+        ]);
+    }
+
+    public function test_retry_delivery_route_reopens_failed_delivery(): void
+    {
+        $rider = $this->makeRider('RETRY-HTTP');
+
+        $assignment = $this->makeDispatchAssignment(
+            $rider,
+            'RETRY-HTTP',
+            1,
+            0,
+            'Retry Route Recipient'
+        );
+
+        $service = app(RiderDeliveryService::class);
+
+        $service->startDelivery(
+            $assignment['shipment']->shipment_no,
+            $rider->user
+        );
+
+        $service->failDelivery(
+            $assignment['shipment']->shipment_no,
+            $rider->user,
+            'No one was available.'
+        );
+
+        $response = $this
+            ->actingAs($rider->user)
+            ->post(
+                route(
+                    'rider.orders.delivery.retry',
+                    $assignment['shipment']->shipment_no
+                )
+            );
+
+        $response
+            ->assertRedirect(
+                route(
+                    'rider.orders.delivery',
+                    $assignment['shipment']->shipment_no
+                )
+            )
+            ->assertSessionHas(
+                'job_status',
+                'Delivery retry started.'
+            );
+
+        $this->assertDatabaseHas('parcels', [
+            'id' => $assignment['parcels'][0]->id,
+            'status' => ParcelStatus::OutForDelivery->value,
+        ]);
+
+        $this->assertDatabaseHas('shipments', [
+            'id' => $assignment['shipment']->id,
+            'status' => ShipmentStatus::OutForDelivery->value,
+        ]);
+
+        $this->assertDatabaseCount(
+            'delivery_attempts',
+            1
+        );
+    }
+
+    public function test_retry_delivery_cannot_be_repeated_while_out_for_delivery(): void
+    {
+        $rider = $this->makeRider('RETRY-ONCE');
+
+        $assignment = $this->makeDispatchAssignment(
+            $rider,
+            'RETRY-ONCE',
+            1,
+            0,
+            'Retry Once Recipient'
+        );
+
+        $service = app(RiderDeliveryService::class);
+
+        $service->startDelivery(
+            $assignment['shipment']->shipment_no,
+            $rider->user
+        );
+
+        $service->failDelivery(
+            $assignment['shipment']->shipment_no,
+            $rider->user,
+            'Recipient unavailable.'
+        );
+
+        $service->retryDelivery(
+            $assignment['shipment']->shipment_no,
+            $rider->user
+        );
+
+        try {
+            $service->retryDelivery(
+                $assignment['shipment']->shipment_no,
+                $rider->user
+            );
+
+            $this->fail(
+                'Expected repeated retry to be rejected.'
+            );
+        } catch (ConflictHttpException) {
+            // Expected.
+        }
+
+        $this->assertDatabaseCount(
+            'delivery_attempts',
+            1
+        );
+
+        $this->assertSame(
+            1,
+            $assignment['shipment']
+                ->events()
+                ->where(
+                    'event_type',
+                    'shipment_delivery_retried'
+                )
+                ->count()
+        );
+
+        $this->assertSame(
+            1,
+            $assignment['shipment']
+                ->events()
+                ->where(
+                    'event_type',
+                    'parcel_delivery_retried'
+                )
+                ->count()
+        );
+    }
+
+    public function test_rider_cannot_retry_another_riders_failed_delivery(): void
+    {
+        $assignedRider = $this->makeRider(
+            'RETRY-OWNER'
+        );
+
+        $foreignRider = $this->makeRider(
+            'RETRY-FOREIGN'
+        );
+
+        $assignment = $this->makeDispatchAssignment(
+            $assignedRider,
+            'RETRY-FOREIGN',
+            1,
+            0,
+            'Foreign Retry Recipient'
+        );
+
+        $service = app(RiderDeliveryService::class);
+
+        $service->startDelivery(
+            $assignment['shipment']->shipment_no,
+            $assignedRider->user
+        );
+
+        $service->failDelivery(
+            $assignment['shipment']->shipment_no,
+            $assignedRider->user,
+            'Recipient unavailable.'
+        );
+
+        $this
+            ->actingAs($foreignRider->user)
+            ->post(
+                route(
+                    'rider.orders.delivery.retry',
+                    $assignment['shipment']->shipment_no
+                )
+            )
+            ->assertForbidden();
+
+        $this->assertDatabaseHas('parcels', [
+            'id' => $assignment['parcels'][0]->id,
+            'status' => ParcelStatus::Failed->value,
+        ]);
+
+        $this->assertDatabaseHas('shipments', [
+            'id' => $assignment['shipment']->id,
+            'status' => ShipmentStatus::DeliveryFailed->value,
+        ]);
+
+        $this->assertDatabaseCount(
+            'delivery_attempts',
+            1
+        );
+    }
+
+    public function test_failed_delivery_can_retry_then_complete_on_second_attempt(): void
+    {
+        Storage::fake('local');
+
+        $rider = $this->makeRider(
+            'RETRY-SUCCESS'
+        );
+
+        $assignment = $this->makeDispatchAssignment(
+            $rider,
+            'RETRY-SUCCESS',
+            1,
+            0,
+            'Second Attempt Recipient'
+        );
+
+        $service = app(RiderDeliveryService::class);
+
+        /*
+        * Attempt #1 starts.
+        */
+        $service->startDelivery(
+            $assignment['shipment']->shipment_no,
+            $rider->user
+        );
+
+        /*
+        * Attempt #1 fails.
+        */
+        $service->failDelivery(
+            $assignment['shipment']->shipment_no,
+            $rider->user,
+            'Recipient unavailable on first visit.'
+        );
+
+        $firstAttempt = $assignment['parcels'][0]
+            ->deliveryAttempts()
+            ->latest('id')
+            ->firstOrFail();
+
+        $this->assertSame(
+            1,
+            $firstAttempt->attempt_no
+        );
+
+        $this->assertSame(
+            DeliveryAttemptOutcome::Failed->value,
+            $firstAttempt->outcome
+        );
+
+        /*
+        * Reopen the same delivery.
+        * This must NOT create attempt #2 yet.
+        */
+        $service->retryDelivery(
+            $assignment['shipment']->shipment_no,
+            $rider->user
+        );
+
+        $this->assertDatabaseCount(
+            'delivery_attempts',
+            1
+        );
+
+        /*
+        * The second real customer handoff succeeds.
+        * This is when attempt #2 should be created.
+        */
+        $shipment = $service->completeDelivery(
+            $assignment['shipment']->shipment_no,
+            $rider->user,
+            $this->fakeProofPhoto(
+                'second-attempt-proof.png'
+            ),
+            'Second Attempt Recipient',
+            'Delivered successfully on retry.'
+        );
+
+        $this->assertSame(
+            ShipmentStatus::Delivered->value,
+            $shipment->status
+        );
+
+        $this->assertDatabaseHas('parcels', [
+            'id' => $assignment['parcels'][0]->id,
+            'status' => ParcelStatus::Delivered->value,
+        ]);
+
+        $attempts = $assignment['parcels'][0]
+            ->deliveryAttempts()
+            ->orderBy('attempt_no')
+            ->get();
+
+        $this->assertCount(
+            2,
+            $attempts
+        );
+
+        $this->assertSame(
+            1,
+            $attempts[0]->attempt_no
+        );
+
+        $this->assertSame(
+            DeliveryAttemptOutcome::Failed->value,
+            $attempts[0]->outcome
+        );
+
+        $this->assertSame(
+            2,
+            $attempts[1]->attempt_no
+        );
+
+        $this->assertSame(
+            DeliveryAttemptOutcome::Delivered->value,
+            $attempts[1]->outcome
+        );
+
+        $this->assertDatabaseHas('delivery_proofs', [
+            'delivery_attempt_id' => $attempts[1]->id,
+            'type' => 'photo',
+            'recipient_name' => 'Second Attempt Recipient',
+            'uploaded_by' => $rider->user_id,
+        ]);
+
+        $this->assertSame(
+            1,
+            $assignment['shipment']
+                ->events()
+                ->where(
+                    'event_type',
+                    'shipment_delivery_failed'
+                )
+                ->count()
+        );
+
+        $this->assertSame(
+            1,
+            $assignment['shipment']
+                ->events()
+                ->where(
+                    'event_type',
+                    'shipment_delivery_retried'
+                )
+                ->count()
+        );
+
+        $this->assertSame(
+            1,
+            $assignment['shipment']
+                ->events()
+                ->where(
+                    'event_type',
+                    'shipment_delivered'
+                )
+                ->count()
+        );
+    }
+
     private function fakeProofPhoto(string $name = 'proof.png'): UploadedFile
     {
         $contents = base64_decode(

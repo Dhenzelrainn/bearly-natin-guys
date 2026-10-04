@@ -10,11 +10,430 @@ use App\Models\Message;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class LogisticsMessagesTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_logistics_participant_can_send_message(): void
+    {
+        $operator =
+            $this->makeLogisticsOperator(
+                'SEND'
+            );
+
+        $seller =
+            User::factory()->create([
+                'name' =>
+                    'Reply Seller',
+
+                'email' =>
+                    'reply-seller@example.test',
+
+                'role' =>
+                    UserRole::Seller->value,
+
+                'status' =>
+                    AccountStatus::Active->value,
+            ]);
+
+        $conversation =
+            Conversation::query()->create([
+                'subject' =>
+                    'Pickup reply',
+
+                'type' =>
+                    'direct',
+
+                'status' =>
+                    'open',
+
+                'created_by' =>
+                    $seller->id,
+
+                'last_message_at' =>
+                    now()->subMinute(),
+            ]);
+
+        $conversation
+            ->participants()
+            ->attach(
+                $operator->id,
+                [
+                    'participant_role' =>
+                        'logistics',
+
+                    'last_read_at' =>
+                        null,
+
+                    'joined_at' =>
+                        now()->subHour(),
+                ]
+            );
+
+        $conversation
+            ->participants()
+            ->attach(
+                $seller->id,
+                [
+                    'participant_role' =>
+                        'seller',
+
+                    'last_read_at' =>
+                        null,
+
+                    'joined_at' =>
+                        now()->subHour(),
+                ]
+            );
+
+        $response = $this
+            ->actingAs($operator)
+            ->postJson(
+                route(
+                    'logistics.messages.send',
+                    $conversation
+                ),
+                [
+                    'message' =>
+                        'Rider is already assigned.',
+                ]
+            );
+
+        $response
+            ->assertOk()
+            ->assertJsonPath(
+                'data.mine',
+                true
+            )
+            ->assertJsonPath(
+                'data.text',
+                'Rider is already assigned.'
+            );
+
+        $this->assertDatabaseHas(
+            'messages',
+            [
+                'conversation_id' =>
+                    $conversation->id,
+
+                'sender_id' =>
+                    $operator->id,
+
+                'body' =>
+                    'Rider is already assigned.',
+
+                'message_type' =>
+                    'text',
+            ]
+        );
+
+        $conversation->refresh();
+
+        $this->assertNotNull(
+            $conversation
+                ->last_message_at
+        );
+
+        $participant =
+            DB::table(
+                'conversation_participants'
+            )
+                ->where(
+                    'conversation_id',
+                    $conversation->id
+                )
+                ->where(
+                    'user_id',
+                    $operator->id
+                )
+                ->first();
+
+        $this->assertNotNull(
+            $participant->last_read_at
+        );
+    }
+
+    public function test_logistics_cannot_send_to_conversation_it_does_not_belong_to(): void
+    {
+        $operator =
+            $this->makeLogisticsOperator(
+                'OUTSIDER'
+            );
+
+        $foreignOperator =
+            $this->makeLogisticsOperator(
+                'OWNER'
+            );
+
+        $seller =
+            User::factory()->create([
+                'name' =>
+                    'Foreign Seller',
+
+                'email' =>
+                    'foreign-message-seller@example.test',
+
+                'role' =>
+                    UserRole::Seller->value,
+
+                'status' =>
+                    AccountStatus::Active->value,
+            ]);
+
+        $conversation =
+            Conversation::query()->create([
+                'type' =>
+                    'direct',
+
+                'status' =>
+                    'open',
+
+                'created_by' =>
+                    $foreignOperator->id,
+
+                'last_message_at' =>
+                    null,
+            ]);
+
+        $conversation
+            ->participants()
+            ->attach(
+                $foreignOperator->id,
+                [
+                    'participant_role' =>
+                        'logistics',
+
+                    'joined_at' =>
+                        now(),
+                ]
+            );
+
+        $conversation
+            ->participants()
+            ->attach(
+                $seller->id,
+                [
+                    'participant_role' =>
+                        'seller',
+
+                    'joined_at' =>
+                        now(),
+                ]
+            );
+
+        $response = $this
+            ->actingAs($operator)
+            ->postJson(
+                route(
+                    'logistics.messages.send',
+                    $conversation
+                ),
+                [
+                    'message' =>
+                        'Unauthorized reply',
+                ]
+            );
+
+        $response->assertNotFound();
+
+        $this->assertDatabaseMissing(
+            'messages',
+            [
+                'conversation_id' =>
+                    $conversation->id,
+
+                'sender_id' =>
+                    $operator->id,
+
+                'body' =>
+                    'Unauthorized reply',
+            ]
+        );
+    }
+
+    public function test_logistics_cannot_send_to_closed_conversation(): void
+    {
+        $operator =
+            $this->makeLogisticsOperator(
+                'CLOSED'
+            );
+
+        $seller =
+            User::factory()->create([
+                'name' =>
+                    'Closed Seller',
+
+                'email' =>
+                    'closed-message-seller@example.test',
+
+                'role' =>
+                    UserRole::Seller->value,
+
+                'status' =>
+                    AccountStatus::Active->value,
+            ]);
+
+        $conversation =
+            Conversation::query()->create([
+                'type' =>
+                    'direct',
+
+                'status' =>
+                    'closed',
+
+                'created_by' =>
+                    $seller->id,
+
+                'last_message_at' =>
+                    null,
+            ]);
+
+        $conversation
+            ->participants()
+            ->attach(
+                $operator->id,
+                [
+                    'participant_role' =>
+                        'logistics',
+
+                    'joined_at' =>
+                        now(),
+                ]
+            );
+
+        $conversation
+            ->participants()
+            ->attach(
+                $seller->id,
+                [
+                    'participant_role' =>
+                        'seller',
+
+                    'joined_at' =>
+                        now(),
+                ]
+            );
+
+        $response = $this
+            ->actingAs($operator)
+            ->postJson(
+                route(
+                    'logistics.messages.send',
+                    $conversation
+                ),
+                [
+                    'message' =>
+                        'Should not be sent',
+                ]
+            );
+
+        $response
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(
+                'message'
+            );
+
+        $this->assertDatabaseMissing(
+            'messages',
+            [
+                'conversation_id' =>
+                    $conversation->id,
+
+                'body' =>
+                    'Should not be sent',
+            ]
+        );
+    }
+
+    public function test_logistics_reply_requires_message_body(): void
+    {
+        $operator =
+            $this->makeLogisticsOperator(
+                'EMPTY-REPLY'
+            );
+
+        $seller =
+            User::factory()->create([
+                'name' =>
+                    'Validation Seller',
+
+                'email' =>
+                    'validation-message-seller@example.test',
+
+                'role' =>
+                    UserRole::Seller->value,
+
+                'status' =>
+                    AccountStatus::Active->value,
+            ]);
+
+        $conversation =
+            Conversation::query()->create([
+                'type' =>
+                    'direct',
+
+                'status' =>
+                    'open',
+
+                'created_by' =>
+                    $seller->id,
+
+                'last_message_at' =>
+                    null,
+            ]);
+
+        $conversation
+            ->participants()
+            ->attach(
+                $operator->id,
+                [
+                    'participant_role' =>
+                        'logistics',
+
+                    'joined_at' =>
+                        now(),
+                ]
+            );
+
+        $conversation
+            ->participants()
+            ->attach(
+                $seller->id,
+                [
+                    'participant_role' =>
+                        'seller',
+
+                    'joined_at' =>
+                        now(),
+                ]
+            );
+
+        $response = $this
+            ->actingAs($operator)
+            ->postJson(
+                route(
+                    'logistics.messages.send',
+                    $conversation
+                ),
+                [
+                    'message' => '',
+                ]
+            );
+
+        $response
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(
+                'message'
+            );
+
+        $this->assertDatabaseCount(
+            'messages',
+            0
+        );
+    }
 
     public function test_messages_page_uses_only_authenticated_logistics_conversations(): void
     {

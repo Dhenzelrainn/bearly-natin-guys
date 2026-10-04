@@ -133,7 +133,7 @@
                 <button
                     class="icon-button"
                     type="button"
-                    title="Attach file"
+                    title="Attachments will be enabled later"
                     disabled
                 >
                     <i data-lucide="paperclip"></i>
@@ -142,15 +142,19 @@
                 <input
                     type="text"
                     data-chat-input
-                    placeholder="Replies will be enabled shortly"
-                    disabled
+                    placeholder="Write a message…"
+                    @if(empty($conversations))
+                        disabled
+                    @endif
                 >
 
                 <button
                     class="button button-primary"
                     type="button"
                     data-chat-send
-                    disabled
+                    @if(empty($conversations))
+                        disabled
+                    @endif
                 >
                     <i data-lucide="send"></i>
                     Send

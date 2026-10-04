@@ -681,6 +681,9 @@ Route::prefix('logistics')->name('logistics.')->group(function () {
         Route::get('/messages', [LogisticsController::class, 'messages'])
             ->name('messages.index');
 
+        Route::post('/messages/{conversation}', [LogisticsController::class, 'sendMessage'])
+            ->name('messages.send');
+
         Route::patch('/account/profile', [LogisticsController::class, 'updateProfile'])
             ->name('profile.update');
 

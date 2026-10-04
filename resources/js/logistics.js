@@ -339,6 +339,16 @@ function setupChat() {
             '[data-chat-messages]'
         );
 
+    const input =
+        document.querySelector(
+            '[data-chat-input]'
+        );
+
+    const sendButton =
+        document.querySelector(
+            '[data-chat-send]'
+        );
+
     if (!messages) {
         return;
     }
@@ -346,6 +356,16 @@ function setupChat() {
     const conversationData =
         window.bearlyLogisticsConversations
         || {};
+
+    const csrfToken =
+        document
+            .querySelector(
+                'meta[name="csrf-token"]'
+            )
+            ?.getAttribute(
+                'content'
+            )
+        || '';
 
     if (!conversations.length) {
         if (name) {
@@ -355,6 +375,14 @@ function setupChat() {
 
         if (role) {
             role.textContent = '';
+        }
+
+        if (input) {
+            input.disabled = true;
+        }
+
+        if (sendButton) {
+            sendButton.disabled = true;
         }
 
         messages.innerHTML = `
@@ -373,6 +401,12 @@ function setupChat() {
             .conversation
     );
 
+    let sending = false;
+
+    const activeConversation = () =>
+        conversationData[active]
+        || null;
+
     const render = () => {
         const button =
             conversations.find(
@@ -383,7 +417,7 @@ function setupChat() {
             );
 
         const conversation =
-            conversationData[active]
+            activeConversation()
             || {};
 
         if (name) {
@@ -398,6 +432,27 @@ function setupChat() {
                 conversation.role
                 || button?.dataset.role
                 || '';
+        }
+
+        const isOpen =
+            conversation.status
+            === 'open';
+
+        if (input) {
+            input.disabled =
+                !isOpen
+                || sending;
+
+            input.placeholder =
+                isOpen
+                    ? 'Write a message…'
+                    : 'This conversation is closed';
+        }
+
+        if (sendButton) {
+            sendButton.disabled =
+                !isOpen
+                || sending;
         }
 
         const thread =
@@ -445,29 +500,204 @@ function setupChat() {
             messages.scrollHeight;
     };
 
+    const selectConversation = (
+        button
+    ) => {
+        active = String(
+            button.dataset.conversation
+        );
+
+        conversations.forEach(
+            (item) =>
+                item.classList.toggle(
+                    'is-active',
+                    item === button
+                )
+        );
+
+        render();
+    };
+
     conversations.forEach(
         (button) =>
             button.addEventListener(
                 'click',
-                () => {
-                    active = String(
+                () =>
+                    selectConversation(
                         button
-                            .dataset
-                            .conversation
-                    );
-
-                    conversations.forEach(
-                        (item) =>
-                            item.classList.toggle(
-                                'is-active',
-                                item === button
-                            )
-                    );
-
-                    render();
-                }
+                    )
             )
     );
+
+    const send = async () => {
+        if (
+            sending
+            || !input
+        ) {
+            return;
+        }
+
+        const text =
+            input.value.trim();
+
+        if (!text) {
+            return;
+        }
+
+        const conversation =
+            activeConversation();
+
+        if (
+            !conversation
+            || conversation.status
+                !== 'open'
+            || !conversation.send_url
+        ) {
+            return;
+        }
+
+        sending = true;
+        render();
+
+        try {
+            const response =
+                await fetch(
+                    conversation.send_url,
+                    {
+                        method: 'POST',
+
+                        headers: {
+                            'Accept':
+                                'application/json',
+
+                            'Content-Type':
+                                'application/json',
+
+                            'X-CSRF-TOKEN':
+                                csrfToken,
+                        },
+
+                        body: JSON.stringify({
+                            message: text,
+                        }),
+                    }
+                );
+
+            const data =
+                await response.json();
+
+            if (!response.ok) {
+                const validationMessage =
+                    data.errors
+                        ?.message
+                        ?.[0];
+
+                throw new Error(
+                    validationMessage
+                    || data.message
+                    || 'Unable to send message.'
+                );
+            }
+
+            conversation.messages =
+                Array.isArray(
+                    conversation.messages
+                )
+                    ? conversation.messages
+                    : [];
+
+            conversation
+                .messages
+                .push(
+                    data.data
+                );
+
+            conversation.preview =
+                data.data.text;
+
+            conversation.time =
+                data.data.time;
+
+            conversation.unread = 0;
+
+            const button =
+                conversations.find(
+                    (item) =>
+                        String(
+                            item
+                                .dataset
+                                .conversation
+                        ) === active
+                );
+
+            if (button) {
+                const preview =
+                    button.querySelector(
+                        '.conversation-copy small'
+                    );
+
+                const time =
+                    button.querySelector(
+                        '.conversation-time'
+                    );
+
+                if (preview) {
+                    preview.textContent =
+                        data.data.text;
+                }
+
+                if (time) {
+                    time.textContent =
+                        data.data.time;
+                }
+
+                button.dataset.unread =
+                    '0';
+            }
+
+            input.value = '';
+
+            toast(
+                'Message sent successfully.'
+            );
+        } catch (error) {
+            toast(
+                error.message
+                || 'Unable to send message.'
+            );
+        } finally {
+            sending = false;
+            render();
+
+            if (
+                !input.disabled
+            ) {
+                input.focus();
+            }
+        }
+    };
+
+    sendButton
+        ?.addEventListener(
+            'click',
+            send
+        );
+
+    input
+        ?.addEventListener(
+            'keydown',
+            (event) => {
+                if (
+                    event.key
+                    !== 'Enter'
+                ) {
+                    return;
+                }
+
+                event.preventDefault();
+                send();
+            }
+        );
 
     render();
 }

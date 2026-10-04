@@ -35,6 +35,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\View\View;
+use Illuminate\Validation\ValidationException;
 
 class LogisticsController extends Controller
 {
@@ -3962,6 +3963,12 @@ class LogisticsController extends Controller
                     'type' =>
                         $conversation->type,
 
+                    'send_url' =>
+                        route(
+                            'logistics.messages.send',
+                            $conversation
+                        ),
+
                     'messages' =>
                         $conversation
                             ->messages
@@ -4008,6 +4015,134 @@ class LogisticsController extends Controller
                         ->all(),
             ]
         );
+    }
+
+    public function sendMessage(
+        Request $request,
+        Conversation $conversation
+    ) {
+        /** @var User $operator */
+        $operator = $request->user();
+
+        $validated = $request->validate([
+            'message' => [
+                'required',
+                'string',
+                'max:5000',
+            ],
+        ]);
+
+        $isParticipant = $conversation
+            ->participants()
+            ->where(
+                'users.id',
+                $operator->id
+            )
+            ->exists();
+
+        abort_unless(
+            $isParticipant,
+            404
+        );
+
+        $message = DB::transaction(
+            function () use (
+                $conversation,
+                $operator,
+                $validated
+            ) {
+                $lockedConversation =
+                    Conversation::query()
+                        ->lockForUpdate()
+                        ->findOrFail(
+                            $conversation->id
+                        );
+
+                if (
+                    $lockedConversation->status
+                    !== 'open'
+                ) {
+                    throw ValidationException::withMessages([
+                        'message' =>
+                            'Messages cannot be sent to a closed conversation.',
+                    ]);
+                }
+
+                $now = now();
+
+                $message =
+                    $lockedConversation
+                        ->messages()
+                        ->create([
+                            'sender_id' =>
+                                $operator->id,
+
+                            'body' =>
+                                trim(
+                                    $validated[
+                                        'message'
+                                    ]
+                                ),
+
+                            'message_type' =>
+                                'text',
+
+                            'sent_at' =>
+                                $now,
+                        ]);
+
+                $lockedConversation->update([
+                    'last_message_at' =>
+                        $now,
+                ]);
+
+                DB::table(
+                    'conversation_participants'
+                )
+                    ->where(
+                        'conversation_id',
+                        $lockedConversation->id
+                    )
+                    ->where(
+                        'user_id',
+                        $operator->id
+                    )
+                    ->update([
+                        'last_read_at' =>
+                            $now,
+                    ]);
+
+                return $message;
+            }
+        );
+
+        return response()->json([
+            'message' =>
+                'Message sent successfully.',
+
+            'data' => [
+                'id' =>
+                    $message->id,
+
+                'mine' =>
+                    true,
+
+                'text' =>
+                    $message->body,
+
+                'time' =>
+                    $message
+                        ->sent_at
+                        ?->copy()
+                        ->timezone(
+                            'Asia/Manila'
+                        )
+                        ->format(
+                            'M j, g:i A'
+                        )
+                    ?? '',
+            ],
+        ]);
     }
 
     public function account(): View

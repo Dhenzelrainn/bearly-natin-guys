@@ -1,4 +1,4 @@
-const PURCHASES_KEY='bearly-orders-v1';
+const PURCHASES_KEY=window.bearlyStorageKey?.('preview-orders')||'bearly-orders-v1';
 const demoOrders=[
  {id:'BRY-102641',status:'to-receive',statusLabel:'To Receive',shop:'Bearly Official',date:'Oct 2, 2026',total:499,items:[{name:'Gentle Facial Cleanser',variation:'Standard',qty:1,price:499,image:'/images/products/health-beauty/health-beauty-01-01.jpg'}]},
  {id:'BRY-102508',status:'to-ship',statusLabel:'To Ship',shop:'Bearly Official',date:'Oct 1, 2026',total:898,items:[{name:'Everyday Basic Tee',variation:'Brown · Medium',qty:2,price:449,image:'/images/products/men/mens-01-01.jpg'}]},
@@ -7,6 +7,7 @@ const demoOrders=[
 ];
 let purchaseFilter='all';
 const peso=n=>'₱'+Number(n||0).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});
+const purchaseEsc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
 function getOrders(){try{const saved=JSON.parse(localStorage.getItem(PURCHASES_KEY)||'null');return Array.isArray(saved)&&saved.length?saved:demoOrders}catch{return demoOrders}}
 function safeImage(img){return img||'/images/bearly-logo.png'}
 function actionButtons(order){
@@ -29,10 +30,18 @@ function renderMyPurchases(){
  if(empty) empty.hidden=!!shown.length;
 }
 function getTrackingOrder(){
- const id=sessionStorage.getItem('bearly-tracking-order-id');
+  const id=sessionStorage.getItem(window.bearlyStorageKey?.('tracking-order-id')||'bearly-tracking-order-id');
  return getOrders().find(o=>String(o.id)===String(id))||getOrders().find(o=>o.status==='to-receive')||null;
 }
-function readTrackingAddress(){try{const all=JSON.parse(localStorage.getItem('bearly-addresses-v1')||'[]');return Array.isArray(all)?(all.find(a=>a.isDefault)||all[0]||null):null}catch{return null}}
+function readTrackingAddress(){try{const all=JSON.parse(localStorage.getItem(window.bearlyStorageKey?.('preview-addresses')||'bearly-addresses-v1')||'[]');return Array.isArray(all)?(all.find(a=>a.isDefault)||all[0]||null):null}catch{return null}}
+async function readServerTrackingAddress(){
+  try{
+    const response=await fetch('/addresses/data',{headers:{'Accept':'application/json'}});
+    const result=await response.json();
+    if(response.ok&&Array.isArray(result.data))return result.data.find(a=>a.isDefault)||result.data[0]||null;
+  }catch{}
+  return readTrackingAddress();
+}
 function trackingSteps(order){
  const steps=[
   ['Order Placed','Your order was placed successfully.',order?.date||''],
@@ -43,15 +52,15 @@ function trackingSteps(order){
   ['Delivered','Order delivered successfully.','']
  ];
  const progress={'to-pay':0,'to-ship':2,'to-receive':4,'completed':5,'cancelled':0}[order?.status]??0;
- return steps.map((x,i)=>`<div class="tracking-step ${i<=progress?'done':''} ${i===progress?'current':''}"><div class="tracking-dot"><span class="material-symbols-outlined">${i<=progress?'check':'circle'}</span></div><div><strong>${x[0]}</strong><p>${x[1]}</p>${x[2]?`<small>${x[2]}</small>`:''}</div></div>`).join('');
+  return steps.map((x,i)=>`<div class="tracking-step ${i<=progress?'done':''} ${i===progress?'current':''}"><div class="tracking-dot"><span class="material-symbols-outlined">${i<=progress?'check':'circle'}</span></div><div><strong>${purchaseEsc(x[0])}</strong><p>${purchaseEsc(x[1])}</p>${x[2]?`<small>${purchaseEsc(x[2])}</small>`:''}</div></div>`).join('');
 }
-function renderOrderTracking(){
- const root=document.querySelector('#tracking-content'), label=document.querySelector('#tracking-order-id'); if(!root)return;
- const order=getTrackingOrder(); if(!order){root.innerHTML='<div class="tracking-empty">No order selected for tracking.</div>';if(label)label.textContent='';return}
- if(label)label.textContent='#'+order.id;
- const item=(order.items||[])[0]||{}, a=readTrackingAddress();
- const address=a?[a.street,a.barangay,a.city,a.province,a.postal].filter(Boolean).join(', '):'No delivery address saved yet';
-  root.innerHTML=`<div class="tracking-summary"><img src="${safeImage(item.image)}" alt="${item.name||'Product'}" onerror="this.src='/images/bearly-logo.png'"><div><span>${order.shop||'Bearly Official'}</span><h2>${item.name||'Product'}</h2><p>${item.variation||'Standard'} · x${item.qty||1}</p></div><strong>${peso(order.total)}</strong></div><div class="tracking-grid"><div class="tracking-timeline"><h3>Delivery Progress</h3>${trackingSteps(order)}</div><aside class="tracking-address"><h3>Delivery Address</h3><strong>${a?.name||window.bearlyBuyerProfile?.fullName||'Buyer'}</strong>${a?.phone?`<p>${a.phone}</p>`:''}<p>${address}</p><div class="tracking-status-box"><span>Current Status</span><strong>${order.statusLabel||order.status}</strong></div></aside></div>`;
+async function renderOrderTracking(){
+  const root=document.querySelector('#tracking-content'), label=document.querySelector('#tracking-order-id'); if(!root)return;
+  const order=getTrackingOrder(); if(!order){root.innerHTML='<div class="tracking-empty">No order selected for tracking.</div>';if(label)label.textContent='';return}
+  if(label)label.textContent='#'+order.id;
+  const item=(order.items||[])[0]||{}, a=await readServerTrackingAddress();
+  const address=a?[a.street,a.barangay,a.city,a.province,a.postal].filter(Boolean).join(', '):'No delivery address saved yet';
+   root.innerHTML=`<div class="tracking-summary"><img src="${purchaseEsc(safeImage(item.image))}" alt="${purchaseEsc(item.name||'Product')}" onerror="this.onerror=null;this.src='/images/bearly-logo.png'"><div><span>${purchaseEsc(order.shop||'Bearly Official')}</span><h2>${purchaseEsc(item.name||'Product')}</h2><p>${purchaseEsc(item.variation||'Standard')} · x${purchaseEsc(item.qty||1)}</p></div><strong>${peso(order.total)}</strong></div><div class="tracking-grid"><div class="tracking-timeline"><h3>Delivery Progress</h3>${trackingSteps(order)}</div><aside class="tracking-address"><h3>Delivery Address</h3><strong>${purchaseEsc(a?.name||window.bearlyBuyerProfile?.fullName||'Buyer')}</strong>${a?.phone?`<p>${purchaseEsc(a.phone)}</p>`:''}<p>${purchaseEsc(address)}</p><div class="tracking-status-box"><span>Current Status</span><strong>${purchaseEsc(order.statusLabel||order.status)}</strong></div></aside></div>`;
 }
 function initMyPurchases(){
   if (window.bearlyMyPurchasesInitialized) return;
@@ -62,7 +71,7 @@ function initMyPurchases(){
     filters.forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.purchase-filter').forEach(x=>x.classList.remove('active'));b.classList.add('active');purchaseFilter=b.dataset.orderFilter;renderMyPurchases();}));
   }
   const list=document.querySelector('#purchase-list');
-  if(list) list.addEventListener('click',e=>{const btn=e.target.closest('.order-track');if(!btn)return;sessionStorage.setItem('bearly-tracking-order-id',btn.dataset.order||'');if(typeof window.bearlyShowAccountPanel==='function')window.bearlyShowAccountPanel('tracking');else location.hash='tracking';renderOrderTracking();});
+   if(list) list.addEventListener('click',e=>{const btn=e.target.closest('.order-track');if(!btn)return;sessionStorage.setItem(window.bearlyStorageKey?.('tracking-order-id')||'bearly-tracking-order-id',btn.dataset.order||'');if(typeof window.bearlyShowAccountPanel==='function')window.bearlyShowAccountPanel('tracking');else location.hash='tracking';renderOrderTracking();});
   const back=document.querySelector('#tracking-back'); if(back) back.addEventListener('click',()=>{if(typeof window.bearlyShowAccountPanel==='function')window.bearlyShowAccountPanel('purchases');else location.hash='purchases'});
   renderMyPurchases();
   if(location.hash==='#tracking')renderOrderTracking();

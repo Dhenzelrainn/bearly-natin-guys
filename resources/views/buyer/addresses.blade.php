@@ -1,15 +1,3 @@
-@php
-    $buyer = auth()->user();
-    $buyerName = trim($buyer?->name ?: trim(($buyer?->first_name ?? '') . ' ' . ($buyer?->last_name ?? '')));
-    $buyerName = $buyerName !== '' ? $buyerName : 'Buyer';
-    $buyerEmail = (string) ($buyer?->email ?? '');
-    $buyerPhone = (string) ($buyer?->phone ?: $buyer?->contact_number ?: '');
-    $buyerUsername = (string) ($buyer?->username ?? (str_contains($buyerEmail, '@') ? strstr($buyerEmail, '@', true) : strtolower(preg_replace('/\s+/', '', $buyerName))));
-    $buyerBirthday = $buyer?->birthday ?? $buyer?->birth_date;
-    $buyerBirthdayValue = $buyerBirthday?->format('Y-m-d') ?? '';
-    $buyerSex = (string) ($buyer?->sex ?? '');
-    $buyerProfilePayload = json_encode(['username' => $buyerUsername, 'fullName' => $buyerName, 'email' => $buyerEmail, 'phone' => $buyerPhone, 'gender' => $buyerSex, 'birthday' => $buyerBirthdayValue], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
-@endphp
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -19,17 +7,16 @@
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Material+Symbols+Outlined:wght@400&display=swap" rel="stylesheet">
 @include('buyer.partials.account-context-script')
 @vite(['resources/css/buyer.css','resources/css/addresses.css','resources/js/addresses.js'])
-@include('partials.session-safety')
 </head>
 <body class="bh address-page">
 <header class="header buyer-standard-header">
 <a class="brand" href="{{ url('/home') }}" aria-label="Bearly home"><img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly"></a>
 <div class="buyer-header-spacer"></div>
 <nav class="header-actions" aria-label="Account">
-<a href="{{ url('/profile#notifications') }}" class="notification-header-link"><span class="material-symbols-outlined">notifications</span><span>Notifications</span><span class="notification-badge" data-notification-badge>3</span></a>
+<a href="{{ url('/profile#notifications') }}" class="notification-header-link"><span class="material-symbols-outlined">notifications</span><span>Notifications</span><span class="notification-badge" data-notification-badge>0</span></a>
 <a href="{{ url('/profile#tracking') }}"><span class="material-symbols-outlined">receipt_long</span><span>Orders</span></a>
 <a href="{{ url('/chat') }}"><span class="material-symbols-outlined">chat_bubble</span><span>Chat</span></a>
-<a href="{{ url('/cart/preview') }}"><span class="material-symbols-outlined">shopping_cart</span><span>Cart preview</span></a>
+<a href="{{ url('/cart') }}"><span class="material-symbols-outlined">shopping_cart</span><span>Cart</span></a>
 <a class="account-action active" href="{{ url('/profile') }}"><span class="material-symbols-outlined">person</span><span>{{ $buyerName }}</span></a>
 </nav>
 </header>
@@ -39,7 +26,7 @@
 
 <section class="address-panel">
 <div class="address-panel-head">
-<div><h1>My Addresses</h1><p>Manage your delivery addresses.</p><small class="buyer-preview-note">Addresses are saved only in this browser until address persistence is connected.</small></div>
+<div><h1>My Addresses</h1><p>Manage your delivery addresses.</p></div>
 <button id="add-address" class="add-address-btn" type="button"><span class="material-symbols-outlined">add</span>Add Address</button>
 </div>
 
@@ -63,7 +50,7 @@
 <form id="address-form">
 <input id="editing-id" type="hidden">
 <div class="form-grid two">
-<label><span>Full Name</span><input id="full-name" required value="{{ $buyerName }}" placeholder="Full name"></label>
+<label><span>Full Name</span><input id="full-name" required placeholder="Recipient name"></label>
 <label><span>Phone Number</span><input id="phone-number" type="tel" inputmode="numeric" autocomplete="tel" required placeholder="+63 9123456789 or 09123456789"></label>
 </div>
 <div class="form-grid">

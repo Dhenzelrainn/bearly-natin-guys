@@ -15,7 +15,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.7,
-    "description": "Gold Clover Pendant Necklace sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Gold Clover Pendant Necklace sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/jewelry-watches/jewelry-watches-01-01.jpg"
   },
   {
     "id": 2,
@@ -33,7 +34,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.4,
-    "description": "Silver Solitaire Necklace sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Silver Solitaire Necklace sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/jewelry-watches/jewelry-watches-02-01.jpg"
   },
   {
     "id": 3,
@@ -50,7 +52,8 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.8,
-    "description": "Classic Pearl Necklace sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Classic Pearl Necklace sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/jewelry-watches/jewelry-watches-03-01.jpg"
   },
   {
     "id": 4,
@@ -68,7 +71,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.5,
-    "description": "Gold Chain Necklace sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Gold Chain Necklace sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/jewelry-watches/jewelry-watches-04-01.jpg"
   },
   {
     "id": 5,
@@ -85,7 +89,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.9,
-    "description": "Pink Heart Pendant Necklace sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Pink Heart Pendant Necklace sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/jewelry-watches/jewelry-watches-05-01.jpg"
   },
   {
     "id": 6,
@@ -102,7 +107,8 @@
     "free_shipping": false,
     "voucher": true,
     "rating": 4.6,
-    "description": "Crystal Stud Earrings sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Crystal Stud Earrings sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/jewelry-watches/jewelry-watches-06-01.jpg"
   },
   {
     "id": 7,
@@ -119,7 +125,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.3,
-    "description": "Pearl Stud Earrings sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Pearl Stud Earrings sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/jewelry-watches/jewelry-watches-07-01.jpg"
   },
   {
     "id": 8,
@@ -137,7 +144,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.7,
-    "description": "Classic Gold Hoop Earrings sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Classic Gold Hoop Earrings sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/jewelry-watches/jewelry-watches-08-01.jpg"
   },
   {
     "id": 9,
@@ -154,7 +162,8 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.4,
-    "description": "Black Clover Drop Earrings sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Black Clover Drop Earrings sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/jewelry-watches/jewelry-watches-09-01.jpg"
   },
   {
     "id": 10,
@@ -171,7 +180,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.8,
-    "description": "Crystal Huggie Earrings sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Crystal Huggie Earrings sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/jewelry-watches/jewelry-watches-10-01.jpg"
   },
   {
     "id": 11,
@@ -189,7 +199,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.5,
-    "description": "Gold Charm Bracelet sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Gold Charm Bracelet sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/jewelry-watches/jewelry-watches-11-01.jpg"
   },
   {
     "id": 12,
@@ -207,7 +218,8 @@
     "free_shipping": false,
     "voucher": true,
     "rating": 4.9,
-    "description": "Silver Bangle Bracelet sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Silver Bangle Bracelet sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/jewelry-watches/jewelry-watches-12-01.jpg"
   },
   {
     "id": 13,
@@ -225,7 +237,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.6,
-    "description": "Crystal Tennis Bracelet sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Crystal Tennis Bracelet sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/jewelry-watches/jewelry-watches-13-01.jpg"
   },
   {
     "id": 14,
@@ -244,7 +257,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.3,
-    "description": "Black Beaded Bracelet sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Black Beaded Bracelet sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/jewelry-watches/jewelry-watches-14-01.jpg"
   },
   {
     "id": 15,
@@ -262,7 +276,8 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.7,
-    "description": "Chunky Gold Chain Bracelet sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Chunky Gold Chain Bracelet sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/jewelry-watches/jewelry-watches-15-01.jpg"
   },
   {
     "id": 16,
@@ -282,7 +297,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.4,
-    "description": "Solitaire Engagement Ring sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Solitaire Engagement Ring sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/jewelry-watches/jewelry-watches-16-01.jpg"
   },
   {
     "id": 17,
@@ -302,7 +318,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.8,
-    "description": "Crystal Wedding Band sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Crystal Wedding Band sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/jewelry-watches/jewelry-watches-17-01.jpg"
   },
   {
     "id": 18,
@@ -322,7 +339,8 @@
     "free_shipping": false,
     "voucher": true,
     "rating": 4.5,
-    "description": "Rose Gold Stacking Rings sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Rose Gold Stacking Rings sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/jewelry-watches/jewelry-watches-18-01.jpg"
   },
   {
     "id": 19,
@@ -342,7 +360,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.9,
-    "description": "Black Stone Signet Ring sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Black Stone Signet Ring sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/jewelry-watches/jewelry-watches-19-01.jpg"
   },
   {
     "id": 20,
@@ -362,7 +381,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.6,
-    "description": "Crystal Eternity Ring sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Crystal Eternity Ring sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/jewelry-watches/jewelry-watches-20-01.jpg"
   },
   {
     "id": 21,
@@ -379,7 +399,8 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.3,
-    "description": "Men's Silver Classic Watch sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Men's Silver Classic Watch sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/jewelry-watches/jewelry-watches-21-01.jpg"
   },
   {
     "id": 22,
@@ -396,7 +417,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.7,
-    "description": "Men's Black Sport Watch sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Men's Black Sport Watch sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/jewelry-watches/jewelry-watches-22-01.jpg"
   },
   {
     "id": 23,
@@ -413,7 +435,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.4,
-    "description": "Men's Gold Dress Watch sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Men's Gold Dress Watch sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/jewelry-watches/jewelry-watches-23-01.jpg"
   },
   {
     "id": 24,
@@ -430,7 +453,8 @@
     "free_shipping": false,
     "voucher": true,
     "rating": 4.8,
-    "description": "Men's Blue Dial Watch sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Men's Blue Dial Watch sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/jewelry-watches/jewelry-watches-24-01.jpg"
   },
   {
     "id": 25,
@@ -447,7 +471,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.5,
-    "description": "Black Leather Strap Watch sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Black Leather Strap Watch sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/jewelry-watches/jewelry-watches-25-01.jpg"
   },
   {
     "id": 26,
@@ -464,7 +489,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.9,
-    "description": "Brown Leather Classic Watch sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Brown Leather Classic Watch sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/jewelry-watches/jewelry-watches-26-01.jpg"
   },
   {
     "id": 27,
@@ -481,7 +507,8 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.6,
-    "description": "Chronograph Leather Watch sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Chronograph Leather Watch sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/jewelry-watches/jewelry-watches-27-01.jpg"
   },
   {
     "id": 28,
@@ -498,7 +525,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.3,
-    "description": "Digital Sports Watch sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Digital Sports Watch sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/jewelry-watches/jewelry-watches-28-01.jpg"
   },
   {
     "id": 29,
@@ -515,7 +543,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.7,
-    "description": "Rose Gold Women's Watch sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Rose Gold Women's Watch sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/jewelry-watches/jewelry-watches-29-01.jpg"
   },
   {
     "id": 30,
@@ -532,6 +561,7 @@
     "free_shipping": false,
     "voucher": true,
     "rating": 4.4,
-    "description": "Two-Tone Women's Watch sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Two-Tone Women's Watch sample listing for the Bearly Jewelry & Watches frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/jewelry-watches/jewelry-watches-30-01.jpg"
   }
 ]

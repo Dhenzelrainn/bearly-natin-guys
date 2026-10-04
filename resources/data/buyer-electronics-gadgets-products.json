@@ -1,9 +1,9 @@
 [
   {
     "id": 1,
-    "name": "Slim Productivity Laptop",
+    "name": "Laptop",
     "price": 32999,
-    "subcategory": "Computers & Laptops",
+    "subcategory": "Computers & Accessories",
     "photo": 0,
     "color": "White",
     "sizes": [
@@ -14,13 +14,14 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.7,
-    "description": "Slim Productivity Laptop sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Laptop sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-01-01.jpg"
   },
   {
     "id": 2,
-    "name": "Desktop Computer Set",
+    "name": "Desktop Computer",
     "price": 29999,
-    "subcategory": "Computers & Laptops",
+    "subcategory": "Computers & Accessories",
     "photo": 1,
     "color": "Black",
     "sizes": [
@@ -31,13 +32,14 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.4,
-    "description": "Desktop Computer Set sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Desktop Computer sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-02-01.jpg"
   },
   {
     "id": 3,
-    "name": "24-Inch Full HD Monitor",
+    "name": "Monitor",
     "price": 8999,
-    "subcategory": "Computers & Laptops",
+    "subcategory": "Computers & Accessories",
     "photo": 2,
     "color": "Black",
     "sizes": [
@@ -48,13 +50,14 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.8,
-    "description": "24-Inch Full HD Monitor sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Monitor sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-03-01.jpg"
   },
   {
     "id": 4,
-    "name": "Mechanical Gaming Keyboard",
+    "name": "Keyboard",
     "price": 2499,
-    "subcategory": "Computer Accessories",
+    "subcategory": "Computers & Accessories",
     "photo": 3,
     "color": "Black",
     "sizes": [
@@ -65,13 +68,14 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.5,
-    "description": "Mechanical Gaming Keyboard sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Keyboard sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-04-01.jpg"
   },
   {
     "id": 5,
-    "name": "Wireless Gaming Mouse",
+    "name": "Mouse",
     "price": 1499,
-    "subcategory": "Computer Accessories",
+    "subcategory": "Computers & Accessories",
     "photo": 4,
     "color": "Black",
     "sizes": [
@@ -82,13 +86,14 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.9,
-    "description": "Wireless Gaming Mouse sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Mouse sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-05-01.jpg"
   },
   {
     "id": 6,
-    "name": "Over-Ear Wireless Headphones",
+    "name": "Headphones",
     "price": 2999,
-    "subcategory": "Audio",
+    "subcategory": "Audio & Entertainment",
     "photo": 5,
     "color": "Black",
     "sizes": [
@@ -99,13 +104,14 @@
     "free_shipping": false,
     "voucher": true,
     "rating": 4.6,
-    "description": "Over-Ear Wireless Headphones sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Headphones sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-06-01.jpg"
   },
   {
     "id": 7,
-    "name": "True Wireless Earbuds",
+    "name": "Earbuds",
     "price": 2499,
-    "subcategory": "Audio",
+    "subcategory": "Audio & Entertainment",
     "photo": 6,
     "color": "White",
     "sizes": [
@@ -116,13 +122,14 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.3,
-    "description": "True Wireless Earbuds sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Earbuds sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-07-01.jpg"
   },
   {
     "id": 8,
-    "name": "Smart Fitness Watch",
+    "name": "Smart Watch",
     "price": 3499,
-    "subcategory": "Wearables",
+    "subcategory": "Smart Devices & Power",
     "photo": 7,
     "color": "Black",
     "sizes": [
@@ -133,11 +140,12 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.7,
-    "description": "Smart Fitness Watch sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Smart Watch sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-08-01.jpg"
   },
   {
     "id": 9,
-    "name": "5G Smartphone",
+    "name": "Smartphone",
     "price": 24999,
     "subcategory": "Phones & Tablets",
     "photo": 8,
@@ -151,11 +159,12 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.4,
-    "description": "5G Smartphone sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Smartphone sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-09-01.jpg"
   },
   {
     "id": 10,
-    "name": "10-Inch Tablet",
+    "name": "Tablet",
     "price": 17999,
     "subcategory": "Phones & Tablets",
     "photo": 9,
@@ -169,13 +178,14 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.8,
-    "description": "10-Inch Tablet sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Tablet sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-10-01.jpg"
   },
   {
     "id": 11,
-    "name": "Wireless Inkjet Printer",
+    "name": "Printer",
     "price": 7999,
-    "subcategory": "Office Electronics",
+    "subcategory": "Computers & Accessories",
     "photo": 10,
     "color": "Black",
     "sizes": [
@@ -186,13 +196,14 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.5,
-    "description": "Wireless Inkjet Printer sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Printer sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-11-01.jpg"
   },
   {
     "id": 12,
-    "name": "Dual-Band Wi-Fi Router",
+    "name": "Wi-Fi Router",
     "price": 3499,
-    "subcategory": "Networking",
+    "subcategory": "Computers & Accessories",
     "photo": 11,
     "color": "Black",
     "sizes": [
@@ -203,13 +214,14 @@
     "free_shipping": false,
     "voucher": true,
     "rating": 4.9,
-    "description": "Dual-Band Wi-Fi Router sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Wi-Fi Router sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-12-01.jpg"
   },
   {
     "id": 13,
-    "name": "Portable External Hard Drive",
+    "name": "External Hard Drive",
     "price": 3999,
-    "subcategory": "Storage Devices",
+    "subcategory": "Computers & Accessories",
     "photo": 12,
     "color": "Black",
     "sizes": [
@@ -221,13 +233,14 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.6,
-    "description": "Portable External Hard Drive sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "External Hard Drive sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-13-01.jpg"
   },
   {
     "id": 14,
-    "name": "USB 3.0 Flash Drive",
+    "name": "USB Flash Drive",
     "price": 699,
-    "subcategory": "Storage Devices",
+    "subcategory": "Computers & Accessories",
     "photo": 13,
     "color": "Black",
     "sizes": [
@@ -239,13 +252,14 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.3,
-    "description": "USB 3.0 Flash Drive sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "USB Flash Drive sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-14-01.jpg"
   },
   {
     "id": 15,
-    "name": "High-Speed Memory Card",
+    "name": "Memory Card",
     "price": 799,
-    "subcategory": "Storage Devices",
+    "subcategory": "Computers & Accessories",
     "photo": 14,
     "color": "Brown",
     "sizes": [
@@ -257,13 +271,14 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.7,
-    "description": "High-Speed Memory Card sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Memory Card sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-15-01.jpg"
   },
   {
     "id": 16,
-    "name": "Fast-Charge Power Bank",
+    "name": "Power Bank",
     "price": 1499,
-    "subcategory": "Power & Charging",
+    "subcategory": "Smart Devices & Power",
     "photo": 15,
     "color": "Black",
     "sizes": [
@@ -274,13 +289,14 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.4,
-    "description": "Fast-Charge Power Bank sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Power Bank sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-16-01.jpg"
   },
   {
     "id": 17,
-    "name": "Braided USB-C Charging Cable",
+    "name": "Charging Cable",
     "price": 399,
-    "subcategory": "Power & Charging",
+    "subcategory": "Smart Devices & Power",
     "photo": 16,
     "color": "Black",
     "sizes": [
@@ -292,13 +308,14 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.8,
-    "description": "Braided USB-C Charging Cable sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Charging Cable sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-17-01.jpg"
   },
   {
     "id": 18,
-    "name": "Compact Fast Wall Charger",
+    "name": "Wall Charger",
     "price": 999,
-    "subcategory": "Power & Charging",
+    "subcategory": "Smart Devices & Power",
     "photo": 17,
     "color": "White",
     "sizes": [
@@ -309,13 +326,14 @@
     "free_shipping": false,
     "voucher": true,
     "rating": 4.5,
-    "description": "Compact Fast Wall Charger sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Wall Charger sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-18-01.jpg"
   },
   {
     "id": 19,
-    "name": "Surge Protector Power Strip",
+    "name": "Power Strip",
     "price": 1299,
-    "subcategory": "Power & Charging",
+    "subcategory": "Smart Devices & Power",
     "photo": 18,
     "color": "White",
     "sizes": [
@@ -326,13 +344,14 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.9,
-    "description": "Surge Protector Power Strip sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Power Strip sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-19-01.jpg"
   },
   {
     "id": 20,
-    "name": "Full HD USB Webcam",
+    "name": "Webcam",
     "price": 1999,
-    "subcategory": "Computer Accessories",
+    "subcategory": "Cameras & Creator Gear",
     "photo": 19,
     "color": "Black",
     "sizes": [
@@ -343,11 +362,12 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.6,
-    "description": "Full HD USB Webcam sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Webcam sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-20-01.jpg"
   },
   {
     "id": 21,
-    "name": "Wireless Game Controller",
+    "name": "Game Controller",
     "price": 2999,
     "subcategory": "Gaming",
     "photo": 20,
@@ -360,11 +380,12 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.3,
-    "description": "Wireless Game Controller sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Game Controller sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-21-01.jpg"
   },
   {
     "id": 22,
-    "name": "Handheld Gaming Console",
+    "name": "Gaming Console",
     "price": 16999,
     "subcategory": "Gaming",
     "photo": 21,
@@ -377,11 +398,12 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.7,
-    "description": "Handheld Gaming Console sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Gaming Console sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-22-01.jpg"
   },
   {
     "id": 23,
-    "name": "Standalone VR Headset",
+    "name": "VR Headset",
     "price": 24999,
     "subcategory": "Gaming",
     "photo": 22,
@@ -394,13 +416,14 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.4,
-    "description": "Standalone VR Headset sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "VR Headset sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-23-01.jpg"
   },
   {
     "id": 24,
-    "name": "4K Action Camera",
+    "name": "Action Camera",
     "price": 15999,
-    "subcategory": "Cameras & Drones",
+    "subcategory": "Cameras & Creator Gear",
     "photo": 23,
     "color": "Black",
     "sizes": [
@@ -411,13 +434,14 @@
     "free_shipping": false,
     "voucher": true,
     "rating": 4.8,
-    "description": "4K Action Camera sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Action Camera sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-24-01.jpg"
   },
   {
     "id": 25,
-    "name": "Compact Camera Drone",
+    "name": "Drone",
     "price": 29999,
-    "subcategory": "Cameras & Drones",
+    "subcategory": "Cameras & Creator Gear",
     "photo": 24,
     "color": "Black",
     "sizes": [
@@ -428,13 +452,14 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.5,
-    "description": "Compact Camera Drone sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Drone sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-25-01.jpg"
   },
   {
     "id": 26,
-    "name": "Portable Bluetooth Speaker",
+    "name": "Bluetooth Speaker",
     "price": 3499,
-    "subcategory": "Audio",
+    "subcategory": "Audio & Entertainment",
     "photo": 25,
     "color": "Blue",
     "sizes": [
@@ -445,13 +470,14 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.9,
-    "description": "Portable Bluetooth Speaker sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Bluetooth Speaker sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-26-01.jpg"
   },
   {
     "id": 27,
-    "name": "Portable Full HD Projector",
+    "name": "Projector",
     "price": 14999,
-    "subcategory": "Home Entertainment",
+    "subcategory": "Audio & Entertainment",
     "photo": 26,
     "color": "White",
     "sizes": [
@@ -462,13 +488,14 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.6,
-    "description": "Portable Full HD Projector sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Projector sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-27-01.jpg"
   },
   {
     "id": 28,
-    "name": "LED Ring Light with Tripod",
+    "name": "Ring Light",
     "price": 1499,
-    "subcategory": "Content Creator Gear",
+    "subcategory": "Cameras & Creator Gear",
     "photo": 27,
     "color": "White",
     "sizes": [
@@ -479,13 +506,14 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.3,
-    "description": "LED Ring Light with Tripod sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Ring Light sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-28-01.jpg"
   },
   {
     "id": 29,
-    "name": "USB Condenser Microphone",
+    "name": "Microphone",
     "price": 2999,
-    "subcategory": "Content Creator Gear",
+    "subcategory": "Cameras & Creator Gear",
     "photo": 28,
     "color": "Black",
     "sizes": [
@@ -496,13 +524,14 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.7,
-    "description": "USB Condenser Microphone sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Microphone sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-29-01.jpg"
   },
   {
     "id": 30,
-    "name": "Smart Home Speaker",
+    "name": "Smart Home Device",
     "price": 3999,
-    "subcategory": "Smart Home",
+    "subcategory": "Smart Devices & Power",
     "photo": 29,
     "color": "White",
     "sizes": [
@@ -513,6 +542,7 @@
     "free_shipping": false,
     "voucher": true,
     "rating": 4.4,
-    "description": "Smart Home Speaker sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Smart Home Device sample listing for the Bearly Electronics & Gadgets frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/electronics/electronics-30-01.jpg"
   }
 ]

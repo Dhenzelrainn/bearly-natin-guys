@@ -16,7 +16,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.6,
-    "description": "Bear Print Baby Onesie sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Bear Print Baby Onesie sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/kids-baby/kids-baby-01-01.jpg"
   },
   {
     "id": 2,
@@ -35,7 +36,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.9,
-    "description": "Floral Baby Dress sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Floral Baby Dress sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/kids-baby/kids-baby-02-01.jpg"
   },
   {
     "id": 3,
@@ -55,7 +57,8 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.5,
-    "description": "Little Explorer Kids T-Shirt sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Little Explorer Kids T-Shirt sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/kids-baby/kids-baby-03-01.jpg"
   },
   {
     "id": 4,
@@ -75,7 +78,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.8,
-    "description": "Cotton Kids Shorts sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Cotton Kids Shorts sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/kids-baby/kids-baby-04-01.jpg"
   },
   {
     "id": 5,
@@ -95,7 +99,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.4,
-    "description": "Bear Kids Hoodie sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Bear Kids Hoodie sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/kids-baby/kids-baby-05-01.jpg"
   },
   {
     "id": 6,
@@ -114,7 +119,8 @@
     "free_shipping": false,
     "voucher": true,
     "rating": 4.7,
-    "description": "Denim Kids Overalls sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Denim Kids Overalls sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/kids-baby/kids-baby-06-01.jpg"
   },
   {
     "id": 7,
@@ -133,7 +139,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.3,
-    "description": "Printed Baby Pajama Set sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Printed Baby Pajama Set sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/kids-baby/kids-baby-07-01.jpg"
   },
   {
     "id": 8,
@@ -152,7 +159,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.6,
-    "description": "Knitted Kids Cardigan sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Knitted Kids Cardigan sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/kids-baby/kids-baby-08-01.jpg"
   },
   {
     "id": 9,
@@ -172,7 +180,8 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.9,
-    "description": "Velcro Kids Sneakers sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Velcro Kids Sneakers sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/kids-baby/kids-baby-09-01.jpg"
   },
   {
     "id": 10,
@@ -192,7 +201,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.5,
-    "description": "Bear Kids Sandals sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Bear Kids Sandals sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/kids-baby/kids-baby-10-01.jpg"
   },
   {
     "id": 11,
@@ -212,7 +222,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.8,
-    "description": "Baby Diapers Pack sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Baby Diapers Pack sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/kids-baby/kids-baby-11-01.jpg"
   },
   {
     "id": 12,
@@ -230,7 +241,8 @@
     "free_shipping": false,
     "voucher": true,
     "rating": 4.4,
-    "description": "Gentle Baby Wipes sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Gentle Baby Wipes sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/kids-baby/kids-baby-12-01.jpg"
   },
   {
     "id": 13,
@@ -248,7 +260,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.7,
-    "description": "Infant Formula sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Infant Formula sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/kids-baby/kids-baby-13-01.jpg"
   },
   {
     "id": 14,
@@ -266,7 +279,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.3,
-    "description": "Anti-Colic Baby Bottle sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Anti-Colic Baby Bottle sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/kids-baby/kids-baby-14-01.jpg"
   },
   {
     "id": 15,
@@ -283,7 +297,8 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.6,
-    "description": "Bunny Sippy Cup sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Bunny Sippy Cup sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/kids-baby/kids-baby-15-01.jpg"
   },
   {
     "id": 16,
@@ -300,7 +315,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.9,
-    "description": "Silicone Feeding Set sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Silicone Feeding Set sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/kids-baby/kids-baby-16-01.jpg"
   },
   {
     "id": 17,
@@ -317,7 +333,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.5,
-    "description": "Adjustable Baby High Chair sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Adjustable Baby High Chair sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/kids-baby/kids-baby-17-01.jpg"
   },
   {
     "id": 18,
@@ -334,7 +351,8 @@
     "free_shipping": false,
     "voucher": true,
     "rating": 4.8,
-    "description": "Compact Baby Stroller sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Compact Baby Stroller sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/kids-baby/kids-baby-18-01.jpg"
   },
   {
     "id": 19,
@@ -351,7 +369,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.4,
-    "description": "Infant Car Seat sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Infant Car Seat sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/kids-baby/kids-baby-19-01.jpg"
   },
   {
     "id": 20,
@@ -368,7 +387,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.7,
-    "description": "Portable Baby Playpen sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Portable Baby Playpen sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/kids-baby/kids-baby-20-01.jpg"
   },
   {
     "id": 21,
@@ -385,7 +405,8 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.3,
-    "description": "Wooden Baby Crib sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Wooden Baby Crib sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/kids-baby/kids-baby-21-01.jpg"
   },
   {
     "id": 22,
@@ -402,7 +423,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.6,
-    "description": "Nursing Support Pillow sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Nursing Support Pillow sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/kids-baby/kids-baby-22-01.jpg"
   },
   {
     "id": 23,
@@ -419,7 +441,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.9,
-    "description": "Multi-Pocket Diaper Bag sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Multi-Pocket Diaper Bag sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/kids-baby/kids-baby-23-01.jpg"
   },
   {
     "id": 24,
@@ -429,14 +452,15 @@
     "photo": 23,
     "color": "Blue",
     "sizes": [
-      "80\u00d7100 cm"
+      "80×100 cm"
     ],
     "condition": "New",
     "location": "Cavite",
     "free_shipping": false,
     "voucher": true,
     "rating": 4.5,
-    "description": "Soft Baby Blanket sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Soft Baby Blanket sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/kids-baby/kids-baby-24-01.jpg"
   },
   {
     "id": 25,
@@ -453,7 +477,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.8,
-    "description": "Baby Activity Play Mat sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Baby Activity Play Mat sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/kids-baby/kids-baby-25-01.jpg"
   },
   {
     "id": 26,
@@ -470,7 +495,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.4,
-    "description": "Wooden Stacking Toy sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Wooden Stacking Toy sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/kids-baby/kids-baby-26-01.jpg"
   },
   {
     "id": 27,
@@ -487,7 +513,8 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.7,
-    "description": "First Words Kids Book sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "First Words Kids Book sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/kids-baby/kids-baby-27-01.jpg"
   },
   {
     "id": 28,
@@ -504,7 +531,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.3,
-    "description": "Washable Marker Set sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Washable Marker Set sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/kids-baby/kids-baby-28-01.jpg"
   },
   {
     "id": 29,
@@ -521,7 +549,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.6,
-    "description": "Kids Balance Bicycle sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Kids Balance Bicycle sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/kids-baby/kids-baby-29-01.jpg"
   },
   {
     "id": 30,
@@ -539,6 +568,7 @@
     "free_shipping": false,
     "voucher": true,
     "rating": 4.9,
-    "description": "Kids Safety Helmet sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Kids Safety Helmet sample listing for the Bearly Kids & Baby frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/kids-baby/kids-baby-30-01.jpg"
   }
 ]

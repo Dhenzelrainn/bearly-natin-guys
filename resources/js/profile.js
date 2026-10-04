@@ -13,11 +13,10 @@ function bindPhilippinePhone(input){
  input.addEventListener('input',normalize); input.addEventListener('blur',normalize); normalize();
 }
 
-const KEY='bearly-demo-profile-v1';
 const serverProfile=window.bearlyBuyerProfile||{};
 const serverBirthday=String(serverProfile.birthday||'').split('-');
-const defaults={username:serverProfile.username||'buyer',fullName:serverProfile.fullName||'Buyer',email:serverProfile.email||'',phone:serverProfile.phone||'',gender:serverProfile.gender||'',birthMonth:serverBirthday[1]||'',birthDay:serverBirthday[2]||'',birthYear:serverBirthday[0]||'',photo:''};
-const serverIdentityKey=JSON.stringify({username:defaults.username,fullName:defaults.fullName,email:defaults.email,phone:defaults.phone,gender:defaults.gender,birthday:serverProfile.birthday||''});
+const defaults={username:serverProfile.username||'buyer',fullName:serverProfile.fullName||'Buyer',email:serverProfile.email||'',phone:serverProfile.phone||'',gender:serverProfile.gender||'',birthMonth:serverBirthday[1]||'',birthDay:serverBirthday[2]||'',birthYear:serverBirthday[0]||'',photo:serverProfile.photo||''};
+let pendingPhotoFile=null,pendingRemovePhoto=false;
 const $=s=>document.querySelector(s);
 const months=['January','February','March','April','May','June','July','August','September','October','November','December'];
 
@@ -29,12 +28,28 @@ function fillSelects(){
  const now=new Date().getFullYear();
  for(let i=now;i>=1940;i--) y.insertAdjacentHTML('beforeend',`<option value="${i}">${i}</option>`);
 }
-function getProfile(){try{const saved=JSON.parse(localStorage.getItem(KEY)||'{}');if(localStorage.getItem('bearly-profile-server-identity-v1')!==serverIdentityKey){localStorage.setItem('bearly-profile-server-identity-v1',serverIdentityKey);return {...defaults,photo:saved.photo||''}}return {...defaults,...saved}}catch{return {...defaults}}}
+function getProfile(){
+  const server=window.bearlyBuyerProfile||serverProfile;
+  const birthday=String(server.birthday||'').split('-');
+  const current={
+    username:server.username||defaults.username,
+    fullName:server.fullName||defaults.fullName,
+    email:server.email||defaults.email,
+    phone:server.phone||'',
+    gender:server.gender==='prefer_not_to_say'?'Other':(server.gender||''),
+    birthMonth:birthday[1]||'',
+    birthDay:birthday[2]||'',
+    birthYear:birthday[0]||'',
+    photo:server.photo||''
+  };
+   return current;
+}
 function avatar(photo){
  const profileAvatar=$('#profile-avatar');
  const sidebarAvatar=$('#sidebar-avatar');
  const navbarAvatar=$('#navbar-avatar');
- const safePhoto=/^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+=*$/.test(String(photo||''))?String(photo):'';
+  const value=String(photo||'');
+  const safePhoto=/^(?:https?:\/\/|\/|data:image\/(?:jpeg|png|webp);base64,)/.test(value)?value:'';
  const html=safePhoto?`<img src="${safePhoto}" alt="Profile photo">`:`<span class="material-symbols-outlined">person</span>`;
  if(profileAvatar) profileAvatar.innerHTML=html;
  if(sidebarAvatar) sidebarAvatar.innerHTML=html;
@@ -61,8 +76,8 @@ function load(){
  if(sidebarName) sidebarName.textContent=p.fullName||defaults.fullName;
  avatar(p.photo);
 }
-function save(){
- const old=getProfile(), gender=document.querySelector('[name=gender]:checked')?.value||'';
+async function save(){
+  const gender=document.querySelector('[name=gender]:checked')?.value||'';
  const username=$('#username');
  const fullName=$('#full-name');
  const email=$('#email');
@@ -70,14 +85,32 @@ function save(){
  const birthMonth=$('#birth-month');
  const birthDay=$('#birth-day');
  const birthYear=$('#birth-year');
- const p={...old,username:username?username.value.trim():'',fullName:fullName?fullName.value.trim():'',email:email?email.value.trim():'',phone:phone?phone.value.trim():'',gender,birthMonth:birthMonth?birthMonth.value:'',birthDay:birthDay?birthDay.value:'',birthYear:birthYear?birthYear.value:''};
- localStorage.setItem(KEY,JSON.stringify(p)); localStorage.setItem('bearly-profile-server-identity-v1',serverIdentityKey); localStorage.setItem('bearly-demo-account',p.email||defaults.email);
- const sidebarName=$('#sidebar-name');
- if(sidebarName) sidebarName.textContent=p.fullName||defaults.fullName;
- const t=$('#profile-toast'); if(t){ t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1700); }
+  const birthday=([birthYear?.value,birthMonth?.value?.padStart(2,'0'),birthDay?.value?.padStart(2,'0')].every(Boolean))
+    ? `${birthYear.value}-${birthMonth.value.padStart(2,'0')}-${birthDay.value.padStart(2,'0')}`
+    : '';
+  const data=new FormData();
+  data.append('_method','PATCH');
+  data.append('full_name',fullName?.value.trim()||'');
+  data.append('phone',phone?.value.trim()||'');
+  data.append('gender',gender);
+  data.append('birthday',birthday);
+  data.append('remove_photo',pendingRemovePhoto?'1':'0');
+  if(pendingPhotoFile&&!pendingRemovePhoto)data.append('photo',pendingPhotoFile);
+  const response=await fetch('/profile',{method:'POST',headers:{'X-CSRF-TOKEN':document.querySelector('meta[name="csrf-token"]')?.content||'','Accept':'application/json'},body:data});
+  const result=await response.json().catch(()=>({}));
+  if(!response.ok){
+    const message=Object.values(result.errors||{}).flat()[0]||result.message||'Unable to update your profile.';
+    throw new Error(message);
+  }
+  window.bearlyBuyerProfile={...window.bearlyBuyerProfile,...result.data};
+  const savedBirthday=String(result.data.birthday||'').split('-');
+  Object.assign(defaults,{...result.data,birthMonth:savedBirthday[1]||'',birthDay:savedBirthday[2]||'',birthYear:savedBirthday[0]||''});
+  pendingPhotoFile=null;pendingRemovePhoto=false;
+  load();
+  const t=$('#profile-toast'); if(t){ t.textContent=result.message||'Profile saved.';t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1700); }
 }
 
-const VOUCHER_KEY='bearly-claimed-vouchers-v1';
+const VOUCHER_KEY=window.bearlyStorageKey?.('claimed-vouchers')||'bearly-claimed-vouchers-v1';
 const voucherCatalog=[
  {id:'BEARLY100',kind:'discount',value:100,title:'₱100 Off',description:'Get ₱100 off when you spend at least ₱799.',minSpend:799,expiry:'Oct 31, 2026',icon:'confirmation_number'},
  {id:'BEARLYSHIP',kind:'shipping',value:50,title:'Free Shipping',description:'Save up to ₱50 shipping on eligible Bearly orders.',minSpend:499,expiry:'Oct 31, 2026',icon:'local_shipping'},
@@ -97,12 +130,12 @@ function initVouchers(){
  window.renderVouchers=render;render();
 }
 
-const NOTIFICATION_KEY='bearly-notifications-v1';
+const NOTIFICATION_KEY=window.bearlyStorageKey?.('preview-notifications')||'bearly-notifications-v1';
 const notificationDefaults=[
- {id:'notif-order-shipped',type:'orders',icon:'local_shipping',title:'Your order is on the way',message:'Order #BRY-102841 has been shipped. Open My Purchases to follow its delivery status.',time:'Today, 10:24 AM',read:false,target:'purchases'},
- {id:'notif-payment',type:'payment',icon:'payments',title:'Payment confirmed',message:'Your payment for order #BRY-102841 was confirmed successfully.',time:'Today, 9:48 AM',read:false,target:'purchases'},
- {id:'notif-delivery',type:'orders',icon:'inventory_2',title:'Package delivered',message:'Order #BRY-101972 was delivered. You can now rate your product from Completed purchases.',time:'Yesterday, 4:16 PM',read:false,target:'purchases'},
- {id:'notif-voucher',type:'promos',icon:'confirmation_number',title:'A Bearly voucher is waiting',message:'Check your vouchers before your next checkout.',time:'Sep 30, 2026',read:true,target:''}
+  {id:'notif-preview-order',type:'orders',icon:'local_shipping',title:'Preview order update',message:'This sample notification demonstrates where live order updates will appear.',time:'Preview',read:false,target:'purchases'},
+  {id:'notif-preview-payment',type:'payment',icon:'payments',title:'Preview payment update',message:'Live payment notifications will appear here after the payment service is connected.',time:'Preview',read:false,target:'purchases'},
+  {id:'notif-preview-delivery',type:'orders',icon:'inventory_2',title:'Preview delivery update',message:'Live delivery notifications will appear here after an order is created.',time:'Preview',read:false,target:'purchases'},
+  {id:'notif-voucher',type:'promos',icon:'confirmation_number',title:'A Bearly voucher is waiting',message:'Check your preview vouchers before your next checkout.',time:'Preview',read:true,target:''}
 ];
 function getNotifications(){
  try{const saved=JSON.parse(localStorage.getItem(NOTIFICATION_KEY)||'null');return Array.isArray(saved)?saved:notificationDefaults.map(x=>({...x}))}catch{return notificationDefaults.map(x=>({...x}))}
@@ -143,7 +176,7 @@ const helpTopics=[
  {category:'shipping',icon:'location_on',question:'How do I change my delivery address?',answer:'Open Addresses in My Account to add, edit, delete, or set your default delivery address.',action:'addresses',actionLabel:'Manage Addresses'},
  {category:'payments',icon:'payments',question:'What payment methods are available?',answer:'Bearly currently accepts Cash on Delivery (COD) for buyer orders. You pay with cash when your order is delivered.'},
  {category:'returns',icon:'assignment_return',question:'How do returns and refunds work?',answer:'Returns and refunds are not connected to a backend yet. This Help Center keeps the buyer flow ready for that feature without creating a fake transaction.'},
- {category:'account',icon:'person',question:'How do I update my profile?',answer:'Open Profile, edit your buyer information, then save your changes. Demo profile details are stored locally in your browser.',action:'profile',actionLabel:'Open Profile'},
+  {category:'account',icon:'person',question:'How do I update my profile?',answer:'Open Profile, edit your buyer information, then save your changes. Profile details are saved to your Bearly account.',action:'profile',actionLabel:'Open Profile'},
  {category:'account',icon:'favorite',question:'Where can I find products I liked?',answer:'Open My Likes to see products saved with the heart button.',action:'likes',actionLabel:'Open My Likes'},
  {category:'vouchers',icon:'confirmation_number',question:'How do I claim a voucher?',answer:'Open My Vouchers, choose an available reward, and press Claim. Claimed vouchers stay saved locally in this demo.',action:'vouchers',actionLabel:'Open My Vouchers'},
  {category:'vouchers',icon:'shopping_cart_checkout',question:'How do I use a claimed voucher?',answer:'From My Vouchers, choose Use Now to continue to Checkout. Eligible claimed vouchers can be selected there.',action:'vouchers',actionLabel:'View Vouchers'}
@@ -165,7 +198,7 @@ function initProfile(){
   fillSelects();
   load();
   const profileForm=$('#profile-form');
-  if(profileForm) profileForm.addEventListener('submit',e=>{e.preventDefault();save();});
+  if(profileForm) profileForm.addEventListener('submit',async e=>{e.preventDefault();try{await save()}catch(error){alert(error.message)}});
   const editProfile=$('#edit-profile');
   if(editProfile) editProfile.addEventListener('click',()=>$('#full-name')?.focus());
   const selectPhoto=$('#select-photo');
@@ -177,13 +210,11 @@ function initProfile(){
    const f=e.target.files?.[0]; if(!f)return;
    if(f.size>5*1024*1024){alert('Please choose an image smaller than 5 MB.');e.target.value='';return}
    if(!['image/jpeg','image/png','image/webp'].includes(f.type)){alert('JPG, PNG, and WEBP images only.');e.target.value='';return}
-   const r=new FileReader(); r.onload=()=>{const p=getProfile();p.photo=r.result;localStorage.setItem(KEY,JSON.stringify(p));avatar(p.photo)};r.readAsDataURL(f);
+    pendingPhotoFile=f;pendingRemovePhoto=false;const r=new FileReader(); r.onload=()=>avatar(r.result);r.readAsDataURL(f);
   });
   const removePhoto=$('#remove-photo');
   if(removePhoto) removePhoto.addEventListener('click',()=>{
-    const p=getProfile();
-    p.photo='';
-    localStorage.setItem(KEY,JSON.stringify(p));
+    pendingPhotoFile=null;pendingRemovePhoto=true;
     avatar('');
     if(photoInput) photoInput.value='';
   });
@@ -232,10 +263,11 @@ if(document.readyState === 'loading'){
 
 /* Bearly global navbar state: keeps notification/cart badges in sync across buyer pages. */
 (function initBearlyGlobalNavbarState(){
-  const CART_KEY='bearly-preview-cart-v1';
-  const NOTIFICATION_KEY='bearly-notifications-v1';
+  if(window.BearlyNavbarState)return;
+  const CART_KEY=window.bearlyStorageKey?.('preview-cart')||'bearly-preview-cart-v1';
+  const NOTIFICATION_KEY=window.bearlyStorageKey?.('preview-notifications')||'bearly-notifications-v1';
   function cartCount(){
-    try{const x=JSON.parse(localStorage.getItem(CART_KEY)||'[]');return Array.isArray(x)?x.reduce((n,i)=>n+Math.max(0,Number(i?.quantity||0)),0):0}catch{return 0}
+    try{const x=JSON.parse(localStorage.getItem(CART_KEY)||'[]');const preview=Array.isArray(x)?x.reduce((n,i)=>n+Math.max(0,Number(i?.quantity||0)),0):0;return preview+Number(window.bearlyBuyerProfile?.cartCount||0)}catch{return Number(window.bearlyBuyerProfile?.cartCount||0)}
   }
   function notificationCount(){
     try{
@@ -271,7 +303,7 @@ if(document.readyState === 'loading'){
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',sync);else sync();
   window.addEventListener('storage',sync);
   window.addEventListener('focus',sync);
-  setInterval(sync,700);
+  setInterval(sync,5000);
   window.BearlyNavbarState={sync};
 })();
 

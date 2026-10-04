@@ -1,12 +1,12 @@
 (() => {
-const KEY='bearly-chat-v1';
-const buyerFirstName=String(window.bearlyBuyerProfile?.fullName||'there').trim().split(/\s+/)[0]||'there';
+const KEY=window.bearlyStorageKey?.('preview-chat')||'bearly-chat-v1';
 const conversations=[
-  {id:'bearly',name:'Bearly Assistant',subtitle:'Shopping Assistant',avatar:'🧸',assistant:true,preview:`Hi ${buyerFirstName}! How can I help today?`},
+  {id:'bearly',name:'Bearly Assistant',subtitle:'Shopping Assistant',avatar:'🧸',assistant:true,preview:'Hi there! How can I help today?'},
  {id:'greenline',name:'Greenline Home',subtitle:'Usually replies within an hour',avatar:'GH',preview:'Your desk lamp is on the way.'},
  {id:'sundays',name:'Sundays Market',subtitle:'Seller',avatar:'SM',preview:'Thanks for your order!'}
 ];
-const defaults={active:'bearly',messages:{bearly:[{from:'them',text:`Hi ${buyerFirstName}! I’m the Bearly Assistant. I can help with orders, shipping, payments, vouchers, returns, and your account.`,time:'Now'}],greenline:[{from:'them',text:'Hi! Your desk lamp has been handed to the courier.',time:'2m'},{from:'me',text:'Great, thank you for the update!',time:'2m'}],sundays:[{from:'them',text:'Thanks for your order! Let us know if you need anything.',time:'Yesterday'}]}};
+const buyerName=window.bearlyBuyerProfile?.fullName||'there';
+const defaults={active:'bearly',messages:{bearly:[{from:'them',text:`Hi ${buyerName}! I’m the Bearly Assistant. I can help with orders, shipping, payments, vouchers, returns, and your account.`,time:'Now'}],greenline:[{from:'them',text:'Your desk lamp has been handed to the courier.',time:'2m'},{from:'me',text:'Great, thank you for the update!',time:'2m'}],sundays:[{from:'them',text:'Thanks for your order! Let us know if you need anything.',time:'Yesterday'}]}};
 const quick=[['Track my order','track'],['My vouchers','vouchers'],['Shipping','shipping'],['Payments','payments'],['Returns & refunds','returns'],['Account help','account']];
 function load(){try{const saved=JSON.parse(localStorage.getItem(KEY)||'null');return saved&&saved.messages?{...defaults,...saved,messages:{...defaults.messages,...saved.messages}}:structuredClone(defaults)}catch{return structuredClone(defaults)}}
 let state=load();
@@ -26,10 +26,11 @@ const params=new URLSearchParams(location.search);if(params.get('conversation')=
 
 /* Bearly global navbar state: keeps notification/cart badges in sync across buyer pages. */
 (function initBearlyGlobalNavbarState(){
-  const CART_KEY='bearly-preview-cart-v1';
-  const NOTIFICATION_KEY='bearly-notifications-v1';
+  if(window.BearlyNavbarState)return;
+  const CART_KEY=window.bearlyStorageKey?.('preview-cart')||'bearly-preview-cart-v1';
+  const NOTIFICATION_KEY=window.bearlyStorageKey?.('preview-notifications')||'bearly-notifications-v1';
   function cartCount(){
-    try{const x=JSON.parse(localStorage.getItem(CART_KEY)||'[]');return Array.isArray(x)?x.reduce((n,i)=>n+Math.max(0,Number(i?.quantity||0)),0):0}catch{return 0}
+    try{const x=JSON.parse(localStorage.getItem(CART_KEY)||'[]');const preview=Array.isArray(x)?x.reduce((n,i)=>n+Math.max(0,Number(i?.quantity||0)),0):0;return preview+Number(window.bearlyBuyerProfile?.cartCount||0)}catch{return Number(window.bearlyBuyerProfile?.cartCount||0)}
   }
   function notificationCount(){
     try{
@@ -65,6 +66,6 @@ const params=new URLSearchParams(location.search);if(params.get('conversation')=
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',sync);else sync();
   window.addEventListener('storage',sync);
   window.addEventListener('focus',sync);
-  setInterval(sync,700);
+  setInterval(sync,5000);
   window.BearlyNavbarState={sync};
 })();

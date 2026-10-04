@@ -1,7 +1,4 @@
 @php
-    $buyer = auth()->user();
-    $buyerName = $buyer?->name ?: 'Buyer';
-
     $catalog = json_decode(file_get_contents(resource_path('data/buyer-mens-products (1).json')), true, 512, JSON_THROW_ON_ERROR);
     $taxonomy = json_decode(file_get_contents(resource_path('data/buyer-categories.json')), true, 512, JSON_THROW_ON_ERROR);
     $mensCategory = collect($taxonomy)->firstWhere('slug', 'men-s-apparel');
@@ -19,14 +16,37 @@
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
         <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Material+Symbols+Outlined:wght@400&display=swap" rel="stylesheet">
         @vite(['resources/css/buyer.css', 'resources/js/buyer.js'])
-    </head>
+        @include('buyer.partials.account-context-script')
+
+<style>
+/* Bearly header Wishlist icon: matches the existing brown/gold navigation */
+.header-actions a[href$="/wishlist"],
+.bc-header a[href$="/wishlist"]{
+    color:inherit;
+    text-decoration:none;
+}
+.header-actions a[href$="/wishlist"] .material-symbols-outlined,
+.bc-header a[href$="/wishlist"] .mi{
+    color:#fff;
+    transition:color .18s ease, transform .18s ease;
+}
+.header-actions a[href$="/wishlist"]:hover .material-symbols-outlined,
+.bc-header a[href$="/wishlist"]:hover .mi,
+.header-actions a[href$="/wishlist"][aria-current="page"] .material-symbols-outlined,
+.bc-header a[href$="/wishlist"][aria-current="page"] .mi{
+    color:#f3ad24;
+    transform:scale(1.06);
+}
+</style>
+
+</head>
     <body class="bc" data-category="men-s-apparel" data-catalog-rows="4" style="--catalog-image:url('{{ asset('images/mens-catalog-atlas.png') }}');--catalog-image-height:400%">
         <a href="#bc-main" class="skip">
             Skip to products
         </a>
         <header class="bc-header">
             <a href="{{ route('home') }}" class="brand">
-                <img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly home" width="185" height="62">
+                <img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly home" width="185" height="62">
             </a>
             <form id="bc-search-form" class="search" role="search">
                 <span>
@@ -43,31 +63,32 @@
                 </button>
             </form>
             <nav aria-label="Account">
-                <button data-info="orders">
-                    <i class="mi" aria-hidden="true">
-                        receipt_long
-                    </i>
-                    Orders
-                </button>
-                <button data-info="chat">
-                    <i class="mi" aria-hidden="true">
-                        chat_bubble
-                    </i>
-                    Chat
-                </button>
-                <a href="{{ url('/cart') }}">
-                    <i class="mi" aria-hidden="true">
-                        shopping_cart
-                    </i>
-                    Cart
-                </a>
-                <a href="{{ route('home') }}" title="{{ $buyer?->email }}" aria-label="Signed in as {{ $buyerName }}">
-                    <i class="mi" aria-hidden="true">
-                        person
-                    </i>
-                    {{ $buyerName }}
-                </a>
-            </nav>
+            <a href="{{ url('/profile#notifications') }}" aria-label="Notifications" class="category-notification-link">
+                <i class="mi" aria-hidden="true">notifications</i>
+                <span>Notifications</span>
+                <span class="category-notification-badge" data-notification-badge>0</span>
+            </a>
+
+            <button type="button" onclick="window.location.href='{{ url('/profile#tracking') }}'">
+                <i class="mi" aria-hidden="true">receipt_long</i>
+                <span>Orders</span>
+            </button>
+
+            <a href="{{ url('/chat') }}">
+                <i class="mi" aria-hidden="true">chat_bubble</i>
+                <span>Chat</span>
+            </a>
+
+            <a href="{{ url('/cart') }}">
+                <i class="mi" aria-hidden="true">shopping_cart</i>
+                <span>Cart</span>
+            </a>
+
+            <a href="{{ url('/profile') }}" aria-label="Open {{ $buyerName }} profile">
+                <i class="mi" aria-hidden="true">person</i>
+                <span>{{ $buyerName }}</span>
+            </a>
+        </nav>
         </header>
         <div class="bc-shell">
             <aside class="bc-sidebar" id="bc-sidebar" aria-label="Categories and filters">
@@ -226,7 +247,7 @@
             </main>
         </div>
         <footer>
-            <img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly" width="110" height="37">
+            <img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly" width="110" height="37">
             <span>
                 Good finds. Happy spaces.
             </span>

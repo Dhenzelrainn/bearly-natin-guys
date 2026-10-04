@@ -1,15 +1,3 @@
-@php
-    $buyer = auth()->user();
-    $buyerName = trim($buyer?->name ?: trim(($buyer?->first_name ?? '') . ' ' . ($buyer?->last_name ?? '')));
-    $buyerName = $buyerName !== '' ? $buyerName : 'Buyer';
-    $buyerEmail = (string) ($buyer?->email ?? '');
-    $buyerPhone = (string) ($buyer?->phone ?: $buyer?->contact_number ?: '');
-    $buyerUsername = (string) ($buyer?->username ?? (str_contains($buyerEmail, '@') ? strstr($buyerEmail, '@', true) : strtolower(preg_replace('/\s+/', '', $buyerName))));
-    $buyerBirthday = $buyer?->birthday ?? $buyer?->birth_date;
-    $buyerBirthdayValue = $buyerBirthday?->format('Y-m-d') ?? '';
-    $buyerSex = (string) ($buyer?->sex ?? '');
-    $buyerProfilePayload = json_encode(['username' => $buyerUsername, 'fullName' => $buyerName, 'email' => $buyerEmail, 'phone' => $buyerPhone, 'gender' => $buyerSex, 'birthday' => $buyerBirthdayValue], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
-@endphp
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -20,17 +8,16 @@
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Material+Symbols+Outlined:wght@400&display=swap" rel="stylesheet">
     @include('buyer.partials.account-context-script')
     @vite(['resources/css/buyer.css','resources/css/profile.css','resources/css/addresses.css','resources/css/bearly-chat.css','resources/js/profile.js','resources/js/account-addresses.js','resources/js/my-likes.js','resources/js/my-purchases.js','resources/js/reviews-ratings.js','resources/js/bearly-chat.js'])
-    @include('partials.session-safety')
 </head>
 <body class="bh profile-page">
 <header class="header buyer-standard-header">
     <a class="brand" href="{{ url('/home') }}" aria-label="Bearly home"><img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly"></a>
     <div class="buyer-header-spacer"></div>
     <nav class="header-actions" aria-label="Account">
-        <a href="{{ url('/profile#notifications') }}" class="notification-header-link"><span class="material-symbols-outlined">notifications</span><span>Notifications</span><span class="notification-badge" data-notification-badge>3</span></a>
+        <a href="{{ url('/profile#notifications') }}" class="notification-header-link"><span class="material-symbols-outlined">notifications</span><span>Notifications</span><span class="notification-badge" data-notification-badge>0</span></a>
         <a href="{{ url('/profile#tracking') }}"><span class="material-symbols-outlined">receipt_long</span><span>Orders</span></a>
         <a href="{{ url('/chat') }}"><span class="material-symbols-outlined">chat_bubble</span><span>Chat</span></a>
-        <a href="{{ url('/cart/preview') }}"><span class="material-symbols-outlined">shopping_cart</span><span>Cart preview</span></a>
+        <a href="{{ url('/cart') }}"><span class="material-symbols-outlined">shopping_cart</span><span>Cart</span></a>
         <a class="account-action active" href="{{ url('/profile') }}"><span id="navbar-avatar" class="navbar-profile-avatar"><span class="material-symbols-outlined">person</span></span><span>{{ $buyerName }}</span></a>
     </nav>
 </header>
@@ -43,7 +30,6 @@
         </div>
         <div class="sidebar-divider"></div>
         <div class="sidebar-title"><span class="material-symbols-outlined">account_circle</span> My Account</div>
-        <p class="buyer-preview-note account-preview-note">Account panels are frontend previews; profile, address, order, and review changes stay in this browser.</p>
         <nav class="account-nav">
             <button class="account-tab active" type="button" data-account-tab="profile"><span class="material-symbols-outlined">person</span>Profile</button>
             <button class="account-tab" type="button" data-account-tab="addresses"><span class="material-symbols-outlined">location_on</span>Addresses</button>
@@ -52,24 +38,27 @@
             <button class="account-tab nav-parent" type="button" data-account-tab="purchases"><span class="material-symbols-outlined">receipt_long</span>My Purchases</button>
             <button class="account-tab nav-parent" type="button" data-account-tab="history"><span class="material-symbols-outlined">history</span>Order History</button>
             <button class="account-tab nav-parent" type="button" data-account-tab="reviews"><span class="material-symbols-outlined">star</span>Reviews & Ratings</button>
-            <button class="account-tab nav-parent" type="button" data-account-tab="notifications"><span class="material-symbols-outlined">notifications</span>Notifications <span id="notifications-nav-count" class="notifications-nav-count">3</span></button>
+            <button class="account-tab nav-parent" type="button" data-account-tab="notifications"><span class="material-symbols-outlined">notifications</span>Notifications <span id="notifications-nav-count" class="notifications-nav-count">0</span></button>
             <button class="account-tab nav-parent" type="button" data-account-tab="vouchers"><span class="material-symbols-outlined">confirmation_number</span>My Vouchers <span id="vouchers-nav-count" class="vouchers-nav-count" hidden>0</span></button>
             <button class="account-tab nav-parent" type="button" data-account-tab="help"><span class="material-symbols-outlined">help</span>Help Center</button>
         </nav>
+        <form class="account-logout-form" method="POST" action="{{ route('logout') }}">
+            @csrf
+            <button type="submit"><span class="material-symbols-outlined" aria-hidden="true">logout</span>Log out</button>
+        </form>
     </aside>
 
     <section class="profile-card account-panel" id="profile-panel" data-account-panel="profile">
         <div class="profile-heading">
             <h1>My Profile</h1>
             <p>Manage your Bearly buyer account information.</p>
-            <small class="buyer-preview-note">Account edits are saved only in this browser until profile persistence is connected.</small>
         </div>
 
         <form id="profile-form" class="profile-form">
             <div class="profile-fields">
                 <label class="field-row">
                     <span>Username</span>
-                    <input id="username" type="text" value="{{ $buyerUsername }}" maxlength="30">
+                    <input id="username" type="text" value="{{ $buyerUsername }}" maxlength="30" readonly>
                 </label>
                 <label class="field-row">
                     <span>Full Name</span>
@@ -77,7 +66,7 @@
                 </label>
                 <label class="field-row">
                     <span>Email</span>
-                    <input id="email" type="email" value="{{ $buyerEmail }}" required>
+                    <input id="email" type="email" value="{{ $buyerEmail }}" readonly>
                 </label>
                 <label class="field-row">
                     <span>Phone Number</span>
@@ -147,7 +136,7 @@
 
     <section class="profile-card account-panel" id="purchases-panel" data-account-panel="purchases" hidden>
         <div class="purchases-head">
-             <div><h1>My Purchases</h1><p>View your orders and follow each purchase from payment to completion.</p><small class="buyer-preview-note">Illustrative browser-only purchase history; no order is created by this preview checkout.</small></div>
+            <div><h1>My Purchases <span class="preview-badge">Preview data</span></h1><p>Order history is not connected to the order service yet.</p></div>
             <span id="purchase-count" class="purchase-count">0 orders</span>
         </div>
         <div class="purchase-tabs" role="tablist">
@@ -167,7 +156,7 @@
 
     <section class="profile-card account-panel" id="history-panel" data-account-panel="history" hidden>
         <div class="history-head">
-            <div><h1>Order History</h1><p>Review your completed and cancelled Bearly orders.</p></div>
+             <div><h1>Order History <span class="preview-badge">Preview data</span></h1><p>Sample order history only; live orders are not connected yet.</p></div>
             <span id="history-count" class="purchase-count">0 orders</span>
         </div>
         <div class="history-tools">
@@ -194,7 +183,7 @@
 
     <section class="profile-card account-panel" id="notifications-panel" data-account-panel="notifications" hidden>
         <div class="notifications-head">
-            <div><h1>Notifications</h1><p>Order, payment, and Bearly account updates in one place.</p></div>
+             <div><h1>Notifications <span class="preview-badge">Preview data</span></h1><p>Sample updates only; live notifications are not connected yet.</p></div>
             <button id="mark-all-notifications" type="button" class="notification-mark-all">Mark all as read</button>
         </div>
         <div class="notification-filters" role="tablist" aria-label="Notification filters">
@@ -211,7 +200,7 @@
 
     <section class="profile-card account-panel" id="vouchers-panel" data-account-panel="vouchers" hidden>
         <div class="vouchers-head">
-            <div><h1>My Vouchers</h1><p>Claim Bearly rewards and use them on eligible orders.</p></div>
+             <div><h1>My Vouchers <span class="preview-badge">Preview data</span></h1><p>Sample vouchers are stored only in this browser.</p></div>
             <span id="voucher-claimed-count" class="voucher-claimed-count">0 claimed</span>
         </div>
         <div class="voucher-tabs" role="tablist" aria-label="Voucher filters">
@@ -243,7 +232,7 @@
 
     <section class="profile-card account-panel" id="reviews-panel" data-account-panel="reviews" hidden>
         <div class="reviews-head">
-            <div><h1>Reviews & Ratings</h1><p>Rate completed purchases and manage reviews you already submitted.</p></div>
+             <div><h1>Reviews & Ratings <span class="preview-badge">Preview data</span></h1><p>Review samples only; live reviews are not connected yet.</p></div>
             <span id="reviews-count" class="reviews-count">0 reviews</span>
         </div>
         <div id="review-list" class="review-list"></div>
@@ -277,7 +266,7 @@
   <div class="dialog-head"><h2 id="address-modal-title">New Address</h2><button id="close-address-modal" type="button" aria-label="Close">×</button></div>
   <form id="address-form">
    <input id="address-editing-id" type="hidden">
-   <div class="form-grid two"><label><span>Full Name</span><input id="address-full-name" required value="{{ $buyerName }}" placeholder="Full name"></label><label><span>Phone Number</span><input id="address-phone-number" required value="{{ $buyerPhone }}" placeholder="+63 900 000 0000"></label></div>
+   <div class="form-grid two"><label><span>Full Name</span><input id="address-full-name" required placeholder="Recipient name"></label><label><span>Phone Number</span><input id="address-phone-number" required placeholder="+63 900 000 0000"></label></div>
    <div class="form-grid"><label><span>Province</span><input id="address-province" required placeholder="Laguna"></label></div>
    <div class="form-grid two"><label><span>City / Municipality</span><input id="address-city" required placeholder="City / Municipality"></label><label><span>Barangay</span><input id="address-barangay" required placeholder="Barangay"></label></div>
    <div class="form-grid"><label><span>Postal Code</span><input id="address-postal-code" required placeholder="Postal Code"></label><label><span>Street Name, Building, House No.</span><input id="address-street" required placeholder="Street Name, Building, House No."></label></div>

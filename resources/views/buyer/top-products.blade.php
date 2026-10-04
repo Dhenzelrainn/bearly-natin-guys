@@ -1,16 +1,4 @@
 @php
-    $buyer = auth()->user();
-    $buyerName = trim($buyer?->name ?: trim(($buyer?->first_name ?? '') . ' ' . ($buyer?->last_name ?? '')));
-    $buyerName = $buyerName !== '' ? $buyerName : 'Buyer';
-    $buyerEmail = (string) ($buyer?->email ?? '');
-    $buyerPhone = (string) ($buyer?->phone ?: $buyer?->contact_number ?: '');
-    $buyerUsername = (string) ($buyer?->username ?? (str_contains($buyerEmail, '@') ? strstr($buyerEmail, '@', true) : strtolower(preg_replace('/\s+/', '', $buyerName))));
-    $buyerBirthday = $buyer?->birthday ?? $buyer?->birth_date;
-    $buyerBirthdayValue = $buyerBirthday?->format('Y-m-d') ?? '';
-    $buyerSex = (string) ($buyer?->sex ?? '');
-    $buyerProfilePayload = json_encode(['username' => $buyerUsername, 'fullName' => $buyerName, 'email' => $buyerEmail, 'phone' => $buyerPhone, 'gender' => $buyerSex, 'birthday' => $buyerBirthdayValue], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
-@endphp
-@php
 $categoryProductSources = [
     'pet-supplies'=>['file'=>'buyer-pet-supplies-products.json','name'=>'Pet Supplies'],
     'electronics-and-gadgets'=>['file'=>'buyer-electronics-gadgets-products.json','name'=>'Electronics and Gadgets'],
@@ -39,10 +27,8 @@ foreach($categoryProductSources as $slug=>$source){
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Top Products | Bearly</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Material+Symbols+Outlined:wght@400&display=swap" rel="stylesheet">
-@include('buyer.partials.account-context-script')
 @vite(['resources/css/buyer.css','resources/js/buyer.js'])
-@include('partials.session-safety')
-</head>
+@include('buyer.partials.account-context-script')</head>
 <body class="bh top-products-page"><header class="header">
     <a class="brand" href="{{ url('/home') }}" aria-label="Bearly home"><img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly" width="192" height="64"></a>
 
@@ -55,10 +41,10 @@ foreach($categoryProductSources as $slug=>$source){
     </form>
 
     <nav class="header-actions" aria-label="Account">
-        <a href="{{ url('/profile#notifications') }}" class="notification-header-link"><span class="material-symbols-outlined" aria-hidden="true">notifications</span><span>Notifications</span><span class="notification-badge" data-notification-badge>3</span></a>
+        <a href="{{ url('/profile#notifications') }}" class="notification-header-link"><span class="material-symbols-outlined" aria-hidden="true">notifications</span><span>Notifications</span><span class="notification-badge" data-notification-badge>0</span></a>
         <a href="{{ url('/profile#tracking') }}"><span class="material-symbols-outlined" aria-hidden="true">receipt_long</span><span>Orders</span></a>
         <a href="{{ url('/chat') }}"><span class="material-symbols-outlined" aria-hidden="true">chat_bubble</span><span>Chat</span></a>
-        <a href="{{ url('/cart/preview') }}"><span class="material-symbols-outlined" aria-hidden="true">shopping_cart</span><span>Cart preview</span></a>
+        <a href="{{ url('/cart') }}"><span class="material-symbols-outlined" aria-hidden="true">shopping_cart</span><span>Cart</span></a>
         <a class="account-action" href="{{ url('/profile') }}" aria-label="Open {{ $buyerName }} profile"><span class="material-symbols-outlined" aria-hidden="true">person</span><span>{{ $buyerName }}</span></a>
     </nav>
 </header>

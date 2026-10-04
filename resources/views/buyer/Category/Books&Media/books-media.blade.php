@@ -1,7 +1,4 @@
 @php
-    $buyer = auth()->user();
-    $buyerName = $buyer?->name ?: 'Buyer';
-
     $catalog = json_decode(
         file_get_contents(resource_path('data/buyer-books-media-products.json')),
         true,
@@ -39,7 +36,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Material+Symbols+Outlined:wght@400&display=swap" rel="stylesheet">
 
-    @vite(['resources/css/buyer.css', 'resources/js/buyer.js'])
+    @vite(['resources/css/buyer.css', 'resources/css/bearly-chat.css', 'resources/js/buyer.js', 'resources/js/bearly-chat.js'])
+    @include('buyer.partials.account-context-script')
 </head>
 
 <body class="bc" data-category="books-and-media" style="--catalog-image:url('{{ asset('images/books-media-catalog-atlas.png') }}')">
@@ -47,7 +45,7 @@
 
     <header class="bc-header">
         <a href="{{ route('home') }}" class="brand">
-            <img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly home" width="185" height="62">
+            <img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly home" width="185" height="62">
         </a>
 
         <form id="bc-search-form" class="search" role="search">
@@ -62,24 +60,30 @@
         </form>
 
         <nav aria-label="Account">
-            <button data-info="orders">
+            <a href="{{ url('/profile#notifications') }}" aria-label="Notifications" class="category-notification-link">
+                <i class="mi" aria-hidden="true">notifications</i>
+                <span>Notifications</span>
+                <span class="category-notification-badge" data-notification-badge>0</span>
+            </a>
+
+            <button type="button" onclick="window.location.href='{{ url('/profile#tracking') }}'">
                 <i class="mi" aria-hidden="true">receipt_long</i>
-                Orders
+                <span>Orders</span>
             </button>
 
-            <button data-info="chat">
+            <a href="{{ url('/chat') }}">
                 <i class="mi" aria-hidden="true">chat_bubble</i>
-                Chat
-            </button>
+                <span>Chat</span>
+            </a>
 
             <a href="{{ url('/cart') }}">
                 <i class="mi" aria-hidden="true">shopping_cart</i>
-                Cart
+                <span>Cart</span>
             </a>
 
-            <a href="{{ route('home') }}" title="{{ $buyer?->email }}" aria-label="Signed in as {{ $buyerName }}">
+            <a href="{{ url('/profile') }}" aria-label="Open {{ $buyerName }} profile">
                 <i class="mi" aria-hidden="true">person</i>
-                {{ $buyerName }}
+                <span>{{ $buyerName }}</span>
             </a>
         </nav>
     </header>
@@ -170,14 +174,21 @@
 
             <div class="shortcuts" aria-label="Explore subcategories">
                 @php
-                    $shortcutPhotos = [0, 5, 10, 13, 20, 26];
+                    $shortcutPhotos = [
+                        'Fiction & Non-Fiction Books' => '/images/products/books-media/books-media-01-01.jpg',
+                        'Children, Comics & Reference' => '/images/products/books-media/books-media-11-01.jpg',
+                        'Magazines & Stationery' => '/images/products/books-media/books-media-16-01.jpg',
+                        'Movies & Music' => '/images/products/books-media/books-media-21-01.jpg',
+                        'Educational Media' => '/images/products/books-media/books-media-26-01.jpg',
+                        'Games, Puzzles & Media Accessories' => '/images/products/books-media/books-media-27-01.jpg',
+                    ];
                 @endphp
 
                 @foreach($subcategories as $i => $sub)
                     <button data-sub="{{ $sub }}">
                         <span
                             class="photo"
-                            style="--x:{{ ($shortcutPhotos[$i] % 5) * 25 }}%;--y:{{ floor($shortcutPhotos[$i] / 5) * 20 }}%"
+                            style="background-image:url('{{ $shortcutPhotos[$sub] ?? '/images/products/books-media/books-media-01-01.jpg' }}');background-size:contain;background-position:center;background-repeat:no-repeat;background-color:#fff"
                             aria-hidden="true"
                         ></span>
 
@@ -212,7 +223,7 @@
     </div>
 
     <footer>
-        <img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly" width="110" height="37">
+        <img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly" width="110" height="37">
         <span>Good finds. Happy spaces.</span>
 
         <nav>
@@ -223,7 +234,7 @@
         <small>Frontend preview</small>
     </footer>
 
-    <button class="chat" data-info="chat">
+    <button class="chat" data-bearly-chat-launcher>
         <i class="mi" aria-hidden="true">chat_bubble</i>
         Chat
     </button>
@@ -264,7 +275,7 @@
         <h2 id="bc-info-title"></h2>
         <p id="bc-info-copy"></p>
 
-        <a class="button gold" href="{{ route('home') }}">Back to home</a>
+            <a class="button gold" href="{{ route('home') }}">Back to home</a>
     </dialog>
 
     @include('buyer.Category.Books&Media.components.books-media-product-card')
@@ -272,5 +283,6 @@
     <script type="application/json" id="bc-data">
         {!! json_encode($catalog, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR) !!}
     </script>
+@include('buyer.partials.chat-drawer')
 </body>
 </html>

@@ -127,14 +127,29 @@ Route::middleware(['auth', 'role:buyer'])->group(function () {
     Route::get('/products', [BuyerController::class, 'products'])
         ->name('products.index');
 
-    // Buyer UI pages from the updated storefront. These screens are
-    // authenticated previews and do not replace the existing cart/wishlist
-    // endpoints or create order/payment state.
-    Route::view('/profile', 'buyer.profile')
+    Route::get('/profile', [BuyerController::class, 'profile'])
         ->name('buyer.profile');
 
-    Route::view('/addresses', 'buyer.addresses')
+    Route::patch('/profile', [BuyerController::class, 'updateProfile'])
+        ->name('buyer.profile.update');
+
+    Route::get('/addresses', [BuyerController::class, 'addresses'])
         ->name('buyer.addresses');
+
+    Route::get('/addresses/data', [BuyerController::class, 'addressData'])
+        ->name('buyer.addresses.data');
+
+    Route::post('/addresses', [BuyerController::class, 'storeAddress'])
+        ->name('buyer.addresses.store');
+
+    Route::patch('/addresses/{address}', [BuyerController::class, 'updateAddress'])
+        ->name('buyer.addresses.update');
+
+    Route::patch('/addresses/{address}/default', [BuyerController::class, 'setDefaultAddress'])
+        ->name('buyer.addresses.default');
+
+    Route::delete('/addresses/{address}', [BuyerController::class, 'deleteAddress'])
+        ->name('buyer.addresses.delete');
 
     Route::view('/checkout', 'buyer.checkout')
         ->name('checkout');
@@ -151,13 +166,9 @@ Route::middleware(['auth', 'role:buyer'])->group(function () {
     Route::view('/top-sales', 'buyer.top-sales')
         ->name('top-sales');
 
-    // The existing /cart and /wishlist actions remain authoritative. These
-    // preview URLs expose the source UI without changing their behavior.
-    Route::view('/cart/preview', 'buyer.cart')
-        ->name('cart.preview');
+    Route::redirect('/cart/preview', '/cart')->name('cart.preview');
 
-    Route::view('/wishlist/preview', 'buyer.wishlist')
-        ->name('wishlist.preview');
+    Route::redirect('/wishlist/preview', '/wishlist')->name('wishlist.preview');
 
     Route::get('/wishlist', [BuyerController::class, 'wishlist'])
         ->name('wishlist.index');
@@ -167,6 +178,9 @@ Route::middleware(['auth', 'role:buyer'])->group(function () {
 
     Route::get('/cart', [BuyerController::class, 'cart'])
         ->name('cart.view');
+
+    Route::get('/cart/data', [BuyerController::class, 'cartData'])
+        ->name('cart.data');
 
     Route::post('/cart/add', [BuyerController::class, 'addToCart'])
         ->name('cart.add');

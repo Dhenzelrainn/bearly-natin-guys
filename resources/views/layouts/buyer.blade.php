@@ -17,6 +17,8 @@
 
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
+    @include('buyer.partials.account-context-script')
+
     <title>@yield('title', 'Bearly')</title>
 
     <!-- Google Font -->
@@ -38,8 +40,6 @@
         'resources/css/buyer.css',
         'resources/js/buyer.js'
     ])
-
-    @include('partials.session-safety')
 
 </head>
 

@@ -1,15 +1,3 @@
-@php
-    $buyer = auth()->user();
-    $buyerName = trim($buyer?->name ?: trim(($buyer?->first_name ?? '') . ' ' . ($buyer?->last_name ?? '')));
-    $buyerName = $buyerName !== '' ? $buyerName : 'Buyer';
-    $buyerEmail = (string) ($buyer?->email ?? '');
-    $buyerPhone = (string) ($buyer?->phone ?: $buyer?->contact_number ?: '');
-    $buyerUsername = (string) ($buyer?->username ?? (str_contains($buyerEmail, '@') ? strstr($buyerEmail, '@', true) : strtolower(preg_replace('/\s+/', '', $buyerName))));
-    $buyerBirthday = $buyer?->birthday ?? $buyer?->birth_date;
-    $buyerBirthdayValue = $buyerBirthday?->format('Y-m-d') ?? '';
-    $buyerSex = (string) ($buyer?->sex ?? '');
-    $buyerProfilePayload = json_encode(['username' => $buyerUsername, 'fullName' => $buyerName, 'email' => $buyerEmail, 'phone' => $buyerPhone, 'gender' => $buyerSex, 'birthday' => $buyerBirthdayValue], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
-@endphp
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -19,7 +7,6 @@
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Material+Symbols+Outlined:wght@400&display=swap" rel="stylesheet">
 @include('buyer.partials.account-context-script')
 @vite(['resources/css/buyer.css','resources/css/cart.css','resources/js/cart.js'])
-@include('partials.session-safety')
 </head>
 <body class="bh cart-page">
 <header class="header">
@@ -27,10 +14,10 @@
 <div class="cart-brand-title"><span></span><strong>Shopping Cart</strong></div>
 <div class="cart-header-spacer"></div>
 <nav class="header-actions">
-<a href="{{ url('/profile#notifications') }}" class="notification-header-link"><span class="material-symbols-outlined">notifications</span><span>Notifications</span><span class="notification-badge" data-notification-badge>3</span></a>
+<a href="{{ url('/profile#notifications') }}" class="notification-header-link"><span class="material-symbols-outlined">notifications</span><span>Notifications</span><span class="notification-badge" data-notification-badge>0</span></a>
 <button type="button" onclick="window.location.href='{{ url('/profile#tracking') }}'"><span class="material-symbols-outlined">receipt_long</span><span>Orders</span></button>
 <a href="{{ url('/chat') }}"><span class="material-symbols-outlined">chat_bubble</span><span>Chat</span></a>
-<a class="cart-active" href="{{ url('/cart/preview') }}"><span class="material-symbols-outlined">shopping_cart</span><span>Cart preview</span><b id="cart-header-count" class="cart-badge">0</b></a>
+<a class="cart-active" href="{{ url('/cart') }}"><span class="material-symbols-outlined">shopping_cart</span><span>Cart</span><b id="cart-header-count" class="cart-badge">0</b></a>
 <a class="account-action" href="{{ url('/profile') }}"><span class="material-symbols-outlined">person</span><span>{{ $buyerName }}</span></a>
 </nav>
 </header>
@@ -38,8 +25,9 @@
 <main class="cart-shell">
 <div class="cart-page-top">
 <a class="cart-back" href="javascript:history.back()" aria-label="Back"><span class="material-symbols-outlined">arrow_back</span></a>
-<div><h1>Shopping Cart Preview</h1><p><span id="cart-count">0</span> item(s) · browser-only catalog preview</p></div>
+<div><h1>Shopping Cart</h1><p><span id="cart-count">0</span> item(s)</p></div>
 </div>
+<p id="cart-preview-notice" class="preview-notice" hidden>Catalog preview items are stored only in this browser and are not part of your live Bearly cart.</p>
 
 <section id="cart-content" hidden>
 <div class="cart-columns">
@@ -60,11 +48,12 @@
 <label class="check-wrap"><input id="select-all-bottom" type="checkbox"><span></span></label>
 <button id="select-all-label" class="text-btn" type="button">Select All (0)</button>
 <button id="delete-selected" class="text-btn" type="button">Delete</button>
-<a href="{{ url('/wishlist/preview') }}" class="wishlist-link">Move to Wishlist preview</a>
+<a href="{{ url('/wishlist') }}" class="wishlist-link">View Wishlist</a>
 <div class="bottom-spacer"></div>
 <div class="selected-total">Total (<span id="selected-count">0</span> item): <strong id="cart-total">₱0.00</strong></div>
 <button id="cart-checkout" class="checkout-btn" type="button">Check Out</button>
 </div>
 </div>
 <div id="cart-toast" class="cart-toast" role="status"></div>
+<script>window.bearlyCartItems = @json($cartItems ?? []);</script>
 </body></html>

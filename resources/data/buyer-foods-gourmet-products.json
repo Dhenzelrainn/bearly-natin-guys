@@ -15,7 +15,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.7,
-    "description": "Premium Jasmine Rice sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Premium Jasmine Rice sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/foods-gourmet/foods-gourmet-01-01.jpg"
   },
   {
     "id": 2,
@@ -32,7 +33,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.4,
-    "description": "Classic Spaghetti Pasta sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Classic Spaghetti Pasta sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/foods-gourmet/foods-gourmet-02-01.jpg"
   },
   {
     "id": 3,
@@ -49,7 +51,8 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.8,
-    "description": "Traditional Pasta Sauce sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Traditional Pasta Sauce sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/foods-gourmet/foods-gourmet-03-01.jpg"
   },
   {
     "id": 4,
@@ -66,7 +69,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.5,
-    "description": "Canned Tuna Flakes sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Canned Tuna Flakes sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/foods-gourmet/foods-gourmet-04-01.jpg"
   },
   {
     "id": 5,
@@ -84,7 +88,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.9,
-    "description": "Extra Virgin Olive Oil sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Extra Virgin Olive Oil sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/foods-gourmet/foods-gourmet-05-01.jpg"
   },
   {
     "id": 6,
@@ -101,7 +106,8 @@
     "free_shipping": false,
     "voucher": true,
     "rating": 4.6,
-    "description": "Premium Soy Sauce sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Premium Soy Sauce sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/foods-gourmet/foods-gourmet-06-01.jpg"
   },
   {
     "id": 7,
@@ -119,7 +125,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.3,
-    "description": "Classic Instant Coffee sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Classic Instant Coffee sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/foods-gourmet/foods-gourmet-07-01.jpg"
   },
   {
     "id": 8,
@@ -137,7 +144,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.7,
-    "description": "Yellow Label Tea Bags sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Yellow Label Tea Bags sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/foods-gourmet/foods-gourmet-08-01.jpg"
   },
   {
     "id": 9,
@@ -154,7 +162,8 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.4,
-    "description": "Chocolate Malt Drink sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Chocolate Malt Drink sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/foods-gourmet/foods-gourmet-09-01.jpg"
   },
   {
     "id": 10,
@@ -171,7 +180,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.8,
-    "description": "Non-Fat Milk sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Non-Fat Milk sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/foods-gourmet/foods-gourmet-10-01.jpg"
   },
   {
     "id": 11,
@@ -188,7 +198,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.5,
-    "description": "Corn Flakes Cereal sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Corn Flakes Cereal sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/foods-gourmet/foods-gourmet-11-01.jpg"
   },
   {
     "id": 12,
@@ -205,7 +216,8 @@
     "free_shipping": false,
     "voucher": true,
     "rating": 4.9,
-    "description": "Instant Oatmeal sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Instant Oatmeal sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/foods-gourmet/foods-gourmet-12-01.jpg"
   },
   {
     "id": 13,
@@ -222,7 +234,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.6,
-    "description": "Classic Potato Chips sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Classic Potato Chips sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/foods-gourmet/foods-gourmet-13-01.jpg"
   },
   {
     "id": 14,
@@ -239,7 +252,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.3,
-    "description": "Chocolate Sandwich Cookies sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Chocolate Sandwich Cookies sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/foods-gourmet/foods-gourmet-14-01.jpg"
   },
   {
     "id": 15,
@@ -256,7 +270,8 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.7,
-    "description": "Milk Chocolate Bar sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Milk Chocolate Bar sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/foods-gourmet/foods-gourmet-15-01.jpg"
   },
   {
     "id": 16,
@@ -273,7 +288,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.4,
-    "description": "Pineapple Juice sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Pineapple Juice sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/foods-gourmet/foods-gourmet-16-01.jpg"
   },
   {
     "id": 17,
@@ -290,7 +306,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.8,
-    "description": "Dried Mangoes sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Dried Mangoes sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/foods-gourmet/foods-gourmet-17-01.jpg"
   },
   {
     "id": 18,
@@ -307,7 +324,8 @@
     "free_shipping": false,
     "voucher": true,
     "rating": 4.5,
-    "description": "Mixed Nuts sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Mixed Nuts sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/foods-gourmet/foods-gourmet-18-01.jpg"
   },
   {
     "id": 19,
@@ -325,7 +343,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.9,
-    "description": "Pure Honey sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Pure Honey sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/foods-gourmet/foods-gourmet-19-01.jpg"
   },
   {
     "id": 20,
@@ -342,7 +361,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.6,
-    "description": "Hazelnut Cocoa Spread sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Hazelnut Cocoa Spread sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/foods-gourmet/foods-gourmet-20-01.jpg"
   },
   {
     "id": 21,
@@ -359,7 +379,8 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.3,
-    "description": "Sparkling Fruit Drink Pack sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Sparkling Fruit Drink Pack sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/foods-gourmet/foods-gourmet-21-01.jpg"
   },
   {
     "id": 22,
@@ -376,7 +397,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.7,
-    "description": "Cola Soft Drink Pack sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Cola Soft Drink Pack sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/foods-gourmet/foods-gourmet-22-01.jpg"
   },
   {
     "id": 23,
@@ -393,7 +415,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.4,
-    "description": "Chicken Flavor Instant Noodles sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Chicken Flavor Instant Noodles sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/foods-gourmet/foods-gourmet-23-01.jpg"
   },
   {
     "id": 24,
@@ -410,7 +433,8 @@
     "free_shipping": false,
     "voucher": true,
     "rating": 4.8,
-    "description": "Soup Seasoning Mix sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Soup Seasoning Mix sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/foods-gourmet/foods-gourmet-24-01.jpg"
   },
   {
     "id": 25,
@@ -427,7 +451,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.5,
-    "description": "Refined White Sugar sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Refined White Sugar sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/foods-gourmet/foods-gourmet-25-01.jpg"
   },
   {
     "id": 26,
@@ -444,7 +469,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.9,
-    "description": "All-Purpose Flour sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "All-Purpose Flour sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/foods-gourmet/foods-gourmet-26-01.jpg"
   },
   {
     "id": 27,
@@ -461,7 +487,8 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.6,
-    "description": "Black Pepper Grinder sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Black Pepper Grinder sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/foods-gourmet/foods-gourmet-27-01.jpg"
   },
   {
     "id": 28,
@@ -478,7 +505,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.3,
-    "description": "Tomato Ketchup sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Tomato Ketchup sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/foods-gourmet/foods-gourmet-28-01.jpg"
   },
   {
     "id": 29,
@@ -495,7 +523,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.7,
-    "description": "Himalayan Pink Salt sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Himalayan Pink Salt sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/foods-gourmet/foods-gourmet-29-01.jpg"
   },
   {
     "id": 30,
@@ -512,6 +541,7 @@
     "free_shipping": false,
     "voucher": true,
     "rating": 4.4,
-    "description": "Gourmet Gift Basket sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later."
+    "description": "Gourmet Gift Basket sample listing for the Bearly Foods & Gourmet frontend preview. Product details, stock, seller information and checkout will be connected to the backend later.",
+    "image": "/images/products/foods-gourmet/foods-gourmet-30-01.jpg"
   }
 ]

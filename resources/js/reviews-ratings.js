@@ -1,4 +1,4 @@
-const REVIEWS_KEY='bearly-reviews-v1';
+const REVIEWS_KEY=window.bearlyStorageKey?.('preview-reviews')||'bearly-reviews-v1';
 let reviewRating=0, reviewPhoto='';
 const reviewLabels=['','Poor','Fair','Good','Very Good','Excellent'];
 function getReviews(){try{const x=JSON.parse(localStorage.getItem(REVIEWS_KEY)||'[]');return Array.isArray(x)?x:[]}catch{return []}}
@@ -6,7 +6,7 @@ function saveReviews(x){localStorage.setItem(REVIEWS_KEY,JSON.stringify(x))}
 function reviewOrders(){
   if(typeof window.bearlyGetOrders==='function') return window.bearlyGetOrders();
   try {
-    const saved=JSON.parse(localStorage.getItem('bearly-orders-v1')||'null');
+    const saved=JSON.parse(localStorage.getItem(window.bearlyStorageKey?.('preview-orders')||'bearly-orders-v1')||'null');
     if(Array.isArray(saved)&&saved.length) return saved;
   } catch {}
   return Array.isArray(window.bearlyDemoOrders)?window.bearlyDemoOrders:[];

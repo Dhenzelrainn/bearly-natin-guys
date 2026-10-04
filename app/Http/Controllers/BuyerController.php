@@ -2,13 +2,20 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Address;
+use App\Models\Cart;
 use App\Models\CartItem;
 use App\Models\Product;
+use App\Models\ProductVariant;
 use App\Models\Wishlist;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class BuyerController extends Controller
@@ -16,9 +23,272 @@ class BuyerController extends Controller
     private function hasBuyerTables(): bool
     {
         return Schema::hasTable('products')
-            && Schema::hasTable('shops')
+            && Schema::hasTable('stores')
+            && Schema::hasTable('product_variants')
+            && Schema::hasTable('carts')
             && Schema::hasTable('cart_items')
-            && Schema::hasTable('wishlist');
+            && Schema::hasTable('wishlists');
+    }
+
+    public function profile(): View
+    {
+        return view('buyer.profile');
+    }
+
+    public function updateProfile(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'full_name' => ['required', 'string', 'max:160'],
+            'phone' => ['nullable', 'string', 'max:30'],
+            'gender' => ['nullable', 'string', 'in:Male,Female,Other,male,female,prefer_not_to_say'],
+            'birthday' => ['nullable', 'date', 'before:today'],
+            'photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+            'remove_photo' => ['nullable', 'boolean'],
+        ]);
+
+        $user = $request->user();
+        $parts = preg_split('/\s+/', trim($validated['full_name'])) ?: [];
+        $firstName = trim((string) array_shift($parts));
+        $lastName = trim(implode(' ', $parts));
+
+        if ($lastName === '') {
+            $lastName = (string) ($user->last_name ?: $firstName);
+        }
+
+        $gender = match (strtolower((string) ($validated['gender'] ?? ''))) {
+            'male' => 'male',
+            'female' => 'female',
+            'other', 'prefer_not_to_say' => 'prefer_not_to_say',
+            default => null,
+        };
+
+        $phone = $this->normalizePhone($validated['phone'] ?? null);
+
+        $oldPhoto = $user->profile_photo_path;
+
+        if ($request->hasFile('photo') && ! $request->boolean('remove_photo')) {
+            $newPhoto = $request->file('photo')->store('profile-photos', 'public');
+        } else {
+            $newPhoto = $oldPhoto;
+        }
+
+        if ($request->boolean('remove_photo')) {
+            $newPhoto = null;
+        }
+
+        $user->forceFill([
+            'name' => trim($firstName.' '.$lastName),
+            'first_name' => $firstName,
+            'last_name' => $lastName,
+            'sex' => $gender,
+            'birthday' => $validated['birthday'] ?? null,
+            'birth_date' => $validated['birthday'] ?? null,
+            'phone' => $phone !== '' ? $phone : null,
+            'contact_number' => $phone !== '' ? $phone : null,
+            'profile_photo_path' => $newPhoto,
+        ])->save();
+
+        if ($oldPhoto && $oldPhoto !== $newPhoto) {
+            Storage::disk('public')->delete($oldPhoto);
+        }
+
+        return response()->json([
+            'data' => [
+                'username' => $this->profileUsername($user),
+                'fullName' => $user->name,
+                'email' => $user->email,
+                'phone' => $user->phone ?: $user->contact_number,
+                'gender' => $user->sex,
+                'birthday' => optional($user->birthday)->format('Y-m-d'),
+                'photo' => $user->profile_photo_path
+                    ? Storage::disk('public')->url($user->profile_photo_path)
+                    : '',
+            ],
+            'message' => 'Profile updated successfully.',
+        ]);
+    }
+
+    private function profileUsername($user): string
+    {
+        return str_contains((string) $user->email, '@')
+            ? (string) strstr((string) $user->email, '@', true)
+            : strtolower(preg_replace('/\s+/', '', (string) $user->name));
+    }
+
+    public function addresses(): View
+    {
+        return view('buyer.addresses');
+    }
+
+    public function addressData(Request $request): JsonResponse
+    {
+        return response()->json([
+            'data' => $request->user()->addresses()
+                ->orderByDesc('is_default_shipping')
+                ->latest('id')
+                ->get()
+                ->map(fn (Address $address) => $this->addressPayload($address))
+                ->values(),
+            'message' => 'Addresses retrieved successfully.',
+        ]);
+    }
+
+    public function storeAddress(Request $request): JsonResponse
+    {
+        $data = $this->validateAddress($request);
+
+        $address = DB::transaction(function () use ($request, $data) {
+            $user = $request->user();
+            $phone = $this->normalizePhone($data['phone']);
+            $makeDefault = (bool) $data['is_default'] || ! $user->addresses()->exists();
+
+            if ($makeDefault) {
+                $user->addresses()->update(['is_default_shipping' => false]);
+            }
+
+            return $user->addresses()->create([
+                'label' => $data['label'],
+                'recipient_name' => $data['name'],
+                'phone' => $phone,
+                'house_number' => null,
+                'street' => $data['street'],
+                'barangay' => $data['barangay'],
+                'city_municipality' => $data['city'],
+                'province' => $data['province'],
+                'postal_code' => $data['postal'],
+                'psgc_city_code' => $data['city_code'] ?? null,
+                'is_default_shipping' => $makeDefault,
+            ]);
+        });
+
+        return response()->json([
+            'data' => $this->addressPayload($address),
+            'message' => 'Address added successfully.',
+        ], 201);
+    }
+
+    public function updateAddress(Request $request, Address $address): JsonResponse
+    {
+        abort_unless((int) $address->user_id === (int) $request->user()->id, 404);
+        $data = $this->validateAddress($request);
+
+        $address = DB::transaction(function () use ($request, $address, $data) {
+            $user = $request->user();
+            $makeDefault = (bool) $data['is_default']
+                || $address->is_default_shipping
+                || ! $user->addresses()->where('is_default_shipping', true)->exists();
+
+            if ($makeDefault) {
+                $user->addresses()
+                    ->where('id', '!=', $address->id)
+                    ->update(['is_default_shipping' => false]);
+            }
+
+            $phone = $this->normalizePhone($data['phone']);
+
+            $address->update([
+                'label' => $data['label'],
+                'recipient_name' => $data['name'],
+                'phone' => $phone,
+                'street' => $data['street'],
+                'barangay' => $data['barangay'],
+                'city_municipality' => $data['city'],
+                'province' => $data['province'],
+                'postal_code' => $data['postal'],
+                'psgc_city_code' => $data['city_code'] ?? null,
+                'is_default_shipping' => $makeDefault,
+            ]);
+
+            return $address->fresh();
+        });
+
+        return response()->json([
+            'data' => $this->addressPayload($address),
+            'message' => 'Address updated successfully.',
+        ]);
+    }
+
+    public function deleteAddress(Request $request, Address $address): JsonResponse
+    {
+        abort_unless((int) $address->user_id === (int) $request->user()->id, 404);
+
+        DB::transaction(function () use ($request, $address) {
+            $wasDefault = (bool) $address->is_default_shipping;
+            $address->delete();
+
+            if ($wasDefault) {
+                $request->user()->addresses()
+                    ->orderBy('id')
+                    ->first()
+                    ?->update(['is_default_shipping' => true]);
+            }
+        });
+
+        return response()->json([
+            'data' => null,
+            'message' => 'Address deleted successfully.',
+        ]);
+    }
+
+    public function setDefaultAddress(Request $request, Address $address): JsonResponse
+    {
+        abort_unless((int) $address->user_id === (int) $request->user()->id, 404);
+
+        DB::transaction(function () use ($request, $address) {
+            $request->user()->addresses()->update(['is_default_shipping' => false]);
+            $address->update(['is_default_shipping' => true]);
+        });
+
+        return response()->json([
+            'data' => $this->addressPayload($address->fresh()),
+            'message' => 'Default address updated successfully.',
+        ]);
+    }
+
+    private function validateAddress(Request $request): array
+    {
+        return $request->validate([
+            'name' => ['required', 'string', 'max:160'],
+            'phone' => ['required', 'string', 'max:30', 'regex:/^\+?[0-9\s\-()]{7,30}$/'],
+            'province' => ['required', 'string', 'max:120'],
+            'city' => ['required', 'string', 'max:120'],
+            'barangay' => ['required', 'string', 'max:120'],
+            'postal' => ['required', 'digits:4'],
+            'street' => ['required', 'string', 'max:180'],
+            'label' => ['required', 'string', 'in:Home,Work'],
+            'is_default' => ['nullable', 'boolean'],
+            'city_code' => ['nullable', 'regex:/^[0-9]{6,10}$/D'],
+        ]);
+    }
+
+    private function normalizePhone(?string $phone): ?string
+    {
+        $phone = trim((string) $phone);
+
+        if ($phone === '') {
+            return null;
+        }
+
+        $phone = preg_replace('/[^0-9+]/', '', $phone) ?: '';
+
+        return app(\App\Services\InternationalPhone::class)
+            ->normalize($phone, 'PH');
+    }
+
+    private function addressPayload(Address $address): array
+    {
+        return [
+            'id' => $address->id,
+            'label' => $address->label,
+            'name' => $address->recipient_name,
+            'phone' => $address->phone,
+            'province' => $address->province,
+            'city' => $address->city_municipality,
+            'barangay' => $address->barangay,
+            'postal' => $address->postal_code,
+            'street' => $address->street,
+            'isDefault' => (bool) $address->is_default_shipping,
+        ];
     }
 
     public function home(Request $request): View|RedirectResponse
@@ -289,7 +559,7 @@ class BuyerController extends Controller
             'pet-supplies' => 'buyer.Category.Pet-Supplies.pet-supplies',
             'sports-and-outdoors' => 'buyer.Category.Sports&Outdoors.sports-outdoors',
             'jewelry-and-watches' => 'buyer.Category.Jewelry&Watches.jewelry-watches',
-            'kids-and-baby' => 'buyer.Category.Kids&Baby.components.kids-baby',
+            'kids-and-baby' => 'buyer.Category.Kids&Baby.kids-baby',
             'home-and-garden' => 'buyer.Category.Home&Garden.home-garden',
             'health-and-beauty' => 'buyer.Category.Health&Beauty.health-beauty',
             'food-and-gourmet' => 'buyer.Category.Foods&Gourmet.foods-gourmet',
@@ -306,33 +576,41 @@ class BuyerController extends Controller
             return view('buyer.Category.MenApparel.mens-apparel');
         }
 
-        $query = Product::with('shop');
+        $query = Product::query()
+            ->with(['store', 'variants' => fn ($variants) => $variants->where('is_active', true)])
+            ->withMin('variants', 'price_minor')
+            ->where('product_status', 'active')
+            ->where('compliance_status', 'clear')
+            ->whereHas('store', fn ($stores) => $stores->where('publication_status', 'published'));
 
         if ($request->category && $request->category !== 'All') {
-            $query->where('category', $request->category);
+            $query->whereHas('category', function ($categories) use ($request) {
+                $categories->where('name', $request->category)
+                    ->orWhere('slug', Str::slug($request->category));
+            });
         }
 
         if ($request->search) {
-            $query->where('name', 'like', '%' . $request->search . '%')
-                ->orWhere('description', 'like', '%' . $request->search . '%');
+            $search = trim((string) $request->search);
+            $query->where(function ($products) use ($search) {
+                $products->where('name', 'like', "%{$search}%")
+                    ->orWhere('description', 'like', "%{$search}%");
+            });
         }
 
         $sort = $request->sort ?? 'featured';
         switch ($sort) {
             case 'price_low':
-                $query->orderBy('price', 'asc');
+                $query->orderBy('variants_min_price_minor', 'asc');
                 break;
             case 'price_high':
-                $query->orderBy('price', 'desc');
+                $query->orderBy('variants_min_price_minor', 'desc');
                 break;
             case 'newest':
                 $query->orderByDesc('created_at');
                 break;
-            case 'popular':
-                $query->orderByDesc('sold_count');
-                break;
             default:
-                $query->where('is_featured', true)->orderByDesc('sold_count');
+                $query->orderByDesc('published_at')->orderByDesc('id');
         }
 
         $products = $query->paginate(12);
@@ -353,13 +631,21 @@ class BuyerController extends Controller
 
     public function showProduct(Product $product): View
     {
-        if (! $this->hasBuyerTables()) {
+        $product->load('store');
+
+        if (! $this->hasBuyerTables() ||
+            $product->product_status !== 'active' ||
+            $product->compliance_status !== 'clear' ||
+            $product->store?->publication_status !== 'published') {
             abort(404);
         }
 
-        $product->load('shop', 'orderItems');
+        $product->load(['variants', 'images']);
 
-        $relatedProducts = Product::where('category', $product->category)
+        $relatedProducts = Product::where('category_id', $product->category_id)
+            ->where('product_status', 'active')
+            ->where('compliance_status', 'clear')
+            ->whereHas('store', fn ($stores) => $stores->where('publication_status', 'published'))
             ->where('id', '!=', $product->id)
             ->limit(4)
             ->get();
@@ -367,115 +653,313 @@ class BuyerController extends Controller
         return view('products.show', compact('product', 'relatedProducts'));
     }
 
-    public function cart(): View|RedirectResponse
+    public function cart(Request $request): View
     {
-        return redirect()->route('home', ['cart' => 'open']);
+        $cart = $this->currentCart($request->user(), false);
+
+        return view('buyer.cart', [
+            'cartItems' => $cart ? $this->cartPayload($cart) : [],
+        ]);
+    }
+
+    public function cartData(Request $request): JsonResponse
+    {
+        $cart = $this->currentCart($request->user(), false);
+
+        return response()->json([
+            'data' => [
+                'items' => $cart ? $this->cartPayload($cart) : [],
+                'cart_count' => $this->cartCount($request->user()),
+            ],
+            'message' => 'Cart retrieved successfully.',
+        ]);
     }
 
     public function addToCart(Request $request): JsonResponse
     {
-        $request->validate([
-            'product_id' => 'required|exists:products,id',
+        $data = $request->validate([
+            'product_variant_id' => ['nullable', 'integer', 'exists:product_variants,id'],
+            'product_id' => ['nullable', 'integer', 'exists:products,id'],
             'quantity' => 'required|integer|min:1',
         ]);
 
-        $product = Product::findOrFail($request->product_id);
-        $sessionId = session()->getId();
-        $existingItem = CartItem::where('session_id', $sessionId)
-            ->where('product_id', $request->product_id)
-            ->first();
-
-        if ($existingItem) {
-            $existingItem->quantity += $request->quantity;
-            $existingItem->save();
-        } else {
-            CartItem::create([
-                'session_id' => $sessionId,
-                'product_id' => $request->product_id,
-                'quantity' => $request->quantity,
-                'price' => $product->price,
+        if (empty($data['product_variant_id']) && empty($data['product_id'])) {
+            throw ValidationException::withMessages([
+                'product_variant_id' => 'Choose a product variation before adding the item to your cart.',
             ]);
         }
 
+        $item = DB::transaction(function () use ($request, $data) {
+            $variantQuery = ProductVariant::query()
+                ->with('product.store')
+                ->where('is_active', true);
+
+            if (! empty($data['product_variant_id'])) {
+                $variantQuery->whereKey($data['product_variant_id']);
+            } else {
+                $variantQuery->where('product_id', $data['product_id'])
+                    ->orderBy('position');
+            }
+
+            $variant = $variantQuery->lockForUpdate()->firstOrFail();
+            $product = $variant->product;
+
+            abort_unless(
+                $product &&
+                $product->product_status === 'active' &&
+                $product->compliance_status === 'clear' &&
+                $product->store?->publication_status === 'published',
+                404
+            );
+
+            $cart = $this->currentCart($request->user());
+            $existingItem = $cart->items()
+                ->where('product_variant_id', $variant->id)
+                ->lockForUpdate()
+                ->first();
+            $quantity = (int) ($existingItem?->quantity ?? 0) + (int) $data['quantity'];
+
+            if ($quantity > $variant->available_stock) {
+                throw ValidationException::withMessages([
+                    'quantity' => "Only {$variant->available_stock} item(s) are currently available.",
+                ]);
+            }
+
+            if ($existingItem) {
+                $existingItem->update(['quantity' => $quantity]);
+
+                return $existingItem->fresh('variant.product.store');
+            }
+
+            return $cart->items()->create([
+                'product_variant_id' => $variant->id,
+                'quantity' => (int) $data['quantity'],
+                'selected' => true,
+            ])->load('variant.product.store');
+        });
+
         return response()->json([
-            'success' => true,
+            'data' => [
+                'item' => $this->cartItemPayload($item),
+                'cart_count' => $this->cartCount($request->user()),
+            ],
             'message' => 'Product added to cart',
-            'cart_count' => CartItem::where('session_id', $sessionId)->count(),
         ]);
     }
 
     public function updateCart(Request $request, CartItem $cartItem): JsonResponse
     {
-        $request->validate(['quantity' => 'required|integer|min:1']);
+        $data = $request->validate(['quantity' => 'required|integer|min:1']);
+        $cart = $this->currentCart($request->user(), false);
+        abort_unless($cart && (int) $cartItem->cart_id === (int) $cart->id, 404);
 
-        $cartItem->quantity = $request->quantity;
-        $cartItem->save();
+        $cartItem = DB::transaction(function () use ($cart, $cartItem, $data) {
+            $item = $cart->items()
+                ->with('variant.product.store')
+                ->lockForUpdate()
+                ->findOrFail($cartItem->id);
+
+            abort_unless(
+                $item->variant &&
+                $item->variant->is_active &&
+                $item->variant->product &&
+                $item->variant->product->product_status === 'active' &&
+                $item->variant->product->compliance_status === 'clear' &&
+                $item->variant->product->store?->publication_status === 'published',
+                404
+            );
+
+            if ((int) $data['quantity'] > $item->variant->available_stock) {
+                throw ValidationException::withMessages([
+                    'quantity' => "Only {$item->variant->available_stock} item(s) are currently available.",
+                ]);
+            }
+            $item->update(['quantity' => (int) $data['quantity']]);
+
+            return $item->fresh('variant.product.store');
+        });
 
         return response()->json([
-            'success' => true,
+            'data' => [
+                'item' => $this->cartItemPayload($cartItem),
+                'cart_count' => $this->cartCount($request->user()),
+            ],
             'message' => 'Cart updated',
-            'total' => $cartItem->quantity * $cartItem->price,
         ]);
     }
 
-    public function removeFromCart(CartItem $cartItem): JsonResponse
+    public function removeFromCart(Request $request, CartItem $cartItem): JsonResponse
     {
-        $cartItem->delete();
+        $cart = $this->currentCart($request->user(), false);
+        abort_unless($cart && (int) $cartItem->cart_id === (int) $cart->id, 404);
+        DB::transaction(function () use ($cart, $cartItem): void {
+            $cart->items()->whereKey($cartItem->id)->delete();
+        });
 
         return response()->json([
-            'success' => true,
+            'data' => ['cart_count' => $this->cartCount($request->user())],
             'message' => 'Item removed from cart',
         ]);
     }
 
-    public function clearCart(): JsonResponse
+    public function clearCart(Request $request): JsonResponse
     {
-        CartItem::where('session_id', session()->getId())->delete();
+        DB::transaction(function () use ($request): void {
+            $this->currentCart($request->user(), false)?->items()->delete();
+        });
 
         return response()->json([
-            'success' => true,
+            'data' => ['cart_count' => 0],
             'message' => 'Cart cleared',
         ]);
     }
 
-    public function wishlist(): View
+    public function wishlist(Request $request): View
     {
-        if (! $this->hasBuyerTables()) {
-            return view('buyer.Dashboard.home');
-        }
-
-        $sessionId = session()->getId();
-        $wishlistItems = Wishlist::where('session_id', $sessionId)
-            ->with('product')
-            ->get();
-
-        return view('buyer.Dashboard.home', compact('wishlistItems'));
+        return view('buyer.wishlist', [
+            'wishlistItems' => $this->wishlistPayload($request->user()),
+        ]);
     }
 
     public function toggleWishlist(Request $request): JsonResponse
     {
-        $request->validate(['product_id' => 'required|exists:products,id']);
+        $data = $request->validate(['product_id' => 'required|integer|exists:products,id']);
+        Product::query()
+            ->with('store')
+            ->whereKey($data['product_id'])
+            ->where('product_status', 'active')
+            ->where('compliance_status', 'clear')
+            ->whereHas('store', fn ($stores) => $stores->where('publication_status', 'published'))
+            ->firstOrFail();
 
-        $sessionId = session()->getId();
-        $wishlistItem = Wishlist::where('session_id', $sessionId)
-            ->where('product_id', $request->product_id)
-            ->first();
+        $isWishlisted = DB::transaction(function () use ($request, $data): bool {
+            $wishlistItem = Wishlist::where('user_id', $request->user()->id)
+                ->where('product_id', $data['product_id'])
+                ->lockForUpdate()
+                ->first();
 
-        if ($wishlistItem) {
-            $wishlistItem->delete();
-            $isWishlisted = false;
-        } else {
+            if ($wishlistItem) {
+                $wishlistItem->delete();
+
+                return false;
+            }
+
             Wishlist::create([
-                'session_id' => $sessionId,
-                'product_id' => $request->product_id,
+                'user_id' => $request->user()->id,
+                'product_id' => $data['product_id'],
             ]);
-            $isWishlisted = true;
-        }
+
+            return true;
+        });
 
         return response()->json([
-            'success' => true,
-            'is_wishlisted' => $isWishlisted,
-            'wishlist_count' => Wishlist::where('session_id', $sessionId)->count(),
+            'data' => [
+                'is_wishlisted' => $isWishlisted,
+                'wishlist_count' => Wishlist::where('user_id', $request->user()->id)->count(),
+            ],
+            'message' => $isWishlisted ? 'Product saved to wishlist.' : 'Product removed from wishlist.',
         ]);
+    }
+
+    private function currentCart($user, bool $create = true): ?Cart
+    {
+        $query = Cart::query()
+            ->where('user_id', $user->id)
+            ->where('status', 'active');
+
+        if (! $create) {
+            return $query->latest('id')->first();
+        }
+
+        return $query->first() ?? Cart::firstOrCreate([
+            'user_id' => $user->id,
+            'status' => 'active',
+        ]);
+    }
+
+    private function cartCount($user): int
+    {
+        $cart = $this->currentCart($user, false);
+
+        return $cart
+            ? (int) $cart->items()->sum('quantity')
+            : 0;
+    }
+
+    private function cartPayload(Cart $cart): array
+    {
+        return $cart->items()
+            ->with(['variant.product.store', 'variant.product.images'])
+            ->orderBy('id')
+            ->get()
+            ->map(fn (CartItem $item) => $this->cartItemPayload($item))
+            ->values()
+            ->all();
+    }
+
+    private function cartItemPayload(CartItem $item): array
+    {
+        $variant = $item->variant;
+        $product = $variant?->product;
+        $image = $product?->images?->firstWhere('is_primary', true)
+            ?: $product?->images?->first();
+        $imagePath = (string) ($image?->path ?? '');
+
+        return [
+            'id' => $item->id,
+            'product_id' => $product?->id,
+            'product_variant_id' => $variant?->id,
+            'name' => $product?->name ?? 'Product',
+            'variant_name' => $variant?->name ?? '',
+            'options' => $variant?->options ?? [],
+            'price_minor' => (int) ($variant?->price_minor ?? 0),
+            'quantity' => (int) $item->quantity,
+            'selected' => (bool) $item->selected,
+            'image' => $imagePath === ''
+                ? ''
+                : (Str::startsWith($imagePath, ['http://', 'https://', '/'])
+                    ? $imagePath
+                    : Storage::disk('public')->url($imagePath)),
+            'seller_name' => $product?->store?->name ?? 'Bearly seller',
+        ];
+    }
+
+    private function wishlistPayload($user): array
+    {
+        return Wishlist::query()
+            ->where('user_id', $user->id)
+            ->whereHas('product', function ($products) {
+                $products
+                    ->where('product_status', 'active')
+                    ->where('compliance_status', 'clear')
+                    ->whereHas('store', fn ($stores) => $stores->where('publication_status', 'published'));
+            })
+            ->with(['product.store', 'product.category', 'product.images', 'product.variants' => fn ($variants) => $variants->where('is_active', true)->orderBy('position')])
+            ->latest('id')
+            ->get()
+            ->map(function (Wishlist $item) {
+                $product = $item->product;
+                $image = $product?->images?->firstWhere('is_primary', true)
+                    ?: $product?->images?->first();
+                $variant = $product?->variants?->first();
+                $imagePath = (string) ($image?->path ?? '');
+
+                return [
+                    'id' => $item->id,
+                    'product_id' => $product?->id,
+                    'product_variant_id' => $variant?->id,
+                    'name' => $product?->name ?? 'Product',
+                    'price_minor' => (int) ($variant?->price_minor ?? 0),
+                    'category' => $product?->category?->name ?? 'Product',
+                    'image' => $imagePath === ''
+                        ? ''
+                        : (Str::startsWith($imagePath, ['http://', 'https://', '/'])
+                            ? $imagePath
+                            : Storage::disk('public')->url($imagePath)),
+                    'seller_name' => $product?->store?->name ?? 'Bearly seller',
+                ];
+            })
+            ->values()
+            ->all();
     }
 }

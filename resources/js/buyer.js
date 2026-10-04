@@ -1,5 +1,10 @@
 /* BEARLY shared buyer JavaScript: homepage + legacy page + category V2. */
-/* Frontend-only catalog preview. No real checkout/account mutations yet. */
+/* Frontend catalog preview. Preview state is buyer-scoped and never treated as live commerce data. */
+
+const buyerStorageKey = key => window.bearlyStorageKey?.(key) || `bearly-${key}-v1`;
+const PREVIEW_CART_KEY = buyerStorageKey('preview-cart');
+const PREVIEW_WISHLIST_KEY = buyerStorageKey('preview-wishlist');
+const SEARCH_HISTORY_KEY = buyerStorageKey('search-history');
 
 export function selectProducts(products, { category = '', search = '', sort = 'featured' } = {}) {
     const normalizedCategory = normalizeCategorySlug(category);
@@ -68,323 +73,6 @@ function initialize() {
 
     const { categories, products } = JSON.parse(dataElement.textContent);
     const $ = id => document.getElementById(id);
-
-    const chatDrawer = $('chat-drawer');
-    const cartDrawer = $('cart-drawer');
-    const chatMessages = chatDrawer?.querySelector('[data-chat-messages]');
-    const cartStorageKey = 'bearly-preview-cart-v1';
-    let activeConversation = 'Greenline Home';
-    let cartTrigger = null;
-    let chatTrigger = null;
-
-    const readPreviewCart = () => {
-        try {
-            const stored = JSON.parse(
-                window.localStorage.getItem(cartStorageKey) || '[]'
-            );
-
-            return Array.isArray(stored) ? stored : [];
-        } catch {
-            return [];
-        }
-    };
-
-    const writePreviewCart = cart => {
-        try {
-            window.localStorage.setItem(cartStorageKey, JSON.stringify(cart));
-        } catch {
-            // The catalog preview remains usable when storage is unavailable.
-        }
-    };
-
-    const notifyHomePreview = message => {
-        let toast = document.getElementById('home-preview-toast');
-
-        if (!toast) {
-            toast = document.createElement('div');
-            toast.id = 'home-preview-toast';
-            toast.className = 'home-preview-toast';
-            toast.setAttribute('role', 'status');
-            toast.setAttribute('aria-live', 'polite');
-            document.body.append(toast);
-        }
-
-        toast.textContent = message;
-        toast.classList.add('is-visible');
-        window.clearTimeout(toast.hideTimer);
-        toast.hideTimer = window.setTimeout(
-            () => toast.classList.remove('is-visible'),
-            2400
-        );
-    };
-
-    const renderPreviewCart = () => {
-        const content = cartDrawer?.querySelector('[data-cart-content]');
-
-        if (!content) return;
-
-        const cart = readPreviewCart()
-            .map(item => ({
-                ...item,
-                key: String(item.key ?? ''),
-                name: String(item.name ?? '').trim(),
-                price: Number(item.price) || 0,
-                quantity: Math.max(1, Number(item.quantity) || 1),
-            }))
-            .filter(item => item.key && item.name);
-
-        if (!cart.length) {
-            content.innerHTML = `
-                <div class="cart-empty">
-                    <span class="material-symbols-outlined" aria-hidden="true">shopping_cart</span>
-                    <strong>Your cart is empty</strong>
-                    <p>Add a find from any category to see it here.</p>
-                </div>
-            `;
-            return;
-        }
-
-        const total = cart.reduce(
-            (sum, item) => sum + item.price * item.quantity,
-            0
-        );
-
-        content.innerHTML = `
-            <div class="cart-items">
-                ${cart
-                    .map(
-                        item => `
-                            <article class="cart-item">
-                                <div class="cart-item-photo" aria-hidden="true"></div>
-                                <div class="cart-item-copy">
-                                    <strong>${escapeHtml(item.name)}</strong>
-                                    <small>${escapeHtml(item.seller_name || 'Bearly seller')}${item.color ? ` · ${escapeHtml(item.color)}` : ''}</small>
-                                    <div class="cart-item-row">
-                                        <span>${peso(item.price)}</span>
-                                        <div class="cart-quantity">
-                                            <button type="button" data-cart-decrease="${escapeHtml(item.key)}" aria-label="Decrease quantity">−</button>
-                                            <span>${item.quantity}</span>
-                                            <button type="button" data-cart-increase="${escapeHtml(item.key)}" aria-label="Increase quantity">+</button>
-                                        </div>
-                                    </div>
-                                </div>
-                                <button class="cart-remove" type="button" data-cart-remove="${escapeHtml(item.key)}" aria-label="Remove ${escapeHtml(item.name)}">
-                                    <span class="material-symbols-outlined" aria-hidden="true">delete</span>
-                                </button>
-                            </article>
-                        `
-                    )
-                    .join('')}
-            </div>
-            <div class="cart-summary">
-                <div><span>Subtotal</span><strong>${peso(total)}</strong></div>
-                <button class="button gold" type="button" data-cart-checkout>Proceed to checkout</button>
-                <button class="cart-clear" type="button" data-cart-clear>Clear cart</button>
-                <p>Preview cart · Checkout will be connected during backend integration.</p>
-            </div>
-        `;
-    };
-
-    const chatStorageKey = conversation =>
-        `bearly-demo-chat-${conversation.toLowerCase().replaceAll(' ', '-')}`;
-
-    const readChatMessages = conversation => {
-        try {
-            const stored = JSON.parse(
-                window.localStorage.getItem(chatStorageKey(conversation)) || '[]'
-            );
-
-            return Array.isArray(stored)
-                ? stored.filter(
-                    message =>
-                        message &&
-                        typeof message.text === 'string' &&
-                        message.text.trim()
-                )
-                : [];
-        } catch {
-            return [];
-        }
-    };
-
-    const defaultSellerMessage =
-        chatMessages?.querySelector('.chat-bubble.seller')?.textContent?.trim() ||
-        'Your desk lamp has been handed to the courier.';
-    const defaultBuyerMessage =
-        chatMessages?.querySelector('.chat-bubble.buyer')?.textContent?.trim() ||
-        'Great, thank you for the update!';
-
-    const conversations = {
-        'Greenline Home': {
-            initials: 'GH',
-            messages: [
-                ['seller', defaultSellerMessage],
-                ['buyer', defaultBuyerMessage],
-            ],
-        },
-        'Sundays Market': {
-            initials: 'SM',
-            messages: [['seller', 'Thanks for your order!']],
-        },
-    };
-
-    const appendChatMessage = (sender, text, time = '') => {
-        if (!chatMessages) return;
-
-        const bubble = document.createElement('div');
-        bubble.className = `chat-bubble ${sender}`;
-        bubble.textContent = text;
-
-        if (time) bubble.title = time;
-
-        chatMessages.append(bubble);
-    };
-
-    const renderChatConversation = conversation => {
-        const details = conversations[conversation];
-
-        if (!details || !chatDrawer) return;
-
-        activeConversation = conversation;
-
-        document.querySelectorAll('[data-chat-conversation]').forEach(button => {
-            button.classList.toggle(
-                'is-active',
-                button.dataset.chatConversation === conversation
-            );
-        });
-
-        const heading = chatDrawer.querySelector('.chat-thread-heading');
-        heading?.querySelector('.chat-store-avatar')?.replaceChildren(
-            document.createTextNode(details.initials)
-        );
-        heading?.querySelector('strong')?.replaceChildren(
-            document.createTextNode(conversation)
-        );
-
-        if (!chatMessages) return;
-
-        chatMessages.replaceChildren();
-
-        const date = document.createElement('p');
-        date.className = 'chat-date';
-        date.textContent = 'Today';
-        chatMessages.append(date);
-
-        details.messages.forEach(([sender, text]) =>
-            appendChatMessage(sender, text)
-        );
-
-        readChatMessages(conversation).forEach(message =>
-            appendChatMessage('buyer', message.text, message.time)
-        );
-
-        chatMessages.scrollTop = chatMessages.scrollHeight;
-    };
-
-    const setCartOpen = open => {
-        if (!cartDrawer) return;
-
-        if (open && document.activeElement !== document.body) {
-            cartTrigger = document.activeElement;
-        }
-
-        cartDrawer.classList.toggle('is-open', open);
-        cartDrawer.setAttribute('aria-hidden', String(!open));
-        $('cart-drawer-backdrop').hidden = !open;
-        document.body.classList.toggle('cart-open', open);
-        document.querySelectorAll('a[href$="/cart"]').forEach(link => {
-            link.setAttribute('aria-expanded', String(open));
-        });
-
-        if (open) {
-            renderPreviewCart();
-            cartDrawer.querySelector('[data-cart-close]')?.focus();
-        } else if (cartTrigger?.isConnected) {
-            cartTrigger.focus();
-            cartTrigger = null;
-        }
-    };
-
-    const setChatOpen = open => {
-        if (!chatDrawer) return;
-
-        if (open && document.activeElement !== document.body) {
-            chatTrigger = document.activeElement;
-        }
-
-        chatDrawer.classList.toggle('is-open', open);
-        chatDrawer.setAttribute('aria-hidden', String(!open));
-        $('chat-drawer-backdrop').hidden = !open;
-        document.body.classList.toggle('chat-open', open);
-        document.querySelectorAll('[data-info="chat"]').forEach(button =>
-            button.setAttribute('aria-expanded', String(open))
-        );
-
-        if (open) {
-            renderChatConversation(activeConversation);
-            $('chat-message')?.focus();
-        } else if (chatTrigger?.isConnected) {
-            chatTrigger.focus();
-            chatTrigger = null;
-        }
-    };
-
-    renderChatConversation(activeConversation);
-
-    chatDrawer?.querySelector('[data-chat-form]')?.addEventListener(
-        'submit',
-        event => {
-            event.preventDefault();
-
-            const input = event.currentTarget.querySelector('input');
-            const message = input.value.trim();
-
-            if (!message) return;
-
-            const sentMessage = {
-                text: message,
-                time: new Date().toLocaleTimeString('en-PH', {
-                    hour: 'numeric',
-                    minute: '2-digit',
-                }),
-            };
-            const savedMessages = readChatMessages(activeConversation);
-            savedMessages.push(sentMessage);
-
-            try {
-                window.localStorage.setItem(
-                    chatStorageKey(activeConversation),
-                    JSON.stringify(savedMessages)
-                );
-            } catch {
-                // The chat preview remains usable when storage is unavailable.
-            }
-
-            appendChatMessage('buyer', sentMessage.text, sentMessage.time);
-            input.value = '';
-            if (chatMessages) {
-                chatMessages.scrollTop = chatMessages.scrollHeight;
-            }
-        }
-    );
-
-    if (new URLSearchParams(location.search).get('cart') === 'open') {
-        setCartOpen(true);
-    }
-
-    document.addEventListener('keydown', event => {
-        if (event.key !== 'Escape') return;
-
-        if (chatDrawer?.classList.contains('is-open')) {
-            setChatOpen(false);
-            return;
-        }
-
-        if (cartDrawer?.classList.contains('is-open')) {
-            setCartOpen(false);
-        }
-    });
 
     const state = {
         category: '',
@@ -1834,7 +1522,7 @@ function initialize() {
                     }
 
                     const cartKey =
-                        'bearly-preview-cart-v1';
+                        PREVIEW_CART_KEY;
 
                     let previewCart = [];
 
@@ -2100,11 +1788,6 @@ function initialize() {
         const info = event.target.closest('[data-info]');
 
         if (info) {
-            if (info.dataset.info === 'chat') {
-                setChatOpen(true);
-                return;
-            }
-
             const copy = {
                 orders: [
                     'Your orders',
@@ -2129,75 +1812,6 @@ function initialize() {
                 $('info-copy').textContent = copy[1];
                 $('info-dialog').showModal();
             }
-        }
-
-        const cartLink = event.target.closest('a[href$="/cart"]');
-
-        if (cartLink) {
-            event.preventDefault();
-            setCartOpen(true);
-            return;
-        }
-
-        const cartClose = event.target.closest('[data-cart-close]');
-
-        if (cartClose) {
-            setCartOpen(false);
-        }
-
-        const cartAction = event.target.closest(
-            '[data-cart-increase], [data-cart-decrease], [data-cart-remove]'
-        );
-
-        if (cartAction) {
-            const key =
-                cartAction.dataset.cartIncrease ||
-                cartAction.dataset.cartDecrease ||
-                cartAction.dataset.cartRemove;
-            const cart = readPreviewCart();
-            const item = cart.find(entry => String(entry.key) === String(key));
-
-            if (item) {
-                const quantity = Math.max(1, Number(item.quantity) || 1);
-
-                if (cartAction.dataset.cartIncrease) {
-                    item.quantity = quantity + 1;
-                }
-
-                if (cartAction.dataset.cartDecrease) {
-                    item.quantity = Math.max(1, quantity - 1);
-                }
-
-                if (cartAction.dataset.cartRemove) {
-                    cart.splice(cart.indexOf(item), 1);
-                }
-
-                writePreviewCart(cart);
-                renderPreviewCart();
-            }
-        }
-
-        if (event.target.closest('[data-cart-clear]')) {
-            writePreviewCart([]);
-            renderPreviewCart();
-        }
-
-        if (event.target.closest('[data-cart-checkout]')) {
-            notifyHomePreview(
-                'Checkout preview only. Real checkout will be connected during backend integration.'
-            );
-        }
-
-        const chatClose = event.target.closest('[data-chat-close]');
-
-        if (chatClose) {
-            setChatOpen(false);
-        }
-
-        const chatConversation = event.target.closest('[data-chat-conversation]');
-
-        if (chatConversation) {
-            renderChatConversation(chatConversation.dataset.chatConversation);
         }
 
         const close = event.target.closest('[data-close]');
@@ -3045,7 +2659,7 @@ function init() {
     try {
         const stored = JSON.parse(
             localStorage.getItem(
-                'bearly-category-saved-v2'
+                PREVIEW_WISHLIST_KEY
             ) || '[]'
         );
 
@@ -4892,7 +4506,7 @@ function init() {
                     }
 
                     const cartKey =
-                        'bearly-preview-cart-v1';
+                        PREVIEW_CART_KEY;
 
                     let previewCart = [];
 
@@ -5185,7 +4799,7 @@ function init() {
                 try {
                     const allSaved = JSON.parse(
                         localStorage.getItem(
-                            'bearly-category-saved-v2'
+                            PREVIEW_WISHLIST_KEY
                         ) || '[]'
                     );
                     const otherCategories = Array.isArray(allSaved)
@@ -5199,7 +4813,7 @@ function init() {
                     );
 
                     localStorage.setItem(
-                        'bearly-category-saved-v2',
+                        PREVIEW_WISHLIST_KEY,
                         JSON.stringify([
                             ...otherCategories,
                             ...categoryKeys,
@@ -5361,7 +4975,7 @@ function initBearlySearchExperience() {
 
     if (!form || !input) return;
 
-    const STORAGE_KEY = 'bearly-search-history-v1';
+    const STORAGE_KEY = SEARCH_HISTORY_KEY;
     const MAX_HISTORY = 8;
     const MAX_SUGGESTIONS = 6;
 
@@ -6793,7 +6407,7 @@ function showFeaturedProductFull(product) {
                 }
 
                 const cartKey =
-                    'bearly-preview-cart-v1';
+                    PREVIEW_CART_KEY;
 
                 let previewCart = [];
 
@@ -7050,7 +6664,7 @@ window.bearlyOpenFeaturedCard = (card, kind = 'top') => {
 };
 
 function addBearlyFeaturedToCart(card, kind = 'top') {
-    const CART_KEY = 'bearly-preview-cart-v1';
+  const CART_KEY = PREVIEW_CART_KEY;
     let cart = [];
     try { const saved = JSON.parse(localStorage.getItem(CART_KEY) || '[]'); if (Array.isArray(saved)) cart = saved; } catch {}
     const key = card.dataset.key || `${kind}-${card.dataset.productId || Date.now()}`;
@@ -7078,7 +6692,7 @@ function initBearlyFlashDeals() {
     const countdowns = [...document.querySelectorAll('[data-flash-countdown]')];
     if (!products.length && !countdowns.length) return;
 
-    const CART_KEY = 'bearly-preview-cart-v1';
+    const CART_KEY = PREVIEW_CART_KEY;
     const END_KEY = 'bearly-flash-deal-end-v1';
     const cycleMs = 6 * 60 * 60 * 1000;
 
@@ -7174,8 +6788,8 @@ if (typeof document !== 'undefined') {
 function initBearlyTopProducts() {
     const cards = [...document.querySelectorAll('[data-top-product]')];
     if (!cards.length) return;
-    const CART_KEY = 'bearly-preview-cart-v1';
-    const SAVED_KEY = 'bearly-category-saved-v2';
+    const CART_KEY = PREVIEW_CART_KEY;
+    const SAVED_KEY = PREVIEW_WISHLIST_KEY;
     const toastEl = document.querySelector('[data-top-toast]');
     const toast = message => {
         if (!toastEl) return;
@@ -7275,10 +6889,11 @@ if (typeof document !== 'undefined' && !document.getElementById('home-data')) {
 
 /* Bearly global navbar state: keeps notification/cart badges in sync across buyer pages. */
 (function initBearlyGlobalNavbarState(){
-  const CART_KEY='bearly-preview-cart-v1';
-  const NOTIFICATION_KEY='bearly-notifications-v1';
+  if(window.BearlyNavbarState)return;
+  const CART_KEY=PREVIEW_CART_KEY;
+  const NOTIFICATION_KEY=window.bearlyStorageKey?.('preview-notifications')||'bearly-notifications-v1';
   function cartCount(){
-    try{const x=JSON.parse(localStorage.getItem(CART_KEY)||'[]');return Array.isArray(x)?x.reduce((n,i)=>n+Math.max(0,Number(i?.quantity||0)),0):0}catch{return 0}
+    try{const x=JSON.parse(localStorage.getItem(CART_KEY)||'[]');const preview=Array.isArray(x)?x.reduce((n,i)=>n+Math.max(0,Number(i?.quantity||0)),0):0;return preview+Number(window.bearlyBuyerProfile?.cartCount||0)}catch{return Number(window.bearlyBuyerProfile?.cartCount||0)}
   }
   function notificationCount(){
     try{
@@ -7314,6 +6929,6 @@ if (typeof document !== 'undefined' && !document.getElementById('home-data')) {
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',sync);else sync();
   window.addEventListener('storage',sync);
   window.addEventListener('focus',sync);
-  setInterval(sync,700);
+  setInterval(sync,5000);
   window.BearlyNavbarState={sync};
 })();

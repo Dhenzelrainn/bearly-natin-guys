@@ -1,16 +1,4 @@
 @php
-    $buyer = auth()->user();
-    $buyerName = trim($buyer?->name ?: trim(($buyer?->first_name ?? '') . ' ' . ($buyer?->last_name ?? '')));
-    $buyerName = $buyerName !== '' ? $buyerName : 'Buyer';
-    $buyerEmail = (string) ($buyer?->email ?? '');
-    $buyerPhone = (string) ($buyer?->phone ?: $buyer?->contact_number ?: '');
-    $buyerUsername = (string) ($buyer?->username ?? (str_contains($buyerEmail, '@') ? strstr($buyerEmail, '@', true) : strtolower(preg_replace('/\s+/', '', $buyerName))));
-    $buyerBirthday = $buyer?->birthday ?? $buyer?->birth_date;
-    $buyerBirthdayValue = $buyerBirthday?->format('Y-m-d') ?? '';
-    $buyerSex = (string) ($buyer?->sex ?? '');
-    $buyerProfilePayload = json_encode(['username' => $buyerUsername, 'fullName' => $buyerName, 'email' => $buyerEmail, 'phone' => $buyerPhone, 'gender' => $buyerSex, 'birthday' => $buyerBirthdayValue], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
-@endphp
-@php
 $categoryProductSources = [
 'pet-supplies'=>['file'=>'buyer-pet-supplies-products.json','name'=>'Pet Supplies'],
 'electronics-and-gadgets'=>['file'=>'buyer-electronics-gadgets-products.json','name'=>'Electronics and Gadgets'],
@@ -27,7 +15,7 @@ $categoryProductSources = [
 ];
 $featuredProducts=[]; foreach($categoryProductSources as $slug=>$source){$items=json_decode(file_get_contents(resource_path('data/'.$source['file'])),true,512,JSON_THROW_ON_ERROR); foreach($items as $product){$product['featured_key']=$slug.':'.$product['id'];$product['category']=$source['name'];$product['category_slug']=$slug;$featuredProducts[]=$product;}}
 @endphp
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Top Sales | Bearly</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Material+Symbols+Outlined:wght@400&display=swap" rel="stylesheet">@include('buyer.partials.account-context-script') @vite(['resources/css/buyer.css','resources/js/buyer.js']) @include('partials.session-safety')</head><body class="bh top-products-page"><header class="header">
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Top Sales | Bearly</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Material+Symbols+Outlined:wght@400&display=swap" rel="stylesheet">@vite(['resources/css/buyer.css','resources/js/buyer.js']) @include('buyer.partials.account-context-script')</head><body class="bh top-products-page"><header class="header">
     <a class="brand" href="{{ url('/home') }}" aria-label="Bearly home"><img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly" width="192" height="64"></a>
 
     <form class="search" id="search-form" role="search" action="{{ url('/home') }}" method="get">
@@ -39,10 +27,10 @@ $featuredProducts=[]; foreach($categoryProductSources as $slug=>$source){$items=
     </form>
 
     <nav class="header-actions" aria-label="Account">
-        <a href="{{ url('/profile#notifications') }}" class="notification-header-link"><span class="material-symbols-outlined" aria-hidden="true">notifications</span><span>Notifications</span><span class="notification-badge" data-notification-badge>3</span></a>
+        <a href="{{ url('/profile#notifications') }}" class="notification-header-link"><span class="material-symbols-outlined" aria-hidden="true">notifications</span><span>Notifications</span><span class="notification-badge" data-notification-badge>0</span></a>
         <a href="{{ url('/profile#tracking') }}"><span class="material-symbols-outlined" aria-hidden="true">receipt_long</span><span>Orders</span></a>
         <a href="{{ url('/chat') }}"><span class="material-symbols-outlined" aria-hidden="true">chat_bubble</span><span>Chat</span></a>
-        <a href="{{ url('/cart/preview') }}"><span class="material-symbols-outlined" aria-hidden="true">shopping_cart</span><span>Cart preview</span></a>
+        <a href="{{ url('/cart') }}"><span class="material-symbols-outlined" aria-hidden="true">shopping_cart</span><span>Cart</span></a>
         <a class="account-action" href="{{ url('/profile') }}" aria-label="Open {{ $buyerName }} profile"><span class="material-symbols-outlined" aria-hidden="true">person</span><span>{{ $buyerName }}</span></a>
     </nav>
 </header><main class="top-products-main"><a class="flash-back" href="{{ url('/home') }}"><span class="material-symbols-outlined">arrow_back</span> Back to Home</a><section class="top-products-hero top-sales-hero"><div><p class="top-products-kicker"><span class="material-symbols-outlined">trending_up</span> Bearly best sellers</p><h1>Top Sales</h1><p>Best-selling finds ranked by demo sales activity. Every item comes from Bearly's existing catalog and opens the same product preview used across the store.</p></div><div class="top-products-trophy"><span class="material-symbols-outlined">monitoring</span><strong>12</strong><small>best sellers</small></div></section><section class="top-products-toolbar"><div><h2>Sales leaderboard</h2><p>Browse products buyers are picking up most.</p></div><div class="top-filter-row" aria-label="Top sales filters"><button class="is-active" data-top-filter="All">All</button><button data-top-filter="Fashion">Fashion</button><button data-top-filter="Electronics & Gadgets">Electronics</button><button data-top-filter="Health & Beauty">Beauty</button><button data-top-filter="Home & Garden">Home</button></div></section><section class="top-products-grid" data-top-grid><article class="top-product-card" data-top-product data-key="sales-sports-and-outdoors-11" data-product-id="sports-and-outdoors:11" data-name="Resistance Band Set" data-price="499" data-image="/images/products/sports-outdoors/sports-outdoors-11-01.jpg" data-top-category="Sports & Outdoors">

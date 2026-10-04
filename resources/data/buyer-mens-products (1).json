@@ -19,7 +19,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 4.6,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+    "image": "/images/products/men/mens-01-01.jpg"
   },
   {
     "id": 2,
@@ -41,7 +42,8 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.2,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+    "image": "/images/products/men/mens-02-01.jpg"
   },
   {
     "id": 3,
@@ -63,11 +65,12 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 3.8,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+    "image": "/images/products/men/mens-03-01.jpg"
   },
   {
     "id": 4,
-    "name": "Classic Piqu\u00e9 Polo",
+    "name": "Classic Piqué Polo",
     "price": 549,
     "subcategory": "Casual Shirts & Pants",
     "photo": 3,
@@ -85,7 +88,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.9,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+    "image": "/images/products/men/mens-04-01.jpg"
   },
   {
     "id": 5,
@@ -106,7 +110,8 @@
     "free_shipping": false,
     "voucher": true,
     "rating": 0,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+    "image": "/images/products/men/mens-05-01.jpg"
   },
   {
     "id": 6,
@@ -128,7 +133,8 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.6,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+    "image": "/images/products/men/mens-06-01.jpg"
   },
   {
     "id": 7,
@@ -150,7 +156,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.2,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+    "image": "/images/products/men/mens-07-01.jpg"
   },
   {
     "id": 8,
@@ -172,7 +179,8 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 3.8,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+    "image": "/images/products/men/mens-08-01.jpg"
   },
   {
     "id": 9,
@@ -194,7 +202,8 @@
     "free_shipping": false,
     "voucher": true,
     "rating": 4.9,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+    "image": "/images/products/men/mens-09-01.jpg"
   },
   {
     "id": 10,
@@ -215,7 +224,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 0,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+    "image": "/images/products/men/mens-10-01.jpg"
   },
   {
     "id": 11,
@@ -237,7 +247,8 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.6,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+    "image": "/images/products/men/mens-11-01.jpg"
   },
   {
     "id": 12,
@@ -259,7 +270,8 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.2,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+    "image": "/images/products/men/mens-12-01.jpg"
   },
   {
     "id": 13,
@@ -281,7 +293,8 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 3.8,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+    "image": "/images/products/men/mens-13-01.jpg"
   },
   {
     "id": 14,
@@ -296,7 +309,8 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.9,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+    "image": "/images/products/men/mens-14-01.jpg"
   },
   {
     "id": 15,
@@ -311,7 +325,8 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 0,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+    "image": "/images/products/men/mens-15-01.jpg"
   },
   {
     "id": 16,
@@ -333,7 +348,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.6,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+    "image": "/images/products/men/mens-16-01.jpg"
   },
   {
     "id": 17,
@@ -355,7 +371,8 @@
     "free_shipping": false,
     "voucher": true,
     "rating": 4.2,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+    "image": "/images/products/men/mens-17-01.jpg"
   },
   {
     "id": 18,
@@ -377,7 +394,8 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 3.8,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+    "image": "/images/products/men/mens-18-01.jpg"
   },
   {
     "id": 19,
@@ -392,7 +410,8 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.9,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+    "image": "/images/products/men/mens-19-01.jpg"
   },
   {
     "id": 20,
@@ -407,11 +426,12 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 0,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+    "image": "/images/products/men/mens-20-01.jpg"
   },
   {
     "id": 21,
-    "name": "Everyday Cotton Tee \u2014 Everyday Collection",
+    "name": "Everyday Cotton Tee — Everyday Collection",
     "price": 399,
     "subcategory": "Casual Shirts & Pants",
     "photo": 0,
@@ -429,11 +449,12 @@
     "free_shipping": false,
     "voucher": true,
     "rating": 4.6,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+    "image": "/images/products/men/mens-21-01.jpg"
   },
   {
     "id": 22,
-    "name": "Oxford Long-Sleeve Shirt \u2014 Everyday Collection",
+    "name": "Oxford Long-Sleeve Shirt — Everyday Collection",
     "price": 849,
     "subcategory": "Casual Shirts & Pants",
     "photo": 1,
@@ -451,11 +472,12 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 4.2,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+    "image": "/images/products/men/mens-22-01.jpg"
   },
   {
     "id": 23,
-    "name": "Relaxed Denim Jacket \u2014 Everyday Collection",
+    "name": "Relaxed Denim Jacket — Everyday Collection",
     "price": 1340,
     "subcategory": "Outerwear & Jackets",
     "photo": 2,
@@ -473,11 +495,12 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 3.8,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+    "image": "/images/products/men/mens-23-01.jpg"
   },
   {
     "id": 24,
-    "name": "Classic Piqu\u00e9 Polo \u2014 Everyday Collection",
+    "name": "Classic Piqué Polo — Everyday Collection",
     "price": 599,
     "subcategory": "Casual Shirts & Pants",
     "photo": 3,
@@ -495,11 +518,12 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.9,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+    "image": "/images/products/men/mens-24-01.jpg"
   },
   {
     "id": 25,
-    "name": "Casual Canvas Sneakers \u2014 Everyday Collection",
+    "name": "Casual Canvas Sneakers — Everyday Collection",
     "price": 949,
     "subcategory": "Shoes & Accessories",
     "photo": 4,
@@ -516,11 +540,12 @@
     "free_shipping": true,
     "voucher": true,
     "rating": 0,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+    "image": "/images/products/men/mens-25-01.jpg"
   },
   {
     "id": 26,
-    "name": "Charcoal Blazer \u2014 Everyday Collection",
+    "name": "Charcoal Blazer — Everyday Collection",
     "price": 1949,
     "subcategory": "Suits & Blazers",
     "photo": 5,
@@ -538,11 +563,12 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.6,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+    "image": "/images/products/men/mens-26-01.jpg"
   },
   {
     "id": 27,
-    "name": "Everyday Chino Pants \u2014 Everyday Collection",
+    "name": "Everyday Chino Pants — Everyday Collection",
     "price": 949,
     "subcategory": "Casual Shirts & Pants",
     "photo": 6,
@@ -560,11 +586,12 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 4.2,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+    "image": "/images/products/men/mens-27-01.jpg"
   },
   {
     "id": 28,
-    "name": "Essential Pullover Hoodie \u2014 Everyday Collection",
+    "name": "Essential Pullover Hoodie — Everyday Collection",
     "price": 949,
     "subcategory": "Outerwear & Jackets",
     "photo": 7,
@@ -582,11 +609,12 @@
     "free_shipping": true,
     "voucher": false,
     "rating": 3.8,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+    "image": "/images/products/men/mens-28-01.jpg"
   },
   {
     "id": 29,
-    "name": "Everyday Chino Shorts \u2014 Everyday Collection",
+    "name": "Everyday Chino Shorts — Everyday Collection",
     "price": 649,
     "subcategory": "Casual Shirts & Pants",
     "photo": 8,
@@ -604,11 +632,12 @@
     "free_shipping": false,
     "voucher": true,
     "rating": 4.9,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+    "image": "/images/products/men/mens-29-01.jpg"
   },
   {
     "id": 30,
-    "name": "Running Shoes \u2014 Everyday Collection",
+    "name": "Running Shoes — Everyday Collection",
     "price": 1540,
     "subcategory": "Shoes & Accessories",
     "photo": 9,
@@ -625,11 +654,12 @@
     "free_shipping": false,
     "voucher": false,
     "rating": 0,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+    "image": "/images/products/men/mens-30-01.jpg"
   },
   {
     "id": 31,
-    "name": "Classic Crew Neck Tee \u2014 Everyday Collection",
+    "name": "Classic Crew Neck Tee — Everyday Collection",
     "price": 349,
     "subcategory": "Casual Shirts & Pants",
     "photo": 10,
@@ -651,7 +681,7 @@
   },
   {
     "id": 32,
-    "name": "Lightweight Windbreaker \u2014 Everyday Collection",
+    "name": "Lightweight Windbreaker — Everyday Collection",
     "price": 1149,
     "subcategory": "Outerwear & Jackets",
     "photo": 11,
@@ -673,7 +703,7 @@
   },
   {
     "id": 33,
-    "name": "Tapered Jogger Pants \u2014 Everyday Collection",
+    "name": "Tapered Jogger Pants — Everyday Collection",
     "price": 749,
     "subcategory": "Activewear & Fitness Gear",
     "photo": 12,
@@ -695,7 +725,7 @@
   },
   {
     "id": 34,
-    "name": "Everyday Baseball Cap \u2014 Everyday Collection",
+    "name": "Everyday Baseball Cap — Everyday Collection",
     "price": 349,
     "subcategory": "Shoes & Accessories",
     "photo": 13,
@@ -710,7 +740,7 @@
   },
   {
     "id": 35,
-    "name": "Leather Belt \u2014 Everyday Collection",
+    "name": "Leather Belt — Everyday Collection",
     "price": 449,
     "subcategory": "Shoes & Accessories",
     "photo": 14,
@@ -725,7 +755,7 @@
   },
   {
     "id": 36,
-    "name": "Quick-Dry Training Tee \u2014 Everyday Collection",
+    "name": "Quick-Dry Training Tee — Everyday Collection",
     "price": 499,
     "subcategory": "Activewear & Fitness Gear",
     "photo": 15,
@@ -747,7 +777,7 @@
   },
   {
     "id": 37,
-    "name": "Linen Button-Down Shirt \u2014 Everyday Collection",
+    "name": "Linen Button-Down Shirt — Everyday Collection",
     "price": 799,
     "subcategory": "Casual Shirts & Pants",
     "photo": 16,
@@ -769,7 +799,7 @@
   },
   {
     "id": 38,
-    "name": "Suit Trousers \u2014 Everyday Collection",
+    "name": "Suit Trousers — Everyday Collection",
     "price": 1049,
     "subcategory": "Suits & Blazers",
     "photo": 17,
@@ -791,7 +821,7 @@
   },
   {
     "id": 39,
-    "name": "Crossbody Bag \u2014 Everyday Collection",
+    "name": "Crossbody Bag — Everyday Collection",
     "price": 649,
     "subcategory": "Shoes & Accessories",
     "photo": 18,
@@ -806,7 +836,7 @@
   },
   {
     "id": 40,
-    "name": "Electric Grooming Trimmer \u2014 Everyday Collection",
+    "name": "Electric Grooming Trimmer — Everyday Collection",
     "price": 849,
     "subcategory": "Grooming Products",
     "photo": 19,
@@ -821,7 +851,7 @@
   },
   {
     "id": 41,
-    "name": "Everyday Cotton Tee \u2014 Weekend Collection",
+    "name": "Everyday Cotton Tee — Weekend Collection",
     "price": 449,
     "subcategory": "Casual Shirts & Pants",
     "photo": 0,
@@ -843,7 +873,7 @@
   },
   {
     "id": 42,
-    "name": "Oxford Long-Sleeve Shirt \u2014 Weekend Collection",
+    "name": "Oxford Long-Sleeve Shirt — Weekend Collection",
     "price": 899,
     "subcategory": "Casual Shirts & Pants",
     "photo": 1,
@@ -865,7 +895,7 @@
   },
   {
     "id": 43,
-    "name": "Relaxed Denim Jacket \u2014 Weekend Collection",
+    "name": "Relaxed Denim Jacket — Weekend Collection",
     "price": 1390,
     "subcategory": "Outerwear & Jackets",
     "photo": 2,
@@ -887,7 +917,7 @@
   },
   {
     "id": 44,
-    "name": "Classic Piqu\u00e9 Polo \u2014 Weekend Collection",
+    "name": "Classic Piqué Polo — Weekend Collection",
     "price": 649,
     "subcategory": "Casual Shirts & Pants",
     "photo": 3,
@@ -909,7 +939,7 @@
   },
   {
     "id": 45,
-    "name": "Casual Canvas Sneakers \u2014 Weekend Collection",
+    "name": "Casual Canvas Sneakers — Weekend Collection",
     "price": 999,
     "subcategory": "Shoes & Accessories",
     "photo": 4,
@@ -930,7 +960,7 @@
   },
   {
     "id": 46,
-    "name": "Charcoal Blazer \u2014 Weekend Collection",
+    "name": "Charcoal Blazer — Weekend Collection",
     "price": 1999,
     "subcategory": "Suits & Blazers",
     "photo": 5,
@@ -952,7 +982,7 @@
   },
   {
     "id": 47,
-    "name": "Everyday Chino Pants \u2014 Weekend Collection",
+    "name": "Everyday Chino Pants — Weekend Collection",
     "price": 999,
     "subcategory": "Casual Shirts & Pants",
     "photo": 6,
@@ -974,7 +1004,7 @@
   },
   {
     "id": 48,
-    "name": "Essential Pullover Hoodie \u2014 Weekend Collection",
+    "name": "Essential Pullover Hoodie — Weekend Collection",
     "price": 999,
     "subcategory": "Outerwear & Jackets",
     "photo": 7,

@@ -1,15 +1,3 @@
-@php
-    $buyer = auth()->user();
-    $buyerName = trim($buyer?->name ?: trim(($buyer?->first_name ?? '') . ' ' . ($buyer?->last_name ?? '')));
-    $buyerName = $buyerName !== '' ? $buyerName : 'Buyer';
-    $buyerEmail = (string) ($buyer?->email ?? '');
-    $buyerPhone = (string) ($buyer?->phone ?: $buyer?->contact_number ?: '');
-    $buyerUsername = (string) ($buyer?->username ?? (str_contains($buyerEmail, '@') ? strstr($buyerEmail, '@', true) : strtolower(preg_replace('/\s+/', '', $buyerName))));
-    $buyerBirthday = $buyer?->birthday ?? $buyer?->birth_date;
-    $buyerBirthdayValue = $buyerBirthday?->format('Y-m-d') ?? '';
-    $buyerSex = (string) ($buyer?->sex ?? '');
-    $buyerProfilePayload = json_encode(['username' => $buyerUsername, 'fullName' => $buyerName, 'email' => $buyerEmail, 'phone' => $buyerPhone, 'gender' => $buyerSex, 'birthday' => $buyerBirthdayValue], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
-@endphp
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -19,30 +7,29 @@
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Material+Symbols+Outlined:wght@400&display=swap" rel="stylesheet">
 @include('buyer.partials.account-context-script')
 @vite(['resources/css/buyer.css','resources/css/checkout.css','resources/js/checkout.js'])
-@include('partials.session-safety')
 </head>
 <body class="bh checkout-page">
 <header class="header checkout-header">
 <a class="brand" href="{{ url('/home') }}"><img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly"></a>
-<div class="checkout-brand-title"><span></span><strong>Checkout</strong></div>
+<div class="checkout-brand-title"><span></span><strong>Checkout</strong><span class="preview-badge">Preview only</span></div>
 <div class="checkout-header-spacer"></div>
 <nav class="header-actions">
-<a href="{{ url('/profile#notifications') }}" class="notification-header-link"><span class="material-symbols-outlined">notifications</span><span>Notifications</span><span class="notification-badge" data-notification-badge>3</span></a>
+<a href="{{ url('/profile#notifications') }}" class="notification-header-link"><span class="material-symbols-outlined">notifications</span><span>Notifications</span><span class="notification-badge" data-notification-badge>0</span></a>
 <a href="{{ url('/profile#tracking') }}"><span class="material-symbols-outlined">receipt_long</span><span>Orders</span></a>
 <a href="{{ url('/chat') }}"><span class="material-symbols-outlined">chat_bubble</span><span>Chat</span></a>
-<a href="{{ url('/cart/preview') }}"><span class="material-symbols-outlined">shopping_cart</span><span>Cart preview</span></a>
+<a href="{{ url('/cart') }}"><span class="material-symbols-outlined">shopping_cart</span><span>Cart</span></a>
 <a class="account-action" href="{{ url('/profile') }}"><span class="material-symbols-outlined">person</span><span>{{ $buyerName }}</span></a>
 </nav>
 </header>
 
 <main class="checkout-shell">
-<a class="checkout-back" href="{{ url('/cart/preview') }}"><span class="material-symbols-outlined">arrow_back</span> Back to Cart preview</a>
+<p class="preview-notice">Checkout is a frontend preview. Placing an order will not create an order, payment, inventory, or delivery record.</p>
+<a class="checkout-back" href="{{ url('/cart') }}"><span class="material-symbols-outlined">arrow_back</span> Back to Cart</a>
 
-<p class="buyer-preview-note">Checkout preview only — no order, payment, inventory, or transaction is created.</p>
 <section class="checkout-card address-card">
 <div class="section-title"><span class="material-symbols-outlined">location_on</span>Delivery Address</div>
 <div class="address-row">
-<div><strong id="address-name">{{ $buyerName }}</strong><span id="address-phone">{{ $buyerPhone }}</span></div>
+<div><strong id="address-name">{{ $buyerName }}</strong><span id="address-phone">{{ $buyerPhone ?: 'No phone saved' }}</span></div>
 <p id="address-text">Your delivery address will appear here.</p>
 <span class="default-tag">Default</span>
 <button id="change-address" class="link-btn" type="button">Change</button>
@@ -72,11 +59,11 @@
 <div><span>Voucher Discount</span><strong id="summary-discount">−₱0.00</strong></div>
 <div class="payment-total"><span>Total Payment</span><strong id="summary-total">₱0.00</strong></div>
 </div>
-<div class="place-row"><button id="place-order" class="place-order" type="button">Place Order Preview</button></div>
+<div class="place-row"><button id="place-order" class="place-order" type="button">Place Order</button></div>
 </section>
 </main>
 
-<div id="checkout-empty" class="checkout-modal" hidden><div class="modal-box"><span class="material-symbols-outlined">shopping_cart</span><h2>No items selected</h2><p>This is a frontend checkout preview. Go back to the preview cart to select products.</p><a href="{{ url('/cart/preview') }}">Back to Cart preview</a></div></div>
+<div id="checkout-empty" class="checkout-modal" hidden><div class="modal-box"><span class="material-symbols-outlined">shopping_cart</span><h2>No items selected</h2><p>Go back to your cart and select products to check out.</p><a href="{{ url('/cart') }}">Back to Cart</a></div></div>
 <div id="choice-modal" class="checkout-modal" hidden><div class="modal-box choice-box"><button class="modal-close" data-close type="button">×</button><h2 id="choice-title">Choose</h2><div id="choice-options"></div></div></div>
 <div id="checkout-toast" class="checkout-toast" role="status"></div>
 </body></html>

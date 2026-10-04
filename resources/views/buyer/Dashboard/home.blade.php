@@ -41,6 +41,72 @@ for ($round = 0; $round < 5; $round++) {
     }
 }
 
+$featuredProducts = [];
+$featuredProductsByKey = [];
+foreach ($categoryProductSources as $slug => $source) {
+    $allCategoryProducts = json_decode(
+        file_get_contents(resource_path('data/' . $source['file'])),
+        true,
+        512,
+        JSON_THROW_ON_ERROR
+    );
+
+    foreach ($allCategoryProducts as $product) {
+        $product['featured_key'] = $slug . ':' . $product['id'];
+        $product['category'] = $source['name'];
+        $product['category_slug'] = $slug;
+        $product['atlas'] = asset('images/' . $source['atlas']);
+        $product['atlas_columns'] = $source['atlas_columns'] ?? 5;
+        $product['atlas_rows'] = $source['atlas_rows'] ?? 6;
+        $featuredProducts[] = $product;
+        $featuredProductsByKey[$product['featured_key']] = $product;
+    }
+}
+
+$featurePhotoStyle = static function (array $product): string {
+    $columns = max(1, (int) ($product['atlas_columns'] ?? 6));
+    $rows = max(1, (int) ($product['atlas_rows'] ?? 6));
+    $photoIndex = max(0, (int) ($product['photo'] ?? 0));
+    $column = $photoIndex % $columns;
+    $row = intdiv($photoIndex, $columns);
+    $x = $columns > 1 ? ($column * 100) / ($columns - 1) : 0;
+    $y = $rows > 1 ? ($row * 100) / ($rows - 1) : 0;
+
+    return sprintf(
+        'display:block;position:static;left:auto;top:auto;width:100%%;height:100%%;padding:0;border-radius:0;background-image:url("%s");background-size:%d00%% %d00%%;background-position:%s%% %s%%;background-repeat:no-repeat;background-color:#f7f3ee;color:transparent;font-size:0;font-weight:400;',
+        $product['atlas'],
+        $columns,
+        $rows,
+        number_format($x, 4, '.', ''),
+        number_format($y, 4, '.', '')
+    );
+};
+
+$flashDeals = [
+    ['key' => 'flash-earbuds', 'product_key' => 'electronics-and-gadgets:7', 'price' => 599, 'original_price' => 799, 'discount' => '25% OFF', 'claimed' => 72],
+    ['key' => 'flash-cleanser', 'product_key' => 'health-and-beauty:1', 'price' => 349, 'original_price' => 499, 'discount' => '30% OFF', 'claimed' => 64],
+    ['key' => 'flash-tee', 'product_key' => 'men-s-apparel:1', 'price' => 329, 'original_price' => 449, 'discount' => '27% OFF', 'claimed' => 81],
+    ['key' => 'flash-watch', 'product_key' => 'jewelry-and-watches:21', 'price' => 999, 'original_price' => 1499, 'discount' => '33% OFF', 'claimed' => 58],
+];
+
+$topProducts = [
+    ['key' => 'top-electronics-and-gadgets-5', 'product_key' => 'electronics-and-gadgets:5', 'rank' => 1, 'sold' => '2.8k sold'],
+    ['key' => 'top-men-s-apparel-4', 'product_key' => 'men-s-apparel:4', 'rank' => 2, 'sold' => '2.4k sold'],
+    ['key' => 'top-health-and-beauty-5', 'product_key' => 'health-and-beauty:5', 'rank' => 3, 'sold' => '2.1k sold'],
+    ['key' => 'top-home-and-garden-1', 'product_key' => 'home-and-garden:1', 'rank' => 4, 'sold' => '1.9k sold'],
+    ['key' => 'top-women-s-apparel-6', 'product_key' => 'women-s-apparel:6', 'rank' => 5, 'sold' => '1.8k sold'],
+    ['key' => 'top-sports-and-outdoors-11', 'product_key' => 'sports-and-outdoors:11', 'rank' => 6, 'sold' => '1.7k sold'],
+];
+
+$topSales = [
+    ['key' => 'sales-sports-and-outdoors-11', 'product_key' => 'sports-and-outdoors:11', 'rank' => 1, 'sold' => '4.6k sold'],
+    ['key' => 'sales-electronics-and-gadgets-5', 'product_key' => 'electronics-and-gadgets:5', 'rank' => 2, 'sold' => '4.2k sold'],
+    ['key' => 'sales-kids-and-baby-2', 'product_key' => 'kids-and-baby:2', 'rank' => 3, 'sold' => '3.9k sold'],
+    ['key' => 'sales-home-and-garden-1', 'product_key' => 'home-and-garden:1', 'rank' => 4, 'sold' => '3.5k sold'],
+    ['key' => 'sales-food-and-gourmet-5', 'product_key' => 'food-and-gourmet:5', 'rank' => 5, 'sold' => '3.2k sold'],
+    ['key' => 'sales-men-s-apparel-4', 'product_key' => 'men-s-apparel:4', 'rank' => 6, 'sold' => '2.9k sold'],
+];
+
 $buyer = auth()->user();
 $buyerName = $buyer?->name ?: 'Buyer';
 $buyerFirstName = $buyer?->first_name ?: (explode(' ', $buyerName)[0] ?? 'Buyer');
@@ -87,12 +153,9 @@ $buyerFirstName = $buyer?->first_name ?: (explode(' ', $buyerName)[0] ?? 'Buyer'
     <span class="material-symbols-outlined" aria-hidden="true">menu</span>
 </button>
 
-<div class="buyer-brand-lockup">
-    <a class="brand" href="{{ url('/home') }}" aria-label="Bearly home">
-        <img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly" width="192" height="64">
-    </a>
-    <span class="buyer-brand-note">A kinder marketplace<br>for everyone</span>
-</div>
+<a class="brand" href="{{ route('home') }}" aria-label="Bearly home">
+    <img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly" width="192" height="64">
+</a>
 
 <form class="search" id="search-form" role="search">
     <label class="sr-only" for="search-category">Search category</label>
@@ -114,20 +177,20 @@ $buyerFirstName = $buyer?->first_name ?: (explode(' ', $buyerName)[0] ?? 'Buyer'
         <span>Orders</span>
     </button>
 
-    <button type="button" data-info="chat">
+    <button type="button" data-info="chat" aria-controls="chat-drawer" aria-expanded="false">
         <span class="material-symbols-outlined" aria-hidden="true">chat_bubble</span>
         <span>Chat</span>
     </button>
 
-    <a href="{{ url('/cart') }}">
+    <a href="{{ url('/cart') }}" aria-controls="cart-drawer" aria-expanded="false">
         <span class="material-symbols-outlined" aria-hidden="true">shopping_cart</span>
         <span>Cart</span>
     </a>
 
-    <div class="buyer-account-display" title="{{ $buyer?->email }}">
+    <a class="account-action" href="{{ route('home') }}" title="{{ $buyer?->email }}" aria-label="Signed in as {{ $buyerName }}">
         <span class="material-symbols-outlined" aria-hidden="true">person</span>
         <span>{{ $buyerName }}</span>
-    </div>
+    </a>
 </nav>
 
 </header>
@@ -140,10 +203,15 @@ $buyerFirstName = $buyer?->first_name ?: (explode(' ', $buyerName)[0] ?? 'Buyer'
 <div class="sidebar-title"><span class="material-symbols-outlined" aria-hidden="true">menu</span><strong>Shop by category</strong><button id="menu-close" class="icon-button" aria-label="Close categories"><span class="material-symbols-outlined" aria-hidden="true">close</span></button></div>
 <nav id="category-nav" class="sidebar-category-list" aria-label="Shop by category"></nav>
 
+<button class="chat-button" type="button" data-info="chat" aria-controls="chat-drawer" aria-expanded="false">
+    <span class="material-symbols-outlined" aria-hidden="true">chat_bubble</span>
+    Chat
+</button>
+
 <div class="buyer-sidebar-footer">
     <form method="POST" action="{{ route('logout') }}">
         @csrf
-        <button type="submit" class="buyer-sidebar-logout">
+        <button type="submit" class="seller-link buyer-sidebar-logout">
             <span class="material-symbols-outlined" aria-hidden="true">logout</span>
             <span>Logout</span>
         </button>
@@ -281,6 +349,137 @@ $buyerFirstName = $buyer?->first_name ?: (explode(' ', $buyerName)[0] ?? 'Buyer'
 
 </div>
 
+<section class="flash-deals-preview" aria-labelledby="flash-deals-title">
+    <div class="flash-deals-heading">
+        <div>
+            <p class="flash-kicker"><span class="material-symbols-outlined" aria-hidden="true">bolt</span> Limited-time offers</p>
+            <h2 id="flash-deals-title">Flash Deals</h2>
+        </div>
+        <div class="flash-deals-actions">
+            <div class="flash-countdown" data-flash-countdown aria-label="Flash deal countdown">
+                <span data-hours>00</span><b>:</b><span data-minutes>00</span><b>:</b><span data-seconds>00</span>
+            </div>
+            <a class="text-button flash-view-all" href="{{ route('products.index') }}">Browse all <span aria-hidden="true">→</span></a>
+        </div>
+    </div>
+
+    <div class="flash-deal-grid flash-deal-grid-preview">
+        @foreach ($flashDeals as $deal)
+            @php($featured = $featuredProductsByKey[$deal['product_key']] ?? null)
+            @if ($featured)
+                <article
+                    class="flash-deal-card"
+                    data-flash-product
+                    data-key="{{ $deal['key'] }}"
+                    data-product-id="{{ $featured['category_slug'] }}:{{ $featured['id'] }}"
+                    data-name="{{ $featured['name'] }}"
+                    data-price="{{ $deal['price'] }}"
+                    data-original-price="{{ $deal['original_price'] }}"
+                    data-flash-category="{{ $featured['category'] }}"
+                >
+                    <button type="button" class="flash-image" data-feature-open aria-label="Preview {{ $featured['name'] }}">
+                        <span aria-hidden="true" style="{{ $featurePhotoStyle($featured) }}"></span>
+                        <span>{{ $deal['discount'] }}</span>
+                    </button>
+                    <div class="flash-copy">
+                        <small>{{ $featured['category'] }}</small>
+                        <h3>{{ $featured['name'] }}</h3>
+                        <div class="flash-prices"><strong>₱{{ number_format($deal['price']) }}</strong><del>₱{{ number_format($deal['original_price']) }}</del></div>
+                        <div class="flash-stock"><span style="--sold:{{ $deal['claimed'] }}%"></span><small>{{ $deal['claimed'] }}% claimed</small></div>
+                        <button type="button" class="flash-add" data-flash-add>Add to Cart</button>
+                    </div>
+                </article>
+            @endif
+        @endforeach
+    </div>
+</section>
+
+<section class="top-products-preview" aria-labelledby="top-products-title">
+    <div class="top-products-heading">
+        <div>
+            <p class="top-products-kicker"><span class="material-symbols-outlined" aria-hidden="true">workspace_premium</span> Popular on Bearly</p>
+            <h2 id="top-products-title">Top Products</h2>
+            <p>Highly rated finds buyers keep coming back to.</p>
+        </div>
+        <a class="text-button top-view-all" href="{{ route('products.index') }}">Browse all <span aria-hidden="true">→</span></a>
+    </div>
+
+    <div class="top-products-grid top-products-grid-preview">
+        @foreach ($topProducts as $item)
+            @php($featured = $featuredProductsByKey[$item['product_key']] ?? null)
+            @if ($featured)
+                <article
+                    class="top-product-card{{ $item['rank'] <= 3 ? ' top-rank-podium' : '' }}"
+                    data-top-product
+                    data-key="{{ $item['key'] }}"
+                    data-product-id="{{ $featured['category_slug'] }}:{{ $featured['id'] }}"
+                    data-name="{{ $featured['name'] }}"
+                    data-price="{{ $featured['price'] }}"
+                    data-top-category="{{ $featured['category'] }}"
+                >
+                    <div class="top-product-image">
+                        <span aria-hidden="true" style="{{ $featurePhotoStyle($featured) }}"></span>
+                        <span class="top-rank">#{{ $item['rank'] }}</span>
+                        <button type="button" class="top-like" data-top-like aria-label="Save {{ $featured['name'] }}">
+                            <span class="material-symbols-outlined" aria-hidden="true">favorite</span>
+                        </button>
+                    </div>
+                    <div class="top-product-copy">
+                        <small>{{ $featured['category'] }}</small>
+                        <h3>{{ $featured['name'] }}</h3>
+                        <div class="top-product-meta"><span><b>★ {{ number_format((float) ($featured['rating'] ?? 0), 1) }}</b></span><span>{{ $item['sold'] }}</span></div>
+                        <div class="top-product-bottom"><strong>₱{{ number_format((int) $featured['price']) }}</strong></div>
+                    </div>
+                </article>
+            @endif
+        @endforeach
+    </div>
+</section>
+
+<section class="top-products-preview top-sales-preview" aria-labelledby="top-sales-title">
+    <div class="top-products-heading">
+        <div>
+            <p class="top-products-kicker"><span class="material-symbols-outlined" aria-hidden="true">trending_up</span> Best sellers</p>
+            <h2 id="top-sales-title">Top Sales</h2>
+            <p>Products moving fastest across Bearly right now.</p>
+        </div>
+        <a class="text-button top-view-all" href="{{ route('products.index') }}">Browse all <span aria-hidden="true">→</span></a>
+    </div>
+
+    <div class="top-products-grid top-products-grid-preview">
+        @foreach ($topSales as $item)
+            @php($featured = $featuredProductsByKey[$item['product_key']] ?? null)
+            @if ($featured)
+                <article
+                    class="top-product-card{{ $item['rank'] <= 3 ? ' top-rank-podium' : '' }}"
+                    data-top-product
+                    data-key="{{ $item['key'] }}"
+                    data-product-id="{{ $featured['category_slug'] }}:{{ $featured['id'] }}"
+                    data-name="{{ $featured['name'] }}"
+                    data-price="{{ $featured['price'] }}"
+                    data-top-category="{{ $featured['category'] }}"
+                >
+                    <div class="top-product-image">
+                        <span aria-hidden="true" style="{{ $featurePhotoStyle($featured) }}"></span>
+                        <span class="top-rank">#{{ $item['rank'] }}</span>
+                        <button type="button" class="top-like" data-top-like aria-label="Save {{ $featured['name'] }}">
+                            <span class="material-symbols-outlined" aria-hidden="true">favorite</span>
+                        </button>
+                    </div>
+                    <div class="top-product-copy">
+                        <small>{{ $featured['category'] }}</small>
+                        <h3>{{ $featured['name'] }}</h3>
+                        <div class="top-product-meta"><span><b>★ {{ number_format((float) ($featured['rating'] ?? 0), 1) }}</b></span><span>{{ $item['sold'] }}</span></div>
+                        <div class="top-product-bottom"><strong>₱{{ number_format((int) $featured['price']) }}</strong></div>
+                    </div>
+                </article>
+            @endif
+        @endforeach
+    </div>
+</section>
+
+<div class="flash-toast" data-flash-toast data-top-toast role="status" aria-live="polite"></div>
+
 <section class="discover" id="results" aria-labelledby="results-title">
 <div class="section-heading"><div><h2 id="results-title">Daily discoveries</h2><p id="results-caption">Find something good across Bearly.</p></div><button class="text-button" id="view-all">View all <span aria-hidden="true">→</span></button></div>
 <div class="results-tools" id="results-tools" hidden><div id="active-filters"></div><label>Sort by <select id="sort"><option value="featured">Featured</option><option value="price-low">Price: low to high</option><option value="price-high">Price: high to low</option><option value="name">Name: A–Z</option></select></label></div>
@@ -304,7 +503,7 @@ $buyerFirstName = $buyer?->first_name ?: (explode(' ', $buyerName)[0] ?? 'Buyer'
 <footer class="footer buyer-footer">
     <div class="buyer-footer-brand">
         <a href="{{ url('/home') }}" aria-label="Bearly home">
-            <img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly" width="132" height="44">
+        <img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly" width="132" height="44">
         </a>
         <p>A kinder marketplace<br>for everyone.</p>
     </div>
@@ -333,8 +532,6 @@ $buyerFirstName = $buyer?->first_name ?: (explode(' ', $buyerName)[0] ?? 'Buyer'
         <small>© {{ date('Y') }} Bearly. All rights reserved.</small>
     </div>
 </footer>
-<button class="chat-button" data-info="chat" aria-controls="chat-drawer" aria-expanded="false"><span class="material-symbols-outlined" aria-hidden="true">chat_bubble</span>Chat</button>
-
 <div class="chat-drawer-backdrop" id="chat-drawer-backdrop" data-chat-close hidden></div>
 <aside class="chat-drawer" id="chat-drawer" aria-label="Chat with sellers" aria-hidden="true">
     <header class="chat-drawer-header">
@@ -375,6 +572,7 @@ $buyerFirstName = $buyer?->first_name ?: (explode(' ', $buyerName)[0] ?? 'Buyer'
 <dialog id="product-dialog" aria-labelledby="product-title"><button class="dialog-close icon-button" data-close aria-label="Close product details"><span class="material-symbols-outlined" aria-hidden="true">close</span></button><div id="product-detail"></div></dialog>
 <dialog id="info-dialog" aria-labelledby="info-title"><button class="dialog-close icon-button" data-close aria-label="Close"><span class="material-symbols-outlined" aria-hidden="true">close</span></button><h2 id="info-title"></h2><div id="info-copy"></div><div class="info-actions" id="info-actions"></div></dialog>
 <script id="home-data" type="application/json">{!! json_encode(['categories' => $homeCategories, 'products' => $homeProducts], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR) !!}</script>
+<script id="featured-product-data" type="application/json">{!! json_encode($featuredProducts, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR) !!}</script>
 
 </body>
 

@@ -20,6 +20,22 @@ export default defineConfig({
                 // Buyer promo slider
                 'resources/css/bearly-promo-slider.css',
                 'resources/js/bearly-promo-slider.js',
+                // Buyer account and preview pages
+                'resources/css/profile.css',
+                'resources/css/addresses.css',
+                'resources/css/cart.css',
+                'resources/css/checkout.css',
+                'resources/css/wishlist.css',
+                'resources/css/bearly-chat.css',
+                'resources/js/profile.js',
+                'resources/js/account-addresses.js',
+                'resources/js/addresses.js',
+                'resources/js/my-likes.js',
+                'resources/js/my-purchases.js',
+                'resources/js/reviews-ratings.js',
+                'resources/js/cart.js',
+                'resources/js/checkout.js',
+                'resources/js/bearly-chat.js',
 
                 // Seller
                 'resources/css/seller.css',

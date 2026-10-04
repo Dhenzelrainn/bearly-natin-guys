@@ -1,4 +1,7 @@
 @php
+    $buyer = auth()->user();
+    $buyerName = $buyer?->name ?: 'Buyer';
+
     $catalog = json_decode(
         file_get_contents(resource_path('data/buyer-pet-supplies-products.json')),
         true,
@@ -31,7 +34,7 @@
     @vite(['resources/css/buyer.css', 'resources/js/buyer.js'])
 </head>
 
-<body class="bc pet-supplies" style="--catalog-image:url('{{ asset('images/pet-supplies-catalog-atlas.png') }}')">
+<body class="bc pet-supplies" data-category="pet-supplies" style="--catalog-image:url('{{ asset('images/pet-supplies-catalog-atlas.png') }}')">
     <a href="#bc-main" class="skip">Skip to products</a>
 
     <header class="bc-header">
@@ -50,7 +53,7 @@
             <button data-info="orders"><i class="mi">receipt_long</i> Orders</button>
             <button data-info="chat"><i class="mi">chat_bubble</i> Chat</button>
             <a href="{{ url('/cart') }}"><i class="mi">shopping_cart</i> Cart</a>
-            <a href="{{ url('/login') }}"><i class="mi">person</i> Sign in</a>
+            <a href="{{ route('home') }}" title="{{ $buyer?->email }}" aria-label="Signed in as {{ $buyerName }}"><i class="mi">person</i> {{ $buyerName }}</a>
         </nav>
     </header>
 
@@ -197,7 +200,7 @@
         <button class="close" data-close aria-label="Close"><i class="mi">close</i></button>
         <h2 id="bc-info-title"></h2>
         <p id="bc-info-copy"></p>
-        <a class="button gold" href="{{ url('/login') }}">Sign in</a>
+        <a class="button gold" href="{{ route('home') }}">Back to home</a>
     </dialog>
 
     @include('buyer.Category.Pet-Supplies.components.pet-supplies-product-card')

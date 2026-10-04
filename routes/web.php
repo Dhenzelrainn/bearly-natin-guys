@@ -127,6 +127,38 @@ Route::middleware(['auth', 'role:buyer'])->group(function () {
     Route::get('/products', [BuyerController::class, 'products'])
         ->name('products.index');
 
+    // Buyer UI pages from the updated storefront. These screens are
+    // authenticated previews and do not replace the existing cart/wishlist
+    // endpoints or create order/payment state.
+    Route::view('/profile', 'buyer.profile')
+        ->name('buyer.profile');
+
+    Route::view('/addresses', 'buyer.addresses')
+        ->name('buyer.addresses');
+
+    Route::view('/checkout', 'buyer.checkout')
+        ->name('checkout');
+
+    Route::view('/chat', 'buyer.chat')
+        ->name('buyer.chat');
+
+    Route::view('/flash-deals', 'buyer.flash-deals')
+        ->name('flash-deals');
+
+    Route::view('/top-products', 'buyer.top-products')
+        ->name('top-products');
+
+    Route::view('/top-sales', 'buyer.top-sales')
+        ->name('top-sales');
+
+    // The existing /cart and /wishlist actions remain authoritative. These
+    // preview URLs expose the source UI without changing their behavior.
+    Route::view('/cart/preview', 'buyer.cart')
+        ->name('cart.preview');
+
+    Route::view('/wishlist/preview', 'buyer.wishlist')
+        ->name('wishlist.preview');
+
     Route::get('/wishlist', [BuyerController::class, 'wishlist'])
         ->name('wishlist.index');
 

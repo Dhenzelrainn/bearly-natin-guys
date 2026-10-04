@@ -1,4 +1,7 @@
 @php
+    $buyer = auth()->user();
+    $buyerName = $buyer?->name ?: 'Buyer';
+
     $catalog = json_decode(
         file_get_contents(resource_path('data/buyer-womens-products.json')),
         true,
@@ -31,7 +34,7 @@
     @vite(['resources/css/buyer.css', 'resources/js/buyer.js'])
 </head>
 
-<body class="bc" style="--catalog-image:url('{{ asset('images/womens-catalog-atlas.png') }}')">
+<body class="bc" data-category="women-s-apparel" style="--catalog-image:url('{{ asset('images/womens-catalog-atlas.png') }}')">
     <a href="#bc-main" class="skip">Skip to products</a>
 
     <header class="bc-header">
@@ -66,9 +69,9 @@
                 Cart
             </a>
 
-            <a href="{{ url('/login') }}">
+            <a href="{{ route('home') }}" title="{{ $buyer?->email }}" aria-label="Signed in as {{ $buyerName }}">
                 <i class="mi" aria-hidden="true">person</i>
-                Sign in
+                {{ $buyerName }}
             </a>
         </nav>
     </header>
@@ -253,7 +256,7 @@
         <h2 id="bc-info-title"></h2>
         <p id="bc-info-copy"></p>
 
-        <a class="button gold" href="{{ url('/login') }}">Sign in</a>
+        <a class="button gold" href="{{ route('home') }}">Back to home</a>
     </dialog>
 
     @include('buyer.Category.WomenApparel.components.womens-apparel-product-card')

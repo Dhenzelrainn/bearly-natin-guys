@@ -1,4 +1,7 @@
 @php
+    $buyer = auth()->user();
+    $buyerName = $buyer?->name ?: 'Buyer';
+
     $catalog = json_decode(
         file_get_contents(resource_path('data/buyer-electronics-gadgets-products.json')),
         true,
@@ -39,7 +42,7 @@
     @vite(['resources/css/buyer.css', 'resources/js/buyer.js'])
 </head>
 
-<body class="bc" style="--catalog-image:url('{{ asset('images/electronics-gadgets-catalog-atlas.png') }}')">
+<body class="bc" data-category="electronics-and-gadgets" style="--catalog-image:url('{{ asset('images/electronics-gadgets-catalog-atlas.png') }}')">
     <a href="#bc-main" class="skip">Skip to products</a>
 
     <header class="bc-header">
@@ -74,9 +77,9 @@
                 Cart
             </a>
 
-            <a href="{{ url('/login') }}">
+            <a href="{{ route('home') }}" title="{{ $buyer?->email }}" aria-label="Signed in as {{ $buyerName }}">
                 <i class="mi" aria-hidden="true">person</i>
-                Sign in
+                {{ $buyerName }}
             </a>
         </nav>
     </header>
@@ -261,7 +264,7 @@
         <h2 id="bc-info-title"></h2>
         <p id="bc-info-copy"></p>
 
-        <a class="button gold" href="{{ url('/login') }}">Sign in</a>
+        <a class="button gold" href="{{ route('home') }}">Back to home</a>
     </dialog>
 
     @include('buyer.Category.Electronics&Gadgets.components.electronics-gadgets-product-card')

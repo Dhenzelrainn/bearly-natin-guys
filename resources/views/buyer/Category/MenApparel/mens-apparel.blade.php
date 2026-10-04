@@ -1,4 +1,7 @@
 @php
+    $buyer = auth()->user();
+    $buyerName = $buyer?->name ?: 'Buyer';
+
     $catalog = json_decode(file_get_contents(resource_path('data/buyer-mens-products (1).json')), true, 512, JSON_THROW_ON_ERROR);
     $taxonomy = json_decode(file_get_contents(resource_path('data/buyer-categories.json')), true, 512, JSON_THROW_ON_ERROR);
     $mensCategory = collect($taxonomy)->firstWhere('slug', 'men-s-apparel');
@@ -17,7 +20,7 @@
         <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Material+Symbols+Outlined:wght@400&display=swap" rel="stylesheet">
         @vite(['resources/css/buyer.css', 'resources/js/buyer.js'])
     </head>
-    <body class="bc" data-catalog-rows="4" style="--catalog-image:url('{{ asset('images/mens-catalog-atlas.png') }}');--catalog-image-height:400%">
+    <body class="bc" data-category="men-s-apparel" data-catalog-rows="4" style="--catalog-image:url('{{ asset('images/mens-catalog-atlas.png') }}');--catalog-image-height:400%">
         <a href="#bc-main" class="skip">
             Skip to products
         </a>
@@ -58,11 +61,11 @@
                     </i>
                     Cart
                 </a>
-                <a href="{{ url('/login') }}">
+                <a href="{{ route('home') }}" title="{{ $buyer?->email }}" aria-label="Signed in as {{ $buyerName }}">
                     <i class="mi" aria-hidden="true">
                         person
                     </i>
-                    Sign in
+                    {{ $buyerName }}
                 </a>
             </nav>
         </header>
@@ -291,8 +294,8 @@
             </h2>
             <p id="bc-info-copy">
             </p>
-            <a class="button gold" href="{{ url('/login') }}">
-                Sign in
+            <a class="button gold" href="{{ route('home') }}">
+                Back to home
             </a>
         </dialog>
         @include('buyer.Category.MenApparel.components.mens-apparel-product-card')

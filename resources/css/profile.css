@@ -1,0 +1,299 @@
+:root{--brown:#432718;--brown2:#6f3b20;--gold:#e9a321;--ink:#241b17;--muted:#7d7069;--line:#e8e0da;--paper:#fff;--bg:#f7f5f2}
+*{box-sizing:border-box}.profile-page{margin:0;background:var(--bg);color:var(--ink);font-family:Poppins,sans-serif;min-height:100vh}
+.profile-topbar{height:78px;background:var(--brown);display:flex;align-items:center;padding:0 34px;gap:30px;color:#fff}
+.profile-brand{display:flex;align-items:center;gap:8px;color:#7d3216;text-decoration:none;font-size:30px;font-weight:800}.brand-mark{font-size:34px}
+.profile-top-actions{margin-left:auto;display:flex;align-items:center;gap:28px}.profile-top-actions a{color:#fff;text-decoration:none;display:flex;flex-direction:column;align-items:center;gap:1px;font-size:12px}.profile-top-actions a:hover,.profile-top-actions a.active{color:var(--gold)}.profile-top-actions .material-symbols-outlined{font-size:25px}
+.account-layout{max-width:1320px;margin:28px auto;padding:0 24px;display:grid;grid-template-columns:245px 1fr;gap:24px}
+.account-sidebar{padding:14px 12px}.account-user{display:flex;align-items:center;gap:12px;padding:8px 4px 22px}.sidebar-avatar{width:52px;height:52px;border:1px solid #ddd3cc;border-radius:50%;display:grid;place-items:center;background:#fff;overflow:hidden}.sidebar-avatar img{width:100%;height:100%;object-fit:cover}.account-user div:last-child{min-width:0}.account-user strong{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.account-user span{display:block;color:var(--muted);font-size:12px;margin-top:3px}.sidebar-divider{height:1px;background:var(--line);margin-bottom:20px}.sidebar-title{display:flex;align-items:center;gap:9px;font-weight:700;margin:0 8px 8px}.sidebar-title .material-symbols-outlined{color:var(--brown2)}.account-nav{display:flex;flex-direction:column}.account-nav a{display:flex;align-items:center;gap:10px;text-decoration:none;color:#4c403a;padding:11px 14px 11px 42px;border-radius:9px;font-size:14px}.account-nav a .material-symbols-outlined{font-size:19px}.account-nav a:hover{background:#f0e9e4}.account-nav a.active{color:var(--brown2);font-weight:700;background:#f3ebe5}
+.profile-card{background:var(--paper);border:1px solid #eee7e1;border-radius:12px;box-shadow:0 4px 16px rgba(65,39,24,.05);padding:28px 34px;min-height:610px}.profile-heading{padding-bottom:20px;border-bottom:1px solid var(--line)}.profile-heading h1{font-size:24px;margin:0 0 3px}.profile-heading p{margin:0;color:var(--muted);font-size:13px}
+.profile-form{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:42px;padding-top:30px}.profile-fields{max-width:700px}.field-row{display:grid;grid-template-columns:145px 1fr;align-items:center;gap:18px;margin-bottom:20px}.field-row>span{font-size:14px;color:#665952;text-align:right}.field-row input[type=text],.field-row input[type=email],.field-row input[type=tel],.birthday-row select{width:100%;height:44px;border:1px solid #ddd4ce;border-radius:7px;padding:0 13px;font:inherit;font-size:14px;background:#fff;outline:none}.field-row input:focus,.birthday-row select:focus{border-color:#a66b45;box-shadow:0 0 0 3px rgba(166,107,69,.09)}
+.radio-row{display:flex;gap:24px;align-items:center}.radio-row label{display:flex;gap:7px;align-items:center;font-size:14px}.radio-row input{accent-color:var(--brown2)}
+.birthday-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px}.profile-buttons{margin-left:163px;display:flex;gap:10px;margin-top:8px}.primary-btn,.secondary-btn,.photo-btn{border-radius:7px;height:42px;padding:0 20px;font:inherit;font-weight:600;cursor:pointer}.primary-btn{background:var(--brown);color:#fff;border:1px solid var(--brown)}.primary-btn:hover{background:#5a321d}.secondary-btn,.photo-btn{background:#fff;color:var(--brown);border:1px solid #d8ccc4}.secondary-btn:hover,.photo-btn:hover{border-color:var(--brown)}
+.photo-panel{border-left:1px solid var(--line);display:flex;flex-direction:column;align-items:center;padding:22px 0 0 34px}.profile-avatar{width:126px;height:126px;border-radius:50%;background:#f1eeeb;display:grid;place-items:center;overflow:hidden;margin-bottom:18px}.profile-avatar .material-symbols-outlined{font-size:68px;color:#bdb5b0}.profile-avatar img{width:100%;height:100%;object-fit:cover}.photo-panel p{text-align:center;color:#948881;font-size:12px;line-height:1.7;margin-top:13px}
+.profile-toast{position:fixed;left:50%;bottom:30px;transform:translate(-50%,20px);background:#2f211a;color:#fff;padding:11px 18px;border-radius:8px;opacity:0;pointer-events:none;transition:.2s;font-size:13px}.profile-toast.show{opacity:1;transform:translate(-50%,0)}
+@media(max-width:850px){.account-layout{grid-template-columns:1fr}.account-sidebar{background:#fff;border-radius:10px}.profile-form{grid-template-columns:1fr}.photo-panel{grid-row:1;border-left:0;border-bottom:1px solid var(--line);padding:0 0 24px}.field-row{grid-template-columns:1fr;gap:7px}.field-row>span{text-align:left}.profile-buttons{margin-left:0}.profile-topbar{padding:0 18px}.profile-top-actions{gap:14px}.profile-top-actions small{display:none}}
+
+.nav-section-gap{height:14px}.account-nav .nav-parent{padding-left:14px;font-weight:600;margin-top:2px}.account-nav .nav-parent .material-symbols-outlined{color:var(--brown2)}
+.account-action{color:#fff;text-decoration:none}.account-action:hover{color:#e9a321}
+
+/* Integrated Buyer Account panels */
+.account-panel[hidden]{display:none!important}.account-nav .account-tab{width:100%;border:0;background:transparent;display:flex;align-items:center;gap:10px;color:#4c403a;padding:11px 14px 11px 42px;border-radius:9px;font:inherit;font-size:14px;text-align:left;cursor:pointer}.account-nav .account-tab .material-symbols-outlined{font-size:19px}.account-nav .account-tab:hover{background:#f0e9e4}.account-nav .account-tab.active{color:var(--brown2);font-weight:700;background:#f3ebe5}#addresses-panel{padding:28px 34px}.address-panel-head{padding-bottom:20px;border-bottom:1px solid var(--line);margin-bottom:18px}.address-panel-head h1{font-size:24px}.address-panel-head p{font-size:13px}
+
+/* BEAR-114 My Likes */
+.likes-nav-count{margin-left:auto;min-width:21px;height:21px;padding:0 6px;border-radius:12px;background:var(--brown2);color:#fff;font-size:11px;display:grid;place-items:center}.likes-nav-count[hidden]{display:none}.likes-panel-head{display:flex;align-items:center;justify-content:space-between;gap:18px;padding-bottom:20px;border-bottom:1px solid var(--line);margin-bottom:22px}.likes-panel-head h1{font-size:24px;margin:0 0 3px}.likes-panel-head p{margin:0;color:var(--muted);font-size:13px}.likes-count{font-size:13px;color:var(--muted);white-space:nowrap}.likes-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:18px}.likes-grid[hidden]{display:none}.like-card{border:1px solid var(--line);border-radius:11px;overflow:hidden;background:#fff;transition:.18s}.like-card:hover{transform:translateY(-2px);box-shadow:0 7px 18px rgba(65,39,24,.09)}.like-image{position:relative;aspect-ratio:1;background:#faf8f6}.like-image img{width:100%;height:100%;object-fit:cover}.like-remove{position:absolute;right:9px;top:9px;width:35px;height:35px;border:0;border-radius:50%;background:#fff;display:grid;place-items:center;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.12);color:#c83d3d}.like-remove .material-symbols-outlined{font-variation-settings:'FILL' 1;font-size:21px}.like-copy{padding:13px;display:flex;flex-direction:column;gap:5px}.like-category{font-size:11px;color:var(--muted)}.like-copy h3{font-size:14px;line-height:1.35;margin:0;min-height:38px}.like-copy strong{font-size:17px;color:var(--brown2)}.like-copy small{font-size:11px;color:var(--muted)}.like-cart{margin-top:7px;height:36px;border:1px solid var(--brown);border-radius:7px;background:var(--brown);color:#fff;font:inherit;font-size:12px;font-weight:600;cursor:pointer}.like-cart:hover{background:#5a321d}.likes-empty{text-align:center;padding:95px 20px;color:var(--muted)}.likes-empty[hidden]{display:none}.likes-empty>.material-symbols-outlined{font-size:64px;color:#d8cbc2}.likes-empty h2{margin:10px 0 5px;color:var(--ink);font-size:20px}.likes-empty p{font-size:13px}.likes-empty a{display:inline-flex;margin-top:12px;padding:10px 18px;border-radius:7px;background:var(--brown);color:#fff;text-decoration:none;font-size:13px;font-weight:600}@media(max-width:1100px){.likes-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}@media(max-width:700px){.likes-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.likes-panel-head{align-items:flex-start;flex-direction:column}}
+
+/* BEAR-115 My Purchases */
+.purchases-head{display:flex;align-items:center;justify-content:space-between;gap:18px;padding-bottom:20px;border-bottom:1px solid var(--line)}.purchases-head h1{font-size:24px;margin:0 0 3px}.purchases-head p{margin:0;color:var(--muted);font-size:13px}.purchase-count{font-size:13px;color:var(--muted);white-space:nowrap}.purchase-tabs{display:grid;grid-template-columns:repeat(6,1fr);border-bottom:1px solid var(--line);margin:0 -34px 22px;padding:0 34px}.purchase-filter{height:54px;border:0;border-bottom:3px solid transparent;background:#fff;font:inherit;font-size:13px;color:#665952;cursor:pointer}.purchase-filter:hover{color:var(--brown2)}.purchase-filter.active{color:var(--brown2);font-weight:700;border-bottom-color:var(--gold)}.purchase-list{display:flex;flex-direction:column;gap:16px}.order-card{border:1px solid var(--line);border-radius:11px;overflow:hidden;background:#fff}.order-card-head{min-height:48px;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid #eee8e3}.order-shop{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700}.order-shop .material-symbols-outlined{font-size:19px;color:var(--brown2)}.order-status{font-size:12px;font-weight:700;color:var(--brown2);text-transform:uppercase;letter-spacing:.25px}.order-status.cancelled{color:#9b8e87}.order-product{display:grid;grid-template-columns:82px 1fr auto;gap:14px;padding:16px;align-items:center}.order-product img{width:82px;height:82px;border:1px solid #eee7e1;border-radius:8px;object-fit:cover;background:#faf8f6}.order-product h3{font-size:14px;margin:0 0 4px;line-height:1.4}.order-product p{font-size:12px;color:var(--muted);margin:2px 0}.order-price{text-align:right}.order-price strong{font-size:15px;color:var(--brown2)}.order-card-foot{display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:14px 16px;background:#fcfaf8;border-top:1px solid #eee8e3}.order-total{margin-right:auto;font-size:13px}.order-total strong{font-size:18px;color:var(--brown2);margin-left:5px}.order-btn{height:36px;padding:0 15px;border-radius:7px;border:1px solid #d8ccc4;background:#fff;color:var(--brown);font:inherit;font-size:12px;font-weight:600;cursor:pointer}.order-btn:hover{border-color:var(--brown)}.order-btn.primary{background:var(--brown);border-color:var(--brown);color:#fff}.order-btn.primary:hover{background:#5a321d}.purchases-empty{text-align:center;padding:90px 20px;color:var(--muted)}.purchases-empty>.material-symbols-outlined{font-size:64px;color:#d8cbc2}.purchases-empty h2{margin:10px 0 5px;color:var(--ink);font-size:20px}.purchases-empty p{font-size:13px}.purchases-empty a{display:inline-flex;margin-top:12px;padding:10px 18px;border-radius:7px;background:var(--brown);color:#fff;text-decoration:none;font-size:13px;font-weight:600}@media(max-width:900px){.purchase-tabs{overflow-x:auto;display:flex}.purchase-filter{min-width:105px}.order-product{grid-template-columns:68px 1fr}.order-product img{width:68px;height:68px}.order-price{grid-column:2;text-align:left}.order-card-foot{flex-wrap:wrap}.order-total{width:100%;margin:0 0 4px;text-align:right}}
+
+/* BEAR-90 Reviews & Ratings */
+.reviews-head{display:flex;align-items:center;justify-content:space-between;gap:18px;padding-bottom:20px;border-bottom:1px solid var(--line);margin-bottom:20px}.reviews-head h1{font-size:24px;margin:0 0 3px}.reviews-head p{margin:0;color:var(--muted);font-size:13px}.reviews-count{font-size:13px;color:var(--muted)}.review-list{display:flex;flex-direction:column;gap:14px}.review-card{display:grid;grid-template-columns:88px 1fr auto;gap:16px;align-items:start;border:1px solid var(--line);border-radius:11px;padding:16px}.review-card>img{width:88px;height:88px;border-radius:8px;border:1px solid var(--line);object-fit:cover}.review-main h3{font-size:15px;margin:4px 0 8px}.review-meta{display:flex;gap:12px;color:var(--muted);font-size:11px}.review-prompt,.review-copy{font-size:12px;color:var(--muted);margin:6px 0;line-height:1.55}.review-static-stars{color:var(--gold);font-size:18px;letter-spacing:1px}.submitted-rating{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--brown2)}.submitted-review-photo{width:72px;height:72px;object-fit:cover;border-radius:7px;margin-top:6px}.reviews-empty{text-align:center;padding:90px 20px;color:var(--muted)}.reviews-empty>.material-symbols-outlined{font-size:64px;color:#d8cbc2}.reviews-empty h2{margin:10px 0 5px;color:var(--ink)}.reviews-empty button{margin-top:12px;border:0;border-radius:7px;background:var(--brown);color:#fff;padding:10px 18px;font:inherit;font-size:13px;font-weight:600;cursor:pointer}.review-modal{position:fixed;inset:0;background:rgba(34,22,15,.48);z-index:1000;display:grid;place-items:center;padding:20px}.review-modal[hidden]{display:none}.review-dialog{width:min(620px,100%);max-height:90vh;overflow:auto;background:#fff;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.22);padding:24px}.review-dialog-head{display:flex;justify-content:space-between;gap:16px;border-bottom:1px solid var(--line);padding-bottom:15px}.review-dialog-head h2{margin:0;font-size:21px}.review-dialog-head p{margin:3px 0 0;color:var(--muted);font-size:12px}.review-dialog-head>button{border:0;background:transparent;font-size:28px;cursor:pointer;color:var(--muted)}.rating-picker{padding:20px 0 14px}.rating-picker>span,.review-comment-label>span,.review-photo-label>span{display:block;font-size:13px;font-weight:600;margin-bottom:8px}.review-stars{display:inline-flex;gap:5px;margin-right:10px}.review-stars button{border:0;background:transparent;color:#d8d0ca;font-size:31px;line-height:1;cursor:pointer;padding:0}.review-stars button.active{color:var(--gold)}#rating-label{font-size:12px;color:var(--brown2)}.review-comment-label textarea{width:100%;min-height:125px;resize:vertical;border:1px solid #ddd4ce;border-radius:8px;padding:12px;font:inherit;font-size:13px;outline:none}.review-comment-label textarea:focus{border-color:#a66b45}.review-comment-label{position:relative}.review-comment-label>small{display:block;text-align:right;color:var(--muted);font-size:10px}.review-photo-label{display:block;margin-top:14px}.review-photo-label>button{height:40px;border:1px dashed #cbbdb4;border-radius:8px;background:#fff;color:var(--brown2);padding:0 14px;display:flex;align-items:center;gap:7px;font:inherit;font-size:12px;cursor:pointer}.review-photo-preview{position:relative;width:92px;height:92px;margin-top:10px}.review-photo-preview img{width:100%;height:100%;object-fit:cover;border-radius:8px}.review-photo-preview button{position:absolute;right:-7px;top:-7px;width:23px;height:23px;border-radius:50%;border:0;background:var(--brown);color:#fff;cursor:pointer}.review-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:22px;padding-top:16px;border-top:1px solid var(--line)}@media(max-width:700px){.review-card{grid-template-columns:68px 1fr}.review-card>img{width:68px;height:68px}.review-card>.order-btn{grid-column:2;justify-self:start}.reviews-head{align-items:flex-start;flex-direction:column}}
+
+
+/* BEAR-89 Order Tracking */
+.tracking-head{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;padding-bottom:20px;border-bottom:1px solid var(--line);margin-bottom:20px}.tracking-head h1{font-size:24px;margin:8px 0 3px}.tracking-head p{margin:0;color:var(--muted);font-size:13px}.tracking-back{display:inline-flex;align-items:center;gap:5px;border:0;background:transparent;padding:0;color:var(--brown2);font:inherit;font-size:12px;font-weight:700;cursor:pointer}.tracking-back .material-symbols-outlined{font-size:17px}.tracking-order-id{font-size:13px;color:var(--muted);white-space:nowrap}.tracking-summary{display:grid;grid-template-columns:78px 1fr auto;gap:14px;align-items:center;padding:15px;border:1px solid var(--line);border-radius:10px;background:#fcfaf8}.tracking-summary img{width:78px;height:78px;border-radius:8px;border:1px solid var(--line);object-fit:cover;background:#fff}.tracking-summary span,.tracking-summary p{font-size:11px;color:var(--muted);margin:0}.tracking-summary h2{font-size:15px;margin:4px 0}.tracking-summary>strong{font-size:17px;color:var(--brown2)}.tracking-grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(230px,.8fr);gap:24px;margin-top:22px}.tracking-timeline,.tracking-address{border:1px solid var(--line);border-radius:10px;padding:20px}.tracking-timeline h3,.tracking-address h3{font-size:15px;margin:0 0 20px}.tracking-step{display:grid;grid-template-columns:34px 1fr;gap:10px;position:relative;min-height:76px;color:#9c918a}.tracking-step:not(:last-child):before{content:'';position:absolute;left:16px;top:28px;width:2px;height:48px;background:#ddd4ce}.tracking-step.done:not(:last-child):before{background:var(--gold)}.tracking-dot{width:34px;height:34px;border:2px solid #ddd4ce;border-radius:50%;display:grid;place-items:center;background:#fff;z-index:1}.tracking-dot .material-symbols-outlined{font-size:17px}.tracking-step.done .tracking-dot{border-color:var(--gold);background:#fff8e8;color:var(--brown2)}.tracking-step.current strong{color:var(--brown2)}.tracking-step strong{display:block;font-size:13px;color:#766a63;margin-top:2px}.tracking-step p{font-size:11px;margin:3px 0;color:var(--muted)}.tracking-step small{font-size:10px;color:#a09289}.tracking-address>strong{font-size:13px}.tracking-address>p{font-size:12px;color:var(--muted);line-height:1.55;margin:5px 0}.tracking-status-box{margin-top:20px;padding:13px;border-radius:8px;background:#f7f1ec;display:flex;justify-content:space-between;gap:10px}.tracking-status-box span{font-size:11px;color:var(--muted)}.tracking-status-box strong{font-size:12px;color:var(--brown2)}.tracking-empty{text-align:center;padding:80px 20px;color:var(--muted)}@media(max-width:800px){.tracking-grid{grid-template-columns:1fr}.tracking-summary{grid-template-columns:64px 1fr}.tracking-summary img{width:64px;height:64px}.tracking-summary>strong{grid-column:2}.tracking-head{flex-direction:column}}
+
+/* BEAR-91 Notifications */
+.notifications-nav-count{margin-left:auto;min-width:21px;height:21px;padding:0 6px;border-radius:12px;background:var(--brown2);color:#fff;font-size:11px;display:grid;place-items:center}.notifications-nav-count[hidden]{display:none}.notifications-head{display:flex;align-items:center;justify-content:space-between;gap:18px;padding-bottom:20px;border-bottom:1px solid var(--line)}.notifications-head h1{font-size:24px;margin:0 0 3px}.notifications-head p{margin:0;color:var(--muted);font-size:13px}.notification-mark-all{border:0;background:transparent;color:var(--brown2);font:inherit;font-size:12px;font-weight:700;cursor:pointer}.notification-filters{display:flex;gap:8px;padding:18px 0}.notification-filter{border:1px solid var(--line);background:#fff;border-radius:20px;padding:8px 14px;font:inherit;font-size:12px;cursor:pointer;color:#665952}.notification-filter.active{background:var(--brown);border-color:var(--brown);color:#fff}.notification-list{display:flex;flex-direction:column;border-top:1px solid var(--line)}.notification-item{display:grid;grid-template-columns:44px 1fr auto;gap:13px;align-items:start;padding:17px 8px;border-bottom:1px solid var(--line);cursor:pointer;border-left:3px solid transparent}.notification-item.unread{background:#fffaf2;border-left-color:var(--gold)}.notification-icon{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:#f3ebe5;color:var(--brown2)}.notification-icon .material-symbols-outlined{font-size:21px}.notification-copy strong{display:block;font-size:13px;margin-bottom:3px}.notification-copy p{margin:0;color:var(--muted);font-size:12px;line-height:1.5}.notification-copy time{display:block;margin-top:5px;color:#a0938b;font-size:10px}.notification-dot{width:8px;height:8px;border-radius:50%;background:var(--gold);margin:7px}.notification-item:not(.unread) .notification-dot{visibility:hidden}.notifications-empty{text-align:center;padding:85px 20px;color:var(--muted)}.notifications-empty>.material-symbols-outlined{font-size:58px;color:#d8cbc2}.notifications-empty h2{margin:8px 0 4px;color:var(--ink);font-size:19px}@media(max-width:700px){.notifications-head{align-items:flex-start;flex-direction:column}.notification-item{grid-template-columns:40px 1fr}.notification-dot{display:none}}
+
+
+/* BEAR-88 Order History */
+.history-head{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding-bottom:22px;border-bottom:1px solid #eadfd8}.history-head h1{margin:0;color:#2d1b12;font-size:28px}.history-head p{margin:4px 0 0;color:#8c7163}.history-tools{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:20px 0}.history-search{display:flex;align-items:center;gap:8px;min-width:min(360px,100%);padding:10px 14px;border:1px solid #dfd1c8;border-radius:10px;background:#fff}.history-search .material-symbols-outlined{font-size:20px;color:#8a5a3b}.history-search input{width:100%;border:0;outline:0;background:transparent;font:inherit;color:#2d1b12}.history-filters{display:flex;gap:8px;flex-wrap:wrap}.history-filter{border:1px solid #d9c8bd;background:#fff;color:#5b3826;border-radius:999px;padding:9px 16px;font:inherit;cursor:pointer}.history-filter.active{background:#6f351c;color:#fff;border-color:#6f351c}@media(max-width:700px){.history-head{flex-direction:column}.history-tools{align-items:stretch}.history-search{min-width:0;width:100%}}
+
+/* BEAR-108 Vouchers */
+.vouchers-nav-count{margin-left:auto;min-width:21px;height:21px;padding:0 6px;border-radius:12px;background:var(--brown2);color:#fff;font-size:11px;display:grid;place-items:center}.vouchers-nav-count[hidden]{display:none}.vouchers-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding-bottom:20px;border-bottom:1px solid var(--line)}.vouchers-head h1{font-size:24px;margin:0 0 3px}.vouchers-head p{margin:0;color:var(--muted);font-size:13px}.voucher-claimed-count{font-size:12px;color:var(--brown2);font-weight:700}.voucher-tabs{display:flex;gap:8px;padding:18px 0}.voucher-filter{border:1px solid var(--line);background:#fff;border-radius:20px;padding:8px 15px;font:inherit;font-size:12px;cursor:pointer;color:#665952}.voucher-filter.active{background:var(--brown);border-color:var(--brown);color:#fff}.voucher-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.voucher-card{display:grid;grid-template-columns:112px 1fr;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff;min-height:148px}.voucher-stub{background:#f5e9d9;color:var(--brown2);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:14px;border-right:1px dashed #d7c4b7}.voucher-stub .material-symbols-outlined{font-size:29px}.voucher-stub strong{font-size:21px;line-height:1.1;margin-top:5px}.voucher-stub small{font-size:10px;font-weight:700}.voucher-body{padding:15px;display:flex;flex-direction:column;min-width:0}.voucher-body h3{font-size:14px;margin:0 0 4px}.voucher-body p{font-size:11px;color:var(--muted);line-height:1.5;margin:0}.voucher-code{display:inline-block;margin-top:8px;font-size:10px;font-weight:700;color:var(--brown2)}.voucher-expiry{font-size:10px;color:#a09289;margin-top:auto;padding-top:8px}.voucher-actions{display:flex;justify-content:flex-end;margin-top:10px}.voucher-actions button,.voucher-actions a{border:1px solid var(--brown);border-radius:7px;padding:8px 13px;font:inherit;font-size:11px;font-weight:700;cursor:pointer;text-decoration:none}.voucher-claim{background:var(--brown);color:#fff}.voucher-use{background:#fff;color:var(--brown)}.vouchers-empty{text-align:center;padding:80px 20px;color:var(--muted);grid-column:1/-1}.vouchers-empty>.material-symbols-outlined{font-size:58px;color:#d8cbc2}.vouchers-empty h2{margin:8px 0 4px;color:var(--ink)}@media(max-width:800px){.voucher-list{grid-template-columns:1fr}.vouchers-head{flex-direction:column}}
+
+
+/* BEAR-109 Help Center */
+.help-head{display:flex;align-items:center;justify-content:space-between;gap:18px;padding-bottom:20px;border-bottom:1px solid var(--line)}.help-head h1{font-size:24px;margin:0 0 3px}.help-head p{margin:0;color:var(--muted);font-size:13px}.help-head-icon{font-size:36px;color:var(--brown2)}.help-search{margin:20px 0 14px;display:flex;align-items:center;gap:9px;border:1px solid #ddd4ce;border-radius:10px;padding:0 14px;height:46px;background:#fff}.help-search:focus-within{border-color:#a66b45;box-shadow:0 0 0 3px rgba(166,107,69,.09)}.help-search .material-symbols-outlined{color:#8a7468}.help-search input{border:0;outline:0;width:100%;font:inherit;font-size:13px;background:transparent}.help-categories{display:flex;gap:8px;flex-wrap:wrap;padding-bottom:18px}.help-category{border:1px solid var(--line);background:#fff;border-radius:20px;padding:8px 13px;font:inherit;font-size:11px;cursor:pointer;color:#665952}.help-category.active{background:var(--brown);border-color:var(--brown);color:#fff}.help-list{border-top:1px solid var(--line)}.help-item{border-bottom:1px solid var(--line)}.help-question{width:100%;border:0;background:#fff;display:grid;grid-template-columns:34px 1fr 24px;align-items:center;gap:10px;padding:17px 6px;text-align:left;color:var(--ink);font:inherit;font-size:13px;font-weight:600;cursor:pointer}.help-question:hover{background:#fcfaf8}.help-topic-icon{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;background:#f3ebe5;color:var(--brown2);font-size:18px}.help-chevron{font-size:20px;color:#9a8c84;transition:.18s}.help-question[aria-expanded=true] .help-chevron{transform:rotate(180deg)}.help-answer{padding:0 48px 18px}.help-answer p{margin:0;color:var(--muted);font-size:12px;line-height:1.65}.help-action{margin-top:11px;border:1px solid var(--brown);border-radius:7px;background:#fff;color:var(--brown);padding:8px 12px;font:inherit;font-size:11px;font-weight:700;cursor:pointer}.help-action:hover{background:var(--brown);color:#fff}.help-empty{text-align:center;padding:70px 20px;color:var(--muted)}.help-empty>.material-symbols-outlined{font-size:54px;color:#d8cbc2}.help-empty h2{margin:8px 0 4px;color:var(--ink);font-size:18px}@media(max-width:700px){.help-head-icon{display:none}.help-answer{padding-left:6px}.help-question{grid-template-columns:32px 1fr 22px}}
+
+/* =========================================================
+   BEAR-107 / TASK 5 — Compact Buyer Account UI
+   Home-scale desktop density; functionality unchanged.
+   ========================================================= */
+@media (min-width: 1001px){
+  .account-layout{max-width:1440px;margin:18px auto;padding:0 28px;grid-template-columns:220px minmax(0,1fr);gap:20px}
+  .account-sidebar{padding:8px 8px}
+  .account-user{gap:10px;padding:5px 3px 14px}
+  .sidebar-avatar{width:44px;height:44px}
+  .account-user strong{font-size:14px}.account-user span{font-size:11px;margin-top:1px}
+  .sidebar-divider{margin-bottom:12px}.sidebar-title{font-size:13px;margin:0 7px 5px;gap:7px}.sidebar-title .material-symbols-outlined{font-size:18px}
+  .account-tab,.account-nav a{min-height:36px;padding:7px 10px 7px 38px!important;font-size:12.5px!important;border-radius:8px}
+  .account-tab .material-symbols-outlined,.account-nav a .material-symbols-outlined{font-size:18px!important}
+  .nav-section-gap{height:5px!important}
+  .likes-nav-count,.notifications-nav-count,.vouchers-nav-count{min-width:19px;height:19px;padding:0 5px;font-size:10px}
+
+  .profile-card{border-radius:11px;padding:20px 26px;min-height:calc(100vh - 118px);box-shadow:0 3px 12px rgba(65,39,24,.045)}
+  .profile-heading,.notifications-head,.vouchers-head,.help-head,.history-head{padding-bottom:13px}
+  .profile-heading h1,.notifications-head h1,.vouchers-head h1,.help-head h1,.history-head h1{font-size:20px!important}
+  .profile-heading p,.notifications-head p,.vouchers-head p,.help-head p,.history-head p{font-size:11.5px!important}
+
+  .profile-form{grid-template-columns:minmax(0,1fr) 230px;gap:28px;padding-top:18px}
+  .profile-fields{max-width:760px}
+  .field-row{grid-template-columns:125px 1fr;gap:14px;margin-bottom:12px}
+  .field-row>span{font-size:12px}
+  .field-row input[type=text],.field-row input[type=email],.field-row input[type=tel],.birthday-row select{height:38px;padding:0 11px;font-size:12px}
+  .radio-row{gap:18px}.radio-row label{font-size:12px}
+  .profile-buttons{margin-left:139px;margin-top:5px;gap:8px}
+  .primary-btn,.secondary-btn,.photo-btn{height:36px;padding:0 16px;font-size:12px}
+  .photo-panel{padding:14px 0 0 24px}.profile-avatar{width:100px;height:100px;margin-bottom:12px}
+
+  /* Common account panels */
+  .account-panel h2{font-size:18px}
+  .purchase-tabs,.review-tabs,.notification-filters,.voucher-tabs{padding:12px 0!important;gap:6px!important}
+  .notification-filter,.voucher-filter,.history-filter{padding:6px 11px!important;font-size:10.5px!important}
+  .notification-item{grid-template-columns:38px 1fr auto;gap:10px;padding:11px 6px}
+  .notification-icon{width:34px;height:34px}.notification-icon .material-symbols-outlined{font-size:18px}
+  .notification-copy strong{font-size:12px}.notification-copy p{font-size:11px;line-height:1.4}.notification-copy time{margin-top:3px}
+  .notification-dot{margin:5px}
+
+  .history-tools{padding:12px 0;gap:10px}.history-search{padding:7px 11px;min-width:min(320px,100%);border-radius:8px}.history-filter{padding:7px 12px!important}
+
+  .voucher-list{gap:11px}.voucher-card{grid-template-columns:96px 1fr;min-height:124px;border-radius:10px}.voucher-stub{padding:10px}.voucher-stub .material-symbols-outlined{font-size:24px}.voucher-stub strong{font-size:18px}.voucher-body{padding:11px}.voucher-body h3{font-size:12px}.voucher-body p{font-size:10px}.voucher-actions{margin-top:7px}.voucher-actions button,.voucher-actions a{padding:6px 10px;font-size:10px}
+
+  .help-head-icon{font-size:30px}.help-search{margin:13px 0 10px;height:38px;padding:0 11px}.help-search input{font-size:11.5px}.help-categories{gap:6px;padding-bottom:11px}.help-category{padding:6px 10px;font-size:10px}.help-question{grid-template-columns:30px 1fr 20px;gap:8px;padding:11px 5px;font-size:11.5px}.help-topic-icon{width:28px;height:28px;font-size:16px}.help-answer{padding:0 40px 12px}.help-answer p{font-size:11px;line-height:1.5}
+
+  .tracking-empty,.notifications-empty,.vouchers-empty,.help-empty{padding:48px 18px}
+  .tracking-timeline,.tracking-address{padding:14px}.tracking-timeline h3,.tracking-address h3{margin-bottom:13px}.tracking-step{min-height:62px}.tracking-step:not(:last-child):before{height:35px}
+}
+
+
+/* =========================================================
+   TASK 5.1 — Buyer Account second compact pass
+   Desktop density aligned closer to Home UI.
+   Layout/CSS only; account functionality is unchanged.
+   ========================================================= */
+@media (min-width: 1180px){
+  .account-layout{
+    max-width:1480px;
+    margin:14px auto;
+    padding:0 24px;
+    grid-template-columns:205px minmax(0,1fr);
+    gap:18px;
+  }
+
+  .account-sidebar{padding:6px}
+  .account-user{padding:4px 2px 11px}
+  .sidebar-avatar{width:40px;height:40px}
+  .sidebar-divider{margin-bottom:9px}
+  .sidebar-title{font-size:12px;margin-bottom:3px}
+  .account-tab,.account-nav a{
+    min-height:32px;
+    padding:5px 8px 5px 34px!important;
+    font-size:11.5px!important;
+  }
+  .account-tab .material-symbols-outlined,
+  .account-nav a .material-symbols-outlined{font-size:17px!important}
+
+  .profile-card{
+    padding:17px 24px;
+    min-height:calc(100vh - 106px);
+  }
+
+  /* Panel headings */
+  .likes-panel-head,.purchases-head,.reviews-head,
+  .notifications-head,.vouchers-head,.help-head,.history-head{
+    padding-bottom:10px!important;
+    margin-bottom:12px!important;
+  }
+  .likes-panel-head h1,.purchases-head h1,.reviews-head h1,
+  .notifications-head h1,.vouchers-head h1,.help-head h1,.history-head h1{
+    font-size:19px!important;
+  }
+  .likes-panel-head p,.purchases-head p,.reviews-head p,
+  .notifications-head p,.vouchers-head p,.help-head p,.history-head p,
+  .likes-count,.purchase-count,.reviews-count{
+    font-size:10.5px!important;
+  }
+
+  /* My Likes: 6-up desktop grid instead of oversized 4-up cards */
+  .likes-grid{
+    grid-template-columns:repeat(6,minmax(0,1fr));
+    gap:10px;
+  }
+  .like-card{border-radius:9px}
+  .like-image{aspect-ratio:1/0.88}
+  .like-image img{object-fit:contain;padding:7px}
+  .like-remove{
+    right:6px;top:6px;width:28px;height:28px;
+  }
+  .like-remove .material-symbols-outlined{font-size:18px}
+  .like-copy{padding:9px;gap:3px}
+  .like-category{font-size:9.5px}
+  .like-copy h3{font-size:11.5px;min-height:31px;line-height:1.3}
+  .like-copy strong{font-size:14px}
+  .like-copy small{font-size:9.5px}
+  .like-cart{height:30px;margin-top:4px;font-size:10.5px}
+  .likes-empty{padding:48px 18px}
+  .likes-empty>.material-symbols-outlined{font-size:44px}
+  .likes-empty h2{font-size:17px;margin:7px 0 3px}
+
+  /* Purchases: reduce tab/product whitespace */
+  .purchase-tabs{
+    margin:0 -24px 12px;
+    padding:0 24px!important;
+  }
+  .purchase-filter{height:40px;font-size:11px}
+  .purchase-list{gap:10px}
+  .order-card{border-radius:9px}
+  .order-card-head{min-height:38px;padding:7px 12px}
+  .order-shop{font-size:11px}
+  .order-status{font-size:10px}
+  .order-product{
+    grid-template-columns:62px 1fr auto;
+    gap:10px;
+    padding:9px 12px;
+  }
+  .order-product img{width:62px;height:62px;border-radius:7px;object-fit:contain}
+  .order-product h3{font-size:11.5px;margin-bottom:2px}
+  .order-product p{font-size:10px;margin:1px 0}
+  .order-price strong{font-size:12px}
+  .order-card-foot{padding:8px 12px;gap:7px}
+  .order-total{font-size:10.5px}
+  .order-total strong{font-size:14px}
+  .order-btn{height:30px;padding:0 11px;font-size:10px}
+  .purchases-empty{padding:48px 18px}
+
+  /* Reviews: compact both empty and populated states */
+  .reviews-head{margin-bottom:10px!important}
+  .review-list{gap:9px}
+  .review-card{
+    grid-template-columns:64px 1fr auto;
+    gap:11px;
+    padding:10px;
+    border-radius:9px;
+  }
+  .review-card>img{width:64px;height:64px;object-fit:contain}
+  .review-main h3{font-size:12px;margin:2px 0 4px}
+  .review-meta,.submitted-rating{font-size:9.5px}
+  .review-prompt,.review-copy{font-size:10.5px;line-height:1.4;margin:3px 0}
+  .review-static-stars{font-size:15px}
+  .reviews-empty{
+    min-height:360px;
+    padding:78px 18px 48px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:flex-start;
+  }
+  .reviews-empty>.material-symbols-outlined{font-size:42px}
+  .reviews-empty h2{font-size:18px;margin:6px 0 2px}
+  .reviews-empty p{font-size:11px;margin:2px 0}
+  .reviews-empty button{margin-top:8px;padding:7px 13px;font-size:10.5px}
+
+  /* Help Center: tighter rows so more FAQs are visible without scrolling */
+  .help-search{margin:10px 0 8px;height:34px}
+  .help-categories{padding-bottom:8px}
+  .help-category{padding:5px 9px}
+  .help-question{
+    grid-template-columns:26px 1fr 18px;
+    gap:7px;
+    padding:8px 4px;
+    font-size:10.8px;
+  }
+  .help-topic-icon{width:25px;height:25px;font-size:15px}
+  .help-chevron{font-size:17px}
+  .help-answer{padding:0 34px 9px}
+  .help-answer p{font-size:10.3px;line-height:1.4}
+
+  /* Notifications / vouchers / history: match same density */
+  .notification-item{padding:8px 5px}
+  .notification-copy strong{font-size:11px}
+  .notification-copy p{font-size:10px}
+  .voucher-list{gap:9px}
+  .voucher-card{grid-template-columns:88px 1fr;min-height:112px}
+  .voucher-body{padding:9px}
+  .history-tools{padding:9px 0}
+}
+
+/* Keep the grid comfortable on smaller desktop widths. */
+@media (min-width:1001px) and (max-width:1179px){
+  .likes-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:11px}
+  .like-image img{object-fit:contain;padding:7px}
+}
+
+
+/* Task 8 — buyer profile photo polish */
+.profile-avatar-button{
+  border:0;
+  padding:0;
+  cursor:pointer;
+  overflow:hidden;
+}
+.profile-avatar img,
+.sidebar-avatar img,
+.navbar-profile-avatar img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  object-position:center;
+  display:block;
+}
+.photo-actions{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
+  flex-wrap:wrap;
+}
+.photo-remove-btn{
+  min-height:31px;
+  padding:5px 11px;
+  border:1px solid #d8cec3;
+  border-radius:6px;
+  background:#fff;
+  color:#6c5a50;
+  font:inherit;
+  font-size:10.5px;
+  cursor:pointer;
+}
+.navbar-profile-avatar{
+  width:20px;
+  height:20px;
+  border-radius:50%;
+  overflow:hidden;
+  display:inline-grid;
+  place-items:center;
+  flex:0 0 20px;
+  background:rgba(255,255,255,.12);
+}
+.navbar-profile-avatar .material-symbols-outlined{font-size:18px}

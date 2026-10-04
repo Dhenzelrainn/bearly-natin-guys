@@ -305,15 +305,58 @@
             </div>
 
             <div class="panel-footer">
-                <button
-                    class="button button-primary"
-                    style="width:100%"
-                    type="button"
-                    disabled
-                >
-                    <i data-lucide="bike"></i>
-                    Start delivery
-                </button>
+                @if($job['status'] === 'Assigned')
+                    <form
+                        method="POST"
+                        action="{{
+                            route(
+                                'rider.orders.delivery.start',
+                                $job['id']
+                            )
+                        }}"
+                    >
+                        @csrf
+
+                        <button
+                            class="button button-primary"
+                            style="width:100%"
+                            type="submit"
+                        >
+                            <i data-lucide="bike"></i>
+                            Start delivery
+                        </button>
+                    </form>
+                @elseif($job['status'] === 'Out for Delivery')
+                    <button
+                        class="button button-primary"
+                        style="width:100%"
+                        type="button"
+                        disabled
+                    >
+                        <i data-lucide="bike"></i>
+                        Delivery in progress
+                    </button>
+                @elseif($job['status'] === 'Delivered')
+                    <button
+                        class="button button-primary"
+                        style="width:100%"
+                        type="button"
+                        disabled
+                    >
+                        <i data-lucide="circle-check"></i>
+                        Delivery completed
+                    </button>
+                @else
+                    <button
+                        class="button button-primary"
+                        style="width:100%"
+                        type="button"
+                        disabled
+                    >
+                        <i data-lucide="triangle-alert"></i>
+                        Delivery unavailable
+                    </button>
+                @endif
             </div>
         </section>
     </aside>

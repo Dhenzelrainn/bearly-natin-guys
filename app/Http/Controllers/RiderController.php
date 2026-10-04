@@ -6,10 +6,12 @@ use App\Enums\AccountStatus;
 use App\Enums\UserRole;
 use App\Enums\ParcelStatus;
 use App\Models\User;
+use App\Services\RiderDeliveryService;
 use App\Services\EmailVerificationService;
 use App\Services\InternationalPhone;
 use App\Services\RegistrationLifecycleService;
 use Illuminate\Http\Request;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -702,6 +704,29 @@ class RiderController extends Controller
                 'job' => $job,
             ]
         );
+    }
+
+    public function startDelivery(
+        string $id,
+        RiderDeliveryService $deliveryService
+    ): RedirectResponse {
+        /** @var User $user */
+        $user = Auth::user();
+
+        $deliveryService->startDelivery(
+            $id,
+            $user
+        );
+
+        return redirect()
+            ->route(
+                'rider.orders.delivery',
+                $id
+            )
+            ->with(
+                'job_status',
+                'Delivery started. Assigned parcels are now out for delivery.'
+            );
     }
 
     public function confirmDelivery(

@@ -304,7 +304,6 @@ function setupSorting() {
 
 
 function setupReports() {
-    document.querySelector('[data-report-apply]')?.addEventListener('click', () => toast('Report preview refreshed for the selected range.'));
     document.querySelector('[data-report-export]')?.addEventListener('click', () => {
         const rows = [['Rider','Assigned','Delivered','Failed','Success Rate']];
         document.querySelectorAll('[data-report-row]').forEach((row) => rows.push([...row.children].map((cell) => cell.innerText.trim())));

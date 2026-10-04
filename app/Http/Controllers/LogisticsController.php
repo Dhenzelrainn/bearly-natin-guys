@@ -3078,46 +3078,359 @@ class LogisticsController extends Controller
         return $timeline->values()->all();
     }
 
-    public function reports()
-    {
-        return view('logistics.reports.index', $this->shared() + [
-            'summary' => [
-                'throughput' => 1284,
-                'delivered' => 1176,
-                'success_rate' => 91.6,
-                'avg_sort_time' => '18m',
+    public function reports(
+        Request $request
+    ): View|RedirectResponse {
+        $validated = $request->validate([
+            'from' => [
+                'nullable',
+                'date_format:Y-m-d',
             ],
-            'riderStats' => [
-                [
-                    'name' => 'Nico Flores',
-                    'assigned' => 91,
-                    'delivered' => 88,
-                    'failed' => 3,
-                    'rate' => '96.7%',
-                ],
-                [
-                    'name' => 'Anne Cruz',
-                    'assigned' => 84,
-                    'delivered' => 80,
-                    'failed' => 4,
-                    'rate' => '95.2%',
-                ],
-                [
-                    'name' => 'Marco Lim',
-                    'assigned' => 76,
-                    'delivered' => 70,
-                    'failed' => 6,
-                    'rate' => '92.1%',
-                ],
-            ],
-            'dailyVolumes' => [118, 136, 129, 151, 164, 143, 158],
-            'statusBreakdown' => [
-                ['label' => 'Delivered', 'value' => 1176, 'share' => 91.6],
-                ['label' => 'Out for Delivery', 'value' => 61, 'share' => 4.8],
-                ['label' => 'Delivery Failed', 'value' => 29, 'share' => 2.3],
-                ['label' => 'Returned', 'value' => 18, 'share' => 1.3],
+            'to' => [
+                'nullable',
+                'date_format:Y-m-d',
             ],
         ]);
+
+        $reportTo = isset($validated['to'])
+            ? Carbon::createFromFormat(
+                'Y-m-d',
+                $validated['to'],
+                'Asia/Manila'
+            )->endOfDay()
+            : Carbon::now('Asia/Manila')->endOfDay();
+
+        $reportFrom = isset($validated['from'])
+            ? Carbon::createFromFormat(
+                'Y-m-d',
+                $validated['from'],
+                'Asia/Manila'
+            )->startOfDay()
+            : $reportTo
+                ->copy()
+                ->subDays(6)
+                ->startOfDay();
+
+        if ($reportFrom->gt($reportTo)) {
+            return redirect()
+                ->route('logistics.reports.index')
+                ->withErrors([
+                    'to' =>
+                        'The end date must be on or after the start date.',
+                ]);
+        }
+
+        /** @var User $operator */
+        $operator = $request->user();
+
+        $profile = $this->currentLogisticsProfile(
+            $operator
+        );
+
+        abort_unless($profile, 404);
+
+        /*
+        * All report event queries are scoped through the
+        * authenticated Logistics provider's shipments.
+        */
+        $ownedEventQuery = fn () =>
+            ShipmentEvent::query()
+                ->whereHas(
+                    'shipment',
+                    fn ($query) => $query->where(
+                        'logistics_profile_id',
+                        $profile->id
+                    )
+                );
+
+        /*
+        * Throughput represents unique parcels received by
+        * this provider during the selected reporting period.
+        */
+        $throughput = $ownedEventQuery()
+            ->where(
+                'event_type',
+                'received_at_center'
+            )
+            ->whereNotNull('parcel_id')
+            ->whereBetween(
+                'occurred_at',
+                [
+                    $reportFrom,
+                    $reportTo,
+                ]
+            )
+            ->distinct()
+            ->count('parcel_id');
+
+        /*
+        * Delivered represents unique parcels completed
+        * during the selected reporting period.
+        */
+        $delivered = $ownedEventQuery()
+            ->where(
+                'event_type',
+                'parcel_delivered'
+            )
+            ->whereNotNull('parcel_id')
+            ->whereBetween(
+                'occurred_at',
+                [
+                    $reportFrom,
+                    $reportTo,
+                ]
+            )
+            ->distinct()
+            ->count('parcel_id');
+
+        /*
+        * Each persisted delivered / failed parcel event
+        * represents a resolved delivery outcome.
+        *
+        * Failed attempts may later be retried, so they remain
+        * part of the operational success-rate denominator.
+        */
+        $successfulDeliveryOutcomes =
+            $ownedEventQuery()
+                ->where(
+                    'event_type',
+                    'parcel_delivered'
+                )
+                ->whereNotNull('parcel_id')
+                ->whereBetween(
+                    'occurred_at',
+                    [
+                        $reportFrom,
+                        $reportTo,
+                    ]
+                )
+                ->count();
+
+        $failedDeliveryOutcomes =
+            $ownedEventQuery()
+                ->where(
+                    'event_type',
+                    'parcel_delivery_failed'
+                )
+                ->whereNotNull('parcel_id')
+                ->whereBetween(
+                    'occurred_at',
+                    [
+                        $reportFrom,
+                        $reportTo,
+                    ]
+                )
+                ->count();
+
+        $resolvedDeliveryOutcomes =
+            $successfulDeliveryOutcomes
+            + $failedDeliveryOutcomes;
+
+        $successRate =
+            $resolvedDeliveryOutcomes > 0
+                ? round(
+                    (
+                        $successfulDeliveryOutcomes
+                        / $resolvedDeliveryOutcomes
+                    ) * 100,
+                    1
+                )
+                : 0;
+
+        /*
+        * Average sort time uses the initial parcel_sorted
+        * event completed inside the selected period.
+        *
+        * Its matching received_at_center event may have
+        * occurred earlier, so long as it happened before
+        * that sorting event.
+        */
+        $sortEvents = $ownedEventQuery()
+            ->where(
+                'event_type',
+                'parcel_sorted'
+            )
+            ->whereNotNull('parcel_id')
+            ->whereBetween(
+                'occurred_at',
+                [
+                    $reportFrom,
+                    $reportTo,
+                ]
+            )
+            ->orderBy('occurred_at')
+            ->get([
+                'id',
+                'parcel_id',
+                'occurred_at',
+            ])
+            ->unique('parcel_id')
+            ->values();
+
+        $receivedEventsByParcel = collect();
+
+        if ($sortEvents->isNotEmpty()) {
+            $receivedEventsByParcel =
+                $ownedEventQuery()
+                    ->where(
+                        'event_type',
+                        'received_at_center'
+                    )
+                    ->whereIn(
+                        'parcel_id',
+                        $sortEvents
+                            ->pluck('parcel_id')
+                            ->unique()
+                            ->values()
+                    )
+                    ->where(
+                        'occurred_at',
+                        '<=',
+                        $reportTo
+                    )
+                    ->orderBy('occurred_at')
+                    ->get([
+                        'id',
+                        'parcel_id',
+                        'occurred_at',
+                    ])
+                    ->groupBy('parcel_id');
+        }
+
+        $sortDurations = $sortEvents
+            ->map(function (
+                ShipmentEvent $sortEvent
+            ) use (
+                $receivedEventsByParcel
+            ): ?float {
+                $receivedEvent = collect(
+                    $receivedEventsByParcel->get(
+                        $sortEvent->parcel_id,
+                        collect()
+                    )
+                )
+                    ->filter(
+                        fn (ShipmentEvent $event) =>
+                            $event->occurred_at
+                                ->lte(
+                                    $sortEvent->occurred_at
+                                )
+                    )
+                    ->sortByDesc('occurred_at')
+                    ->first();
+
+                if (! $receivedEvent) {
+                    return null;
+                }
+
+                return $receivedEvent
+                    ->occurred_at
+                    ->diffInMinutes(
+                        $sortEvent->occurred_at
+                    );
+            })
+            ->filter(
+                fn ($minutes) =>
+                    $minutes !== null
+            );
+
+        $averageSortTime =
+            $sortDurations->isNotEmpty()
+                ? round(
+                    $sortDurations->avg()
+                ).'m'
+                : '—';
+
+        return view(
+            'logistics.reports.index',
+            $this->shared() + [
+                'reportRange' => [
+                    'from' =>
+                        $reportFrom->format('Y-m-d'),
+
+                    'to' =>
+                        $reportTo->format('Y-m-d'),
+                ],
+
+                'summary' => [
+                    'throughput' =>
+                        $throughput,
+
+                    'delivered' =>
+                        $delivered,
+
+                    'success_rate' =>
+                        $successRate,
+
+                    'resolved_delivery_outcomes' =>
+                        $resolvedDeliveryOutcomes,
+
+                    'avg_sort_time' =>
+                        $averageSortTime,
+                ],
+
+                /*
+                * 7B-3 and 7B-4 will replace these remaining
+                * temporary report datasets with real data.
+                */
+                'riderStats' => [
+                    [
+                        'name' => 'Nico Flores',
+                        'assigned' => 91,
+                        'delivered' => 88,
+                        'failed' => 3,
+                        'rate' => '96.7%',
+                    ],
+                    [
+                        'name' => 'Anne Cruz',
+                        'assigned' => 84,
+                        'delivered' => 80,
+                        'failed' => 4,
+                        'rate' => '95.2%',
+                    ],
+                    [
+                        'name' => 'Marco Lim',
+                        'assigned' => 76,
+                        'delivered' => 70,
+                        'failed' => 6,
+                        'rate' => '92.1%',
+                    ],
+                ],
+
+                'dailyVolumes' => [
+                    118,
+                    136,
+                    129,
+                    151,
+                    164,
+                    143,
+                    158,
+                ],
+
+                'statusBreakdown' => [
+                    [
+                        'label' => 'Delivered',
+                        'value' => 1176,
+                        'share' => 91.6,
+                    ],
+                    [
+                        'label' => 'Out for Delivery',
+                        'value' => 61,
+                        'share' => 4.8,
+                    ],
+                    [
+                        'label' => 'Delivery Failed',
+                        'value' => 29,
+                        'share' => 2.3,
+                    ],
+                    [
+                        'label' => 'Returned',
+                        'value' => 18,
+                        'share' => 1.3,
+                    ],
+                ],
+            ]
+        );
     }
 
     public function messages()

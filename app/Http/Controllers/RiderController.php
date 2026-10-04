@@ -731,8 +731,59 @@ class RiderController extends Controller
 
     public function confirmDelivery(
         Request $request,
-        string $id
-    ) {
+        string $id,
+        RiderDeliveryService $deliveryService
+    ): RedirectResponse {
+        $validated = $request->validate([
+            'recipient_name' => [
+                'required',
+                'string',
+                'max:160',
+            ],
+
+            'proof_photo' => [
+                'required',
+                'image',
+                'mimes:jpg,jpeg,png,webp',
+                'max:5120',
+            ],
+
+            'notes' => [
+                'nullable',
+                'string',
+                'max:1000',
+            ],
+
+            'latitude' => [
+                'nullable',
+                'numeric',
+                'between:-90,90',
+            ],
+
+            'longitude' => [
+                'nullable',
+                'numeric',
+                'between:-180,180',
+            ],
+        ]);
+
+        /** @var User $user */
+        $user = Auth::user();
+
+        $deliveryService->completeDelivery(
+            $id,
+            $user,
+            $request->file('proof_photo'),
+            $validated['recipient_name'],
+            $validated['notes'] ?? null,
+            isset($validated['latitude'])
+                ? (float) $validated['latitude']
+                : null,
+            isset($validated['longitude'])
+                ? (float) $validated['longitude']
+                : null
+        );
+
         return redirect()
             ->route(
                 'rider.orders.delivery',
@@ -740,7 +791,7 @@ class RiderController extends Controller
             )
             ->with(
                 'job_status',
-                'Delivery completion is not enabled yet.'
+                'Delivery completed successfully.'
             );
     }
 

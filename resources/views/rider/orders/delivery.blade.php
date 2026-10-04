@@ -327,15 +327,70 @@
                         </button>
                     </form>
                 @elseif($job['status'] === 'Out for Delivery')
-                    <button
-                        class="button button-primary"
+                    <form
+                        method="POST"
+                        action="{{
+                            route(
+                                'rider.orders.delivery.confirm',
+                                $job['id']
+                            )
+                        }}"
+                        enctype="multipart/form-data"
                         style="width:100%"
-                        type="button"
-                        disabled
                     >
-                        <i data-lucide="bike"></i>
-                        Delivery in progress
-                    </button>
+                        @csrf
+
+                        <div
+                            style="
+                                display:grid;
+                                gap:12px;
+                                margin-bottom:14px;
+                            "
+                        >
+                            <label>
+                                <span>Received by</span>
+
+                                <input
+                                    type="text"
+                                    name="recipient_name"
+                                    value="{{ old('recipient_name') }}"
+                                    maxlength="160"
+                                    required
+                                >
+                            </label>
+
+                            <label>
+                                <span>Delivery proof photo</span>
+
+                                <input
+                                    type="file"
+                                    name="proof_photo"
+                                    accept="image/jpeg,image/png,image/webp"
+                                    capture="environment"
+                                    required
+                                >
+                            </label>
+
+                            <label>
+                                <span>Notes (optional)</span>
+
+                                <textarea
+                                    name="notes"
+                                    rows="3"
+                                    maxlength="1000"
+                                >{{ old('notes') }}</textarea>
+                            </label>
+                        </div>
+
+                        <button
+                            class="button button-primary"
+                            style="width:100%"
+                            type="submit"
+                        >
+                            <i data-lucide="circle-check"></i>
+                            Confirm delivery
+                        </button>
+                    </form>
                 @elseif($job['status'] === 'Delivered')
                     <button
                         class="button button-primary"

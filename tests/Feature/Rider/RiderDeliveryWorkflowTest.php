@@ -25,6 +25,8 @@ use InvalidArgumentException;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 
 class RiderDeliveryWorkflowTest extends TestCase
 
@@ -2040,6 +2042,383 @@ class RiderDeliveryWorkflowTest extends TestCase
 
             );
 
+    }
+
+    public function test_rider_can_complete_delivery_with_private_photo_proof(): void
+    {
+        Storage::fake('local');
+
+        $rider = $this->makeRider('COMPLETE');
+
+        $assignment = $this->makeDispatchAssignment(
+            $rider,
+            'COMPLETE',
+            2,
+            0,
+            'Delivery Recipient'
+        );
+
+        $service = app(RiderDeliveryService::class);
+
+        $service->startDelivery(
+            $assignment['shipment']->shipment_no,
+            $rider->user
+        );
+
+        $shipment = $service->completeDelivery(
+            $assignment['shipment']->shipment_no,
+            $rider->user,
+            $this->fakeProofPhoto('proof.png'),
+            'Delivery Recipient',
+            'Received in good condition.',
+            14.0712,
+            121.3250
+        );
+
+        $this->assertSame(
+            ShipmentStatus::Delivered->value,
+            $shipment->status
+        );
+
+        foreach ($assignment['parcels'] as $parcel) {
+            $this->assertDatabaseHas('parcels', [
+                'id' => $parcel->id,
+                'status' => ParcelStatus::Delivered->value,
+            ]);
+
+            $attempt = $parcel
+                ->deliveryAttempts()
+                ->where(
+                    'outcome',
+                    DeliveryAttemptOutcome::Delivered->value
+                )
+                ->latest('id')
+                ->firstOrFail();
+
+            $this->assertSame(1, $attempt->attempt_no);
+
+            $this->assertDatabaseHas('delivery_proofs', [
+                'delivery_attempt_id' => $attempt->id,
+                'type' => 'photo',
+                'recipient_name' => 'Delivery Recipient',
+                'uploaded_by' => $rider->user_id,
+            ]);
+
+            $proof = $attempt->proofs()->sole();
+
+            $this->assertNotNull($proof->file_path);
+
+            Storage::disk('local')->assertExists(
+                $proof->file_path
+            );
+
+            $this->assertDatabaseHas('shipment_events', [
+                'shipment_id' => $assignment['shipment']->id,
+                'parcel_id' => $parcel->id,
+                'event_type' => 'parcel_delivered',
+                'from_status' => ParcelStatus::OutForDelivery->value,
+                'to_status' => ParcelStatus::Delivered->value,
+                'actor_user_id' => $rider->user_id,
+                'source' => 'rider',
+            ]);
+        }
+
+        $this->assertDatabaseHas('shipments', [
+            'id' => $assignment['shipment']->id,
+            'status' => ShipmentStatus::Delivered->value,
+        ]);
+
+        $this->assertDatabaseHas('shipment_events', [
+            'shipment_id' => $assignment['shipment']->id,
+            'parcel_id' => null,
+            'event_type' => 'shipment_delivered',
+            'to_status' => ShipmentStatus::Delivered->value,
+            'actor_user_id' => $rider->user_id,
+            'source' => 'rider',
+        ]);
+    }
+
+    public function test_confirm_delivery_route_validates_and_completes_delivery(): void
+    {
+        Storage::fake('local');
+
+        $rider = $this->makeRider('HTTP-COMPLETE');
+
+        $assignment = $this->makeDispatchAssignment(
+            $rider,
+            'HTTP-COMPLETE',
+            1,
+            0,
+            'HTTP Recipient'
+        );
+
+        app(RiderDeliveryService::class)->startDelivery(
+            $assignment['shipment']->shipment_no,
+            $rider->user
+        );
+
+        $response = $this
+            ->actingAs($rider->user)
+            ->post(
+                route(
+                    'rider.orders.delivery.confirm',
+                    $assignment['shipment']->shipment_no
+                ),
+                [
+                    'recipient_name' => 'HTTP Recipient',
+                    'proof_photo' => $this->fakeProofPhoto(
+                        'http-proof.png'
+                    ),
+                    'notes' => 'Handed to recipient.',
+                ]
+            );
+
+        $response
+            ->assertRedirect(
+                route(
+                    'rider.orders.delivery',
+                    $assignment['shipment']->shipment_no
+                )
+            )
+            ->assertSessionHas(
+                'job_status',
+                'Delivery completed successfully.'
+            );
+
+        $this->assertDatabaseHas('shipments', [
+            'id' => $assignment['shipment']->id,
+            'status' => ShipmentStatus::Delivered->value,
+        ]);
+
+        $this->assertDatabaseCount('delivery_proofs', 1);
+    }
+
+    public function test_confirm_delivery_requires_recipient_and_photo(): void
+    {
+        $rider = $this->makeRider('VALIDATE');
+
+        $assignment = $this->makeDispatchAssignment(
+            $rider,
+            'VALIDATE',
+            1,
+            0,
+            'Validation Recipient'
+        );
+
+        app(RiderDeliveryService::class)->startDelivery(
+            $assignment['shipment']->shipment_no,
+            $rider->user
+        );
+
+        $this
+            ->actingAs($rider->user)
+            ->post(
+                route(
+                    'rider.orders.delivery.confirm',
+                    $assignment['shipment']->shipment_no
+                ),
+                []
+            )
+            ->assertSessionHasErrors([
+                'recipient_name',
+                'proof_photo',
+            ]);
+
+        $this->assertDatabaseCount('delivery_attempts', 0);
+        $this->assertDatabaseCount('delivery_proofs', 0);
+    }
+
+    public function test_completed_delivery_cannot_be_completed_again(): void
+    {
+        Storage::fake('local');
+
+        $rider = $this->makeRider('COMPLETE-ONCE');
+
+        $assignment = $this->makeDispatchAssignment(
+            $rider,
+            'COMPLETE-ONCE',
+            1,
+            0,
+            'Complete Once Recipient'
+        );
+
+        $service = app(RiderDeliveryService::class);
+
+        $service->startDelivery(
+            $assignment['shipment']->shipment_no,
+            $rider->user
+        );
+
+        $service->completeDelivery(
+            $assignment['shipment']->shipment_no,
+            $rider->user,
+            $this->fakeProofPhoto('first-proof.png'),
+            'Complete Once Recipient'
+        );
+
+        $this->assertDatabaseCount('delivery_attempts', 1);
+        $this->assertDatabaseCount('delivery_proofs', 1);
+
+        $filesBeforeRepeat = Storage::disk('local')
+            ->allFiles('delivery-proofs');
+
+        $this->assertCount(1, $filesBeforeRepeat);
+
+        try {
+            $service->completeDelivery(
+                $assignment['shipment']->shipment_no,
+                $rider->user,
+                $this->fakeProofPhoto('duplicate-proof.png'),
+                'Complete Once Recipient'
+            );
+
+            $this->fail(
+                'Expected repeat completion to be rejected.'
+            );
+        } catch (ConflictHttpException) {
+            // Expected.
+        }
+
+        $this->assertDatabaseCount('delivery_attempts', 1);
+        $this->assertDatabaseCount('delivery_proofs', 1);
+
+        $this->assertSame(
+            1,
+            $assignment['shipment']
+                ->events()
+                ->where(
+                    'event_type',
+                    'shipment_delivered'
+                )
+                ->count()
+        );
+
+        $filesAfterRepeat = Storage::disk('local')
+            ->allFiles('delivery-proofs');
+
+        $this->assertSame(
+            $filesBeforeRepeat,
+            $filesAfterRepeat
+        );
+    }
+
+    public function test_shipment_is_delivered_only_after_all_riders_complete_their_parcels(): void
+    {
+        Storage::fake('local');
+
+        $riderA = $this->makeRider('DELIVER-SPLIT-A');
+        $riderB = $this->makeRider('DELIVER-SPLIT-B');
+
+        $assignment = $this->makeDispatchAssignment(
+            $riderA,
+            'DELIVER-SPLIT',
+            2,
+            0,
+            'Split Delivery Recipient'
+        );
+
+        $firstParcel = $assignment['parcels'][0];
+        $secondParcel = $assignment['parcels'][1];
+
+        $assignment['batch']
+            ->parcels()
+            ->detach($secondParcel->id);
+
+        $secondBatch = DispatchBatch::query()->create([
+            'batch_no' => 'RIDER-BATCH-DELIVER-SPLIT-B',
+            'sorting_center_id' => $this->center->id,
+            'sorting_zone_id' => $this->zone->id,
+            'rider_profile_id' => $riderB->id,
+            'status' => 'dispatched',
+            'prepared_by' => $this->logistics->id,
+            'prepared_at' => now(),
+            'assigned_at' => now(),
+            'dispatched_at' => now(),
+        ]);
+
+        $secondBatch->parcels()->attach(
+            $secondParcel->id,
+            [
+                'sequence' => 1,
+                'loaded_at' => now(),
+            ]
+        );
+
+        $service = app(RiderDeliveryService::class);
+
+        $service->startDelivery(
+            $assignment['shipment']->shipment_no,
+            $riderA->user
+        );
+
+        $service->startDelivery(
+            $assignment['shipment']->shipment_no,
+            $riderB->user
+        );
+
+        $service->completeDelivery(
+            $assignment['shipment']->shipment_no,
+            $riderA->user,
+            $this->fakeProofPhoto('rider-a-proof.png'),
+            'Split Recipient'
+        );
+
+        $this->assertDatabaseHas('parcels', [
+            'id' => $firstParcel->id,
+            'status' => ParcelStatus::Delivered->value,
+        ]);
+
+        $this->assertDatabaseHas('parcels', [
+            'id' => $secondParcel->id,
+            'status' => ParcelStatus::OutForDelivery->value,
+        ]);
+
+        $this->assertDatabaseHas('shipments', [
+            'id' => $assignment['shipment']->id,
+            'status' => ShipmentStatus::OutForDelivery->value,
+        ]);
+
+        $this->assertDatabaseMissing('shipment_events', [
+            'shipment_id' => $assignment['shipment']->id,
+            'event_type' => 'shipment_delivered',
+        ]);
+
+        $service->completeDelivery(
+            $assignment['shipment']->shipment_no,
+            $riderB->user,
+            $this->fakeProofPhoto('rider-b-proof.png'),
+            'Split Recipient'
+        );
+
+        $this->assertDatabaseHas('shipments', [
+            'id' => $assignment['shipment']->id,
+            'status' => ShipmentStatus::Delivered->value,
+        ]);
+
+        $this->assertSame(
+            1,
+            $assignment['shipment']
+                ->events()
+                ->where(
+                    'event_type',
+                    'shipment_delivered'
+                )
+                ->count()
+        );
+    }
+
+    private function fakeProofPhoto(string $name = 'proof.png'): UploadedFile
+    {
+        $contents = base64_decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+            true
+        );
+
+        if ($contents === false) {
+            throw new \RuntimeException('Unable to create fake proof image.');
+        }
+
+        return UploadedFile::fake()->createWithContent($name, $contents);
     }
 
     private function makeLogisticsProvider(): array

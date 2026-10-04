@@ -407,6 +407,78 @@ function setupChat() {
         conversationData[active]
         || null;
 
+    const reading = new Set();
+
+    const markRead = async (
+        conversationId
+    ) => {
+        const id =
+            String(
+                conversationId
+            );
+
+        const conversation =
+            conversationData[id];
+
+        if (
+            !conversation
+            || !conversation.read_url
+            || Number(
+                conversation.unread
+                || 0
+            ) <= 0
+            || reading.has(id)
+        ) {
+            return;
+        }
+
+        reading.add(id);
+
+        try {
+            const response =
+                await fetch(
+                    conversation.read_url,
+                    {
+                        method: 'POST',
+
+                        credentials:
+                            'same-origin',
+
+                        headers: {
+                            'Accept':
+                                'application/json',
+
+                            'X-CSRF-TOKEN':
+                                csrfToken,
+                        },
+                    }
+                );
+
+            if (!response.ok) {
+                return;
+            }
+
+            conversation.unread = 0;
+
+            const button =
+                conversations.find(
+                    (item) =>
+                        String(
+                            item
+                                .dataset
+                                .conversation
+                        ) === id
+                );
+
+            if (button) {
+                button.dataset.unread =
+                    '0';
+            }
+        } finally {
+            reading.delete(id);
+        }
+    };
+
     const render = () => {
         const button =
             conversations.find(
@@ -516,6 +588,7 @@ function setupChat() {
         );
 
         render();
+        markRead(active);
     };
 
     conversations.forEach(
@@ -700,6 +773,7 @@ function setupChat() {
         );
 
     render();
+    markRead(active);
 }
 
 function setupNewConversation() {

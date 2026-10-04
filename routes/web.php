@@ -684,6 +684,9 @@ Route::prefix('logistics')->name('logistics.')->group(function () {
         Route::post('/messages/conversations', [LogisticsController::class, 'storeConversation'])
             ->name('messages.conversations.store');
 
+        Route::post('/messages/{conversation}/read', [LogisticsController::class, 'markMessageConversationRead',])
+            ->name('messages.read');
+
         Route::post('/messages/{conversation}', [LogisticsController::class, 'sendMessage'])
             ->name('messages.send');
 

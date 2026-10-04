@@ -756,6 +756,239 @@ class LogisticsMessagesTest extends TestCase
         );
     }
 
+    public function test_logistics_can_mark_own_conversation_as_read(): void
+    {
+        $operator =
+            $this->makeLogisticsOperator(
+                'READ'
+            );
+
+        $seller =
+            User::factory()->create([
+                'name' =>
+                    'Read Seller',
+
+                'email' =>
+                    'read-seller@example.test',
+
+                'role' =>
+                    UserRole::Seller->value,
+
+                'status' =>
+                    AccountStatus::Active->value,
+            ]);
+
+        $conversation =
+            Conversation::query()->create([
+                'subject' =>
+                    'Unread pickup update',
+
+                'type' =>
+                    'direct',
+
+                'status' =>
+                    'open',
+
+                'created_by' =>
+                    $seller->id,
+
+                'last_message_at' =>
+                    now()->subMinute(),
+            ]);
+
+        $conversation
+            ->participants()
+            ->attach(
+                $operator->id,
+                [
+                    'participant_role' =>
+                        UserRole::Logistics
+                            ->value,
+
+                    'last_read_at' =>
+                        null,
+
+                    'joined_at' =>
+                        now()->subHour(),
+                ]
+            );
+
+        $conversation
+            ->participants()
+            ->attach(
+                $seller->id,
+                [
+                    'participant_role' =>
+                        UserRole::Seller
+                            ->value,
+
+                    'last_read_at' =>
+                        null,
+
+                    'joined_at' =>
+                        now()->subHour(),
+                ]
+            );
+
+        $conversation
+            ->messages()
+            ->create([
+                'sender_id' =>
+                    $seller->id,
+
+                'body' =>
+                    'The pickup is ready.',
+
+                'message_type' =>
+                    'text',
+
+                'sent_at' =>
+                    now()->subMinute(),
+            ]);
+
+        $response = $this
+            ->actingAs($operator)
+            ->postJson(
+                route(
+                    'logistics.messages.read',
+                    $conversation
+                )
+            );
+
+        $response
+            ->assertOk()
+            ->assertJsonPath(
+                'unread',
+                0
+            );
+
+        $participant =
+            DB::table(
+                'conversation_participants'
+            )
+                ->where(
+                    'conversation_id',
+                    $conversation->id
+                )
+                ->where(
+                    'user_id',
+                    $operator->id
+                )
+                ->first();
+
+        $this->assertNotNull(
+            $participant
+                ?->last_read_at
+        );
+    }
+
+    public function test_logistics_cannot_mark_foreign_conversation_as_read(): void
+    {
+        $operator =
+            $this->makeLogisticsOperator(
+                'READ-OUTSIDER'
+            );
+
+        $owner =
+            $this->makeLogisticsOperator(
+                'READ-OWNER'
+            );
+
+        $seller =
+            User::factory()->create([
+                'name' =>
+                    'Foreign Read Seller',
+
+                'email' =>
+                    'foreign-read-seller@example.test',
+
+                'role' =>
+                    UserRole::Seller->value,
+
+                'status' =>
+                    AccountStatus::Active->value,
+            ]);
+
+        $conversation =
+            Conversation::query()->create([
+                'type' =>
+                    'direct',
+
+                'status' =>
+                    'open',
+
+                'created_by' =>
+                    $owner->id,
+
+                'last_message_at' =>
+                    now(),
+            ]);
+
+        $conversation
+            ->participants()
+            ->attach(
+                $owner->id,
+                [
+                    'participant_role' =>
+                        UserRole::Logistics
+                            ->value,
+
+                    'last_read_at' =>
+                        null,
+
+                    'joined_at' =>
+                        now(),
+                ]
+            );
+
+        $conversation
+            ->participants()
+            ->attach(
+                $seller->id,
+                [
+                    'participant_role' =>
+                        UserRole::Seller
+                            ->value,
+
+                    'last_read_at' =>
+                        null,
+
+                    'joined_at' =>
+                        now(),
+                ]
+            );
+
+        $response = $this
+            ->actingAs($operator)
+            ->postJson(
+                route(
+                    'logistics.messages.read',
+                    $conversation
+                )
+            );
+
+        $response->assertNotFound();
+
+        $participant =
+            DB::table(
+                'conversation_participants'
+            )
+                ->where(
+                    'conversation_id',
+                    $conversation->id
+                )
+                ->where(
+                    'user_id',
+                    $owner->id
+                )
+                ->first();
+
+        $this->assertNull(
+            $participant
+                ?->last_read_at
+        );
+    }
+
     public function test_messages_page_uses_only_authenticated_logistics_conversations(): void
     {
         $operator =

@@ -4140,6 +4140,12 @@ class LogisticsController extends Controller
                             $conversation
                         ),
 
+                    'read_url' =>
+                        route(
+                            'logistics.messages.read',
+                            $conversation
+                        ),
+
                     'messages' =>
                         $conversation
                             ->messages
@@ -4396,6 +4402,56 @@ class LogisticsController extends Controller
             ],
             201
         );
+    }
+
+    public function markMessageConversationRead(
+        Request $request,
+        Conversation $conversation
+    ) {
+        /** @var User $operator */
+        $operator = $request->user();
+
+        $participant = DB::table(
+            'conversation_participants'
+        )
+            ->where(
+                'conversation_id',
+                $conversation->id
+            )
+            ->where(
+                'user_id',
+                $operator->id
+            )
+            ->first();
+
+        abort_unless(
+            $participant,
+            404
+        );
+
+        DB::table(
+            'conversation_participants'
+        )
+            ->where(
+                'conversation_id',
+                $conversation->id
+            )
+            ->where(
+                'user_id',
+                $operator->id
+            )
+            ->update([
+                'last_read_at' =>
+                    now(),
+            ]);
+
+        return response()->json([
+            'message' =>
+                'Conversation marked as read.',
+
+            'unread' =>
+                0,
+        ]);
     }
 
     public function sendMessage(

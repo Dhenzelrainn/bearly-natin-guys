@@ -25,8 +25,11 @@
             <button
                 class="button button-primary"
                 type="button"
-                disabled
-                title="New conversations will be enabled after messaging write integration."
+                data-modal-open="new-conversation"
+                @if(empty($messageRecipients))
+                    disabled
+                    title="No eligible messaging contacts are available."
+                @endif
             >
                 <i data-lucide="square-pen"></i>
                 New conversation
@@ -161,6 +164,126 @@
                 </button>
             </div>
         </div>
+    </section>
+
+    <section
+        class="modal"
+        data-modal="new-conversation"
+        hidden
+    >
+        <div class="modal-header">
+            <div>
+                <h3>
+                    Start a conversation
+                </h3>
+
+                <p>
+                    Contact an Administrator,
+                    related Seller, or one of
+                    your approved Riders.
+                </p>
+            </div>
+
+            <button
+                class="icon-button"
+                type="button"
+                data-modal-close
+                aria-label="Close new conversation"
+            >
+                <i data-lucide="x"></i>
+            </button>
+        </div>
+
+        <form
+            class="modal-body"
+            data-new-conversation-form
+            data-store-url="{{
+                route(
+                    'logistics.messages.conversations.store'
+                )
+            }}"
+        >
+            <div class="field">
+                <label for="message-recipient">
+                    Recipient
+                </label>
+
+                <select
+                    id="message-recipient"
+                    name="recipient_id"
+                    required
+                >
+                    <option value="">
+                        Select recipient
+                    </option>
+
+                    @foreach(
+                        $messageRecipients
+                        as $recipient
+                    )
+                        <option
+                            value="{{ $recipient['id'] }}"
+                        >
+                            {{ $recipient['label'] }}
+                            —
+                            {{ $recipient['name'] }}
+                        </option>
+                    @endforeach
+                </select>
+            </div>
+
+            <div
+                class="field"
+                style="margin-top:14px"
+            >
+                <label for="message-subject">
+                    Subject
+                </label>
+
+                <input
+                    id="message-subject"
+                    type="text"
+                    name="subject"
+                    maxlength="180"
+                    placeholder="Optional subject"
+                >
+            </div>
+
+            <div
+                class="field"
+                style="margin-top:14px"
+            >
+                <label for="message-body">
+                    Message
+                </label>
+
+                <textarea
+                    id="message-body"
+                    name="message"
+                    maxlength="5000"
+                    required
+                    placeholder="Describe the operational concern"
+                ></textarea>
+            </div>
+
+            <div class="form-actions">
+                <button
+                    class="button"
+                    type="button"
+                    data-modal-close
+                >
+                    Cancel
+                </button>
+
+                <button
+                    class="button button-primary"
+                    type="submit"
+                    data-new-conversation-submit
+                >
+                    Start conversation
+                </button>
+            </div>
+        </form>
     </section>
 
     <script>

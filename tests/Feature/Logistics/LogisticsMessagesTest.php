@@ -8,6 +8,11 @@ use App\Models\Conversation;
 use App\Models\LogisticsProfile;
 use App\Models\Message;
 use App\Models\User;
+use App\Models\Address;
+use App\Models\PickupRequest;
+use App\Models\RiderProfile;
+use App\Models\SellerProfile;
+use App\Models\Store;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -16,6 +21,322 @@ use Tests\TestCase;
 class LogisticsMessagesTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_new_conversation_directory_is_provider_scoped(): void
+    {
+        $operator =
+            $this->makeLogisticsOperator(
+                'DIRECTORY'
+            );
+
+        $admin =
+            User::factory()->create([
+                'name' =>
+                    'Messaging Admin',
+
+                'email' =>
+                    'messaging-admin@example.test',
+
+                'role' =>
+                    UserRole::Admin->value,
+
+                'status' =>
+                    AccountStatus::Active->value,
+            ]);
+
+        $inactiveAdmin =
+            User::factory()->create([
+                'name' =>
+                    'Inactive Admin',
+
+                'email' =>
+                    'inactive-messaging-admin@example.test',
+
+                'role' =>
+                    UserRole::Admin->value,
+
+                'status' =>
+                    'suspended',
+            ]);
+
+        $relatedSeller =
+            $this->makeMessageSeller(
+                'RELATED',
+                $operator
+            );
+
+        $unrelatedSeller =
+            $this->makeMessageSeller(
+                'UNRELATED'
+            );
+
+        $ownRider =
+            $this->makeMessageRider(
+                $operator,
+                'OWN'
+            );
+
+        $foreignOperator =
+            $this->makeLogisticsOperator(
+                'FOREIGN-DIRECTORY'
+            );
+
+        $foreignRider =
+            $this->makeMessageRider(
+                $foreignOperator,
+                'FOREIGN'
+            );
+
+        $response = $this
+            ->actingAs($operator)
+            ->get(
+                route(
+                    'logistics.messages.index'
+                )
+            );
+
+        $response
+            ->assertOk()
+            ->assertViewHas(
+                'messageRecipients',
+                function (
+                    array $recipients
+                ) use (
+                    $admin,
+                    $inactiveAdmin,
+                    $relatedSeller,
+                    $unrelatedSeller,
+                    $ownRider,
+                    $foreignRider
+                ): bool {
+                    $ids = collect(
+                        $recipients
+                    )
+                        ->pluck('id')
+                        ->map(
+                            fn ($id) =>
+                                (int) $id
+                        );
+
+                    return
+                        $ids->contains(
+                            $admin->id
+                        )
+                        && $ids->contains(
+                            $relatedSeller->id
+                        )
+                        && $ids->contains(
+                            $ownRider->id
+                        )
+                        && ! $ids->contains(
+                            $inactiveAdmin->id
+                        )
+                        && ! $ids->contains(
+                            $unrelatedSeller->id
+                        )
+                        && ! $ids->contains(
+                            $foreignRider->id
+                        );
+                }
+            );
+    }
+
+    public function test_logistics_can_start_conversation_with_related_seller(): void
+    {
+        $operator =
+            $this->makeLogisticsOperator(
+                'CREATE'
+            );
+
+        $seller =
+            $this->makeMessageSeller(
+                'CREATE',
+                $operator
+            );
+
+        $response = $this
+            ->actingAs($operator)
+            ->postJson(
+                route(
+                    'logistics.messages.conversations.store'
+                ),
+                [
+                    'recipient_id' =>
+                        $seller->id,
+
+                    'subject' =>
+                        'Pickup coordination',
+
+                    'message' =>
+                        'Please confirm the pickup window.',
+                ]
+            );
+
+        $response
+            ->assertCreated()
+            ->assertJsonPath(
+                'conversation.recipient_id',
+                $seller->id
+            )
+            ->assertJsonPath(
+                'conversation.recipient_role',
+                UserRole::Seller->value
+            )
+            ->assertJsonPath(
+                'conversation.latest_message',
+                'Please confirm the pickup window.'
+            );
+
+        $conversation =
+            Conversation::query()
+                ->latest('id')
+                ->firstOrFail();
+
+        $this->assertDatabaseHas(
+            'conversations',
+            [
+                'id' =>
+                    $conversation->id,
+
+                'created_by' =>
+                    $operator->id,
+
+                'subject' =>
+                    'Pickup coordination',
+
+                'type' =>
+                    'direct',
+
+                'status' =>
+                    'open',
+            ]
+        );
+
+        $this->assertDatabaseHas(
+            'conversation_participants',
+            [
+                'conversation_id' =>
+                    $conversation->id,
+
+                'user_id' =>
+                    $operator->id,
+
+                'participant_role' =>
+                    UserRole::Logistics->value,
+            ]
+        );
+
+        $this->assertDatabaseHas(
+            'conversation_participants',
+            [
+                'conversation_id' =>
+                    $conversation->id,
+
+                'user_id' =>
+                    $seller->id,
+
+                'participant_role' =>
+                    UserRole::Seller->value,
+            ]
+        );
+
+        $this->assertDatabaseHas(
+            'messages',
+            [
+                'conversation_id' =>
+                    $conversation->id,
+
+                'sender_id' =>
+                    $operator->id,
+
+                'body' =>
+                    'Please confirm the pickup window.',
+
+                'message_type' =>
+                    'text',
+            ]
+        );
+    }
+
+    public function test_logistics_cannot_start_conversation_with_disallowed_contacts(): void
+    {
+        $operator =
+            $this->makeLogisticsOperator(
+                'DENIED'
+            );
+
+        $unrelatedSeller =
+            $this->makeMessageSeller(
+                'DENIED'
+            );
+
+        $foreignOperator =
+            $this->makeLogisticsOperator(
+                'FOREIGN-DENIED'
+            );
+
+        $foreignRider =
+            $this->makeMessageRider(
+                $foreignOperator,
+                'DENIED'
+            );
+
+        $inactiveAdmin =
+            User::factory()->create([
+                'name' =>
+                    'Disabled Admin',
+
+                'email' =>
+                    'disabled-admin@example.test',
+
+                'role' =>
+                    UserRole::Admin->value,
+
+                'status' =>
+                    'suspended',
+            ]);
+
+        foreach (
+            [
+                $operator,
+                $unrelatedSeller,
+                $foreignRider,
+                $inactiveAdmin,
+            ]
+            as $recipient
+        ) {
+            $response = $this
+                ->actingAs($operator)
+                ->postJson(
+                    route(
+                        'logistics.messages.conversations.store'
+                    ),
+                    [
+                        'recipient_id' =>
+                            $recipient->id,
+
+                        'message' =>
+                            'Unauthorized conversation.',
+                    ]
+                );
+
+            $response
+                ->assertUnprocessable()
+                ->assertJsonValidationErrors(
+                    'recipient_id'
+                );
+        }
+
+        $this->assertDatabaseCount(
+            'conversations',
+            0
+        );
+
+        $this->assertDatabaseCount(
+            'messages',
+            0
+        );
+    }
 
     public function test_logistics_participant_can_send_message(): void
     {
@@ -801,5 +1122,164 @@ class LogisticsMessagesTest extends TestCase
         ]);
 
         return $user;
+    }
+
+    private function makeMessageSeller(
+        string $suffix,
+        ?User $relatedOperator = null
+    ): User {
+        $seller =
+            User::factory()->create([
+                'name' =>
+                    "Message Seller {$suffix}",
+
+                'email' =>
+                    'message-seller-'
+                    .strtolower($suffix)
+                    .'@example.test',
+
+                'role' =>
+                    UserRole::Seller->value,
+
+                'status' =>
+                    AccountStatus::Active->value,
+            ]);
+
+        $sellerProfile =
+            SellerProfile::query()->create([
+                'user_id' =>
+                    $seller->id,
+
+                'legal_business_name' =>
+                    "Message Seller {$suffix} Trading",
+
+                'standing_status' =>
+                    'good_standing',
+            ]);
+
+        $store =
+            Store::query()->create([
+                'seller_profile_id' =>
+                    $sellerProfile->id,
+
+                'name' =>
+                    "Message Store {$suffix}",
+
+                'slug' =>
+                    'message-store-'
+                    .strtolower($suffix),
+
+                'publication_status' =>
+                    'published',
+            ]);
+
+        if ($relatedOperator) {
+            $address =
+                Address::query()->create([
+                    'user_id' =>
+                        $seller->id,
+
+                    'label' =>
+                        'Pickup address',
+
+                    'recipient_name' =>
+                        $seller->name,
+
+                    'phone' =>
+                        '09175555555',
+
+                    'house_number' =>
+                        '15',
+
+                    'street' =>
+                        'Seller Street',
+
+                    'barangay' =>
+                        'San Antonio',
+
+                    'city_municipality' =>
+                        'San Pablo City',
+
+                    'province' =>
+                        'Laguna',
+
+                    'postal_code' =>
+                        '4000',
+                ]);
+
+            PickupRequest::query()->create([
+                'pickup_no' =>
+                    'MSG-PU-'
+                    .strtoupper($suffix),
+
+                'store_id' =>
+                    $store->id,
+
+                'logistics_profile_id' =>
+                    $relatedOperator
+                        ->logisticsProfile
+                        ->id,
+
+                'pickup_address_id' =>
+                    $address->id,
+
+                'status' =>
+                    'requested',
+
+                'requested_date' =>
+                    now()->toDateString(),
+
+                'window_start' =>
+                    now()->addHour(),
+
+                'window_end' =>
+                    now()->addHours(3),
+            ]);
+        }
+
+        return $seller;
+    }
+
+    private function makeMessageRider(
+        User $operator,
+        string $suffix
+    ): User {
+        $rider =
+            User::factory()->create([
+                'name' =>
+                    "Message Rider {$suffix}",
+
+                'email' =>
+                    'message-rider-'
+                    .strtolower($suffix)
+                    .'@example.test',
+
+                'role' =>
+                    UserRole::Rider->value,
+
+                'status' =>
+                    AccountStatus::Active->value,
+            ]);
+
+        RiderProfile::query()->create([
+            'user_id' =>
+                $rider->id,
+
+            'logistics_profile_id' =>
+                $operator
+                    ->logisticsProfile
+                    ->id,
+
+            'vehicle_type' =>
+                'Motorcycle',
+
+            'availability_status' =>
+                'offline',
+
+            'verification_status' =>
+                'approved',
+        ]);
+
+        return $rider;
     }
 }

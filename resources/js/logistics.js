@@ -702,6 +702,165 @@ function setupChat() {
     render();
 }
 
+function setupNewConversation() {
+    const modal =
+        document.querySelector(
+            '[data-modal="new-conversation"]'
+        );
+
+    const opener =
+        document.querySelector(
+            '[data-modal-open="new-conversation"]'
+        );
+
+    const form =
+        document.querySelector(
+            '[data-new-conversation-form]'
+        );
+
+    if (
+        !modal
+        || !form
+    ) {
+        return;
+    }
+
+    const submit =
+        form.querySelector(
+            '[data-new-conversation-submit]'
+        );
+
+    const csrfToken =
+        document
+            .querySelector(
+                'meta[name="csrf-token"]'
+            )
+            ?.getAttribute(
+                'content'
+            )
+        || '';
+
+    const open = () => {
+        modal.hidden = false;
+    };
+
+    const close = () => {
+        modal.hidden = true;
+    };
+
+    opener?.addEventListener(
+        'click',
+        open
+    );
+
+    modal
+        .querySelectorAll(
+            '[data-modal-close]'
+        )
+        .forEach(
+            (button) =>
+                button.addEventListener(
+                    'click',
+                    close
+                )
+        );
+
+    form.addEventListener(
+        'submit',
+        async (event) => {
+            event.preventDefault();
+
+            if (
+                !form.reportValidity()
+            ) {
+                return;
+            }
+
+            const url =
+                form.dataset.storeUrl;
+
+            if (!url) {
+                return;
+            }
+
+            if (submit) {
+                submit.disabled = true;
+            }
+
+            const formData =
+                new FormData(form);
+
+            try {
+                const response =
+                    await fetch(
+                        url,
+                        {
+                            method: 'POST',
+
+                            headers: {
+                                'Accept':
+                                    'application/json',
+
+                                'Content-Type':
+                                    'application/json',
+
+                                'X-CSRF-TOKEN':
+                                    csrfToken,
+                            },
+
+                            body:
+                                JSON.stringify(
+                                    Object.fromEntries(
+                                        formData
+                                    )
+                                ),
+                        }
+                    );
+
+                const data =
+                    await response.json();
+
+                if (!response.ok) {
+                    const firstError =
+                        Object
+                            .values(
+                                data.errors
+                                || {}
+                            )
+                            .flat()
+                            .find(Boolean);
+
+                    throw new Error(
+                        firstError
+                        || data.message
+                        || 'Unable to start conversation.'
+                    );
+                }
+
+                form.reset();
+
+                toast(
+                    'Conversation started successfully.'
+                );
+
+                window.location.assign(
+                    data.redirect_url
+                    || window.location.href
+                );
+            } catch (error) {
+                toast(
+                    error.message
+                    || 'Unable to start conversation.'
+                );
+            } finally {
+                if (submit) {
+                    submit.disabled = false;
+                }
+            }
+        }
+    );
+}
+
 function setupAccount() {
     document.querySelectorAll('[data-preview-form]').forEach((form) => form.addEventListener('submit', (event) => {
         event.preventDefault();
@@ -2266,6 +2425,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupSorting();
     setupReports();
     setupChat();
+    setupNewConversation();
     setupAccount();
     setupRegistration();
     refreshIcons();

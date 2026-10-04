@@ -3746,11 +3746,182 @@ class LogisticsController extends Controller
         );
     }
 
+    private function messageRecipientDirectory(
+        User $operator
+    ): Collection {
+        $profile =
+            $this->currentLogisticsProfile(
+                $operator
+            );
+
+        if (! $profile) {
+            return collect();
+        }
+
+        /*
+        * Admins:
+        * Any active Admin account may receive
+        * an operational support conversation.
+        */
+        $admins = User::query()
+            ->where(
+                'id',
+                '!=',
+                $operator->id
+            )
+            ->where(
+                'status',
+                AccountStatus::Active->value
+            )
+            ->get()
+            ->filter(
+                fn (User $user): bool =>
+                    $user->hasRole(
+                        UserRole::Admin->value
+                    )
+            )
+            ->map(
+                fn (User $user): array => [
+                    'id' =>
+                        $user->id,
+
+                    'name' =>
+                        $user->name,
+
+                    'role' =>
+                        UserRole::Admin->value,
+
+                    'label' =>
+                        'Administrator',
+                ]
+            );
+
+        /*
+        * Sellers:
+        * Only Sellers that already have at least
+        * one PickupRequest with this Logistics
+        * provider are valid operational contacts.
+        */
+        $sellers = PickupRequest::query()
+            ->forLogisticsProfile(
+                $profile->id
+            )
+            ->with(
+                'store.sellerProfile.user'
+            )
+            ->get()
+            ->map(
+                fn (
+                    PickupRequest $pickupRequest
+                ) =>
+                    $pickupRequest
+                        ->store
+                        ?->sellerProfile
+                        ?->user
+            )
+            ->filter(
+                fn ($user): bool =>
+                    $user instanceof User
+                    && $user->status
+                        === AccountStatus::Active->value
+                    && $user->hasRole(
+                        UserRole::Seller->value
+                    )
+            )
+            ->unique('id')
+            ->map(
+                fn (User $user): array => [
+                    'id' =>
+                        $user->id,
+
+                    'name' =>
+                        $user->name,
+
+                    'role' =>
+                        UserRole::Seller->value,
+
+                    'label' =>
+                        'Seller',
+                ]
+            );
+
+        /*
+        * Riders:
+        * Only approved Riders belonging to the
+        * authenticated Logistics provider.
+        *
+        * Availability is intentionally irrelevant
+        * to messaging. An offline Rider may still
+        * receive an operational message.
+        */
+        $riders = RiderProfile::query()
+            ->where(
+                'logistics_profile_id',
+                $profile->id
+            )
+            ->where(
+                'verification_status',
+                'approved'
+            )
+            ->with('user')
+            ->get()
+            ->map(
+                fn (
+                    RiderProfile $rider
+                ) =>
+                    $rider->user
+            )
+            ->filter(
+                fn ($user): bool =>
+                    $user instanceof User
+                    && $user->status
+                        === AccountStatus::Active->value
+                    && $user->hasRole(
+                        UserRole::Rider->value
+                    )
+            )
+            ->unique('id')
+            ->map(
+                fn (User $user): array => [
+                    'id' =>
+                        $user->id,
+
+                    'name' =>
+                        $user->name,
+
+                    'role' =>
+                        UserRole::Rider->value,
+
+                    'label' =>
+                        'Rider',
+                ]
+            );
+
+        return $admins
+            ->concat($sellers)
+            ->concat($riders)
+            ->unique('id')
+            ->sortBy(
+                fn (array $recipient): string =>
+                    $recipient['role']
+                    .'|'
+                    .strtolower(
+                        $recipient['name']
+                    )
+            )
+            ->values();
+    }
+
     public function messages(
         Request $request
     ): View {
         /** @var User $operator */
         $operator = $request->user();
+
+        $messageRecipients =
+            $this->messageRecipientDirectory(
+                $operator
+            );
 
         $records = Conversation::query()
             ->whereHas(
@@ -4013,7 +4184,217 @@ class LogisticsController extends Controller
                     $conversations
                         ->keyBy('id')
                         ->all(),
+
+                'messageRecipients' =>
+                    $messageRecipients->all(),
             ]
+        );
+    }
+
+    public function storeConversation(
+        Request $request
+    ) {
+        /** @var User $operator */
+        $operator = $request->user();
+
+        $validated = $request->validate([
+            'recipient_id' => [
+                'required',
+                'integer',
+                'exists:users,id',
+            ],
+
+            'subject' => [
+                'nullable',
+                'string',
+                'max:180',
+            ],
+
+            'message' => [
+                'required',
+                'string',
+                'max:5000',
+            ],
+        ]);
+
+        if (
+            (int) $validated['recipient_id']
+            === (int) $operator->id
+        ) {
+            throw ValidationException::withMessages([
+                'recipient_id' =>
+                    'You cannot start a conversation with yourself.',
+            ]);
+        }
+
+        $allowedRecipient =
+            $this
+                ->messageRecipientDirectory(
+                    $operator
+                )
+                ->first(
+                    fn (
+                        array $recipient
+                    ): bool =>
+                        (int) $recipient['id']
+                        === (int) $validated[
+                            'recipient_id'
+                        ]
+                );
+
+        if (! $allowedRecipient) {
+            throw ValidationException::withMessages([
+                'recipient_id' =>
+                    'The selected user is not an available Logistics messaging contact.',
+            ]);
+        }
+
+        $body = trim(
+            $validated['message']
+        );
+
+        if ($body === '') {
+            throw ValidationException::withMessages([
+                'message' =>
+                    'Please enter a message.',
+            ]);
+        }
+
+        $subject = trim(
+            (string) (
+                $validated['subject']
+                ?? ''
+            )
+        );
+
+        $recipient =
+            User::query()
+                ->findOrFail(
+                    $allowedRecipient['id']
+                );
+
+        [
+            $conversation,
+            $message,
+        ] = DB::transaction(
+            function () use (
+                $operator,
+                $recipient,
+                $allowedRecipient,
+                $subject,
+                $body
+            ) {
+                $now = now();
+
+                $conversation =
+                    Conversation::query()->create([
+                        'subject' =>
+                            $subject !== ''
+                                ? $subject
+                                : null,
+
+                        'type' =>
+                            'direct',
+
+                        'status' =>
+                            'open',
+
+                        'created_by' =>
+                            $operator->id,
+
+                        'last_message_at' =>
+                            $now,
+                    ]);
+
+                $conversation
+                    ->participants()
+                    ->attach(
+                        $operator->id,
+                        [
+                            'participant_role' =>
+                                UserRole::Logistics
+                                    ->value,
+
+                            'last_read_at' =>
+                                $now,
+
+                            'joined_at' =>
+                                $now,
+                        ]
+                    );
+
+                $conversation
+                    ->participants()
+                    ->attach(
+                        $recipient->id,
+                        [
+                            'participant_role' =>
+                                $allowedRecipient[
+                                    'role'
+                                ],
+
+                            'last_read_at' =>
+                                null,
+
+                            'joined_at' =>
+                                $now,
+                        ]
+                    );
+
+                $message =
+                    $conversation
+                        ->messages()
+                        ->create([
+                            'sender_id' =>
+                                $operator->id,
+
+                            'body' =>
+                                $body,
+
+                            'message_type' =>
+                                'text',
+
+                            'sent_at' =>
+                                $now,
+                        ]);
+
+                return [
+                    $conversation,
+                    $message,
+                ];
+            }
+        );
+
+        return response()->json(
+            [
+                'message' =>
+                    'Conversation started successfully.',
+
+                'conversation' => [
+                    'id' =>
+                        $conversation->id,
+
+                    'recipient_id' =>
+                        $recipient->id,
+
+                    'recipient_name' =>
+                        $recipient->name,
+
+                    'recipient_role' =>
+                        $allowedRecipient[
+                            'role'
+                        ],
+
+                    'latest_message' =>
+                        $message->body,
+                ],
+
+                'redirect_url' =>
+                    route(
+                        'logistics.messages.index'
+                    ),
+            ],
+            201
         );
     }
 

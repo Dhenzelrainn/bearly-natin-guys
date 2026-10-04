@@ -16,6 +16,8 @@ use App\Models\Store;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class LogisticsMessagesTest extends TestCase
@@ -669,7 +671,7 @@ class LogisticsMessagesTest extends TestCase
         );
     }
 
-    public function test_logistics_reply_requires_message_body(): void
+    public function test_logistics_reply_requires_message_or_attachment(): void
     {
         $operator =
             $this->makeLogisticsOperator(
@@ -754,6 +756,303 @@ class LogisticsMessagesTest extends TestCase
             'messages',
             0
         );
+    }
+
+    public function test_logistics_participant_can_send_and_download_attachment(): void
+    {
+        Storage::fake('local');
+
+        $operator =
+            $this->makeLogisticsOperator(
+                'ATTACHMENT'
+            );
+
+        $seller =
+            User::factory()->create([
+                'name' =>
+                    'Attachment Seller',
+
+                'email' =>
+                    'attachment-seller@example.test',
+
+                'role' =>
+                    UserRole::Seller->value,
+
+                'status' =>
+                    AccountStatus::Active->value,
+            ]);
+
+        $conversation =
+            Conversation::query()->create([
+                'subject' =>
+                    'Pickup attachment',
+
+                'type' =>
+                    'direct',
+
+                'status' =>
+                    'open',
+
+                'created_by' =>
+                    $seller->id,
+
+                'last_message_at' =>
+                    null,
+            ]);
+
+        $conversation
+            ->participants()
+            ->attach(
+                $operator->id,
+                [
+                    'participant_role' =>
+                        UserRole::Logistics
+                            ->value,
+
+                    'last_read_at' =>
+                        null,
+
+                    'joined_at' =>
+                        now(),
+                ]
+            );
+
+        $conversation
+            ->participants()
+            ->attach(
+                $seller->id,
+                [
+                    'participant_role' =>
+                        UserRole::Seller
+                            ->value,
+
+                    'last_read_at' =>
+                        null,
+
+                    'joined_at' =>
+                        now(),
+                ]
+            );
+
+        $file =
+            UploadedFile::fake()
+                ->create(
+                    'pickup-manifest.pdf',
+                    128,
+                    'application/pdf'
+                );
+
+        $response = $this
+            ->actingAs($operator)
+            ->post(
+                route(
+                    'logistics.messages.send',
+                    $conversation
+                ),
+                [
+                    'attachment' =>
+                        $file,
+                ],
+                [
+                    'Accept' =>
+                        'application/json',
+                ]
+            );
+
+        $response
+            ->assertOk()
+            ->assertJsonPath(
+                'data.text',
+                ''
+            )
+            ->assertJsonPath(
+                'data.preview',
+                'Attachment'
+            )
+            ->assertJsonPath(
+                'data.attachments.0.name',
+                'pickup-manifest.pdf'
+            );
+
+        $message =
+            $conversation
+                ->messages()
+                ->latest('id')
+                ->firstOrFail();
+
+        $this->assertSame(
+            'attachment',
+            $message->message_type
+        );
+
+        $this->assertSame(
+            '',
+            $message->body
+        );
+
+        $attachment =
+            $message
+                ->attachments()
+                ->firstOrFail();
+
+        $this->assertDatabaseHas(
+            'message_attachments',
+            [
+                'id' =>
+                    $attachment->id,
+
+                'message_id' =>
+                    $message->id,
+
+                'original_name' =>
+                    'pickup-manifest.pdf',
+            ]
+        );
+
+        Storage::disk('local')
+            ->assertExists(
+                $attachment->file_path
+            );
+
+        $this
+            ->actingAs($operator)
+            ->get(
+                route(
+                    'logistics.messages.attachments.download',
+                    $attachment
+                )
+            )
+            ->assertOk();
+    }
+
+    public function test_nonparticipant_cannot_download_message_attachment(): void
+    {
+        Storage::fake('local');
+
+        $owner =
+            $this->makeLogisticsOperator(
+                'ATTACHMENT-OWNER'
+            );
+
+        $outsider =
+            $this->makeLogisticsOperator(
+                'ATTACHMENT-OUTSIDER'
+            );
+
+        $seller =
+            User::factory()->create([
+                'name' =>
+                    'Private Attachment Seller',
+
+                'email' =>
+                    'private-attachment-seller@example.test',
+
+                'role' =>
+                    UserRole::Seller->value,
+
+                'status' =>
+                    AccountStatus::Active->value,
+            ]);
+
+        $conversation =
+            Conversation::query()->create([
+                'type' =>
+                    'direct',
+
+                'status' =>
+                    'open',
+
+                'created_by' =>
+                    $seller->id,
+
+                'last_message_at' =>
+                    now(),
+            ]);
+
+        $conversation
+            ->participants()
+            ->attach(
+                $owner->id,
+                [
+                    'participant_role' =>
+                        UserRole::Logistics
+                            ->value,
+
+                    'joined_at' =>
+                        now(),
+                ]
+            );
+
+        $conversation
+            ->participants()
+            ->attach(
+                $seller->id,
+                [
+                    'participant_role' =>
+                        UserRole::Seller
+                            ->value,
+
+                    'joined_at' =>
+                        now(),
+                ]
+            );
+
+        $message =
+            $conversation
+                ->messages()
+                ->create([
+                    'sender_id' =>
+                        $seller->id,
+
+                    'body' =>
+                        '',
+
+                    'message_type' =>
+                        'attachment',
+
+                    'sent_at' =>
+                        now(),
+                ]);
+
+        $path =
+            'message-attachments/'
+            .$conversation->id
+            .'/private.txt';
+
+        Storage::disk('local')
+            ->put(
+                $path,
+                'private attachment'
+            );
+
+        $attachment =
+            $message
+                ->attachments()
+                ->create([
+                    'file_path' =>
+                        $path,
+
+                    'original_name' =>
+                        'private.txt',
+
+                    'mime_type' =>
+                        'text/plain',
+
+                    'size_bytes' =>
+                        strlen(
+                            'private attachment'
+                        ),
+                ]);
+
+        $this
+            ->actingAs($outsider)
+            ->get(
+                route(
+                    'logistics.messages.attachments.download',
+                    $attachment
+                )
+            )
+            ->assertNotFound();
     }
 
     public function test_logistics_can_mark_own_conversation_as_read(): void

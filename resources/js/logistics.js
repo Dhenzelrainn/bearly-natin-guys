@@ -349,6 +349,21 @@ function setupChat() {
             '[data-chat-send]'
         );
 
+    const attachmentButton =
+        document.querySelector(
+            '[data-chat-attachment-button]'
+        );
+
+    const attachmentInput =
+        document.querySelector(
+            '[data-chat-attachment]'
+        );
+
+    const attachmentName =
+        document.querySelector(
+            '[data-chat-attachment-name]'
+        );
+
     if (!messages) {
         return;
     }
@@ -385,6 +400,14 @@ function setupChat() {
             sendButton.disabled = true;
         }
 
+        if (attachmentButton) {
+            attachmentButton.disabled = true;
+        }
+
+        if (attachmentInput) {
+            attachmentInput.disabled = true;
+        }
+
         messages.innerHTML = `
             <div class="table-empty">
                 Your Logistics conversations
@@ -405,6 +428,26 @@ function setupChat() {
 
     const activeConversation = () =>
         conversationData[active]
+        || null;
+
+    const maxAttachmentSize =
+        10 * 1024 * 1024;
+
+    const clearAttachment = () => {
+        if (attachmentInput) {
+            attachmentInput.value = '';
+        }
+
+        if (attachmentName) {
+            attachmentName.textContent = '';
+            attachmentName.hidden = true;
+        }
+    };
+
+    const selectedAttachment = () =>
+        attachmentInput
+            ?.files
+            ?.[0]
         || null;
 
     const reading = new Set();
@@ -527,6 +570,18 @@ function setupChat() {
                 || sending;
         }
 
+        if (attachmentButton) {
+            attachmentButton.disabled =
+                !isOpen
+                || sending;
+        }
+
+        if (attachmentInput) {
+            attachmentInput.disabled =
+                !isOpen
+                || sending;
+        }
+
         const thread =
             Array.isArray(
                 conversation.messages
@@ -549,9 +604,38 @@ function setupChat() {
                                     }
                                 "
                             >
-                                ${escapeHtml(
-                                    item.text
-                                )}
+                                ${item.text
+                                    ? `
+                                        <div class="message-text">
+                                            ${escapeHtml(
+                                                item.text
+                                            )}
+                                        </div>
+                                    `
+                                    : ''}
+
+                                ${(Array.isArray(
+                                    item.attachments
+                                )
+                                    ? item.attachments
+                                    : [])
+                                    .map(
+                                        (attachment) => `
+                                            <a
+                                                class="message-attachment"
+                                                href="${escapeHtml(
+                                                    attachment.download_url
+                                                )}"
+                                                download
+                                            >
+                                                <span aria-hidden="true">📎</span>
+                                                <span>${escapeHtml(
+                                                    attachment.name
+                                                )}</span>
+                                            </a>
+                                        `
+                                    )
+                                    .join('')}
 
                                 <small>
                                     ${escapeHtml(
@@ -575,6 +659,8 @@ function setupChat() {
     const selectConversation = (
         button
     ) => {
+        clearAttachment();
+
         active = String(
             button.dataset.conversation
         );
@@ -602,6 +688,44 @@ function setupChat() {
             )
     );
 
+    attachmentButton
+        ?.addEventListener(
+            'click',
+            () => attachmentInput?.click()
+        );
+
+    attachmentInput
+        ?.addEventListener(
+            'change',
+            () => {
+                const attachment =
+                    selectedAttachment();
+
+                if (!attachment) {
+                    clearAttachment();
+                    return;
+                }
+
+                if (
+                    attachment.size
+                    > maxAttachmentSize
+                ) {
+                    clearAttachment();
+                    toast(
+                        'Attachments must be 10 MB or smaller.'
+                    );
+                    return;
+                }
+
+                if (attachmentName) {
+                    attachmentName.textContent =
+                        attachment.name;
+
+                    attachmentName.hidden = false;
+                }
+            }
+        );
+
     const send = async () => {
         if (
             sending
@@ -613,7 +737,13 @@ function setupChat() {
         const text =
             input.value.trim();
 
-        if (!text) {
+        const attachment =
+            selectedAttachment();
+
+        if (
+            !text
+            && !attachment
+        ) {
             return;
         }
 
@@ -633,6 +763,21 @@ function setupChat() {
         render();
 
         try {
+            const formData =
+                new FormData();
+
+            formData.append(
+                'message',
+                text
+            );
+
+            if (attachment) {
+                formData.append(
+                    'attachment',
+                    attachment
+                );
+            }
+
             const response =
                 await fetch(
                     conversation.send_url,
@@ -643,16 +788,11 @@ function setupChat() {
                             'Accept':
                                 'application/json',
 
-                            'Content-Type':
-                                'application/json',
-
                             'X-CSRF-TOKEN':
                                 csrfToken,
                         },
 
-                        body: JSON.stringify({
-                            message: text,
-                        }),
+                        body: formData,
                     }
                 );
 
@@ -663,6 +803,9 @@ function setupChat() {
                 const validationMessage =
                     data.errors
                         ?.message
+                        ?.[0]
+                    || data.errors
+                        ?.attachment
                         ?.[0];
 
                 throw new Error(
@@ -729,6 +872,7 @@ function setupChat() {
             }
 
             input.value = '';
+            clearAttachment();
 
             toast(
                 'Message sent successfully.'

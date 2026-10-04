@@ -136,11 +136,30 @@
                 <button
                     class="icon-button"
                     type="button"
-                    title="Attachments will be enabled later"
-                    disabled
+                    data-chat-attachment-button
+                    title="Attach a file"
+                    @if(empty($conversations))
+                        disabled
+                    @endif
                 >
                     <i data-lucide="paperclip"></i>
                 </button>
+
+                <input
+                    type="file"
+                    data-chat-attachment
+                    accept=".jpg,.jpeg,.png,.webp,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.zip"
+                    hidden
+                    @if(empty($conversations))
+                        disabled
+                    @endif
+                >
+
+                <span
+                    class="chat-selected-file"
+                    data-chat-attachment-name
+                    hidden
+                ></span>
 
                 <input
                     type="text"

@@ -20,6 +20,7 @@ use App\Models\ShipmentEvent;
 use App\Models\DispatchBatch;
 use App\Models\User;
 use App\Models\Conversation;
+use App\Models\MessageAttachment;
 use App\Models\Waybill;
 use App\Services\DispatchService;
 use App\Services\EmailVerificationService;
@@ -32,6 +33,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\View\View;
@@ -3939,6 +3941,7 @@ class LogisticsController extends Controller
 
                 'messages' => fn ($query) =>
                     $query
+                        ->with('attachments')
                         ->orderBy('sent_at')
                         ->orderBy('id'),
             ])
@@ -4160,6 +4163,35 @@ class LogisticsController extends Controller
 
                                     'text' =>
                                         $message->body,
+
+                                    'attachments' =>
+                                        $message
+                                            ->attachments
+                                            ->map(
+                                                fn (
+                                                    MessageAttachment $attachment
+                                                ): array => [
+                                                    'id' =>
+                                                        $attachment->id,
+
+                                                    'name' =>
+                                                        $attachment->original_name,
+
+                                                    'mime_type' =>
+                                                        $attachment->mime_type,
+
+                                                    'size_bytes' =>
+                                                        $attachment->size_bytes,
+
+                                                    'download_url' =>
+                                                        route(
+                                                            'logistics.messages.attachments.download',
+                                                            $attachment
+                                                        ),
+                                                ]
+                                            )
+                                            ->values()
+                                            ->all(),
 
                                     'time' =>
                                         $message
@@ -4463,9 +4495,17 @@ class LogisticsController extends Controller
 
         $validated = $request->validate([
             'message' => [
-                'required',
+                'nullable',
                 'string',
                 'max:5000',
+                'required_without:attachment',
+            ],
+
+            'attachment' => [
+                'nullable',
+                'file',
+                'max:10240',
+                'mimes:jpg,jpeg,png,webp,pdf,doc,docx,xls,xlsx,txt,csv,zip',
             ],
         ]);
 
@@ -4482,76 +4522,168 @@ class LogisticsController extends Controller
             404
         );
 
-        $message = DB::transaction(
-            function () use (
-                $conversation,
-                $operator,
-                $validated
-            ) {
-                $lockedConversation =
-                    Conversation::query()
-                        ->lockForUpdate()
-                        ->findOrFail(
-                            $conversation->id
-                        );
+        $uploadedFile =
+            $request->file(
+                'attachment'
+            );
 
-                if (
-                    $lockedConversation->status
-                    !== 'open'
+        $storedPath = null;
+
+        try {
+            $message = DB::transaction(
+                function () use (
+                    $conversation,
+                    $operator,
+                    $validated,
+                    $uploadedFile,
+                    &$storedPath
                 ) {
-                    throw ValidationException::withMessages([
-                        'message' =>
-                            'Messages cannot be sent to a closed conversation.',
-                    ]);
-                }
+                    $lockedConversation =
+                        Conversation::query()
+                            ->lockForUpdate()
+                            ->findOrFail(
+                                $conversation->id
+                            );
 
-                $now = now();
+                    if (
+                        $lockedConversation
+                            ->status
+                        !== 'open'
+                    ) {
+                        throw ValidationException::withMessages([
+                            'message' =>
+                                'Messages cannot be sent to a closed conversation.',
+                        ]);
+                    }
 
-                $message =
+                    $now = now();
+
+                    $body = trim(
+                        (string) (
+                            $validated['message']
+                            ?? ''
+                        )
+                    );
+
+                    $messageType =
+                        $uploadedFile
+                        && $body === ''
+                            ? 'attachment'
+                            : 'text';
+
+                    $message =
+                        $lockedConversation
+                            ->messages()
+                            ->create([
+                                'sender_id' =>
+                                    $operator->id,
+
+                                'body' =>
+                                    $body,
+
+                                'message_type' =>
+                                    $messageType,
+
+                                'sent_at' =>
+                                    $now,
+                            ]);
+
+                    if ($uploadedFile) {
+                        $storedPath =
+                            $uploadedFile->store(
+                                "message-attachments/{$lockedConversation->id}",
+                                'local'
+                            );
+
+                        $message
+                            ->attachments()
+                            ->create([
+                                'file_path' =>
+                                    $storedPath,
+
+                                'original_name' =>
+                                    $uploadedFile
+                                        ->getClientOriginalName(),
+
+                                'mime_type' =>
+                                    $uploadedFile
+                                        ->getMimeType()
+                                    ?: 'application/octet-stream',
+
+                                'size_bytes' =>
+                                    $uploadedFile
+                                        ->getSize(),
+                            ]);
+                    }
+
                     $lockedConversation
-                        ->messages()
-                        ->create([
-                            'sender_id' =>
-                                $operator->id,
-
-                            'body' =>
-                                trim(
-                                    $validated[
-                                        'message'
-                                    ]
-                                ),
-
-                            'message_type' =>
-                                'text',
-
-                            'sent_at' =>
+                        ->update([
+                            'last_message_at' =>
                                 $now,
                         ]);
 
-                $lockedConversation->update([
-                    'last_message_at' =>
-                        $now,
-                ]);
-
-                DB::table(
-                    'conversation_participants'
-                )
-                    ->where(
-                        'conversation_id',
-                        $lockedConversation->id
+                    DB::table(
+                        'conversation_participants'
                     )
-                    ->where(
-                        'user_id',
-                        $operator->id
-                    )
-                    ->update([
-                        'last_read_at' =>
-                            $now,
-                    ]);
+                        ->where(
+                            'conversation_id',
+                            $lockedConversation->id
+                        )
+                        ->where(
+                            'user_id',
+                            $operator->id
+                        )
+                        ->update([
+                            'last_read_at' =>
+                                $now,
+                        ]);
 
-                return $message;
+                    return $message;
+                }
+            );
+        } catch (\Throwable $exception) {
+            if ($storedPath) {
+                Storage::disk('local')
+                    ->delete(
+                        $storedPath
+                    );
             }
+
+            throw $exception;
+        }
+
+        $message->load(
+            'attachments'
         );
+
+        $attachments =
+            $message
+                ->attachments
+                ->map(
+                    fn (
+                        MessageAttachment $attachment
+                    ): array => [
+                        'id' =>
+                            $attachment->id,
+
+                        'name' =>
+                            $attachment->original_name,
+
+                        'mime_type' =>
+                            $attachment->mime_type,
+
+                        'size_bytes' =>
+                            $attachment->size_bytes,
+
+                        'download_url' =>
+                            route(
+                                'logistics.messages.attachments.download',
+                                $attachment
+                            ),
+                    ]
+                )
+                ->values()
+                ->all();
 
         return response()->json([
             'message' =>
@@ -4567,6 +4699,11 @@ class LogisticsController extends Controller
                 'text' =>
                     $message->body,
 
+                'preview' =>
+                    $message->body !== ''
+                        ? $message->body
+                        : 'Attachment',
+
                 'time' =>
                     $message
                         ->sent_at
@@ -4578,8 +4715,66 @@ class LogisticsController extends Controller
                             'M j, g:i A'
                         )
                     ?? '',
+
+                'attachments' =>
+                    $attachments,
             ],
         ]);
+    }
+
+    public function downloadMessageAttachment(
+        Request $request,
+        MessageAttachment $attachment
+    ) {
+        /** @var User $operator */
+        $operator = $request->user();
+
+        $attachment->loadMissing(
+            'message.conversation'
+        );
+
+        $conversation =
+            $attachment
+                ->message
+                ?->conversation;
+
+        abort_unless(
+            $conversation,
+            404
+        );
+
+        $isParticipant =
+            $conversation
+                ->participants()
+                ->where(
+                    'users.id',
+                    $operator->id
+                )
+                ->exists();
+
+        abort_unless(
+            $isParticipant,
+            404
+        );
+
+        abort_unless(
+            Storage::disk('local')
+                ->exists(
+                    $attachment->file_path
+                ),
+            404
+        );
+
+        return Storage::disk('local')
+            ->download(
+                $attachment->file_path,
+                $attachment->original_name,
+                [
+                    'Content-Type' =>
+                        $attachment->mime_type
+                        ?: 'application/octet-stream',
+                ]
+            );
     }
 
     public function account(): View

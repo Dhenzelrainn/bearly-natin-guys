@@ -78,6 +78,28 @@ class LogisticsController extends Controller
             ->first();
     }
 
+    private function editableSortingCenter(
+        User $operator
+    ): ?SortingCenter {
+        $profile =
+            $this->currentLogisticsProfile(
+                $operator
+            );
+
+        if (! $profile) {
+            return null;
+        }
+
+        return $profile
+            ->sortingCenters()
+            ->where(
+                'status',
+                'active'
+            )
+            ->oldest('id')
+            ->first();
+    }
+
     /**
      * @return array<int, string>
      */
@@ -4898,7 +4920,7 @@ class LogisticsController extends Controller
         /** @var User $operator */
         $operator = $request->user();
 
-        $center = $this->activeSortingCenter(
+        $center = $this->editableSortingCenter(
             $operator
         );
 

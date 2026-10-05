@@ -285,6 +285,79 @@ class LogisticsAccountSettingsTest extends TestCase
         );
     }
 
+    public function test_inactive_sorting_center_cannot_be_modified(): void
+    {
+        [
+            'user' => $user,
+            'center' => $center,
+        ] = $this->makeLogisticsFacility(
+            'INACTIVE',
+            'inactive-operator@example.test'
+        );
+
+        $center->update([
+            'status' => 'inactive',
+        ]);
+
+        $original = [
+            'name' =>
+                $center->name,
+
+            'contact_phone' =>
+                $center->contact_phone,
+
+            'operating_hours' =>
+                $center->operating_hours,
+
+            'daily_capacity' =>
+                $center->daily_capacity,
+        ];
+
+        $this
+            ->actingAs($user)
+            ->patch(
+                route(
+                    'logistics.profile.facility.update'
+                ),
+                [
+                    'business_name' =>
+                        'Should Not Update',
+
+                    'contact' =>
+                        '09179990000',
+
+                    'operating_hours' =>
+                        '00:00-23:59',
+
+                    'daily_capacity' =>
+                        9999,
+                ]
+            )
+            ->assertNotFound();
+
+        $center->refresh();
+
+        $this->assertSame(
+            $original['name'],
+            $center->name
+        );
+
+        $this->assertSame(
+            $original['contact_phone'],
+            $center->contact_phone
+        );
+
+        $this->assertSame(
+            $original['operating_hours'],
+            $center->operating_hours
+        );
+
+        $this->assertSame(
+            $original['daily_capacity'],
+            $center->daily_capacity
+        );
+    }
+
     public function test_logistics_cannot_modify_another_providers_facility(): void
     {
         [

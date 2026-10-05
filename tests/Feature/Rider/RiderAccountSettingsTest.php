@@ -18,6 +18,183 @@ class RiderAccountSettingsTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_rider_can_update_normalized_vehicle_details(): void
+    {
+        [
+            'rider' => $rider,
+            'riderProfile' => $riderProfile,
+        ] = $this->makeRiderAccount();
+
+        $this
+            ->actingAs($rider)
+            ->patch(
+                route(
+                    'rider.profile.vehicle.update'
+                ),
+                [
+                    'vehicle_type' =>
+                        'Motorcycle',
+
+                    'plate_number' =>
+                        'abc-1234',
+
+                    'vehicle_model' =>
+                        'Honda Click 160',
+
+                    'parcel_capacity' =>
+                        18,
+                ]
+            )
+            ->assertRedirect(
+                route('rider.profile.index')
+                . '#vehicle'
+            )
+            ->assertSessionHas(
+                'success',
+                'Vehicle details updated successfully.'
+            );
+
+        $riderProfile->refresh();
+        $rider->refresh();
+
+        $this->assertSame(
+            'Motorcycle',
+            $riderProfile->vehicle_type
+        );
+
+        $this->assertSame(
+            'ABC-1234',
+            $riderProfile->plate_number
+        );
+
+        $this->assertSame(
+            'Honda Click 160',
+            $riderProfile->vehicle_model
+        );
+
+        $this->assertSame(
+            18,
+            $riderProfile->parcel_capacity
+        );
+
+        /*
+        * Legacy compatibility fields remain
+        * synchronized with RiderProfile.
+        */
+        $this->assertSame(
+            'Motorcycle',
+            $rider->vehicle_type
+        );
+
+        $this->assertSame(
+            'ABC-1234',
+            $rider->plate_number
+        );
+    }
+
+    public function test_vehicle_update_cannot_change_rider_operational_assignment(): void
+    {
+        [
+            'rider' => $rider,
+            'riderProfile' => $riderProfile,
+        ] = $this->makeRiderAccount();
+
+        $originalLogisticsProfileId =
+            $riderProfile->logistics_profile_id;
+
+        $originalHomeSortingCenterId =
+            $riderProfile->home_sorting_center_id;
+
+        $originalCurrentZoneId =
+            $riderProfile->current_zone_id;
+
+        $originalVerificationStatus =
+            $riderProfile->verification_status;
+
+        $originalAvailabilityStatus =
+            $riderProfile->availability_status;
+
+        $this
+            ->actingAs($rider)
+            ->patch(
+                route(
+                    'rider.profile.vehicle.update'
+                ),
+                [
+                    'vehicle_type' =>
+                        'Van',
+
+                    'plate_number' =>
+                        'SAFE-2026',
+
+                    'vehicle_model' =>
+                        'Toyota LiteAce',
+
+                    'parcel_capacity' =>
+                        40,
+
+                    /*
+                    * Malicious / out-of-scope input.
+                    */
+                    'logistics_profile_id' =>
+                        999999,
+
+                    'home_sorting_center_id' =>
+                        999999,
+
+                    'current_zone_id' =>
+                        999999,
+
+                    'verification_status' =>
+                        'pending',
+
+                    'availability_status' =>
+                        'offline',
+                ]
+            )
+            ->assertRedirect(
+                route('rider.profile.index')
+                . '#vehicle'
+            );
+
+        $riderProfile->refresh();
+
+        $this->assertSame(
+            $originalLogisticsProfileId,
+            $riderProfile->logistics_profile_id
+        );
+
+        $this->assertSame(
+            $originalHomeSortingCenterId,
+            $riderProfile->home_sorting_center_id
+        );
+
+        $this->assertSame(
+            $originalCurrentZoneId,
+            $riderProfile->current_zone_id
+        );
+
+        $this->assertSame(
+            $originalVerificationStatus,
+            $riderProfile->verification_status
+        );
+
+        $this->assertSame(
+            $originalAvailabilityStatus,
+            $riderProfile->availability_status
+        );
+
+        $this->assertSame(
+            'Van',
+            $riderProfile->vehicle_type
+        );
+
+        $this->assertSame(
+            'SAFE-2026',
+            $riderProfile->plate_number
+        );
+    }
+
     public function test_rider_can_update_personal_profile(): void
     {
         [

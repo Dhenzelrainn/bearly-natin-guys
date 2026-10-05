@@ -289,8 +289,14 @@
 
         <form
             class="panel-body"
-            data-preview-form="vehicle"
+            method="POST"
+            action="{{ route(
+                'rider.profile.vehicle.update'
+            ) }}"
         >
+            @csrf
+            @method('PATCH')
+
             <div class="field-grid">
 
                 <div class="field">
@@ -299,8 +305,13 @@
                     </label>
 
                     @php
+                        $selectedVehicleType = old(
+                            'vehicle_type',
+                            $profile['vehicle_type']
+                        );
+
                         $vehicleTypes = collect([
-                            $profile['vehicle_type'],
+                            $selectedVehicleType,
                             'Motorcycle',
                             'Tricycle',
                             'E-bike',
@@ -313,13 +324,14 @@
 
                     <select
                         id="rider-vehicle-type"
-                        name="vehicle"
+                        name="vehicle_type"
+                        required
                     >
                         @foreach ($vehicleTypes as $vehicleType)
                             <option
                                 value="{{ $vehicleType }}"
                                 @selected(
-                                    $profile['vehicle_type']
+                                    $selectedVehicleType
                                     === $vehicleType
                                 )
                             >
@@ -336,8 +348,11 @@
 
                     <input
                         id="rider-plate"
-                        name="plate"
-                        value="{{ $profile['plate_number'] }}"
+                        name="plate_number"
+                        value="{{ old(
+                            'plate_number',
+                            $profile['plate_number']
+                        ) }}"
                         required
                     >
                 </div>
@@ -349,8 +364,11 @@
 
                     <input
                         id="rider-vehicle-model"
-                        name="model"
-                        value="{{ $profile['vehicle_model'] }}"
+                        name="vehicle_model"
+                        value="{{ old(
+                            'vehicle_model',
+                            $profile['vehicle_model']
+                        ) }}"
                     >
                 </div>
 
@@ -362,9 +380,12 @@
                     <input
                         id="rider-parcel-capacity"
                         type="number"
-                        name="capacity"
+                        name="parcel_capacity"
                         min="1"
-                        value="{{ $profile['parcel_capacity'] }}"
+                        value="{{ old(
+                            'parcel_capacity',
+                            $profile['parcel_capacity']
+                        ) }}"
                     >
                 </div>
 

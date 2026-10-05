@@ -823,6 +823,9 @@ Route::prefix('rider')->name('rider.')->group(function () {
         Route::post('/account/addresses', [RiderController::class, 'storeAddress'])
             ->name('profile.addresses.store');
 
+        Route::patch('/account/vehicle', [RiderController::class, 'updateVehicle'])
+            ->name('profile.vehicle.update');
+
         Route::get('/account', [RiderController::class, 'account'])
             ->name('profile.index');
     });

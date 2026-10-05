@@ -18,6 +18,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 class RiderController extends Controller
@@ -1710,6 +1711,108 @@ class RiderController extends Controller
         )->with(
             'success',
             'Rider address added successfully.'
+        );
+    }
+
+    public function updateVehicle(
+        Request $request
+    ): RedirectResponse {
+        /** @var User $user */
+        $user = $request->user();
+
+        $riderProfile = $user
+            ->riderProfile()
+            ->firstOrFail();
+
+        $validated = $request->validate([
+            'vehicle_type' => [
+                'required',
+                'string',
+                'max:80',
+            ],
+
+            'plate_number' => [
+                'required',
+                'string',
+                'max:30',
+            ],
+
+            'vehicle_model' => [
+                'nullable',
+                'string',
+                'max:160',
+            ],
+
+            'parcel_capacity' => [
+                'nullable',
+                'integer',
+                'min:1',
+            ],
+        ]);
+
+        $vehicleType = trim(
+            $validated['vehicle_type']
+        );
+
+        $plateNumber = strtoupper(
+            trim($validated['plate_number'])
+        );
+
+        DB::transaction(
+            function () use (
+                $user,
+                $riderProfile,
+                $validated,
+                $vehicleType,
+                $plateNumber
+            ): void {
+                /*
+                * RiderProfile is authoritative.
+                */
+                $riderProfile->update([
+                    'vehicle_type' =>
+                        $vehicleType,
+
+                    'plate_number' =>
+                        $plateNumber,
+
+                    'vehicle_model' =>
+                        filled(
+                            $validated['vehicle_model']
+                            ?? null
+                        )
+                            ? trim(
+                                $validated['vehicle_model']
+                            )
+                            : null,
+
+                    'parcel_capacity' =>
+                        $validated[
+                            'parcel_capacity'
+                        ] ?? null,
+                ]);
+
+                /*
+                * Keep legacy compatibility fields
+                * synchronized because lifecycle code
+                * may still read these during migration.
+                */
+                $user->update([
+                    'vehicle_type' =>
+                        $vehicleType,
+
+                    'plate_number' =>
+                        $plateNumber,
+                ]);
+            }
+        );
+
+        return redirect(
+            route('rider.profile.index')
+            . '#vehicle'
+        )->with(
+            'success',
+            'Vehicle details updated successfully.'
         );
     }
 

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Enums\AccountStatus;
 use App\Enums\UserRole;
 use App\Enums\ParcelStatus;
+use App\Models\PickupAssignment;
 use App\Models\User;
 use App\Services\RiderDeliveryService;
 use App\Services\EmailVerificationService;
@@ -310,6 +311,194 @@ class RiderController extends Controller
             ->values();
     }
 
+    private function pickupAssignmentsFor(
+        ?User $user
+    ): Collection {
+        if (! $user) {
+            return collect();
+        }
+
+        $profile = $user
+            ->riderProfile()
+            ->first();
+
+        if (! $profile) {
+            return collect();
+        }
+
+        return $profile
+            ->pickupAssignments()
+            ->whereNotIn(
+                'status',
+                [
+                    'completed',
+                    'cancelled',
+                ]
+            )
+            ->with([
+                'pickupRequest.store.sellerProfile.user',
+                'pickupRequest.pickupAddress',
+                'pickupRequest.parcels.waybill',
+            ])
+            ->orderByDesc('assigned_at')
+            ->orderByDesc('id')
+            ->get()
+            ->map(
+                fn (PickupAssignment $assignment): array =>
+                    $this->pickupAssignmentRow(
+                        $assignment
+                    )
+            )
+            ->filter()
+            ->values();
+    }
+
+    private function pickupAssignmentRow(
+        PickupAssignment $assignment
+    ): array {
+        $pickup = $assignment->pickupRequest;
+
+        if (! $pickup) {
+            return [];
+        }
+
+        $store = $pickup->store;
+        $address = $pickup->pickupAddress;
+
+        $sellerName =
+            $store?->name
+            ?: $store?->sellerProfile?->user?->name
+            ?: 'Unknown Seller';
+
+        $contact =
+            $address?->phone
+            ?: $store?->contact_phone
+            ?: $store?->sellerProfile?->user?->contact_number
+            ?: 'Not provided';
+
+        $addressText = collect([
+            $address?->house_number,
+            $address?->street,
+            $address?->barangay
+                ? 'Brgy. '.$address->barangay
+                : null,
+            $address?->city_municipality,
+            $address?->province,
+            $address?->postal_code,
+        ])
+            ->filter(
+                fn ($value) =>
+                    filled($value)
+            )
+            ->implode(', ');
+
+        $window =
+            $pickup->window_start
+            && $pickup->window_end
+                ? $pickup->window_start
+                    ->format('M j, Y · g:i A')
+                    .'–'
+                    .$pickup->window_end
+                        ->format('g:i A')
+                : 'Not scheduled';
+
+        $manifest = $pickup
+            ->parcels
+            ->map(
+                fn ($parcel): array => [
+                    'parcel_no' =>
+                        $parcel->parcel_no,
+
+                    'waybill' =>
+                        $parcel->waybill?->waybill_no
+                        ?: 'Not generated',
+
+                    'size' =>
+                        $parcel->size_class
+                            ? ucwords(
+                                str_replace(
+                                    '_',
+                                    ' ',
+                                    $parcel->size_class
+                                )
+                            )
+                            : 'Not specified',
+
+                    'qty' => 1,
+
+                    'status' =>
+                        ucwords(
+                            str_replace(
+                                '_',
+                                ' ',
+                                $parcel->status
+                            )
+                        ),
+                ]
+            )
+            ->values()
+            ->all();
+
+        return [
+            'id' =>
+                $pickup->pickup_no,
+
+            'assignment_id' =>
+                $assignment->id,
+
+            'seller' =>
+                $sellerName,
+
+            'contact' =>
+                $contact,
+
+            'address' =>
+                $addressText
+                    ?: 'Pickup address unavailable',
+
+            'parcels' =>
+                count($manifest),
+
+            'window' =>
+                $window,
+
+            'status' =>
+                ucwords(
+                    str_replace(
+                        '_',
+                        ' ',
+                        $assignment->status
+                    )
+                ),
+
+            'status_raw' =>
+                $assignment->status,
+
+            'assigned_at' =>
+                $assignment->assigned_at
+                    ?->format(
+                        'M j, Y · g:i A'
+                    )
+                ?: 'Not recorded',
+
+            'is_due_today' =>
+                $pickup
+                    ->requested_date
+                    ?->isToday()
+                ?? false,
+
+            'instructions' =>
+                $pickup->seller_instructions
+                ?: 'No special seller instructions.',
+
+            'assignment_notes' =>
+                $assignment->notes,
+
+            'manifest' =>
+                $manifest,
+        ];
+    }
+
     private function deliveryAssignmentStatus(
         Collection $parcels
     ): string {
@@ -524,44 +713,57 @@ class RiderController extends Controller
             ->with('registration_pending', true);
     }
 
-    public function pickupsDashboard()
+    public function pickupsDashboard(): View
     {
-        return view('rider.dashboard.pickups', $this->shared() + [
-            'pickups' => [
-                [
-                    'id' => 'PU-24091',
-                    'seller' => 'TechVault PH',
-                    'address' => 'Brgy. San Rafael, San Pablo City',
-                    'distance' => '2.3 km',
-                    'parcels' => 6,
-                    'window' => '2:30–3:30 PM',
-                    'status' => 'Assigned',
+        /** @var User|null $user */
+        $user = Auth::user();
+
+        $pickups =
+            $this->pickupAssignmentsFor(
+                $user
+            );
+
+        return view(
+            'rider.dashboard.pickups',
+            $this->shared() + [
+                'pickups' =>
+                    $pickups,
+
+                'pickupMetrics' => [
+                    'assigned' =>
+                        $pickups
+                            ->where(
+                                'status_raw',
+                                'assigned'
+                            )
+                            ->count(),
+
+                    'in_progress' =>
+                        $pickups
+                            ->whereIn(
+                                'status_raw',
+                                [
+                                    'accepted',
+                                    'arrived',
+                                    'picked_up',
+                                ]
+                            )
+                            ->count(),
+
+                    'parcels' =>
+                        $pickups
+                            ->sum('parcels'),
+
+                    'due_today' =>
+                        $pickups
+                            ->where(
+                                'is_due_today',
+                                true
+                            )
+                            ->count(),
                 ],
-                [
-                    'id' => 'PU-24094',
-                    'seller' => 'Mara Home Goods',
-                    'address' => 'Brgy. Del Remedio, San Pablo City',
-                    'distance' => '4.1 km',
-                    'parcels' => 4,
-                    'window' => '3:30–4:30 PM',
-                    'status' => 'Available',
-                ],
-                [
-                    'id' => 'PU-24095',
-                    'seller' => 'Tiny Tails Pet Co.',
-                    'address' => 'Brgy. San Roque, San Pablo City',
-                    'distance' => '5.7 km',
-                    'parcels' => 3,
-                    'window' => '4:00–5:00 PM',
-                    'status' => 'Available',
-                ],
-            ],
-            'alerts' => [
-                ['time' => '2 min ago', 'title' => 'New nearby pickup', 'detail' => 'Mara Home Goods · 4 parcels · 4.1 km'],
-                ['time' => '18 min ago', 'title' => 'Pickup window updated', 'detail' => 'TechVault PH is ready from 2:30–3:30 PM'],
-                ['time' => '35 min ago', 'title' => 'Sorting center reminder', 'detail' => 'Return collected parcels to Intake Bay 2'],
-            ],
-        ]);
+            ]
+        );
     }
 
     public function deliveriesDashboard(): View
@@ -638,36 +840,55 @@ class RiderController extends Controller
         );
     }
 
-    public function pickup(string $id)
-    {
-        return view('rider.orders.pickup', $this->shared() + [
-            'job' => [
-                'id' => $id,
-                'seller' => 'TechVault PH',
-                'contact' => '0917 555 0148',
-                'address' => 'Unit 4, San Rafael Commercial Arcade, Brgy. San Rafael, San Pablo City',
-                'window' => '2:30–3:30 PM',
-                'distance' => '2.3 km',
-                'instructions' => 'Use the loading entrance beside the pharmacy. Ask for the seller operations desk.',
-                'manifest' => [
-                    [
-                        'waybill' => 'BRL-983410',
-                        'size' => 'Small',
-                        'qty' => 1,
-                    ],
-                    [
-                        'waybill' => 'BRL-983411',
-                        'size' => 'Medium',
-                        'qty' => 1,
-                    ],
-                    [
-                        'waybill' => 'BRL-983415',
-                        'size' => 'Small',
-                        'qty' => 1,
-                    ],
-                ],
-            ],
-        ]);
+    public function pickup(
+        string $id
+    ): View {
+        /** @var User|null $user */
+        $user = Auth::user();
+
+        $profile = $user
+            ?->riderProfile()
+            ->first();
+
+        abort_unless(
+            $profile,
+            404
+        );
+
+        $assignment = $profile
+            ->pickupAssignments()
+            ->whereNotIn(
+                'status',
+                [
+                    'completed',
+                    'cancelled',
+                ]
+            )
+            ->whereHas(
+                'pickupRequest',
+                fn ($query) =>
+                    $query->where(
+                        'pickup_no',
+                        $id
+                    )
+            )
+            ->with([
+                'pickupRequest.store.sellerProfile.user',
+                'pickupRequest.pickupAddress',
+                'pickupRequest.parcels.waybill',
+            ])
+            ->orderByDesc('id')
+            ->firstOrFail();
+
+        return view(
+            'rider.orders.pickup',
+            $this->shared() + [
+                'job' =>
+                    $this->pickupAssignmentRow(
+                        $assignment
+                    ),
+            ]
+        );
     }
 
     public function confirmPickup(Request $request, string $id)

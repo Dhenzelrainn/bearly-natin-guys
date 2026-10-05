@@ -1,12 +1,299 @@
 @extends('rider.layouts.app')
-@section('title','Pickup '.$job['id'])
-@section('page-title','Pickup Execution')
+
+@section('title', 'Pickup Details')
+@section('page-title', 'Pickup Details')
+
 @section('content')
-<div class="page-header"><div><p class="page-kicker">Pickup process · {{ $job['id'] }}</p><h2>Collect parcels from {{ $job['seller'] }}</h2><p>Verify the seller location and every package before confirming physical handover.</p></div><div class="page-actions"><a class="button" href="{{ route('rider.dashboard.pickups') }}"><i data-lucide="arrow-left"></i>Back to queue</a></div></div>
-<div class="workflow-steps"><div class="workflow-step is-complete"><span><i data-lucide="check"></i></span><strong>Accept pickup</strong></div><div class="workflow-step is-current" data-workflow-step="manifest"><span>2</span><strong>Inspect manifest</strong></div><div class="workflow-step" data-workflow-step="confirm"><span>3</span><strong>Confirm handover</strong></div></div>
-<div class="route-layout">
-    <section class="section-stack"><article class="panel"><div class="panel-header"><div><h3>Seller location</h3><p>{{ $job['distance'] }} away · Pickup window {{ $job['window'] }}</p></div><span class="status-badge is-warning">Pickup assigned</span></div><div class="panel-body"><div class="route-map"><span class="map-pin"><i data-lucide="store"></i></span><div class="map-meta"><span><strong>{{ $job['seller'] }}</strong><br>{{ $job['address'] }}</span><span><strong>{{ $job['distance'] }}</strong><br>Approx. 9 minutes</span></div></div><div class="page-actions" style="margin-top:14px"><button class="button" type="button" data-call-contact="{{ $job['contact'] }}"><i data-lucide="phone"></i>Call seller</button><button class="button button-primary" type="button" data-navigation-preview><i data-lucide="navigation"></i>Open route</button></div></div></article><article class="panel"><div class="panel-header"><div><h3>Package manifest</h3><p>Check every physical package against its waybill.</p></div><button class="button button-small" type="button" data-check-all="pickup-manifest"><i data-lucide="list-checks"></i>Check all</button></div><div class="panel-body manifest-list" data-check-group="pickup-manifest">@foreach($job['manifest'] as $item)<label class="manifest-item"><input type="checkbox"><span><strong>{{ $item['waybill'] }}</strong><small>{{ $item['size'] }} package · Quantity {{ $item['qty'] }}</small></span><span class="status-badge">Ready</span></label>@endforeach</div></article></section>
-    <aside class="section-stack"><section class="panel"><div class="panel-header"><div><h3>Pickup summary</h3><p>Confirm only after physical handover.</p></div></div><div class="panel-body detail-list"><div class="detail-item"><small>Seller</small><strong>{{ $job['seller'] }}</strong></div><div class="detail-item"><small>Contact</small><strong>{{ $job['contact'] }}</strong></div><div class="detail-item"><small>Parcels</small><strong>{{ count($job['manifest']) }} packages</strong></div><div class="detail-item"><small>Pickup window</small><strong>{{ $job['window'] }}</strong></div></div><div class="panel-footer"><button class="button button-primary" style="width:100%" type="button" data-confirm-pickup><i data-lucide="package-check"></i>Confirm pickup</button></div></section><section class="panel"><div class="panel-header"><div><h3>Seller instructions</h3></div></div><div class="panel-body"><p style="margin:0;color:var(--muted);font-size:11px;line-height:1.7">{{ $job['instructions'] }}</p></div></section></aside>
+<div class="page-header">
+    <div>
+        <p class="page-kicker">
+            Seller pickup assignment
+        </p>
+
+        <h2>
+            {{ $job['id'] }}
+        </h2>
+
+        <p>
+            Review the seller location, pickup window,
+            assignment notes, and parcel manifest.
+        </p>
+    </div>
+
+    <div class="page-actions">
+        <a
+            class="button"
+            href="{{ route('rider.dashboard.pickups') }}"
+        >
+            <i data-lucide="arrow-left"></i>
+            Back to pickup queue
+        </a>
+    </div>
 </div>
-<section class="modal" data-modal="confirm-pickup" hidden><div class="modal-header"><div><h3>Confirm parcel pickup</h3><p>This updates the preview status to Collected.</p></div><button class="icon-button" type="button" data-modal-close><i data-lucide="x"></i></button></div><form method="POST" action="{{ route('rider.orders.pickup.confirm',$job['id']) }}" data-job-complete="pickup:{{ $job['id'] }}">@csrf<div class="modal-body"><div class="field"><label>Handover note</label><textarea name="note" placeholder="Optional package or seller note"></textarea></div><label class="toggle-row"><span class="toggle-copy"><strong>All manifest items were physically received</strong><small>Required before confirmation.</small></span><span class="switch"><input type="checkbox" required><span></span></span></label></div><div class="modal-footer"><button class="button" type="button" data-modal-close>Cancel</button><button class="button button-primary" type="submit">Confirm pickup</button></div></form></section>
+
+<div class="workflow-steps">
+    <div
+        class="workflow-step
+            {{ in_array(
+                $job['status_raw'],
+                ['assigned', 'accepted', 'arrived', 'picked_up'],
+                true
+            ) ? 'is-complete' : '' }}"
+    >
+        <span>
+            <i data-lucide="check"></i>
+        </span>
+
+        <strong>
+            Assigned
+        </strong>
+    </div>
+
+    <div
+        class="workflow-step
+            {{ in_array(
+                $job['status_raw'],
+                ['accepted', 'arrived', 'picked_up'],
+                true
+            ) ? 'is-complete' : '' }}"
+    >
+        <span>2</span>
+
+        <strong>
+            Accepted
+        </strong>
+    </div>
+
+    <div
+        class="workflow-step
+            {{ $job['status_raw'] === 'picked_up'
+                ? 'is-complete'
+                : '' }}"
+    >
+        <span>3</span>
+
+        <strong>
+            Picked up
+        </strong>
+    </div>
+</div>
+
+<div class="route-layout">
+    <section class="section-stack">
+        <article class="panel">
+            <div class="panel-header">
+                <div>
+                    <h3>
+                        Seller location
+                    </h3>
+
+                    <p>
+                        Pickup window:
+                        {{ $job['window'] }}
+                    </p>
+                </div>
+
+                <span
+                    class="status-badge"
+                    data-status="{{ $job['status_raw'] }}"
+                >
+                    {{ $job['status'] }}
+                </span>
+            </div>
+
+            <div class="panel-body">
+                <div class="route-map">
+                    <span class="map-pin">
+                        <i data-lucide="store"></i>
+                    </span>
+
+                    <div class="map-meta">
+                        <span>
+                            <strong>
+                                {{ $job['seller'] }}
+                            </strong>
+
+                            <br>
+
+                            {{ $job['address'] }}
+                        </span>
+
+                        <span>
+                            <strong>
+                                {{ $job['contact'] }}
+                            </strong>
+
+                            <br>
+
+                            Seller contact
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </article>
+
+        <article class="panel">
+            <div class="panel-header">
+                <div>
+                    <h3>
+                        Package manifest
+                    </h3>
+
+                    <p>
+                        Parcels attached to this pickup request.
+                    </p>
+                </div>
+            </div>
+
+            <div class="panel-body manifest-list">
+                @forelse($job['manifest'] as $item)
+                    <div class="manifest-item">
+                        <span>
+                            <strong>
+                                {{ $item['waybill'] }}
+                            </strong>
+
+                            <small>
+                                {{ $item['parcel_no'] }}
+                                ·
+                                {{ $item['size'] }}
+                            </small>
+                        </span>
+
+                        <span
+                            class="status-badge"
+                            data-status="{{ Str::slug(
+                                $item['status'],
+                                '_'
+                            ) }}"
+                        >
+                            {{ $item['status'] }}
+                        </span>
+                    </div>
+                @empty
+                    <p class="empty-copy">
+                        No parcels are attached to this
+                        pickup request.
+                    </p>
+                @endforelse
+            </div>
+        </article>
+    </section>
+
+    <aside class="section-stack">
+        <section class="panel">
+            <div class="panel-header">
+                <div>
+                    <h3>
+                        Assignment summary
+                    </h3>
+
+                    <p>
+                        Current Rider pickup assignment.
+                    </p>
+                </div>
+            </div>
+
+            <div class="panel-body detail-list">
+                <div class="detail-item">
+                    <small>
+                        Seller
+                    </small>
+
+                    <strong>
+                        {{ $job['seller'] }}
+                    </strong>
+                </div>
+
+                <div class="detail-item">
+                    <small>
+                        Contact
+                    </small>
+
+                    <strong>
+                        {{ $job['contact'] }}
+                    </strong>
+                </div>
+
+                <div class="detail-item">
+                    <small>
+                        Parcels
+                    </small>
+
+                    <strong>
+                        {{ $job['parcels'] }}
+                    </strong>
+                </div>
+
+                <div class="detail-item">
+                    <small>
+                        Status
+                    </small>
+
+                    <strong>
+                        {{ $job['status'] }}
+                    </strong>
+                </div>
+
+                <div class="detail-item">
+                    <small>
+                        Assigned at
+                    </small>
+
+                    <strong>
+                        {{ $job['assigned_at'] }}
+                    </strong>
+                </div>
+            </div>
+        </section>
+
+        <section class="panel">
+            <div class="panel-header">
+                <div>
+                    <h3>
+                        Seller instructions
+                    </h3>
+                </div>
+            </div>
+
+            <div class="panel-body">
+                <p
+                    style="
+                        margin:0;
+                        color:var(--muted);
+                        font-size:11px;
+                        line-height:1.7;
+                    "
+                >
+                    {{ $job['instructions'] }}
+                </p>
+            </div>
+        </section>
+
+        @if($job['assignment_notes'])
+            <section class="panel">
+                <div class="panel-header">
+                    <div>
+                        <h3>
+                            Logistics notes
+                        </h3>
+                    </div>
+                </div>
+
+                <div class="panel-body">
+                    <p
+                        style="
+                            margin:0;
+                            color:var(--muted);
+                            font-size:11px;
+                            line-height:1.7;
+                        "
+                    >
+                        {{ $job['assignment_notes'] }}
+                    </p>
+                </div>
+            </section>
+        @endif
+    </aside>
+</div>
 @endsection

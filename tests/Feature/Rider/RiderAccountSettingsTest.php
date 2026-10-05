@@ -168,6 +168,117 @@ class RiderAccountSettingsTest extends TestCase
         );
     }
 
+    public function test_correct_current_password_allows_password_change(): void
+    {
+        [
+            'rider' => $rider,
+        ] = $this->makeRiderAccount();
+
+        $rider->update([
+            'password' =>
+                Hash::make('OldPassword123'),
+        ]);
+
+        $this
+            ->actingAs($rider)
+            ->patch(
+                route(
+                    'rider.profile.password.update'
+                ),
+                [
+                    'current_password' =>
+                        'OldPassword123',
+
+                    'new_password' =>
+                        'NewPassword456',
+
+                    'new_password_confirmation' =>
+                        'NewPassword456',
+                ]
+            )
+            ->assertRedirect(
+                route('rider.profile.index')
+                . '#security'
+            )
+            ->assertSessionHas(
+                'success',
+                'Password updated successfully.'
+            );
+
+        $rider->refresh();
+
+        $this->assertTrue(
+            Hash::check(
+                'NewPassword456',
+                $rider->password
+            )
+        );
+
+        $this->assertFalse(
+            Hash::check(
+                'OldPassword123',
+                $rider->password
+            )
+        );
+    }
+
+    public function test_wrong_current_password_is_rejected(): void
+    {
+        [
+            'rider' => $rider,
+        ] = $this->makeRiderAccount();
+
+        $rider->update([
+            'password' =>
+                Hash::make('CorrectPassword123'),
+        ]);
+
+        $oldHash = $rider->password;
+
+        $this
+            ->actingAs($rider)
+            ->from(
+                route('rider.profile.index')
+                . '#security'
+            )
+            ->patch(
+                route(
+                    'rider.profile.password.update'
+                ),
+                [
+                    'current_password' =>
+                        'WrongPassword123',
+
+                    'new_password' =>
+                        'NewPassword456',
+
+                    'new_password_confirmation' =>
+                        'NewPassword456',
+                ]
+            )
+            ->assertRedirect(
+                route('rider.profile.index')
+                . '#security'
+            )
+            ->assertSessionHasErrors(
+                'current_password'
+            );
+
+        $rider->refresh();
+
+        $this->assertSame(
+            $oldHash,
+            $rider->password
+        );
+
+        $this->assertTrue(
+            Hash::check(
+                'CorrectPassword123',
+                $rider->password
+            )
+        );
+    }
+
     public function test_account_page_uses_normalized_rider_profile_and_address(): void
     {
         [

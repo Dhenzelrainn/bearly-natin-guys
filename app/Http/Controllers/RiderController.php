@@ -1437,6 +1437,54 @@ class RiderController extends Controller
         );
     }
 
+    public function updatePassword(
+        Request $request
+    ): RedirectResponse {
+        /** @var User $user */
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'current_password' => [
+                'required',
+                'string',
+            ],
+
+            'new_password' => [
+                'required',
+                'string',
+                'min:8',
+                'confirmed',
+            ],
+        ]);
+
+        if (! Hash::check(
+            $validated['current_password'],
+            $user->password
+        )) {
+            return redirect(
+                route('rider.profile.index')
+                . '#security'
+            )->withErrors([
+                'current_password' =>
+                    'The current password is incorrect.',
+            ]);
+        }
+
+        $user->update([
+            'password' => Hash::make(
+                $validated['new_password']
+            ),
+        ]);
+
+        return redirect(
+            route('rider.profile.index')
+            . '#security'
+        )->with(
+            'success',
+            'Password updated successfully.'
+        );
+    }
+
     public function account(): View
     {
         /** @var User $user */

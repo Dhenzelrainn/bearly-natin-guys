@@ -814,6 +814,9 @@ Route::prefix('rider')->name('rider.')->group(function () {
         Route::patch('/account/profile', [RiderController::class, 'updateProfile'])
             ->name('profile.update');
 
+        Route::patch('/account/password', [RiderController::class, 'updatePassword'])
+            ->name('profile.password.update');
+
         Route::get('/account', [RiderController::class, 'account'])
             ->name('profile.index');
     });

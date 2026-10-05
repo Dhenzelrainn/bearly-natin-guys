@@ -483,8 +483,11 @@
 
         <form
             class="panel-body"
-            data-password-form
+            method="POST"
+            action="{{ route('rider.profile.password.update') }}"
         >
+            @csrf
+            @method('PATCH')
             <div class="field-grid">
 
                 <div class="field span-2">
@@ -538,7 +541,7 @@
                     class="button button-primary"
                     type="submit"
                 >
-                    Validate password update
+                    Update password
                 </button>
             </div>
         </form>

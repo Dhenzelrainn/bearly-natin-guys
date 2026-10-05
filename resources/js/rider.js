@@ -45,22 +45,10 @@ function setupTables() {
     });
 }
 
-function setupPickupJobs() {
-    const state = readState();
-    document.querySelectorAll('[data-record-type="pickupJobs"]').forEach((card) => { const saved = state.pickupJobs?.[card.dataset.recordId]; if (!saved) return; card.dataset.status = saved; const badge = card.querySelector('[data-status-badge]'); if (badge) { badge.dataset.status = saved; badge.textContent = saved; } const button = card.querySelector('[data-accept-pickup]'); if (button && saved === 'Accepted') { button.textContent = 'Accepted'; button.disabled = true; } });
-    document.querySelectorAll('[data-accept-pickup]').forEach((button) => button.addEventListener('click', () => { const card = button.closest('[data-record-row]'); card.dataset.status = 'Accepted'; const badge = card.querySelector('[data-status-badge]'); badge.dataset.status = 'Accepted'; badge.textContent = 'Accepted'; button.textContent = 'Accepted'; button.disabled = true; saveValue('pickupJobs', card.dataset.recordId, 'Accepted'); toast(`${card.dataset.recordId} accepted and added to your pickup route.`); }));
-    document.querySelectorAll('[data-preview-detail]').forEach((button) => button.addEventListener('click', () => toast('Pickup details are visible in the job card.')));
-    document.querySelector('[data-refresh-preview]')?.addEventListener('click', () => toast('Pickup queue refreshed with current preview data.'));
-    document.querySelector('[data-optimize-route]')?.addEventListener('click', () => toast('Delivery stops reordered by distance and payment priority.'));
-}
-
 function setupWorkflow() {
-    document.querySelectorAll('[data-check-all]').forEach((button) => button.addEventListener('click', () => { document.querySelectorAll(`[data-check-group="${button.dataset.checkAll}"] input[type="checkbox"]`).forEach((checkbox) => { checkbox.checked = true; }); document.querySelector('[data-workflow-step="manifest"]')?.classList.replace('is-current','is-complete'); document.querySelector('[data-workflow-step="confirm"]')?.classList.add('is-current'); toast('Every manifest item is checked.'); }));
-    document.querySelector('[data-confirm-pickup]')?.addEventListener('click', () => { const checks = [...document.querySelectorAll('[data-check-group] input[type="checkbox"]')]; if (checks.some((item) => !item.checked)) { toast('Check every manifest item before confirming pickup.'); return; } window.openRiderModal?.('confirm-pickup'); });
     document.querySelector('[data-confirm-delivery]')?.addEventListener('click', () => { const checks = [...document.querySelectorAll('[data-delivery-check]')]; if (checks.some((item) => !item.checked)) { toast('Verify the package and payment before adding proof of delivery.'); return; } window.openRiderModal?.('proof-delivery'); });
     document.querySelectorAll('[data-call-contact]').forEach((button) => button.addEventListener('click', () => toast(`Call preview opened for ${button.dataset.callContact}.`)));
     document.querySelectorAll('[data-navigation-preview]').forEach((button) => button.addEventListener('click', () => toast('Route navigation preview opened.')));
-    document.querySelectorAll('[data-job-complete]').forEach((form) => form.addEventListener('submit', () => saveValue('completedJobs', form.dataset.jobComplete, new Date().toISOString())));
     const proof = document.querySelector('[data-proof-file]'); proof?.addEventListener('change', () => { const name = document.querySelector('[data-proof-name]'); if (name) name.textContent = proof.files?.[0]?.name || 'JPG or PNG preview file'; });
 }
 
@@ -1624,4 +1612,15 @@ function setupRegistration() {
     show(1);
 }
 
-document.addEventListener('DOMContentLoaded',()=>{setupShell();setupModals();setupTabs();setupTables();setupPickupJobs();setupWorkflow();setupReports();setupChat();setupForms();setupRegistration();refreshIcons();});
+document.addEventListener('DOMContentLoaded', () => {
+    setupShell();
+    setupModals();
+    setupTabs();
+    setupTables();
+    setupWorkflow();
+    setupReports();
+    setupChat();
+    setupForms();
+    setupRegistration();
+    refreshIcons();
+});

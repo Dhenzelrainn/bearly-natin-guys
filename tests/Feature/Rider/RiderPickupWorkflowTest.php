@@ -25,6 +25,196 @@ class RiderPickupWorkflowTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_rider_can_accept_own_assigned_pickup(): void
+    {
+        $provider =
+            $this->makeProvider('ACCEPT');
+
+        $rider =
+            $this->makeRider(
+                $provider,
+                'ACCEPT'
+            );
+
+        $seller =
+            $this->makeSeller('ACCEPT');
+
+        $record =
+            $this->makePickupAssignment(
+                $provider,
+                $seller,
+                $rider,
+                'ACCEPT'
+            );
+
+        $this
+            ->actingAs($rider->user)
+            ->post(
+                route(
+                    'rider.orders.pickup.accept',
+                    $record['pickup']->pickup_no
+                )
+            )
+            ->assertRedirect(
+                route(
+                    'rider.orders.pickup',
+                    $record['pickup']->pickup_no
+                )
+            )
+            ->assertSessionHas(
+                'job_status',
+                'Pickup assignment accepted.'
+            );
+
+        $assignment =
+            $record['assignment']->fresh();
+
+        $this->assertSame(
+            'accepted',
+            $assignment->status
+        );
+
+        $this->assertNotNull(
+            $assignment->accepted_at
+        );
+
+        $this->assertSame(
+            'scheduled',
+            $record['pickup']
+                ->fresh()
+                ->status
+        );
+
+        $this->assertSame(
+            ShipmentStatus::PickupAssigned->value,
+            $record['shipment']
+                ->fresh()
+                ->status
+        );
+
+        $this->assertSame(
+            'ready_for_pickup',
+            $record['parcel']
+                ->fresh()
+                ->status
+        );
+    }
+
+    public function test_rider_cannot_accept_another_riders_pickup(): void
+    {
+        $provider =
+            $this->makeProvider('ACCEPT-FOREIGN');
+
+        $assignedRider =
+            $this->makeRider(
+                $provider,
+                'ACCEPT-OWNER'
+            );
+
+        $foreignRider =
+            $this->makeRider(
+                $provider,
+                'ACCEPT-OTHER'
+            );
+
+        $seller =
+            $this->makeSeller(
+                'ACCEPT-FOREIGN'
+            );
+
+        $record =
+            $this->makePickupAssignment(
+                $provider,
+                $seller,
+                $assignedRider,
+                'ACCEPT-FOREIGN'
+            );
+
+        $this
+            ->actingAs(
+                $foreignRider->user
+            )
+            ->post(
+                route(
+                    'rider.orders.pickup.accept',
+                    $record['pickup']->pickup_no
+                )
+            )
+            ->assertNotFound();
+
+        $this->assertSame(
+            'assigned',
+            $record['assignment']
+                ->fresh()
+                ->status
+        );
+
+        $this->assertNull(
+            $record['assignment']
+                ->fresh()
+                ->accepted_at
+        );
+    }
+
+    public function test_pickup_acceptance_cannot_be_repeated(): void
+    {
+        $provider =
+            $this->makeProvider('ACCEPT-ONCE');
+
+        $rider =
+            $this->makeRider(
+                $provider,
+                'ACCEPT-ONCE'
+            );
+
+        $seller =
+            $this->makeSeller(
+                'ACCEPT-ONCE'
+            );
+
+        $record =
+            $this->makePickupAssignment(
+                $provider,
+                $seller,
+                $rider,
+                'ACCEPT-ONCE'
+            );
+
+        $url = route(
+            'rider.orders.pickup.accept',
+            $record['pickup']->pickup_no
+        );
+
+        $this
+            ->actingAs($rider->user)
+            ->post($url)
+            ->assertRedirect();
+
+        $acceptedAt =
+            $record['assignment']
+                ->fresh()
+                ->accepted_at;
+
+        $this
+            ->actingAs($rider->user)
+            ->post($url)
+            ->assertStatus(409);
+
+        $assignment =
+            $record['assignment']->fresh();
+
+        $this->assertSame(
+            'accepted',
+            $assignment->status
+        );
+
+        $this->assertTrue(
+            $assignment
+                ->accepted_at
+                ->equalTo($acceptedAt)
+        );
+    }
+
     public function test_rider_dashboard_lists_only_own_active_pickup_assignments(): void
     {
         $provider =

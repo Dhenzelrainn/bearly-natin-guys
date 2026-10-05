@@ -7,6 +7,7 @@ use App\Enums\UserRole;
 use App\Enums\ParcelStatus;
 use App\Models\PickupAssignment;
 use App\Models\User;
+use App\Services\RiderPickupService;
 use App\Services\RiderDeliveryService;
 use App\Services\EmailVerificationService;
 use App\Services\InternationalPhone;
@@ -889,6 +890,29 @@ class RiderController extends Controller
                     ),
             ]
         );
+    }
+
+    public function acceptPickup(
+        string $id,
+        RiderPickupService $pickupService
+    ): RedirectResponse {
+        /** @var User $user */
+        $user = Auth::user();
+
+        $pickupService->acceptPickup(
+            $id,
+            $user
+        );
+
+        return redirect()
+            ->route(
+                'rider.orders.pickup',
+                $id
+            )
+            ->with(
+                'job_status',
+                'Pickup assignment accepted.'
+            );
     }
 
     public function confirmPickup(Request $request, string $id)

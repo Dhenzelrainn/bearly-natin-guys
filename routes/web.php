@@ -781,6 +781,9 @@ Route::prefix('rider')->name('rider.')->group(function () {
         Route::get('/pickup/{id}', [RiderController::class, 'pickup'])
             ->name('orders.pickup');
 
+        Route::post('/pickup/{id}/accept', [RiderController::class, 'acceptPickup'])
+            ->name('orders.pickup.accept');
+
         Route::post('/pickup/{id}/confirm', [RiderController::class, 'confirmPickup'])
             ->name('orders.pickup.confirm');
 

@@ -245,6 +245,44 @@
                     </strong>
                 </div>
             </div>
+
+            @if($job['status_raw'] === 'assigned')
+                <div class="panel-footer">
+                    <form
+                        method="POST"
+                        action="{{ route(
+                            'rider.orders.pickup.accept',
+                            $job['id']
+                        ) }}"
+                        style="width:100%;"
+                    >
+                        @csrf
+
+                        <button
+                            type="submit"
+                            class="button button-primary"
+                            style="width:100%;"
+                        >
+                            <i data-lucide="check-circle"></i>
+                            Accept pickup assignment
+                        </button>
+                    </form>
+                </div>
+            @elseif($job['status_raw'] === 'accepted')
+                <div class="panel-footer">
+                    <div
+                        class="flash-banner"
+                        style="width:100%;"
+                    >
+                        <i data-lucide="circle-check"></i>
+
+                        <span>
+                            Pickup accepted. Proceed to the
+                            seller during the assigned window.
+                        </span>
+                    </div>
+                </div>
+            @endif
         </section>
 
         <section class="panel">

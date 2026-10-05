@@ -127,6 +127,12 @@ Route::middleware(['auth', 'role:buyer'])->group(function () {
     Route::get('/products', [BuyerController::class, 'products'])
         ->name('products.index');
 
+    Route::get('/products/{product}', [BuyerController::class, 'showProduct'])
+        ->name('products.show');
+
+    Route::get('/stores/{store:slug}', [BuyerController::class, 'showStore'])
+        ->name('stores.show');
+
     Route::get('/profile', [BuyerController::class, 'profile'])
         ->name('buyer.profile');
 
@@ -362,6 +368,9 @@ Route::prefix('seller')
 
         Route::get('/store/publication', [SellerController::class, 'publicationSettings'])
             ->name('store.publication');
+
+        Route::post('/store/publication', [SellerController::class, 'updatePublication'])
+            ->name('store.publication.update');
 
         Route::get('/products', [SellerController::class, 'products'])
             ->name('products');

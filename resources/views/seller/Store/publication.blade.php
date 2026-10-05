@@ -40,8 +40,8 @@
             <span class="storefront-panel-icon"><i data-lucide="globe-2"></i></span>
             <h3>Buyer Visibility</h3>
             <p>Publishing makes your store profile and active product listings available to buyers.</p>
-            <dl><div><dt>Current visibility</dt><dd data-publication-visibility>{{ $store['published'] ? 'Visible to buyers' : 'Hidden from buyers' }}</dd></div><div><dt>Store URL</dt><dd>bearly.test/store/juans-clothing</dd></div></dl>
-            <button class="seller-primary-button publication-primary-action" type="button" data-publication-toggle data-published="{{ $store['published'] ? 'true' : 'false' }}" @disabled($completion < 100)><i data-lucide="{{ $store['published'] ? 'eye-off' : 'store' }}"></i><span>{{ $store['published'] ? 'Unpublish Store' : 'Publish Store' }}</span></button>
+            <dl><div><dt>Current visibility</dt><dd data-publication-visibility>{{ $store['published'] ? 'Visible to buyers' : 'Hidden from buyers' }}</dd></div><div><dt>Store URL</dt><dd><a href="{{ route('stores.show', $store['slug']) }}">{{ route('stores.show', $store['slug']) }}</a></dd></div></dl>
+            <button class="seller-primary-button publication-primary-action" type="button" data-publication-toggle data-publication-endpoint="{{ route('seller.store.publication.update') }}" data-published="{{ $store['published'] ? 'true' : 'false' }}" @disabled($completion < 100 && ! $store['published'])><i data-lucide="{{ $store['published'] ? 'eye-off' : 'store' }}"></i><span>{{ $store['published'] ? 'Unpublish Store' : 'Publish Store' }}</span></button>
             @if ($completion < 100)<small class="publication-disabled-note"><i data-lucide="lock-keyhole"></i>Complete all requirements to enable publishing.</small>@endif
         </section>
         <section class="storefront-panel publication-information-card">

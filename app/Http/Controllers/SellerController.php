@@ -5,11 +5,12 @@ namespace App\Http\Controllers;
 use App\Models\Address;
 use App\Models\AccountApplication;
 use App\Models\StorePromotionalBanner;
+use App\Services\SellerProductService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 
 class SellerController extends Controller
 {
@@ -476,28 +477,14 @@ class SellerController extends Controller
         ];
     }
 
-    public function store(Request $request): View
+    public function store(Request $request, SellerProductService $productService): View
     {
         $user = $request->user();
         $sellerProfile = $user->sellerProfile;
 
         abort_if($sellerProfile === null, 404, 'Seller profile not found.');
 
-        $store = $sellerProfile->store;
-
-        if ($store === null) {
-            $storeName = $user->business_name
-                ?: $sellerProfile->legal_business_name
-                ?: 'Bearly Store';
-
-            $store = $sellerProfile->store()->create([
-                'name' => $storeName,
-                'slug' => Str::slug($storeName).'-'.$sellerProfile->id,
-                'contact_email' => $user->email,
-                'contact_phone' => $user->contact_number ?: $user->phone,
-                'publication_status' => 'draft',
-            ]);
-        }
+        $store = $productService->storeFor($user);
 
         $pickupAddress = $sellerProfile->pickup_address_id
             ? Address::find($sellerProfile->pickup_address_id)
@@ -775,23 +762,22 @@ class SellerController extends Controller
             ->with('success', 'Store appearance saved successfully.');
     }
 
-    public function publicationSettings(Request $request): View
+    public function publicationSettings(Request $request, SellerProductService $productService): View
     {
-        $store = array_merge([
-            'name' => "Juan's Clothing Shop",
-            'description' => '',
-            'profile_photo' => null,
-            'cover_photo' => null,
-            'published' => false,
-        ], $request->session()->get('seller.store', []));
+        $user = $request->user();
+        $sellerProfile = $user->sellerProfile;
+
+        abort_if($sellerProfile === null, 404, 'Seller profile not found.');
+
+        $storeRecord = $productService->storeFor($user);
 
         $requirements = [
-            ['label' => 'Business information verified', 'detail' => 'Store name and category were approved during registration.', 'complete' => true, 'route' => 'seller.store'],
-            ['label' => 'Contact information added', 'detail' => 'Buyers and the platform have valid store contact details.', 'complete' => true, 'route' => 'seller.store'],
-            ['label' => 'Store description added', 'detail' => 'Explain what your store sells and what buyers can expect.', 'complete' => filled($store['description']), 'route' => 'seller.store.appearance'],
-            ['label' => 'Profile photo added', 'detail' => 'Use a clear square image that identifies your store.', 'complete' => filled($store['profile_photo']), 'route' => 'seller.store.appearance'],
-            ['label' => 'Cover photo added', 'detail' => 'Use a storefront banner suitable for desktop and mobile.', 'complete' => filled($store['cover_photo']), 'route' => 'seller.store.appearance'],
-            ['label' => 'At least one active product', 'detail' => 'A published store must have something available to buyers.', 'complete' => true, 'route' => 'seller.products'],
+            ['label' => 'Business information verified', 'detail' => 'Store name and category were approved during registration.', 'complete' => filled($sellerProfile->approved_at), 'route' => 'seller.store'],
+            ['label' => 'Contact information added', 'detail' => 'Buyers and the platform have valid store contact details.', 'complete' => filled($storeRecord->contact_email) && filled($storeRecord->contact_phone), 'route' => 'seller.store'],
+            ['label' => 'Store description added', 'detail' => 'Explain what your store sells and what buyers can expect.', 'complete' => filled($storeRecord->description), 'route' => 'seller.store.appearance'],
+            ['label' => 'Profile photo added', 'detail' => 'Use a clear square image that identifies your store.', 'complete' => filled($storeRecord->logo_path), 'route' => 'seller.store.appearance'],
+            ['label' => 'Cover photo added', 'detail' => 'Use a storefront banner suitable for desktop and mobile.', 'complete' => filled($storeRecord->banner_path), 'route' => 'seller.store.appearance'],
+            ['label' => 'At least one active product', 'detail' => 'A published store must have something available to buyers.', 'complete' => $storeRecord->products()->where('product_status', 'active')->where('compliance_status', 'clear')->whereHas('variants', fn ($variants) => $variants->where('is_active', true))->exists(), 'route' => 'seller.products'],
         ];
 
         $completeCount = collect($requirements)->where('complete', true)->count();
@@ -799,11 +785,69 @@ class SellerController extends Controller
         return view('seller.Store.publication', [
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
-            'store' => $store,
+            'store' => [
+                'name' => $storeRecord->name,
+                'description' => $storeRecord->description ?? '',
+                'profile_photo' => $storeRecord->logo_path,
+                'cover_photo' => $storeRecord->banner_path,
+                'published' => $storeRecord->publication_status === 'published',
+                'slug' => $storeRecord->slug,
+            ],
             'requirements' => $requirements,
             'completeCount' => $completeCount,
             'completion' => (int) round(($completeCount / count($requirements)) * 100),
         ]);
+    }
+
+    public function updatePublication(Request $request, SellerProductService $productService): RedirectResponse|\Illuminate\Http\JsonResponse
+    {
+        $validated = $request->validate(['published' => ['required', 'boolean']]);
+        $sellerProfile = $request->user()->sellerProfile;
+
+        abort_if($sellerProfile === null, 404, 'Seller profile not found.');
+
+        $store = $productService->storeFor($request->user());
+
+        $ready = filled($sellerProfile->approved_at)
+            && filled($store->contact_email)
+            && filled($store->contact_phone)
+            && filled($store->description)
+            && filled($store->logo_path)
+            && filled($store->banner_path)
+            && $store->products()->where('product_status', 'active')->where('compliance_status', 'clear')->whereHas('variants', fn ($variants) => $variants->where('is_active', true))->exists();
+
+        if ($validated['published'] && ! $ready) {
+            $message = 'Complete every store publication requirement before publishing.';
+
+            if ($request->expectsJson()) {
+                return response()->json(['message' => $message], 422);
+            }
+
+            return back()->withErrors(['published' => $message]);
+        }
+
+        DB::transaction(function () use ($store, $validated): void {
+            $store->update([
+                'publication_status' => $validated['published'] ? 'published' : 'draft',
+                'published_at' => $validated['published'] ? now() : null,
+            ]);
+        });
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'data' => [
+                    'published' => $store->publication_status === 'published',
+                    'slug' => $store->slug,
+                ],
+                'message' => $store->publication_status === 'published'
+                    ? 'Store published successfully.'
+                    : 'Store unpublished successfully.',
+            ]);
+        }
+
+        return back()->with('success', $store->publication_status === 'published'
+            ? 'Store published successfully.'
+            : 'Store unpublished successfully.');
     }
 
     private function productCategories(): array
@@ -870,10 +914,9 @@ class SellerController extends Controller
         ]);
     }
 
-    public function products(Request $request): View
+    public function products(Request $request, SellerProductService $productService): View
     {
-        $products = collect($request->session()->get('seller.products', []))
-            ->map(fn (array $product) => $this->normalizeProduct($product));
+        $products = $productService->productsForSeller($request->user());
 
         return view('seller.Products.products', [
             'seller' => $this->seller(),
@@ -891,10 +934,9 @@ class SellerController extends Controller
         ]);
     }
 
-    public function pricing(Request $request): View
+    public function pricing(Request $request, SellerProductService $productService): View
     {
-        $storedProducts = collect($request->session()->get('seller.products', []))
-            ->map(fn (array $product) => $this->normalizeProduct($product));
+        $storedProducts = $productService->productsForSeller($request->user());
 
         $products = $storedProducts->isNotEmpty() ? $storedProducts : collect([
             ['id' => 'demo-1', 'name' => 'Classic Linen Shirt', 'sku' => 'CLS-LINEN-SHIRT', 'category' => 'Fashion and Apparel', 'price' => 1299, 'discount_percent' => 10, 'voucher_eligible' => true, 'stock' => 42, 'status' => 'Active', 'image' => null],
@@ -922,10 +964,9 @@ class SellerController extends Controller
     }
 
 
-    public function createPromotion(Request $request): View
+    public function createPromotion(Request $request, SellerProductService $productService): View
     {
-        $storedProducts = collect($request->session()->get('seller.products', []))
-            ->map(fn (array $product) => $this->normalizeProduct($product));
+        $storedProducts = $productService->productsForSeller($request->user());
 
         $products = $storedProducts->isNotEmpty() ? $storedProducts : collect([
             ['id' => 'demo-1', 'name' => 'Classic Linen Shirt', 'sku' => 'CLS-LINEN-SHIRT', 'category' => 'Fashion and Apparel', 'price' => 1299, 'discount_percent' => 10, 'voucher_eligible' => true, 'stock' => 42, 'status' => 'Active', 'image' => null],

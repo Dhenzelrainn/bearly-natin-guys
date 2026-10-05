@@ -1006,29 +1006,62 @@ const bootSeller = () => {
     document.querySelector('[data-storefront-preview-toggle]')?.addEventListener('click', () => {
         document.querySelector('.storefront-preview-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
-    /* Publication settings — frontend-only visibility preview. */
-    document.querySelector('[data-publication-toggle]')?.addEventListener('click', (event) => {
+    /* Publication settings — persist buyer visibility through the Seller store contract. */
+    document.querySelector('[data-publication-toggle]')?.addEventListener('click', async (event) => {
         const button = event.currentTarget;
         const nextPublished = button.dataset.published !== 'true';
-        button.dataset.published = String(nextPublished);
-        button.querySelector('span').textContent = nextPublished ? 'Unpublish Store' : 'Publish Store';
+        const endpoint = button.dataset.publicationEndpoint || '/seller/store/publication';
+        const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+        const originalLabel = button.querySelector('span')?.textContent || '';
 
-        const title = document.querySelector('[data-publication-title]');
-        const copy = document.querySelector('[data-publication-copy]');
-        const badge = document.querySelector('[data-publication-badge]');
-        const visibility = document.querySelector('[data-publication-visibility]');
-        if (title) title.textContent = nextPublished ? 'Store Published' : 'Store Not Published';
-        if (copy) copy.textContent = nextPublished ? 'Your storefront is currently visible to buyers.' : 'Your storefront is hidden from buyers.';
-        if (badge) {
-            badge.classList.toggle('is-live', nextPublished);
-            badge.lastChild.textContent = nextPublished ? 'Published' : 'Draft';
+        button.disabled = true;
+
+        try {
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrf,
+                },
+                body: JSON.stringify({ published: nextPublished }),
+            });
+            const result = await response.json().catch(() => ({}));
+
+            if (!response.ok) {
+                throw new Error(result.message || Object.values(result.errors || {}).flat()[0] || 'Unable to update store visibility.');
+            }
+
+            const published = Boolean(result.data?.published);
+            button.dataset.published = String(published);
+            button.querySelector('span').textContent = published ? 'Unpublish Store' : 'Publish Store';
+
+            const title = document.querySelector('[data-publication-title]');
+            const copy = document.querySelector('[data-publication-copy]');
+            const badge = document.querySelector('[data-publication-badge]');
+            const visibility = document.querySelector('[data-publication-visibility]');
+            if (title) title.textContent = published ? 'Store Published' : 'Store Not Published';
+            if (copy) copy.textContent = published ? 'Your storefront is currently visible to buyers.' : 'Your storefront is hidden from buyers.';
+            if (badge) {
+                badge.classList.toggle('is-live', published);
+                badge.lastChild.textContent = published ? 'Published' : 'Draft';
+            }
+            if (visibility) visibility.textContent = published ? 'Visible to buyers' : 'Hidden from buyers';
+            if (toast) {
+                toast.textContent = result.message || `${published ? 'Publish' : 'Unpublish'} action saved.`;
+                toast.classList.add('is-visible');
+                window.clearTimeout(window.sellerToastTimer);
+                window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3400);
+            }
+        } catch (error) {
+            if (toast) {
+                toast.textContent = error.message || 'Unable to update store visibility.';
+                toast.classList.add('is-visible');
+            }
+            button.querySelector('span').textContent = originalLabel;
+        } finally {
+            button.disabled = false;
         }
-        if (visibility) visibility.textContent = nextPublished ? 'Visible to buyers' : 'Hidden from buyers';
-        if (!toast) return;
-        toast.textContent = `${nextPublished ? 'Publish' : 'Unpublish'} action previewed. Backend confirmation will be connected later.`;
-        toast.classList.add('is-visible');
-        window.clearTimeout(window.sellerToastTimer);
-        window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3400);
     });
 
 

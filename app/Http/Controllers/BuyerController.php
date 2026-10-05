@@ -7,7 +7,9 @@ use App\Models\Cart;
 use App\Models\CartItem;
 use App\Models\Product;
 use App\Models\ProductVariant;
+use App\Models\Store;
 use App\Models\Wishlist;
+use App\Services\BuyerCatalogService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
@@ -291,7 +293,7 @@ class BuyerController extends Controller
         ];
     }
 
-    public function home(Request $request): View|RedirectResponse
+    public function home(Request $request, BuyerCatalogService $catalog): View|RedirectResponse
     {
         $dedicatedCategories = [
             'electronics-and-gadgets',
@@ -541,15 +543,19 @@ class BuyerController extends Controller
             ],
         ];
 
-        return view('buyer.Dashboard.home', compact(
-            'categories',
-            'recommendedProducts',
-            'bestSellers',
-            'featuredShops'
-        ));
+        return view('buyer.Dashboard.home', [
+            'categories' => $categories,
+            'recommendedProducts' => $recommendedProducts,
+            'bestSellers' => $bestSellers,
+            'featuredShops' => $featuredShops,
+            'liveCatalog' => $catalog->cards(
+                $catalog->publishedProducts(),
+                $request->user(),
+            ),
+        ]);
     }
 
-    public function products(Request $request): View
+    public function products(Request $request, BuyerCatalogService $catalog): View
     {
         $categoryViews = [
             'men-s-apparel' => 'buyer.Category.MenApparel.mens-apparel',
@@ -569,7 +575,12 @@ class BuyerController extends Controller
         $category = $request->query('category');
 
         if (isset($categoryViews[$category])) {
-            return view($categoryViews[$category]);
+            return view($categoryViews[$category], [
+                'liveCatalog' => $catalog->cards(
+                    $catalog->publishedProducts($category),
+                    $request->user(),
+                ),
+            ]);
         }
 
         if (! $this->hasBuyerTables()) {
@@ -581,7 +592,8 @@ class BuyerController extends Controller
             ->withMin('variants', 'price_minor')
             ->where('product_status', 'active')
             ->where('compliance_status', 'clear')
-            ->whereHas('store', fn ($stores) => $stores->where('publication_status', 'published'));
+            ->whereHas('store', fn ($stores) => $stores->where('publication_status', 'published'))
+            ->whereHas('variants', fn ($variants) => $variants->where('is_active', true));
 
         if ($request->category && $request->category !== 'All') {
             $query->whereHas('category', function ($categories) use ($request) {
@@ -626,31 +638,61 @@ class BuyerController extends Controller
             'Groceries',
         ];
 
-        return view('buyer.Category.MenApparel.mens-apparel', compact('products', 'categories'));
+        return view('buyer.Category.MenApparel.mens-apparel', [
+            'products' => $products,
+            'categories' => $categories,
+            'liveCatalog' => $catalog->cards(
+                $catalog->publishedProducts('men-s-apparel'),
+                $request->user(),
+            ),
+        ]);
     }
 
-    public function showProduct(Product $product): View
+    public function showProduct(Product $product, BuyerCatalogService $catalog): View
     {
         $product->load('store');
 
         if (! $this->hasBuyerTables() ||
             $product->product_status !== 'active' ||
             $product->compliance_status !== 'clear' ||
-            $product->store?->publication_status !== 'published') {
+            $product->store?->publication_status !== 'published' ||
+            ! $product->variants()->where('is_active', true)->exists()) {
             abort(404);
         }
 
-        $product->load(['variants', 'images']);
+        $product->load([
+            'category',
+            'store.sellerProfile',
+            'variants' => fn ($variants) => $variants->where('is_active', true)->orderBy('position'),
+            'images' => fn ($images) => $images->orderBy('position'),
+        ]);
 
-        $relatedProducts = Product::where('category_id', $product->category_id)
-            ->where('product_status', 'active')
-            ->where('compliance_status', 'clear')
-            ->whereHas('store', fn ($stores) => $stores->where('publication_status', 'published'))
-            ->where('id', '!=', $product->id)
-            ->limit(4)
-            ->get();
+        $relatedProducts = $catalog->cards(
+            $catalog->publishedProducts()
+                ->where('category_id', $product->category_id)
+                ->where('id', '!=', $product->id)
+                ->take(4),
+            request()->user(),
+        );
 
-        return view('products.show', compact('product', 'relatedProducts'));
+        return view('buyer.products.show', [
+            'product' => $product,
+            'productCard' => $catalog->card($product),
+            'relatedProducts' => $relatedProducts,
+        ]);
+    }
+
+    public function showStore(Store $store, BuyerCatalogService $catalog): View
+    {
+        abort_unless($store->publication_status === 'published', 404);
+
+        $store->load('sellerProfile');
+        $products = $catalog->publishedProducts(null, $store);
+
+        return view('buyer.stores.show', [
+            'store' => $store,
+            'products' => $catalog->cards($products, request()->user()),
+        ]);
     }
 
     public function cart(Request $request): View
@@ -830,6 +872,7 @@ class BuyerController extends Controller
             ->where('product_status', 'active')
             ->where('compliance_status', 'clear')
             ->whereHas('store', fn ($stores) => $stores->where('publication_status', 'published'))
+            ->whereHas('variants', fn ($variants) => $variants->where('is_active', true))
             ->firstOrFail();
 
         $isWishlisted = DB::transaction(function () use ($request, $data): bool {
@@ -932,7 +975,8 @@ class BuyerController extends Controller
                 $products
                     ->where('product_status', 'active')
                     ->where('compliance_status', 'clear')
-                    ->whereHas('store', fn ($stores) => $stores->where('publication_status', 'published'));
+                    ->whereHas('store', fn ($stores) => $stores->where('publication_status', 'published'))
+                    ->whereHas('variants', fn ($variants) => $variants->where('is_active', true));
             })
             ->with(['product.store', 'product.category', 'product.images', 'product.variants' => fn ($variants) => $variants->where('is_active', true)->orderBy('position')])
             ->latest('id')

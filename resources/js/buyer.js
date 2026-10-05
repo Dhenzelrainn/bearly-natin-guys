@@ -1,10 +1,10 @@
-/* BEARLY shared buyer JavaScript: homepage + legacy page + category V2. */
-/* Frontend catalog preview. Preview state is buyer-scoped and never treated as live commerce data. */
+/* BEARLY shared buyer JavaScript: live catalog + buyer-scoped preview catalog. */
 
 const buyerStorageKey = key => window.bearlyStorageKey?.(key) || `bearly-${key}-v1`;
 const PREVIEW_CART_KEY = buyerStorageKey('preview-cart');
 const PREVIEW_WISHLIST_KEY = buyerStorageKey('preview-wishlist');
 const SEARCH_HISTORY_KEY = buyerStorageKey('search-history');
+const LIVE_PLACEHOLDER_IMAGE = '/images/bearly-logo.png';
 
 export function selectProducts(products, { category = '', search = '', sort = 'featured' } = {}) {
     const normalizedCategory = normalizeCategorySlug(category);
@@ -63,6 +63,82 @@ const peso = value =>
         maximumFractionDigits: 0,
     }).format(value);
 
+const previewProductKey = product => {
+    const category = String(
+        product?.category_slug ||
+        (typeof document !== 'undefined'
+            ? document.body?.dataset?.category
+            : '') ||
+        ''
+    ).trim();
+    const id = String(product?.id ?? '').trim();
+
+    return String(
+        product?.featured_key ||
+        (category ? `${category}:${id}` : id)
+    );
+};
+
+const buyerCsrfToken = () =>
+    document.querySelector('meta[name="csrf-token"]')?.content || '';
+
+async function addLiveProductToCart(product, variant, quantity) {
+    const variantId = Number(variant?.id || product?.default_variant_id || 0);
+
+    if (!variantId) {
+        throw new Error('Choose an available product variation first.');
+    }
+
+    const response = await fetch('/cart/add', {
+        method: 'POST',
+        headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': buyerCsrfToken(),
+        },
+        body: JSON.stringify({
+            product_variant_id: variantId,
+            quantity,
+        }),
+    });
+    const result = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+        throw new Error(
+            Object.values(result.errors || {}).flat()[0] ||
+            result.message ||
+            'Unable to add this product to your cart.'
+        );
+    }
+
+    window.BearlyNavbarState?.sync?.();
+
+    return result;
+}
+
+async function toggleLiveProductWishlist(product) {
+    const response = await fetch('/wishlist/toggle', {
+        method: 'POST',
+        headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': buyerCsrfToken(),
+        },
+        body: JSON.stringify({ product_id: Number(product.id) }),
+    });
+    const result = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+        throw new Error(
+            Object.values(result.errors || {}).flat()[0] ||
+            result.message ||
+            'Unable to update your wishlist.'
+        );
+    }
+
+    return Boolean(result.data?.is_wishlisted);
+}
+
 if (typeof document !== 'undefined') {
     initialize();
 }
@@ -73,6 +149,7 @@ function initialize() {
 
     const { categories, products } = JSON.parse(dataElement.textContent);
     const $ = id => document.getElementById(id);
+    const hasLiveCatalog = products.some(product => product.live);
 
     const state = {
         category: '',
@@ -194,7 +271,7 @@ function initialize() {
             const target = new URL('/products', location.origin);
             target.searchParams.set('category', category);
 
-            const search = (params.get('search') || '').trim();
+            const search = (params.get('search') || params.get('q') || '').trim();
 
             if (search) {
                 target.searchParams.set('q', search);
@@ -206,7 +283,7 @@ function initialize() {
 
         state.category = '';
 
-        state.search = (params.get('search') || '').slice(0, 120);
+        state.search = (params.get('search') || params.get('q') || '').slice(0, 120);
 
         state.sort = ['featured', 'price-low', 'price-high', 'name'].includes(
             params.get('sort')
@@ -247,7 +324,12 @@ function initialize() {
         const visible = results.slice(0, state.limit);
 
         $('editorial').hidden = filtered;
-        $('outdoor').hidden = filtered;
+        $('results').hidden = false;
+        document
+            .querySelectorAll('.home-featured-section')
+            .forEach(section => {
+                section.hidden = filtered;
+            });
         $('more-section').hidden = filtered || visible.length <= 12;
         $('results-tools').hidden = !filtered;
 
@@ -255,10 +337,10 @@ function initialize() {
             ? categoryLabel(state.category)
             : state.search
                 ? 'Search results'
-                : 'Daily discoveries';
+                : 'Daily Discoveries';
 
         $('results-caption').textContent = filtered
-            ? `${results.length} sample ${results.length === 1 ? 'find' : 'finds'}${
+            ? `${results.length} ${hasLiveCatalog ? 'listing' : 'sample find'}${results.length === 1 ? '' : 's'}${
                 state.search ? ` for “${state.search}”` : ''
             }`
             : 'Find something good across Bearly.';
@@ -277,7 +359,7 @@ function initialize() {
         $('load-more').hidden = visible.length >= results.length;
 
         $('result-count').textContent =
-            `Showing ${visible.length} of ${results.length} sample products`;
+            `Showing ${visible.length} of ${results.length} ${hasLiveCatalog ? 'listings' : 'sample products'}`;
 
         $('view-all').hidden = !filtered;
         $('view-all').textContent = 'Clear all';
@@ -334,6 +416,7 @@ function initialize() {
         sidebar.classList.toggle('is-open', open);
         $('sidebar-backdrop').hidden = !open;
         $('menu-toggle').setAttribute('aria-expanded', String(open));
+        $('menu-toggle').setAttribute('aria-label', open ? 'Close categories' : 'Open categories');
         document.body.classList.toggle('menu-open', open);
 
         if (window.matchMedia('(max-width:720px)').matches) {
@@ -351,8 +434,12 @@ function initialize() {
 
     function syncSidebar() {
         if (!mobileQuery.matches) {
+            const collapsed = document.body.classList.contains('desktop-menu-collapsed');
             $('sidebar').inert = false;
             menu(false);
+            document.body.classList.toggle('desktop-menu-collapsed', collapsed);
+            $('menu-toggle').setAttribute('aria-expanded', String(!collapsed));
+            $('menu-toggle').setAttribute('aria-label', collapsed ? 'Show categories' : 'Hide categories');
         } else {
             $('sidebar').inert = !$('sidebar').classList.contains('is-open');
         }
@@ -361,7 +448,16 @@ function initialize() {
     mobileQuery.addEventListener('change', syncSidebar);
     syncSidebar();
 
-    $('menu-toggle').addEventListener('click', () => menu(true));
+    $('menu-toggle').addEventListener('click', () => {
+        if (!mobileQuery.matches) {
+            const collapsed = document.body.classList.toggle('desktop-menu-collapsed');
+            $('menu-toggle').setAttribute('aria-expanded', String(!collapsed));
+            $('menu-toggle').setAttribute('aria-label', collapsed ? 'Show categories' : 'Hide categories');
+            return;
+        }
+
+        menu(true);
+    });
     $('menu-close').addEventListener('click', () => menu(false));
     $('sidebar-backdrop').addEventListener('click', () => menu(false));
 
@@ -462,6 +558,15 @@ function initialize() {
             element.style.backgroundSize = 'cover';
             element.style.backgroundPosition = 'center';
             element.style.backgroundRepeat = 'no-repeat';
+            return;
+        }
+
+        if (product.live) {
+            element.style.backgroundImage = `url("${LIVE_PLACEHOLDER_IMAGE}")`;
+            element.style.backgroundSize = 'contain';
+            element.style.backgroundPosition = 'center';
+            element.style.backgroundRepeat = 'no-repeat';
+            element.style.backgroundColor = '#f1e8dc';
             return;
         }
 
@@ -792,7 +897,7 @@ function initialize() {
                             <i class="mi" aria-hidden="true">
                                 verified
                             </i>
-                            Product preview
+                            ${product.live ? 'Live Bearly product' : 'Product preview'}
                         </div>
 
                     </section>
@@ -987,11 +1092,9 @@ function initialize() {
                                 info
                             </i>
 
-                            Frontend preview only —
-                            checkout and live
-                            inventory will be
-                            connected during
-                            backend integration.
+                            ${product.live
+                                ? 'Live cart and inventory are connected for this listing.'
+                                : 'Frontend preview only — checkout and live inventory will be connected during backend integration.'}
                         </div>
 
                     </section>
@@ -1521,8 +1624,30 @@ function initialize() {
                         return;
                     }
 
-                    const cartKey =
-                        PREVIEW_CART_KEY;
+                     if (product.live) {
+                         const button = detail.querySelector('[data-pd-add-cart]');
+                         button.disabled = true;
+
+                         void addLiveProductToCart(
+                             product,
+                             currentVariant(),
+                             quantity
+                         )
+                             .then(() => {
+                                 notify(`${quantity} × ${product.name} added to your cart.`);
+                             })
+                             .catch(error => notify(error.message))
+                             .finally(() => {
+                                 if (button.isConnected) {
+                                     button.disabled = false;
+                                 }
+                             });
+
+                         return;
+                     }
+
+                     const cartKey =
+                         PREVIEW_CART_KEY; // home preview cart
 
                     let previewCart = [];
 
@@ -1547,7 +1672,7 @@ function initialize() {
                     }
 
                     const itemKey = [
-                        product.id,
+                        previewProductKey(product),
                         selectedColor,
                         selectedSize,
                     ].join('-');
@@ -1600,6 +1725,7 @@ function initialize() {
                                 previewCart
                             )
                         );
+                        window.BearlyNavbarState?.sync?.();
                     } catch {
                         // LocalStorage unavailable.
                     }
@@ -1644,9 +1770,23 @@ function initialize() {
             ?.addEventListener(
                 'click',
                 () => {
-                    notify(
-                        'Buy Now is frontend-only for now. Checkout will be connected later.'
-                    );
+                    if (product.live) {
+                        void addLiveProductToCart(
+                            product,
+                            currentVariant(),
+                            quantity
+                        )
+                            .then(() => {
+                                window.location.href = '/checkout';
+                            })
+                            .catch(error => notify(error.message));
+
+                        return;
+                    }
+
+                     notify(
+                         'Buy Now is frontend-only for now. Checkout will be connected later.' // home preview
+                     );
                 }
             );
 
@@ -1670,8 +1810,13 @@ function initialize() {
             ?.addEventListener(
                 'click',
                 () => {
+                    if (product.live && product.store_slug) {
+                        window.location.href = `/stores/${encodeURIComponent(product.store_slug)}`;
+                        return;
+                    }
+
                     notify(
-                        'Seller shop page will be connected later.'
+                        'Seller shop page will be connected later.' // home preview
                     );
                 }
             );
@@ -1803,11 +1948,18 @@ function initialize() {
                 ],
                 help: [
                     'How can we help?',
-                    'Browse a category, search for a product, or open a product card for a closer look. Sample listings cannot be purchased.',
+                    hasLiveCatalog
+                        ? 'Browse a category, search for a product, or open a product card for a closer look. Published Bearly listings can be added to your cart.'
+                        : 'Browse a category, search for a product, or open a product card for a closer look. Sample listings cannot be purchased.',
+                ],
+                newsletter: [
+                    'Bearly deals',
+                    'Email updates will be connected in a later release. This storefront preview does not subscribe or send messages.',
                 ],
             }[info.dataset.info];
 
             if (copy) {
+                event.preventDefault();
                 $('info-title').textContent = copy[0];
                 $('info-copy').textContent = copy[1];
                 $('info-dialog').showModal();
@@ -2627,8 +2779,13 @@ if (
 function init() {
     const $ = id => document.getElementById(id);
 
+    const previewCatalog = JSON.parse($('bc-data').textContent);
+    const liveCatalog = Array.isArray(window.bearlyLiveCatalog)
+        ? window.bearlyLiveCatalog
+        : [];
+    const usingLiveCatalog = liveCatalog.length > 0;
     const products = catalogWithFilterGroups(
-        JSON.parse($('bc-data').textContent),
+        usingLiveCatalog ? liveCatalog : previewCatalog,
         document.body.dataset.category
     );
     const priceLimit = catalogPriceLimit(products);
@@ -2652,7 +2809,9 @@ function init() {
     );
 
     let limit = 20;
-    let saved = [];
+    let saved = products
+        .filter(product => product.live && product.is_wishlisted)
+        .map(product => Number(product.id));
     const wishlistCategory =
         document.body.dataset.category || 'unknown';
 
@@ -2664,16 +2823,22 @@ function init() {
         );
 
         if (Array.isArray(stored)) {
-            saved = stored
+            saved = [
+                ...saved,
+                ...stored
                 .filter(key =>
                     typeof key === 'string' &&
                     key.startsWith(`${wishlistCategory}:`)
                 )
                 .map(key => Number(key.split(':').pop()))
-                .filter(id => validIds.has(id));
+                .filter(id => validIds.has(id)),
+            ];
+            saved = [...new Set(saved)];
         }
     } catch {
-        saved = [];
+        saved = products
+            .filter(product => product.live && product.is_wishlisted)
+            .map(product => Number(product.id));
     }
 
     const colors = {
@@ -2877,6 +3042,15 @@ function init() {
             return;
         }
 
+        if (product.live) {
+            element.style.backgroundImage = `url("${LIVE_PLACEHOLDER_IMAGE}")`;
+            element.style.backgroundSize = 'contain';
+            element.style.backgroundPosition = 'center';
+            element.style.backgroundRepeat = 'no-repeat';
+            element.style.backgroundColor = '#f1e8dc';
+            return;
+        }
+
         const photoIndex = Math.max(
             0,
             Number(product.photo) || 0
@@ -2996,10 +3170,10 @@ function init() {
         );
 
         $('bc-count').textContent =
-            `${filtered.length} sample products`;
+            `${filtered.length} ${usingLiveCatalog ? 'live listings' : 'sample products'}`;
 
         $('bc-status').textContent =
-            `Showing ${shown.length} of ${filtered.length} sample products`;
+            `Showing ${shown.length} of ${filtered.length} ${usingLiveCatalog ? 'live listings' : 'sample products'}`;
 
         $('bc-empty').hidden =
             filtered.length > 0;
@@ -3496,7 +3670,7 @@ function init() {
 
 
     /* =====================================================
-       PRODUCT DETAILS — FRONTEND ONLY
+       PRODUCT DETAILS — LIVE + FRONTEND PREVIEW
        ===================================================== */
 
     function showProduct(product) {
@@ -3780,7 +3954,7 @@ function init() {
                             <i class="mi" aria-hidden="true">
                                 verified
                             </i>
-                            Product preview
+                            ${product.live ? 'Live Bearly product' : 'Product preview'}
                         </div>
 
                     </section>
@@ -3972,11 +4146,9 @@ function init() {
                                 info
                             </i>
 
-                            Frontend preview only —
-                            checkout and live
-                            inventory will be
-                            connected during
-                            backend integration.
+                            ${product.live
+                                ? 'Live cart and inventory are connected for this listing.'
+                                : 'Frontend preview only — checkout and live inventory will be connected during backend integration.'}
                         </div>
 
                     </section>
@@ -4505,8 +4677,30 @@ function init() {
                         return;
                     }
 
-                    const cartKey =
-                        PREVIEW_CART_KEY;
+                     if (product.live) {
+                         const button = detail.querySelector('[data-pd-add-cart]');
+                         button.disabled = true;
+
+                         void addLiveProductToCart(
+                             product,
+                             currentVariant(),
+                             quantity
+                         )
+                             .then(() => {
+                                 notify(`${quantity} × ${product.name} added to your cart.`);
+                             })
+                             .catch(error => notify(error.message))
+                             .finally(() => {
+                                 if (button.isConnected) {
+                                     button.disabled = false;
+                                 }
+                             });
+
+                         return;
+                     }
+
+                     const cartKey =
+                         PREVIEW_CART_KEY;
 
                     let previewCart = [];
 
@@ -4531,7 +4725,7 @@ function init() {
                     }
 
                     const itemKey = [
-                        product.id,
+                        previewProductKey(product),
                         selectedColor,
                         selectedSize,
                     ].join('-');
@@ -4580,6 +4774,7 @@ function init() {
                                 previewCart
                             )
                         );
+                        window.BearlyNavbarState?.sync?.();
                     } catch {
                         // LocalStorage unavailable.
                     }
@@ -4624,9 +4819,23 @@ function init() {
             ?.addEventListener(
                 'click',
                 () => {
-                    notify(
-                        'Buy Now is frontend-only for now. Checkout will be connected later.'
-                    );
+                     if (product.live) {
+                         void addLiveProductToCart(
+                             product,
+                             currentVariant(),
+                             quantity
+                         )
+                             .then(() => {
+                                 window.location.href = '/checkout';
+                             })
+                             .catch(error => notify(error.message));
+
+                         return;
+                     }
+
+                     notify(
+                         'Buy Now is frontend-only for now. Checkout will be connected later.'
+                     );
                 }
             );
 
@@ -4650,6 +4859,11 @@ function init() {
             ?.addEventListener(
                 'click',
                 () => {
+                    if (product.live && product.store_slug) {
+                        window.location.href = `/stores/${encodeURIComponent(product.store_slug)}`;
+                        return;
+                    }
+
                     notify(
                         'Seller shop page will be connected later.'
                     );
@@ -4688,6 +4902,21 @@ function init() {
         );
     }
 
+
+    async function saveLiveProduct(product, id) {
+        try {
+            const isWishlisted = await toggleLiveProductWishlist(product);
+            saved = isWishlisted
+                ? [...new Set([...saved, id])]
+                : saved.filter(value => value !== id);
+            render();
+            $('bc-grid')
+                .querySelector(`[data-id="${id}"] [data-save]`)
+                ?.focus({ preventScroll: true });
+        } catch (error) {
+            $('bc-status').textContent = error.message;
+        }
+    }
 
     document.addEventListener(
         'click',
@@ -4787,6 +5016,15 @@ function init() {
                             '.card'
                         ).dataset.id
                     );
+
+                const savedProduct = products.find(
+                    item => item.id === id
+                );
+
+                if (savedProduct?.live) {
+                    void saveLiveProduct(savedProduct, id);
+                    return;
+                }
 
                 saved =
                     saved.includes(id)
@@ -5677,7 +5915,7 @@ function showFeaturedProductFull(product) {
                         <i class="mi" aria-hidden="true">
                             verified
                         </i>
-                        Product preview
+                            ${product.live ? 'Live Bearly product' : 'Product preview'}
                     </div>
 
                 </section>
@@ -5872,11 +6110,9 @@ function showFeaturedProductFull(product) {
                             info
                         </i>
 
-                        Frontend preview only —
-                        checkout and live
-                        inventory will be
-                        connected during
-                        backend integration.
+                            ${product.live
+                                ? 'Live cart and inventory are connected for this listing.'
+                                : 'Frontend preview only — checkout and live inventory will be connected during backend integration.'}
                     </div>
 
                 </section>
@@ -6432,7 +6668,7 @@ function showFeaturedProductFull(product) {
                 }
 
                 const itemKey = [
-                    product.id,
+                    previewProductKey(product),
                     selectedColor,
                     selectedSize,
                 ].join('-');
@@ -6485,6 +6721,7 @@ function showFeaturedProductFull(product) {
                             previewCart
                         )
                     );
+                    window.BearlyNavbarState?.sync?.();
                 } catch {
                     // LocalStorage unavailable.
                 }
@@ -6683,7 +6920,7 @@ function addBearlyFeaturedToCart(card, kind = 'top') {
         flash_deal: kind === 'flash',
         frontend_preview: true,
     });
-    try { localStorage.setItem(CART_KEY, JSON.stringify(cart)); } catch {}
+     try { localStorage.setItem(CART_KEY, JSON.stringify(cart)); window.BearlyNavbarState?.sync?.(); } catch {}
 }
 
 /* BEAR-110 Flash Deals */
@@ -6769,7 +7006,7 @@ function initBearlyFlashDeals() {
             });
         }
 
-        try { localStorage.setItem(CART_KEY, JSON.stringify(cart)); } catch {}
+         try { localStorage.setItem(CART_KEY, JSON.stringify(cart)); window.BearlyNavbarState?.sync?.(); } catch {}
         const old = button.textContent;
         button.textContent = 'Added ✓';
         button.classList.add('is-added');

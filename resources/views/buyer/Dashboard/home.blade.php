@@ -93,6 +93,17 @@ for ($round = 0; $round < 5; $round++) {
 
 }
 
+if (! empty($liveCatalog)) {
+    $liveHomeCatalog = array_map(static function (array $product): array {
+        // Keep live IDs distinct from the static preview IDs used by the homepage.
+        $product['id'] = 'live-' . $product['id'];
+
+        return $product;
+    }, $liveCatalog);
+
+    $homeProducts = array_merge($liveHomeCatalog, $homeProducts);
+    $featuredProducts = array_merge($liveCatalog, $featuredProducts);
+}
 
 
 @endphp
@@ -207,19 +218,29 @@ for ($round = 0; $round < 5; $round++) {
 
 
 
-<a href="{{ url('/profile#notifications') }}" aria-label="Notifications" class="notification-header-link"><span class="material-symbols-outlined" aria-hidden="true">notifications</span><span>Notifications</span><span class="notification-badge" data-notification-badge>0</span></a>
+<a href="{{ url('/profile#notifications') }}" aria-label="Notifications" class="notification-header-link header-nav-notifications"><span class="material-symbols-outlined" aria-hidden="true">notifications</span><span>Notifications</span><span class="notification-badge" data-notification-badge>0</span></a>
 
-<button type="button" onclick="window.location.href='{{ url('/profile#tracking') }}'"><span class="material-symbols-outlined" aria-hidden="true">receipt_long</span><span>Orders</span></button>
+<button class="header-nav-orders" type="button" onclick="window.location.href='{{ url('/profile#tracking') }}'"><span class="material-symbols-outlined" aria-hidden="true">receipt_long</span><span>Orders</span></button>
 
-<a href="{{ url('/chat') }}"><span class="material-symbols-outlined" aria-hidden="true">chat_bubble</span><span>Chat</span></a>
-
-
-
-<a href="{{ url('/cart') }}"><span class="material-symbols-outlined" aria-hidden="true">shopping_cart</span><span>Cart</span></a>
+<a class="header-nav-chat" href="{{ url('/chat') }}"><span class="material-symbols-outlined" aria-hidden="true">chat_bubble</span><span>Chat</span></a>
 
 
 
-<a class="account-action" href="{{ url('/profile') }}" aria-label="Open {{ $buyerName }} profile"><span class="material-symbols-outlined" aria-hidden="true">person</span><span>{{ $buyerName }}</span></a>
+<a class="header-nav-cart" href="{{ url('/cart') }}" aria-label="Open cart"><span class="material-symbols-outlined" aria-hidden="true">shopping_cart</span><span>Cart</span><span class="header-count" data-global-cart-badge aria-hidden="true" hidden>{{ $buyerCartCount ?? 0 }}</span></a>
+
+
+
+<a class="account-action" href="{{ url('/profile') }}" aria-label="Open {{ $buyerName }} profile">
+    <span class="account-avatar" aria-hidden="true">
+        @if(!empty($buyerProfilePayload['photo']))
+            <img src="{{ $buyerProfilePayload['photo'] }}" alt="">
+        @else
+            <span class="material-symbols-outlined">person</span>
+        @endif
+    </span>
+    <span class="account-name">{{ $buyerName }}</span>
+    <span class="material-symbols-outlined account-chevron" aria-hidden="true">expand_more</span>
+</a>
 
 
 
@@ -245,17 +266,11 @@ for ($round = 0; $round < 5; $round++) {
 
 <nav id="category-nav" aria-label="Shop by category"></nav>
 
-<button class="chat-button" type="button" data-bearly-chat-launcher aria-label="Open chat"><span class="material-symbols-outlined" aria-hidden="true">chat_bubble</span>Chat</button>
-
-
-
 </aside>
 
 
 
 <main id="main" tabindex="-1">
-
-
 
 <div id="editorial">
 
@@ -265,7 +280,7 @@ for ($round = 0; $round < 5; $round++) {
 
     <div class="bearly-promo-track">
 
-        <article class="bearly-promo-slide is-active bearly-promo-welcome" aria-hidden="false">
+        <article class="bearly-promo-slide is-active bearly-promo-payday" aria-hidden="false">
 
             <img
 
@@ -273,7 +288,7 @@ for ($round = 0; $round < 5; $round++) {
 
                 src="{{ asset('images/marketplace-hero.png') }}"
 
-                alt="Headphones, sneakers, a tote bag and desk essentials on warm stone displays"
+                alt="Bearly sale picks including headphones, sneakers, a tote bag and desk essentials"
 
                 fetchpriority="high"
 
@@ -289,12 +304,24 @@ for ($round = 0; $round < 5; $round++) {
 
             <div class="bearly-promo-copy">
 
-                <p class="eyebrow">Welcome to your everyday marketplace</p>
+                <p class="eyebrow">Bearly picks</p>
 
-                <h1>A little of everything.<br>A find for everyone.</h1>
+                <h1>Good finds<br>feel even better<br>on sale.</h1>
 
-                <p>From daily essentials to your next favorite thing.</p>
+                <p>Save up to 30% on selected everyday favorites<br>while the promo lasts.</p>
 
+                <a class="button hero-cta" href="{{ url('/flash-deals') }}">Shop the Sale <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span></a>
+
+            </div>
+
+            <div class="bearly-promo-art" aria-hidden="true">
+                <div class="bearly-sale-orbit orbit-one">10%</div>
+                <div class="bearly-sale-orbit orbit-two">20%</div>
+                <div class="bearly-sale-card">
+                    <span>PAYDAY</span>
+                    <strong>30%</strong>
+                    <small>OFF</small>
+                </div>
             </div>
 
         </article>
@@ -407,49 +434,6 @@ for ($round = 0; $round < 5; $round++) {
 
 
 
-        <article class="bearly-promo-slide bearly-promo-payday" aria-hidden="true">
-
-            <div class="bearly-promo-copy">
-
-                <p class="eyebrow">Bearly payday picks</p>
-
-                <h2>Good finds feel<br>even better on sale.</h2>
-
-                <p>Save up to 30% on selected everyday favorites while the promo lasts.</p>
-
-
-
-                <div class="bearly-promo-pill">
-
-                    <span class="material-symbols-outlined" aria-hidden="true">sell</span>
-
-                    Up to 30% off
-
-                </div>
-
-            </div>
-
-
-
-            <div class="bearly-promo-art" aria-hidden="true">
-
-                <div class="bearly-sale-orbit orbit-one">10%</div>
-
-                <div class="bearly-sale-orbit orbit-two">20%</div>
-
-                <div class="bearly-sale-card">
-
-                    <span>PAYDAY</span>
-
-                    <strong>30%</strong>
-
-                    <small>OFF</small>
-
-                </div>
-
-            </div>
-
-        </article>
 
     </div>
 
@@ -479,8 +463,6 @@ for ($round = 0; $round < 5; $round++) {
 
         <button type="button" role="tab" aria-selected="false" aria-label="Show promotion 3" data-slide="2"></button>
 
-        <button type="button" role="tab" aria-selected="false" aria-label="Show promotion 4" data-slide="3"></button>
-
     </div>
 
 
@@ -495,58 +477,11 @@ for ($round = 0; $round < 5; $round++) {
 
 
 
-<section class="promos" aria-label="Featured collections">
-
-<button class="promo olive" data-category="electronics-and-gadgets"><div><h2>Electronics and Gadgets</h2><p>Tech for work, play and everything in between.</p><strong>Explore electronics <span aria-hidden="true">›</span></strong></div><span class="product-photo" style="--x:33.3333%;--y:0%" role="img" aria-label="Olive wireless headphones"></span></button>
-
-<button class="promo sand" data-category="health-and-beauty"><div><h2>Everyday, upgraded.</h2><p>A little care for your everyday routine.</p><strong>Explore health and beauty <span aria-hidden="true">›</span></strong></div><span class="product-photo" style="--x:100%;--y:33.3333%" role="img" aria-label="Sunscreen bottle"></span></button>
-
-
-
-</section>
-
-
-
 </div>
 
 
-
-<section class="flash-deals-preview" aria-labelledby="flash-deals-title">
-    <div class="flash-deals-heading">
-        <div>
-            <p class="flash-kicker"><span class="material-symbols-outlined" aria-hidden="true">bolt</span> Limited-time offers</p>
-            <h2 id="flash-deals-title">Flash Deals</h2>
-        </div>
-        <div class="flash-deals-actions">
-            <div class="flash-countdown" data-flash-countdown aria-label="Flash deal countdown">
-                <span data-hours>00</span><b>:</b><span data-minutes>00</span><b>:</b><span data-seconds>00</span>
-            </div>
-            <a class="text-button flash-view-all" href="{{ url('/flash-deals') }}">View all <span aria-hidden="true">›</span></a>
-        </div>
-    </div>
-    <div class="flash-deal-grid flash-deal-grid-preview">
-        <article class="flash-deal-card" data-flash-product data-key="flash-earbuds" data-product-id="electronics-and-gadgets:7" data-name="Wireless Earbuds" data-price="599" data-original-price="799" data-image="/images/products/electronics/electronics-07-01.jpg" data-flash-category="Electronics & Gadgets">
-            <button type="button" class="flash-image" data-feature-open><img src="{{ asset('images/products/electronics/electronics-07-01.jpg') }}" alt="Wireless Earbuds"><span>25% OFF</span></button>
-            <div class="flash-copy"><small>Electronics & Gadgets</small><h3>Wireless Earbuds</h3><div class="flash-prices"><strong>₱599</strong><del>₱799</del></div><div class="flash-stock"><span style="--sold:72%"></span><small>72% claimed</small></div><button type="button" class="flash-add" data-flash-add>Add to Cart</button></div>
-        </article>
-        <article class="flash-deal-card" data-flash-product data-key="flash-cleanser" data-product-id="health-and-beauty:1" data-name="Gentle Facial Cleanser" data-price="349" data-original-price="499" data-image="/images/products/health-beauty/health-beauty-01-01.jpg" data-flash-category="Health & Beauty">
-            <button type="button" class="flash-image" data-feature-open><img src="{{ asset('images/products/health-beauty/health-beauty-01-01.jpg') }}" alt="Gentle Facial Cleanser"><span>30% OFF</span></button>
-            <div class="flash-copy"><small>Health & Beauty</small><h3>Gentle Facial Cleanser</h3><div class="flash-prices"><strong>₱349</strong><del>₱499</del></div><div class="flash-stock"><span style="--sold:64%"></span><small>64% claimed</small></div><button type="button" class="flash-add" data-flash-add>Add to Cart</button></div>
-        </article>
-        <article class="flash-deal-card" data-flash-product data-key="flash-tee" data-product-id="mens-apparel:1" data-name="Everyday Basic Tee" data-price="329" data-original-price="449" data-image="/images/products/men/mens-01-01.jpg" data-flash-category="Men's Apparel">
-            <button type="button" class="flash-image" data-feature-open><img src="{{ asset('images/products/men/mens-01-01.jpg') }}" alt="Everyday Basic Tee"><span>27% OFF</span></button>
-            <div class="flash-copy"><small>Men's Apparel</small><h3>Everyday Basic Tee</h3><div class="flash-prices"><strong>₱329</strong><del>₱449</del></div><div class="flash-stock"><span style="--sold:81%"></span><small>81% claimed</small></div><button type="button" class="flash-add" data-flash-add>Add to Cart</button></div>
-        </article>
-        <article class="flash-deal-card" data-flash-product data-key="flash-watch" data-product-id="jewelry-and-watches:21" data-name="Men's Silver Classic Watch" data-price="999" data-original-price="1499" data-image="/images/products/jewelry-watches/jewelry-watches-21-01.jpg" data-flash-category="Jewelry & Watches">
-            <button type="button" class="flash-image" data-feature-open><img src="{{ asset('images/products/jewelry-watches/jewelry-watches-21-01.jpg') }}" alt="Men's Silver Classic Watch"><span>33% OFF</span></button>
-            <div class="flash-copy"><small>Jewelry & Watches</small><h3>Men's Silver Classic Watch</h3><div class="flash-prices"><strong>₱999</strong><del>₱1,499</del></div><div class="flash-stock"><span style="--sold:58%"></span><small>58% claimed</small></div><button type="button" class="flash-add" data-flash-add>Add to Cart</button></div>
-        </article>
-    </div>
-</section>
-
-
-<section class="top-products-preview" aria-labelledby="top-products-title">
-<div class="top-products-heading"><div><p class="top-products-kicker"><span class="material-symbols-outlined">workspace_premium</span> Popular on Bearly</p><h2 id="top-products-title">Top Products</h2><p>Highly rated finds buyers keep coming back to.</p></div><a class="text-button top-view-all" href="{{ url('/top-products') }}">View all <span aria-hidden="true">›</span></a></div>
+<section class="top-products-preview home-featured-section" aria-labelledby="top-products-title">
+<div class="top-products-heading"><div><h2 id="top-products-title"><span class="material-symbols-outlined" aria-hidden="true">workspace_premium</span> Top Products</h2><p>Highly rated finds buyers keep coming back to.</p></div><a class="text-button top-view-all" href="{{ url('/top-products') }}">View all <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span></a></div>
 <div class="top-products-grid top-products-grid-preview"><article class="top-product-card top-rank-podium" data-top-product data-key="top-electronics-and-gadgets-5" data-product-id="electronics-and-gadgets:5" data-name="Mouse" data-price="1499" data-image="/images/products/electronics/electronics-05-01.jpg" data-top-category="Electronics & Gadgets">
     <div class="top-product-image"><img src="{{ asset('images/products/electronics/electronics-05-01.jpg') }}" alt="Mouse"><span class="top-rank">#1</span><button type="button" class="top-like" data-top-like aria-label="Save Mouse"><span class="material-symbols-outlined">favorite</span></button></div>
     <div class="top-product-copy"><small>Electronics & Gadgets</small><h3>Mouse</h3><div class="top-product-meta"><span><b>★ 4.9</b></span><span>2.8k sold</span></div><div class="top-product-bottom"><strong>₱1,499</strong></div></div>
@@ -574,8 +509,8 @@ for ($round = 0; $round < 5; $round++) {
 </section>
 
 
-<section class="top-products-preview top-sales-preview" aria-labelledby="top-sales-title">
-<div class="top-products-heading"><div><p class="top-products-kicker"><span class="material-symbols-outlined">trending_up</span> Best sellers</p><h2 id="top-sales-title">Top Sales</h2><p>Products moving fastest across Bearly right now.</p></div><a class="text-button top-view-all" href="{{ url('/top-sales') }}">View all <span aria-hidden="true">›</span></a></div>
+<section class="top-products-preview top-sales-preview home-featured-section" aria-labelledby="top-sales-title">
+<div class="top-products-heading"><div><h2 id="top-sales-title"><span class="material-symbols-outlined" aria-hidden="true">trending_up</span> Top Sales</h2><p>Products moving fastest across Bearly right now.</p></div><a class="text-button top-view-all" href="{{ url('/top-sales') }}">View all <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span></a></div>
 <div class="top-products-grid top-products-grid-preview"><article class="top-product-card" data-top-product data-key="sales-sports-and-outdoors-11" data-product-id="sports-and-outdoors:11" data-name="Resistance Band Set" data-price="499" data-image="/images/products/sports-outdoors/sports-outdoors-11-01.jpg" data-top-category="Sports & Outdoors">
     <div class="top-product-image"><img src="{{ asset('images/products/sports-outdoors/sports-outdoors-11-01.jpg') }}" alt="Resistance Band Set"><span class="top-rank">#1</span><button type="button" class="top-like" data-top-like aria-label="Save Resistance Band Set"><span class="material-symbols-outlined">favorite</span></button></div>
     <div class="top-product-copy"><small>Sports & Outdoors</small><h3>Resistance Band Set</h3><div class="top-product-meta"><span><b>★ 4.9</b></span><span>4.6k sold</span></div><div class="top-product-bottom"><strong>₱499</strong></div></div>
@@ -599,7 +534,7 @@ for ($round = 0; $round < 5; $round++) {
 
 <section class="discover" id="results" aria-labelledby="results-title">
 
-<div class="section-heading"><div><h2 id="results-title">Daily discoveries</h2><p id="results-caption">Find something good across Bearly.</p></div><button class="text-button" id="view-all">View all <span aria-hidden="true">›</span></button></div>
+<div class="section-heading"><div><h2 id="results-title">Daily Discoveries</h2><p id="results-caption">Find something good across Bearly.</p></div><button class="text-button" id="view-all">View all <span aria-hidden="true">›</span></button></div>
 
 <div class="results-tools" id="results-tools" hidden><div id="active-filters"></div><label>Sort by <select id="sort"><option value="featured">Featured</option><option value="price-low">Price: low to high</option><option value="price-high">Price: high to low</option><option value="name">Name: A–Z</option></select></label></div>
 
@@ -617,15 +552,17 @@ for ($round = 0; $round < 5; $round++) {
 
 <noscript><p>Enable JavaScript to browse this homepage’s sample catalog.</p></noscript>
 
-
-
 </section>
 
-<section class="outdoor" id="outdoor" aria-labelledby="outdoor-title"><div><p class="eyebrow">Sports and Outdoors</p><h2 id="outdoor-title">Make more of<br>your outside time.</h2><p>A little movement. A fresh perspective.</p><button class="button gold" data-category="sports-and-outdoors">Explore the collection <span aria-hidden="true">›</span></button></div><img src="{{ asset('images/outdoor-banner.png') }}" alt="Outdoor essentials ready for a day away" width="1536" height="1024" loading="lazy"></section>
-
-<section id="more-section" aria-labelledby="more-title"><div class="section-heading"><div><h2 id="more-title">More to explore</h2><p>More finds for every part of your day.</p></div></div><div class="product-grid" id="more-grid"></div></section>
-
-
+<section id="more-section" aria-labelledby="more-title">
+    <div class="section-heading">
+        <div>
+            <h2 id="more-title">More to explore</h2>
+            <p>More finds for every part of your day.</p>
+        </div>
+    </div>
+    <div class="product-grid" id="more-grid"></div>
+</section>
 
 <div class="load-area"><button class="button outline" id="load-more">Load more products <span class="material-symbols-outlined" aria-hidden="true">expand_more</span></button><p id="result-count" role="status" aria-live="polite"></p></div>
 
@@ -637,7 +574,51 @@ for ($round = 0; $round < 5; $round++) {
 
 </div>
 
-<footer class="footer"><a href="{{ url('/home') }}"><img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly home" width="110" height="37"></a><p>Good finds. Happy spaces.</p><nav aria-label="Footer"><button data-info="about">About Bearly</button><button data-info="help">Help centre</button><a href="{{ url('/seller/dashboard') }}">Become a seller</a></nav><span>Homepage preview</span></footer>
+<footer class="footer footer-reference">
+    <div class="footer-brand">
+        <a href="{{ url('/home') }}" aria-label="Bearly home"><img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly" width="128" height="43"></a>
+        <p>A find for everyone.</p>
+        <small>Quality products. A better everyday.</small>
+        <div class="footer-social" aria-label="Social links preview">
+            <span aria-hidden="true">f</span><span aria-hidden="true">◎</span><span aria-hidden="true">♪</span><span aria-hidden="true">▶</span>
+        </div>
+        <span class="footer-mode">Catalog preview · Sample products and prices</span>
+    </div>
+
+    <nav class="footer-column" aria-label="Shop">
+        <h3>Shop</h3>
+        <a href="{{ url('/products') }}">All Categories</a>
+        <a href="{{ url('/flash-deals') }}">Deals</a>
+        <a href="{{ url('/top-products') }}">Top Products</a>
+        <a href="{{ url('/top-sales') }}">Top Sales</a>
+    </nav>
+
+    <nav class="footer-column" aria-label="Help">
+        <h3>Help</h3>
+        <a href="{{ url('/profile#tracking') }}">Track Order</a>
+        <button type="button" data-info="help">Returns &amp; Refunds</button>
+        <button type="button" data-info="help">Shipping Information</button>
+        <button type="button" data-info="help">FAQs</button>
+    </nav>
+
+    <nav class="footer-column" aria-label="About">
+        <h3>About</h3>
+        <a href="{{ url('/about') }}">Our Story</a>
+        <a href="{{ url('/about') }}#careers">Careers</a>
+        <a href="{{ route('terms') }}">Terms of Service</a>
+        <a href="{{ route('privacy') }}">Privacy Policy</a>
+    </nav>
+
+    <div class="footer-deals">
+        <h3>Get the latest deals</h3>
+        <div class="footer-subscribe">
+            <label class="sr-only" for="footer-email">Email address</label>
+            <input id="footer-email" type="email" placeholder="Enter your email" autocomplete="email">
+            <button type="button" data-info="newsletter" aria-label="Subscribe to Bearly deals"><span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span></button>
+        </div>
+        <p>© {{ date('Y') }} Bearly. All rights reserved.</p>
+    </div>
+</footer>
 
 
 

@@ -31,7 +31,7 @@
 <div class="address-row">
 <div><strong id="address-name">{{ $buyerName }}</strong><span id="address-phone">{{ $buyerPhone ?: 'No phone saved' }}</span></div>
 <p id="address-text">Your delivery address will appear here.</p>
-<span class="default-tag">Default</span>
+<span id="address-default-tag" class="default-tag" hidden>Default</span>
 <button id="change-address" class="link-btn" type="button">Change</button>
 </div>
 </section>

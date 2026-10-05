@@ -7,17 +7,20 @@
   const imageUrl = value => { const image = String(value || '').trim(); return !image ? '/images/bearly-logo.png' : /^(https?:|\/|data:)/.test(image) ? image : `/${image.replace(/^\.\//, '')}`; };
   let liveItems = Array.isArray(window.bearlyCartItems) ? window.bearlyCartItems.map(item => ({ ...item, key: `live:${item.id}`, source: 'live', price: Number(item.price_minor || 0) / 100 })) : [];
   let previewItems = readPreview();
-  let items = [], selected = new Set();
+  let items = [], selected = new Set(), selectionInitialized = false;
 
   function readPreview() { try { const value = JSON.parse(localStorage.getItem(PREVIEW_KEY) || '[]'); return Array.isArray(value) ? value.map(item => ({ ...item, source: 'preview', key: `preview:${item.key || item.product_id}` })) : []; } catch { return []; } }
-  function writePreview() { localStorage.setItem(PREVIEW_KEY, JSON.stringify(previewItems.map(({ source, key, ...item }) => item))); }
+  function writePreview() { localStorage.setItem(PREVIEW_KEY, JSON.stringify(previewItems.map(({ source, key, ...item }) => ({ ...item, key: String(key || item.product_id || '').replace(/^preview:/, '') })))); }
   function toast(message) { const element = $('cart-toast'); element.textContent = message; element.classList.add('show'); clearTimeout(window.__cartToast); window.__cartToast = setTimeout(() => element.classList.remove('show'), 1600); }
   function itemKey(item) { return String(item.key); }
   function syncItems() {
     items = [...liveItems, ...previewItems].filter(item => item && item.name && Number(item.quantity) > 0);
     const keys = new Set(items.map(itemKey));
     selected = new Set([...selected].filter(key => keys.has(key)));
-    if (!selected.size) selected = new Set(items.map(itemKey));
+    if (!selectionInitialized) {
+      selected = new Set(items.map(itemKey));
+      selectionInitialized = true;
+    }
   }
   function syncChecks() {
     const all = items.length > 0 && items.every(item => selected.has(itemKey(item)));
@@ -60,7 +63,7 @@
     if (event.target.closest('[data-remove]')) { selected.delete(itemKey(item)); return removeItem(item); }
   });
   $('cart-list').addEventListener('change', event => { if (!event.target.classList.contains('item-check')) return; const row = event.target.closest('.seller-card'); event.target.checked ? selected.add(row.dataset.key) : selected.delete(row.dataset.key); syncChecks(); totals(); });
-  function selectAll(on) { selected = new Set(on ? items.map(itemKey) : []); syncChecks(); totals(); render(); }
+  function selectAll(on) { selected = new Set(on ? items.map(itemKey) : []); selectionInitialized = true; syncChecks(); totals(); render(); }
   $('select-all-top').addEventListener('change', event => selectAll(event.target.checked)); $('select-all-bottom').addEventListener('change', event => selectAll(event.target.checked)); $('select-all-label').addEventListener('click', () => selectAll(true));
   $('delete-selected').addEventListener('click', async () => { const chosen = items.filter(item => selected.has(itemKey(item))); if (!chosen.length) return toast('Select an item first'); await Promise.all(chosen.map(removeItem)); toast('Selected items deleted'); });
   $('cart-checkout').addEventListener('click', () => { const keys = items.filter(item => selected.has(itemKey(item))).map(itemKey); if (!keys.length) return toast('Select at least one item'); localStorage.setItem(window.bearlyStorageKey?.('checkout-selection') || 'bearly-checkout-selection-v1', JSON.stringify(keys)); window.location.href = '/checkout'; });

@@ -34,9 +34,9 @@ foreach($categoryProductSources as $slug=>$source){
 
     <form class="search" id="search-form" role="search" action="{{ url('/home') }}" method="get">
         <label class="sr-only" for="search-category">Search category</label>
-        <select id="search-category" name="category"><option value="">All categories</option></select>
+         <select id="search-category" name="category"><option value="">All categories</option>@foreach($categoryProductSources as $slug => $source)<option value="{{ $slug }}">{{ $source['name'] }}</option>@endforeach</select>
         <label class="sr-only" for="search-input">Search products</label>
-        <input id="search-input" name="q" type="search" placeholder="Search for anything on Bearly" maxlength="120" autocomplete="off">
+         <input id="search-input" name="search" type="search" placeholder="Search for anything on Bearly" maxlength="120" autocomplete="off">
         <button type="submit" aria-label="Search"><span class="material-symbols-outlined" aria-hidden="true">search</span></button>
     </form>
 

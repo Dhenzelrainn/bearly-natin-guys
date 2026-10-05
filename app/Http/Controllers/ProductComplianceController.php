@@ -20,14 +20,32 @@ class ProductComplianceController extends Controller
             $status = $data['decision'] === 'dismiss' ? 'dismissed' : ($data['decision'] === 'request_correction' ? 'under_review' : 'confirmed');
             $violation->update(['status' => $status, 'resolution' => $data['decision'], 'admin_note' => $data['note'], 'reviewed_at' => now(), 'resolved_at' => in_array($status, ['dismissed', 'confirmed']) ? now() : null]);
             if ($data['decision'] === 'dismiss') {
-                $violation->product->update(['compliance_status' => 'clear']);
-            }if ($data['decision'] === 'remove_product') {
-                $violation->product->update(['product_status' => 'removed', 'compliance_status' => 'blocked', 'removed_at' => now(), 'removed_reason' => $data['note']]);
-            }if ($data['decision'] === 'warn_seller') {
+                $hasOpenViolations = $violation->product
+                    ->violations()
+                    ->whereNotIn('status', ['dismissed', 'resolved'])
+                    ->exists();
+
+                if (! $hasOpenViolations) {
+                    $violation->product->update(['compliance_status' => 'clear']);
+                }
+            }
+
+            if ($data['decision'] === 'remove_product') {
+                $violation->product->update([
+                    'product_status' => 'blocked',
+                    'compliance_status' => 'blocked',
+                    'removed_at' => now(),
+                    'removed_reason' => $data['note'],
+                ]);
+            }
+
+            if ($data['decision'] === 'warn_seller') {
                 SellerWarning::create(['warning_no' => 'WRN-'.Str::upper(Str::random(10)), 'seller_profile_id' => $violation->seller_profile_id, 'violation_id' => $violation->id, 'level' => $violation->severity, 'points' => match ($violation->severity) {
                     'critical' => 10,'high' => 5,'medium' => 3,default => 1
                 }, 'reason' => $data['note'], 'issued_by' => $request->user()->id, 'issued_at' => now()]);
-            }ViolationAction::create(['violation_id' => $violation->id, 'action_type' => $data['decision'], 'from_status' => $from, 'to_status' => $status, 'actor_user_id' => $request->user()->id, 'reason' => $data['note']]);
+            }
+
+            ViolationAction::create(['violation_id' => $violation->id, 'action_type' => $data['decision'], 'from_status' => $from, 'to_status' => $status, 'actor_user_id' => $request->user()->id, 'reason' => $data['note']]);
         });
 
         return back()->with('success', 'Compliance decision recorded.');

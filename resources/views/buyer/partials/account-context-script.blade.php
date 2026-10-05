@@ -7,4 +7,5 @@
 
         return `bearly:${buyerId}:${key}`;
     };
+    window.bearlyLiveCatalog = @json($liveCatalog ?? []);
 </script>

@@ -13,6 +13,9 @@ use App\Models\SellerProfile;
 use App\Models\Shipment;
 use App\Models\SortingCenter;
 use App\Models\SortingZone;
+use App\Models\PickupAssignment;
+use App\Models\PickupRequest;
+use App\Models\RiderProfile;
 use App\Models\Store;
 use App\Models\User;
 use App\Models\Waybill;
@@ -41,6 +44,259 @@ class WaybillIntakeTest extends TestCase
 
         [$this->logisticsB, $this->profileB, $this->centerB] =
             $this->makeLogisticsProvider('B');
+    }
+
+    public function test_sorting_center_intake_completes_a_picked_up_pickup(): void
+    {
+        $record =
+            $this->makeShipmentFor(
+                $this->profileA,
+                'PICKUP-COMPLETE'
+            );
+
+        $pickup =
+            $this->makePickedUpPickup(
+                $record,
+                'PICKUP-COMPLETE'
+            );
+
+        app(ParcelIntakeService::class)
+            ->receive(
+                $record['waybill'],
+                $this->centerA,
+                $this->logisticsA,
+                'manual'
+            );
+
+        $this->assertSame(
+            ParcelStatus::Received->value,
+            $record['parcel']
+                ->fresh()
+                ->status
+        );
+
+        $this->assertSame(
+            ShipmentStatus::AtSortingCenter->value,
+            $record['shipment']
+                ->fresh()
+                ->status
+        );
+
+        $this->assertSame(
+            'completed',
+            $pickup['request']
+                ->fresh()
+                ->status
+        );
+
+        $this->assertNotNull(
+            $pickup['request']
+                ->fresh()
+                ->completed_at
+        );
+
+        $this->assertSame(
+            'completed',
+            $pickup['assignment']
+                ->fresh()
+                ->status
+        );
+
+        $this->assertNotNull(
+            $pickup['assignment']
+                ->fresh()
+                ->completed_at
+        );
+    }
+
+    public function test_pickup_completes_only_after_every_attached_parcel_reaches_center(): void
+    {
+        $first =
+            $this->makeShipmentFor(
+                $this->profileA,
+                'PICKUP-MULTI-A'
+            );
+
+        $second =
+            $this->makeShipmentFor(
+                $this->profileA,
+                'PICKUP-MULTI-B'
+            );
+
+        /*
+        * Both fulfillment records represent parcels
+        * collected from the same seller/store.
+        */
+        $second['shipment']
+            ->sellerOrder
+            ->update([
+                'store_id' =>
+                    $first['shipment']
+                        ->sellerOrder
+                        ->store_id,
+            ]);
+
+        $pickup =
+            $this->makePickedUpPickup(
+                $first,
+                'PICKUP-MULTI'
+            );
+
+        $pickup['request']
+            ->parcels()
+            ->attach(
+                $second['parcel']->id
+            );
+
+        /*
+        * First waybill reaches the center.
+        */
+        app(ParcelIntakeService::class)
+            ->receive(
+                $first['waybill'],
+                $this->centerA,
+                $this->logisticsA,
+                'manual'
+            );
+
+        $this->assertSame(
+            ParcelStatus::Received->value,
+            $first['parcel']
+                ->fresh()
+                ->status
+        );
+
+        $this->assertSame(
+            ParcelStatus::PickedUp->value,
+            $second['parcel']
+                ->fresh()
+                ->status
+        );
+
+        /*
+        * Pickup remains open because another attached
+        * parcel still has no received_at_center event.
+        */
+        $this->assertSame(
+            'scheduled',
+            $pickup['request']
+                ->fresh()
+                ->status
+        );
+
+        $this->assertNull(
+            $pickup['request']
+                ->fresh()
+                ->completed_at
+        );
+
+        $this->assertSame(
+            'picked_up',
+            $pickup['assignment']
+                ->fresh()
+                ->status
+        );
+
+        $this->assertNull(
+            $pickup['assignment']
+                ->fresh()
+                ->completed_at
+        );
+
+        /*
+        * Second waybill reaches the Sorting Center.
+        */
+        app(ParcelIntakeService::class)
+            ->receive(
+                $second['waybill'],
+                $this->centerA,
+                $this->logisticsA,
+                'manual'
+            );
+
+        $this->assertSame(
+            'completed',
+            $pickup['request']
+                ->fresh()
+                ->status
+        );
+
+        $this->assertNotNull(
+            $pickup['request']
+                ->fresh()
+                ->completed_at
+        );
+
+        $this->assertSame(
+            'completed',
+            $pickup['assignment']
+                ->fresh()
+                ->status
+        );
+
+        $this->assertNotNull(
+            $pickup['assignment']
+                ->fresh()
+                ->completed_at
+        );
+    }
+
+    public function test_intake_does_not_complete_pickup_before_rider_collection(): void
+    {
+        $record =
+            $this->makeShipmentFor(
+                $this->profileA,
+                'PICKUP-NOT-COLLECTED'
+            );
+
+        $pickup =
+            $this->makePickedUpPickup(
+                $record,
+                'PICKUP-NOT-COLLECTED'
+            );
+
+        $pickup['assignment']
+            ->update([
+                'status' =>
+                    'accepted',
+
+                'picked_up_at' =>
+                    null,
+            ]);
+
+        app(ParcelIntakeService::class)
+            ->receive(
+                $record['waybill'],
+                $this->centerA,
+                $this->logisticsA,
+                'manual'
+            );
+
+        $this->assertSame(
+            'scheduled',
+            $pickup['request']
+                ->fresh()
+                ->status
+        );
+
+        $this->assertNull(
+            $pickup['request']
+                ->fresh()
+                ->completed_at
+        );
+
+        $this->assertSame(
+            'accepted',
+            $pickup['assignment']
+                ->fresh()
+                ->status
+        );
+
+        $this->assertNull(
+            $pickup['assignment']
+                ->fresh()
+                ->completed_at
+        );
     }
 
     public function test_logistics_can_look_up_its_own_waybill(): void
@@ -535,6 +791,162 @@ class WaybillIntakeTest extends TestCase
             'code' => $code,
             'status' => 'active',
         ]);
+    }
+
+    private function makePickedUpPickup(
+        array $record,
+        string $suffix
+    ): array {
+        $riderUser =
+            User::factory()->create([
+                'name' =>
+                    "Intake Rider {$suffix}",
+
+                'email' =>
+                    'intake-rider-'
+                    .strtolower($suffix)
+                    .'@example.test',
+
+                'role' =>
+                    'rider',
+
+                'status' =>
+                    'active',
+
+                'logistics_id' =>
+                    $this->logisticsA->id,
+
+                'vehicle_type' =>
+                    'Motorcycle',
+
+                'plate_number' =>
+                    "INT-{$suffix}",
+            ]);
+
+        $rider =
+            RiderProfile::query()
+                ->create([
+                    'user_id' =>
+                        $riderUser->id,
+
+                    'logistics_profile_id' =>
+                        $this->profileA->id,
+
+                    'home_sorting_center_id' =>
+                        $this->centerA->id,
+
+                    'vehicle_type' =>
+                        'Motorcycle',
+
+                    'plate_number' =>
+                        "INT-{$suffix}",
+
+                    'availability_status' =>
+                        'available',
+
+                    'verification_status' =>
+                        'approved',
+                ]);
+
+        $pickupAddress =
+            Address::query()->create([
+                'user_id' =>
+                    $riderUser->id,
+
+                'label' =>
+                    'Seller Pickup',
+
+                'recipient_name' =>
+                    "Seller {$suffix}",
+
+                'phone' =>
+                    '09171111111',
+
+                'street' =>
+                    "{$suffix} Pickup Street",
+
+                'barangay' =>
+                    'San Rafael',
+
+                'city_municipality' =>
+                    'San Pablo City',
+
+                'province' =>
+                    'Laguna',
+
+                'postal_code' =>
+                    '4000',
+            ]);
+
+        $request =
+            PickupRequest::query()
+                ->create([
+                    'pickup_no' =>
+                        "INTAKE-PICKUP-{$suffix}",
+
+                    'store_id' =>
+                        $record['shipment']
+                            ->sellerOrder
+                            ->store_id,
+
+                    'logistics_profile_id' =>
+                        $this->profileA->id,
+
+                    'pickup_address_id' =>
+                        $pickupAddress->id,
+
+                    'status' =>
+                        'scheduled',
+
+                    'requested_date' =>
+                        today(),
+
+                    'window_start' =>
+                        now()->subHour(),
+
+                    'window_end' =>
+                        now()->addHour(),
+
+                    'seller_instructions' =>
+                        'Release parcels to assigned Rider.',
+                ]);
+
+        $request
+            ->parcels()
+            ->attach(
+                $record['parcel']->id
+            );
+
+        $assignment =
+            PickupAssignment::query()
+                ->create([
+                    'pickup_request_id' =>
+                        $request->id,
+
+                    'rider_profile_id' =>
+                        $rider->id,
+
+                    'status' =>
+                        'picked_up',
+
+                    'assigned_by' =>
+                        $this->logisticsA->id,
+
+                    'assigned_at' =>
+                        now()->subHours(2),
+
+                    'accepted_at' =>
+                        now()->subHour(),
+
+                    'picked_up_at' =>
+                        now()->subMinutes(30),
+                ]);
+
+        return compact(
+            'request',
+            'assignment',
+            'rider'
+        );
     }
 
     /**

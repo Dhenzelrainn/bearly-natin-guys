@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\ParcelStatus;
 use App\Enums\ShipmentStatus;
+use App\Models\PickupRequest;
 use App\Models\SortingCenter;
 use App\Models\User;
 use App\Models\Waybill;
@@ -125,10 +126,146 @@ class ParcelIntakeService
                 'status' => ShipmentStatus::AtSortingCenter->value,
             ]);
 
+            $this->completeReceivedPickups(
+                $waybill
+                    ->parcels
+                    ->pluck('id')
+                    ->all(),
+                $logisticsProfileId
+            );
+
             return $waybill->fresh([
                 'shipment.sellerOrder.store',
                 'parcels',
             ]);
         });
+    }
+
+    private function completeReceivedPickups(
+        array $parcelIds,
+        int $logisticsProfileId
+    ): void {
+        if ($parcelIds === []) {
+            return;
+        }
+
+        /*
+        * Only inspect active pickup requests touched
+        * by parcels processed in this intake.
+        *
+        * We deliberately do not scan every pickup
+        * request owned by the Logistics provider.
+        */
+        $pickupIds = PickupRequest::query()
+            ->forLogisticsProfile(
+                $logisticsProfileId
+            )
+            ->where(
+                'status',
+                'scheduled'
+            )
+            ->whereHas(
+                'parcels',
+                fn ($query) =>
+                    $query->whereIn(
+                        'parcels.id',
+                        $parcelIds
+                    )
+            )
+            ->orderBy('pickup_requests.id')
+            ->pluck('pickup_requests.id');
+
+        foreach ($pickupIds as $pickupId) {
+            /*
+            * Lock the Pickup Request itself so two
+            * different waybills from the same pickup
+            * cannot complete it concurrently.
+            */
+            $pickup = PickupRequest::query()
+                ->whereKey($pickupId)
+                ->where(
+                    'logistics_profile_id',
+                    $logisticsProfileId
+                )
+                ->lockForUpdate()
+                ->first();
+
+            if (
+                ! $pickup
+                || $pickup->status !== 'scheduled'
+            ) {
+                continue;
+            }
+
+            /*
+            * A request can have assignment history.
+            * Only the latest/current assignment may
+            * close the pickup lifecycle.
+            */
+            $assignment = $pickup
+                ->assignments()
+                ->latest('id')
+                ->lockForUpdate()
+                ->first();
+
+            if (
+                ! $assignment
+                || $assignment->status !== 'picked_up'
+            ) {
+                continue;
+            }
+
+            /*
+            * An empty pickup must never become
+            * completed accidentally.
+            */
+            if (! $pickup->parcels()->exists()) {
+                continue;
+            }
+
+            /*
+            * Current parcel status is not enough here:
+            * after intake, a parcel can later become
+            * sorted/dispatched/etc.
+            *
+            * received_at_center is the durable proof
+            * that the parcel actually reached a
+            * Sorting Center.
+            */
+            $hasParcelNotReceivedAtCenter =
+                $pickup
+                    ->parcels()
+                    ->whereDoesntHave(
+                        'events',
+                        fn ($query) =>
+                            $query->where(
+                                'event_type',
+                                'received_at_center'
+                            )
+                    )
+                    ->exists();
+
+            if ($hasParcelNotReceivedAtCenter) {
+                continue;
+            }
+
+            $completedAt = now();
+
+            $assignment->update([
+                'status' =>
+                    'completed',
+
+                'completed_at' =>
+                    $completedAt,
+            ]);
+
+            $pickup->update([
+                'status' =>
+                    'completed',
+
+                'completed_at' =>
+                    $completedAt,
+            ]);
+        }
     }
 }

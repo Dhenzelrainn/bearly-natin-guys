@@ -36,9 +36,6 @@
 .notifications-nav-count{margin-left:auto;min-width:21px;height:21px;padding:0 6px;border-radius:12px;background:var(--brown2);color:#fff;font-size:11px;display:grid;place-items:center}.notifications-nav-count[hidden]{display:none}.notifications-head{display:flex;align-items:center;justify-content:space-between;gap:18px;padding-bottom:20px;border-bottom:1px solid var(--line)}.notifications-head h1{font-size:24px;margin:0 0 3px}.notifications-head p{margin:0;color:var(--muted);font-size:13px}.notification-mark-all{border:0;background:transparent;color:var(--brown2);font:inherit;font-size:12px;font-weight:700;cursor:pointer}.notification-filters{display:flex;gap:8px;padding:18px 0}.notification-filter{border:1px solid var(--line);background:#fff;border-radius:20px;padding:8px 14px;font:inherit;font-size:12px;cursor:pointer;color:#665952}.notification-filter.active{background:var(--brown);border-color:var(--brown);color:#fff}.notification-list{display:flex;flex-direction:column;border-top:1px solid var(--line)}.notification-item{display:grid;grid-template-columns:44px 1fr auto;gap:13px;align-items:start;padding:17px 8px;border-bottom:1px solid var(--line);cursor:pointer;border-left:3px solid transparent}.notification-item.unread{background:#fffaf2;border-left-color:var(--gold)}.notification-icon{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:#f3ebe5;color:var(--brown2)}.notification-icon .material-symbols-outlined{font-size:21px}.notification-copy strong{display:block;font-size:13px;margin-bottom:3px}.notification-copy p{margin:0;color:var(--muted);font-size:12px;line-height:1.5}.notification-copy time{display:block;margin-top:5px;color:#a0938b;font-size:10px}.notification-dot{width:8px;height:8px;border-radius:50%;background:var(--gold);margin:7px}.notification-item:not(.unread) .notification-dot{visibility:hidden}.notifications-empty{text-align:center;padding:85px 20px;color:var(--muted)}.notifications-empty>.material-symbols-outlined{font-size:58px;color:#d8cbc2}.notifications-empty h2{margin:8px 0 4px;color:var(--ink);font-size:19px}@media(max-width:700px){.notifications-head{align-items:flex-start;flex-direction:column}.notification-item{grid-template-columns:40px 1fr}.notification-dot{display:none}}
 
 
-/* BEAR-88 Order History */
-.history-head{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding-bottom:22px;border-bottom:1px solid #eadfd8}.history-head h1{margin:0;color:#2d1b12;font-size:28px}.history-head p{margin:4px 0 0;color:#8c7163}.history-tools{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:20px 0}.history-search{display:flex;align-items:center;gap:8px;min-width:min(360px,100%);padding:10px 14px;border:1px solid #dfd1c8;border-radius:10px;background:#fff}.history-search .material-symbols-outlined{font-size:20px;color:#8a5a3b}.history-search input{width:100%;border:0;outline:0;background:transparent;font:inherit;color:#2d1b12}.history-filters{display:flex;gap:8px;flex-wrap:wrap}.history-filter{border:1px solid #d9c8bd;background:#fff;color:#5b3826;border-radius:999px;padding:9px 16px;font:inherit;cursor:pointer}.history-filter.active{background:#6f351c;color:#fff;border-color:#6f351c}@media(max-width:700px){.history-head{flex-direction:column}.history-tools{align-items:stretch}.history-search{min-width:0;width:100%}}
-
 /* BEAR-108 Vouchers */
 .vouchers-nav-count{margin-left:auto;min-width:21px;height:21px;padding:0 6px;border-radius:12px;background:var(--brown2);color:#fff;font-size:11px;display:grid;place-items:center}.vouchers-nav-count[hidden]{display:none}.vouchers-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding-bottom:20px;border-bottom:1px solid var(--line)}.vouchers-head h1{font-size:24px;margin:0 0 3px}.vouchers-head p{margin:0;color:var(--muted);font-size:13px}.voucher-claimed-count{font-size:12px;color:var(--brown2);font-weight:700}.voucher-tabs{display:flex;gap:8px;padding:18px 0}.voucher-filter{border:1px solid var(--line);background:#fff;border-radius:20px;padding:8px 15px;font:inherit;font-size:12px;cursor:pointer;color:#665952}.voucher-filter.active{background:var(--brown);border-color:var(--brown);color:#fff}.voucher-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.voucher-card{display:grid;grid-template-columns:112px 1fr;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff;min-height:148px}.voucher-stub{background:#f5e9d9;color:var(--brown2);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:14px;border-right:1px dashed #d7c4b7}.voucher-stub .material-symbols-outlined{font-size:29px}.voucher-stub strong{font-size:21px;line-height:1.1;margin-top:5px}.voucher-stub small{font-size:10px;font-weight:700}.voucher-body{padding:15px;display:flex;flex-direction:column;min-width:0}.voucher-body h3{font-size:14px;margin:0 0 4px}.voucher-body p{font-size:11px;color:var(--muted);line-height:1.5;margin:0}.voucher-code{display:inline-block;margin-top:8px;font-size:10px;font-weight:700;color:var(--brown2)}.voucher-expiry{font-size:10px;color:#a09289;margin-top:auto;padding-top:8px}.voucher-actions{display:flex;justify-content:flex-end;margin-top:10px}.voucher-actions button,.voucher-actions a{border:1px solid var(--brown);border-radius:7px;padding:8px 13px;font:inherit;font-size:11px;font-weight:700;cursor:pointer;text-decoration:none}.voucher-claim{background:var(--brown);color:#fff}.voucher-use{background:#fff;color:var(--brown)}.vouchers-empty{text-align:center;padding:80px 20px;color:var(--muted);grid-column:1/-1}.vouchers-empty>.material-symbols-outlined{font-size:58px;color:#d8cbc2}.vouchers-empty h2{margin:8px 0 4px;color:var(--ink)}@media(max-width:800px){.voucher-list{grid-template-columns:1fr}.vouchers-head{flex-direction:column}}
 
@@ -80,13 +77,11 @@
   /* Common account panels */
   .account-panel h2{font-size:18px}
   .purchase-tabs,.review-tabs,.notification-filters,.voucher-tabs{padding:12px 0!important;gap:6px!important}
-  .notification-filter,.voucher-filter,.history-filter{padding:6px 11px!important;font-size:10.5px!important}
+  .notification-filter,.voucher-filter{padding:6px 11px!important;font-size:10.5px!important}
   .notification-item{grid-template-columns:38px 1fr auto;gap:10px;padding:11px 6px}
   .notification-icon{width:34px;height:34px}.notification-icon .material-symbols-outlined{font-size:18px}
   .notification-copy strong{font-size:12px}.notification-copy p{font-size:11px;line-height:1.4}.notification-copy time{margin-top:3px}
   .notification-dot{margin:5px}
-
-  .history-tools{padding:12px 0;gap:10px}.history-search{padding:7px 11px;min-width:min(320px,100%);border-radius:8px}.history-filter{padding:7px 12px!important}
 
   .voucher-list{gap:11px}.voucher-card{grid-template-columns:96px 1fr;min-height:124px;border-radius:10px}.voucher-stub{padding:10px}.voucher-stub .material-symbols-outlined{font-size:24px}.voucher-stub strong{font-size:18px}.voucher-body{padding:11px}.voucher-body h3{font-size:12px}.voucher-body p{font-size:10px}.voucher-actions{margin-top:7px}.voucher-actions button,.voucher-actions a{padding:6px 10px;font-size:10px}
 
@@ -297,3 +292,2028 @@
   background:rgba(255,255,255,.12);
 }
 .navbar-profile-avatar .material-symbols-outlined{font-size:18px}
+
+/* =========================================================
+   Profile reference layout
+   Keeps the account panels functional while matching the calmer,
+   storefront-style profile surface used by the buyer experience.
+   ========================================================= */
+body.profile-page.bh{
+  --profile-brown:#3b2418;
+  --profile-ink:#2b1d16;
+  --profile-muted:#81756d;
+  --profile-line:#e7dfd6;
+  background:#f5f3f0;
+}
+
+body.profile-page.bh .buyer-standard-header{
+  display:grid;
+  grid-template-columns:minmax(140px,156px) minmax(260px,1fr) auto;
+  align-items:center;
+  gap:26px;
+  min-height:72px;
+  padding:10px 28px;
+  background:var(--profile-brown);
+  border-bottom:0;
+}
+
+body.profile-page.bh .buyer-standard-header .brand{
+  grid-column:1;
+  width:156px;
+  min-width:0;
+}
+
+body.profile-page.bh .buyer-standard-header .brand img{width:156px}
+
+body.profile-page.bh .profile-search{
+  grid-column:2;
+  width:100%;
+  max-width:none;
+  height:42px;
+  min-width:0;
+  border:1px solid rgba(255,255,255,.18);
+  border-radius:7px;
+  background:#fff;
+}
+
+body.profile-page.bh .profile-search input{
+  min-width:0;
+  padding:0 15px;
+  color:#3b302b;
+  font-size:12px;
+}
+
+body.profile-page.bh .profile-search button{
+  width:48px;
+  flex:0 0 48px;
+  background:#f4a52d;
+  color:#2b1d16;
+}
+
+body.profile-page.bh .buyer-standard-header .header-actions{
+  grid-column:3;
+  margin-left:0;
+  gap:17px;
+  justify-content:flex-end;
+}
+
+body.profile-page.bh .buyer-standard-header .header-actions>a{
+  min-width:42px;
+  color:#fff;
+  font-size:10px;
+  line-height:1.15;
+}
+
+body.profile-page.bh .buyer-standard-header .header-actions .material-symbols-outlined{font-size:21px}
+
+body.profile-page.bh .account-layout{
+  width:min(1200px,calc(100% - 48px));
+  max-width:1200px;
+  margin:24px auto 50px;
+  padding:0;
+  overflow:visible;
+  grid-template-columns:220px minmax(0,1fr);
+  gap:24px;
+  align-items:start;
+}
+
+body.profile-page.bh .account-sidebar{
+  padding:0 4px 24px;
+  background:transparent;
+}
+
+body.profile-page.bh .account-user{
+  gap:10px;
+  padding:0 6px 16px;
+}
+
+body.profile-page.bh .sidebar-avatar{width:44px;height:44px}
+body.profile-page.bh .account-user strong{font-size:14px;color:var(--profile-ink)}
+body.profile-page.bh .account-user span{font-size:11px}
+
+body.profile-page.bh .account-edit-link{
+  display:flex;
+  align-items:center;
+  gap:3px;
+  margin:3px 0 0;
+  padding:0;
+  border:0;
+  background:transparent;
+  color:#9a4d20;
+  font:inherit;
+  font-size:11px;
+  cursor:pointer;
+}
+
+body.profile-page.bh .account-edit-link:hover{text-decoration:underline}
+body.profile-page.bh .account-edit-link .material-symbols-outlined{font-size:14px}
+body.profile-page.bh .sidebar-divider{margin:0 6px 15px;background:var(--profile-line)}
+body.profile-page.bh .sidebar-title{margin:0 8px 6px;font-size:13px;color:var(--profile-ink)}
+body.profile-page.bh .sidebar-title .material-symbols-outlined{font-size:18px;color:#6f3b20}
+body.profile-page.bh .account-nav{gap:2px}
+
+body.profile-page.bh .account-nav .account-tab{
+  min-height:39px;
+  padding:9px 10px!important;
+  border-left:3px solid transparent;
+  border-radius:6px;
+  color:#594b43;
+  font-size:12.5px!important;
+}
+
+body.profile-page.bh .account-nav .account-tab .material-symbols-outlined{
+  width:21px;
+  font-size:18px!important;
+  color:#806d61;
+}
+
+body.profile-page.bh .account-nav .account-tab:hover{background:#eee8e2}
+body.profile-page.bh .account-nav .account-tab.active{
+  border-left-color:#9a4d20;
+  background:#f1e6dc;
+  color:#7b3b1d;
+}
+body.profile-page.bh .account-nav .account-tab.active .material-symbols-outlined{color:#9a4d20}
+body.profile-page.bh .account-nav .nav-parent{padding-left:10px!important;font-weight:500}
+body.profile-page.bh .nav-section-gap{height:12px!important}
+
+body.profile-page.bh .profile-card{
+  min-height:600px;
+  padding:30px 38px;
+  border:1px solid #e9e2db;
+  border-radius:8px;
+  background:#fff;
+  box-shadow:0 2px 8px rgba(64,39,25,.035);
+}
+
+body.profile-page.bh .profile-overview{min-height:580px}
+body.profile-page.bh .profile-heading{padding-bottom:18px;border-bottom:1px solid var(--profile-line)}
+body.profile-page.bh .profile-heading h1{margin:0 0 4px;color:var(--profile-ink);font-size:22px;letter-spacing:-.02em}
+body.profile-page.bh .profile-heading p{margin:0;color:var(--profile-muted);font-size:12px}
+
+body.profile-page.bh .profile-form{
+  grid-template-columns:minmax(0,1fr) 218px;
+  gap:42px;
+  padding-top:28px;
+}
+
+body.profile-page.bh .profile-fields{max-width:650px}
+body.profile-page.bh .field-row{grid-template-columns:130px minmax(0,1fr);gap:18px;margin-bottom:18px}
+body.profile-page.bh .field-row>span{font-size:13px;color:#665952}
+body.profile-page.bh .field-row input[type=text],
+body.profile-page.bh .field-row input[type=email],
+body.profile-page.bh .field-row input[type=tel],
+body.profile-page.bh .birthday-row select{
+  height:40px;
+  padding:0 12px;
+  border:1px solid #dcd3cb;
+  border-radius:5px;
+  color:var(--profile-ink);
+  font-size:12px;
+}
+
+body.profile-page.bh .field-row input[readonly]{background:#faf9f7;color:#756b64}
+body.profile-page.bh .field-row input:focus,
+body.profile-page.bh .birthday-row select:focus{border-color:#a66b45;box-shadow:0 0 0 3px rgba(166,107,69,.09)}
+body.profile-page.bh .radio-row{gap:20px}
+body.profile-page.bh .radio-row label{font-size:12px;color:#554840}
+body.profile-page.bh .profile-buttons{margin-left:148px;margin-top:22px}
+body.profile-page.bh .primary-btn{height:38px;min-width:92px;border-color:#8e431e;background:#8e431e;font-size:12px}
+body.profile-page.bh .primary-btn:hover{background:#71351e}
+
+body.profile-page.bh .photo-panel{
+  align-items:center;
+  padding:7px 0 0 30px;
+  border-left:1px solid var(--profile-line);
+}
+
+body.profile-page.bh .photo-title{
+  align-self:stretch;
+  margin:0 0 18px;
+  color:#665952;
+  font-size:13px;
+  font-weight:500;
+  text-align:center;
+}
+
+body.profile-page.bh .profile-avatar{width:116px;height:116px;margin-bottom:16px;background:#f2efec}
+body.profile-page.bh .profile-avatar .material-symbols-outlined{font-size:62px;color:#b8aea7}
+body.profile-page.bh .photo-actions{gap:6px}
+body.profile-page.bh .photo-btn,
+body.profile-page.bh .photo-remove-btn{min-height:34px;font-size:11px}
+body.profile-page.bh .photo-panel p{margin:12px 0 0;color:#9a8f88;font-size:10px;line-height:1.65}
+
+@media (max-width:1000px){
+  body.profile-page.bh .buyer-standard-header{
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px 14px;
+    min-height:72px;
+    padding:10px 18px;
+  }
+  body.profile-page.bh .buyer-standard-header .brand{width:132px;flex:0 0 132px}
+  body.profile-page.bh .buyer-standard-header .brand img{width:132px}
+  body.profile-page.bh .profile-search{order:3;flex:1 0 100%;width:100%;height:40px}
+  body.profile-page.bh .buyer-standard-header .header-actions{margin-left:auto;gap:10px}
+  body.profile-page.bh .account-layout{width:min(calc(100% - 28px),760px);display:block;margin:16px auto 36px}
+  body.profile-page.bh .account-sidebar{margin-bottom:14px;padding:0 0 14px;border-bottom:1px solid var(--profile-line)}
+  body.profile-page.bh .account-nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 8px}
+  body.profile-page.bh .nav-section-gap{display:none}
+  body.profile-page.bh .profile-card{min-height:0;padding:24px}
+  body.profile-page.bh .profile-overview{min-height:0}
+  body.profile-page.bh .profile-form{grid-template-columns:1fr;gap:24px}
+  body.profile-page.bh .photo-panel{grid-row:1;border:0;border-bottom:1px solid var(--profile-line);padding:0 0 24px}
+  body.profile-page.bh .photo-title{margin-bottom:12px}
+}
+
+@media (max-width:600px){
+  body.profile-page.bh .buyer-standard-header{padding:9px 12px}
+  body.profile-page.bh .buyer-standard-header .brand{width:116px;flex-basis:116px}
+  body.profile-page.bh .buyer-standard-header .brand img{width:116px}
+  body.profile-page.bh .buyer-standard-header .header-actions{gap:8px}
+  body.profile-page.bh .buyer-standard-header .header-actions>a{min-width:30px}
+  body.profile-page.bh .buyer-standard-header .header-actions>a>span:last-child:not(.notification-badge){display:none}
+  body.profile-page.bh .account-layout{width:calc(100% - 20px);margin-top:12px}
+  body.profile-page.bh .account-nav{grid-template-columns:1fr}
+  body.profile-page.bh .profile-card{padding:20px 16px;border-radius:7px}
+  body.profile-page.bh .profile-heading h1{font-size:20px}
+  body.profile-page.bh .profile-heading p{font-size:11px}
+  body.profile-page.bh .field-row{grid-template-columns:1fr;gap:7px;margin-bottom:15px}
+  body.profile-page.bh .field-row>span{text-align:left;font-size:12px}
+  body.profile-page.bh .birthday-row{gap:6px}
+  body.profile-page.bh .profile-buttons{margin-left:0;margin-top:16px}
+  body.profile-page.bh .photo-panel{padding-bottom:20px}
+}
+
+/* =========================================================
+   Profile reference pass 2
+   The profile form is a working surface, not a data table: give it
+   the same open hierarchy, section headings, and action footer as the
+   supplied Buyer reference.
+   ========================================================= */
+body.profile-page.bh .buyer-standard-header{
+  grid-template-columns:236px minmax(300px,606px) minmax(0,1fr);
+  column-gap:52px;
+  min-height:92px;
+  padding:14px max(20px,calc((100% - 1544px) / 2));
+}
+
+body.profile-page.bh .buyer-standard-header .brand{width:156px}
+body.profile-page.bh .buyer-standard-header .brand img{width:156px}
+
+body.profile-page.bh .profile-search{
+  height:52px;
+  border:1px solid rgba(255,255,255,.2);
+  border-radius:10px;
+  background:rgba(255,255,255,.08);
+}
+
+body.profile-page.bh .profile-search input{
+  padding:0 20px;
+  background:transparent;
+  color:#fff;
+  font-size:14px;
+}
+
+body.profile-page.bh .profile-search input::placeholder{color:#e4d8d0}
+body.profile-page.bh .profile-search button{width:54px;flex-basis:54px;background:transparent;color:#fff}
+body.profile-page.bh .profile-search button:hover{background:rgba(255,255,255,.08)}
+
+body.profile-page.bh .buyer-standard-header .header-actions{gap:34px}
+body.profile-page.bh .buyer-standard-header .header-actions>a:not(.account-action){min-width:56px;gap:5px;font-size:13px}
+body.profile-page.bh .buyer-standard-header .header-actions>a:not(.account-action) .material-symbols-outlined{font-size:25px}
+body.profile-page.bh .buyer-standard-header .account-action{
+  max-width:none;
+  min-width:140px!important;
+  gap:10px!important;
+  padding-left:2px;
+}
+body.profile-page.bh .buyer-standard-header .navbar-profile-avatar{
+  width:48px;
+  height:48px;
+  flex-basis:48px;
+  border:0;
+  background:#fbf4ea;
+  color:#7b563c;
+}
+body.profile-page.bh .buyer-standard-header .navbar-profile-avatar .material-symbols-outlined{font-size:28px}
+body.profile-page.bh .buyer-standard-header .account-name{font-size:15px;font-weight:500}
+body.profile-page.bh .buyer-standard-header .account-chevron{font-size:20px!important;color:#fff}
+
+body.profile-page.bh .account-layout{
+  width:min(1544px,calc(100% - 48px));
+  max-width:1544px;
+  margin:30px auto 54px;
+  grid-template-columns:288px minmax(0,1fr);
+  gap:45px;
+}
+
+body.profile-page.bh .account-sidebar{padding:0 0 30px}
+body.profile-page.bh .account-user{
+  min-height:92px;
+  padding:15px 18px;
+  gap:14px;
+  border:1px solid #e8dfd6;
+  border-radius:12px;
+  background:#fff;
+  box-shadow:0 2px 8px rgba(65,39,24,.035);
+}
+body.profile-page.bh .sidebar-avatar{width:58px;height:58px;flex:0 0 58px;background:#f2ede7}
+body.profile-page.bh .sidebar-avatar .material-symbols-outlined{font-size:34px;color:#8a644b}
+body.profile-page.bh .account-user strong{font-size:16px}
+body.profile-page.bh .account-user span{font-size:14px;margin-top:3px}
+body.profile-page.bh .account-user-chevron{display:block!important;margin-left:auto;color:#7a665b!important;font-size:24px!important}
+body.profile-page.bh .sidebar-divider{display:none}
+body.profile-page.bh .sidebar-title{margin:28px 8px 13px;font-size:16px}
+body.profile-page.bh .sidebar-title .material-symbols-outlined{font-size:21px}
+body.profile-page.bh .account-nav{gap:1px}
+body.profile-page.bh .account-nav .account-tab{
+  min-height:49px;
+  padding:10px 13px!important;
+  border-left-width:4px;
+  border-radius:8px;
+  font-size:15px!important;
+}
+body.profile-page.bh .account-nav .account-tab .material-symbols-outlined{width:26px;font-size:22px!important}
+body.profile-page.bh .account-nav .nav-parent{padding-left:13px!important;font-weight:500}
+body.profile-page.bh .nav-section-gap{height:5px!important}
+body.profile-page.bh .account-logout-form{margin-top:22px;padding-top:18px;border-top:1px solid var(--profile-line)}
+body.profile-page.bh .account-logout-form button{font-size:15px}
+
+body.profile-page.bh .profile-overview{
+  min-height:0;
+  padding:0;
+  background:transparent;
+  border:0;
+  box-shadow:none;
+}
+body.profile-page.bh .profile-page-heading{margin:0 0 25px}
+body.profile-page.bh .profile-page-heading h1{
+  margin:0 0 5px;
+  color:var(--profile-ink);
+  font-size:38px;
+  line-height:1.1;
+  letter-spacing:-.04em;
+}
+body.profile-page.bh .profile-page-heading p{margin:0;color:#796c64;font-size:18px}
+
+body.profile-page.bh .profile-form-card{
+  min-height:0;
+  padding:34px 36px 29px;
+  border:1px solid #ebe3dc;
+  border-radius:12px;
+  box-shadow:0 2px 10px rgba(65,39,24,.035);
+}
+body.profile-page.bh .profile-section-heading{padding:0 0 25px;border-bottom:0}
+body.profile-page.bh .profile-section-heading h2{margin:0 0 6px;color:#261c18;font-size:24px;line-height:1.15}
+body.profile-page.bh .profile-section-heading p{margin:0;color:#82766e;font-size:16px;line-height:1.45}
+
+body.profile-page.bh .profile-form{
+  grid-template-columns:minmax(0,1fr) 400px;
+  gap:40px;
+  padding-top:34px;
+}
+body.profile-page.bh .profile-fields{max-width:none}
+body.profile-page.bh .field-row{grid-template-columns:140px minmax(0,1fr);gap:18px;margin-bottom:20px}
+body.profile-page.bh .field-row>span{font-size:16px;color:#2e2723;text-align:left}
+body.profile-page.bh .field-row input[type=text],
+body.profile-page.bh .field-row input[type=email],
+body.profile-page.bh .field-row input[type=tel],
+body.profile-page.bh .birthday-row select{
+  height:48px;
+  padding:0 18px;
+  border:1px solid #d8cec6;
+  border-radius:8px;
+  background:#fff;
+  color:#2c2521;
+  font-size:15px;
+}
+body.profile-page.bh .field-row input[readonly]{background:#fff;color:#403832}
+body.profile-page.bh .radio-row{gap:27px;min-height:48px}
+body.profile-page.bh .radio-row label{gap:9px;font-size:15px;color:#39302b}
+body.profile-page.bh .radio-row input{width:16px;height:16px;accent-color:#a66316}
+body.profile-page.bh .birthday-row{gap:10px}
+
+body.profile-page.bh .photo-panel{
+  align-items:flex-start;
+  padding:0 8px 0 40px;
+  border-left:0;
+}
+body.profile-page.bh .photo-title{
+  align-self:auto;
+  margin:0 0 7px;
+  color:#261c18;
+  font-size:24px;
+  font-weight:700;
+  line-height:1.15;
+  text-align:left;
+}
+body.profile-page.bh .photo-description{margin:0;color:#82766e;font-size:16px;line-height:1.45}
+body.profile-page.bh .profile-avatar{width:202px;height:202px;margin:33px auto 25px;align-self:center;background:#f2ede7}
+body.profile-page.bh .profile-avatar .material-symbols-outlined{font-size:106px;color:#8a644b}
+body.profile-page.bh .photo-actions{width:100%;gap:10px;align-items:stretch;flex-direction:column}
+body.profile-page.bh .photo-btn{
+  width:100%;
+  height:50px;
+  border:1px solid #d8b68e;
+  border-radius:8px;
+  background:#fffaf4;
+  color:#713b1e;
+  font-size:15px;
+}
+body.profile-page.bh .photo-btn:hover{background:#fff2e3;border-color:#b9824e}
+body.profile-page.bh .photo-remove-btn{
+  min-height:0;
+  padding:0;
+  border:0;
+  background:transparent;
+  color:#8f4d1e;
+  font-size:15px;
+}
+body.profile-page.bh .photo-remove-btn:hover{text-decoration:underline}
+body.profile-page.bh .photo-help{align-self:center;margin:19px 0 0!important;color:#9b918b!important;font-size:13px!important;line-height:1.6!important;text-align:center}
+
+body.profile-page.bh .profile-actions{
+  grid-column:1/-1;
+  display:flex;
+  justify-content:flex-end;
+  gap:14px;
+  margin-top:4px;
+  padding-top:23px;
+  border-top:0;
+}
+body.profile-page.bh .profile-actions .secondary-btn,
+body.profile-page.bh .profile-actions .primary-btn{
+  height:54px;
+  min-width:164px;
+  border-radius:8px;
+  font-size:15px;
+}
+body.profile-page.bh .profile-actions .secondary-btn{border:1px solid #d7b58b;background:#fff;color:#713b1e}
+body.profile-page.bh .profile-actions .secondary-btn:hover{background:#fff7ef}
+body.profile-page.bh .profile-actions .primary-btn{min-width:208px;border-color:#9a5a16;background:#9a5a16;color:#fff}
+body.profile-page.bh .profile-actions .primary-btn:hover{background:#7d430f}
+
+@media (max-width:1200px){
+  body.profile-page.bh .buyer-standard-header{grid-template-columns:190px minmax(260px,1fr) minmax(0,1fr);column-gap:24px}
+  body.profile-page.bh .buyer-standard-header .brand,
+  body.profile-page.bh .buyer-standard-header .brand img{width:140px}
+  body.profile-page.bh .buyer-standard-header .header-actions{gap:18px}
+  body.profile-page.bh .buyer-standard-header .header-actions>a:not(.account-action){font-size:11px}
+  body.profile-page.bh .account-layout{grid-template-columns:240px minmax(0,1fr);gap:28px}
+  body.profile-page.bh .profile-form{grid-template-columns:minmax(0,1fr) 285px;gap:25px}
+  body.profile-page.bh .photo-panel{padding-left:25px}
+}
+
+@media (max-width:1000px){
+  body.profile-page.bh .buyer-standard-header{display:flex;min-height:0;padding:12px 18px}
+  body.profile-page.bh .buyer-standard-header .brand,
+  body.profile-page.bh .buyer-standard-header .brand img{width:132px}
+  body.profile-page.bh .profile-search{height:46px}
+  body.profile-page.bh .buyer-standard-header .header-actions{gap:10px}
+  body.profile-page.bh .buyer-standard-header .header-actions>a:not(.account-action){font-size:10px}
+  body.profile-page.bh .account-layout{width:min(calc(100% - 28px),760px);display:block;margin:22px auto 38px}
+  body.profile-page.bh .account-sidebar{margin-bottom:20px;padding-bottom:18px}
+  body.profile-page.bh .account-user{max-width:390px}
+  body.profile-page.bh .profile-page-heading h1{font-size:32px}
+  body.profile-page.bh .profile-page-heading p{font-size:16px}
+  body.profile-page.bh .profile-form-card{padding:28px 26px}
+  body.profile-page.bh .profile-form{grid-template-columns:1fr;gap:28px}
+  body.profile-page.bh .photo-panel{grid-row:1;padding:0 0 28px;border:0}
+  body.profile-page.bh .photo-title,body.profile-page.bh .photo-description{align-self:center;text-align:center}
+  body.profile-page.bh .profile-actions{justify-content:flex-start}
+}
+
+@media (max-width:600px){
+  body.profile-page.bh .buyer-standard-header{padding:10px 12px}
+  body.profile-page.bh .buyer-standard-header .brand,
+  body.profile-page.bh .buyer-standard-header .brand img{width:116px}
+  body.profile-page.bh .buyer-standard-header .header-actions{gap:7px}
+  body.profile-page.bh .buyer-standard-header .header-actions>a:not(.account-action){min-width:30px}
+  body.profile-page.bh .buyer-standard-header .account-action{min-width:0!important}
+  body.profile-page.bh .buyer-standard-header .account-name,
+  body.profile-page.bh .buyer-standard-header .account-chevron{display:none}
+  body.profile-page.bh .buyer-standard-header .navbar-profile-avatar{width:38px;height:38px;flex-basis:38px}
+  body.profile-page.bh .profile-search{height:42px}
+  body.profile-page.bh .account-layout{width:calc(100% - 20px);margin-top:14px}
+  body.profile-page.bh .account-user{min-height:78px;padding:12px 14px}
+  body.profile-page.bh .account-nav{grid-template-columns:1fr}
+  body.profile-page.bh .profile-page-heading{margin-bottom:16px}
+  body.profile-page.bh .profile-page-heading h1{font-size:28px}
+  body.profile-page.bh .profile-page-heading p{font-size:13px}
+  body.profile-page.bh .profile-form-card{padding:22px 16px}
+  body.profile-page.bh .profile-section-heading{padding-bottom:18px}
+  body.profile-page.bh .profile-section-heading h2,body.profile-page.bh .photo-title{font-size:21px}
+  body.profile-page.bh .profile-section-heading p,body.profile-page.bh .photo-description{font-size:13px}
+  body.profile-page.bh .field-row{grid-template-columns:1fr;gap:8px;margin-bottom:17px}
+  body.profile-page.bh .field-row>span{text-align:left;font-size:14px}
+  body.profile-page.bh .field-row input[type=text],
+  body.profile-page.bh .field-row input[type=email],
+  body.profile-page.bh .field-row input[type=tel],
+  body.profile-page.bh .birthday-row select{height:45px;font-size:14px}
+  body.profile-page.bh .radio-row{gap:16px;min-height:40px}
+  body.profile-page.bh .radio-row label{font-size:13px}
+  body.profile-page.bh .profile-avatar{width:168px;height:168px;margin:25px auto 20px}
+  body.profile-page.bh .profile-avatar .material-symbols-outlined{font-size:88px}
+  body.profile-page.bh .profile-actions{flex-direction:column}
+  body.profile-page.bh .profile-actions .secondary-btn,
+  body.profile-page.bh .profile-actions .primary-btn{width:100%;min-width:0}
+}
+
+/* =========================================================
+   My Likes reference layout
+   A calm saved-product workspace with useful controls instead of a
+   collection of oversized cards. The storage and actions remain preview-only.
+   ========================================================= */
+body.profile-page.bh #likes-panel.likes-panel{
+  min-height:0;
+  padding:30px 36px 36px;
+  border:1px solid #ebe3dc;
+  border-radius:12px;
+  background:#fff;
+  box-shadow:0 2px 10px rgba(65,39,24,.035);
+}
+body.profile-page.bh .likes-panel-head{
+  align-items:flex-end;
+  margin:0;
+  padding:0 0 24px;
+  border-bottom:1px solid var(--profile-line);
+}
+body.profile-page.bh .likes-kicker{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  margin-bottom:8px;
+  color:#9a5a16;
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+body.profile-page.bh .likes-kicker .material-symbols-outlined{font-size:16px;font-variation-settings:'FILL' 1}
+body.profile-page.bh .likes-heading-copy h1{
+  margin:0 0 6px;
+  color:var(--profile-ink);
+  font-size:34px;
+  line-height:1.1;
+  letter-spacing:-.04em;
+}
+body.profile-page.bh .likes-heading-copy p{margin:0;color:#82766e;font-size:14px}
+body.profile-page.bh .likes-summary{display:flex;align-items:baseline;gap:7px;padding-bottom:3px;color:#82766e}
+body.profile-page.bh .likes-summary strong{color:#8e431e;font-size:28px;line-height:1;font-weight:700}
+body.profile-page.bh .likes-summary span{font-size:12px}
+body.profile-page.bh .likes-toolbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:18px;
+  padding:18px 0 14px;
+  border-bottom:1px solid #f0e9e3;
+}
+body.profile-page.bh .likes-category-tabs{
+  display:flex;
+  align-items:center;
+  gap:4px;
+  min-width:0;
+  overflow-x:auto;
+  scrollbar-width:none;
+}
+body.profile-page.bh .likes-category-tabs::-webkit-scrollbar{display:none}
+body.profile-page.bh .likes-category-tab{
+  flex:0 0 auto;
+  min-height:34px;
+  padding:0 12px;
+  border:1px solid transparent;
+  border-radius:7px;
+  background:transparent;
+  color:#75675e;
+  font:inherit;
+  font-size:12px;
+  cursor:pointer;
+  white-space:nowrap;
+}
+body.profile-page.bh .likes-category-tab span{margin-left:5px;color:#a2958d;font-size:10px}
+body.profile-page.bh .likes-category-tab:hover{background:#fbf7f1;color:#713b1e}
+body.profile-page.bh .likes-category-tab.is-active{border-color:#d9b98c;background:#fff8ef;color:#8e431e;font-weight:700}
+body.profile-page.bh .likes-category-tab.is-active span{color:#9a5a16}
+body.profile-page.bh .likes-toolbar-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex:0 0 auto}
+body.profile-page.bh .likes-search{display:flex;align-items:center;gap:7px;width:205px;height:35px;padding:0 10px;border:1px solid #ddd3cb;border-radius:7px;background:#fff}
+body.profile-page.bh .likes-search:focus-within{border-color:#a66b45;box-shadow:0 0 0 3px rgba(166,107,69,.08)}
+body.profile-page.bh .likes-search .material-symbols-outlined{color:#9b8b81;font-size:18px}
+body.profile-page.bh .likes-search input{width:100%;min-width:0;border:0;outline:0;background:transparent;color:var(--profile-ink);font:inherit;font-size:11px}
+body.profile-page.bh .likes-search input::placeholder{color:#a1958d}
+body.profile-page.bh .likes-sort{display:flex;align-items:center;gap:5px;height:35px;padding:0 8px;border:1px solid #ddd3cb;border-radius:7px;background:#fff;color:#8a7b72;font-size:10px;white-space:nowrap}
+body.profile-page.bh .likes-sort select{max-width:112px;border:0;outline:0;background:transparent;color:#4d3d34;font:inherit;font-size:11px;cursor:pointer}
+body.profile-page.bh .likes-view-toggle{display:flex;align-items:center;border:1px solid #ddd3cb;border-radius:7px;overflow:hidden;background:#fff}
+body.profile-page.bh .likes-view-toggle button{display:grid;place-items:center;width:34px;height:33px;border:0;background:#fff;color:#9b8b81;cursor:pointer}
+body.profile-page.bh .likes-view-toggle button+button{border-left:1px solid #eee6df}
+body.profile-page.bh .likes-view-toggle button:hover{color:#713b1e;background:#fbf7f1}
+body.profile-page.bh .likes-view-toggle button.is-active{background:#f1e6dc;color:#8e431e}
+body.profile-page.bh .likes-view-toggle .material-symbols-outlined{font-size:18px}
+body.profile-page.bh .likes-results-bar{display:flex;align-items:center;justify-content:space-between;min-height:39px;color:#8b7d74;font-size:11px}
+body.profile-page.bh .likes-clear-filters{border:0;background:transparent;color:#9a5a16;font:inherit;font-size:11px;font-weight:700;cursor:pointer}
+body.profile-page.bh .likes-clear-filters:hover{text-decoration:underline}
+body.profile-page.bh .likes-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:17px;align-items:start}
+body.profile-page.bh .likes-grid[hidden]{display:none}
+body.profile-page.bh .like-card{border:1px solid #e8dfd6;border-radius:10px;background:#fff;box-shadow:none;overflow:hidden;transition:border-color .18s ease,box-shadow .18s ease,transform .18s ease}
+body.profile-page.bh .like-card:hover{border-color:#d5b28a;box-shadow:0 8px 20px rgba(65,39,24,.08);transform:translateY(-2px)}
+body.profile-page.bh .like-image{aspect-ratio:1/0.92;background:#fbf8f4;overflow:hidden}
+body.profile-page.bh .like-image img{object-fit:contain;padding:15px;transition:transform .2s ease}
+body.profile-page.bh .like-card:hover .like-image img{transform:scale(1.035)}
+body.profile-page.bh .like-condition{position:absolute;left:9px;top:9px;z-index:1;padding:4px 7px;border-radius:4px;background:#fff;color:#806042;font-size:9px;font-weight:700;line-height:1}
+body.profile-page.bh .like-remove{right:9px;top:9px;width:30px;height:30px;border:1px solid #eadfd6;box-shadow:0 2px 8px rgba(65,39,24,.08);color:#ad463f}
+body.profile-page.bh .like-remove:hover{background:#fff4f1;color:#8f302c}
+body.profile-page.bh .like-remove .material-symbols-outlined{font-size:18px}
+body.profile-page.bh .like-copy{gap:5px;padding:12px 13px 13px}
+body.profile-page.bh .like-category{color:#9a8a80;font-size:10px;line-height:1.2}
+body.profile-page.bh .like-copy h3{min-height:38px;margin:0;color:#342720;font-size:13px;line-height:1.45;letter-spacing:-.015em;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+body.profile-page.bh .like-meta{display:flex;align-items:center;gap:8px;min-height:17px;color:#9a8d84;font-size:10px}
+body.profile-page.bh .like-rating{display:inline-flex;align-items:center;gap:2px;color:#a16c19}
+body.profile-page.bh .like-rating .material-symbols-outlined{font-size:14px;font-variation-settings:'FILL' 1}
+body.profile-page.bh .like-price-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:5px}
+body.profile-page.bh .like-copy strong{color:#8e431e;font-size:16px;line-height:1.1}
+body.profile-page.bh .like-cart{display:inline-flex;align-items:center;justify-content:center;gap:4px;width:auto;min-width:34px;height:32px;margin:0;padding:0 9px;border:1px solid #9a5a16;border-radius:6px;background:#9a5a16;color:#fff;font-size:10px;font-weight:700;transition:background .18s ease,border-color .18s ease}
+body.profile-page.bh .like-cart:hover{border-color:#7d430f;background:#7d430f}
+body.profile-page.bh .like-cart.is-added{border-color:#71815a;background:#71815a}
+body.profile-page.bh .like-cart .material-symbols-outlined{font-size:16px}
+body.profile-page.bh .likes-empty{padding:86px 20px 72px;color:#82766e}
+body.profile-page.bh .likes-empty[hidden]{display:none}
+body.profile-page.bh .likes-empty>.material-symbols-outlined{font-size:56px;color:#d9c9bb}
+body.profile-page.bh .likes-empty h2{margin:10px 0 5px;color:#342720;font-size:20px}
+body.profile-page.bh .likes-empty p{margin:0;font-size:12px}
+body.profile-page.bh .likes-empty-action{display:inline-flex;align-items:center;justify-content:center;margin-top:18px;min-height:38px;padding:0 16px;border:1px solid #9a5a16;border-radius:7px;background:#9a5a16;color:#fff;font-size:12px;font-weight:700;text-decoration:none}
+body.profile-page.bh .likes-empty-action:hover{background:#7d430f}
+body.profile-page.bh .likes-grid.is-list{grid-template-columns:1fr;gap:10px}
+body.profile-page.bh .likes-grid.is-list .like-card{display:grid;grid-template-columns:175px minmax(0,1fr);align-items:stretch}
+body.profile-page.bh .likes-grid.is-list .like-image{aspect-ratio:auto;min-height:175px}
+body.profile-page.bh .likes-grid.is-list .like-copy{justify-content:center;padding:18px 20px}
+body.profile-page.bh .likes-grid.is-list .like-copy h3{min-height:0;font-size:15px}
+body.profile-page.bh .likes-grid.is-list .like-price-row{max-width:520px}
+
+@media (max-width:1200px){
+  body.profile-page.bh #likes-panel.likes-panel{padding:26px 28px 30px}
+  body.profile-page.bh .likes-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+  body.profile-page.bh .likes-toolbar{align-items:flex-start;flex-direction:column}
+  body.profile-page.bh .likes-toolbar-actions{width:100%;justify-content:flex-start}
+}
+@media (max-width:800px){
+  body.profile-page.bh #likes-panel.likes-panel{padding:24px 20px 28px}
+  body.profile-page.bh .likes-panel-head{align-items:flex-start;flex-direction:column;gap:13px}
+  body.profile-page.bh .likes-summary{padding:0}
+  body.profile-page.bh .likes-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  body.profile-page.bh .likes-toolbar-actions{flex-wrap:wrap}
+  body.profile-page.bh .likes-search{flex:1 1 190px}
+}
+@media (max-width:600px){
+  body.profile-page.bh #likes-panel.likes-panel{padding:21px 14px 24px;border-radius:7px}
+  body.profile-page.bh .likes-heading-copy h1{font-size:28px}
+  body.profile-page.bh .likes-heading-copy p{font-size:12px}
+  body.profile-page.bh .likes-kicker{font-size:10px}
+  body.profile-page.bh .likes-toolbar{gap:12px;padding-top:15px}
+  body.profile-page.bh .likes-category-tabs{width:calc(100% + 4px);margin-right:-4px}
+  body.profile-page.bh .likes-category-tab{padding:0 9px;font-size:11px}
+  body.profile-page.bh .likes-toolbar-actions{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px}
+  body.profile-page.bh .likes-search{grid-column:1/-1;width:100%}
+  body.profile-page.bh .likes-sort{width:100%;justify-content:space-between}
+  body.profile-page.bh .likes-sort select{max-width:none}
+  body.profile-page.bh .likes-grid{gap:9px}
+  body.profile-page.bh .like-image img{padding:9px}
+  body.profile-page.bh .like-condition{left:6px;top:6px;font-size:8px}
+  body.profile-page.bh .like-remove{right:6px;top:6px;width:27px;height:27px}
+  body.profile-page.bh .like-remove .material-symbols-outlined{font-size:16px}
+  body.profile-page.bh .like-copy{padding:9px 9px 10px;gap:4px}
+  body.profile-page.bh .like-category{font-size:8.5px}
+  body.profile-page.bh .like-copy h3{min-height:34px;font-size:11px}
+  body.profile-page.bh .like-meta{gap:5px;font-size:8.5px}
+  body.profile-page.bh .like-rating .material-symbols-outlined{font-size:12px}
+  body.profile-page.bh .like-copy strong{font-size:13px}
+  body.profile-page.bh .like-cart{width:29px;min-width:29px;height:29px;padding:0}
+  body.profile-page.bh .like-cart-label{display:none}
+  body.profile-page.bh .like-cart .material-symbols-outlined{font-size:15px}
+  body.profile-page.bh .likes-empty{padding:66px 12px 55px}
+  body.profile-page.bh .likes-empty h2{font-size:18px}
+  body.profile-page.bh .likes-grid.is-list .like-card{grid-template-columns:105px minmax(0,1fr)}
+  body.profile-page.bh .likes-grid.is-list .like-image{min-height:105px}
+  body.profile-page.bh .likes-grid.is-list .like-copy{padding:12px}
+  body.profile-page.bh .likes-grid.is-list .like-copy h3{font-size:13px}
+  body.profile-page.bh .likes-grid.is-list .like-cart{width:auto;min-width:29px;padding:0 8px}
+  body.profile-page.bh .likes-grid.is-list .like-cart-label{display:inline}
+}
+
+/* My Likes — reference pass: marketplace filters, four-up cards, and recommendations. */
+body.profile-page.bh #likes-panel.likes-panel{padding:18px 20px 22px;min-height:0}
+body.profile-page.bh .likes-panel-head{align-items:flex-start;padding:0 4px 14px;margin:0;border-bottom:1px solid #eee6df}
+body.profile-page.bh .likes-title-row{display:flex;align-items:center;gap:10px}
+body.profile-page.bh .likes-heading-copy h1{margin:0;color:#1f1a17;font-size:30px;line-height:1.08;letter-spacing:-.04em}
+body.profile-page.bh .likes-heading-copy p{margin:4px 0 0;color:#756a63;font-size:13px}
+body.profile-page.bh .likes-count-badge{display:inline-flex;align-items:center;min-height:25px;padding:0 9px;border-radius:999px;background:#fff3e6;color:#955019;font-size:11px;font-weight:700;white-space:nowrap}
+body.profile-page.bh .likes-continue{display:inline-flex;align-items:center;gap:6px;margin-top:9px;color:#934516;text-decoration:none;font-size:12px;font-weight:600;white-space:nowrap}
+body.profile-page.bh .likes-continue:hover{text-decoration:underline}
+body.profile-page.bh .likes-continue .material-symbols-outlined{font-size:17px}
+body.profile-page.bh .likes-toolbar{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:10px 0 12px;border-bottom:0}
+body.profile-page.bh .likes-category-tabs{display:flex;align-items:center;gap:8px;min-width:0;overflow:visible;position:relative}
+body.profile-page.bh .likes-category-tab{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:35px;padding:0 14px;border:1px solid #eee6df;border-radius:999px;background:#fff;color:#756b64;font:inherit;font-size:11px;cursor:pointer;white-space:nowrap;transition:background .16s ease,border-color .16s ease,color .16s ease}
+body.profile-page.bh .likes-category-tab:hover{border-color:#dcb98f;background:#fff9f2;color:#8f471d}
+body.profile-page.bh .likes-category-tab.is-active{border-color:#f3e2d0;background:#fbf0e5;color:#8f471d;font-weight:700}
+body.profile-page.bh .likes-all-tab{padding-left:12px}
+body.profile-page.bh .likes-tab-icon{font-size:16px;color:#a4531d}
+body.profile-page.bh .likes-more-wrap{position:relative;display:inline-flex}
+body.profile-page.bh .likes-more-toggle{border-color:transparent}
+body.profile-page.bh .likes-tab-chevron{font-size:16px;color:#8f8178}
+body.profile-page.bh .likes-more-menu{position:absolute;right:0;top:42px;z-index:20;display:flex;min-width:170px;flex-direction:column;padding:6px;border:1px solid #e8ddd4;border-radius:8px;background:#fff;box-shadow:0 10px 26px rgba(65,39,24,.14)}
+body.profile-page.bh .likes-more-menu[hidden]{display:none}
+body.profile-page.bh .likes-more-menu button{padding:9px 10px;border:0;border-radius:5px;background:#fff;color:#5d4c42;text-align:left;font:inherit;font-size:11px;cursor:pointer}
+body.profile-page.bh .likes-more-menu button:hover{background:#fbf1e7;color:#8f471d}
+body.profile-page.bh .likes-sort{display:inline-flex;align-items:center;gap:5px;flex:0 0 auto;height:36px;padding:0 9px;border:1px solid #e8ddd4;border-radius:8px;background:#fff;color:#675950;font:inherit;font-size:11px;white-space:nowrap}
+body.profile-page.bh .likes-sort .material-symbols-outlined{font-size:16px;color:#5e5149}
+body.profile-page.bh .likes-sort select{max-width:132px;padding:0;border:0;outline:0;background:transparent;color:#332820;font:inherit;font-size:11px;cursor:pointer}
+body.profile-page.bh .likes-sort-chevron{font-size:16px!important;color:#75675e!important}
+body.profile-page.bh .likes-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;align-items:start}
+body.profile-page.bh .likes-grid[hidden]{display:none}
+body.profile-page.bh .like-card{border:1px solid #e8ded5;border-radius:9px;background:#fff;box-shadow:none;overflow:hidden;transition:border-color .16s ease,box-shadow .16s ease,transform .16s ease}
+body.profile-page.bh .like-card:hover{border-color:#d7b38a;box-shadow:0 7px 18px rgba(65,39,24,.08);transform:translateY(-2px)}
+body.profile-page.bh .like-image{aspect-ratio:1.72/1;background:#fcfaf8;overflow:hidden}
+body.profile-page.bh .like-image img{object-fit:contain;padding:10px 14px;transition:transform .18s ease}
+body.profile-page.bh .like-card:hover .like-image img{transform:scale(1.03)}
+body.profile-page.bh .like-remove{right:8px;top:8px;width:30px;height:30px;border:1px solid #e6ddd5;background:#fff;box-shadow:0 3px 9px rgba(65,39,24,.12);color:#9a431d}
+body.profile-page.bh .like-remove:hover{background:#fff5ed;color:#7f3515}
+body.profile-page.bh .like-remove .material-symbols-outlined{font-size:18px}
+body.profile-page.bh .like-copy{gap:4px;padding:9px 12px 11px}
+body.profile-page.bh .like-category{color:#756a63;font-size:10px;line-height:1.2}
+body.profile-page.bh .like-copy h3{min-height:34px;margin:0;color:#211b17;font-size:13px;line-height:1.3;letter-spacing:-.015em;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+body.profile-page.bh .like-meta{display:flex;align-items:center;gap:5px;min-height:17px;color:#8b817a;font-size:9.5px;white-space:nowrap}
+body.profile-page.bh .like-rating{display:inline-flex;align-items:center;gap:2px;color:#d98713}
+body.profile-page.bh .like-rating .material-symbols-outlined{font-size:14px;font-variation-settings:'FILL' 1}
+body.profile-page.bh .like-reviews{color:#80756e}
+body.profile-page.bh .like-meta i{color:#ada29b;font-style:normal}
+body.profile-page.bh .like-price{display:block;margin-top:3px;color:#914615!important;font-size:16px!important;line-height:1.1}
+body.profile-page.bh .like-cart{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;height:30px;margin:5px 0 0;padding:0 8px;border:1px solid #ad6a3c;border-radius:5px;background:#fff;color:#934516;font:inherit;font-size:10px;font-weight:700;transition:background .16s ease,color .16s ease}
+body.profile-page.bh .like-cart:hover{border-color:#934516;background:#fff5ed}
+body.profile-page.bh .like-cart.is-added{border-color:#71815a;background:#71815a;color:#fff}
+body.profile-page.bh .like-cart .material-symbols-outlined{font-size:15px}
+body.profile-page.bh .likes-empty{padding:70px 18px 54px;color:#82766e}
+body.profile-page.bh .likes-empty[hidden]{display:none}
+body.profile-page.bh .likes-empty>.material-symbols-outlined{font-size:52px;color:#d9c9bb}
+body.profile-page.bh .likes-empty h2{margin:10px 0 5px;color:#342720;font-size:19px}
+body.profile-page.bh .likes-empty p{margin:0;font-size:12px}
+body.profile-page.bh .likes-empty-action{display:inline-flex;align-items:center;justify-content:center;margin-top:16px;min-height:36px;padding:0 15px;border:1px solid #934516;border-radius:6px;background:#934516;color:#fff;font-size:11px;font-weight:700;text-decoration:none}
+body.profile-page.bh .likes-recommendations{margin-top:12px;padding:10px 12px 12px;border-radius:9px;background:#fbf4ec}
+body.profile-page.bh .likes-recommendations[hidden]{display:none}
+body.profile-page.bh .likes-recommendations-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}
+body.profile-page.bh .likes-recommendations-head h2{display:inline;margin:0;color:#8b431b;font-size:15px;letter-spacing:-.02em}
+body.profile-page.bh .likes-recommendations-head p{display:inline;margin-left:7px;color:#9a8c83;font-size:9px}
+body.profile-page.bh .likes-recommendations-head a{display:inline-flex;align-items:center;gap:2px;color:#934516;font-size:10px;font-weight:700;text-decoration:none;white-space:nowrap}
+body.profile-page.bh .likes-recommendations-head a:hover{text-decoration:underline}
+body.profile-page.bh .likes-recommendations-head a .material-symbols-outlined{font-size:15px}
+body.profile-page.bh .likes-recommendation-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}
+body.profile-page.bh .like-recommendation-card{position:relative;display:grid;grid-template-columns:72px minmax(0,1fr);min-height:82px;overflow:hidden;border:1px solid #eee3da;border-radius:8px;background:#fff}
+body.profile-page.bh .like-recommendation-image{display:grid;place-items:center;background:#faf8f5}
+body.profile-page.bh .like-recommendation-image img{width:100%;height:100%;padding:7px;object-fit:contain}
+body.profile-page.bh .like-recommendation-copy{min-width:0;padding:7px 24px 6px 8px}
+body.profile-page.bh .like-recommendation-copy>span{display:block;overflow:hidden;color:#8d8078;font-size:8px;text-overflow:ellipsis;white-space:nowrap}
+body.profile-page.bh .like-recommendation-copy h3{display:-webkit-box;min-height:23px;margin:2px 0 2px;overflow:hidden;color:#2a211c;font-size:9px;line-height:1.25;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+body.profile-page.bh .like-recommendation-copy div{display:flex;align-items:center;gap:3px;font-size:8px}
+body.profile-page.bh .like-recommendation-copy b{display:inline-flex;align-items:center;gap:1px;color:#d98713;font-weight:600}.like-recommendation-copy b .material-symbols-outlined{font-size:11px;font-variation-settings:'FILL' 1}
+body.profile-page.bh .like-recommendation-copy small{color:#9c9088;font-size:8px}
+body.profile-page.bh .like-recommendation-copy>strong{display:block;margin-top:2px;color:#934516;font-size:11px}
+body.profile-page.bh .like-recommend-like{position:absolute;right:6px;top:6px;display:grid;place-items:center;width:23px;height:23px;border:1px solid #e8ddd4;border-radius:50%;background:#fff;color:#a04c22;cursor:pointer}
+body.profile-page.bh .like-recommend-like:hover{background:#fff5ed}.like-recommend-like .material-symbols-outlined{font-size:14px}
+body.profile-page.bh .like-recommendation-card{height:96px;align-items:stretch}
+body.profile-page.bh .like-recommend-like{z-index:2;right:7px;top:7px;margin:0;padding:0;line-height:1}
+body.profile-page.bh .like-recommend-like .material-symbols-outlined{display:block;line-height:1}
+
+@media (max-width:1200px){
+  body.profile-page.bh .likes-toolbar{align-items:flex-start;flex-wrap:wrap}
+  body.profile-page.bh .likes-category-tabs{flex:1 1 100%;overflow-x:auto;scrollbar-width:none}
+  body.profile-page.bh .likes-category-tabs::-webkit-scrollbar{display:none}
+  body.profile-page.bh .likes-sort{margin-left:auto}
+}
+@media (max-width:800px){
+  body.profile-page.bh #likes-panel.likes-panel{padding:22px 18px 26px}
+  body.profile-page.bh .likes-panel-head{gap:12px;flex-direction:column}
+  body.profile-page.bh .likes-continue{margin-top:0}
+  body.profile-page.bh .likes-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}
+  body.profile-page.bh .likes-recommendation-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:600px){
+  body.profile-page.bh #likes-panel.likes-panel{padding:20px 14px 24px}
+  body.profile-page.bh .likes-heading-copy h1{font-size:27px}
+  body.profile-page.bh .likes-heading-copy p{font-size:11px}
+  body.profile-page.bh .likes-count-badge{font-size:10px}
+  body.profile-page.bh .likes-category-tabs{gap:5px}
+  body.profile-page.bh .likes-category-tab{min-height:32px;padding:0 10px;font-size:10px}
+  body.profile-page.bh .likes-sort{width:100%;justify-content:flex-start;margin-left:0}
+  body.profile-page.bh .likes-sort select{max-width:none;flex:1}
+  body.profile-page.bh .like-image{aspect-ratio:1.45/1}
+  body.profile-page.bh .like-image img{padding:8px}
+  body.profile-page.bh .like-copy{padding:8px 9px 10px}
+  body.profile-page.bh .like-copy h3{font-size:11px}
+  body.profile-page.bh .like-meta{gap:3px;font-size:8px}
+  body.profile-page.bh .like-reviews{display:none}
+  body.profile-page.bh .like-price{font-size:13px!important}
+  body.profile-page.bh .like-cart{height:29px;font-size:9px}
+  body.profile-page.bh .likes-recommendations{padding:9px}
+  body.profile-page.bh .likes-recommendations-head{align-items:flex-start;flex-direction:column;gap:4px}
+  body.profile-page.bh .likes-recommendations-head p{margin-left:5px}
+  body.profile-page.bh .likes-recommendation-grid{grid-template-columns:1fr}
+}
+
+/* My Likes — final readability and reference cleanup. */
+body.profile-page.bh .likes-panel-head{border-bottom:0}
+body.profile-page.bh .likes-sort{height:40px;padding:0 2px;border:0;border-radius:0;background:transparent;box-shadow:none;font-size:13px}
+body.profile-page.bh .likes-sort select{max-width:150px;font-size:13px}
+body.profile-page.bh .likes-sort .material-symbols-outlined{font-size:18px}
+body.profile-page.bh .likes-sort-chevron{font-size:18px!important}
+body.profile-page.bh .likes-heading-copy h1{font-size:34px}
+body.profile-page.bh .likes-heading-copy p{font-size:15px}
+body.profile-page.bh .likes-count-badge{min-height:29px;padding:0 11px;font-size:13px}
+body.profile-page.bh .likes-continue{font-size:14px}
+body.profile-page.bh .likes-category-tab{min-height:40px;padding:0 16px;font-size:13px}
+body.profile-page.bh .likes-all-tab{padding-left:14px}
+body.profile-page.bh .likes-tab-icon{font-size:17px}
+body.profile-page.bh .like-category{font-size:12px}
+body.profile-page.bh .like-copy h3{min-height:40px;font-size:15px;line-height:1.35}
+body.profile-page.bh .like-meta{gap:6px;min-height:20px;font-size:11px}
+body.profile-page.bh .like-rating .material-symbols-outlined{font-size:16px}
+body.profile-page.bh .like-price{font-size:18px!important}
+body.profile-page.bh .like-cart{height:36px;font-size:12px}
+body.profile-page.bh .like-cart .material-symbols-outlined{font-size:17px}
+body.profile-page.bh .likes-recommendations-head h2{font-size:18px}
+body.profile-page.bh .likes-recommendations-head p{font-size:11px}
+body.profile-page.bh .likes-recommendations-head a{font-size:12px}
+body.profile-page.bh .like-recommendation-card{grid-template-columns:88px minmax(0,1fr);min-height:96px}
+body.profile-page.bh .like-recommendation-copy{padding:8px 28px 7px 10px}
+body.profile-page.bh .like-recommendation-copy>span{font-size:10px}
+body.profile-page.bh .like-recommendation-copy h3{min-height:27px;font-size:11px}
+body.profile-page.bh .like-recommendation-copy div{font-size:10px}
+body.profile-page.bh .like-recommendation-copy b .material-symbols-outlined{font-size:13px}
+body.profile-page.bh .like-recommendation-copy small{font-size:10px}
+body.profile-page.bh .like-recommendation-copy>strong{font-size:13px}
+
+@media (max-width:600px){
+  body.profile-page.bh .likes-heading-copy h1{font-size:29px}
+  body.profile-page.bh .likes-heading-copy p{font-size:13px}
+  body.profile-page.bh .likes-count-badge{font-size:11px}
+  body.profile-page.bh .likes-category-tab{min-height:35px;padding:0 11px;font-size:11px}
+  body.profile-page.bh .likes-sort{height:36px;font-size:12px}
+  body.profile-page.bh .likes-sort select{font-size:12px}
+  body.profile-page.bh .like-category{font-size:10px}
+  body.profile-page.bh .like-copy h3{font-size:13px}
+  body.profile-page.bh .like-meta{font-size:9px}
+  body.profile-page.bh .like-price{font-size:15px!important}
+  body.profile-page.bh .like-cart{height:32px;font-size:10px}
+  body.profile-page.bh .like-recommendation-card{grid-template-columns:80px minmax(0,1fr)}
+  body.profile-page.bh .like-recommendation-copy>span{font-size:9px}
+  body.profile-page.bh .like-recommendation-copy h3{font-size:10px}
+  body.profile-page.bh .like-recommendation-copy>strong{font-size:12px}
+}
+
+/* =========================================================
+   My Purchases reference layout
+   Keep order content neutral and let status be communicated by text/icon,
+   rather than colored badges.
+   ========================================================= */
+body.profile-page.bh #purchases-panel{
+  min-height:0;
+  padding:30px 36px 36px;
+  border:1px solid #e7e2dd;
+  border-radius:10px;
+  background:#fff;
+  box-shadow:0 2px 10px rgba(35,29,25,.035);
+}
+body.profile-page.bh #purchases-panel .purchases-head{
+  align-items:flex-start;
+  margin:0;
+  padding:0 0 14px;
+  border-bottom:0;
+}
+body.profile-page.bh #purchases-panel .purchases-title-row{display:flex;align-items:center;gap:12px}
+body.profile-page.bh #purchases-panel .purchases-head h1{
+  margin:0;
+  color:#242424;
+  font-size:29px;
+  line-height:1.1;
+  letter-spacing:-.04em;
+}
+body.profile-page.bh #purchases-panel .purchases-head p{margin:5px 0 0;color:#817b76;font-size:13px}
+body.profile-page.bh #purchases-panel .purchase-count{
+  display:inline-flex;
+  align-items:center;
+  min-height:27px;
+  padding:0 10px;
+  border:1px solid #e1dedb;
+  border-radius:999px;
+  background:#f4f4f4;
+  color:#5d5956;
+  font-size:11px;
+  font-weight:600;
+}
+body.profile-page.bh #purchases-panel .purchase-toolbar{
+  display:flex;
+  align-items:flex-end;
+  gap:18px;
+  margin:0 -36px 18px;
+  padding:0 36px;
+  border-bottom:0;
+}
+body.profile-page.bh #purchases-panel .purchase-tabs{
+  display:grid;
+  flex:1 1 auto;
+  grid-template-columns:repeat(6,minmax(0,1fr));
+  min-width:0;
+  margin:0;
+  padding:0;
+  border:0;
+}
+body.profile-page.bh #purchases-panel .purchase-filter{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:3px;
+  height:54px;
+  padding:0 7px;
+  border:0;
+  border-bottom:3px solid transparent;
+  background:transparent;
+  color:#5f5b58;
+  font:inherit;
+  font-size:13px;
+  white-space:nowrap;
+  cursor:pointer;
+}
+body.profile-page.bh #purchases-panel .purchase-filter:hover{color:#222;background:#fafafa}
+body.profile-page.bh #purchases-panel .purchase-filter.active{
+  border-bottom-color:#353535;
+  color:#222;
+  font-weight:700;
+}
+body.profile-page.bh #purchases-panel .purchase-filter-count{color:#898581;font-weight:500}
+body.profile-page.bh #purchases-panel .purchase-filter.active .purchase-filter-count{color:#4d4a47}
+body.profile-page.bh #purchases-panel .purchase-sort{
+  display:inline-flex;
+  align-items:center;
+  gap:3px;
+  flex:0 0 auto;
+  height:34px;
+  margin:0 0 9px;
+  padding:0 9px;
+  border:1px solid #dedbd8;
+  border-radius:7px;
+  background:#fff;
+  color:#5b5754;
+  font-size:11px;
+}
+body.profile-page.bh #purchases-panel .purchase-sort select{
+  max-width:120px;
+  border:0;
+  outline:0;
+  background:transparent;
+  color:#3d3a38;
+  font:inherit;
+  cursor:pointer;
+}
+body.profile-page.bh #purchases-panel .purchase-sort .material-symbols-outlined{font-size:16px;color:#68635f}
+
+body.profile-page.bh .order-card{
+  overflow:hidden;
+  border:1px solid #e5e2df;
+  border-radius:9px;
+  background:#fff;
+  box-shadow:none;
+}
+body.profile-page.bh .order-card-head{
+  min-height:49px;
+  padding:9px 16px;
+  border-bottom:0;
+  background:#fff;
+}
+body.profile-page.bh .order-meta{display:flex;align-items:center;min-width:0;gap:12px;color:#817b76;font-size:11px}
+body.profile-page.bh .order-shop{display:flex;align-items:center;gap:8px;min-width:0;color:#292725;font-size:13px}
+body.profile-page.bh .order-shop strong{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.profile-page.bh .order-shop .material-symbols-outlined{color:#46423f;font-size:20px}
+body.profile-page.bh .order-meta-divider{display:none}
+body.profile-page.bh .order-id,
+body.profile-page.bh .order-date{white-space:nowrap}
+body.profile-page.bh .order-status{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  min-height:30px;
+  padding:0 12px;
+  border:1px solid #dcdad8;
+  border-radius:999px;
+  background:#f4f4f4;
+  color:#55514e;
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:0;
+  text-transform:none;
+  white-space:nowrap;
+}
+body.profile-page.bh .order-status .material-symbols-outlined{font-size:16px;color:#5d5956}
+body.profile-page.bh .order-product{
+  grid-template-columns:84px minmax(0,1fr) auto;
+  gap:14px;
+  min-height:98px;
+  padding:10px 16px;
+  background:#fff;
+}
+body.profile-page.bh .order-product img{width:84px;height:84px;border:0;border-radius:8px;object-fit:contain;background:#fafafa}
+body.profile-page.bh .order-product-copy{min-width:0}
+body.profile-page.bh .order-product h3{margin:0 0 4px;color:#2b2927;font-size:14px;line-height:1.35}
+body.profile-page.bh .order-product p{margin:2px 0;color:#817b76;font-size:11px}
+body.profile-page.bh .order-price{text-align:right;white-space:nowrap}
+body.profile-page.bh .order-price strong{color:#33302e;font-size:14px}
+body.profile-page.bh .order-card-foot{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  min-height:52px;
+  padding:9px 16px;
+  border-top:0;
+  background:#fff;
+}
+body.profile-page.bh .order-total{display:none}
+body.profile-page.bh .order-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+body.profile-page.bh .order-btn{
+  min-height:34px;
+  padding:0 14px;
+  border:1px solid #d2a04d;
+  border-radius:6px;
+  background:#fffaf0;
+  color:#6f3b20;
+  font:inherit;
+  font-size:11px;
+  font-weight:600;
+  cursor:pointer;
+}
+body.profile-page.bh .order-btn:hover{border-color:#9a5a16;background:#fff1d6}
+body.profile-page.bh .order-btn.primary{border-color:#6f3b20;background:#6f3b20;color:#fff}
+body.profile-page.bh .order-btn.primary:hover{border-color:#4b2616;background:#4b2616}
+
+@media (max-width:1100px){
+  body.profile-page.bh #purchases-panel{padding:26px 26px 30px}
+  body.profile-page.bh #purchases-panel .purchase-toolbar{margin-left:-26px;margin-right:-26px;padding-left:26px;padding-right:26px}
+  body.profile-page.bh #purchases-panel .purchase-filter{font-size:11px}
+  body.profile-page.bh .order-meta{gap:8px;font-size:10px}
+  body.profile-page.bh .order-shop{font-size:12px}
+}
+@media (max-width:800px){
+  body.profile-page.bh #purchases-panel{padding:24px 20px 28px}
+  body.profile-page.bh #purchases-panel .purchases-head h1{font-size:26px}
+  body.profile-page.bh #purchases-panel .purchases-head p{font-size:12px;line-height:1.5}
+  body.profile-page.bh #purchases-panel .purchase-toolbar{align-items:stretch;flex-wrap:wrap;gap:10px;margin-left:-20px;margin-right:-20px;padding:0 20px 10px}
+  body.profile-page.bh #purchases-panel .purchase-tabs{display:flex;order:1;width:100%;overflow-x:auto;scrollbar-width:none}
+  body.profile-page.bh #purchases-panel .purchase-tabs::-webkit-scrollbar{display:none}
+  body.profile-page.bh #purchases-panel .purchase-filter{flex:0 0 auto;height:44px;padding:0 12px;font-size:11px}
+  body.profile-page.bh #purchases-panel .purchase-sort{order:2;margin:0 0 0 auto}
+  body.profile-page.bh .order-card-head{align-items:flex-start;flex-direction:column;gap:8px}
+  body.profile-page.bh .order-meta{width:100%;flex-wrap:wrap}
+  body.profile-page.bh .order-status{align-self:flex-start}
+  body.profile-page.bh .order-card-foot{align-items:flex-start;flex-direction:column;gap:11px}
+  body.profile-page.bh .order-actions{width:100%;justify-content:flex-start}
+}
+@media (max-width:600px){
+  body.profile-page.bh #purchases-panel{padding:20px 14px 24px;border-radius:7px}
+  body.profile-page.bh #purchases-panel .purchases-title-row{align-items:flex-start;flex-direction:column;gap:7px}
+  body.profile-page.bh #purchases-panel .purchases-head h1{font-size:24px}
+  body.profile-page.bh #purchases-panel .purchase-toolbar{margin-left:-14px;margin-right:-14px;padding-left:14px;padding-right:14px}
+  body.profile-page.bh #purchases-panel .purchase-sort{width:100%;justify-content:space-between}
+  body.profile-page.bh #purchases-panel .purchase-sort select{max-width:none;flex:1}
+  body.profile-page.bh .order-card-head{padding:10px 12px}
+  body.profile-page.bh .order-meta{line-height:1.35}
+  body.profile-page.bh .order-meta-divider{display:none}
+  body.profile-page.bh .order-id,
+  body.profile-page.bh .order-date{width:100%}
+  body.profile-page.bh .order-product{grid-template-columns:68px minmax(0,1fr);gap:10px;padding:10px 12px}
+  body.profile-page.bh .order-product img{width:68px;height:68px}
+  body.profile-page.bh .order-product h3{font-size:12px}
+  body.profile-page.bh .order-price{grid-column:2;text-align:left}
+  body.profile-page.bh .order-card-foot{padding:10px 12px}
+  body.profile-page.bh .order-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+  body.profile-page.bh .order-btn{width:100%;padding:0 8px;font-size:10px}
+}
+
+/* =========================================================
+   Reviews & Ratings reference layout
+   Keeps the existing browser-preview review modal and storage actions while
+   presenting pending and submitted reviews as the supplied account view.
+   ========================================================= */
+body.profile-page.bh #reviews-panel{
+  min-height:0;
+  padding:27px 28px 30px;
+  border:1px solid #e6e1dc;
+  border-radius:10px;
+  background:#fff;
+  box-shadow:0 2px 10px rgba(65,39,24,.035);
+}
+body.profile-page.bh #reviews-panel .reviews-head{
+  align-items:flex-start;
+  margin:0;
+  padding:0 0 24px;
+  border-bottom:0;
+}
+body.profile-page.bh #reviews-panel .reviews-head h1{
+  margin:0 0 5px;
+  color:#171514;
+  font-size:31px;
+  line-height:1.1;
+  letter-spacing:-.04em;
+}
+body.profile-page.bh #reviews-panel .reviews-head p{margin:0;color:#6f6965;font-size:15px}
+body.profile-page.bh #reviews-panel .review-tabs{
+  display:flex;
+  align-items:stretch;
+  gap:12px;
+  margin:0;
+  padding:0;
+  border-bottom:1px solid #e5e1dd;
+}
+body.profile-page.bh #reviews-panel .review-tab{
+  min-width:168px;
+  height:51px;
+  padding:0 16px;
+  border:0;
+  border-bottom:3px solid transparent;
+  background:transparent;
+  color:#68615c;
+  font:inherit;
+  font-size:13px;
+  font-weight:600;
+  cursor:pointer;
+}
+body.profile-page.bh #reviews-panel .review-tab:hover{color:#6f3b20}
+body.profile-page.bh #reviews-panel .review-tab.active{border-bottom-color:#8e431e;color:#6f3b20}
+body.profile-page.bh #reviews-panel .review-tab span{font-weight:700}
+body.profile-page.bh #reviews-panel .review-sections{padding-top:18px}
+body.profile-page.bh #reviews-panel .review-section[hidden]{display:none}
+body.profile-page.bh #reviews-panel .review-section + .review-section{margin-top:28px}
+body.profile-page.bh #reviews-panel .review-section-heading{margin-bottom:10px}
+body.profile-page.bh #reviews-panel .review-section-heading h2{
+  margin:0 0 3px;
+  color:#171514;
+  font-size:20px;
+  line-height:1.2;
+  letter-spacing:-.025em;
+}
+body.profile-page.bh #reviews-panel .review-section-heading p{margin:0;color:#77706b;font-size:13px}
+body.profile-page.bh #reviews-panel .review-list{display:flex;flex-direction:column;gap:10px}
+body.profile-page.bh #reviews-panel .review-item-card{
+  display:grid;
+  grid-template-columns:112px minmax(245px,1.15fr) minmax(250px,1fr) 210px;
+  gap:20px;
+  align-items:center;
+  min-width:0;
+  min-height:114px;
+  padding:10px 20px;
+  border:1px solid #e5e1dd;
+  border-radius:9px;
+  background:#fff;
+}
+body.profile-page.bh #reviews-panel .review-product-image{
+  width:96px;
+  height:96px;
+  padding:8px;
+  border:0;
+  border-radius:8px;
+  object-fit:contain;
+  background:#f3f3f3;
+}
+body.profile-page.bh #reviews-panel .review-product-details{min-width:0}
+body.profile-page.bh #reviews-panel .review-product-details h3{
+  margin:0 0 5px;
+  overflow:hidden;
+  color:#1d1a18;
+  font-size:15px;
+  line-height:1.3;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+body.profile-page.bh #reviews-panel .review-product-details p{margin:3px 0;color:#6f6863;font-size:12px;line-height:1.4}
+body.profile-page.bh #reviews-panel .review-product-details p:last-child{color:#78716c}
+body.profile-page.bh #reviews-panel .review-product-details p span{margin:0 7px;color:#c3bcb7}
+body.profile-page.bh #reviews-panel .review-rating-block,
+body.profile-page.bh #reviews-panel .review-submitted{
+  min-width:0;
+  min-height:64px;
+  padding:0 22px;
+  border-left:1px solid #e5e1dd;
+  border-right:1px solid #e5e1dd;
+}
+body.profile-page.bh #reviews-panel .review-rating-block{display:flex;flex-direction:column;justify-content:center;gap:5px;color:#2e2925;font-size:12px}
+body.profile-page.bh #reviews-panel .review-outline-stars{
+  display:flex;
+  align-items:center;
+  color:#b76325;
+  font-family:Arial,sans-serif;
+  font-size:31px;
+  line-height:1;
+  white-space:nowrap;
+}
+body.profile-page.bh #reviews-panel .review-inline-star{
+  width:31px;
+  height:34px;
+  padding:0;
+  border:0;
+  background:transparent;
+  color:#b76325;
+  font:inherit;
+  font-size:31px;
+  line-height:1;
+  cursor:pointer;
+}
+body.profile-page.bh #reviews-panel .review-inline-star:hover,
+body.profile-page.bh #reviews-panel .review-inline-star:focus-visible{color:#6f3b20;transform:scale(1.08);outline:2px solid #d6a15c;outline-offset:2px;border-radius:3px}
+body.profile-page.bh #reviews-panel #review-stars button{cursor:pointer;pointer-events:auto}
+body.profile-page.bh #reviews-panel .review-action{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:180px;
+  min-height:49px;
+  padding:0 18px;
+  border:1px solid #6f3b20;
+  border-radius:7px;
+  background:#6f3b20;
+  color:#fff;
+  font:inherit;
+  font-size:14px;
+  font-weight:700;
+  cursor:pointer;
+}
+body.profile-page.bh #reviews-panel .review-action:hover{border-color:#4b2616;background:#4b2616}
+body.profile-page.bh #reviews-panel .review-action.edit{
+  min-width:130px;
+  min-height:47px;
+  border-color:#eadbd0;
+  background:#fbf4ee;
+  color:#6f3b20;
+}
+body.profile-page.bh #reviews-panel .review-action.edit:hover{border-color:#d8bba5;background:#f7e9de}
+body.profile-page.bh #reviews-panel .review-submitted{display:flex;flex-direction:column;justify-content:center;gap:5px}
+body.profile-page.bh #reviews-panel .review-submitted-top{display:flex;align-items:center;gap:13px}
+body.profile-page.bh #reviews-panel .review-static-stars{color:#eda313;font-size:22px;letter-spacing:1px;line-height:1;white-space:nowrap}
+body.profile-page.bh #reviews-panel .review-submitted time{color:#6f6863;font-size:11px;white-space:nowrap}
+body.profile-page.bh #reviews-panel .review-submitted p{
+  display:-webkit-box;
+  margin:0;
+  overflow:hidden;
+  color:#292522;
+  font-size:12px;
+  line-height:1.35;
+  -webkit-box-orient:vertical;
+  -webkit-line-clamp:2;
+}
+body.profile-page.bh #reviews-panel .review-photo-strip{display:flex;gap:7px;margin-top:2px}
+body.profile-page.bh #reviews-panel .review-photo-strip img{width:55px;height:38px;border-radius:5px;object-fit:cover;background:#f3f3f3}
+body.profile-page.bh #reviews-panel .review-card-actions{display:flex;align-items:center;justify-content:flex-end;gap:12px}
+body.profile-page.bh #reviews-panel .review-more{
+  display:grid;
+  width:26px;
+  height:40px;
+  place-items:center;
+  padding:0;
+  border:0;
+  background:transparent;
+  color:#362b25;
+  cursor:pointer;
+}
+body.profile-page.bh #reviews-panel .review-more .material-symbols-outlined{font-size:22px}
+body.profile-page.bh #reviews-panel .reviews-empty{padding:70px 20px 50px}
+
+@media (max-width:1200px){
+  body.profile-page.bh #reviews-panel{padding:24px 24px 28px}
+  body.profile-page.bh #reviews-panel .review-item-card{grid-template-columns:96px minmax(220px,1fr) minmax(220px,.95fr) 160px;gap:14px;padding:10px 14px}
+  body.profile-page.bh #reviews-panel .review-product-image{width:82px;height:82px}
+  body.profile-page.bh #reviews-panel .review-rating-block,
+  body.profile-page.bh #reviews-panel .review-submitted{padding:0 14px}
+  body.profile-page.bh #reviews-panel .review-action{min-width:145px;padding:0 12px;font-size:12px}
+}
+@media (max-width:900px){
+  body.profile-page.bh #reviews-panel .reviews-head h1{font-size:28px}
+  body.profile-page.bh #reviews-panel .review-item-card{grid-template-columns:88px minmax(0,1fr);align-items:start;gap:12px 16px;padding:12px 14px}
+  body.profile-page.bh #reviews-panel .review-product-image{width:78px;height:78px;grid-row:span 3}
+  body.profile-page.bh #reviews-panel .review-rating-block,
+  body.profile-page.bh #reviews-panel .review-submitted{grid-column:2;padding:12px 0 0;border:0;border-top:1px solid #e5e1dd}
+  body.profile-page.bh #reviews-panel .review-card-actions,
+  body.profile-page.bh #reviews-panel .review-pending-card>.review-action{grid-column:2;justify-self:start}
+  body.profile-page.bh #reviews-panel .review-rating-block{min-height:0}
+  body.profile-page.bh #reviews-panel .review-card-actions{padding-top:10px;border-top:1px solid #e5e1dd;width:100%}
+}
+@media (max-width:600px){
+  body.profile-page.bh #reviews-panel{padding:20px 14px 24px;border-radius:7px}
+  body.profile-page.bh #reviews-panel .reviews-head{padding-bottom:18px}
+  body.profile-page.bh #reviews-panel .reviews-head h1{font-size:25px}
+  body.profile-page.bh #reviews-panel .reviews-head p{font-size:12px;line-height:1.45}
+  body.profile-page.bh #reviews-panel .review-tabs{gap:0;overflow-x:auto}
+  body.profile-page.bh #reviews-panel .review-tab{min-width:135px;height:45px;padding:0 10px;font-size:11px}
+  body.profile-page.bh #reviews-panel .review-sections{padding-top:16px}
+  body.profile-page.bh #reviews-panel .review-section + .review-section{margin-top:24px}
+  body.profile-page.bh #reviews-panel .review-section-heading h2{font-size:17px}
+  body.profile-page.bh #reviews-panel .review-section-heading p{font-size:11px}
+  body.profile-page.bh #reviews-panel .review-item-card{grid-template-columns:1fr;gap:10px;padding:12px}
+  body.profile-page.bh #reviews-panel .review-product-image{width:88px;height:88px;grid-row:auto}
+  body.profile-page.bh #reviews-panel .review-product-details h3{font-size:14px}
+  body.profile-page.bh #reviews-panel .review-product-details p{font-size:11px}
+  body.profile-page.bh #reviews-panel .review-rating-block,
+  body.profile-page.bh #reviews-panel .review-submitted{grid-column:auto;padding:11px 0 0;border-top:1px solid #e5e1dd}
+  body.profile-page.bh #reviews-panel .review-outline-stars{font-size:27px}
+  body.profile-page.bh #reviews-panel .review-pending-card>.review-action,
+  body.profile-page.bh #reviews-panel .review-card-actions{grid-column:auto;width:100%;justify-self:stretch}
+  body.profile-page.bh #reviews-panel .review-action{width:100%;min-height:42px;font-size:12px}
+  body.profile-page.bh #reviews-panel .review-card-actions{justify-content:space-between;padding-top:10px;border-top:1px solid #e5e1dd}
+  body.profile-page.bh #reviews-panel .review-action.edit{width:auto;min-width:130px}
+}
+
+/* =========================================================
+   Notifications reference layout
+   Grouped activity feed with preview-only data and the existing read-state
+   persistence kept intact.
+   ========================================================= */
+body.profile-page.bh #notifications-panel{
+  min-height:0;
+  padding:28px 36px 34px;
+  border:1px solid #e6e1dc;
+  border-radius:10px;
+  background:#fff;
+  box-shadow:0 2px 10px rgba(65,39,24,.035);
+}
+body.profile-page.bh #notifications-panel .notifications-head{
+  align-items:flex-start;
+  margin:0;
+  padding:0 0 17px;
+  border-bottom:0;
+}
+body.profile-page.bh #notifications-panel .notifications-head h1{
+  margin:0 0 4px;
+  color:#171514;
+  font-size:31px;
+  line-height:1.1;
+  letter-spacing:-.04em;
+}
+body.profile-page.bh #notifications-panel .notifications-head p{margin:0;color:#6f6965;font-size:15px}
+body.profile-page.bh #notifications-panel .notification-mark-all{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  margin-top:8px;
+  padding:0;
+  color:#6f3b20;
+  font-size:13px;
+}
+body.profile-page.bh #notifications-panel .notification-mark-all .material-symbols-outlined{font-size:18px}
+body.profile-page.bh #notifications-panel .notification-filters{
+  display:flex;
+  gap:10px;
+  margin:0;
+  padding:0 0 14px;
+  border-bottom:0;
+}
+body.profile-page.bh #notifications-panel .notification-filter{
+  min-height:36px;
+  padding:0 19px;
+  border:1px solid transparent;
+  border-radius:999px;
+  background:#faf8f6;
+  color:#5f554e;
+  font:inherit;
+  font-size:12px;
+  cursor:pointer;
+}
+body.profile-page.bh #notifications-panel .notification-filter:hover{border-color:#d7bda8;color:#6f3b20}
+body.profile-page.bh #notifications-panel .notification-filter.active{border-color:#6f3b20;background:#6f3b20;color:#fff}
+body.profile-page.bh #notifications-panel .notification-list{
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+  border-top:0;
+  padding-top:12px;
+}
+body.profile-page.bh #notifications-panel .notification-group{display:flex;flex-direction:column;gap:8px}
+body.profile-page.bh #notifications-panel .notification-group + .notification-group{margin-top:0}
+body.profile-page.bh #notifications-panel .notification-group h2{
+  margin:0;
+  color:#6f6965;
+  font-size:13px;
+  font-weight:500;
+  line-height:1.2;
+}
+body.profile-page.bh #notifications-panel .notification-item{
+  display:grid;
+  grid-template-columns:18px 48px minmax(0,1fr) 150px 22px 145px;
+  gap:12px;
+  align-items:center;
+  min-height:80px;
+  margin:0;
+  padding:10px 14px;
+  border:0;
+  border-radius:0;
+  background:transparent;
+  cursor:pointer;
+}
+body.profile-page.bh #notifications-panel .notification-item:hover{background:#fffdfb}
+body.profile-page.bh #notifications-panel .notification-item:focus-visible{outline:2px solid #c58c52;outline-offset:2px}
+body.profile-page.bh #notifications-panel .notification-item.unread{border-left:0;background:transparent}
+body.profile-page.bh #notifications-panel .notification-unread-dot{
+  width:10px;
+  height:10px;
+  border-radius:50%;
+  background:transparent;
+}
+body.profile-page.bh #notifications-panel .notification-item.unread .notification-unread-dot{background:#b76325}
+body.profile-page.bh #notifications-panel .notification-icon{
+  display:grid;
+  width:48px;
+  height:48px;
+  place-items:center;
+  border-radius:50%;
+  background:#f5eee8;
+  color:#6f3b20;
+}
+body.profile-page.bh #notifications-panel .notification-icon .material-symbols-outlined{font-size:24px}
+body.profile-page.bh #notifications-panel .notification-copy{min-width:0}
+body.profile-page.bh #notifications-panel .notification-copy strong{
+  display:block;
+  margin:0 0 3px;
+  overflow:hidden;
+  color:#211c19;
+  font-size:14px;
+  line-height:1.25;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+body.profile-page.bh #notifications-panel .notification-copy p{
+  margin:0;
+  overflow:hidden;
+  color:#5f5955;
+  font-size:12px;
+  line-height:1.35;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+body.profile-page.bh #notifications-panel .notification-copy small{
+  display:block;
+  margin-top:3px;
+  overflow:hidden;
+  color:#89817c;
+  font-size:11px;
+  line-height:1.3;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+body.profile-page.bh #notifications-panel .notification-attachment{display:flex;align-items:center;justify-content:center;min-width:0}
+body.profile-page.bh #notifications-panel .notification-attachment img{width:62px;height:62px;border-radius:7px;object-fit:contain;background:#f5f5f5}
+body.profile-page.bh #notifications-panel .notification-cta{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:116px;
+  min-height:38px;
+  padding:0 12px;
+  border:1px solid #d6a477;
+  border-radius:7px;
+  background:#fffaf5;
+  color:#6f3b20;
+  font-size:12px;
+  font-weight:700;
+  text-decoration:none;
+}
+body.profile-page.bh #notifications-panel .notification-cta:hover{border-color:#6f3b20;background:#f8ece2}
+body.profile-page.bh #notifications-panel .notification-arrow{font-size:21px;color:#6f3b20}
+body.profile-page.bh #notifications-panel .notification-time{
+  align-self:start;
+  padding-top:2px;
+  color:#89817c;
+  font-size:11px;
+  text-align:right;
+  white-space:nowrap;
+}
+body.profile-page.bh #notifications-panel .notifications-empty{padding:70px 20px 50px}
+
+@media (max-width:1200px){
+  body.profile-page.bh #notifications-panel{padding:24px 24px 28px}
+  body.profile-page.bh #notifications-panel .notification-item{grid-template-columns:16px 44px minmax(0,1fr) 120px 20px 120px;gap:9px;padding:10px 11px}
+  body.profile-page.bh #notifications-panel .notification-icon{width:44px;height:44px}
+  body.profile-page.bh #notifications-panel .notification-copy strong{font-size:13px}
+  body.profile-page.bh #notifications-panel .notification-copy p{font-size:11px}
+  body.profile-page.bh #notifications-panel .notification-cta{min-width:100px;padding:0 8px;font-size:11px}
+}
+@media (max-width:800px){
+  body.profile-page.bh #notifications-panel{padding:22px 18px 26px}
+  body.profile-page.bh #notifications-panel .notifications-head h1{font-size:28px}
+  body.profile-page.bh #notifications-panel .notifications-head p{font-size:13px;line-height:1.45}
+  body.profile-page.bh #notifications-panel .notification-mark-all{margin-top:4px;font-size:11px}
+  body.profile-page.bh #notifications-panel .notification-filters{overflow-x:auto;scrollbar-width:none}
+  body.profile-page.bh #notifications-panel .notification-filters::-webkit-scrollbar{display:none}
+  body.profile-page.bh #notifications-panel .notification-filter{flex:0 0 auto;padding:0 14px;font-size:11px}
+  body.profile-page.bh #notifications-panel .notification-item{
+    grid-template-columns:14px 44px minmax(0,1fr) 22px;
+    align-items:start;
+    gap:8px 10px;
+    min-height:0;
+    padding:11px;
+  }
+  body.profile-page.bh #notifications-panel .notification-unread-dot{margin-top:18px}
+  body.profile-page.bh #notifications-panel .notification-icon{margin-top:3px}
+  body.profile-page.bh #notifications-panel .notification-attachment{grid-column:3;grid-row:2;justify-content:flex-start;margin-top:2px}
+  body.profile-page.bh #notifications-panel .notification-arrow{grid-column:4;grid-row:1;margin-top:15px}
+  body.profile-page.bh #notifications-panel .notification-time{grid-column:3/5;grid-row:3;padding-top:0;text-align:left}
+  body.profile-page.bh #notifications-panel .notification-copy p{white-space:normal}
+  body.profile-page.bh #notifications-panel .notification-copy small{white-space:normal}
+}
+@media (max-width:600px){
+  body.profile-page.bh #notifications-panel{padding:20px 14px 24px;border-radius:7px}
+  body.profile-page.bh #notifications-panel .notifications-head{flex-direction:column;gap:12px}
+  body.profile-page.bh #notifications-panel .notification-mark-all{align-self:flex-start}
+  body.profile-page.bh #notifications-panel .notification-group h2{font-size:12px}
+  body.profile-page.bh #notifications-panel .notification-copy strong{font-size:12px}
+  body.profile-page.bh #notifications-panel .notification-copy p{font-size:10.5px}
+  body.profile-page.bh #notifications-panel .notification-copy small{font-size:10px}
+  body.profile-page.bh #notifications-panel .notification-attachment img{width:54px;height:54px}
+  body.profile-page.bh #notifications-panel .notification-cta{min-width:105px;min-height:34px;font-size:10px}
+}
+
+/* =========================================================
+   My Vouchers reference layout
+   The former standalone voucher catalog now lives inside Buyer Account.
+   ========================================================= */
+body.profile-page.bh #vouchers-panel{
+  min-height:0;
+  padding:28px 32px 34px;
+  border:1px solid #e6e1dc;
+  border-radius:10px;
+  background:#fff;
+  box-shadow:0 2px 10px rgba(65,39,24,.035);
+}
+body.profile-page.bh #vouchers-panel .vouchers-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:18px;
+  margin:0;
+  padding:0 0 19px;
+  border-bottom:0;
+}
+body.profile-page.bh #vouchers-panel .vouchers-title-row{display:flex;align-items:center;gap:13px}
+body.profile-page.bh #vouchers-panel .vouchers-title-icon{
+  display:block;
+  width:52px;
+  height:52px;
+  border-radius:9px;
+  object-fit:cover;
+  box-shadow:0 2px 6px rgba(76,39,20,.12);
+}
+body.profile-page.bh #vouchers-panel .vouchers-head h1{
+  margin:0;
+  color:#171514;
+  font-size:30px;
+  line-height:1.1;
+  letter-spacing:-.04em;
+}
+body.profile-page.bh #vouchers-panel .vouchers-head p{margin:5px 0 0;color:#6f6965;font-size:13px;line-height:1.45}
+body.profile-page.bh #vouchers-panel .voucher-claimed-count{
+  display:inline-flex;
+  align-items:center;
+  min-height:28px;
+  margin-top:8px;
+  padding:0 11px;
+  border:1px solid #e5d7cc;
+  border-radius:999px;
+  background:#fff8f1;
+  color:#6f3b20;
+  font-size:11px;
+  font-weight:700;
+  white-space:nowrap;
+}
+body.profile-page.bh #vouchers-panel .voucher-banner{
+  display:flex;
+  align-items:center;
+  min-height:86px;
+  margin:0 0 19px;
+  overflow:hidden;
+  border:1px solid #e7c58e;
+  border-radius:8px;
+  background:#fff7eb;
+}
+body.profile-page.bh #vouchers-panel .voucher-banner-art{
+  display:grid;
+  flex:0 0 126px;
+  width:126px;
+  height:86px;
+  place-items:center;
+}
+body.profile-page.bh #vouchers-panel .voucher-banner-art img{display:block;width:112px;height:70px;border-radius:8px;object-fit:cover;object-position:center}
+body.profile-page.bh #vouchers-panel .voucher-banner-copy{flex:1;min-width:0;padding:0 18px 0 0}
+body.profile-page.bh #vouchers-panel .voucher-banner h2{margin:0;color:#332117;font-size:18px;font-weight:700;line-height:1.25}
+body.profile-page.bh #vouchers-panel .voucher-banner p{margin:7px 0 0;color:#685a50;font-size:12px;line-height:1.55}
+body.profile-page.bh #vouchers-panel .voucher-tabs{
+  display:flex;
+  gap:8px;
+  margin:0 0 22px;
+  padding:0 0 2px;
+  overflow-x:auto;
+  scrollbar-width:none;
+}
+body.profile-page.bh #vouchers-panel .voucher-tabs::-webkit-scrollbar{display:none}
+body.profile-page.bh #vouchers-panel .voucher-filter{
+  flex:0 0 auto;
+  min-height:39px;
+  padding:0 15px;
+  border:1px solid #e3d9cf;
+  border-radius:6px;
+  background:#fff;
+  color:#4a382f;
+  font:inherit;
+  font-size:11px;
+  font-weight:500;
+  cursor:pointer;
+}
+body.profile-page.bh #vouchers-panel .voucher-filter:hover{border-color:#b96a36;color:#7b3d20}
+body.profile-page.bh #vouchers-panel .voucher-filter.active{border-color:#542f1d;background:#542f1d;color:#fff}
+body.profile-page.bh #vouchers-panel .voucher-sections{display:grid;gap:22px}
+body.profile-page.bh #vouchers-panel .voucher-section{min-width:0}
+body.profile-page.bh #vouchers-panel .voucher-section-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 9px}
+body.profile-page.bh #vouchers-panel .voucher-section-heading h2{margin:0;color:#2b1d16;font-size:18px;font-weight:700;letter-spacing:-.02em}
+body.profile-page.bh #vouchers-panel .voucher-section-heading span{color:#9a8e86;font-size:11px;white-space:nowrap}
+body.profile-page.bh #vouchers-panel .voucher-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+body.profile-page.bh #vouchers-panel .voucher-card{
+  display:grid;
+  grid-template-columns:112px minmax(0,1fr);
+  min-width:0;
+  min-height:158px;
+  overflow:hidden;
+  border:1px solid #e6ddd4;
+  border-radius:8px;
+  background:#fff;
+  box-shadow:0 2px 7px rgba(50,34,24,.035);
+}
+body.profile-page.bh #vouchers-panel .voucher-brand-panel{
+   position:relative;
+   display:grid;
+   overflow:hidden;
+   background:#5b2816;
+   color:#fff;
+   text-align:center;
+}
+body.profile-page.bh #vouchers-panel .voucher-brand-panel:before,
+body.profile-page.bh #vouchers-panel .voucher-brand-panel:after{
+  content:"";
+  position:absolute;
+  right:-7px;
+  width:14px;
+  height:14px;
+  border-radius:50%;
+  background:#fff;
+}
+body.profile-page.bh #vouchers-panel .voucher-brand-panel:before{top:-7px}
+body.profile-page.bh #vouchers-panel .voucher-brand-panel:after{bottom:-7px}
+body.profile-page.bh #vouchers-panel .voucher-brand-panel img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.72}
+body.profile-page.bh #vouchers-panel .voucher-brand-label{
+   position:absolute;
+   right:0;
+   bottom:-1px;
+   left:0;
+   z-index:1;
+   display:flex;
+   flex-direction:column;
+   align-items:center;
+   justify-content:flex-end;
+   gap:1px;
+   height:40px;
+   min-height:40px;
+   box-sizing:border-box;
+   padding:0 5px 1px;
+   background:transparent;
+  }
+body.profile-page.bh #vouchers-panel .voucher-brand-label strong,
+body.profile-page.bh #vouchers-panel .voucher-brand-label small{position:relative;text-shadow:none}
+body.profile-page.bh #vouchers-panel .voucher-brand-label strong{display:block;width:100%;font-size:22px;line-height:22px;font-weight:800;letter-spacing:-.03em;text-align:center}
+body.profile-page.bh #vouchers-panel .voucher-brand-label small{display:block;width:100%;font-size:10px;font-weight:700;line-height:11px;text-align:center;white-space:nowrap}
+body.profile-page.bh #vouchers-panel .voucher-card-body{position:relative;display:flex;flex-direction:column;min-width:0;padding:13px 13px 11px 16px}
+body.profile-page.bh #vouchers-panel .voucher-terms-button{
+  position:absolute;
+  top:9px;
+  right:9px;
+  padding:4px 8px;
+  border:1px solid #e5b77f;
+  border-radius:5px;
+  background:#fffaf4;
+  color:#8b4b24;
+  font:600 10px/1.2 Poppins,sans-serif;
+  cursor:pointer;
+}
+body.profile-page.bh #vouchers-panel .voucher-terms-button:hover{background:#fff0de}
+body.profile-page.bh #vouchers-panel .voucher-card h3{max-width:calc(100% - 45px);margin:0;color:#3f2416;font-size:17px;line-height:1.15}
+body.profile-page.bh #vouchers-panel .voucher-minimum{margin:4px 0 6px;color:#51443c;font-size:11px}
+body.profile-page.bh #vouchers-panel .voucher-description{display:-webkit-box;margin:0;overflow:hidden;color:#786b62;font-size:10px;line-height:1.4;-webkit-box-orient:vertical;-webkit-line-clamp:2}
+body.profile-page.bh #vouchers-panel .voucher-tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px;padding-right:2px}
+body.profile-page.bh #vouchers-panel .voucher-tags span{max-width:100%;padding:4px 7px;overflow:hidden;border:1px solid #ead7c0;border-radius:4px;background:#fff7ed;color:#6c4c37;font-size:9px;line-height:1.2;text-overflow:ellipsis;white-space:nowrap}
+body.profile-page.bh #vouchers-panel .voucher-card-footer{display:flex;align-items:center;gap:8px;margin-top:auto;padding-top:9px}
+body.profile-page.bh #vouchers-panel .voucher-validity{display:flex;align-items:center;gap:3px;min-width:0;overflow:hidden;color:#877a71;font-size:9px;line-height:1.2;white-space:nowrap;text-overflow:ellipsis}
+body.profile-page.bh #vouchers-panel .voucher-validity .material-symbols-outlined{font-size:13px}
+body.profile-page.bh #vouchers-panel .voucher-claim{
+  display:inline-flex;
+  flex:0 0 auto;
+  align-items:center;
+  justify-content:center;
+  min-width:68px;
+  min-height:29px;
+  margin-left:auto;
+  padding:6px 10px;
+  border:1px solid #58301d;
+  border-radius:5px;
+  background:#58301d;
+  color:#fff;
+  font:600 10px/1 Poppins,sans-serif;
+  text-decoration:none;
+  cursor:pointer;
+}
+body.profile-page.bh #vouchers-panel .voucher-claim:hover{background:#6a3c25}
+body.profile-page.bh #vouchers-panel .voucher-use{background:#fffaf4;color:#6a3c25}
+body.profile-page.bh #vouchers-panel .voucher-use:hover{background:#f8e9d7}
+body.profile-page.bh #vouchers-panel .vouchers-empty{padding:70px 20px 50px;text-align:center;color:#81766f}
+body.profile-page.bh #vouchers-panel .vouchers-empty[hidden]{display:none}
+body.profile-page.bh #vouchers-panel .vouchers-empty>.material-symbols-outlined{font-size:55px;color:#d8c9bd}
+body.profile-page.bh #vouchers-panel .vouchers-empty h2{margin:10px 0 5px;color:#342720;font-size:19px}
+body.profile-page.bh #vouchers-panel .vouchers-empty p{margin:0;font-size:12px}
+body.profile-page.bh .profile-voucher-dialog{
+  width:min(460px,calc(100% - 28px));
+  padding:0;
+  border:1px solid #ded3c8;
+  border-radius:10px;
+  background:#fff;
+  color:#2b1d16;
+  box-shadow:0 24px 60px rgba(43,29,22,.2);
+}
+body.profile-page.bh .profile-voucher-dialog::backdrop{background:rgba(43,29,22,.38)}
+body.profile-page.bh .profile-voucher-dialog .voucher-dialog-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding:20px 20px 14px;border-bottom:1px solid #eee6df}
+body.profile-page.bh .profile-voucher-dialog .voucher-dialog-head small{color:#a45e25;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+body.profile-page.bh .profile-voucher-dialog .voucher-dialog-head h2{margin:3px 0 0;font-size:20px}
+body.profile-page.bh .profile-voucher-dialog .voucher-dialog-close{display:grid;width:32px;height:32px;place-items:center;border:0;border-radius:50%;background:#f6f2ee;color:#4c372c;cursor:pointer}
+body.profile-page.bh .profile-voucher-dialog>p{margin:0;padding:18px 20px;color:#63564e;font-size:12px;line-height:1.7}
+body.profile-page.bh .profile-voucher-dialog .voucher-dialog-done{display:block;min-width:100px;margin:0 20px 20px auto;padding:9px 15px;border:0;border-radius:6px;background:#542f1d;color:#fff;font:600 11px/1.2 Poppins,sans-serif;cursor:pointer}
+body.profile-page.bh .voucher-toast{position:fixed;right:22px;bottom:22px;z-index:80;max-width:min(360px,calc(100% - 44px));padding:10px 14px;border-radius:6px;background:#2d1a11;color:#fff;font-size:11px;opacity:0;pointer-events:none;transform:translateY(7px);transition:.18s ease}
+body.profile-page.bh .voucher-toast.show{opacity:1;transform:none}
+
+@media (max-width:1200px){
+  body.profile-page.bh #vouchers-panel{padding:24px 24px 28px}
+  body.profile-page.bh #vouchers-panel .voucher-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:800px){
+  body.profile-page.bh #vouchers-panel{padding:22px 18px 26px}
+  body.profile-page.bh #vouchers-panel .vouchers-head h1{font-size:28px}
+  body.profile-page.bh #vouchers-panel .vouchers-head p{font-size:12px}
+  body.profile-page.bh #vouchers-panel .voucher-banner-art{flex-basis:104px;width:104px}
+  body.profile-page.bh #vouchers-panel .voucher-banner-copy{padding-right:14px}
+  body.profile-page.bh #vouchers-panel .voucher-banner h2{font-size:16px}
+  body.profile-page.bh #vouchers-panel .voucher-banner p{font-size:11px}
+  body.profile-page.bh #vouchers-panel .voucher-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+  body.profile-page.bh #vouchers-panel .voucher-card{grid-template-columns:92px minmax(0,1fr);min-height:150px}
+  body.profile-page.bh #vouchers-panel .voucher-card-body{padding:11px 10px 10px 12px}
+  body.profile-page.bh #vouchers-panel .voucher-card h3{font-size:15px}
+  body.profile-page.bh #vouchers-panel .voucher-minimum{font-size:10px}
+  body.profile-page.bh #vouchers-panel .voucher-description{font-size:9px}
+  body.profile-page.bh #vouchers-panel .voucher-tags span{font-size:8px}
+  body.profile-page.bh #vouchers-panel .voucher-validity{font-size:8px}
+}
+@media (max-width:600px){
+  body.profile-page.bh #vouchers-panel{padding:20px 14px 24px;border-radius:7px}
+  body.profile-page.bh #vouchers-panel .vouchers-head{align-items:flex-start;flex-direction:column;gap:12px}
+  body.profile-page.bh #vouchers-panel .vouchers-title-icon{width:45px;height:45px}
+  body.profile-page.bh #vouchers-panel .vouchers-head h1{font-size:25px}
+  body.profile-page.bh #vouchers-panel .vouchers-head p{font-size:11px;line-height:1.45}
+  body.profile-page.bh #vouchers-panel .voucher-claimed-count{margin-top:0;font-size:10px}
+  body.profile-page.bh #vouchers-panel .voucher-banner{align-items:flex-start;min-height:0;padding:12px 10px}
+  body.profile-page.bh #vouchers-panel .voucher-banner-art{flex:0 0 68px;width:68px;height:68px}
+  body.profile-page.bh #vouchers-panel .voucher-banner-art img{width:62px;height:62px;object-fit:cover}
+  body.profile-page.bh #vouchers-panel .voucher-banner-copy{padding:0}
+  body.profile-page.bh #vouchers-panel .voucher-banner h2{font-size:14px;line-height:1.25}
+  body.profile-page.bh #vouchers-panel .voucher-banner p{font-size:10px}
+  body.profile-page.bh #vouchers-panel .voucher-tabs{margin-bottom:18px}
+  body.profile-page.bh #vouchers-panel .voucher-filter{min-height:35px;padding:0 11px;font-size:10px}
+  body.profile-page.bh #vouchers-panel .voucher-grid{grid-template-columns:1fr}
+  body.profile-page.bh #vouchers-panel .voucher-card{grid-template-columns:100px minmax(0,1fr);min-height:148px}
+  body.profile-page.bh #vouchers-panel .voucher-brand-label{height:36px;min-height:36px}
+  body.profile-page.bh #vouchers-panel .voucher-brand-label strong{font-size:20px;line-height:20px}
+  body.profile-page.bh #vouchers-panel .voucher-brand-label small{font-size:9px;line-height:10px}
+  body.profile-page.bh #vouchers-panel .voucher-card h3{font-size:15px}
+  body.profile-page.bh #vouchers-panel .voucher-minimum{font-size:10px}
+  body.profile-page.bh #vouchers-panel .voucher-description{font-size:9px}
+  body.profile-page.bh #vouchers-panel .voucher-validity{font-size:8.5px}
+}
+
+/* Voucher layout guard: keep filters above the catalog even when another
+   account-panel rule or a stale preview stylesheet supplies a grid layout. */
+body.profile-page.bh #vouchers-panel:not([hidden]){display:block!important}
+body.profile-page.bh #vouchers-panel > .voucher-content-stack{
+  display:block!important;
+  width:100%!important;
+  min-width:0;
+  grid-column:1 / -1!important;
+  clear:both!important;
+  float:none!important;
+  position:static!important;
+}
+body.profile-page.bh #vouchers-panel .voucher-content-stack > .voucher-tabs{
+  display:flex!important;
+  flex-direction:row!important;
+  align-items:center!important;
+  align-content:flex-start!important;
+  width:100%!important;
+  height:auto!important;
+  min-height:39px;
+  flex-wrap:nowrap;
+}
+body.profile-page.bh #vouchers-panel .voucher-content-stack > .voucher-tabs .voucher-filter{
+  display:inline-flex!important;
+  flex:0 0 auto!important;
+  width:auto!important;
+  height:auto!important;
+  align-self:center!important;
+}
+body.profile-page.bh #vouchers-panel .voucher-content-stack > #voucher-list{
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr);
+  gap:28px!important;
+  width:100%!important;
+  min-width:0;
+  height:auto!important;
+  clear:both!important;
+  float:none!important;
+  position:static!important;
+}
+body.profile-page.bh #vouchers-panel .voucher-content-stack > #voucher-list .voucher-section{display:block!important;width:100%;clear:both!important;float:none!important;position:static!important}
+
+/* Order tracking reference composition: keep the existing preview workflow,
+   but present the selected order, timeline, address, and delivery estimate as
+   one calm buyer-facing tracking surface. */
+body.profile-page.bh #tracking-panel{
+  min-height:0;
+  padding:28px 26px 30px;
+  border:1px solid #e6e1dc;
+  border-radius:10px;
+  background:#fff;
+  box-shadow:0 2px 10px rgba(65,39,24,.035);
+}
+body.profile-page.bh #tracking-panel .tracking-head{
+  align-items:flex-start;
+  margin:0;
+  padding:0 0 22px;
+  border-bottom:1px solid #ebe5df;
+}
+body.profile-page.bh #tracking-panel .tracking-back{
+  gap:7px;
+  padding:0;
+  color:#2b1d16;
+  font-size:16px;
+  font-weight:500;
+}
+body.profile-page.bh #tracking-panel .tracking-back .material-symbols-outlined{font-size:25px}
+body.profile-page.bh #tracking-panel .tracking-head h1{
+  margin:11px 0 2px;
+  color:#171310;
+  font-size:30px;
+  line-height:1.15;
+  letter-spacing:-.035em;
+}
+body.profile-page.bh #tracking-panel .tracking-head p{color:#5f5752;font-size:16px;line-height:1.45}
+body.profile-page.bh #tracking-panel .tracking-order-id{padding-top:4px;color:#5f5752;font-size:15px;font-weight:500}
+body.profile-page.bh #tracking-panel .tracking-summary{
+  grid-template-columns:88px minmax(0,1fr) auto;
+  min-height:114px;
+  margin-top:22px;
+  padding:14px 20px;
+  border:1px solid #e7dfd7;
+  border-radius:10px;
+  background:#fffdfb;
+}
+body.profile-page.bh #tracking-panel .tracking-summary img{width:84px;height:84px;border-color:#e7dfd7;border-radius:9px;background:#fff;object-fit:contain}
+body.profile-page.bh #tracking-panel .tracking-summary span{font-size:14px;color:#5f5752}
+body.profile-page.bh #tracking-panel .tracking-summary h2{margin:3px 0 2px;color:#171310;font-size:24px;line-height:1.2;letter-spacing:-.03em}
+body.profile-page.bh #tracking-panel .tracking-summary p{font-size:14px;color:#6e6660}
+body.profile-page.bh #tracking-panel .tracking-summary>strong{color:#6f3b20;font-size:20px}
+body.profile-page.bh #tracking-panel .tracking-grid{
+  grid-template-columns:minmax(0,1.5fr) minmax(320px,1fr);
+  gap:20px;
+  margin-top:22px;
+}
+body.profile-page.bh #tracking-panel .tracking-timeline,
+body.profile-page.bh #tracking-panel .tracking-address{
+  padding:20px;
+  border:1px solid #e7dfd7;
+  border-radius:10px;
+  background:#fff;
+}
+body.profile-page.bh #tracking-panel .tracking-timeline h3,
+body.profile-page.bh #tracking-panel .tracking-address h3{
+  margin:0 0 22px;
+  color:#171310;
+  font-size:20px;
+  line-height:1.25;
+}
+body.profile-page.bh #tracking-panel .tracking-section-title{display:flex;align-items:center;gap:9px}
+body.profile-page.bh #tracking-panel .tracking-section-title>.material-symbols-outlined{color:#6f3b20;font-size:27px}
+body.profile-page.bh #tracking-panel .tracking-step{
+  grid-template-columns:46px minmax(0,1fr);
+  gap:13px;
+  min-height:78px;
+  color:#827a74;
+}
+body.profile-page.bh #tracking-panel .tracking-step:not(:last-child):before{
+  left:19px;
+  top:40px;
+  width:2px;
+  height:calc(100% - 40px);
+  background:#d9d2cc;
+}
+body.profile-page.bh #tracking-panel .tracking-step.done:not(:last-child):before{background:#b97843}
+body.profile-page.bh #tracking-panel .tracking-dot{
+  width:40px;
+  height:40px;
+  border:2px solid #d7d0ca;
+  background:#fff;
+}
+body.profile-page.bh #tracking-panel .tracking-dot .material-symbols-outlined{font-size:21px}
+body.profile-page.bh #tracking-panel .tracking-step.done .tracking-dot{border-color:#c98246;background:#fff;color:#6f3b20}
+body.profile-page.bh #tracking-panel .tracking-step.current .tracking-dot{border-color:#6f3b20;background:#6f3b20;color:#fff}
+body.profile-page.bh #tracking-panel .tracking-step.current strong{color:#241812}
+body.profile-page.bh #tracking-panel .tracking-step strong{margin-top:1px;color:#28221e;font-size:16px;line-height:1.25}
+body.profile-page.bh #tracking-panel .tracking-step p{margin:3px 0 2px;color:#746b65;font-size:14px;line-height:1.35}
+body.profile-page.bh #tracking-panel .tracking-step small{color:#8a817b;font-size:12px;line-height:1.35}
+body.profile-page.bh #tracking-panel .tracking-address>strong{display:block;margin-top:0;color:#2b2521;font-size:15px}
+body.profile-page.bh #tracking-panel .tracking-address>p{margin:5px 0;color:#746b65;font-size:13px;line-height:1.55}
+body.profile-page.bh #tracking-panel .tracking-status-box{
+  align-items:center;
+  margin-top:22px;
+  padding:16px 18px;
+  border-radius:10px;
+  background:#fbf4ed;
+}
+body.profile-page.bh #tracking-panel .tracking-status-box span{color:#635a54;font-size:13px}
+body.profile-page.bh #tracking-panel .tracking-status-box strong{color:#6f3b20;font-size:15px}
+body.profile-page.bh #tracking-panel .tracking-estimate{
+  display:flex;
+  align-items:center;
+  gap:14px;
+  margin-top:20px;
+  padding:16px;
+  border:1px solid #eee5dc;
+  border-radius:10px;
+  background:#fffdfb;
+}
+body.profile-page.bh #tracking-panel .tracking-estimate-icon{
+  display:grid;
+  width:50px;
+  height:50px;
+  flex:0 0 50px;
+  place-items:center;
+  border-radius:50%;
+  background:#fbf0e5;
+  color:#6f3b20;
+  font-size:28px;
+}
+body.profile-page.bh #tracking-panel .tracking-estimate>div{min-width:0}
+body.profile-page.bh #tracking-panel .tracking-estimate>div>span{display:block;color:#635a54;font-size:13px}
+body.profile-page.bh #tracking-panel .tracking-estimate>div>strong{display:block;margin-top:2px;color:#6f3b20;font-size:18px;line-height:1.3}
+body.profile-page.bh #tracking-panel .tracking-estimate>div>p{margin:3px 0 0;color:#746b65;font-size:12px;line-height:1.45}
+
+@media (max-width:900px){
+  body.profile-page.bh #tracking-panel{padding:24px 22px 28px}
+  body.profile-page.bh #tracking-panel .tracking-grid{grid-template-columns:1fr}
+  body.profile-page.bh #tracking-panel .tracking-summary{grid-template-columns:72px minmax(0,1fr)}
+  body.profile-page.bh #tracking-panel .tracking-summary img{width:68px;height:68px}
+  body.profile-page.bh #tracking-panel .tracking-summary>strong{grid-column:2}
+}
+@media (max-width:600px){
+  body.profile-page.bh #tracking-panel{padding:20px 14px 24px;border-radius:7px}
+  body.profile-page.bh #tracking-panel .tracking-head{flex-direction:column;gap:8px;padding-bottom:18px}
+  body.profile-page.bh #tracking-panel .tracking-order-id{padding-top:0;font-size:12px}
+  body.profile-page.bh #tracking-panel .tracking-head h1{margin-top:9px;font-size:25px}
+  body.profile-page.bh #tracking-panel .tracking-head p{font-size:13px}
+  body.profile-page.bh #tracking-panel .tracking-summary{grid-template-columns:64px minmax(0,1fr);gap:10px;margin-top:18px;padding:12px}
+  body.profile-page.bh #tracking-panel .tracking-summary img{width:60px;height:60px}
+  body.profile-page.bh #tracking-panel .tracking-summary span{font-size:11px}
+  body.profile-page.bh #tracking-panel .tracking-summary h2{font-size:16px}
+  body.profile-page.bh #tracking-panel .tracking-summary p{font-size:11px}
+  body.profile-page.bh #tracking-panel .tracking-summary>strong{font-size:15px}
+  body.profile-page.bh #tracking-panel .tracking-timeline,
+  body.profile-page.bh #tracking-panel .tracking-address{padding:16px}
+  body.profile-page.bh #tracking-panel .tracking-timeline h3,
+  body.profile-page.bh #tracking-panel .tracking-address h3{margin-bottom:17px;font-size:17px}
+  body.profile-page.bh #tracking-panel .tracking-step{grid-template-columns:38px minmax(0,1fr);gap:10px;min-height:70px}
+  body.profile-page.bh #tracking-panel .tracking-step:not(:last-child):before{left:17px;top:34px;height:calc(100% - 34px)}
+  body.profile-page.bh #tracking-panel .tracking-dot{width:36px;height:36px}
+  body.profile-page.bh #tracking-panel .tracking-dot .material-symbols-outlined{font-size:19px}
+  body.profile-page.bh #tracking-panel .tracking-step strong{font-size:14px}
+  body.profile-page.bh #tracking-panel .tracking-step p{font-size:11px}
+  body.profile-page.bh #tracking-panel .tracking-step small{font-size:10px}
+  body.profile-page.bh #tracking-panel .tracking-status-box{padding:13px 14px}
+  body.profile-page.bh #tracking-panel .tracking-status-box span{font-size:11px}
+  body.profile-page.bh #tracking-panel .tracking-status-box strong{font-size:13px}
+  body.profile-page.bh #tracking-panel .tracking-estimate{padding:13px;gap:11px}
+  body.profile-page.bh #tracking-panel .tracking-estimate-icon{width:42px;height:42px;flex-basis:42px;font-size:23px}
+  body.profile-page.bh #tracking-panel .tracking-estimate>div>span{font-size:11px}
+  body.profile-page.bh #tracking-panel .tracking-estimate>div>strong{font-size:14px}
+  body.profile-page.bh #tracking-panel .tracking-estimate>div>p{font-size:10px}
+}

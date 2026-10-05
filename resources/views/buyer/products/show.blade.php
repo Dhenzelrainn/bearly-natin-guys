@@ -52,13 +52,10 @@
     </style>
 </head>
 <body class="bh catalog-detail-page">
-    <header class="header">
-        <a class="brand" href="{{ route('home') }}"><img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly"></a>
-        <div class="header-actions">
-            <a href="{{ route('cart.view') }}"><span class="material-symbols-outlined">shopping_cart</span><span>Cart</span></a>
-            <a class="account-action" href="{{ route('buyer.profile') }}"><span class="material-symbols-outlined">person</span><span>{{ $buyerName ?? auth()->user()->name }}</span></a>
-        </div>
-    </header>
+    @include('buyer.partials.buyer-header', [
+        'headerSearchInputId' => 'product-search-input',
+        'headerSearchAction' => route('products.index'),
+    ])
 
     <main class="catalog-detail-shell">
         <nav class="catalog-breadcrumb" aria-label="Breadcrumb">

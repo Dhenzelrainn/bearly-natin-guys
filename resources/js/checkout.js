@@ -13,7 +13,7 @@
   function selectedKeys() { try { const value = JSON.parse(localStorage.getItem(SELECTION_KEY) || '[]'); return Array.isArray(value) ? value : []; } catch { return []; } }
   function toast(message) { const element = $('checkout-toast'); element.textContent = message; element.classList.add('show'); clearTimeout(window.__checkoutToast); window.__checkoutToast = setTimeout(() => element.classList.remove('show'), 1700); }
   function subtotal() { return items.reduce((sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 1), 0); }
-  function syncShipping() { shipping = voucher?.shippingVoucher ? Math.max(0, shippingBase - Number(voucher.discount || 0)) : shippingBase; }
+  function syncShipping() { const shippingDiscount = voucher?.shippingVoucher ? voucher.shippingPercent ? Math.min(shippingBase, shippingBase * (voucher.shippingPercent / 100)) : Math.min(Number(voucher.discount || 0), shippingBase) : 0; shipping = Math.max(0, shippingBase - shippingDiscount); }
   function renderAddress(address) { const tag = $('address-default-tag'); if (tag) tag.hidden = !address?.isDefault; if (!address) return; $('address-name').textContent = address.name; $('address-phone').textContent = address.phone; $('address-text').textContent = [address.street, address.barangay, address.city, address.province, address.postal].filter(Boolean).join(', '); }
   async function loadAddresses() { try { const response = await fetch('/addresses/data', { headers: { 'Accept': 'application/json' } }); const result = await response.json(); addresses = Array.isArray(result.data) ? result.data : []; renderAddress(addresses.find(address => address.isDefault) || addresses[0]); } catch { addresses = []; } }
   function render() {
@@ -28,9 +28,26 @@
   $('change-shipping').onclick = () => choose('Choose Shipping Option', [{ label:'Standard Delivery', note:'₱50', price:50, days:'Estimated 3–7 days' }, { label:'Economy Delivery', note:'₱35', price:35, days:'Estimated 5–10 days' }, { label:'Express Delivery', note:'₱120', price:120, days:'Estimated 1–2 days' }], option => { shippingBase = option.price; syncShipping(); $('shipping-label').textContent = option.label; $('shipping-label').nextElementSibling.textContent = option.days; });
   $('voucher-btn').onclick = () => {
     let claimed = []; try { claimed = JSON.parse(localStorage.getItem(VOUCHER_KEY) || '[]'); } catch {}
-    const catalog = [{ id:'BEARLY50', label:'BEARLY50', note:'₱50 off · Min ₱399', discount:50, min:399 }, { id:'BEARLY100', label:'BEARLY100', note:'₱100 off · Min ₱799', discount:100, min:799 }, { id:'BEARLYSHIP', label:'BEARLYSHIP', note:'Free shipping up to ₱50 · Min ₱499', discount:50, min:499, shippingVoucher:true }, { id:'PAYDAY30', label:'PAYDAY30', note:'30% off up to ₱150 · Min ₱599', percent:30, cap:150, min:599 }];
+    const catalog = [
+      { id:'BEARLY50', label:'BEARLY50', note:'₱50 off · Min ₱399', discount:50, min:399 },
+      { id:'BEARLY100', label:'BEARLY100', note:'₱100 off · Min ₱799', discount:100, min:799 },
+      { id:'PAYDAY30', label:'PAYDAY30', note:'30% off up to ₱150 · Min ₱599', percent:30, cap:150, min:599 },
+      { id:'BEARLY30', label:'BEARLY30', note:'₱30 off · Min ₱300', discount:30, min:300 },
+      { id:'BEARLYSHIP', label:'BEARLYSHIP', note:'Free shipping up to ₱50 · Min ₱499', discount:50, min:499, shippingVoucher:true },
+      { id:'BEARLYSHIP50', label:'BEARLYSHIP50', note:'50% off shipping · Min ₱99', shippingPercent:50, min:99, shippingVoucher:true },
+      { id:'BEARLYSHIP30', label:'BEARLYSHIP30', note:'₱30 off shipping · Min ₱399', discount:30, min:399, shippingVoucher:true },
+      { id:'BEARLYELEC150', label:'BEARLYELEC150', note:'₱150 off · Min ₱1,500', discount:150, min:1500 },
+      { id:'BEARLYMENS100', label:'BEARLYMENS100', note:'₱100 off · Min ₱800', discount:100, min:800 },
+      { id:'BEARLYHOME80', label:'BEARLYHOME80', note:'₱80 off · Min ₱600', discount:80, min:600 },
+      { id:'SHOPHOME50', label:'SHOPHOME50', note:'₱50 off Bearly Home Store · Min ₱499', discount:50, min:499, shopVoucher:true },
+      { id:'SHOPTECH100', label:'SHOPTECH100', note:'₱100 off Tech Haven · Min ₱999', discount:100, min:999, shopVoucher:true },
+      { id:'SHOPSTYLE15', label:'SHOPSTYLE15', note:'15% off Everyday Style Shop · Min ₱799', percent:15, cap:150, min:799, shopVoucher:true },
+      { id:'BEARLYNEW60', label:'BEARLYNEW60', note:'₱60 off · Min ₱600', discount:60, min:600 },
+      { id:'BEARLYNEW120', label:'BEARLYNEW120', note:'₱120 off · Min ₱1,200', discount:120, min:1200 },
+      { id:'BEARLYNEW200', label:'BEARLYNEW200', note:'₱200 off · Min ₱2,000', discount:200, min:2000 },
+    ];
     const eligible = catalog.filter(option => claimed.includes(option.id)); if (!eligible.length) { toast('Claim a preview voucher from My Vouchers first.'); setTimeout(() => window.location.href = '/profile#vouchers', 700); return; }
-     choose('Select Bearly Voucher', [{ label:'No Voucher', note:'₱0 off', discount:0 }, ...eligible], option => { if (!option.id) { discount = 0; voucher = null; syncShipping(); return; } if (subtotal() < option.min) { discount = 0; voucher = null; syncShipping(); toast(`Minimum spend is ₱${option.min}.`); return; } voucher = option; discount = option.shippingVoucher ? 0 : option.percent ? Math.min(option.cap, subtotal() * (option.percent / 100)) : Math.min(option.discount, subtotal()); syncShipping(); });
+     choose('Select Bearly Voucher', [{ label:'No Voucher', note:'₱0 off', discount:0 }, ...eligible], option => { if (!option.id) { discount = 0; voucher = null; syncShipping(); return; } if (subtotal() < option.min) { discount = 0; voucher = null; syncShipping(); toast(`Minimum spend is ₱${option.min}.`); return; } voucher = option; discount = option.shippingVoucher ? 0 : option.percent ? Math.min(option.cap, subtotal() * (option.percent / 100)) : Math.min(option.discount || 0, subtotal()); syncShipping(); });
   };
   $('change-address').onclick = () => { if (!addresses.length) { window.location.href = '/addresses'; return; } choose('Choose Delivery Address', addresses.map(address => ({ ...address, label: `${address.name} · ${address.phone}`, note: [address.street, address.barangay, address.city, address.province, address.postal].filter(Boolean).join(', ') })), renderAddress); };
   $('place-order').onclick = () => toast('Checkout preview only. No order or payment was created.');

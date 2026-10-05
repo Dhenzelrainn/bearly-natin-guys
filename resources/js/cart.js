@@ -2,6 +2,23 @@
     const PREVIEW_KEY =
         window.bearlyStorageKey?.('preview-cart') ||
         'bearly-preview-cart-v1';
+    const LIKES_KEY =
+        window.bearlyStorageKey?.('preview-wishlist') ||
+        'bearly-preview-wishlist-v1';
+
+    const likeCategoryAliases = {
+        'electronics-gadgets': 'electronics-and-gadgets',
+        'womens-apparel': 'women-s-apparel',
+        'mens-apparel': 'men-s-apparel',
+        'kids-baby': 'kids-and-baby',
+        'home-garden': 'home-and-garden',
+        'sports-outdoors': 'sports-and-outdoors',
+        'health-beauty': 'health-and-beauty',
+        'books-media': 'books-and-media',
+        'jewelry-watches': 'jewelry-and-watches',
+        'foods-gourmet': 'food-and-gourmet',
+        'furniture-office-equipment': 'furniture-and-office-equipment',
+    };
 
     const $ = id => document.getElementById(id);
 
@@ -26,6 +43,67 @@
                     "'": '&#39;',
                 })[character]
         );
+
+    function readLikes() {
+        try {
+            const value = JSON.parse(localStorage.getItem(LIKES_KEY) || '[]');
+
+            return Array.isArray(value) ? value.map(String) : [];
+        } catch {
+            return [];
+        }
+    }
+
+    function writeLikes(values) {
+        try {
+            localStorage.setItem(LIKES_KEY, JSON.stringify([...new Set(values)]));
+            window.dispatchEvent(new CustomEvent('bearly:likes-changed'));
+        } catch {
+            // Likes are a browser-scoped preview feature.
+        }
+    }
+
+    function categorySlug(value) {
+        const normalized = String(value || '')
+            .trim()
+            .toLowerCase()
+            .replace(/&/g, 'and')
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-|-$/g, '');
+
+        return likeCategoryAliases[normalized] || normalized;
+    }
+
+    function likeKeyForItem(item) {
+        const candidates = [item.like_key, item.product_id, item.key]
+            .map(value => String(value || '').replace(/^preview:/, '').replace(/^wishlist-/, ''))
+            .filter(Boolean);
+
+        for (const candidate of candidates) {
+            const legacy = candidate.match(/^(?:home|flash|sales)-(.+)-(\d+)$/);
+
+            if (legacy) return `${legacy[1]}:${legacy[2]}`;
+            if (/^[^:]+:\d+$/.test(candidate)) return candidate;
+
+            if (/^\d+$/.test(candidate) && item.category) {
+                return `${categorySlug(item.category)}:${candidate}`;
+            }
+        }
+
+        return candidates[0] || '';
+    }
+
+    function likeButtonMarkup(item) {
+        const key = likeKeyForItem(item);
+        const isLiked = key ? readLikes().includes(key) : false;
+
+        return `
+            <button type="button" class="cart-like${isLiked ? ' is-added' : ''}" data-add-like aria-pressed="${isLiked ? 'true' : 'false'}" aria-label="${isLiked ? 'Already added to' : 'Add'} ${escapeHtml(item.name)} ${isLiked ? 'in' : 'to'} My Likes">
+                <span class="material-symbols-outlined" aria-hidden="true">${isLiked ? 'favorite' : 'favorite_border'}</span>
+                <span class="cart-like-label">${isLiked ? 'In My Likes' : 'Add to Likes'}</span>
+            </button>
+        `;
+    }
 
     const imageUrl = value => {
         const image = String(value || '').trim();
@@ -207,7 +285,8 @@
                 </div>
                 <div class="line-total"><span class="cart-field-label">Total Price</span><strong>${money(Number(item.price || 0) * quantity)}</strong></div>
                 <div class="action-cell">
-                    <button type="button" data-remove>Remove</button>
+                    ${likeButtonMarkup(item)}
+                    <button type="button" class="cart-remove" data-remove>Remove</button>
                 </div>
             </div>
         `;
@@ -348,6 +427,44 @@
         }
     }
 
+    function updateLikeButton(button, item, liked) {
+        if (!button) return;
+
+        button.classList.toggle('is-added', liked);
+        button.setAttribute('aria-pressed', String(liked));
+        button.setAttribute(
+            'aria-label',
+            `${liked ? 'Already added to' : 'Add'} ${item.name} ${liked ? 'in' : 'to'} My Likes`
+        );
+
+        const icon = button.querySelector('.material-symbols-outlined');
+        const label = button.querySelector('.cart-like-label');
+
+        if (icon) icon.textContent = liked ? 'favorite' : 'favorite_border';
+        if (label) label.textContent = liked ? 'In My Likes' : 'Add to Likes';
+    }
+
+    function addToLikes(item, button) {
+        const key = likeKeyForItem(item);
+
+        if (!key) {
+            toast('This item cannot be added to My Likes.');
+            return;
+        }
+
+        const saved = readLikes();
+
+        if (saved.includes(key)) {
+            updateLikeButton(button, item, true);
+            toast('This item is already in My Likes.');
+            return;
+        }
+
+        writeLikes([...saved, key]);
+        updateLikeButton(button, item, true);
+        toast('Added to My Likes.');
+    }
+
     $('cart-list').addEventListener('click', event => {
         const row = event.target.closest('.cart-row');
         if (!row) return;
@@ -356,6 +473,11 @@
             value => itemKey(value) === row.dataset.key
         );
         if (!item) return;
+
+        if (event.target.closest('[data-add-like]')) {
+            addToLikes(item, event.target.closest('[data-add-like]'));
+            return;
+        }
 
         if (event.target.closest('[data-plus]')) {
             return updateItem(

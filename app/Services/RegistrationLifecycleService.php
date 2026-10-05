@@ -21,6 +21,11 @@ use RuntimeException;
 
 class RegistrationLifecycleService
 {
+    public function __construct(
+        private readonly SellerProductService $sellerProductService,
+    ) {
+    }
+
     /**
      * Write the normalized records that mirror one pending registration.
      *
@@ -525,7 +530,7 @@ class RegistrationLifecycleService
         ?AccountApplication $application
     ): void {
         if ($user->role === UserRole::Seller->value) {
-            SellerProfile::updateOrCreate(
+            $sellerProfile = SellerProfile::updateOrCreate(
                 ['user_id' => $user->id],
                 [
                     'application_id' => $application?->id,
@@ -539,6 +544,11 @@ class RegistrationLifecycleService
                         $user->addresses()->latest('id')->value('id'),
                     'approved_at' => now(),
                 ]
+            );
+
+            $this->sellerProductService->storeForProfile(
+                $sellerProfile,
+                $user,
             );
 
             return;

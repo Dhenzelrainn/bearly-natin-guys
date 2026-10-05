@@ -9,27 +9,19 @@
 @vite(['resources/css/buyer.css','resources/css/cart.css','resources/js/cart.js'])
 </head>
 <body class="bh cart-page">
-<header class="header">
-<a class="brand" href="{{ url('/home') }}"><img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly"></a>
-<form class="search cart-search" action="{{ route('products.index') }}" method="get" role="search">
-<label class="sr-only" for="cart-search-input">Search products</label>
-<input id="cart-search-input" name="search" type="search" placeholder="Search for products, brands and more..." maxlength="120" autocomplete="off">
-<button type="submit" aria-label="Search"><span class="material-symbols-outlined" aria-hidden="true">search</span></button>
-</form>
-<nav class="header-actions">
-<a href="{{ url('/profile#notifications') }}" class="notification-header-link"><span class="material-symbols-outlined">notifications</span><span>Notifications</span><span class="notification-badge" data-notification-badge>0</span></a>
-<button type="button" onclick="window.location.href='{{ url('/profile#tracking') }}'"><span class="material-symbols-outlined">receipt_long</span><span>Orders</span></button>
-<a href="{{ url('/chat') }}"><span class="material-symbols-outlined">chat_bubble</span><span>Chat</span></a>
-<a class="cart-active" href="{{ url('/cart') }}"><span class="material-symbols-outlined">shopping_cart</span><span>Cart</span><b id="cart-header-count" class="cart-badge" hidden aria-label="Cart item count">0</b></a>
-<a class="account-action" href="{{ url('/profile') }}"><span class="material-symbols-outlined">person</span><span>{{ $buyerName }}</span></a>
-</nav>
-</header>
+@include('buyer.partials.buyer-header', [
+    'headerSearchFormId' => 'cart-search-form',
+    'headerSearchInputId' => 'cart-search-input',
+    'headerSearchAction' => route('products.index'),
+    'headerSearchPlaceholder' => 'Search for products, brands or sellers...',
+    'headerActive' => 'cart',
+    'headerCartBadgeId' => 'cart-header-count',
+])
 
 <main class="cart-shell">
 <div class="cart-page-top">
 <a class="cart-back" href="javascript:history.back()" aria-label="Back"><span class="material-symbols-outlined">arrow_back</span></a>
 <div><h1>Shopping Cart</h1><p><span id="cart-selected-count">0 items</span> selected (<span id="cart-count">0 items</span> in your cart)</p></div>
-<a class="cart-wishlist-button" href="{{ url('/wishlist') }}"><span class="material-symbols-outlined" aria-hidden="true">favorite</span> View Wishlist</a>
 </div>
 
 <section id="cart-content" hidden>
@@ -68,7 +60,7 @@
 
 <section id="cart-empty" class="cart-empty">
 <span class="material-symbols-outlined">shopping_cart</span><h2>Your cart is empty</h2>
-<p>Add products to your cart and they will appear here.</p><div class="cart-empty-actions"><a href="{{ url('/home') }}">Continue Shopping</a><a href="{{ url('/wishlist') }}" class="empty-wishlist-link">View Wishlist</a></div>
+<p>Add products to your cart and they will appear here.</p><div class="cart-empty-actions"><a href="{{ url('/home') }}">Continue Shopping</a></div>
 </section>
 </main>
 <div id="cart-toast" class="cart-toast" role="status"></div>

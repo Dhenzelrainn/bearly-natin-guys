@@ -11,17 +11,7 @@
 
 </head>
 <body class="bh wl-page">
-<header class="header">
-<a class="brand" href="{{ url('/home') }}"><img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly" width="192" height="64"></a>
-<div style="flex:1"></div>
-<nav class="header-actions" aria-label="Account">
-<a href="{{ url('/profile#notifications') }}" class="notification-header-link"><span class="material-symbols-outlined">notifications</span><span>Notifications</span><span class="notification-badge" data-notification-badge>0</span></a>
-<button type="button" onclick="window.location.href='{{ url('/profile#tracking') }}'"><span class="material-symbols-outlined">receipt_long</span><span>Orders</span></button>
-<button data-info="chat"><span class="material-symbols-outlined">chat_bubble</span><span>Chat</span></button>
-<a href="{{ url('/cart') }}"><span class="material-symbols-outlined">shopping_cart</span><span>Cart</span></a>
-<a class="account-action" href="{{ url('/profile') }}"><span class="material-symbols-outlined">person</span><span>{{ $buyerName }}</span></a>
-</nav>
-</header>
+@include('buyer.partials.buyer-header')
 <main class="wl-wrap">
 <div class="wl-top">
 <a class="wl-back" href="javascript:history.back()" aria-label="Go back"><span class="material-symbols-outlined">arrow_back</span></a>

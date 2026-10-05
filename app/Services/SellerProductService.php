@@ -33,30 +33,56 @@ class SellerProductService
 
     public function storeFor(User $user): Store
     {
-        $profile = $user->sellerProfile;
+        $profile = $user->sellerProfile()->first();
 
         if (! $profile) {
             throw (new \Illuminate\Database\Eloquent\ModelNotFoundException)
                 ->setModel(SellerProfile::class, [$user->id]);
         }
 
-        $store = $profile->store;
+        return $this->storeForProfile($profile, $user);
+    }
+
+    /**
+     * Resolve the one Store owned by a SellerProfile, creating the initial
+     * draft Store when an approved/legacy Seller does not have one yet.
+     */
+    public function storeForProfile(
+        SellerProfile $profile,
+        ?User $user = null,
+    ): Store {
+        $store = $profile->store()->first();
 
         if ($store) {
             return $store;
         }
 
-        $name = trim((string) ($user->business_name ?: $profile->legal_business_name ?: 'Bearly Store'));
+        $user ??= $profile->user()->first();
+        $name = trim((string) ($user?->business_name ?: $profile->legal_business_name ?: 'Bearly Store'));
         $baseSlug = Str::slug($name) ?: 'bearly-store';
-        $slug = $baseSlug.'-'.$profile->id;
+        $slug = $this->uniqueStoreSlug($baseSlug, (int) $profile->id);
 
         return $profile->store()->create([
             'name' => $name,
             'slug' => $slug,
-            'contact_email' => $user->email,
-            'contact_phone' => $user->contact_number ?: $user->phone,
+            'contact_email' => $user?->email,
+            'contact_phone' => $user?->contact_number ?: $user?->phone,
             'publication_status' => 'draft',
         ]);
+    }
+
+    private function uniqueStoreSlug(string $baseSlug, int $profileId): string
+    {
+        $root = $baseSlug.'-'.$profileId;
+        $slug = $root;
+        $suffix = 2;
+
+        while (Store::withTrashed()->where('slug', $slug)->exists()) {
+            $slug = $root.'-'.$suffix;
+            $suffix++;
+        }
+
+        return $slug;
     }
 
     public function categoryFor(User $user): Category

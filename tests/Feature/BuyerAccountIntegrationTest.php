@@ -25,6 +25,8 @@ class BuyerAccountIntegrationTest extends TestCase
     {
         $this->get('/profile')->assertRedirect('/login');
         $this->get('/addresses')->assertRedirect('/login');
+        $this->get('/vouchers')->assertRedirect('/login');
+        $this->get('/chat')->assertRedirect('/login');
 
         $buyer = $this->makeBuyer('buyer@example.test', 'Ava Buyer');
 
@@ -33,7 +35,47 @@ class BuyerAccountIntegrationTest extends TestCase
             ->assertOk()
             ->assertSee('Ava Buyer')
             ->assertSee('buyer@example.test')
+            ->assertSee('Personal Information')
+            ->assertSee('Profile Photo')
+            ->assertSee('My Likes')
+            ->assertSee('id="likes-category-tabs"', false)
+            ->assertSee('id="likes-sort"', false)
+            ->assertSee('You may also like')
+            ->assertSee('href="'.url('/home#results').'"', false)
+             ->assertSee('My Vouchers')
+             ->assertSee('images/vouchers/Bearly-voucher-icon.png', false)
+             ->assertSee('data-notification-trigger', false)
+             ->assertSee('id="buyer-notification-popover"', false)
+             ->assertSee('View all notifications')
+             ->assertSee('Edit Profile')
+            ->assertSee('Save Changes')
             ->assertDontSee('Mia Santos');
+
+        $this->actingAs($buyer)
+            ->get('/home')
+            ->assertOk()
+             ->assertSee('"wishlist_key":"pet-supplies:1"', false)
+             ->assertSee('data-notification-trigger', false)
+             ->assertSee('id="buyer-notification-popover"', false)
+             ->assertSee('href="'.url('/profile#vouchers').'"', false)
+            ->assertSee('href="'.url('/profile?voucher=shipping#vouchers').'"', false);
+
+        $this->actingAs($buyer)
+            ->get('/vouchers')
+            ->assertRedirect('/profile#vouchers');
+
+        $this->actingAs($buyer)
+            ->get('/cart')
+            ->assertOk()
+            ->assertDontSee('View Wishlist');
+
+        $this->actingAs($buyer)
+            ->get('/chat')
+            ->assertOk()
+            ->assertSee('Message your sellers here.')
+            ->assertSee('data-chat-filter', false)
+            ->assertSee('data-chat-attachment-button', false)
+            ->assertSee('data-chat-emoji', false);
     }
 
     public function test_profile_updates_are_persisted_for_the_authenticated_buyer(): void

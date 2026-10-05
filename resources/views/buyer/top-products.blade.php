@@ -37,25 +37,13 @@ $moreRankingCategories = array_slice($rankingCategoryItems, 6);
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Material+Symbols+Outlined:wght@400&display=swap" rel="stylesheet">
 @vite(['resources/css/buyer.css','resources/js/buyer.js'])
 @include('buyer.partials.account-context-script')</head>
-<body class="bh top-products-page" data-ranking-page data-ranking-mode="popular" data-default-category="men-s-apparel"><header class="header">
-    <a class="brand" href="{{ url('/home') }}" aria-label="Bearly home"><img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly" width="192" height="64"></a>
-
-    <form class="search" id="search-form" role="search" action="{{ url('/home') }}" method="get">
-        <label class="sr-only" for="search-category">Search category</label>
-         <select id="search-category" name="category"><option value="">All categories</option>@foreach($categoryProductSources as $slug => $source)<option value="{{ $slug }}">{{ $source['name'] }}</option>@endforeach</select>
-        <label class="sr-only" for="search-input">Search products</label>
-         <input id="search-input" name="search" type="search" placeholder="Search for anything on Bearly" maxlength="120" autocomplete="off">
-        <button type="submit" aria-label="Search"><span class="material-symbols-outlined" aria-hidden="true">search</span></button>
-    </form>
-
-    <nav class="header-actions" aria-label="Account">
-        <a href="{{ url('/profile#notifications') }}" class="notification-header-link"><span class="material-symbols-outlined" aria-hidden="true">notifications</span><span>Notifications</span><span class="notification-badge" data-notification-badge>0</span></a>
-        <a href="{{ url('/profile#tracking') }}"><span class="material-symbols-outlined" aria-hidden="true">receipt_long</span><span>Orders</span></a>
-        <a href="{{ url('/chat') }}"><span class="material-symbols-outlined" aria-hidden="true">chat_bubble</span><span>Chat</span></a>
-        <a href="{{ url('/cart') }}"><span class="material-symbols-outlined" aria-hidden="true">shopping_cart</span><span>Cart</span></a>
-        <a class="account-action" href="{{ url('/profile') }}" aria-label="Open {{ $buyerName }} profile"><span class="material-symbols-outlined" aria-hidden="true">person</span><span>{{ $buyerName }}</span></a>
-    </nav>
-</header>
+<body class="bh top-products-page" data-ranking-page data-ranking-mode="popular" data-default-category="men-s-apparel">
+@include('buyer.partials.buyer-header', [
+    'headerSearchFormId' => 'search-form',
+    'headerSearchInputId' => 'search-input',
+    'headerSearchCategories' => $categoryProductSources,
+    'headerSearchPlaceholder' => 'Search for products, brands or sellers...',
+])
 <main class="top-products-main">
 <a class="flash-back" href="{{ url('/home') }}"><span class="material-symbols-outlined">arrow_back</span> Back to Home</a>
 <section class="top-products-hero"><div><p class="top-products-kicker"><span class="material-symbols-outlined">workspace_premium</span> Bearly favorites</p><h1>Top Products</h1><p>Popular picks from the selected Bearly category, ranked using demo ratings and buyer activity for this frontend prototype.</p></div><div class="top-products-trophy"><span class="material-symbols-outlined">emoji_events</span><strong>10</strong><small>top picks per category</small></div></section>

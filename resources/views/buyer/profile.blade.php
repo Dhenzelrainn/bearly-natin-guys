@@ -10,23 +10,23 @@
     @vite(['resources/css/buyer.css','resources/css/profile.css','resources/css/addresses.css','resources/css/bearly-chat.css','resources/js/profile.js','resources/js/account-addresses.js','resources/js/my-likes.js','resources/js/my-purchases.js','resources/js/reviews-ratings.js','resources/js/bearly-chat.js'])
 </head>
 <body class="bh profile-page">
-<header class="header buyer-standard-header">
-    <a class="brand" href="{{ url('/home') }}" aria-label="Bearly home"><img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly"></a>
-    <div class="buyer-header-spacer"></div>
-    <nav class="header-actions" aria-label="Account">
-        <a href="{{ url('/profile#notifications') }}" class="notification-header-link"><span class="material-symbols-outlined">notifications</span><span>Notifications</span><span class="notification-badge" data-notification-badge>0</span></a>
-        <a href="{{ url('/profile#tracking') }}"><span class="material-symbols-outlined">receipt_long</span><span>Orders</span></a>
-        <a href="{{ url('/chat') }}"><span class="material-symbols-outlined">chat_bubble</span><span>Chat</span></a>
-        <a href="{{ url('/cart') }}"><span class="material-symbols-outlined">shopping_cart</span><span>Cart</span></a>
-        <a class="account-action active" href="{{ url('/profile') }}"><span id="navbar-avatar" class="navbar-profile-avatar"><span class="material-symbols-outlined">person</span></span><span>{{ $buyerName }}</span></a>
-    </nav>
-</header>
+@include('buyer.partials.buyer-header', [
+    'headerSearchFormId' => 'profile-search-form',
+    'headerSearchInputId' => 'profile-search-input',
+    'headerSearchLabel' => 'Search Bearly',
+    'headerActive' => 'profile',
+    'headerAvatarId' => 'navbar-avatar',
+])
 
 <main class="account-layout">
     <aside class="account-sidebar">
         <div class="account-user">
             <div id="sidebar-avatar" class="sidebar-avatar"><span class="material-symbols-outlined">person</span></div>
-            <div><strong id="sidebar-name">{{ $buyerName }}</strong><span>Buyer account</span></div>
+            <div>
+                <strong id="sidebar-name">{{ $buyerName }}</strong>
+                <span>Buyer account</span>
+            </div>
+            <span class="material-symbols-outlined account-user-chevron" aria-hidden="true">chevron_right</span>
         </div>
         <div class="sidebar-divider"></div>
         <div class="sidebar-title"><span class="material-symbols-outlined">account_circle</span> My Account</div>
@@ -36,7 +36,6 @@
             <button class="account-tab" type="button" data-account-tab="likes"><span class="material-symbols-outlined">favorite</span>My Likes <span id="likes-nav-count" class="likes-nav-count">0</span></button>
             <div class="nav-section-gap"></div>
             <button class="account-tab nav-parent" type="button" data-account-tab="purchases"><span class="material-symbols-outlined">receipt_long</span>My Purchases</button>
-            <button class="account-tab nav-parent" type="button" data-account-tab="history"><span class="material-symbols-outlined">history</span>Order History</button>
             <button class="account-tab nav-parent" type="button" data-account-tab="reviews"><span class="material-symbols-outlined">star</span>Reviews & Ratings</button>
             <button class="account-tab nav-parent" type="button" data-account-tab="notifications"><span class="material-symbols-outlined">notifications</span>Notifications <span id="notifications-nav-count" class="notifications-nav-count">0</span></button>
             <button class="account-tab nav-parent" type="button" data-account-tab="vouchers"><span class="material-symbols-outlined">confirmation_number</span>My Vouchers <span id="vouchers-nav-count" class="vouchers-nav-count" hidden>0</span></button>
@@ -48,14 +47,20 @@
         </form>
     </aside>
 
-    <section class="profile-card account-panel" id="profile-panel" data-account-panel="profile">
-        <div class="profile-heading">
+    <section class="profile-overview account-panel" id="profile-panel" data-account-panel="profile">
+        <div class="profile-page-heading">
             <h1>My Profile</h1>
             <p>Manage your Bearly buyer account information.</p>
         </div>
 
-        <form id="profile-form" class="profile-form">
-            <div class="profile-fields">
+        <div class="profile-card profile-form-card">
+            <div class="profile-section-heading">
+                <h2>Personal Information</h2>
+                <p>Keep your information up to date for a smoother shopping experience.</p>
+            </div>
+
+            <form id="profile-form" class="profile-form">
+                <div class="profile-fields">
                 <label class="field-row">
                     <span>Username</span>
                     <input id="username" type="text" value="{{ $buyerUsername }}" maxlength="30" readonly>
@@ -90,23 +95,26 @@
                         <select id="birth-year"><option value="">Year</option></select>
                     </div>
                 </div>
+                </div>
 
-                <div class="profile-buttons">
+                <div class="photo-panel">
+                    <h2 class="photo-title">Profile Photo</h2>
+                    <p class="photo-description">Add a profile photo to personalize your account.</p>
+                    <button id="profile-avatar" class="profile-avatar profile-avatar-button" type="button" aria-label="Change profile photo"><span class="material-symbols-outlined">person</span></button>
+                    <input id="photo-input" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" hidden>
+                    <div class="photo-actions">
+                        <button id="select-photo" type="button" class="photo-btn">Change Photo</button>
+                        <button id="remove-photo" type="button" class="photo-remove-btn">Remove</button>
+                    </div>
+                    <p class="photo-help">Maximum 5 MB<br>JPG, JPEG, PNG or WEBP</p>
+                </div>
+
+                <div class="profile-actions">
                     <button id="edit-profile" class="secondary-btn" type="button">Edit Profile</button>
                     <button id="save-profile" class="primary-btn" type="submit">Save Changes</button>
                 </div>
-            </div>
-
-            <div class="photo-panel">
-                <button id="profile-avatar" class="profile-avatar profile-avatar-button" type="button" aria-label="Change profile photo"><span class="material-symbols-outlined">person</span></button>
-                <input id="photo-input" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" hidden>
-                <div class="photo-actions">
-                    <button id="select-photo" type="button" class="photo-btn">Change Photo</button>
-                    <button id="remove-photo" type="button" class="photo-remove-btn">Remove</button>
-                </div>
-                <p>Maximum 5 MB<br>JPG, JPEG, PNG or WEBP</p>
-            </div>
-        </form>
+            </form>
+        </div>
     </section>
 
 
@@ -122,54 +130,81 @@
         </div>
     </section>
 
-    <section class="profile-card account-panel" id="likes-panel" data-account-panel="likes" hidden>
+    <section class="profile-card account-panel likes-panel" id="likes-panel" data-account-panel="likes" hidden>
         <div class="likes-panel-head">
-            <div><h1>My Likes</h1><p>Products you liked across Bearly. This uses the same hearts as your Wishlist.</p></div>
-            <span id="likes-count" class="likes-count">0 liked items</span>
+            <div class="likes-heading-copy">
+                <div class="likes-title-row">
+                    <h1>My Likes</h1>
+                    <span id="likes-count" class="likes-count-badge">0 liked items</span>
+                </div>
+                <p>Saved products you want to come back to.</p>
+            </div>
+            <a class="likes-continue" href="{{ url('/home') }}"><span class="material-symbols-outlined" aria-hidden="true">arrow_back</span>Continue Shopping</a>
         </div>
+
+        <div class="likes-toolbar">
+            <div id="likes-category-tabs" class="likes-category-tabs" role="tablist" aria-label="Filter liked products"></div>
+            <label class="likes-sort" for="likes-sort">
+                <span class="material-symbols-outlined" aria-hidden="true">sort</span>
+                <span>Sort:</span>
+                <select id="likes-sort">
+                    <option value="recent">Recently liked</option>
+                    <option value="price-low">Price: low to high</option>
+                    <option value="price-high">Price: high to low</option>
+                    <option value="name">Name: A to Z</option>
+                    <option value="rating">Top rated</option>
+                </select>
+                <span class="material-symbols-outlined likes-sort-chevron" aria-hidden="true">expand_more</span>
+            </label>
+        </div>
+
         <div id="likes-grid" class="likes-grid"></div>
         <div id="likes-empty" class="likes-empty">
-            <span class="material-symbols-outlined">favorite</span><h2>No liked products yet</h2><p>Tap the heart on a product and it will appear here automatically.</p>
-            <a href="{{ url('/home') }}">Browse Products</a>
+            <span class="material-symbols-outlined" aria-hidden="true">favorite_border</span>
+            <h2 id="likes-empty-title">No liked products yet</h2>
+            <p id="likes-empty-copy">Tap the heart on a product and it will appear here automatically.</p>
+            <a class="likes-empty-action" href="{{ url('/home') }}">Browse Products</a>
         </div>
+
+        <section id="likes-recommendations" class="likes-recommendations" aria-labelledby="likes-recommendations-title">
+            <div class="likes-recommendations-head">
+                <div><h2 id="likes-recommendations-title">You may also like</h2><p>More great finds based on your likes.</p></div>
+                <a href="{{ url('/home#results') }}">See more <span class="material-symbols-outlined" aria-hidden="true">chevron_right</span></a>
+            </div>
+            <div id="likes-recommendation-grid" class="likes-recommendation-grid"></div>
+        </section>
     </section>
 
     <section class="profile-card account-panel" id="purchases-panel" data-account-panel="purchases" hidden>
         <div class="purchases-head">
-            <div><h1>My Purchases <span class="preview-badge">Preview data</span></h1><p>Order history is not connected to the order service yet.</p></div>
-            <span id="purchase-count" class="purchase-count">0 orders</span>
+            <div class="purchases-heading-copy">
+                <div class="purchases-title-row"><h1>My Purchases</h1><span id="purchase-count" class="purchase-count">0 orders</span></div>
+            </div>
         </div>
-        <div class="purchase-tabs" role="tablist">
-            <button class="purchase-filter active" type="button" data-order-filter="all">All</button>
-            <button class="purchase-filter" type="button" data-order-filter="to-pay">To Pay</button>
-            <button class="purchase-filter" type="button" data-order-filter="to-ship">To Ship</button>
-            <button class="purchase-filter" type="button" data-order-filter="to-receive">To Receive</button>
-            <button class="purchase-filter" type="button" data-order-filter="completed">Completed</button>
-            <button class="purchase-filter" type="button" data-order-filter="cancelled">Cancelled</button>
+        <div class="purchase-toolbar">
+            <div class="purchase-tabs" role="tablist" aria-label="Purchase status filters">
+                <button class="purchase-filter active" type="button" data-order-filter="all" aria-selected="true"><span>All</span> <span class="purchase-filter-count" data-filter-count="all">(0)</span></button>
+                <button class="purchase-filter" type="button" data-order-filter="to-pay" aria-selected="false"><span>To Pay</span> <span class="purchase-filter-count" data-filter-count="to-pay">(0)</span></button>
+                <button class="purchase-filter" type="button" data-order-filter="to-ship" aria-selected="false"><span>To Ship</span> <span class="purchase-filter-count" data-filter-count="to-ship">(0)</span></button>
+                <button class="purchase-filter" type="button" data-order-filter="to-receive" aria-selected="false"><span>To Receive</span> <span class="purchase-filter-count" data-filter-count="to-receive">(0)</span></button>
+                <button class="purchase-filter" type="button" data-order-filter="completed" aria-selected="false"><span>Completed</span> <span class="purchase-filter-count" data-filter-count="completed">(0)</span></button>
+                <button class="purchase-filter" type="button" data-order-filter="cancelled" aria-selected="false"><span>Cancelled</span> <span class="purchase-filter-count" data-filter-count="cancelled">(0)</span></button>
+            </div>
+            <label class="purchase-sort" for="purchase-sort">
+                <span class="sr-only">Sort purchases</span>
+                <select id="purchase-sort">
+                    <option value="recent">Most Recent</option>
+                    <option value="oldest">Oldest</option>
+                    <option value="high">Amount: High to Low</option>
+                    <option value="low">Amount: Low to High</option>
+                </select>
+                <span class="material-symbols-outlined" aria-hidden="true">expand_more</span>
+            </label>
         </div>
         <div id="purchase-list" class="purchase-list"></div>
         <div id="purchases-empty" class="purchases-empty" hidden>
             <span class="material-symbols-outlined">shopping_bag</span><h2>No orders here yet</h2><p>Your purchases under this status will appear here.</p>
             <a href="{{ url('/home') }}">Start Shopping</a>
-        </div>
-    </section>
-
-    <section class="profile-card account-panel" id="history-panel" data-account-panel="history" hidden>
-        <div class="history-head">
-             <div><h1>Order History <span class="preview-badge">Preview data</span></h1><p>Sample order history only; live orders are not connected yet.</p></div>
-            <span id="history-count" class="purchase-count">0 orders</span>
-        </div>
-        <div class="history-tools">
-            <label class="history-search"><span class="material-symbols-outlined">search</span><input id="history-search" type="search" placeholder="Search order ID or product" autocomplete="off"></label>
-            <div class="history-filters" role="tablist" aria-label="Order history filters">
-                <button class="history-filter active" type="button" data-history-filter="all">All</button>
-                <button class="history-filter" type="button" data-history-filter="completed">Completed</button>
-                <button class="history-filter" type="button" data-history-filter="cancelled">Cancelled</button>
-            </div>
-        </div>
-        <div id="history-list" class="purchase-list"></div>
-        <div id="history-empty" class="purchases-empty" hidden>
-            <span class="material-symbols-outlined">history</span><h2>No order history found</h2><p>Completed and cancelled orders will appear here.</p>
         </div>
     </section>
 
@@ -183,14 +218,14 @@
 
     <section class="profile-card account-panel" id="notifications-panel" data-account-panel="notifications" hidden>
         <div class="notifications-head">
-             <div><h1>Notifications <span class="preview-badge">Preview data</span></h1><p>Sample updates only; live notifications are not connected yet.</p></div>
-            <button id="mark-all-notifications" type="button" class="notification-mark-all">Mark all as read</button>
+            <div><h1>Notifications</h1><p>Stay updated with your orders, payments, promotions, and more.</p></div>
+            <button id="mark-all-notifications" type="button" class="notification-mark-all"><span class="material-symbols-outlined" aria-hidden="true">mark_email_read</span><span>Mark all as read</span></button>
         </div>
         <div class="notification-filters" role="tablist" aria-label="Notification filters">
-            <button class="notification-filter active" type="button" data-notification-filter="all">All</button>
-            <button class="notification-filter" type="button" data-notification-filter="orders">Order Updates</button>
-            <button class="notification-filter" type="button" data-notification-filter="payment">Payment</button>
-            <button class="notification-filter" type="button" data-notification-filter="promos">Promos</button>
+            <button class="notification-filter active" type="button" data-notification-filter="all" aria-selected="true">All</button>
+            <button class="notification-filter" type="button" data-notification-filter="orders" aria-selected="false">Order Updates</button>
+            <button class="notification-filter" type="button" data-notification-filter="payment" aria-selected="false">Payment</button>
+            <button class="notification-filter" type="button" data-notification-filter="promos" aria-selected="false">Promos</button>
         </div>
         <div id="notification-list" class="notification-list"></div>
         <div id="notifications-empty" class="notifications-empty" hidden>
@@ -200,16 +235,56 @@
 
     <section class="profile-card account-panel" id="vouchers-panel" data-account-panel="vouchers" hidden>
         <div class="vouchers-head">
-             <div><h1>My Vouchers <span class="preview-badge">Preview data</span></h1><p>Sample vouchers are stored only in this browser.</p></div>
+            <div class="vouchers-heading-copy">
+                <div class="vouchers-title-row">
+                    <img class="vouchers-title-icon" src="{{ asset('images/vouchers/Bearly-voucher-icon.png') }}" alt="">
+                    <div>
+                        <h1>My Vouchers</h1>
+                        <p>Collect platform and shop vouchers and use them on eligible purchases.</p>
+                    </div>
+                </div>
+            </div>
             <span id="voucher-claimed-count" class="voucher-claimed-count">0 claimed</span>
         </div>
-        <div class="voucher-tabs" role="tablist" aria-label="Voucher filters">
-            <button class="voucher-filter active" type="button" data-voucher-filter="available">Available</button>
-            <button class="voucher-filter" type="button" data-voucher-filter="claimed">Claimed</button>
+        <div class="voucher-banner" aria-label="Bearly voucher promotion">
+            <div class="voucher-banner-art">
+                <img src="{{ asset('images/vouchers/Bearly-voucher-banner.png') }}" alt="Bearly voucher tickets">
+            </div>
+            <div class="voucher-banner-copy">
+                <h2>Save more with Bearly Vouchers</h2>
+                <p>Claim platform or shop discounts now and choose an eligible voucher when you check out.</p>
+            </div>
         </div>
-        <div id="voucher-list" class="voucher-list"></div>
+        <div class="voucher-content-stack">
+        <nav class="voucher-tabs" role="tablist" aria-label="Voucher filters">
+            <button class="voucher-filter active" type="button" data-voucher-filter="all" aria-pressed="true">All Vouchers</button>
+            <button class="voucher-filter" type="button" data-voucher-filter="shipping" aria-pressed="false">Shipping Vouchers</button>
+            <button class="voucher-filter" type="button" data-voucher-filter="discount" aria-pressed="false">Discount Vouchers</button>
+            <button class="voucher-filter" type="button" data-voucher-filter="category" aria-pressed="false">Category Vouchers</button>
+            <button class="voucher-filter" type="button" data-voucher-filter="shop" aria-pressed="false">Shop Vouchers</button>
+            <button class="voucher-filter" type="button" data-voucher-filter="new" aria-pressed="false">New Vouchers</button>
+            <button class="voucher-filter" type="button" data-voucher-filter="claimed" aria-pressed="false">Claimed</button>
+        </nav>
+        <div id="voucher-list" class="voucher-sections"></div>
         <div id="vouchers-empty" class="vouchers-empty" hidden><span class="material-symbols-outlined">confirmation_number</span><h2>No vouchers here</h2><p>New Bearly rewards will appear here.</p></div>
+        </div>
     </section>
+
+    <dialog class="voucher-dialog profile-voucher-dialog" id="voucher-terms-dialog" aria-labelledby="voucher-dialog-title">
+        <div class="voucher-dialog-head">
+            <div>
+                <small id="voucher-dialog-type">Bearly Voucher</small>
+                <h2 id="voucher-dialog-title">Voucher terms</h2>
+            </div>
+            <button type="button" class="voucher-dialog-close" data-voucher-dialog-close aria-label="Close voucher terms">
+                <span class="material-symbols-outlined" aria-hidden="true">close</span>
+            </button>
+        </div>
+        <p id="voucher-dialog-copy"></p>
+        <button type="button" class="voucher-dialog-done" data-voucher-dialog-close>Got it</button>
+    </dialog>
+
+    <div id="voucher-toast" class="voucher-toast" role="status" aria-live="polite"></div>
 
     <section class="profile-card account-panel" id="help-panel" data-account-panel="help" hidden>
         <div class="help-head">
@@ -232,10 +307,28 @@
 
     <section class="profile-card account-panel" id="reviews-panel" data-account-panel="reviews" hidden>
         <div class="reviews-head">
-             <div><h1>Reviews & Ratings <span class="preview-badge">Preview data</span></h1><p>Review samples only; live reviews are not connected yet.</p></div>
-            <span id="reviews-count" class="reviews-count">0 reviews</span>
+            <div><h1>Reviews &amp; Ratings</h1><p>Share your experience with products you've purchased.</p></div>
         </div>
-        <div id="review-list" class="review-list"></div>
+        <div class="review-tabs" role="tablist" aria-label="Review status">
+            <button class="review-tab active" type="button" data-review-filter="to-review" aria-selected="true">To Review <span id="reviews-to-review-count">(2)</span></button>
+            <button class="review-tab" type="button" data-review-filter="reviewed" aria-selected="false">Reviewed <span id="reviews-reviewed-count">(3)</span></button>
+        </div>
+        <div class="review-sections">
+            <section class="review-section" data-review-section="to-review" aria-labelledby="products-to-review-title">
+                <div class="review-section-heading">
+                    <h2 id="products-to-review-title">Products to Review</h2>
+                    <p>Write a review for the products you've received.</p>
+                </div>
+                <div id="review-list" class="review-list"></div>
+            </section>
+            <section class="review-section" data-review-section="reviewed" aria-labelledby="your-reviews-title">
+                <div class="review-section-heading">
+                    <h2 id="your-reviews-title">Your Reviews</h2>
+                    <p>Products you've already reviewed.</p>
+                </div>
+                <div id="reviewed-list" class="review-list"></div>
+            </section>
+        </div>
         <div id="reviews-empty" class="reviews-empty" hidden>
             <span class="material-symbols-outlined">reviews</span><h2>No reviews yet</h2><p>Completed purchases that you can rate will appear here.</p>
             <button id="reviews-go-purchases" type="button">View My Purchases</button>

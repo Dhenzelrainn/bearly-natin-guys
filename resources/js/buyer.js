@@ -63,6 +63,174 @@ const peso = value =>
         maximumFractionDigits: 0,
     }).format(value);
 
+function productReviewsMarkup(product) {
+    const rating = Math.max(0, Math.min(5, Number(product?.rating) || 4.8));
+    const reviewCount = Math.max(1, Number(product?.review_count) || 18);
+    const reviewImage = product?.image || '';
+    const variation = product?.color || 'Standard';
+    const stars = '★★★★★';
+    const filters = [
+        `All (${reviewCount})`,
+        `5 Star (${Math.max(1, reviewCount - 3)})`,
+        `4 Star (${Math.max(0, Math.round(reviewCount * .11))})`,
+        `3 Star (${Math.max(0, Math.round(reviewCount * .06))})`,
+        '2 Star (0)',
+        '1 Star (0)',
+        'With Comments (12)',
+        'With Media (6)',
+    ];
+    const reviews = [
+        {
+            name: 's******7',
+            date: '2024-05-12 17:45',
+            text: 'Maganda yung item nila mabait! Maayos ang packaging at mabilis dumating. Definitely recommend.',
+            media: 3,
+            response: 'Maraming salamat po sa inyong tiwala! At nagagalak kami na nagustuhan ito ng inyong alaga.',
+            responseDate: '2024-05-13 09:20',
+        },
+        {
+            name: 'm******f',
+            date: '2024-05-20 19:15',
+            text: 'The item was packed and shipped immediately. Delivery time was reasonable and the quality was good.',
+            media: 0,
+            response: 'Dear customer, thank you so much for your kind words. We are happy to hear that you enjoyed your purchase.',
+            responseDate: '2024-05-21 10:10',
+        },
+    ];
+    const media = reviewImage
+        ? `<div class="pd-review-media">${Array.from({length: 3}, () => `<img src="${escapeHtml(reviewImage)}" alt="Review photo" loading="lazy">`).join('')}</div>`
+        : '';
+    return `
+        <section class="pd-reviews" aria-labelledby="pd-reviews-title">
+            <div class="pd-reviews-head">
+                <h3 id="pd-reviews-title">Ratings &amp; Reviews</h3>
+                <button type="button" class="pd-review-write" data-pd-review>
+                    <i class="mi" aria-hidden="true">edit</i> Write a Review
+                </button>
+            </div>
+            <div class="pd-reviews-summary">
+                <div class="pd-review-score">
+                    <strong>${rating.toFixed(1)}</strong>
+                    <span>out of 5</span>
+                    <div class="pd-review-stars" aria-label="${rating.toFixed(1)} out of 5 stars">${stars}</div>
+                    <small>(${reviewCount} reviews)</small>
+                </div>
+                <div class="pd-review-filters" aria-label="Review filters">
+                    ${filters.map((filter, index) => `<button type="button" class="${index === 0 ? 'is-active' : ''}" data-pd-review-filter aria-pressed="${index === 0 ? 'true' : 'false'}">${escapeHtml(filter)}</button>`).join('')}
+                </div>
+            </div>
+            <div class="pd-review-list">
+                ${reviews.map(review => `
+                    <article class="pd-review-item">
+                        <div class="pd-review-main">
+                            <div class="pd-review-avatar" aria-hidden="true"><i class="mi">person</i></div>
+                            <div class="pd-review-copy">
+                                <strong>${escapeHtml(review.name)}</strong>
+                                <div class="pd-review-meta"><span class="pd-review-stars">${stars}</span><time datetime="${escapeHtml(review.date.replace(' ', 'T'))}">${escapeHtml(review.date)}</time><span>Variation: ${escapeHtml(variation)}</span></div>
+                                <p>${escapeHtml(review.text)}</p>
+                                ${review.media ? media : ''}
+                            </div>
+                        </div>
+                        <aside class="pd-review-response">
+                            <strong><i class="mi" aria-hidden="true">storefront</i> Seller's Response:</strong>
+                            <p>${escapeHtml(review.response)}</p>
+                            <time datetime="${escapeHtml(review.responseDate.replace(' ', 'T'))}">${escapeHtml(review.responseDate)}</time>
+                        </aside>
+                    </article>
+                `).join('')}
+            </div>
+        </section>
+    `;
+}
+
+function mountProductGallery(detail, product, fallbackStyle) {
+    const media = detail?.querySelector('.pd-media');
+    const mainPhoto = detail?.querySelector('.pd-main-photo');
+    const thumbnails = detail?.querySelector('.pd-thumbnails');
+    if (!media || !mainPhoto || !thumbnails) return;
+
+    const sources = [
+        product?.image,
+        ...(Array.isArray(product?.gallery) ? product.gallery : []),
+    ].filter(Boolean).slice(0, 4);
+    const gallery = sources.length ? sources : [null, null];
+    let activeIndex = 0;
+
+    thumbnails.innerHTML = gallery.map((source, index) => `
+        <button type="button" class="pd-thumbnail${index === 0 ? ' is-active' : ''}" data-pd-gallery-index="${index}" aria-label="View product image ${index + 1}">
+            <span class="photo pd-thumb-photo" aria-hidden="true"></span>
+        </button>
+    `).join('');
+
+    if (!media.querySelector('.pd-gallery-arrow')) {
+        media.insertAdjacentHTML('afterbegin', `
+            <button type="button" class="pd-gallery-arrow pd-gallery-prev" data-pd-gallery-prev aria-label="Previous product image"><i class="mi" aria-hidden="true">chevron_left</i></button>
+            <button type="button" class="pd-gallery-arrow pd-gallery-next" data-pd-gallery-next aria-label="Next product image"><i class="mi" aria-hidden="true">chevron_right</i></button>
+        `);
+    }
+
+    const applySource = (element, source) => {
+        if (!element) return;
+        if (source) {
+            element.style.backgroundImage = `url("${source}")`;
+            element.style.backgroundSize = 'contain';
+            element.style.backgroundPosition = 'center';
+            element.style.backgroundRepeat = 'no-repeat';
+            element.style.backgroundColor = '#f7f5f2';
+        } else {
+            fallbackStyle(element, product);
+        }
+    };
+
+    const render = index => {
+        activeIndex = (index + gallery.length) % gallery.length;
+        applySource(mainPhoto, gallery[activeIndex]);
+        thumbnails.querySelectorAll('[data-pd-gallery-index]').forEach(button => {
+            const selected = Number(button.dataset.pdGalleryIndex) === activeIndex;
+            button.classList.toggle('is-active', selected);
+            button.setAttribute('aria-current', selected ? 'true' : 'false');
+            applySource(button.querySelector('.pd-thumb-photo'), gallery[Number(button.dataset.pdGalleryIndex)]);
+        });
+    };
+
+    thumbnails.addEventListener('click', event => {
+        const button = event.target.closest('[data-pd-gallery-index]');
+        if (button) render(Number(button.dataset.pdGalleryIndex));
+    });
+    media.querySelector('[data-pd-gallery-prev]')?.addEventListener('click', () => render(activeIndex - 1));
+    media.querySelector('[data-pd-gallery-next]')?.addEventListener('click', () => render(activeIndex + 1));
+    render(0);
+}
+
+function bindProductReviewButton(detail) {
+    const filters = detail?.querySelectorAll('[data-pd-review-filter]') || [];
+    filters.forEach(filter => {
+        filter.addEventListener('click', () => {
+            filters.forEach(item => {
+                const selected = item === filter;
+                item.classList.toggle('is-active', selected);
+                item.setAttribute('aria-pressed', selected ? 'true' : 'false');
+            });
+        });
+    });
+
+    detail?.querySelector('[data-pd-review]')?.addEventListener('click', () => {
+        let toast = document.getElementById('bc-preview-toast');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.id = 'bc-preview-toast';
+            toast.className = 'bc-preview-toast';
+            toast.setAttribute('role', 'status');
+            toast.setAttribute('aria-live', 'polite');
+            document.body.append(toast);
+        }
+        toast.textContent = 'Review submission will be connected during backend integration.';
+        toast.classList.add('is-visible');
+        clearTimeout(window.__bearlyReviewToast);
+        window.__bearlyReviewToast = setTimeout(() => toast.classList.remove('is-visible'), 2400);
+    });
+}
+
 if (typeof document !== 'undefined') {
     initialize();
 }
@@ -161,7 +329,7 @@ function initialize() {
     const card = product => {
         const metrics = discoveryMetrics(product);
         return `
-        <article class="product-card discovery-card" data-discovery-product="${escapeHtml(product.id)}">
+        <article class="product-card discovery-card" data-discovery-product="${escapeHtml(product.wishlist_key || product.id)}">
             <button
                 class="product-open"
                 data-product="${escapeHtml(product.id)}"
@@ -1186,29 +1354,12 @@ function initialize() {
             </article>
         `;
 
-        const mainPhoto =
-            detail.querySelector(
-                '.pd-main-photo'
-            );
-
-        const thumbPhoto =
-            detail.querySelector(
-                '.pd-thumb-photo'
-            );
-
-        if (mainPhoto) {
-            homePhotoStyle(
-                mainPhoto,
-                product
-            );
-        }
-
-        if (thumbPhoto) {
-            homePhotoStyle(
-                thumbPhoto,
-                product
-            );
-        }
+        detail.querySelector('.pd-shell')?.insertAdjacentHTML(
+            'beforeend',
+            productReviewsMarkup(product)
+        );
+        mountProductGallery(detail, product, homePhotoStyle);
+        bindProductReviewButton(detail);
 
         function notify(message) {
             let toast =
@@ -4233,29 +4384,12 @@ function init() {
             </article>
         `;
 
-        const mainPhoto =
-            detail.querySelector(
-                '.pd-main-photo'
-            );
-
-        const thumbPhoto =
-            detail.querySelector(
-                '.pd-thumb-photo'
-            );
-
-        if (mainPhoto) {
-            photoStyle(
-                mainPhoto,
-                product
-            );
-        }
-
-        if (thumbPhoto) {
-            photoStyle(
-                thumbPhoto,
-                product
-            );
-        }
+        detail.querySelector('.pd-shell')?.insertAdjacentHTML(
+            'beforeend',
+            productReviewsMarkup(product)
+        );
+        mountProductGallery(detail, product, photoStyle);
+        bindProductReviewButton(detail);
 
         function notify(message) {
             let toast =
@@ -6134,29 +6268,12 @@ function showFeaturedProductFull(product) {
         </article>
     `;
 
-    const mainPhoto =
-        detail.querySelector(
-            '.pd-main-photo'
-        );
-
-    const thumbPhoto =
-        detail.querySelector(
-            '.pd-thumb-photo'
-        );
-
-    if (mainPhoto) {
-        featuredPhotoStyle(
-            mainPhoto,
-            product
-        );
-    }
-
-    if (thumbPhoto) {
-        featuredPhotoStyle(
-            thumbPhoto,
-            product
-        );
-    }
+    detail.querySelector('.pd-shell')?.insertAdjacentHTML(
+        'beforeend',
+        productReviewsMarkup(product)
+    );
+    mountProductGallery(detail, product, featuredPhotoStyle);
+    bindProductReviewButton(detail);
 
     function notify(message) {
         let toast =

@@ -9,17 +9,7 @@
 @vite(['resources/css/buyer.css','resources/css/addresses.css','resources/js/addresses.js'])
 </head>
 <body class="bh address-page">
-<header class="header buyer-standard-header">
-<a class="brand" href="{{ url('/home') }}" aria-label="Bearly home"><img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly"></a>
-<div class="buyer-header-spacer"></div>
-<nav class="header-actions" aria-label="Account">
-<a href="{{ url('/profile#notifications') }}" class="notification-header-link"><span class="material-symbols-outlined">notifications</span><span>Notifications</span><span class="notification-badge" data-notification-badge>0</span></a>
-<a href="{{ url('/profile#tracking') }}"><span class="material-symbols-outlined">receipt_long</span><span>Orders</span></a>
-<a href="{{ url('/chat') }}"><span class="material-symbols-outlined">chat_bubble</span><span>Chat</span></a>
-<a href="{{ url('/cart') }}"><span class="material-symbols-outlined">shopping_cart</span><span>Cart</span></a>
-<a class="account-action active" href="{{ url('/profile') }}"><span class="material-symbols-outlined">person</span><span>{{ $buyerName }}</span></a>
-</nav>
-</header>
+@include('buyer.partials.buyer-header', ['headerActive' => 'profile'])
 
 <main class="address-shell">
 <a class="address-back" href="{{ url('/home') }}"><span class="material-symbols-outlined">arrow_back</span> Back to Home</a>

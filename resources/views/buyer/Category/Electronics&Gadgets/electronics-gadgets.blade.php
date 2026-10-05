@@ -65,50 +65,14 @@
 <body class="bc" data-category="electronics-and-gadgets" style="--catalog-image:url('{{ asset('images/electronics-gadgets-catalog-atlas.png') }}')">
     <a href="#bc-main" class="skip">Skip to products</a>
 
-    <header class="bc-header">
-        <a href="{{ route('home') }}" class="brand">
-            <img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly home" width="185" height="62">
-        </a>
-
-        <form id="bc-search-form" class="search" role="search">
-            <span>Electronics & Gadgets</span>
-
-            <label class="sr" for="bc-search">Search Electronics & Gadgets</label>
-            <input id="bc-search" type="search" placeholder="Search Electronics & Gadgets" maxlength="120">
-
-            <button aria-label="Search">
-                <i class="mi" aria-hidden="true">search</i>
-            </button>
-        </form>
-
-        <nav aria-label="Account">
-            <a href="{{ url('/profile#notifications') }}" aria-label="Notifications" class="category-notification-link">
-                <i class="mi" aria-hidden="true">notifications</i>
-                <span>Notifications</span>
-                <span class="category-notification-badge" data-notification-badge>0</span>
-            </a>
-
-            <button type="button" onclick="window.location.href='{{ url('/profile#tracking') }}'">
-                <i class="mi" aria-hidden="true">receipt_long</i>
-                <span>Orders</span>
-            </button>
-
-            <a href="{{ url('/chat') }}">
-                <i class="mi" aria-hidden="true">chat_bubble</i>
-                <span>Chat</span>
-            </a>
-
-            <a href="{{ url('/cart') }}">
-                <i class="mi" aria-hidden="true">shopping_cart</i>
-                <span>Cart</span>
-            </a>
-
-            <a href="{{ url('/profile') }}" aria-label="Open {{ $buyerName }} profile">
-                <i class="mi" aria-hidden="true">person</i>
-                <span>{{ $buyerName }}</span>
-            </a>
-        </nav>
-    </header>
+    @include('buyer.partials.buyer-header', [
+        'headerClass' => 'bc-header',
+        'headerSearchMode' => 'plain',
+        'headerSearchFormId' => 'bc-search-form',
+        'headerSearchInputId' => 'bc-search',
+        'headerSearchLabel' => 'Search products, brands or sellers',
+        'headerSearchPlaceholder' => 'Search for products, brands or sellers...',
+    ])
 
     <div class="bc-shell">
         <aside class="bc-sidebar" id="bc-sidebar" aria-label="Categories and filters">

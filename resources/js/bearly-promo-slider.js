@@ -119,6 +119,23 @@ document.addEventListener('DOMContentLoaded', () => {
         slider.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
     });
 
+    slider.addEventListener('click', event => {
+        const promo = event.target.closest('[data-voucher-promo]');
+        if (!promo || event.target.closest('button, a')) return;
+
+        window.location.href = promo.dataset.voucherTarget || '/profile#vouchers';
+    });
+
+    slider.addEventListener('keydown', event => {
+        if (!['Enter', ' '].includes(event.key)) return;
+
+        const promo = event.target.closest('[data-voucher-promo]');
+        if (!promo || event.target.closest('button, a')) return;
+
+        event.preventDefault();
+        window.location.href = promo.dataset.voucherTarget || '/profile#vouchers';
+    });
+
     slider.addEventListener('mouseenter', pause);
     slider.addEventListener('mouseleave', resume);
     slider.addEventListener('focusin', pause);

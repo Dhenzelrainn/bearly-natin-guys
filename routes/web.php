@@ -166,6 +166,16 @@ Route::middleware(['auth', 'role:buyer'])->group(function () {
     Route::view('/flash-deals', 'buyer.flash-deals')
         ->name('flash-deals');
 
+    Route::get('/vouchers', function () {
+        $filter = request()->query('filter');
+        $allowedFilters = ['shipping', 'discount', 'category', 'new', 'claimed'];
+        $query = in_array($filter, $allowedFilters, true)
+            ? '?voucher='.rawurlencode($filter)
+            : '';
+
+        return redirect('/profile'.$query.'#vouchers');
+    })->name('vouchers');
+
     Route::view('/top-products', 'buyer.top-products')
         ->name('top-products');
 

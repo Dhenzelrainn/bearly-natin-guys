@@ -9,18 +9,11 @@
 @vite(['resources/css/buyer.css','resources/css/checkout.css','resources/js/checkout.js'])
 </head>
 <body class="bh checkout-page">
-<header class="header checkout-header">
-<a class="brand" href="{{ url('/home') }}"><img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly"></a>
-<div class="checkout-brand-title"><span></span><strong>Checkout</strong><span class="preview-badge">Preview only</span></div>
-<div class="checkout-header-spacer"></div>
-<nav class="header-actions">
-<a href="{{ url('/profile#notifications') }}" class="notification-header-link"><span class="material-symbols-outlined">notifications</span><span>Notifications</span><span class="notification-badge" data-notification-badge>0</span></a>
-<a href="{{ url('/profile#tracking') }}"><span class="material-symbols-outlined">receipt_long</span><span>Orders</span></a>
-<a href="{{ url('/chat') }}"><span class="material-symbols-outlined">chat_bubble</span><span>Chat</span></a>
-<a href="{{ url('/cart') }}"><span class="material-symbols-outlined">shopping_cart</span><span>Cart</span></a>
-<a class="account-action" href="{{ url('/profile') }}"><span class="material-symbols-outlined">person</span><span>{{ $buyerName }}</span></a>
-</nav>
-</header>
+@include('buyer.partials.buyer-header', [
+    'headerClass' => 'checkout-header',
+    'headerSearchInputId' => 'checkout-search-input',
+    'headerSearchAction' => route('products.index'),
+])
 
 <main class="checkout-shell">
 <p class="preview-notice">Checkout is a frontend preview. Placing an order will not create an order, payment, inventory, or delivery record.</p>

@@ -46,11 +46,13 @@ foreach ($categoryProductSources as $slug => $source) {
 
     foreach (array_slice($categoryProducts, 0, 5) as $product) {
 
+        $originalProductId = $product['id'];
         $product['id'] = 'home-' . $slug . '-' . $product['id'];
 
         $product['category'] = $source['name'];
 
         $product['category_slug'] = $slug;
+        $product['wishlist_key'] = $slug . ':' . $originalProductId;
 
         $product['atlas'] = asset('images/' . $source['atlas']);
 
@@ -159,6 +161,7 @@ $homeFlashDeals = [
     'resources/css/bearly-chat.css',
 
     'resources/js/buyer.js',
+    'resources/js/buyer-notifications.js',
 
     'resources/js/bearly-promo-slider.js',
     'resources/js/bearly-chat.js'
@@ -201,7 +204,7 @@ $homeFlashDeals = [
 
 <label class="sr-only" for="search-input">Search products</label>
 
-<input id="search-input" type="search" placeholder="Search for anything on Bearly" maxlength="120" autocomplete="off">
+<input id="search-input" type="search" placeholder="Search for products, brands or sellers..." maxlength="120" autocomplete="off">
 
 
 
@@ -217,9 +220,9 @@ $homeFlashDeals = [
 
 
 
-<a href="{{ url('/profile#notifications') }}" aria-label="Notifications" class="notification-header-link"><span class="material-symbols-outlined" aria-hidden="true">notifications</span><span>Notifications</span><span class="notification-badge" data-notification-badge>0</span></a>
+@include('buyer.partials.buyer-notification-popover')
 
-<button type="button" onclick="window.location.href='{{ url('/profile#tracking') }}'"><span class="material-symbols-outlined" aria-hidden="true">receipt_long</span><span>Orders</span></button>
+<button type="button" onclick="window.location.href='{{ url('/profile#purchases') }}'"><span class="material-symbols-outlined" aria-hidden="true">receipt_long</span><span>Orders</span></button>
 
 <a href="{{ url('/chat') }}"><span class="material-symbols-outlined" aria-hidden="true">chat_bubble</span><span>Chat</span></a>
 
@@ -269,17 +272,17 @@ $homeFlashDeals = [
         <span class="material-symbols-outlined sidebar-perk-chevron" aria-hidden="true">chevron_right</span>
     </a>
 
-    <button class="sidebar-perk-row" type="button" data-promo-jump="3" aria-label="Show the free shipping promotion">
+    <a class="sidebar-perk-row" href="{{ url('/profile?voucher=shipping#vouchers') }}" aria-label="Open shipping vouchers in My Vouchers">
         <span class="material-symbols-outlined" aria-hidden="true">local_shipping</span>
         <span class="sidebar-perk-copy"><strong>Free Shipping</strong></span>
         <span class="material-symbols-outlined sidebar-perk-chevron" aria-hidden="true">chevron_right</span>
-    </button>
+    </a>
 
-    <button class="sidebar-perk-row" type="button" data-promo-jump="2" aria-label="Show the voucher promotion">
+    <a class="sidebar-perk-row" href="{{ url('/profile#vouchers') }}" aria-label="Open My Vouchers">
         <span class="material-symbols-outlined" aria-hidden="true">confirmation_number</span>
         <span class="sidebar-perk-copy"><strong>Vouchers</strong></span>
         <span class="material-symbols-outlined sidebar-perk-chevron" aria-hidden="true">chevron_right</span>
-    </button>
+    </a>
 </section>
 
 
@@ -361,7 +364,7 @@ $homeFlashDeals = [
 
         </article>
 
-        <article class="bearly-promo-slide bearly-promo-voucher bearly-promo-link" aria-hidden="true" data-voucher-promo tabindex="-1" role="link" aria-label="Open Bearly vouchers">
+        <article class="bearly-promo-slide bearly-promo-voucher bearly-promo-link" aria-hidden="true" data-voucher-promo data-voucher-target="{{ url('/profile#vouchers') }}" tabindex="-1" role="link" aria-label="Open My Vouchers">
 
             <div class="bearly-promo-copy">
 
@@ -411,7 +414,7 @@ $homeFlashDeals = [
 
         </article>
 
-        <article class="bearly-promo-slide bearly-promo-shipping bearly-promo-link" aria-hidden="true" data-voucher-promo tabindex="-1" role="link" aria-label="Open Bearly free shipping vouchers">
+        <article class="bearly-promo-slide bearly-promo-shipping bearly-promo-link" aria-hidden="true" data-voucher-promo data-voucher-target="{{ url('/profile?voucher=shipping#vouchers') }}" tabindex="-1" role="link" aria-label="Open shipping vouchers in My Vouchers">
 
             <div class="bearly-promo-copy">
 
@@ -705,7 +708,7 @@ $homeFlashDeals = [
 
         <nav class="footer-column" aria-label="Help">
             <h2>Help</h2>
-            <a href="{{ url('/profile#tracking') }}">Track Order</a>
+            <a href="{{ url('/profile#purchases') }}">Track an Order</a>
             <button type="button" data-info="help">Returns &amp; Refunds</button>
             <button type="button" data-info="help">Shipping Information</button>
             <button type="button" data-info="help">FAQs</button>

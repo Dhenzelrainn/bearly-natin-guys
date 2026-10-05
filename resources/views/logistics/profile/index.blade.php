@@ -192,27 +192,6 @@
                     </button>
                 </div>
             </form>
-
-            <div class="panel-footer">
-                <label class="toggle-row">
-                    <span class="toggle-copy">
-                        <strong>Login alerts</strong>
-
-                        <small>
-                            Show an alert for new browser sign-ins.
-                        </small>
-                    </span>
-
-                    <span class="switch">
-                        <input
-                            type="checkbox"
-                            checked
-                        >
-
-                        <span></span>
-                    </span>
-                </label>
-            </div>
         </section>
 
         {{-- Sorting Facility --}}

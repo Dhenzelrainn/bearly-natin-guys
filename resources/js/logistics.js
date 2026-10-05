@@ -1,17 +1,4 @@
-const STORAGE_KEY = 'bearlyLogisticsStateV2';
-
-const readState = () => {
-    try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch { return {}; }
-};
-const writeState = (next) => localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-const updateState = (section, key, value) => {
-    const state = readState();
-    state[section] = state[section] || {};
-    state[section][key] = value;
-    writeState(state);
-};
 const normalize = (value) => String(value || '').trim().toLowerCase().replaceAll('_', ' ');
-const prettyStatus = (value) => String(value || '').replaceAll('_', ' ').toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
 const escapeHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, (character) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' })[character]);
 const refreshIcons = () => window.lucide?.createIcons();
 
@@ -37,9 +24,6 @@ function setupShell() {
     document.querySelector('[data-mobile-menu]')?.addEventListener('click', () => body.classList.add('sidebar-open'));
     document.querySelector('[data-overlay]')?.addEventListener('click', closeMobile);
     document.querySelectorAll('[data-dismiss]').forEach((button) => button.addEventListener('click', () => button.closest('.flash-banner')?.remove()));
-    document.querySelectorAll('[data-preview-action]').forEach((button) => button.addEventListener('click', () => {
-        toast(button.dataset.success || 'Action completed in this front-end preview.');
-    }));
 
     document.querySelectorAll('[data-popover-toggle]').forEach((button) => button.addEventListener('click', (event) => {
         event.stopPropagation();
@@ -200,108 +184,6 @@ function setupTables() {
         }));
     });
 }
-
-function setRowStatus(row, status) {
-    row.dataset.status = status;
-    const badge = row.querySelector('[data-status-badge]');
-    if (badge) { badge.dataset.status = status; badge.textContent = prettyStatus(status); }
-}
-
-function setupStatusActions() {
-    const state = readState();
-    document.querySelectorAll('[data-record-row]').forEach((row) => {
-        const saved = state[row.dataset.recordType]?.[row.dataset.recordId];
-        if (typeof saved === 'string') setRowStatus(row, saved);
-    });
-    document.querySelectorAll('[data-set-status]').forEach((button) => button.addEventListener('click', () => {
-        let row = button.closest('[data-record-row]');
-        if (!row) {
-            const modalName = button.closest('[data-modal]')?.dataset.modal || '';
-            const recordId = modalName.replace(/^(review|pickup|delivery)-/, '');
-            row = [...document.querySelectorAll('[data-record-row]')].find((item) => item.dataset.recordId === recordId);
-        }
-        if (!row) return;
-        const status = button.dataset.setStatus;
-        setRowStatus(row, status);
-        updateState(row.dataset.recordType, row.dataset.recordId, status);
-        if (button.dataset.removeOnAction === 'true') row.classList.add('is-filtered-out');
-        window.closeLogisticsModals?.();
-        toast(button.dataset.success || `Status updated to ${prettyStatus(status)}.`);
-    }));
-    document.querySelectorAll('[data-toggle-record]').forEach((button) => button.addEventListener('click', () => {
-        const row = button.closest('[data-record-row]');
-        const next = normalize(row?.dataset.status) === 'active' ? 'Inactive' : 'Active';
-        if (!row) return;
-        setRowStatus(row, next);
-        updateState(row.dataset.recordType, row.dataset.recordId, next);
-        button.textContent = next === 'Active' ? 'Deactivate' : 'Activate';
-        toast(`${row.dataset.recordId} is now ${next.toLowerCase()}.`);
-    }));
-}
-
-function setupIncoming() {
-    const form = document.querySelector('[data-incoming-form]');
-    const tbody = document.querySelector('[data-incoming-body]');
-    if (!form || !tbody) return;
-    const addRow = (data, received = 'Just now') => {
-        if ([...tbody.querySelectorAll('[data-record-id]')].some((item) => item.dataset.recordId === data.waybill)) return;
-        const row = document.createElement('tr');
-        row.dataset.row = '';
-        row.dataset.recordRow = '';
-        row.dataset.recordType = 'incoming';
-        row.dataset.recordId = data.waybill;
-        row.dataset.status = 'AT_SORTING_CENTER';
-        row.dataset.zone = data.destination;
-        row.innerHTML = `<td><span class="cell-title"><strong>${escapeHtml(data.waybill)}</strong><small>${escapeHtml(data.order)}</small></span></td><td>${escapeHtml(data.seller)}</td><td>${escapeHtml(data.rider)}</td><td>${escapeHtml(received)}</td><td>${escapeHtml(data.pieces)}</td><td>${escapeHtml(data.weight)} kg</td><td>${escapeHtml(data.destination)}</td><td><span class="status-badge is-info" data-status-badge data-status="AT_SORTING_CENTER">At Sorting Center</span></td><td><button class="button button-small" type="button" data-send-sorting>Send to sorting</button></td>`;
-        tbody.prepend(row);
-    };
-    [...(readState().incomingRows || [])].reverse().forEach((item) => addRow(item, 'Saved preview'));
-    form.addEventListener('submit', (event) => {
-        event.preventDefault();
-        if (!form.reportValidity()) return;
-        const data = Object.fromEntries(new FormData(form));
-        addRow(data);
-        const state = readState();
-        state.incomingRows = [data, ...(state.incomingRows || [])].slice(0, 25);
-        writeState(state);
-        form.reset();
-        window.closeLogisticsModals?.();
-        toast(`${data.waybill} logged at the sorting center.`);
-        refreshIcons();
-    });
-    document.addEventListener('click', (event) => {
-        const button = event.target.closest('[data-send-sorting]');
-        if (!button) return;
-        const row = button.closest('tr');
-        setRowStatus(row, 'Ready for Sorting');
-        updateState('incoming', row.dataset.recordId, 'Ready for Sorting');
-        button.disabled = true;
-        button.textContent = 'Queued';
-        toast('Parcel added to the sorting queue.');
-    });
-}
-
-function setupSorting() {
-    document.querySelectorAll('[data-sort-parcel]').forEach((button) => button.addEventListener('click', () => {
-        const row = button.closest('[data-record-row]');
-        const select = row?.querySelector('[data-zone-select]');
-        if (!row || !select?.value) { toast('Select a destination zone first.'); return; }
-        row.dataset.zone = select.value;
-        setRowStatus(row, 'Sorted');
-        updateState('sorting', row.dataset.recordId, { status: 'Sorted', zone: select.value });
-        toast(`${row.dataset.recordId} sorted to ${select.value}.`);
-    }));
-    const state = readState();
-    document.querySelectorAll('[data-record-type="sorting"]').forEach((row) => {
-        const saved = state.sorting?.[row.dataset.recordId];
-        if (saved && typeof saved === 'object') {
-            setRowStatus(row, saved.status);
-            const select = row.querySelector('[data-zone-select]');
-            if (select) select.value = saved.zone;
-        }
-    });
-}
-
 
 function setupReports() {
     document.querySelector('[data-report-export]')?.addEventListener('click', () => {
@@ -1077,24 +959,6 @@ function setupNewConversation() {
             }
         }
     );
-}
-
-function setupAccount() {
-    document.querySelectorAll('[data-preview-form]').forEach((form) => form.addEventListener('submit', (event) => {
-        event.preventDefault();
-        if (!form.reportValidity()) return;
-        updateState('forms', form.dataset.previewForm, Object.fromEntries(new FormData(form)));
-        toast(form.dataset.success || 'Changes saved in this preview.');
-    }));
-    const passwordForm = document.querySelector('[data-password-form]');
-    passwordForm?.addEventListener('submit', (event) => {
-        event.preventDefault();
-        const next = passwordForm.querySelector('[name="new_password"]').value;
-        const confirm = passwordForm.querySelector('[name="new_password_confirmation"]').value;
-        if (next.length < 8 || next !== confirm) { toast('Passwords must match and contain at least 8 characters.'); return; }
-        passwordForm.reset();
-        toast('Password update validated for this preview.');
-    });
 }
 
 function setupRegistrationEmail(form) {
@@ -2637,14 +2501,10 @@ document.addEventListener('DOMContentLoaded', () => {
     setupShell();
     setupModals();
     setupTabs();
-    setupIncoming();
     setupTables();
-    setupStatusActions();
-    setupSorting();
     setupReports();
     setupChat();
     setupNewConversation();
-    setupAccount();
     setupRegistration();
     refreshIcons();
 });

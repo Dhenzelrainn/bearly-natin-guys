@@ -28,38 +28,106 @@ class RiderController extends Controller
         $user = Auth::user();
 
         $name = $user?->name ?: 'Bearly Rider';
-        $initials = collect(preg_split('/\s+/', trim($name)))
+
+        $initials = collect(
+            preg_split('/\s+/', trim($name))
+        )
             ->filter()
             ->take(2)
-            ->map(fn (string $part) => strtoupper(mb_substr($part, 0, 1)))
+            ->map(
+                fn (string $part) =>
+                    strtoupper(
+                        mb_substr($part, 0, 1)
+                    )
+            )
             ->implode('');
 
-        $logistics = null;
+        $riderProfile = $user
+            ?->riderProfile()
+            ->with([
+                'logisticsProfile.user',
+            ])
+            ->first();
 
-        if ($user?->logistics_id) {
-            $logistics = User::query()
+        /*
+        * Normalized RiderProfile is authoritative.
+        *
+        * Legacy user vehicle fields remain only as a
+        * compatibility fallback for accounts that have
+        * not yet been normalized.
+        */
+        $vehicle =
+            $riderProfile?->vehicle_type
+            ?: $user?->vehicle_type
+            ?: 'Not specified';
+
+        $plate =
+            $riderProfile?->plate_number
+            ?: $user?->plate_number
+            ?: '—';
+
+        /*
+        * Prefer the normalized Logistics relationship.
+        *
+        * Fall back to users.logistics_id only for legacy
+        * Rider accounts that have no RiderProfile yet.
+        */
+        $logisticsUser =
+            $riderProfile
+                ?->logisticsProfile
+                ?->user;
+
+        if (! $logisticsUser && $user?->logistics_id) {
+            $logisticsUser = User::query()
                 ->whereKey($user->logistics_id)
-                ->where('role', UserRole::Logistics->value)
+                ->where(
+                    'role',
+                    UserRole::Logistics->value
+                )
                 ->first();
         }
 
         return [
             'rider' => [
                 'name' => $name,
-                'initials' => $initials ?: 'BR',
-                'email' => $user?->email ?: '',
-                'role' => 'Rider',
-                'vehicle' => $user?->vehicle_type ?: 'Not specified',
-                'plate' => $user?->plate_number ?: '—',
-                'status' => $user?->status
-                    ? ucwords(str_replace('_', ' ', $user->status))
-                    : 'Unknown',
+
+                'initials' =>
+                    $initials ?: 'BR',
+
+                'email' =>
+                    $user?->email ?: '',
+
+                'role' =>
+                    'Rider',
+
+                'vehicle' =>
+                    $vehicle,
+
+                'plate' =>
+                    $plate,
+
+                'status' =>
+                    $user?->status
+                        ? ucwords(
+                            str_replace(
+                                '_',
+                                ' ',
+                                $user->status
+                            )
+                        )
+                        : 'Unknown',
             ],
+
             'logistics' => [
-                'name' => $logistics
-                    ? ($logistics->business_name ?: $logistics->name)
-                    : 'Not assigned',
+                'name' =>
+                    $logisticsUser
+                        ? (
+                            $logisticsUser->business_name
+                            ?: $logisticsUser->name
+                        )
+                        : 'Not assigned',
             ],
+
             'topNotifications' => [],
         ];
     }
@@ -1269,33 +1337,178 @@ class RiderController extends Controller
         ]);
     }
 
-    public function account()
+    public function account(): View
     {
         /** @var User $user */
         $user = Auth::user();
 
-        $address = collect([
-            $user->street_address,
-            $user->barangay,
-            $user->city,
-            $user->province,
-        ])->filter()->implode(', ');
+        $riderProfile = $user
+            ->riderProfile()
+            ->with([
+                'logisticsProfile.user',
+                'homeSortingCenter',
+                'currentZone',
+            ])
+            ->first();
 
-        return view('rider.profile.index', $this->shared() + [
-            'profile' => [
-                'contact' => $user->contact_number ?: '',
-                'birthday' => $user->birthday?->format('Y-m-d') ?? '',
-                'sex' => $user->sex
-                    ? ucwords(str_replace('_', ' ', $user->sex))
-                    : 'Prefer not to say',
-                'address' => $address,
-                'emergency_contact' => '',
-                'preferred_area' => collect([$user->city, $user->province])
-                    ->filter()
-                    ->implode(', '),
-                'vehicle_model' => '',
-                'parcel_capacity' => '',
-            ],
-        ]);
+        /*
+        * Rider registration stores its normalized
+        * registration address under the "Home" label.
+        *
+        * Use the latest owned normalized address only
+        * as a fallback for older/migrated accounts.
+        */
+        $address = $user
+            ->addresses()
+            ->where('label', 'Home')
+            ->latest('id')
+            ->first();
+
+        $address ??= $user
+            ->addresses()
+            ->latest('id')
+            ->first();
+
+        $addressText = $address
+            ? collect([
+                $address->house_number,
+                $address->street,
+
+                filled($address->barangay)
+                    ? 'Brgy. '.$address->barangay
+                    : null,
+
+                $address->city_municipality,
+                $address->province,
+                $address->postal_code,
+            ])
+                ->filter(
+                    fn ($value) =>
+                        filled($value)
+                )
+                ->implode(', ')
+            : 'No address on file';
+
+        $sex = match ($user->sex) {
+            'male' =>
+                'Male',
+
+            'female' =>
+                'Female',
+
+            'prefer_not_to_say' =>
+                'Prefer not to say',
+
+            default =>
+                'Prefer not to say',
+        };
+
+        $emergencyContact = collect([
+            $riderProfile?->emergency_contact_name,
+            $riderProfile?->emergency_contact_phone,
+        ])
+            ->filter(
+                fn ($value) =>
+                    filled($value)
+            )
+            ->implode(' · ');
+
+        $currentZone =
+            $riderProfile?->currentZone;
+
+        if ($currentZone) {
+            $preferredArea =
+                $currentZone->name
+                .(
+                    filled($currentZone->code)
+                        ? ' · '.$currentZone->code
+                        : ''
+                );
+        } else {
+            $preferredArea =
+                $riderProfile
+                    ?->homeSortingCenter
+                    ?->name
+                ?: 'Not assigned';
+        }
+
+        $verificationStatus =
+            $riderProfile?->verification_status
+            ?: 'pending';
+
+        return view(
+            'rider.profile.index',
+            $this->shared() + [
+                'profile' => [
+                    'contact' =>
+                        $user->contact_number ?: '',
+
+                    'birthday' =>
+                        $user->birthday
+                            ?->format('Y-m-d')
+                        ?? '',
+
+                    'sex' =>
+                        $sex,
+
+                    'address' =>
+                        $addressText,
+
+                    'emergency_contact' =>
+                        $emergencyContact,
+
+                    'emergency_contact_name' =>
+                        $riderProfile
+                            ?->emergency_contact_name
+                        ?: '',
+
+                    'emergency_contact_phone' =>
+                        $riderProfile
+                            ?->emergency_contact_phone
+                        ?: '',
+
+                    'preferred_area' =>
+                        $preferredArea,
+
+                    'vehicle_type' =>
+                        $riderProfile?->vehicle_type
+                        ?: 'Not specified',
+
+                    'plate_number' =>
+                        $riderProfile?->plate_number
+                        ?: '',
+
+                    'vehicle_model' =>
+                        $riderProfile?->vehicle_model
+                        ?: '',
+
+                    'parcel_capacity' =>
+                        $riderProfile?->parcel_capacity
+                        ?? '',
+
+                    'verification_status' =>
+                        $verificationStatus,
+
+                    'verification_label' =>
+                        ucwords(
+                            str_replace(
+                                '_',
+                                ' ',
+                                $verificationStatus
+                            )
+                        ),
+
+                    'home_sorting_center' =>
+                        $riderProfile
+                            ?->homeSortingCenter
+                            ?->name
+                        ?: 'Not assigned',
+
+                    'current_zone' =>
+                        $currentZone?->name
+                        ?: 'Not assigned',
+                ],
+            ]
+        );
     }
 }

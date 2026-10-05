@@ -1337,6 +1337,106 @@ class RiderController extends Controller
         ]);
     }
 
+    public function updateProfile(
+        Request $request
+    ): RedirectResponse {
+        /** @var User $user */
+        $user = $request->user();
+
+        $riderProfile = $user
+            ->riderProfile()
+            ->firstOrFail();
+
+        $validated = $request->validate([
+            'name' => [
+                'required',
+                'string',
+                'max:160',
+            ],
+
+            'sex' => [
+                'required',
+                'in:Male,Female,Prefer not to say',
+            ],
+
+            'contact' => [
+                'required',
+                'string',
+                'max:30',
+            ],
+
+            'birthday' => [
+                'nullable',
+                'date',
+                'before:today',
+            ],
+
+            'emergency_contact_name' => [
+                'nullable',
+                'string',
+                'max:160',
+            ],
+
+            'emergency_contact_phone' => [
+                'nullable',
+                'string',
+                'max:30',
+            ],
+        ]);
+
+        $user->update([
+            'name' =>
+                trim($validated['name']),
+
+            'sex' =>
+                match ($validated['sex']) {
+                    'Male' => 'male',
+                    'Female' => 'female',
+                    default => 'prefer_not_to_say',
+                },
+
+            'contact_number' =>
+                trim($validated['contact']),
+
+            'birthday' =>
+                $validated['birthday'] ?? null,
+        ]);
+
+        $riderProfile->update([
+            'emergency_contact_name' =>
+                filled(
+                    $validated['emergency_contact_name']
+                        ?? null
+                )
+                    ? trim(
+                        $validated[
+                            'emergency_contact_name'
+                        ]
+                    )
+                    : null,
+
+            'emergency_contact_phone' =>
+                filled(
+                    $validated['emergency_contact_phone']
+                        ?? null
+                )
+                    ? trim(
+                        $validated[
+                            'emergency_contact_phone'
+                        ]
+                    )
+                    : null,
+        ]);
+
+        return redirect(
+            route('rider.profile.index')
+            . '#profile'
+        )->with(
+            'success',
+            'Rider profile updated successfully.'
+        );
+    }
+
     public function account(): View
     {
         /** @var User $user */

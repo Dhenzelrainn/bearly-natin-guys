@@ -811,6 +811,9 @@ Route::prefix('rider')->name('rider.')->group(function () {
         Route::get('/messages', [RiderController::class, 'messages'])
             ->name('messages.index');
 
+        Route::patch('/account/profile', [RiderController::class, 'updateProfile'])
+            ->name('profile.update');
+
         Route::get('/account', [RiderController::class, 'account'])
             ->name('profile.index');
     });

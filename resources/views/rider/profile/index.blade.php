@@ -113,8 +113,12 @@
 
         <form
             class="panel-body"
-            data-preview-form="profile"
+            method="POST"
+            action="{{ route('rider.profile.update') }}"
         >
+            @csrf
+            @method('PATCH')
+
             <div class="field-grid">
 
                 <div class="field">
@@ -125,7 +129,7 @@
                     <input
                         id="rider-name"
                         name="name"
-                        value="{{ $rider['name'] }}"
+                        value="{{ old('name', $rider['name']) }}"
                         required
                     >
                 </div>
@@ -135,27 +139,35 @@
                         Sex
                     </label>
 
+                    @php
+                        $selectedSex = old(
+                            'sex',
+                            $profile['sex']
+                        );
+                    @endphp
+
                     <select
                         id="rider-sex"
                         name="sex"
+                        required
                     >
                         <option
                             value="Male"
-                            @selected($profile['sex'] === 'Male')
+                            @selected($selectedSex === 'Male')
                         >
                             Male
                         </option>
 
                         <option
                             value="Female"
-                            @selected($profile['sex'] === 'Female')
+                            @selected($selectedSex === 'Female')
                         >
                             Female
                         </option>
 
                         <option
                             value="Prefer not to say"
-                            @selected($profile['sex'] === 'Prefer not to say')
+                            @selected($selectedSex === 'Prefer not to say')
                         >
                             Prefer not to say
                         </option>
@@ -170,9 +182,8 @@
                     <input
                         id="rider-email"
                         type="email"
-                        name="email"
                         value="{{ $rider['email'] }}"
-                        required
+                        readonly
                     >
                 </div>
 
@@ -184,7 +195,10 @@
                     <input
                         id="rider-contact"
                         name="contact"
-                        value="{{ $profile['contact'] }}"
+                        value="{{ old(
+                            'contact',
+                            $profile['contact']
+                        ) }}"
                         required
                     >
                 </div>
@@ -198,19 +212,40 @@
                         id="rider-birthday"
                         type="date"
                         name="birthday"
-                        value="{{ $profile['birthday'] }}"
+                        value="{{ old(
+                            'birthday',
+                            $profile['birthday']
+                        ) }}"
                     >
                 </div>
 
                 <div class="field">
-                    <label for="rider-emergency-contact">
-                        Emergency contact
+                    <label for="rider-emergency-contact-name">
+                        Emergency contact name
                     </label>
 
                     <input
-                        id="rider-emergency-contact"
-                        name="emergency_contact"
-                        value="{{ $profile['emergency_contact'] }}"
+                        id="rider-emergency-contact-name"
+                        name="emergency_contact_name"
+                        value="{{ old(
+                            'emergency_contact_name',
+                            $profile['emergency_contact_name']
+                        ) }}"
+                    >
+                </div>
+
+                <div class="field">
+                    <label for="rider-emergency-contact-phone">
+                        Emergency contact number
+                    </label>
+
+                    <input
+                        id="rider-emergency-contact-phone"
+                        name="emergency_contact_phone"
+                        value="{{ old(
+                            'emergency_contact_phone',
+                            $profile['emergency_contact_phone']
+                        ) }}"
                     >
                 </div>
 
@@ -283,7 +318,10 @@
                         @foreach ($vehicleTypes as $vehicleType)
                             <option
                                 value="{{ $vehicleType }}"
-                                @selected($profile['vehicle_type'] === $vehicleType)
+                                @selected(
+                                    $profile['vehicle_type']
+                                    === $vehicleType
+                                )
                             >
                                 {{ $vehicleType }}
                             </option>

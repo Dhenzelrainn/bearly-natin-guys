@@ -4848,3 +4848,215 @@ body:not(.bc).bh .footer-deals>p{margin-top:13px;color:#bda99a;font-size:10px}
     body:not(.bc).bh .footer-brand,
     body:not(.bc).bh .footer-deals{grid-column:1/-1}
 }
+
+
+/* =========================================================
+   BUYER HOME — COMPACT FLASH DEALS + SIDEBAR PERKS
+   Anti-AI-slop pass: tighter density, thin borders, modest radii,
+   restrained gold, minimal shadow, no oversized product tiles.
+   ========================================================= */
+body:not(.bc).bh .sidebar{
+    display:flex;
+    flex-direction:column;
+}
+body:not(.bc).bh .sidebar-perks{
+    margin-top:12px;
+    padding:8px 8px 6px;
+    border:1px solid #e8dfd6;
+    border-radius:8px;
+    background:#fffaf4;
+}
+body:not(.bc).bh .sidebar-perks-title{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    padding:5px 5px 9px;
+    color:#3e281c;
+    font-size:13px;
+}
+body:not(.bc).bh .sidebar-perks-title .material-symbols-outlined{
+    color:#b86f16;
+    font-size:19px;
+}
+body:not(.bc).bh .sidebar-perk-row{
+    width:100%;
+    min-height:54px;
+    display:grid;
+    grid-template-columns:22px minmax(0,1fr) 18px;
+    align-items:center;
+    gap:9px;
+    padding:8px 5px;
+    border-top:1px solid #efe6dc;
+    color:#3a2b23;
+    text-align:left;
+    background:transparent;
+}
+body:not(.bc).bh .sidebar-perk-row:first-of-type{border-top:0}
+body:not(.bc).bh .sidebar-perk-row:hover{background:#fff4e5}
+body:not(.bc).bh .sidebar-perk-row>.material-symbols-outlined{
+    color:#a94f1c;
+    font-size:20px;
+}
+body:not(.bc).bh .sidebar-perk-copy{
+    min-width:0;
+    display:grid;
+    gap:1px;
+}
+body:not(.bc).bh .sidebar-perk-copy strong{
+    font-size:12px;
+    font-weight:600;
+    line-height:1.25;
+}
+body:not(.bc).bh .sidebar-perk-copy small{
+    color:#8a7a70;
+    font-size:10px;
+    line-height:1.25;
+}
+body:not(.bc).bh .sidebar-perk-chevron{
+    color:#6c5d54!important;
+    font-size:17px!important;
+}
+
+/* Home-only Flash Deals composition */
+body:not(.bc).bh .home-flash-deals{
+    margin:14px 0 0;
+    padding:14px 16px 16px;
+    border:1px solid #eadfce;
+    border-radius:8px;
+    background:#fffaf4;
+    box-shadow:none;
+}
+body:not(.bc).bh .home-flash-deals .flash-deals-heading{
+    margin-bottom:10px;
+}
+body:not(.bc).bh .home-flash-deals .flash-kicker{
+    margin:0 0 1px;
+    font-size:10px;
+    letter-spacing:.08em;
+    color:#b36b10;
+}
+body:not(.bc).bh .home-flash-deals .flash-kicker .material-symbols-outlined{font-size:15px}
+body:not(.bc).bh .home-flash-deals .flash-deals-heading h2{
+    font-size:20px;
+    line-height:1.15;
+}
+body:not(.bc).bh .home-flash-deals .flash-deals-actions{gap:12px}
+body:not(.bc).bh .home-flash-deals .flash-countdown{gap:3px}
+body:not(.bc).bh .home-flash-deals .flash-countdown span{
+    min-width:27px;
+    padding:4px 5px;
+    border-radius:5px;
+    font-size:11px;
+    background:#4b3020;
+}
+body:not(.bc).bh .home-flash-deals .flash-countdown b{font-size:11px}
+body:not(.bc).bh .home-flash-deals .flash-deal-grid{
+    grid-template-columns:repeat(4,minmax(0,1fr));
+    gap:10px;
+}
+body:not(.bc).bh .home-flash-deals .flash-deal-card{
+    border:1px solid #e8dfd6;
+    border-radius:7px;
+    box-shadow:none;
+    background:#fff;
+}
+body:not(.bc).bh .home-flash-deals .flash-deal-card:hover{
+    box-shadow:0 5px 14px rgba(53,37,30,.06);
+}
+body:not(.bc).bh .home-flash-deals .flash-image{
+    aspect-ratio:1.52/1;
+    padding:10px;
+    background:#f8f6f2;
+}
+body:not(.bc).bh .home-flash-deals .flash-image img{
+    width:100%;
+    height:100%;
+    object-fit:contain;
+    transform:none;
+}
+body:not(.bc).bh .home-flash-deals .flash-deal-card:hover .flash-image img{
+    transform:none;
+}
+body:not(.bc).bh .home-flash-deals .flash-image>span{
+    left:7px;
+    top:7px;
+    padding:3px 6px;
+    border-radius:4px;
+    font-size:9px;
+}
+body:not(.bc).bh .home-flash-deals .flash-copy{
+    padding:8px 9px 9px;
+}
+body:not(.bc).bh .home-flash-deals .flash-copy>small{
+    font-size:9px;
+}
+body:not(.bc).bh .home-flash-deals .flash-copy h3{
+    min-height:30px;
+    margin:3px 0 4px;
+    font-size:12px;
+    line-height:1.25;
+}
+body:not(.bc).bh .home-flash-deals .flash-prices{
+    gap:6px;
+}
+body:not(.bc).bh .home-flash-deals .flash-prices strong{
+    font-size:15px;
+}
+body:not(.bc).bh .home-flash-deals .flash-prices del{
+    font-size:10px;
+}
+body:not(.bc).bh .home-flash-deals .flash-add{
+    margin-top:7px;
+    min-height:30px;
+    padding:6px 8px;
+    border-radius:6px;
+    background:#4b3020;
+    font-size:10px;
+}
+body:not(.bc).bh .home-flash-deals .flash-add:hover{background:#5d3d2d}
+
+/* Keep all existing lower homepage product sections intact. */
+body:not(.bc).bh .home-flash-deals + .top-products-preview{
+    margin-top:16px;
+}
+
+@media(max-width:1200px){
+    body:not(.bc).bh .home-flash-deals .flash-deal-grid{
+        grid-template-columns:repeat(4,minmax(0,1fr));
+        gap:8px;
+    }
+    body:not(.bc).bh .home-flash-deals .flash-image{aspect-ratio:1.35/1}
+}
+@media(max-width:980px){
+    body:not(.bc).bh .home-flash-deals .flash-deal-grid{
+        grid-template-columns:repeat(2,minmax(0,1fr));
+    }
+    body:not(.bc).bh .home-flash-deals .flash-image{aspect-ratio:1.65/1}
+}
+@media(max-width:720px){
+    body:not(.bc).bh .sidebar-perks{margin-bottom:12px}
+    body:not(.bc).bh .home-flash-deals{padding:12px}
+    body:not(.bc).bh .home-flash-deals .flash-deals-heading{
+        align-items:flex-start;
+        gap:8px;
+    }
+    body:not(.bc).bh .home-flash-deals .flash-deals-actions{
+        width:100%;
+        justify-content:space-between;
+    }
+    body:not(.bc).bh .home-flash-deals .flash-deal-grid{
+        display:flex;
+        gap:8px;
+        overflow-x:auto;
+        padding-bottom:4px;
+        scroll-snap-type:x proximity;
+    }
+    body:not(.bc).bh .home-flash-deals .flash-deal-card{
+        flex:0 0 168px;
+        scroll-snap-align:start;
+    }
+    body:not(.bc).bh .home-flash-deals .flash-image{
+        aspect-ratio:1.45/1;
+        padding:8px;
+    }
+}

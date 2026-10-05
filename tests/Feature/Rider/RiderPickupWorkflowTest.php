@@ -5,6 +5,7 @@ namespace Tests\Feature\Rider;
 use App\Enums\AccountStatus;
 use App\Enums\ShipmentStatus;
 use App\Enums\UserRole;
+use App\Enums\ParcelStatus;
 use App\Models\Address;
 use App\Models\LogisticsProfile;
 use App\Models\Order;
@@ -24,6 +25,372 @@ use Tests\TestCase;
 class RiderPickupWorkflowTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_rider_can_confirm_own_accepted_pickup(): void
+    {
+        $provider =
+            $this->makeProvider('PICKUP');
+
+        $rider =
+            $this->makeRider(
+                $provider,
+                'PICKUP'
+            );
+
+        $seller =
+            $this->makeSeller('PICKUP');
+
+        $record =
+            $this->makePickupAssignment(
+                $provider,
+                $seller,
+                $rider,
+                'PICKUP'
+            );
+
+        $this
+            ->actingAs($rider->user)
+            ->post(
+                route(
+                    'rider.orders.pickup.accept',
+                    $record['pickup']->pickup_no
+                )
+            )
+            ->assertRedirect();
+
+        $this
+            ->actingAs($rider->user)
+            ->post(
+                route(
+                    'rider.orders.pickup.confirm',
+                    $record['pickup']->pickup_no
+                )
+            )
+            ->assertRedirect(
+                route(
+                    'rider.orders.pickup',
+                    $record['pickup']->pickup_no
+                )
+            )
+            ->assertSessionHas(
+                'job_status',
+                'Pickup confirmed. Parcels are now marked as picked up.'
+            );
+
+        $assignment =
+            $record['assignment']->fresh();
+
+        $this->assertSame(
+            'picked_up',
+            $assignment->status
+        );
+
+        $this->assertNotNull(
+            $assignment->accepted_at
+        );
+
+        $this->assertNotNull(
+            $assignment->picked_up_at
+        );
+
+        /*
+        * Pickup Request is NOT complete until
+        * Sorting Center intake in Phase 1D.
+        */
+        $this->assertSame(
+            'scheduled',
+            $record['pickup']
+                ->fresh()
+                ->status
+        );
+
+        $this->assertNull(
+            $record['pickup']
+                ->fresh()
+                ->completed_at
+        );
+
+        $this->assertSame(
+            ParcelStatus::PickedUp->value,
+            $record['parcel']
+                ->fresh()
+                ->status
+        );
+
+        $this->assertSame(
+            ShipmentStatus::PickedUp->value,
+            $record['shipment']
+                ->fresh()
+                ->status
+        );
+
+        $this->assertDatabaseHas(
+            'shipment_events',
+            [
+                'shipment_id' =>
+                    $record['shipment']->id,
+
+                'parcel_id' =>
+                    $record['parcel']->id,
+
+                'event_type' =>
+                    'parcel_picked_up',
+
+                'to_status' =>
+                    ParcelStatus::PickedUp->value,
+
+                'actor_user_id' =>
+                    $rider->user_id,
+
+                'source' =>
+                    'rider',
+            ]
+        );
+
+        $this->assertDatabaseHas(
+            'shipment_events',
+            [
+                'shipment_id' =>
+                    $record['shipment']->id,
+
+                'parcel_id' =>
+                    null,
+
+                'event_type' =>
+                    'shipment_picked_up',
+
+                'to_status' =>
+                    ShipmentStatus::PickedUp->value,
+
+                'actor_user_id' =>
+                    $rider->user_id,
+
+                'source' =>
+                    'rider',
+            ]
+        );
+    }
+
+    public function test_pickup_cannot_be_confirmed_before_acceptance(): void
+    {
+        $provider =
+            $this->makeProvider(
+                'CONFIRM-EARLY'
+            );
+
+        $rider =
+            $this->makeRider(
+                $provider,
+                'CONFIRM-EARLY'
+            );
+
+        $seller =
+            $this->makeSeller(
+                'CONFIRM-EARLY'
+            );
+
+        $record =
+            $this->makePickupAssignment(
+                $provider,
+                $seller,
+                $rider,
+                'CONFIRM-EARLY'
+            );
+
+        $this
+            ->actingAs($rider->user)
+            ->post(
+                route(
+                    'rider.orders.pickup.confirm',
+                    $record['pickup']->pickup_no
+                )
+            )
+            ->assertStatus(409);
+
+        $this->assertSame(
+            'assigned',
+            $record['assignment']
+                ->fresh()
+                ->status
+        );
+
+        $this->assertNull(
+            $record['assignment']
+                ->fresh()
+                ->picked_up_at
+        );
+
+        $this->assertSame(
+            ShipmentStatus::PickupAssigned->value,
+            $record['shipment']
+                ->fresh()
+                ->status
+        );
+    }
+
+    public function test_rider_cannot_confirm_another_riders_pickup(): void
+    {
+        $provider =
+            $this->makeProvider(
+                'CONFIRM-FOREIGN'
+            );
+
+        $assignedRider =
+            $this->makeRider(
+                $provider,
+                'CONFIRM-OWNER'
+            );
+
+        $foreignRider =
+            $this->makeRider(
+                $provider,
+                'CONFIRM-OTHER'
+            );
+
+        $seller =
+            $this->makeSeller(
+                'CONFIRM-FOREIGN'
+            );
+
+        $record =
+            $this->makePickupAssignment(
+                $provider,
+                $seller,
+                $assignedRider,
+                'CONFIRM-FOREIGN'
+            );
+
+        $this
+            ->actingAs(
+                $assignedRider->user
+            )
+            ->post(
+                route(
+                    'rider.orders.pickup.accept',
+                    $record['pickup']->pickup_no
+                )
+            )
+            ->assertRedirect();
+
+        $this
+            ->actingAs(
+                $foreignRider->user
+            )
+            ->post(
+                route(
+                    'rider.orders.pickup.confirm',
+                    $record['pickup']->pickup_no
+                )
+            )
+            ->assertNotFound();
+
+        $this->assertSame(
+            'accepted',
+            $record['assignment']
+                ->fresh()
+                ->status
+        );
+
+        $this->assertSame(
+            ShipmentStatus::PickupAssigned->value,
+            $record['shipment']
+                ->fresh()
+                ->status
+        );
+    }
+
+    public function test_pickup_confirmation_cannot_be_repeated(): void
+    {
+        $provider =
+            $this->makeProvider(
+                'CONFIRM-ONCE'
+            );
+
+        $rider =
+            $this->makeRider(
+                $provider,
+                'CONFIRM-ONCE'
+            );
+
+        $seller =
+            $this->makeSeller(
+                'CONFIRM-ONCE'
+            );
+
+        $record =
+            $this->makePickupAssignment(
+                $provider,
+                $seller,
+                $rider,
+                'CONFIRM-ONCE'
+            );
+
+        $this
+            ->actingAs($rider->user)
+            ->post(
+                route(
+                    'rider.orders.pickup.accept',
+                    $record['pickup']->pickup_no
+                )
+            )
+            ->assertRedirect();
+
+        $url = route(
+            'rider.orders.pickup.confirm',
+            $record['pickup']->pickup_no
+        );
+
+        $this
+            ->actingAs($rider->user)
+            ->post($url)
+            ->assertRedirect();
+
+        $pickedUpAt =
+            $record['assignment']
+                ->fresh()
+                ->picked_up_at;
+
+        $this
+            ->actingAs($rider->user)
+            ->post($url)
+            ->assertStatus(409);
+
+        $assignment =
+            $record['assignment']->fresh();
+
+        $this->assertSame(
+            'picked_up',
+            $assignment->status
+        );
+
+        $this->assertTrue(
+            $assignment
+                ->picked_up_at
+                ->equalTo($pickedUpAt)
+        );
+
+        $this->assertSame(
+            1,
+            $record['shipment']
+                ->events()
+                ->where(
+                    'event_type',
+                    'parcel_picked_up'
+                )
+                ->count()
+        );
+
+        $this->assertSame(
+            1,
+            $record['shipment']
+                ->events()
+                ->where(
+                    'event_type',
+                    'shipment_picked_up'
+                )
+                ->count()
+        );
+    }
 
     public function test_rider_can_accept_own_assigned_pickup(): void
     {

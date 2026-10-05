@@ -915,12 +915,27 @@ class RiderController extends Controller
             );
     }
 
-    public function confirmPickup(Request $request, string $id)
-    {
-        return back()->with(
-            'job_status',
-            "Pickup {$id} confirmed. Front-end session state updated."
+    public function confirmPickup(
+        string $id,
+        RiderPickupService $pickupService
+    ): RedirectResponse {
+        /** @var User $user */
+        $user = Auth::user();
+
+        $pickupService->confirmPickup(
+            $id,
+            $user
         );
+
+        return redirect()
+            ->route(
+                'rider.orders.pickup',
+                $id
+            )
+            ->with(
+                'job_status',
+                'Pickup confirmed. Parcels are now marked as picked up.'
+            );
     }
 
     public function deliver(

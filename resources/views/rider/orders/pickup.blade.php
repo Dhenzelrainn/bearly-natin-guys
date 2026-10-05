@@ -271,14 +271,57 @@
             @elseif($job['status_raw'] === 'accepted')
                 <div class="panel-footer">
                     <div
+                        style="
+                            width:100%;
+                            display:grid;
+                            gap:12px;
+                        "
+                    >
+                        <div
+                            class="flash-banner"
+                            style="width:100%;"
+                        >
+                            <i data-lucide="circle-check"></i>
+
+                            <span>
+                                Pickup accepted. Verify the physical
+                                parcels with the seller before confirming
+                                collection.
+                            </span>
+                        </div>
+
+                        <form
+                            method="POST"
+                            action="{{ route(
+                                'rider.orders.pickup.confirm',
+                                $job['id']
+                            ) }}"
+                        >
+                            @csrf
+
+                            <button
+                                type="submit"
+                                class="button button-primary"
+                                style="width:100%;"
+                            >
+                                <i data-lucide="package-check"></i>
+                                Confirm parcels picked up
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            @elseif($job['status_raw'] === 'picked_up')
+                <div class="panel-footer">
+                    <div
                         class="flash-banner"
                         style="width:100%;"
                     >
                         <i data-lucide="circle-check"></i>
 
                         <span>
-                            Pickup accepted. Proceed to the
-                            seller during the assigned window.
+                            Parcels collected from the seller.
+                            Return them to your assigned Sorting Center
+                            for intake.
                         </span>
                     </div>
                 </div>

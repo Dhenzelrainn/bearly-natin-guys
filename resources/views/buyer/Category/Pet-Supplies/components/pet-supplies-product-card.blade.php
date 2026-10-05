@@ -6,9 +6,11 @@
         </div>
         <div class="card-copy">
             <h2></h2>
-            <p class="condition"></p>
-            <div class="price-row"><strong></strong><span class="color-label"></span></div>
-            <button class="quick" data-quick><i class="mi" aria-hidden="true">visibility</i> Quick view</button>
+            <div class="card-meta">
+                <span class="card-rating"><b aria-hidden="true">★</b> <span class="card-rating-value"></span></span>
+                <span class="card-sold"></span>
+            </div>
+            <div class="price-row"><strong></strong></div>
         </div>
     </article>
 </template>

@@ -676,8 +676,9 @@
     "location": "Laguna",
     "free_shipping": true,
     "voucher": false,
-    "rating": 4.6,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+      "rating": 4.6,
+      "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+      "image": "/images/products/men/mens-11-01.jpg"
   },
   {
     "id": 32,
@@ -698,8 +699,9 @@
     "location": "Metro Manila",
     "free_shipping": false,
     "voucher": false,
-    "rating": 4.2,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+      "rating": 4.2,
+      "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+      "image": "/images/products/men/mens-12-01.jpg"
   },
   {
     "id": 33,
@@ -720,8 +722,9 @@
     "location": "Cavite",
     "free_shipping": false,
     "voucher": true,
-    "rating": 3.8,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+      "rating": 3.8,
+      "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+      "image": "/images/products/men/mens-13-01.jpg"
   },
   {
     "id": 34,
@@ -735,8 +738,9 @@
     "location": "Laguna",
     "free_shipping": true,
     "voucher": false,
-    "rating": 4.9,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+      "rating": 4.9,
+      "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+      "image": "/images/products/men/mens-14-01.jpg"
   },
   {
     "id": 35,
@@ -750,8 +754,9 @@
     "location": "Metro Manila",
     "free_shipping": false,
     "voucher": false,
-    "rating": 0,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+      "rating": 0,
+      "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+      "image": "/images/products/men/mens-15-01.jpg"
   },
   {
     "id": 36,
@@ -772,8 +777,9 @@
     "location": "Cavite",
     "free_shipping": false,
     "voucher": false,
-    "rating": 4.6,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+      "rating": 4.6,
+      "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+      "image": "/images/products/men/mens-16-01.jpg"
   },
   {
     "id": 37,
@@ -794,8 +800,9 @@
     "location": "Laguna",
     "free_shipping": true,
     "voucher": true,
-    "rating": 4.2,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+      "rating": 4.2,
+      "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+      "image": "/images/products/men/mens-17-01.jpg"
   },
   {
     "id": 38,
@@ -816,8 +823,9 @@
     "location": "Metro Manila",
     "free_shipping": false,
     "voucher": false,
-    "rating": 3.8,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+      "rating": 3.8,
+      "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+      "image": "/images/products/men/mens-18-01.jpg"
   },
   {
     "id": 39,
@@ -831,8 +839,9 @@
     "location": "Cavite",
     "free_shipping": false,
     "voucher": false,
-    "rating": 4.9,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+      "rating": 4.9,
+      "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+      "image": "/images/products/men/mens-19-01.jpg"
   },
   {
     "id": 40,
@@ -846,8 +855,9 @@
     "location": "Laguna",
     "free_shipping": true,
     "voucher": false,
-    "rating": 0,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+      "rating": 0,
+      "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+      "image": "/images/products/men/mens-20-01.jpg"
   },
   {
     "id": 41,
@@ -868,8 +878,9 @@
     "location": "Metro Manila",
     "free_shipping": false,
     "voucher": true,
-    "rating": 4.6,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+      "rating": 4.6,
+      "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+      "image": "/images/products/men/mens-01-01.jpg"
   },
   {
     "id": 42,
@@ -890,8 +901,9 @@
     "location": "Cavite",
     "free_shipping": false,
     "voucher": false,
-    "rating": 4.2,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+      "rating": 4.2,
+      "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+      "image": "/images/products/men/mens-02-01.jpg"
   },
   {
     "id": 43,
@@ -912,8 +924,9 @@
     "location": "Laguna",
     "free_shipping": true,
     "voucher": false,
-    "rating": 3.8,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+      "rating": 3.8,
+      "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+      "image": "/images/products/men/mens-03-01.jpg"
   },
   {
     "id": 44,
@@ -934,8 +947,9 @@
     "location": "Metro Manila",
     "free_shipping": false,
     "voucher": false,
-    "rating": 4.9,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+      "rating": 4.9,
+      "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+      "image": "/images/products/men/mens-04-01.jpg"
   },
   {
     "id": 45,
@@ -955,8 +969,9 @@
     "location": "Cavite",
     "free_shipping": false,
     "voucher": true,
-    "rating": 0,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+      "rating": 0,
+      "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+      "image": "/images/products/men/mens-05-01.jpg"
   },
   {
     "id": 46,
@@ -977,8 +992,9 @@
     "location": "Laguna",
     "free_shipping": true,
     "voucher": false,
-    "rating": 4.6,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+      "rating": 4.6,
+      "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+      "image": "/images/products/men/mens-06-01.jpg"
   },
   {
     "id": 47,
@@ -999,8 +1015,9 @@
     "location": "Metro Manila",
     "free_shipping": false,
     "voucher": false,
-    "rating": 4.2,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+      "rating": 4.2,
+      "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+      "image": "/images/products/men/mens-07-01.jpg"
   },
   {
     "id": 48,
@@ -1021,7 +1038,8 @@
     "location": "Cavite",
     "free_shipping": false,
     "voucher": false,
-    "rating": 3.8,
-    "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected."
+      "rating": 3.8,
+      "description": "Illustrative sample listing for the Bearly frontend. Confirm final specifications, available sizes and seller details once the live catalog is connected.",
+      "image": "/images/products/men/mens-08-01.jpg"
   }
 ]

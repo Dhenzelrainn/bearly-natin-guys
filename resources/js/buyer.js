@@ -1,10 +1,10 @@
-/* BEARLY shared buyer JavaScript: live catalog + buyer-scoped preview catalog. */
+/* BEARLY shared buyer JavaScript: homepage + legacy page + category V2. */
+/* Frontend catalog preview. Preview state is buyer-scoped and never treated as live commerce data. */
 
 const buyerStorageKey = key => window.bearlyStorageKey?.(key) || `bearly-${key}-v1`;
 const PREVIEW_CART_KEY = buyerStorageKey('preview-cart');
 const PREVIEW_WISHLIST_KEY = buyerStorageKey('preview-wishlist');
 const SEARCH_HISTORY_KEY = buyerStorageKey('search-history');
-const LIVE_PLACEHOLDER_IMAGE = '/images/bearly-logo.png';
 
 export function selectProducts(products, { category = '', search = '', sort = 'featured' } = {}) {
     const normalizedCategory = normalizeCategorySlug(category);
@@ -63,82 +63,6 @@ const peso = value =>
         maximumFractionDigits: 0,
     }).format(value);
 
-const previewProductKey = product => {
-    const category = String(
-        product?.category_slug ||
-        (typeof document !== 'undefined'
-            ? document.body?.dataset?.category
-            : '') ||
-        ''
-    ).trim();
-    const id = String(product?.id ?? '').trim();
-
-    return String(
-        product?.featured_key ||
-        (category ? `${category}:${id}` : id)
-    );
-};
-
-const buyerCsrfToken = () =>
-    document.querySelector('meta[name="csrf-token"]')?.content || '';
-
-async function addLiveProductToCart(product, variant, quantity) {
-    const variantId = Number(variant?.id || product?.default_variant_id || 0);
-
-    if (!variantId) {
-        throw new Error('Choose an available product variation first.');
-    }
-
-    const response = await fetch('/cart/add', {
-        method: 'POST',
-        headers: {
-            Accept: 'application/json',
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': buyerCsrfToken(),
-        },
-        body: JSON.stringify({
-            product_variant_id: variantId,
-            quantity,
-        }),
-    });
-    const result = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-        throw new Error(
-            Object.values(result.errors || {}).flat()[0] ||
-            result.message ||
-            'Unable to add this product to your cart.'
-        );
-    }
-
-    window.BearlyNavbarState?.sync?.();
-
-    return result;
-}
-
-async function toggleLiveProductWishlist(product) {
-    const response = await fetch('/wishlist/toggle', {
-        method: 'POST',
-        headers: {
-            Accept: 'application/json',
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': buyerCsrfToken(),
-        },
-        body: JSON.stringify({ product_id: Number(product.id) }),
-    });
-    const result = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-        throw new Error(
-            Object.values(result.errors || {}).flat()[0] ||
-            result.message ||
-            'Unable to update your wishlist.'
-        );
-    }
-
-    return Boolean(result.data?.is_wishlisted);
-}
-
 if (typeof document !== 'undefined') {
     initialize();
 }
@@ -149,13 +73,12 @@ function initialize() {
 
     const { categories, products } = JSON.parse(dataElement.textContent);
     const $ = id => document.getElementById(id);
-    const hasLiveCatalog = products.some(product => product.live);
 
     const state = {
         category: '',
         search: '',
         sort: 'featured',
-        limit: 20,
+        limit: 12,
     };
 
     let previousFocus = null;
@@ -168,7 +91,7 @@ function initialize() {
             return `
                 <span
                     class="product-photo"
-                    style="background-image:url('${escapeHtml(product.image)}');background-size:cover;background-position:center;background-repeat:no-repeat;"
+                    style="background-image:url('${escapeHtml(product.image)}');background-size:contain;background-position:center;background-repeat:no-repeat;background-color:#f7f5f2;"
                     role="img"
                     aria-label="${escapeHtml(product.name)}"
                 ></span>
@@ -217,26 +140,45 @@ function initialize() {
         `;
     };
 
-    const card = product => `
-        <article class="product-card">
+    const discoveryMetrics = product => {
+        const seedText = String(product.id ?? product.name ?? 'bearly');
+        let seed = 0;
+        for (const char of seedText) seed = (seed * 31 + char.charCodeAt(0)) >>> 0;
+
+        const ratingValue = Number(product.rating);
+        const rating = Number.isFinite(ratingValue) && ratingValue > 0
+            ? ratingValue.toFixed(1)
+            : (4.7 + (seed % 3) / 10).toFixed(1);
+
+        const soldRaw = product.sold;
+        const sold = soldRaw !== undefined && soldRaw !== null && soldRaw !== ''
+            ? String(soldRaw).replace(/\s*sold$/i, '')
+            : `${(1.2 + (seed % 28) / 10).toFixed(1)}k`;
+
+        return { rating, sold };
+    };
+
+    const card = product => {
+        const metrics = discoveryMetrics(product);
+        return `
+        <article class="product-card discovery-card" data-discovery-product="${escapeHtml(product.id)}">
             <button
                 class="product-open"
-                data-product="${product.id}"
+                data-product="${escapeHtml(product.id)}"
                 aria-label="View ${escapeHtml(product.name)}"
             >
-                ${photo(product)}
+                <span class="discovery-media">${photo(product)}</span>
                 <div class="product-copy">
-                    <h3>${escapeHtml(product.name)}</h3>
                     <span class="product-category">${escapeHtml(product.category)}</span>
+                    <h3>${escapeHtml(product.name)}</h3>
+                    <div class="discovery-meta"><span><b>★ ${metrics.rating}</b></span><span>(${escapeHtml(metrics.sold)} sold)</span></div>
                     <strong class="product-price">${peso(product.price)}</strong>
-                    <span class="view-product">
-                        View product
-                        <span aria-hidden="true">→</span>
-                    </span>
                 </div>
             </button>
+            <button type="button" class="discovery-like" data-discovery-like aria-label="Save ${escapeHtml(product.name)}"><span class="material-symbols-outlined">favorite</span></button>
         </article>
     `;
+    };
 
     $('category-nav').innerHTML = categories
         .map(
@@ -271,7 +213,7 @@ function initialize() {
             const target = new URL('/products', location.origin);
             target.searchParams.set('category', category);
 
-            const search = (params.get('search') || params.get('q') || '').trim();
+            const search = (params.get('search') || '').trim();
 
             if (search) {
                 target.searchParams.set('q', search);
@@ -283,7 +225,7 @@ function initialize() {
 
         state.category = '';
 
-        state.search = (params.get('search') || params.get('q') || '').slice(0, 120);
+        state.search = (params.get('search') || '').slice(0, 120);
 
         state.sort = ['featured', 'price-low', 'price-high', 'name'].includes(
             params.get('sort')
@@ -291,7 +233,7 @@ function initialize() {
             ? params.get('sort')
             : 'featured';
 
-        state.limit = 20;
+        state.limit = 12;
 
         $('search-category').value = state.category;
         $('search-input').value = state.search;
@@ -324,45 +266,42 @@ function initialize() {
         const visible = results.slice(0, state.limit);
 
         $('editorial').hidden = filtered;
+        document.querySelectorAll('.top-products-preview').forEach(section => {
+            section.hidden = filtered;
+        });
+        // Daily Discoveries stays visible on the normal homepage.
+        // When a search/filter is active, the same section becomes the results area.
         $('results').hidden = false;
-        document
-            .querySelectorAll('.home-featured-section')
-            .forEach(section => {
-                section.hidden = filtered;
-            });
-        $('more-section').hidden = filtered || visible.length <= 12;
+        $('home-load-area').hidden = results.length === 0;
         $('results-tools').hidden = !filtered;
 
         $('results-title').textContent = state.category
             ? categoryLabel(state.category)
             : state.search
                 ? 'Search results'
-                : 'Daily Discoveries';
+                : 'Daily discoveries';
 
+        $('results-caption').hidden = !filtered;
         $('results-caption').textContent = filtered
-            ? `${results.length} ${hasLiveCatalog ? 'listing' : 'sample find'}${results.length === 1 ? '' : 's'}${
+            ? `${results.length} sample ${results.length === 1 ? 'find' : 'finds'}${
                 state.search ? ` for “${state.search}”` : ''
             }`
-            : 'Find something good across Bearly.';
+            : '';
 
-        $('product-grid').innerHTML = (
-            filtered ? visible : visible.slice(0, 12)
-        )
+        $('product-grid').innerHTML = visible
             .map(card)
             .join('');
-
-        $('more-grid').innerHTML = filtered
-            ? ''
-            : visible.slice(12).map(card).join('');
 
         $('empty').hidden = results.length !== 0;
         $('load-more').hidden = visible.length >= results.length;
 
         $('result-count').textContent =
-            `Showing ${visible.length} of ${results.length} ${hasLiveCatalog ? 'listings' : 'sample products'}`;
+            `Showing ${visible.length} of ${results.length} sample products`;
 
-        $('view-all').hidden = !filtered;
-        $('view-all').textContent = 'Clear all';
+        $('view-all').hidden = false;
+        $('view-all').innerHTML = filtered
+            ? 'Clear all <span aria-hidden="true">×</span>'
+            : 'View all <span aria-hidden="true">→</span>';
 
         $('active-filters').innerHTML = [
             state.category
@@ -388,10 +327,13 @@ function initialize() {
     }
 
     function change() {
-        state.limit = 20;
+        state.limit = 12;
         updateUrl();
         render();
-        $('results').scrollIntoView({ block: 'start' });
+        const filtered = Boolean(state.category || state.search || state.sort !== 'featured');
+        if (filtered) {
+            $('results').scrollIntoView({ block: 'start' });
+        }
     }
 
     function reset() {
@@ -416,7 +358,6 @@ function initialize() {
         sidebar.classList.toggle('is-open', open);
         $('sidebar-backdrop').hidden = !open;
         $('menu-toggle').setAttribute('aria-expanded', String(open));
-        $('menu-toggle').setAttribute('aria-label', open ? 'Close categories' : 'Open categories');
         document.body.classList.toggle('menu-open', open);
 
         if (window.matchMedia('(max-width:720px)').matches) {
@@ -434,12 +375,8 @@ function initialize() {
 
     function syncSidebar() {
         if (!mobileQuery.matches) {
-            const collapsed = document.body.classList.contains('desktop-menu-collapsed');
             $('sidebar').inert = false;
             menu(false);
-            document.body.classList.toggle('desktop-menu-collapsed', collapsed);
-            $('menu-toggle').setAttribute('aria-expanded', String(!collapsed));
-            $('menu-toggle').setAttribute('aria-label', collapsed ? 'Show categories' : 'Hide categories');
         } else {
             $('sidebar').inert = !$('sidebar').classList.contains('is-open');
         }
@@ -448,16 +385,7 @@ function initialize() {
     mobileQuery.addEventListener('change', syncSidebar);
     syncSidebar();
 
-    $('menu-toggle').addEventListener('click', () => {
-        if (!mobileQuery.matches) {
-            const collapsed = document.body.classList.toggle('desktop-menu-collapsed');
-            $('menu-toggle').setAttribute('aria-expanded', String(!collapsed));
-            $('menu-toggle').setAttribute('aria-label', collapsed ? 'Show categories' : 'Hide categories');
-            return;
-        }
-
-        menu(true);
-    });
+    $('menu-toggle').addEventListener('click', () => menu(true));
     $('menu-close').addEventListener('click', () => menu(false));
     $('sidebar-backdrop').addEventListener('click', () => menu(false));
 
@@ -516,7 +444,16 @@ function initialize() {
         change();
     });
 
-    $('view-all').addEventListener('click', reset);
+    $('view-all').addEventListener('click', () => {
+        const filtered = Boolean(state.category || state.search || state.sort !== 'featured');
+        if (filtered) {
+            reset();
+            return;
+        }
+
+        state.limit = products.length;
+        render();
+    });
     $('reset-search').addEventListener('click', reset);
 
     $('load-more').addEventListener('click', () => {
@@ -558,15 +495,6 @@ function initialize() {
             element.style.backgroundSize = 'cover';
             element.style.backgroundPosition = 'center';
             element.style.backgroundRepeat = 'no-repeat';
-            return;
-        }
-
-        if (product.live) {
-            element.style.backgroundImage = `url("${LIVE_PLACEHOLDER_IMAGE}")`;
-            element.style.backgroundSize = 'contain';
-            element.style.backgroundPosition = 'center';
-            element.style.backgroundRepeat = 'no-repeat';
-            element.style.backgroundColor = '#f1e8dc';
             return;
         }
 
@@ -897,7 +825,7 @@ function initialize() {
                             <i class="mi" aria-hidden="true">
                                 verified
                             </i>
-                            ${product.live ? 'Live Bearly product' : 'Product preview'}
+                            Product preview
                         </div>
 
                     </section>
@@ -1092,9 +1020,11 @@ function initialize() {
                                 info
                             </i>
 
-                            ${product.live
-                                ? 'Live cart and inventory are connected for this listing.'
-                                : 'Frontend preview only — checkout and live inventory will be connected during backend integration.'}
+                            Frontend preview only —
+                            checkout and live
+                            inventory will be
+                            connected during
+                            backend integration.
                         </div>
 
                     </section>
@@ -1624,30 +1554,8 @@ function initialize() {
                         return;
                     }
 
-                     if (product.live) {
-                         const button = detail.querySelector('[data-pd-add-cart]');
-                         button.disabled = true;
-
-                         void addLiveProductToCart(
-                             product,
-                             currentVariant(),
-                             quantity
-                         )
-                             .then(() => {
-                                 notify(`${quantity} × ${product.name} added to your cart.`);
-                             })
-                             .catch(error => notify(error.message))
-                             .finally(() => {
-                                 if (button.isConnected) {
-                                     button.disabled = false;
-                                 }
-                             });
-
-                         return;
-                     }
-
-                     const cartKey =
-                         PREVIEW_CART_KEY; // home preview cart
+                    const cartKey =
+                        PREVIEW_CART_KEY;
 
                     let previewCart = [];
 
@@ -1672,7 +1580,7 @@ function initialize() {
                     }
 
                     const itemKey = [
-                        previewProductKey(product),
+                        product.id,
                         selectedColor,
                         selectedSize,
                     ].join('-');
@@ -1725,7 +1633,6 @@ function initialize() {
                                 previewCart
                             )
                         );
-                        window.BearlyNavbarState?.sync?.();
                     } catch {
                         // LocalStorage unavailable.
                     }
@@ -1770,23 +1677,9 @@ function initialize() {
             ?.addEventListener(
                 'click',
                 () => {
-                    if (product.live) {
-                        void addLiveProductToCart(
-                            product,
-                            currentVariant(),
-                            quantity
-                        )
-                            .then(() => {
-                                window.location.href = '/checkout';
-                            })
-                            .catch(error => notify(error.message));
-
-                        return;
-                    }
-
-                     notify(
-                         'Buy Now is frontend-only for now. Checkout will be connected later.' // home preview
-                     );
+                    notify(
+                        'Buy Now is frontend-only for now. Checkout will be connected later.'
+                    );
                 }
             );
 
@@ -1810,13 +1703,8 @@ function initialize() {
             ?.addEventListener(
                 'click',
                 () => {
-                    if (product.live && product.store_slug) {
-                        window.location.href = `/stores/${encodeURIComponent(product.store_slug)}`;
-                        return;
-                    }
-
                     notify(
-                        'Seller shop page will be connected later.' // home preview
+                        'Seller shop page will be connected later.'
                     );
                 }
             );
@@ -1856,7 +1744,7 @@ function initialize() {
     document.addEventListener('click', event => {
         // Flash Deals and Top Products reuse the existing Bearly product-details UI.
         const featuredCard = event.target.closest('[data-flash-product], [data-top-product]');
-        if (featuredCard && !event.target.closest('[data-flash-add], [data-top-add], [data-top-like]')) {
+        if (featuredCard && !event.target.closest('[data-flash-add], [data-flash-like], [data-top-add], [data-top-like]')) {
             const source = document.getElementById('featured-product-data');
             let featuredProducts = [];
             try {
@@ -1882,9 +1770,17 @@ function initialize() {
                 event.preventDefault();
                 event.stopImmediatePropagation();
                 const previewProduct = { ...product };
+                if (featuredCard.dataset.name) {
+                    previewProduct.name = featuredCard.dataset.name;
+                }
+                if (featuredCard.dataset.price) {
+                    previewProduct.price = Number(featuredCard.dataset.price);
+                }
+                if (featuredCard.dataset.topCategory) {
+                    previewProduct.category = featuredCard.dataset.topCategory;
+                }
                 if (featuredCard.matches('[data-flash-product]')) {
                     previewProduct.original_price = Number(product.price || 0);
-                    previewProduct.price = Number(featuredCard.dataset.price || product.price || 0);
                     previewProduct.flash_deal = true;
                 }
                 showHomeProduct(previewProduct);
@@ -1914,6 +1810,28 @@ function initialize() {
             $('search-category').value = state.category;
             $('search-input').value = state.search;
             change();
+        }
+
+        const discoveryLike = event.target.closest('[data-discovery-like]');
+
+        if (discoveryLike) {
+            const card = discoveryLike.closest('[data-discovery-product]');
+            const key = String(card?.dataset.discoveryProduct || '');
+            if (!key) return;
+
+            let saved = [];
+            try {
+                const parsed = JSON.parse(localStorage.getItem(PREVIEW_WISHLIST_KEY) || '[]');
+                if (Array.isArray(parsed)) saved = parsed;
+            } catch {}
+
+            const index = saved.indexOf(key);
+            if (index >= 0) saved.splice(index, 1);
+            else saved.push(key);
+
+            try { localStorage.setItem(PREVIEW_WISHLIST_KEY, JSON.stringify(saved)); } catch {}
+            discoveryLike.classList.toggle('is-liked', index < 0);
+            return;
         }
 
         const productButton = event.target.closest('[data-product]');
@@ -1948,18 +1866,11 @@ function initialize() {
                 ],
                 help: [
                     'How can we help?',
-                    hasLiveCatalog
-                        ? 'Browse a category, search for a product, or open a product card for a closer look. Published Bearly listings can be added to your cart.'
-                        : 'Browse a category, search for a product, or open a product card for a closer look. Sample listings cannot be purchased.',
-                ],
-                newsletter: [
-                    'Bearly deals',
-                    'Email updates will be connected in a later release. This storefront preview does not subscribe or send messages.',
+                    'Browse a category, search for a product, or open a product card for a closer look. Sample listings cannot be purchased.',
                 ],
             }[info.dataset.info];
 
             if (copy) {
-                event.preventDefault();
                 $('info-title').textContent = copy[0];
                 $('info-copy').textContent = copy[1];
                 $('info-dialog').showModal();
@@ -2779,13 +2690,8 @@ if (
 function init() {
     const $ = id => document.getElementById(id);
 
-    const previewCatalog = JSON.parse($('bc-data').textContent);
-    const liveCatalog = Array.isArray(window.bearlyLiveCatalog)
-        ? window.bearlyLiveCatalog
-        : [];
-    const usingLiveCatalog = liveCatalog.length > 0;
     const products = catalogWithFilterGroups(
-        usingLiveCatalog ? liveCatalog : previewCatalog,
+        JSON.parse($('bc-data').textContent),
         document.body.dataset.category
     );
     const priceLimit = catalogPriceLimit(products);
@@ -2809,11 +2715,36 @@ function init() {
     );
 
     let limit = 20;
-    let saved = products
-        .filter(product => product.live && product.is_wishlisted)
-        .map(product => Number(product.id));
+    let saved = [];
     const wishlistCategory =
         document.body.dataset.category || 'unknown';
+
+    const categoryMetrics = product => {
+        const seedText = `${wishlistCategory}:${product.id}`;
+        let seed = 0;
+
+        for (const character of seedText) {
+            seed = (seed * 31 + character.charCodeAt(0)) >>> 0;
+        }
+
+        const ratingValue = Number(product.rating);
+        const rating = Number.isFinite(ratingValue) && ratingValue > 0
+            ? Math.min(5, ratingValue).toFixed(1)
+            : '4.5';
+
+        const soldText = String(product.sold ?? '').trim().toLowerCase();
+        const soldValue = soldText.endsWith('k')
+            ? Number.parseFloat(soldText) * 1000
+            : Number(soldText);
+        const soldCount = Number.isFinite(soldValue) && soldValue >= 0
+            ? Math.round(soldValue)
+            : 180 + (seed % 4621);
+        const sold = soldCount >= 1000
+            ? `${(soldCount / 1000).toFixed(1)}k`
+            : String(soldCount);
+
+        return { rating, sold };
+    };
 
     try {
         const stored = JSON.parse(
@@ -2823,22 +2754,16 @@ function init() {
         );
 
         if (Array.isArray(stored)) {
-            saved = [
-                ...saved,
-                ...stored
+            saved = stored
                 .filter(key =>
                     typeof key === 'string' &&
                     key.startsWith(`${wishlistCategory}:`)
                 )
                 .map(key => Number(key.split(':').pop()))
-                .filter(id => validIds.has(id)),
-            ];
-            saved = [...new Set(saved)];
+                .filter(id => validIds.has(id));
         }
     } catch {
-        saved = products
-            .filter(product => product.live && product.is_wishlisted)
-            .map(product => Number(product.id));
+        saved = [];
     }
 
     const colors = {
@@ -3042,15 +2967,6 @@ function init() {
             return;
         }
 
-        if (product.live) {
-            element.style.backgroundImage = `url("${LIVE_PLACEHOLDER_IMAGE}")`;
-            element.style.backgroundSize = 'contain';
-            element.style.backgroundPosition = 'center';
-            element.style.backgroundRepeat = 'no-repeat';
-            element.style.backgroundColor = '#f1e8dc';
-            return;
-        }
-
         const photoIndex = Math.max(
             0,
             Number(product.photo) || 0
@@ -3103,6 +3019,7 @@ function init() {
                 .content
                 .firstElementChild
                 .cloneNode(true);
+            const metrics = categoryMetrics(product);
 
             card.dataset.id = product.id;
 
@@ -3122,25 +3039,30 @@ function init() {
                 product.name;
 
             card.querySelector(
-                '.condition'
-            ).textContent = product.condition;
+                '.card-rating-value'
+            ).textContent = metrics.rating;
+
+            card.querySelector(
+                '.card-rating'
+            ).setAttribute(
+                'aria-label',
+                `${metrics.rating} out of 5 stars`
+            );
+
+            card.querySelector(
+                '.card-sold'
+            ).textContent = `(${metrics.sold} sold)`;
 
             card.querySelector(
                 '.price-row strong'
             ).textContent = price(product.price);
 
             card.querySelector(
-                '.color-label'
-            ).textContent = product.color;
-
-            card
-                .querySelectorAll('[data-quick]')
-                .forEach(button =>
-                    button.setAttribute(
-                        'aria-label',
-                        `Quick view: ${product.name}`
-                    )
-                );
+                '.image-open'
+            )?.setAttribute(
+                'aria-label',
+                `Open ${product.name} preview`
+            );
 
             const heart =
                 card.querySelector('[data-save]');
@@ -3170,10 +3092,10 @@ function init() {
         );
 
         $('bc-count').textContent =
-            `${filtered.length} ${usingLiveCatalog ? 'live listings' : 'sample products'}`;
+            `${filtered.length} sample products`;
 
         $('bc-status').textContent =
-            `Showing ${shown.length} of ${filtered.length} ${usingLiveCatalog ? 'live listings' : 'sample products'}`;
+            `Showing ${shown.length} of ${filtered.length} sample products`;
 
         $('bc-empty').hidden =
             filtered.length > 0;
@@ -3670,7 +3592,7 @@ function init() {
 
 
     /* =====================================================
-       PRODUCT DETAILS — LIVE + FRONTEND PREVIEW
+       PRODUCT DETAILS — FRONTEND ONLY
        ===================================================== */
 
     function showProduct(product) {
@@ -3954,7 +3876,7 @@ function init() {
                             <i class="mi" aria-hidden="true">
                                 verified
                             </i>
-                            ${product.live ? 'Live Bearly product' : 'Product preview'}
+                            Product preview
                         </div>
 
                     </section>
@@ -4146,9 +4068,11 @@ function init() {
                                 info
                             </i>
 
-                            ${product.live
-                                ? 'Live cart and inventory are connected for this listing.'
-                                : 'Frontend preview only — checkout and live inventory will be connected during backend integration.'}
+                            Frontend preview only —
+                            checkout and live
+                            inventory will be
+                            connected during
+                            backend integration.
                         </div>
 
                     </section>
@@ -4677,30 +4601,8 @@ function init() {
                         return;
                     }
 
-                     if (product.live) {
-                         const button = detail.querySelector('[data-pd-add-cart]');
-                         button.disabled = true;
-
-                         void addLiveProductToCart(
-                             product,
-                             currentVariant(),
-                             quantity
-                         )
-                             .then(() => {
-                                 notify(`${quantity} × ${product.name} added to your cart.`);
-                             })
-                             .catch(error => notify(error.message))
-                             .finally(() => {
-                                 if (button.isConnected) {
-                                     button.disabled = false;
-                                 }
-                             });
-
-                         return;
-                     }
-
-                     const cartKey =
-                         PREVIEW_CART_KEY;
+                    const cartKey =
+                        PREVIEW_CART_KEY;
 
                     let previewCart = [];
 
@@ -4725,7 +4627,7 @@ function init() {
                     }
 
                     const itemKey = [
-                        previewProductKey(product),
+                        product.id,
                         selectedColor,
                         selectedSize,
                     ].join('-');
@@ -4774,7 +4676,6 @@ function init() {
                                 previewCart
                             )
                         );
-                        window.BearlyNavbarState?.sync?.();
                     } catch {
                         // LocalStorage unavailable.
                     }
@@ -4819,23 +4720,9 @@ function init() {
             ?.addEventListener(
                 'click',
                 () => {
-                     if (product.live) {
-                         void addLiveProductToCart(
-                             product,
-                             currentVariant(),
-                             quantity
-                         )
-                             .then(() => {
-                                 window.location.href = '/checkout';
-                             })
-                             .catch(error => notify(error.message));
-
-                         return;
-                     }
-
-                     notify(
-                         'Buy Now is frontend-only for now. Checkout will be connected later.'
-                     );
+                    notify(
+                        'Buy Now is frontend-only for now. Checkout will be connected later.'
+                    );
                 }
             );
 
@@ -4859,11 +4746,6 @@ function init() {
             ?.addEventListener(
                 'click',
                 () => {
-                    if (product.live && product.store_slug) {
-                        window.location.href = `/stores/${encodeURIComponent(product.store_slug)}`;
-                        return;
-                    }
-
                     notify(
                         'Seller shop page will be connected later.'
                     );
@@ -4902,21 +4784,6 @@ function init() {
         );
     }
 
-
-    async function saveLiveProduct(product, id) {
-        try {
-            const isWishlisted = await toggleLiveProductWishlist(product);
-            saved = isWishlisted
-                ? [...new Set([...saved, id])]
-                : saved.filter(value => value !== id);
-            render();
-            $('bc-grid')
-                .querySelector(`[data-id="${id}"] [data-save]`)
-                ?.focus({ preventScroll: true });
-        } catch (error) {
-            $('bc-status').textContent = error.message;
-        }
-    }
 
     document.addEventListener(
         'click',
@@ -5017,15 +4884,6 @@ function init() {
                         ).dataset.id
                     );
 
-                const savedProduct = products.find(
-                    item => item.id === id
-                );
-
-                if (savedProduct?.live) {
-                    void saveLiveProduct(savedProduct, id);
-                    return;
-                }
-
                 saved =
                     saved.includes(id)
                         ? saved.filter(
@@ -5117,7 +4975,7 @@ function init() {
                     ],
                     help: [
                         'Explore Bearly',
-                        'Search within Men’s Apparel, combine filters, save sample items on this browser, or open Quick view. Prices and ratings are illustrative.',
+                        'Search within Men’s Apparel, combine filters, save sample items on this browser, or open a product preview. Prices, ratings and sold counts are illustrative.',
                     ],
                     about: [
                         'About Bearly',
@@ -5915,7 +5773,7 @@ function showFeaturedProductFull(product) {
                         <i class="mi" aria-hidden="true">
                             verified
                         </i>
-                            ${product.live ? 'Live Bearly product' : 'Product preview'}
+                        Product preview
                     </div>
 
                 </section>
@@ -6110,9 +5968,11 @@ function showFeaturedProductFull(product) {
                             info
                         </i>
 
-                            ${product.live
-                                ? 'Live cart and inventory are connected for this listing.'
-                                : 'Frontend preview only — checkout and live inventory will be connected during backend integration.'}
+                        Frontend preview only —
+                        checkout and live
+                        inventory will be
+                        connected during
+                        backend integration.
                     </div>
 
                 </section>
@@ -6668,7 +6528,7 @@ function showFeaturedProductFull(product) {
                 }
 
                 const itemKey = [
-                    previewProductKey(product),
+                    product.id,
                     selectedColor,
                     selectedSize,
                 ].join('-');
@@ -6721,7 +6581,6 @@ function showFeaturedProductFull(product) {
                             previewCart
                         )
                     );
-                    window.BearlyNavbarState?.sync?.();
                 } catch {
                     // LocalStorage unavailable.
                 }
@@ -6920,7 +6779,7 @@ function addBearlyFeaturedToCart(card, kind = 'top') {
         flash_deal: kind === 'flash',
         frontend_preview: true,
     });
-     try { localStorage.setItem(CART_KEY, JSON.stringify(cart)); window.BearlyNavbarState?.sync?.(); } catch {}
+    try { localStorage.setItem(CART_KEY, JSON.stringify(cart)); } catch {}
 }
 
 /* BEAR-110 Flash Deals */
@@ -6930,6 +6789,7 @@ function initBearlyFlashDeals() {
     if (!products.length && !countdowns.length) return;
 
     const CART_KEY = PREVIEW_CART_KEY;
+    const SAVED_KEY = PREVIEW_WISHLIST_KEY;
     const END_KEY = 'bearly-flash-deal-end-v1';
     const cycleMs = 6 * 60 * 60 * 1000;
 
@@ -6969,9 +6829,44 @@ function initBearlyFlashDeals() {
         window.setTimeout(() => el.classList.remove('show'), 1600);
     };
 
+    const readSaved = () => {
+        try {
+            const parsed = JSON.parse(localStorage.getItem(SAVED_KEY) || '[]');
+            return Array.isArray(parsed) ? parsed : [];
+        } catch {
+            return [];
+        }
+    };
+
+    const syncFlashLikes = () => {
+        const saved = new Set(readSaved());
+        products.forEach(card => {
+            const button = card.querySelector('[data-flash-like]');
+            const key = card.dataset.productId || card.dataset.key || '';
+            if (button) button.classList.toggle('is-liked', saved.has(key));
+        });
+    };
+    syncFlashLikes();
+
     document.addEventListener('click', event => {
         const card = event.target.closest('[data-flash-product]');
         if (!card) return;
+
+        const like = event.target.closest('[data-flash-like]');
+        if (like) {
+            event.preventDefault();
+            event.stopPropagation();
+            const key = card.dataset.productId || card.dataset.key || '';
+            const saved = readSaved();
+            const index = saved.indexOf(key);
+            if (index >= 0) saved.splice(index, 1);
+            else saved.push(key);
+            try { localStorage.setItem(SAVED_KEY, JSON.stringify(saved)); } catch {}
+            syncFlashLikes();
+            toast(index >= 0 ? 'Removed from My Likes.' : 'Saved to My Likes.');
+            return;
+        }
+
         const button = event.target.closest('[data-flash-add]');
         if (!button) {
             event.preventDefault();
@@ -7006,7 +6901,7 @@ function initBearlyFlashDeals() {
             });
         }
 
-         try { localStorage.setItem(CART_KEY, JSON.stringify(cart)); window.BearlyNavbarState?.sync?.(); } catch {}
+        try { localStorage.setItem(CART_KEY, JSON.stringify(cart)); } catch {}
         const old = button.textContent;
         button.textContent = 'Added ✓';
         button.classList.add('is-added');
@@ -7022,7 +6917,189 @@ if (typeof document !== 'undefined') {
 
 
 /* BEAR-111 Top Products */
+function initBearlyCategoryRankingPage(page) {
+    const grid = page.querySelector('[data-top-grid]');
+    const source = document.getElementById('featured-product-data');
+    if (!grid || !source) return;
+
+    let products = [];
+    try {
+        const parsed = JSON.parse(source.textContent || '[]');
+        if (Array.isArray(parsed)) products = parsed;
+    } catch {}
+    if (!products.length) return;
+
+    const mode = page.dataset.rankingMode === 'sales' ? 'sales' : 'popular';
+    const categoryTabs = [...page.querySelectorAll('[data-top-category-tab]')];
+    const moreToggle = page.querySelector('[data-top-more-toggle]');
+    const moreMenu = page.querySelector('[data-top-more-menu]');
+    const empty = page.querySelector('[data-top-empty]');
+    const toastEl = page.querySelector('[data-top-toast]');
+    const saved = new Set(
+        (() => {
+            try {
+                const value = JSON.parse(localStorage.getItem(PREVIEW_WISHLIST_KEY) || '[]');
+                return Array.isArray(value) ? value.filter(value => typeof value === 'string') : [];
+            } catch {
+                return [];
+            }
+        })()
+    );
+    let cards = [];
+
+    const toast = message => {
+        if (!toastEl) return;
+        toastEl.textContent = message;
+        toastEl.classList.add('show');
+        window.setTimeout(() => toastEl.classList.remove('show'), 1500);
+    };
+
+    const hash = value => {
+        let result = 0;
+        for (const character of String(value)) result = (result * 31 + character.charCodeAt(0)) >>> 0;
+        return result;
+    };
+
+    const metricsFor = product => {
+        const rating = Number(product.rating) > 0 ? Number(product.rating) : 4.7;
+        const sales = 700 + (hash(`${product.category_slug}:${product.id}`) % 4301);
+        const score = mode === 'sales'
+            ? sales + rating * 125
+            : rating * 1000 + sales / 10;
+
+        return { rating, sales, score };
+    };
+
+    const formatSold = value => value >= 1000
+        ? `${(value / 1000).toFixed(1)}k`
+        : String(value);
+
+    const rankedProducts = category => products
+        .filter(product => product.category_slug === category)
+        .map(product => ({ product, metrics: metricsFor(product) }))
+        .sort((a, b) => b.metrics.score - a.metrics.score || String(a.product.name).localeCompare(String(b.product.name)))
+        .slice(0, 10);
+
+    const cardMarkup = (entry, index) => {
+        const product = entry.product;
+        const metrics = entry.metrics;
+        const rank = index + 1;
+        const productId = `${product.category_slug}:${product.id}`;
+        const key = `${mode}-${productId}`;
+        const podium = rank <= 3 ? ' top-rank-podium' : '';
+
+        return `<article class="top-product-card${podium}" data-top-product data-key="${escapeHtml(key)}" data-product-id="${escapeHtml(productId)}" data-name="${escapeHtml(product.name)}" data-price="${Number(product.price || 0)}" data-image="${escapeHtml(product.image || '')}" data-top-category="${escapeHtml(product.category || '')}" data-rating="${metrics.rating.toFixed(1)}" data-sold="${metrics.sales}">
+            <div class="top-product-image"><img src="${escapeHtml(product.image || '')}" alt="${escapeHtml(product.name)}" loading="lazy"><span class="top-rank">#${rank}</span><button type="button" class="top-like" data-top-like aria-label="Save ${escapeHtml(product.name)}"><span class="material-symbols-outlined">favorite</span></button></div>
+            <div class="top-product-copy"><small>${escapeHtml(product.category || '')}</small><h3>${escapeHtml(product.name)}</h3><div class="top-product-meta"><span><b>★ ${metrics.rating.toFixed(1)}</b></span><span>${formatSold(metrics.sales)} sold</span></div><div class="top-product-bottom"><strong>${escapeHtml(peso(product.price || 0))}</strong></div></div>
+        </article>`;
+    };
+
+    const syncLikes = () => cards.forEach(card => {
+        const button = card.querySelector('[data-top-like]');
+        if (button) button.classList.toggle('is-liked', saved.has(card.dataset.productId || ''));
+    });
+
+    const attachCards = () => {
+        cards = [...grid.querySelectorAll('[data-top-product]')];
+        cards.forEach(card => {
+            const rankText = card.querySelector('.top-rank')?.textContent || '';
+            const rank = Number(rankText.match(/\d+/)?.[0] || 0);
+            card.classList.toggle('top-rank-podium', rank >= 1 && rank <= 3);
+            card.tabIndex = 0;
+            card.style.cursor = 'pointer';
+            card.setAttribute('role', 'link');
+            card.setAttribute('aria-label', `Preview ${card.dataset.name || 'product'}`);
+            card.addEventListener('keydown', event => {
+                if (event.target !== card || !['Enter', ' '].includes(event.key)) return;
+                event.preventDefault();
+                openBearlyFeaturedPreview(card, 'top');
+            });
+        });
+        syncLikes();
+    };
+
+    const renderCategory = category => {
+        const entries = rankedProducts(category);
+        const categoryName = categoryTabs.find(tab => tab.dataset.topCategoryTab === category)?.textContent.trim() || category;
+        grid.innerHTML = entries.map(cardMarkup).join('');
+        grid.setAttribute('aria-label', `${categoryName} ${mode === 'sales' ? 'best sellers' : 'top products'}`);
+        if (empty) {
+            empty.hidden = entries.length > 0;
+            const title = empty.querySelector('h3');
+            if (title) title.textContent = `No ${mode === 'sales' ? 'best sellers' : 'top products'} in ${categoryName}`;
+        }
+        attachCards();
+    };
+
+    const closeMoreMenu = () => {
+        if (!moreToggle || !moreMenu) return;
+        moreToggle.setAttribute('aria-expanded', 'false');
+        moreMenu.hidden = true;
+    };
+
+    if (moreToggle && moreMenu) {
+        moreToggle.addEventListener('click', event => {
+            event.stopPropagation();
+            const open = moreToggle.getAttribute('aria-expanded') === 'true';
+            moreToggle.setAttribute('aria-expanded', String(!open));
+            moreMenu.hidden = open;
+        });
+    }
+
+    const setCategory = category => {
+        const selected = categoryTabs.find(tab => tab.dataset.topCategoryTab === category);
+        const categoryName = selected?.textContent.trim() || category;
+
+        categoryTabs.forEach(tab => {
+            const active = tab.dataset.topCategoryTab === category;
+            tab.classList.toggle('is-active', active);
+            if (tab.getAttribute('role') === 'tab') tab.setAttribute('aria-selected', String(active));
+        });
+        if (moreToggle) moreToggle.classList.toggle('is-active', Boolean(selected && moreMenu?.contains(selected)));
+        closeMoreMenu();
+        renderCategory(category);
+        page.dataset.activeCategory = category;
+        page.dataset.activeCategoryName = categoryName;
+    };
+
+    categoryTabs.forEach(tab => tab.addEventListener('click', () => {
+        setCategory(tab.dataset.topCategoryTab || '');
+    }));
+    document.addEventListener('click', event => {
+        if (!event.target.closest('[data-top-more-toggle],[data-top-more-menu]')) closeMoreMenu();
+    });
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape') closeMoreMenu();
+    });
+    document.addEventListener('click', event => {
+        const like = event.target.closest('[data-top-like]');
+        if (like) {
+            const card = like.closest('[data-top-product]');
+            if (!card) return;
+            const key = card.dataset.productId || '';
+            if (saved.has(key)) saved.delete(key); else saved.add(key);
+            try { localStorage.setItem(PREVIEW_WISHLIST_KEY, JSON.stringify([...saved])); } catch {}
+            syncLikes();
+            toast(saved.has(key) ? 'Saved to My Likes.' : 'Removed from My Likes.');
+            return;
+        }
+
+        const card = event.target.closest('[data-top-product]');
+        if (card && !event.target.closest('[data-top-add]')) openBearlyFeaturedPreview(card, 'top');
+    });
+
+    const defaultCategory = page.dataset.defaultCategory;
+    setCategory(categoryTabs.some(tab => tab.dataset.topCategoryTab === defaultCategory)
+        ? defaultCategory
+        : categoryTabs[0]?.dataset.topCategoryTab || '');
+}
+
 function initBearlyTopProducts() {
+    const rankingPage = document.querySelector('[data-ranking-page]');
+    if (rankingPage) {
+        initBearlyCategoryRankingPage(rankingPage);
+        return;
+    }
     const cards = [...document.querySelectorAll('[data-top-product]')];
     if (!cards.length) return;
     const CART_KEY = PREVIEW_CART_KEY;
@@ -7043,6 +7120,9 @@ function initBearlyTopProducts() {
 
 
     cards.forEach(card => {
+        const rankText = card.querySelector('.top-rank')?.textContent || '';
+        const rank = Number(rankText.match(/\d+/)?.[0] || 0);
+        card.classList.toggle('top-rank-podium', rank >= 1 && rank <= 3);
         card.tabIndex = 0;
         card.style.cursor = 'pointer';
         card.setAttribute('role', 'link');
@@ -7092,13 +7172,48 @@ function initBearlyTopProducts() {
         toast(`${card.dataset.name || 'Item'} added to cart.`);
     });
     const filters=[...document.querySelectorAll('[data-top-filter]')];
+    const moreToggle=document.querySelector('[data-top-more-toggle]');
+    const moreMenu=document.querySelector('[data-top-more-menu]');
+    const closeMoreMenu=()=>{
+        if(!moreToggle||!moreMenu)return;
+        moreToggle.setAttribute('aria-expanded','false');
+        moreMenu.hidden=true;
+    };
+    if(moreToggle&&moreMenu){
+        moreToggle.addEventListener('click',event=>{
+            event.stopPropagation();
+            const open=moreToggle.getAttribute('aria-expanded')==='true';
+            moreToggle.setAttribute('aria-expanded',String(!open));
+            moreMenu.hidden=open;
+        });
+        document.addEventListener('click',event=>{
+            if(!event.target.closest('[data-top-more-toggle],[data-top-more-menu]'))closeMoreMenu();
+        });
+        document.addEventListener('keydown',event=>{
+            if(event.key==='Escape')closeMoreMenu();
+        });
+    }
+    const primaryCategories = new Set([
+        'Women\'s Apparel',
+        'Men\'s Apparel',
+        'Jewelry & Watches',
+        'Electronics & Gadgets',
+        'Health & Beauty',
+        'Home & Garden',
+    ]);
     filters.forEach(btn=>btn.addEventListener('click',()=>{
         filters.forEach(x=>x.classList.toggle('is-active',x===btn));
+        const fromMore=Boolean(moreMenu?.contains(btn));
+        if(moreToggle){
+            moreToggle.classList.toggle('is-active',fromMore);
+            closeMoreMenu();
+        }
         const wanted=btn.dataset.topFilter||'All'; let shown=0;
         cards.forEach(card=>{
             const cat=card.dataset.topCategory||'';
             const fashion=cat.includes('Apparel')||cat.includes('Jewelry');
-            const visible=wanted==='All'||cat===wanted||(wanted==='Fashion'&&fashion);
+            const more=!primaryCategories.has(cat);
+            const visible=wanted==='All'||cat===wanted||(wanted==='Fashion'&&fashion)||(wanted==='More'&&more);
             card.hidden=!visible; if(visible) shown++;
         });
         const empty=document.querySelector('[data-top-empty]'); if(empty) empty.hidden=shown!==0;
@@ -7107,6 +7222,52 @@ function initBearlyTopProducts() {
 if (typeof document !== 'undefined') {
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initBearlyTopProducts);
     else initBearlyTopProducts();
+}
+
+/* Homepage trending switcher: keep Popular Picks and Best Sellers together
+   without duplicating the same section heading and navigation. */
+function initBearlyTrendingTabs() {
+    const shell = document.querySelector('[data-trending-shell]');
+    if (!shell) return;
+
+    const tabs = [...shell.querySelectorAll('[data-trending-tab]')];
+    const panels = [...document.querySelectorAll('[data-trending-panel]')];
+    const secondary = document.querySelector('[data-trending-secondary]');
+    const viewAll = shell.querySelector('[data-trending-view-all]');
+    if (!tabs.length || !panels.length) return;
+
+    const setActive = key => {
+        tabs.forEach(tab => {
+            const active = tab.dataset.trendingTab === key;
+            tab.classList.toggle('is-active', active);
+            tab.setAttribute('aria-selected', String(active));
+        });
+
+        panels.forEach(panel => {
+            const active = panel.dataset.trendingPanel === key;
+            panel.hidden = !active;
+            panel.setAttribute('aria-hidden', String(!active));
+        });
+
+        if (secondary) secondary.hidden = key !== 'sales';
+
+        if (viewAll) {
+            viewAll.href = key === 'sales'
+                ? (viewAll.dataset.salesUrl || '/top-sales')
+                : (viewAll.dataset.popularUrl || '/top-products');
+        }
+    };
+
+    tabs.forEach(tab => tab.addEventListener('click', () => {
+        setActive(tab.dataset.trendingTab || 'popular');
+    }));
+
+    setActive('popular');
+}
+
+if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initBearlyTrendingTabs);
+    else initBearlyTrendingTabs();
 }
 
 // Dedicated featured pages do not run initialize() because they have no #home-data.

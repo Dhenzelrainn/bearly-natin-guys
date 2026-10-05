@@ -646,3 +646,201 @@ body:not(.bc) .bearly-promo-slider.is-running .bearly-slider-progress span {
         animation: none;
     }
 }
+
+/* =========================================================
+   BUYER HOME 2026 PROMO SCALE
+   One consolidated merchandising carousel at the top of the storefront.
+   ========================================================= */
+body:not(.bc).bh .bearly-promo-slider,
+body:not(.bc).bh .bearly-promo-slide{
+    min-height:420px;
+}
+body:not(.bc).bh .bearly-promo-slider{
+    border:1px solid #e7dfd6;
+    border-radius:12px;
+    background:#eadbc6;
+}
+body:not(.bc).bh .bearly-promo-copy{
+    width:min(650px,52%);
+    padding:48px 58px;
+}
+body:not(.bc).bh .bearly-promo-copy .eyebrow{
+    margin-bottom:12px;
+    color:#8f5d17;
+    font-size:11px;
+    font-weight:700;
+    letter-spacing:.16em;
+}
+body:not(.bc).bh .bearly-promo-copy h1,
+body:not(.bc).bh .bearly-promo-copy h2{
+    max-width:600px;
+    font-size:clamp(40px,3.25vw,58px);
+    line-height:1.02;
+    letter-spacing:-.05em;
+}
+body:not(.bc).bh .bearly-promo-copy > p:not(.eyebrow){
+    max-width:455px;
+    margin-top:16px;
+    font-size:14px;
+    line-height:1.6;
+}
+body:not(.bc).bh .bearly-promo-art{
+    right:clamp(48px,7vw,125px);
+    width:min(390px,34%);
+    height:80%;
+}
+body:not(.bc).bh .bearly-promo-pill,
+body:not(.bc).bh .bearly-code-row{
+    margin-top:22px;
+    border-radius:8px;
+}
+body:not(.bc).bh .bearly-promo-pill{
+    padding:9px 13px;
+    background:rgba(255,255,255,.5);
+}
+body:not(.bc).bh .bearly-slider-arrow{
+    width:40px;
+    height:40px;
+    opacity:1;
+    background:rgba(255,250,242,.9);
+    box-shadow:0 3px 10px rgba(53,37,30,.08);
+}
+body:not(.bc).bh .bearly-slider-prev{left:14px}
+body:not(.bc).bh .bearly-slider-next{right:14px}
+body:not(.bc).bh .bearly-slider-dots{
+    left:58px;
+    bottom:18px;
+}
+body:not(.bc).bh .bearly-slider-progress{
+    height:2px;
+}
+
+@media (min-width:1700px){
+    body:not(.bc).bh .bearly-promo-slider,
+    body:not(.bc).bh .bearly-promo-slide{
+        min-height:470px;
+    }
+    body:not(.bc).bh .bearly-promo-copy{
+        padding:58px 68px;
+    }
+}
+
+@media (max-width:1200px){
+    body:not(.bc).bh .bearly-promo-slider,
+    body:not(.bc).bh .bearly-promo-slide{
+        min-height:390px;
+    }
+    body:not(.bc).bh .bearly-promo-copy{
+        width:56%;
+        padding:38px 44px;
+    }
+    body:not(.bc).bh .bearly-promo-copy h1,
+    body:not(.bc).bh .bearly-promo-copy h2{
+        font-size:40px;
+    }
+}
+
+@media (max-width:720px){
+    body:not(.bc).bh .bearly-promo-slider,
+    body:not(.bc).bh .bearly-promo-slide{
+        min-height:420px;
+    }
+    body:not(.bc).bh .bearly-promo-copy{
+        width:100%;
+        padding:28px 26px;
+    }
+    body:not(.bc).bh .bearly-promo-copy h1,
+    body:not(.bc).bh .bearly-promo-copy h2{
+        max-width:315px;
+        font-size:34px;
+    }
+    body:not(.bc).bh .bearly-promo-copy > p:not(.eyebrow){
+        max-width:290px;
+        font-size:13px;
+    }
+    body:not(.bc).bh .bearly-slider-arrow{
+        display:none;
+    }
+    body:not(.bc).bh .bearly-slider-dots{
+        left:26px;
+        bottom:16px;
+    }
+}
+
+
+/* =========================================================
+   BUYER HOME — TARGET HERO POLISH
+   ========================================================= */
+body:not(.bc).bh .bearly-promo-slider,
+body:not(.bc).bh .bearly-promo-slide{min-height:284px}
+body:not(.bc).bh .bearly-promo-slider{border:1px solid #e5ddd4;border-radius:8px;background:#dfbd91}
+body:not(.bc).bh .bearly-promo-payday{background:#dfbd91}
+body:not(.bc).bh .bearly-payday-bg{object-position:64% 55%;filter:saturate(.78) sepia(.08) brightness(.98)}
+body:not(.bc).bh .bearly-payday-overlay{
+    background:linear-gradient(90deg,rgba(229,195,151,.98) 0%,rgba(229,195,151,.95) 28%,rgba(229,195,151,.55) 48%,rgba(229,195,151,.04) 72%)
+}
+body:not(.bc).bh .bearly-promo-copy{width:min(520px,48%);padding:30px 46px 38px 80px}
+body:not(.bc).bh .bearly-promo-copy .eyebrow{margin-bottom:8px;color:#99501f;font-size:9px;font-weight:800;letter-spacing:.16em}
+body:not(.bc).bh .bearly-promo-copy h1,
+body:not(.bc).bh .bearly-promo-copy h2{max-width:480px;color:#321b0f;font-size:clamp(34px,3.2vw,47px);line-height:.98;letter-spacing:-.045em}
+body:not(.bc).bh .bearly-promo-copy>p:not(.eyebrow){max-width:400px;margin-top:10px;color:#3e2b20;font-size:11px;line-height:1.45}
+body:not(.bc).bh .bearly-sale-cta{display:inline-flex;align-items:center;gap:8px;margin-top:12px;padding:9px 15px;border-radius:22px;background:#fff7eb;color:#4b2716;font-size:10px;font-weight:700;box-shadow:0 1px 1px rgba(53,37,30,.05)}
+body:not(.bc).bh .bearly-sale-cta:hover{background:#fff;color:#8e431b}
+body:not(.bc).bh .bearly-promo-art{right:38px;width:250px;height:88%}
+body:not(.bc).bh .bearly-sale-card{right:24px;top:42px;width:115px;height:132px;padding:18px 16px;border-radius:15px;background:#3b1e10;transform:rotate(3deg);box-shadow:0 8px 20px rgba(64,35,18,.12)}
+body:not(.bc).bh .bearly-sale-card span{font-size:9px;letter-spacing:.16em}
+body:not(.bc).bh .bearly-sale-card strong{font-size:38px;line-height:1.05}
+body:not(.bc).bh .bearly-sale-card small{font-size:10px}
+body:not(.bc).bh .bearly-sale-orbit{width:54px;height:54px;background:rgba(255,250,242,.88);font-size:10px;font-weight:700;color:#321b0f}
+body:not(.bc).bh .orbit-one{right:132px;top:16px}
+body:not(.bc).bh .orbit-two{right:0;bottom:44px}
+body:not(.bc).bh .bearly-slider-arrow{width:34px;height:34px;background:rgba(255,255,255,.9);color:#5a3a27;box-shadow:none}
+body:not(.bc).bh .bearly-slider-prev{left:13px}
+body:not(.bc).bh .bearly-slider-next{right:13px}
+body:not(.bc).bh .bearly-slider-dots{left:50%;bottom:10px;transform:translateX(-50%);gap:6px}
+body:not(.bc).bh .bearly-slider-dots button{width:7px;height:7px;border:0;background:rgba(255,255,255,.76)}
+body:not(.bc).bh .bearly-slider-dots button.is-active{width:16px;border-radius:6px;background:#fff}
+body:not(.bc).bh .bearly-slider-progress{display:none}
+@media(max-width:980px){
+    body:not(.bc).bh .bearly-promo-copy{width:56%;padding-left:56px}
+    body:not(.bc).bh .bearly-promo-art{right:18px;width:220px}
+}
+@media(max-width:720px){
+    body:not(.bc).bh .bearly-promo-slider,
+    body:not(.bc).bh .bearly-promo-slide{min-height:320px}
+    body:not(.bc).bh .bearly-promo-copy{width:75%;padding:32px 34px 50px}
+    body:not(.bc).bh .bearly-promo-copy h1,
+    body:not(.bc).bh .bearly-promo-copy h2{font-size:36px}
+    body:not(.bc).bh .bearly-promo-art{opacity:.55;right:-60px;width:210px}
+}
+
+/* Buyer promo palette: keep voucher artwork in Bearly brown and gold. */
+body:not(.bc).bh .bearly-promo-voucher{
+    background:linear-gradient(115deg,#f2e5d1 0%,#e5cda9 56%,#c99d62 100%);
+}
+body:not(.bc).bh .bearly-promo-voucher .bearly-promo-copy .eyebrow{
+    color:#8f5d17;
+}
+body:not(.bc).bh .bearly-promo-voucher .bearly-promo-copy h2{
+    color:#3b2418;
+}
+body:not(.bc).bh .bearly-promo-voucher .bearly-promo-copy>p:not(.eyebrow){
+    color:#5a4030;
+}
+body:not(.bc).bh .bearly-promo-voucher .bearly-ticket{
+    border:1px solid #d4af70;
+    background:#fffaf0;
+    box-shadow:0 18px 38px rgba(91,56,39,.16);
+}
+body:not(.bc).bh .bearly-promo-voucher .bearly-ticket-value{
+    color:#6f3f25;
+}
+body:not(.bc).bh .bearly-promo-voucher .bearly-ticket-off{
+    color:#b17a22;
+}
+body:not(.bc).bh .bearly-promo-voucher .bearly-ticket-rule{
+    border-color:#c8a66c;
+}
+body:not(.bc).bh .bearly-promo-voucher .bearly-ticket-small{
+    color:#725a43;
+}

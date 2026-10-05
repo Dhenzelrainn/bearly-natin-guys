@@ -72,6 +72,7 @@ class SellerBuyerCatalogIntegrationTest extends TestCase
         $this->actingAs($buyer)
             ->get('/home')
             ->assertOk()
+            ->assertSee('Flash Deals')
             ->assertSee('Live Integration Shirt');
 
         $this->actingAs($buyer)

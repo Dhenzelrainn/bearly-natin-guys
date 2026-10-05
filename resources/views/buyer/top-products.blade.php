@@ -24,12 +24,20 @@ foreach($categoryProductSources as $slug=>$source){
     }
 }
 @endphp
+@php
+$rankingCategoryItems = [];
+foreach ($categoryProductSources as $slug => $source) {
+    $rankingCategoryItems[] = ['slug' => $slug, 'name' => $source['name']];
+}
+$visibleRankingCategories = array_slice($rankingCategoryItems, 0, 6);
+$moreRankingCategories = array_slice($rankingCategoryItems, 6);
+@endphp
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Top Products | Bearly</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Material+Symbols+Outlined:wght@400&display=swap" rel="stylesheet">
 @vite(['resources/css/buyer.css','resources/js/buyer.js'])
 @include('buyer.partials.account-context-script')</head>
-<body class="bh top-products-page"><header class="header">
+<body class="bh top-products-page" data-ranking-page data-ranking-mode="popular" data-default-category="men-s-apparel"><header class="header">
     <a class="brand" href="{{ url('/home') }}" aria-label="Bearly home"><img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly" width="192" height="64"></a>
 
     <form class="search" id="search-form" role="search" action="{{ url('/home') }}" method="get">
@@ -50,8 +58,8 @@ foreach($categoryProductSources as $slug=>$source){
 </header>
 <main class="top-products-main">
 <a class="flash-back" href="{{ url('/home') }}"><span class="material-symbols-outlined">arrow_back</span> Back to Home</a>
-<section class="top-products-hero"><div><p class="top-products-kicker"><span class="material-symbols-outlined">workspace_premium</span> Bearly favorites</p><h1>Top Products</h1><p>Popular picks from across Bearly's existing catalog, ranked using demo ratings and buyer activity for this frontend prototype.</p></div><div class="top-products-trophy"><span class="material-symbols-outlined">emoji_events</span><strong>18</strong><small>popular picks</small></div></section>
-<section class="top-products-toolbar"><div><h2>Popular across categories</h2><p>Browse the current demo ranking.</p></div><div class="top-filter-row" aria-label="Top product filters"><button class="is-active" data-top-filter="All">All</button><button data-top-filter="Fashion">Fashion</button><button data-top-filter="Electronics & Gadgets">Electronics</button><button data-top-filter="Health & Beauty">Beauty</button><button data-top-filter="Home & Garden">Home</button></div></section>
+<section class="top-products-hero"><div><p class="top-products-kicker"><span class="material-symbols-outlined">workspace_premium</span> Bearly favorites</p><h1>Top Products</h1><p>Popular picks from the selected Bearly category, ranked using demo ratings and buyer activity for this frontend prototype.</p></div><div class="top-products-trophy"><span class="material-symbols-outlined">emoji_events</span><strong>10</strong><small>top picks per category</small></div></section>
+<section class="top-products-toolbar"><div><h2>Ranked by category</h2><p>Choose a Bearly category to see its top 10 popular picks.</p></div><div class="top-category-nav"><div class="top-filter-row" role="tablist" aria-label="Bearly product categories">@foreach($visibleRankingCategories as $category)<button type="button" role="tab" class="{{ $category['slug'] === 'men-s-apparel' ? 'is-active' : '' }}" aria-selected="{{ $category['slug'] === 'men-s-apparel' ? 'true' : 'false' }}" data-top-category-tab="{{ $category['slug'] }}">{{ $category['name'] }}</button>@endforeach<button type="button" class="top-more-toggle" data-top-more-toggle aria-expanded="false" aria-haspopup="true" aria-controls="top-more-menu">More categories <span class="material-symbols-outlined" aria-hidden="true">arrow_drop_down</span></button></div><div id="top-more-menu" class="top-more-menu" data-top-more-menu role="menu" aria-label="More Bearly categories" hidden>@foreach($moreRankingCategories as $category)<button type="button" role="menuitem" data-top-category-tab="{{ $category['slug'] }}">{{ $category['name'] }}</button>@endforeach</div></div></section>
 <section class="top-products-grid" data-top-grid><article class="top-product-card top-rank-podium" data-top-product data-key="top-electronics-and-gadgets-5" data-product-id="electronics-and-gadgets:5" data-name="Mouse" data-price="1499" data-image="/images/products/electronics/electronics-05-01.jpg" data-top-category="Electronics & Gadgets">
     <div class="top-product-image"><img src="{{ asset('images/products/electronics/electronics-05-01.jpg') }}" alt="Mouse"><span class="top-rank">#1</span><button type="button" class="top-like" data-top-like aria-label="Save Mouse"><span class="material-symbols-outlined">favorite</span></button></div>
     <div class="top-product-copy"><small>Electronics & Gadgets</small><h3>Mouse</h3><div class="top-product-meta"><span><b>★ 4.9</b></span><span>2.8k sold</span></div><div class="top-product-bottom"><strong>₱1,499</strong></div></div>

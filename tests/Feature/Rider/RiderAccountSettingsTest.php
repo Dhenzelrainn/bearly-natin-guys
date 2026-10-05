@@ -279,6 +279,229 @@ class RiderAccountSettingsTest extends TestCase
         );
     }
 
+    public function test_rider_can_update_normalized_home_address(): void
+    {
+        [
+            'rider' => $rider,
+            'riderAddress' => $riderAddress,
+        ] = $this->makeRiderAccount();
+
+        $legacyStreet = $rider->street_address;
+
+        $this
+            ->actingAs($rider)
+            ->patch(
+                route('rider.profile.address.home.update'),
+                [
+                    'house_number' => '88',
+                    'street' => 'Updated Rider Street',
+                    'barangay' => 'San Roque',
+                    'city' => 'Calamba City',
+                    'province' => 'Laguna',
+                    'postal_code' => '4027',
+                ]
+            )
+            ->assertRedirect(
+                route('rider.profile.index')
+                . '#addresses'
+            )
+            ->assertSessionHas(
+                'success',
+                'Home address updated successfully.'
+            );
+
+        $riderAddress->refresh();
+        $rider->refresh();
+
+        $this->assertSame(
+            'Home',
+            $riderAddress->label
+        );
+
+        $this->assertSame(
+            '88',
+            $riderAddress->house_number
+        );
+
+        $this->assertSame(
+            'Updated Rider Street',
+            $riderAddress->street
+        );
+
+        $this->assertSame(
+            'San Roque',
+            $riderAddress->barangay
+        );
+
+        $this->assertSame(
+            'Calamba City',
+            $riderAddress->city_municipality
+        );
+
+        $this->assertSame(
+            'Laguna',
+            $riderAddress->province
+        );
+
+        $this->assertSame(
+            '4027',
+            $riderAddress->postal_code
+        );
+
+        $this->assertSame(
+            $legacyStreet,
+            $rider->street_address
+        );
+    }
+
+    public function test_home_update_creates_home_address_for_migrated_rider(): void
+    {
+        [
+            'rider' => $rider,
+            'riderAddress' => $riderAddress,
+        ] = $this->makeRiderAccount();
+
+        $riderAddress->update([
+            'label' => 'Temporary',
+        ]);
+
+        $this->assertDatabaseMissing(
+            'addresses',
+            [
+                'user_id' => $rider->id,
+                'label' => 'Home',
+            ]
+        );
+
+        $this
+            ->actingAs($rider)
+            ->patch(
+                route('rider.profile.address.home.update'),
+                [
+                    'house_number' => '10',
+                    'street' => 'New Home Street',
+                    'barangay' => 'Santo Angel',
+                    'city' => 'San Pablo City',
+                    'province' => 'Laguna',
+                    'postal_code' => '4000',
+                ]
+            )
+            ->assertRedirect(
+                route('rider.profile.index')
+                . '#addresses'
+            );
+
+        $this->assertDatabaseHas(
+            'addresses',
+            [
+                'user_id' => $rider->id,
+                'label' => 'Home',
+                'street' => 'New Home Street',
+                'barangay' => 'Santo Angel',
+                'city_municipality' => 'San Pablo City',
+            ]
+        );
+
+        $this->assertDatabaseHas(
+            'addresses',
+            [
+                'id' => $riderAddress->id,
+                'label' => 'Temporary',
+                'street' => 'Rizal Street',
+            ]
+        );
+    }
+
+    public function test_rider_can_add_additional_owned_address(): void
+    {
+        [
+            'rider' => $rider,
+        ] = $this->makeRiderAccount();
+
+        $this
+            ->actingAs($rider)
+            ->post(
+                route('rider.profile.addresses.store'),
+                [
+                    'label' => 'Secondary home',
+                    'house_number' => '7',
+                    'street' => 'Maharlika Street',
+                    'barangay' => 'San Francisco',
+                    'city' => 'Calamba City',
+                    'province' => 'Laguna',
+                    'postal_code' => '4027',
+                ]
+            )
+            ->assertRedirect(
+                route('rider.profile.index')
+                . '#addresses'
+            )
+            ->assertSessionHas(
+                'success',
+                'Rider address added successfully.'
+            );
+
+        $this->assertDatabaseHas(
+            'addresses',
+            [
+                'user_id' => $rider->id,
+                'label' => 'Secondary home',
+                'house_number' => '7',
+                'street' => 'Maharlika Street',
+                'barangay' => 'San Francisco',
+                'city_municipality' => 'Calamba City',
+                'province' => 'Laguna',
+                'postal_code' => '4027',
+            ]
+        );
+    }
+
+    public function test_additional_address_cannot_replace_home_label(): void
+    {
+        [
+            'rider' => $rider,
+        ] = $this->makeRiderAccount();
+
+        $homeCountBefore = Address::query()
+            ->where('user_id', $rider->id)
+            ->where('label', 'Home')
+            ->count();
+
+        $this
+            ->actingAs($rider)
+            ->post(
+                route('rider.profile.addresses.store'),
+                [
+                    'label' => 'home',
+                    'street' => 'Fake Replacement Street',
+                    'barangay' => 'Fake Barangay',
+                    'city' => 'Fake City',
+                    'province' => 'Fake Province',
+                ]
+            )
+            ->assertSessionHasErrors(
+                'label'
+            );
+
+        $homeCountAfter = Address::query()
+            ->where('user_id', $rider->id)
+            ->where('label', 'Home')
+            ->count();
+
+        $this->assertSame(
+            $homeCountBefore,
+            $homeCountAfter
+        );
+
+        $this->assertDatabaseMissing(
+            'addresses',
+            [
+                'user_id' => $rider->id,
+                'street' => 'Fake Replacement Street',
+            ]
+        );
+    }
+
     public function test_account_page_uses_normalized_rider_profile_and_address(): void
     {
         [

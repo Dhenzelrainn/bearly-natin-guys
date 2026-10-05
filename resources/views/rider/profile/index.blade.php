@@ -429,11 +429,29 @@
                 <button
                     class="button button-small"
                     type="button"
-                    data-address-edit
+                    data-modal-open="edit-home-address"
                 >
                     Edit
                 </button>
             </div>
+
+            @foreach ($additionalAddresses as $savedAddress)
+                <div class="address-card">
+                    <span>
+                        <i data-lucide="map-pin"></i>
+                    </span>
+
+                    <span>
+                        <strong>
+                            {{ $savedAddress['label'] }}
+                        </strong>
+
+                        <small>
+                            {{ $savedAddress['address'] }}
+                        </small>
+                    </span>
+                </div>
+            @endforeach
 
             <div class="address-card">
                 <span>
@@ -450,13 +468,9 @@
                     </small>
                 </span>
 
-                <button
-                    class="button button-small"
-                    type="button"
-                    data-address-edit
-                >
-                    Edit
-                </button>
+                <span class="status-badge">
+                    Assigned by Logistics
+                </span>
             </div>
 
         </div>
@@ -549,20 +563,20 @@
 
 </div>
 
-{{-- Add Address Modal --}}
+{{-- Edit Home Address Modal --}}
 <section
     class="modal"
-    data-modal="add-address"
+    data-modal="edit-home-address"
     hidden
 >
     <div class="modal-header">
         <div>
             <h3>
-                Add rider address
+                Edit home address
             </h3>
 
             <p>
-                Save an additional rider address.
+                Update your normalized Rider home address.
             </p>
         </div>
 
@@ -577,8 +591,166 @@
 
     <form
         class="modal-body"
-        data-preview-form="address"
+        method="POST"
+        action="{{ route(
+            'rider.profile.address.home.update'
+        ) }}"
     >
+        @csrf
+        @method('PATCH')
+
+        <div class="field-grid">
+
+            <div class="field">
+                <label for="home-house-number">
+                    House number
+                </label>
+
+                <input
+                    id="home-house-number"
+                    name="house_number"
+                    value="{{ old(
+                        'house_number',
+                        $homeAddress['house_number']
+                    ) }}"
+                >
+            </div>
+
+            <div class="field">
+                <label for="home-postal-code">
+                    Postal code
+                </label>
+
+                <input
+                    id="home-postal-code"
+                    name="postal_code"
+                    value="{{ old(
+                        'postal_code',
+                        $homeAddress['postal_code']
+                    ) }}"
+                >
+            </div>
+
+            <div class="field span-2">
+                <label for="home-street">
+                    Street
+                </label>
+
+                <input
+                    id="home-street"
+                    name="street"
+                    value="{{ old(
+                        'street',
+                        $homeAddress['street']
+                    ) }}"
+                    required
+                >
+            </div>
+
+            <div class="field">
+                <label for="home-barangay">
+                    Barangay
+                </label>
+
+                <input
+                    id="home-barangay"
+                    name="barangay"
+                    value="{{ old(
+                        'barangay',
+                        $homeAddress['barangay']
+                    ) }}"
+                    required
+                >
+            </div>
+
+            <div class="field">
+                <label for="home-city">
+                    Municipality / City
+                </label>
+
+                <input
+                    id="home-city"
+                    name="city"
+                    value="{{ old(
+                        'city',
+                        $homeAddress['city']
+                    ) }}"
+                    required
+                >
+            </div>
+
+            <div class="field span-2">
+                <label for="home-province">
+                    Province
+                </label>
+
+                <input
+                    id="home-province"
+                    name="province"
+                    value="{{ old(
+                        'province',
+                        $homeAddress['province']
+                    ) }}"
+                    required
+                >
+            </div>
+
+        </div>
+
+        <div class="form-actions">
+            <button
+                class="button"
+                type="button"
+                data-modal-close
+            >
+                Cancel
+            </button>
+
+            <button
+                class="button button-primary"
+                type="submit"
+            >
+                Update home address
+            </button>
+        </div>
+    </form>
+</section>
+
+{{-- Add Address Modal --}}
+<section
+    class="modal"
+    data-modal="add-address"
+    hidden
+>
+    <div class="modal-header">
+        <div>
+            <h3>
+                Add rider address
+            </h3>
+
+            <p>
+                Save an additional normalized address.
+            </p>
+        </div>
+
+        <button
+            class="icon-button"
+            type="button"
+            data-modal-close
+        >
+            <i data-lucide="x"></i>
+        </button>
+    </div>
+
+    <form
+        class="modal-body"
+        method="POST"
+        action="{{ route(
+            'rider.profile.addresses.store'
+        ) }}"
+    >
+        @csrf
+
         <div class="field-grid">
 
             <div class="field">
@@ -589,34 +761,34 @@
                 <input
                     id="address-label"
                     name="label"
+                    value="{{ old('label') }}"
                     required
                     placeholder="e.g. Secondary home"
                 >
             </div>
 
             <div class="field">
-                <label for="address-province">
-                    Province
+                <label for="address-house-number">
+                    House number
                 </label>
 
                 <input
-                    id="address-province"
-                    name="province"
-                    required
-                    value="Laguna"
+                    id="address-house-number"
+                    name="house_number"
+                    value="{{ old('house_number') }}"
                 >
             </div>
 
-            <div class="field">
-                <label for="address-city">
-                    Municipality / City
+            <div class="field span-2">
+                <label for="address-street">
+                    Street
                 </label>
 
                 <input
-                    id="address-city"
-                    name="city"
+                    id="address-street"
+                    name="street"
+                    value="{{ old('street') }}"
                     required
-                    value="San Pablo City"
                 >
             </div>
 
@@ -628,19 +800,46 @@
                 <input
                     id="address-barangay"
                     name="barangay"
+                    value="{{ old('barangay') }}"
                     required
                 >
             </div>
 
-            <div class="field span-2">
-                <label for="address-street">
-                    Street / House number
+            <div class="field">
+                <label for="address-city">
+                    Municipality / City
                 </label>
 
                 <input
-                    id="address-street"
-                    name="street"
+                    id="address-city"
+                    name="city"
+                    value="{{ old('city') }}"
                     required
+                >
+            </div>
+
+            <div class="field">
+                <label for="address-province">
+                    Province
+                </label>
+
+                <input
+                    id="address-province"
+                    name="province"
+                    value="{{ old('province') }}"
+                    required
+                >
+            </div>
+
+            <div class="field">
+                <label for="address-postal-code">
+                    Postal code
+                </label>
+
+                <input
+                    id="address-postal-code"
+                    name="postal_code"
+                    value="{{ old('postal_code') }}"
                 >
             </div>
 

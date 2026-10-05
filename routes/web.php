@@ -817,6 +817,12 @@ Route::prefix('rider')->name('rider.')->group(function () {
         Route::patch('/account/password', [RiderController::class, 'updatePassword'])
             ->name('profile.password.update');
 
+        Route::patch('/account/address/home', [RiderController::class, 'updateHomeAddress'])
+            ->name('profile.address.home.update');
+
+        Route::post('/account/addresses', [RiderController::class, 'storeAddress'])
+            ->name('profile.addresses.store');
+
         Route::get('/account', [RiderController::class, 'account'])
             ->name('profile.index');
     });

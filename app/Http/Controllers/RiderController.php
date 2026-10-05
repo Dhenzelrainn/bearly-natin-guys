@@ -1485,6 +1485,234 @@ class RiderController extends Controller
         );
     }
 
+    public function updateHomeAddress(
+        Request $request
+    ): RedirectResponse {
+        /** @var User $user */
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'house_number' => [
+                'nullable',
+                'string',
+                'max:40',
+            ],
+
+            'street' => [
+                'required',
+                'string',
+                'max:180',
+            ],
+
+            'barangay' => [
+                'required',
+                'string',
+                'max:120',
+            ],
+
+            'city' => [
+                'required',
+                'string',
+                'max:120',
+            ],
+
+            'province' => [
+                'required',
+                'string',
+                'max:120',
+            ],
+
+            'postal_code' => [
+                'nullable',
+                'string',
+                'max:10',
+            ],
+        ]);
+
+        /*
+        * Rider registration uses the normalized "Home"
+        * label. Migrated accounts may not have one yet,
+        * so create it without touching other addresses.
+        */
+        $address = $user
+            ->addresses()
+            ->where('label', 'Home')
+            ->latest('id')
+            ->first();
+
+        if (! $address) {
+            $address = $user
+                ->addresses()
+                ->make([
+                    'label' => 'Home',
+                    'is_default_shipping' => false,
+                    'is_default_pickup' => false,
+                ]);
+        }
+
+        $address->fill([
+            'recipient_name' =>
+                $user->name
+                ?: trim(
+                    ($user->first_name ?? '')
+                    .' '
+                    .($user->last_name ?? '')
+                ),
+
+            'phone' =>
+                $user->contact_number ?: null,
+
+            'house_number' =>
+                filled($validated['house_number'] ?? null)
+                    ? trim($validated['house_number'])
+                    : null,
+
+            'street' =>
+                trim($validated['street']),
+
+            'barangay' =>
+                trim($validated['barangay']),
+
+            'city_municipality' =>
+                trim($validated['city']),
+
+            'province' =>
+                trim($validated['province']),
+
+            'postal_code' =>
+                filled($validated['postal_code'] ?? null)
+                    ? trim($validated['postal_code'])
+                    : null,
+        ]);
+
+        $address->save();
+
+        return redirect(
+            route('rider.profile.index')
+            . '#addresses'
+        )->with(
+            'success',
+            'Home address updated successfully.'
+        );
+    }
+
+    public function storeAddress(
+        Request $request
+    ): RedirectResponse {
+        /** @var User $user */
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'label' => [
+                'required',
+                'string',
+                'max:50',
+
+                function ($attribute, $value, $fail): void {
+                    if (
+                        strtolower(
+                            trim((string) $value)
+                        ) === 'home'
+                    ) {
+                        $fail(
+                            'Use the Home address editor to update your primary address.'
+                        );
+                    }
+                },
+            ],
+
+            'house_number' => [
+                'nullable',
+                'string',
+                'max:40',
+            ],
+
+            'street' => [
+                'required',
+                'string',
+                'max:180',
+            ],
+
+            'barangay' => [
+                'required',
+                'string',
+                'max:120',
+            ],
+
+            'city' => [
+                'required',
+                'string',
+                'max:120',
+            ],
+
+            'province' => [
+                'required',
+                'string',
+                'max:120',
+            ],
+
+            'postal_code' => [
+                'nullable',
+                'string',
+                'max:10',
+            ],
+        ]);
+
+        $user
+            ->addresses()
+            ->create([
+                'label' =>
+                    trim($validated['label']),
+
+                'recipient_name' =>
+                    $user->name
+                    ?: trim(
+                        ($user->first_name ?? '')
+                        .' '
+                        .($user->last_name ?? '')
+                    ),
+
+                'phone' =>
+                    $user->contact_number ?: null,
+
+                'house_number' =>
+                    filled($validated['house_number'] ?? null)
+                        ? trim($validated['house_number'])
+                        : null,
+
+                'street' =>
+                    trim($validated['street']),
+
+                'barangay' =>
+                    trim($validated['barangay']),
+
+                'city_municipality' =>
+                    trim($validated['city']),
+
+                'province' =>
+                    trim($validated['province']),
+
+                'postal_code' =>
+                    filled($validated['postal_code'] ?? null)
+                        ? trim($validated['postal_code'])
+                        : null,
+
+                'is_default_shipping' =>
+                    false,
+
+                'is_default_pickup' =>
+                    false,
+            ]);
+
+        return redirect(
+            route('rider.profile.index')
+            . '#addresses'
+        )->with(
+            'success',
+            'Rider address added successfully.'
+        );
+    }
+
     public function account(): View
     {
         /** @var User $user */
@@ -1499,43 +1727,73 @@ class RiderController extends Controller
             ])
             ->first();
 
+        $addressModels = $user
+            ->addresses()
+            ->orderByRaw(
+                "CASE WHEN label = 'Home' THEN 0 ELSE 1 END"
+            )
+            ->orderBy('label')
+            ->orderBy('id')
+            ->get();
+
         /*
         * Rider registration stores its normalized
         * registration address under the "Home" label.
         *
-        * Use the latest owned normalized address only
-        * as a fallback for older/migrated accounts.
+        * Additional Rider addresses remain separate
+        * and must never masquerade as the Home address.
         */
-        $address = $user
-            ->addresses()
-            ->where('label', 'Home')
-            ->latest('id')
-            ->first();
 
-        $address ??= $user
-            ->addresses()
-            ->latest('id')
-            ->first();
+        $formatAddress = function ($item): string {
+            if (! $item) {
+                return 'No address on file';
+            }
 
-        $addressText = $address
-            ? collect([
-                $address->house_number,
-                $address->street,
+            return collect([
+                $item->house_number,
+                $item->street,
 
-                filled($address->barangay)
-                    ? 'Brgy. '.$address->barangay
+                filled($item->barangay)
+                    ? 'Brgy. '.$item->barangay
                     : null,
 
-                $address->city_municipality,
-                $address->province,
-                $address->postal_code,
+                $item->city_municipality,
+                $item->province,
+                $item->postal_code,
             ])
                 ->filter(
                     fn ($value) =>
                         filled($value)
                 )
-                ->implode(', ')
-            : 'No address on file';
+                ->implode(', ');
+        };
+
+        $homeAddress = $addressModels
+            ->firstWhere('label', 'Home');
+
+        $addressText = $formatAddress(
+            $homeAddress
+        );
+
+        $additionalAddresses = $addressModels
+            ->reject(
+                fn ($item) =>
+                    $item->label === 'Home'
+            )
+            ->map(
+                fn ($item): array => [
+                    'id' =>
+                        $item->id,
+
+                    'label' =>
+                        $item->label,
+
+                    'address' =>
+                        $formatAddress($item),
+                ]
+            )
+            ->values()
+            ->all();
 
         $sex = match ($user->sex) {
             'male' =>
@@ -1656,6 +1914,29 @@ class RiderController extends Controller
                         $currentZone?->name
                         ?: 'Not assigned',
                 ],
+
+                'homeAddress' => [
+                    'house_number' =>
+                        $homeAddress?->house_number ?: '',
+
+                    'street' =>
+                        $homeAddress?->street ?: '',
+
+                    'barangay' =>
+                        $homeAddress?->barangay ?: '',
+
+                    'city' =>
+                        $homeAddress?->city_municipality ?: '',
+
+                    'province' =>
+                        $homeAddress?->province ?: '',
+
+                    'postal_code' =>
+                        $homeAddress?->postal_code ?: '',
+                ],
+
+                'additionalAddresses' =>
+                    $additionalAddresses,
             ]
         );
     }

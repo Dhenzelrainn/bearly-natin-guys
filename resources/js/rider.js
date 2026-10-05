@@ -72,7 +72,6 @@ function setupChat() {
 
 function setupForms() {
     document.querySelectorAll('[data-preview-form]').forEach((form) => form.addEventListener('submit',(event)=>{event.preventDefault();if(!form.reportValidity())return;saveValue('forms',form.dataset.previewForm,Object.fromEntries(new FormData(form)));window.closeRiderModals?.();toast('Changes saved in this browser preview.');}));
-    document.querySelectorAll('[data-address-edit]').forEach((button)=>button.addEventListener('click',()=>toast('Address editor opened in preview mode.')));
     document.querySelector('[data-password-form]')?.addEventListener('submit',(event)=>{event.preventDefault();const form=event.currentTarget,next=form.querySelector('[name="new_password"]').value,confirm=form.querySelector('[name="new_password_confirmation"]').value;if(next.length<8||next!==confirm){toast('Passwords must match and contain at least 8 characters.');return;}form.reset();toast('Password update validated for this preview.');});
 }
 

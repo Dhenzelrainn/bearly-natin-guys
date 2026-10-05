@@ -107,6 +107,18 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    document.addEventListener('click', event => {
+        const shortcut = event.target.closest('[data-promo-jump]');
+        if (!shortcut) return;
+
+        const index = Number(shortcut.dataset.promoJump);
+        if (!Number.isInteger(index) || !slides[index]) return;
+
+        event.preventDefault();
+        showSlide(index, true);
+        slider.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
+    });
+
     slider.addEventListener('mouseenter', pause);
     slider.addEventListener('mouseleave', resume);
     slider.addEventListener('focusin', pause);

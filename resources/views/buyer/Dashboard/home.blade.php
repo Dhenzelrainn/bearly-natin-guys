@@ -106,6 +106,50 @@ if (! empty($liveCatalog)) {
 }
 
 
+
+$homeFlashDeals = [
+    [
+        'key' => 'flash-earbuds',
+        'product_id' => 'electronics-and-gadgets:7',
+        'name' => 'Wireless Earbuds',
+        'price' => 599,
+        'original_price' => 799,
+        'image' => 'electronics/electronics-07-01.jpg',
+        'category' => 'Electronics & Gadgets',
+        'discount' => 25,
+    ],
+    [
+        'key' => 'flash-cleanser',
+        'product_id' => 'health-and-beauty:1',
+        'name' => 'Gentle Facial Cleanser',
+        'price' => 349,
+        'original_price' => 499,
+        'image' => 'health-beauty/health-beauty-01-01.jpg',
+        'category' => 'Health & Beauty',
+        'discount' => 30,
+    ],
+    [
+        'key' => 'flash-tee',
+        'product_id' => 'men-s-apparel:1',
+        'name' => 'Everyday Basic Tee',
+        'price' => 329,
+        'original_price' => 449,
+        'image' => 'men/mens-01-01.jpg',
+        'category' => "Men's Apparel",
+        'discount' => 27,
+    ],
+    [
+        'key' => 'flash-watch',
+        'product_id' => 'jewelry-and-watches:21',
+        'name' => "Men's Silver Classic Watch",
+        'price' => 999,
+        'original_price' => 1499,
+        'image' => 'jewelry-watches/jewelry-watches-21-01.jpg',
+        'category' => 'Jewelry & Watches',
+        'discount' => 33,
+    ],
+];
+
 @endphp
 
 
@@ -265,6 +309,40 @@ if (! empty($liveCatalog)) {
 <div class="sidebar-title"><span class="material-symbols-outlined" aria-hidden="true">menu</span><strong>Shop by category</strong><button id="menu-close" class="icon-button" aria-label="Close categories"><span class="material-symbols-outlined" aria-hidden="true">close</span></button></div>
 
 <nav id="category-nav" aria-label="Shop by category"></nav>
+
+<section class="sidebar-perks" aria-labelledby="sidebar-perks-title">
+    <div class="sidebar-perks-title" id="sidebar-perks-title">
+        <span class="material-symbols-outlined" aria-hidden="true">redeem</span>
+        <strong>Deals &amp; Perks</strong>
+    </div>
+
+    <a class="sidebar-perk-row" href="{{ url('/flash-deals') }}">
+        <span class="material-symbols-outlined" aria-hidden="true">bolt</span>
+        <span class="sidebar-perk-copy">
+            <strong>Flash Deals</strong>
+            <small>Limited-time offers</small>
+        </span>
+        <span class="material-symbols-outlined sidebar-perk-chevron" aria-hidden="true">chevron_right</span>
+    </a>
+
+    <button class="sidebar-perk-row" type="button" data-promo-jump="2" aria-label="Show the free shipping promotion">
+        <span class="material-symbols-outlined" aria-hidden="true">local_shipping</span>
+        <span class="sidebar-perk-copy">
+            <strong>Free Shipping</strong>
+            <small>On selected items</small>
+        </span>
+        <span class="material-symbols-outlined sidebar-perk-chevron" aria-hidden="true">chevron_right</span>
+    </button>
+
+    <button class="sidebar-perk-row" type="button" data-promo-jump="1" aria-label="Show the Bearly voucher promotion">
+        <span class="material-symbols-outlined" aria-hidden="true">confirmation_number</span>
+        <span class="sidebar-perk-copy">
+            <strong>Vouchers</strong>
+            <small>Claim discounts</small>
+        </span>
+        <span class="material-symbols-outlined sidebar-perk-chevron" aria-hidden="true">chevron_right</span>
+    </button>
+</section>
 
 </aside>
 
@@ -479,6 +557,53 @@ if (! empty($liveCatalog)) {
 
 </div>
 
+
+<section class="flash-deals-preview home-flash-deals home-featured-section" aria-labelledby="home-flash-title">
+    <div class="flash-deals-heading">
+        <div>
+            <p class="flash-kicker"><span class="material-symbols-outlined" aria-hidden="true">bolt</span> Limited-time offers</p>
+            <h2 id="home-flash-title">Flash Deals</h2>
+        </div>
+
+        <div class="flash-deals-actions">
+            <div class="flash-countdown" data-flash-countdown aria-label="Flash deals countdown">
+                <span data-hours>00</span><b aria-hidden="true">:</b><span data-minutes>00</span><b aria-hidden="true">:</b><span data-seconds>00</span>
+            </div>
+            <a class="text-button top-view-all" href="{{ url('/flash-deals') }}">View all <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span></a>
+        </div>
+    </div>
+
+    <div class="flash-deal-grid" aria-label="Featured flash deals">
+        @foreach($homeFlashDeals as $deal)
+            <article
+                class="flash-deal-card"
+                data-flash-product
+                data-key="{{ $deal['key'] }}"
+                data-product-id="{{ $deal['product_id'] }}"
+                data-name="{{ $deal['name'] }}"
+                data-price="{{ $deal['price'] }}"
+                data-original-price="{{ $deal['original_price'] }}"
+                data-image="{{ asset('images/products/'.$deal['image']) }}"
+                data-flash-category="{{ $deal['category'] }}"
+            >
+                <button type="button" class="flash-image" aria-label="View {{ $deal['name'] }}">
+                    <img src="{{ asset('images/products/'.$deal['image']) }}" alt="{{ $deal['name'] }}" loading="lazy">
+                    <span>{{ $deal['discount'] }}% OFF</span>
+                </button>
+
+                <div class="flash-copy">
+                    <small>{{ $deal['category'] }}</small>
+                    <h3>{{ $deal['name'] }}</h3>
+                    <div class="flash-prices">
+                        <strong>₱{{ number_format($deal['price']) }}</strong>
+                        <del>₱{{ number_format($deal['original_price']) }}</del>
+                    </div>
+                    <button type="button" class="flash-add" data-flash-add>Add to Cart</button>
+                </div>
+            </article>
+        @endforeach
+    </div>
+</section>
 
 <section class="top-products-preview home-featured-section" aria-labelledby="top-products-title">
 <div class="top-products-heading"><div><h2 id="top-products-title"><span class="material-symbols-outlined" aria-hidden="true">workspace_premium</span> Top Products</h2><p>Highly rated finds buyers keep coming back to.</p></div><a class="text-button top-view-all" href="{{ url('/top-products') }}">View all <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span></a></div>

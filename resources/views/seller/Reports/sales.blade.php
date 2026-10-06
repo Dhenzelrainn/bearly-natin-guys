@@ -14,9 +14,36 @@
             <div class="sales-momentum-bars" aria-label="Gross sales by period">@foreach ($momentum as $period)<div><span><i style="height:{{ $period['height'] }}%"></i></span><strong>₱{{ number_format($period['value']) }}</strong><small>{{ $period['label'] }}</small></div>@endforeach</div>
         </article>
         <article class="sales-leaderboard-panel">
-            <div class="report-detail-panel-heading"><div><span class="section-kicker">Product ranking</span><h3>Top contributors</h3><p>Ranked by gross revenue.</p></div></div>
+            <div class="report-detail-panel-heading"><div><span class="section-kicker">Product ranking</span><h3>Top-selling products</h3><p>Ranked by units sold.</p></div></div>
             <ol class="sales-leaderboard">@foreach ($productPerformance as $product)<li><b>{{ $product['rank'] }}</b><span><i data-lucide="{{ $product['icon'] }}"></i></span><div><strong>{{ $product['name'] }}</strong><small>{{ $product['sku'] }}</small></div><dl><dt>{{ $product['units'] }} sold</dt><dd>{{ $product['revenue'] }}</dd></dl></li>@endforeach</ol>
         </article>
+    </section>
+    <section class="report-detail-sheet product-sales-report" aria-labelledby="product-sales-report-title">
+        <div class="report-detail-heading">
+            <div><span class="section-kicker">Product performance</span><h3 id="product-sales-report-title">Product Sales Report</h3><p>See which products generated the most units and revenue for the selected period.</p></div>
+            <span class="report-preview-badge">Frontend preview</span>
+        </div>
+        <div class="report-table-wrap">
+            <table class="report-table report-detail-table product-sales-table">
+                <caption class="sr-only">Product sales ranking for the selected period</caption>
+                <thead><tr><th scope="col">Rank</th><th scope="col">Product</th><th scope="col">Units Sold</th><th scope="col">Revenue</th><th scope="col">Share of Sales</th><th scope="col">Performance</th></tr></thead>
+                <tbody>
+                    @forelse ($productPerformance as $product)
+                        <tr>
+                            <td><strong class="product-sales-rank">{{ $product['rank'] }}</strong></td>
+                            <td><span class="report-product"><i data-lucide="{{ $product['icon'] }}"></i><span><strong>{{ $product['name'] }}</strong><small>{{ $product['sku'] }}</small></span></span></td>
+                            <td><strong>{{ $product['units'] }}</strong></td>
+                            <td><strong class="report-net-value">{{ $product['revenue'] }}</strong></td>
+                            <td><span class="report-share"><b>{{ $product['share'] }}%</b><i><em style="width:{{ $product['share'] }}%"></em></i></span></td>
+                            <td><span class="product-sales-status {{ $product['rank'] === 1 ? 'is-top' : '' }}">{{ $product['rank'] === 1 ? 'Top seller' : 'Selling' }}</span></td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="6"><div class="report-no-results"><i data-lucide="package-search"></i><strong>No product sales yet</strong><span>Product performance will appear when completed sales are available.</span></div></td></tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+        <footer class="report-detail-footer"><span>Showing <strong>{{ count($productPerformance) }}</strong> products</span><span>Preview values will be connected to Seller sales data in the backend.</span></footer>
     </section>
     <section class="report-detail-sheet">
         <div class="report-detail-heading"><div><span class="section-kicker">Completed sales</span><h3>Sales by period</h3><p>Refunds and seller-funded discounts are shown separately for accurate comparison.</p></div><label><i data-lucide="search"></i><input type="search" placeholder="Search period" data-report-search></label></div>

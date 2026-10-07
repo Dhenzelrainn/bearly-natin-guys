@@ -5,7 +5,20 @@ use App\Http\Controllers\auth\EmailVerificationController;
 use App\Http\Controllers\PostalCodeController;
 use App\Http\Controllers\AccountApprovalController;
 use App\Http\Controllers\AdminController;
+use App\Http\Controllers\AdminRegistrationController;
 use App\Http\Controllers\AdminRoleApplicationController;
+use App\Http\Controllers\AdminAnnouncementController;
+use App\Http\Controllers\AdminAuditLogController;
+use App\Http\Controllers\AdminCommerceController;
+use App\Http\Controllers\AdminComplianceController;
+use App\Http\Controllers\AdminDashboardController;
+use App\Http\Controllers\AdminDisputeController;
+use App\Http\Controllers\AdminFinanceController;
+use App\Http\Controllers\AdminFulfillmentController;
+use App\Http\Controllers\AdminMessageController;
+use App\Http\Controllers\AdminReturnRefundController;
+use App\Http\Controllers\AdminUserController;
+use App\Http\Controllers\ApplicationDocumentController;
 use App\Http\Controllers\BuyerController;
 use App\Http\Controllers\LogisticsController;
 use App\Http\Controllers\ProductComplianceController;
@@ -223,63 +236,264 @@ Route::prefix('admin')
     ->group(function () {
         Route::redirect('/', '/admin/dashboard');
 
-        Route::get('/dashboard', [AdminController::class, 'dashboard'])
+        /*
+        |--------------------------------------------------------------------------
+        | Dashboard
+        |--------------------------------------------------------------------------
+        */
+
+        Route::get('/dashboard', AdminDashboardController::class)
             ->name('dashboard');
+
+        /*
+        |--------------------------------------------------------------------------
+        | Registration Management
+        |--------------------------------------------------------------------------
+        | Keep the current Fusion registration lifecycle for now.
+        */
 
         Route::get('/registrations', [AdminController::class, 'registrations'])
             ->name('registrations');
 
-        Route::get('/registrations/buyers', [AdminRoleApplicationController::class, 'buyers'])
+        Route::get('/registrations/buyers', [AdminRegistrationController::class, 'buyers'])
             ->name('registrations.buyers');
 
-        Route::get('/registrations/sellers', [AdminRoleApplicationController::class, 'sellers'])
+        Route::get('/registrations/sellers', [AdminRegistrationController::class, 'sellers'])
             ->name('registrations.sellers');
 
-        Route::get('/registrations/logistics', [AdminRoleApplicationController::class, 'logistics'])
+        Route::get('/registrations/logistics', [AdminRegistrationController::class, 'logistics'])
             ->name('registrations.logistics');
 
-        Route::get('/applications/{user}/documents/{type}', [AdminRoleApplicationController::class, 'document'])
+        Route::get(
+            '/applications/{user}/documents/{type}',
+            [AdminRoleApplicationController::class, 'document']
+        )
             ->where('type', 'valid-id|business-permit')
             ->name('applications.document');
 
-        Route::get('/users', [AdminController::class, 'users'])
+        Route::get(
+            '/application-documents/{application}/{document}',
+            [ApplicationDocumentController::class, 'show']
+        )->name('application-documents.show');
+
+        Route::patch(
+            '/application-documents/{application}/{document}',
+            [ApplicationDocumentController::class, 'update']
+        )->name('application-documents.update');
+
+        /*
+        |--------------------------------------------------------------------------
+        | User Management
+        |--------------------------------------------------------------------------
+        | Keep Fusion implementation until account lifecycle reconciliation.
+        */
+
+        Route::get('/users', [AdminUserController::class, 'index'])
             ->name('users');
 
-        Route::get('/users/buyers', [AdminController::class, 'buyerUsers'])
+        Route::get('/users/buyers', [AdminUserController::class, 'buyers'])
             ->name('users.buyers');
 
-        Route::get('/users/sellers', [AdminController::class, 'sellerUsers'])
+        Route::get('/users/sellers', [AdminUserController::class, 'sellers'])
             ->name('users.sellers');
 
-        Route::get('/users/logistics', [AdminController::class, 'logisticsUsers'])
+        Route::get('/users/logistics', [AdminUserController::class, 'logistics'])
             ->name('users.logistics');
 
-        Route::get('/users/riders', [AdminController::class, 'riderUsers'])
+        Route::get('/users/riders', [AdminUserController::class, 'riders'])
             ->name('users.riders');
 
-        Route::get('/compliance', [AdminController::class, 'compliance'])
-            ->name('compliance');
+        Route::get('/users/{user}', [AdminUserController::class, 'show'])
+            ->name('users.show');
 
-        Route::get('/disputes', [AdminController::class, 'disputes'])
-            ->name('disputes');
+        Route::patch('/users/{user}/status', [AdminUserController::class, 'updateStatus'])
+            ->name('users.status');
+
+        /*
+        |--------------------------------------------------------------------------
+        | Compliance
+        |--------------------------------------------------------------------------
+        */
+
+        Route::get('/compliance', [AdminComplianceController::class, 'index'])
+            ->name('compliance');
 
         Route::get('/compliance/violations', [AdminController::class, 'productViolations'])
             ->name('compliance.violations');
 
-        Route::get('/compliance/returns-refunds', [AdminController::class, 'returnsRefunds'])
-            ->name('compliance.returns-refunds');
+        Route::post(
+            '/compliance/violations/{violation}/decide',
+            [ProductComplianceController::class, 'decide']
+        )->name('compliance.decide');
 
-        Route::get('/commissions', [AdminController::class, 'commissions'])
+        // Preserve the existing endpoint for compatibility.
+        Route::post(
+            '/violations/{violation}/decision',
+            [ProductComplianceController::class, 'decide']
+        )->name('violations.decision');
+
+        /*
+        |--------------------------------------------------------------------------
+        | Disputes
+        |--------------------------------------------------------------------------
+        */
+
+        Route::get('/disputes', [AdminController::class, 'disputes'])
+            ->name('disputes');
+
+        Route::post(
+            '/disputes/{dispute}/notes',
+            [AdminDisputeController::class, 'saveNote']
+        )->name('disputes.notes.store');
+
+        Route::post(
+            '/disputes/{dispute}/resolve',
+            [AdminDisputeController::class, 'resolve']
+        )->name('disputes.resolve');
+
+        Route::post(
+            '/disputes/{dispute}/update',
+            [AdminDisputeController::class, 'sendUpdate']
+        )->name('disputes.update');
+
+        Route::get(
+            '/disputes/evidence/{evidence}/download',
+            [AdminDisputeController::class, 'downloadEvidence']
+        )->name('disputes.evidence.download');
+
+        /*
+        |--------------------------------------------------------------------------
+        | Returns & Refunds
+        |--------------------------------------------------------------------------
+        */
+
+        Route::get(
+            '/compliance/returns-refunds',
+            [AdminController::class, 'returnsRefunds']
+        )->name('compliance.returns-refunds');
+
+        Route::post(
+            '/compliance/returns-refunds/{returnRequest}/approve',
+            [AdminReturnRefundController::class, 'approve']
+        )->name('compliance.returns-refunds.approve');
+
+        Route::post(
+            '/compliance/returns-refunds/{returnRequest}/reject',
+            [AdminReturnRefundController::class, 'reject']
+        )->name('compliance.returns-refunds.reject');
+
+        Route::post(
+            '/compliance/returns-refunds/{returnRequest}/request-evidence',
+            [AdminReturnRefundController::class, 'requestEvidence']
+        )->name('compliance.returns-refunds.request-evidence');
+
+        /*
+        |--------------------------------------------------------------------------
+        | Commerce / Finance
+        |--------------------------------------------------------------------------
+        */
+
+        Route::get('/orders', [AdminCommerceController::class, 'orders'])
+            ->name('orders');
+
+        Route::post(
+            '/orders/payments/{payment}/confirm',
+            [AdminCommerceController::class, 'confirmPayment']
+        )->name('orders.payments.confirm');
+
+        Route::get('/commissions', [AdminFinanceController::class, 'commissions'])
             ->name('commissions');
 
-        Route::get('/transactions', [AdminController::class, 'transactions'])
+        Route::get('/transactions', [AdminFinanceController::class, 'transactions'])
             ->name('transactions');
 
-        Route::get('/payments', [AdminController::class, 'payments'])
+        Route::get('/payments', [AdminFinanceController::class, 'payments'])
             ->name('payments');
 
-        Route::get('/reports', [AdminController::class, 'reports'])
+        Route::get('/reports', [AdminFinanceController::class, 'reports'])
             ->name('reports');
+
+        /*
+        |--------------------------------------------------------------------------
+        | Fulfillment
+        |--------------------------------------------------------------------------
+        */
+
+        Route::get('/fulfillment', [AdminFulfillmentController::class, 'index'])
+            ->name('fulfillment');
+
+        Route::patch(
+            '/fulfillment/{shipment}/override',
+            [AdminFulfillmentController::class, 'override']
+        )->name('fulfillment.override');
+
+        /*
+        |--------------------------------------------------------------------------
+        | Messaging
+        |--------------------------------------------------------------------------
+        */
+
+        Route::get('/messages', [AdminController::class, 'messages'])
+            ->name('messages');
+
+        Route::post(
+            '/messages/conversations',
+            [AdminMessageController::class, 'storeConversation']
+        )->name('messages.conversations.store');
+
+        Route::post(
+            '/messages/{conversation}',
+            [AdminMessageController::class, 'send']
+        )->name('messages.send');
+
+        Route::post(
+            '/messages/{conversation}/read',
+            [AdminMessageController::class, 'markRead']
+        )->name('messages.read');
+
+        Route::post(
+            '/messages/{conversation}/unread',
+            [AdminMessageController::class, 'markUnread']
+        )->name('messages.unread');
+
+        Route::get(
+            '/messages/attachments/{attachment}',
+            [AdminMessageController::class, 'downloadAttachment']
+        )->name('messages.attachments.download');
+
+        Route::post(
+            '/messages/disputes/{dispute}/conversation',
+            [AdminMessageController::class, 'openDisputeConversation']
+        )->name('messages.disputes.open');
+
+        /*
+        |--------------------------------------------------------------------------
+        | Announcements
+        |--------------------------------------------------------------------------
+        */
+
+        Route::get('/announcements', [AdminAnnouncementController::class, 'index'])
+            ->name('announcements');
+
+        Route::post('/announcements', [AdminAnnouncementController::class, 'store'])
+            ->name('announcements.store');
+
+        Route::patch(
+            '/announcements/{announcement}',
+            [AdminAnnouncementController::class, 'update']
+        )->name('announcements.update');
+
+        Route::delete(
+            '/announcements/{announcement}',
+            [AdminAnnouncementController::class, 'destroy']
+        )->name('announcements.destroy');
+
+        /*
+        |--------------------------------------------------------------------------
+        | Settings / Policies
+        |--------------------------------------------------------------------------
+        | Keep current Fusion implementations for now.
+        */
 
         Route::get('/settings', [AdminController::class, 'settings'])
             ->name('settings');
@@ -287,26 +501,47 @@ Route::prefix('admin')
         Route::get('/policies', [AdminController::class, 'policies'])
             ->name('policies');
 
-        Route::get('/audit-logs', [AdminController::class, 'auditLogs'])
+        /*
+        |--------------------------------------------------------------------------
+        | Audit Logs
+        |--------------------------------------------------------------------------
+        */
+
+        Route::get('/audit-logs', [AdminAuditLogController::class, 'index'])
             ->name('audit-logs');
 
-        Route::get('/messages', [AdminController::class, 'messages'])
-            ->name('messages');
-
-        Route::get('/announcements', [AdminController::class, 'announcements'])
-            ->name('announcements');
+        /*
+        |--------------------------------------------------------------------------
+        | Admin Account
+        |--------------------------------------------------------------------------
+        | Keep current Fusion implementation until account integration phase.
+        */
 
         Route::get('/account', [AdminController::class, 'account'])
             ->name('account');
 
-        Route::post('/applications/{user}/approve', [AccountApprovalController::class, 'approveByAdmin'])
-            ->name('applications.approve');
+        /*
+        |--------------------------------------------------------------------------
+        | Account Applications
+        |--------------------------------------------------------------------------
+        | IMPORTANT:
+        | Keep Fusion's user-based approval contract for now.
+        */
 
-        Route::post('/applications/{user}/reject', [AccountApprovalController::class, 'rejectByAdmin'])
-            ->name('applications.reject');
+        Route::post(
+            '/applications/{user}/approve',
+            [AccountApprovalController::class, 'approveByAdmin']
+        )->name('applications.approve');
 
-        Route::post('/violations/{violation}/decision', [ProductComplianceController::class, 'decide'])
-            ->name('violations.decision');
+        Route::post(
+            '/applications/{user}/request-revision',
+            [AccountApprovalController::class, 'requestRevisionByAdmin']
+        )->name('applications.request-revision');
+
+        Route::post(
+            '/applications/{user}/reject',
+            [AccountApprovalController::class, 'rejectByAdmin']
+        )->name('applications.reject');
     });
 
 /*
@@ -434,7 +669,7 @@ Route::prefix('seller')
             ->name('settings.notifications');
     });
 
-/*
+/**
 |--------------------------------------------------------------------------
 | Logistics
 |--------------------------------------------------------------------------
@@ -450,7 +685,9 @@ Route::prefix('logistics')->name('logistics.')->group(function () {
             ->name('register');
 
         Route::post('/register', [LogisticsController::class, 'submitRegistration'])
-            ->middleware('throttle:10,1')->block(30, 5)->name('register.submit');
+            ->middleware('throttle:10,1')
+            ->block(30, 5)
+            ->name('register.submit');
     });
 
     Route::redirect('/login', '/login')
@@ -467,17 +704,38 @@ Route::prefix('logistics')->name('logistics.')->group(function () {
         Route::get('/riders/{id}', [LogisticsController::class, 'showRider'])
             ->name('riders.show');
 
+        Route::patch('/riders/{user}/assignment', [LogisticsController::class, 'updateRiderAssignment'])
+            ->name('riders.assignment.update');
+
         Route::get('/pickups', [LogisticsController::class, 'pickups'])
             ->name('pickups.index');
+
+        Route::post('/pickups/{pickupRequest}/verify', [LogisticsController::class, 'verifyPickup'])
+            ->name('pickups.verify');
+
+        Route::patch('/pickups/{pickupRequest}/cancel', [LogisticsController::class, 'cancelPickup'])
+            ->name('pickups.cancel');
+
+        Route::post('/pickups/{pickupRequest}/assign', [LogisticsController::class, 'assignPickup'])
+            ->name('pickups.assign');
 
         Route::get('/incoming', [LogisticsController::class, 'incoming'])
             ->name('sorting.incoming');
 
+        Route::post('/incoming/receive', [WaybillScanController::class, 'receiveForm'])
+            ->name('sorting.incoming.receive');
+
         Route::get('/sorting', [LogisticsController::class, 'sorting'])
             ->name('sorting.center');
 
+        Route::patch('/sorting/parcels/{parcel}', [LogisticsController::class, 'sortParcel'])
+            ->name('sorting.parcels.update');
+
         Route::get('/dispatch', [LogisticsController::class, 'dispatch'])
             ->name('dispatch.index');
+
+        Route::post('/dispatch/{zone}', [LogisticsController::class, 'dispatchZone'])
+            ->name('dispatch.store');
 
         Route::get('/monitoring', [LogisticsController::class, 'monitoring'])
             ->name('dispatch.monitoring');
@@ -488,6 +746,27 @@ Route::prefix('logistics')->name('logistics.')->group(function () {
         Route::get('/messages', [LogisticsController::class, 'messages'])
             ->name('messages.index');
 
+        Route::post('/messages/conversations', [LogisticsController::class, 'storeConversation'])
+            ->name('messages.conversations.store');
+
+        Route::get('/messages/attachments/{attachment}', [LogisticsController::class, 'downloadMessageAttachment',])
+            ->name('messages.attachments.download');
+
+        Route::post('/messages/{conversation}/read', [LogisticsController::class, 'markMessageConversationRead',])
+            ->name('messages.read');
+
+        Route::post('/messages/{conversation}', [LogisticsController::class, 'sendMessage'])
+            ->name('messages.send');
+
+        Route::patch('/account/profile', [LogisticsController::class, 'updateProfile'])
+            ->name('profile.update');
+
+        Route::patch('/account/password', [LogisticsController::class, 'updatePassword'])
+            ->name('profile.password.update');
+
+        Route::patch('/account/facility', [LogisticsController::class, 'updateFacility'])
+            ->name('profile.facility.update');
+
         Route::get('/account', [LogisticsController::class, 'account'])
             ->name('profile.index');
 
@@ -497,11 +776,37 @@ Route::prefix('logistics')->name('logistics.')->group(function () {
         Route::post('/api/waybills/{identifier}/receive', [WaybillScanController::class, 'receive'])
             ->name('waybills.receive');
 
-        Route::post('/riders/{user}/approve', [AccountApprovalController::class, 'approveRider'])
-            ->name('riders.approve');
+        /*
+        |--------------------------------------------------------------------------
+        | Rider Application Documents
+        |--------------------------------------------------------------------------
+        */
 
-        Route::post('/riders/{user}/reject', [AccountApprovalController::class, 'rejectRider'])
-            ->name('riders.reject');
+        Route::get(
+            '/rider-applications/{application}/documents/{document}',
+            [ApplicationDocumentController::class, 'show']
+        )->name('rider-documents.show');
+
+        Route::patch(
+            '/rider-applications/{application}/documents/{document}',
+            [ApplicationDocumentController::class, 'update']
+        )->name('rider-documents.update');
+
+        /*
+        |--------------------------------------------------------------------------
+        | Rider Approval
+        |--------------------------------------------------------------------------
+        */
+
+        Route::post(
+            '/riders/{user}/approve',
+            [AccountApprovalController::class, 'approveRider']
+        )->name('riders.approve');
+
+        Route::post(
+            '/riders/{user}/reject',
+            [AccountApprovalController::class, 'rejectRider']
+        )->name('riders.reject');
     });
 });
 
@@ -541,14 +846,26 @@ Route::prefix('rider')->name('rider.')->group(function () {
         Route::get('/pickup/{id}', [RiderController::class, 'pickup'])
             ->name('orders.pickup');
 
+        Route::post('/pickup/{id}/accept', [RiderController::class, 'acceptPickup'])
+            ->name('orders.pickup.accept');
+
         Route::post('/pickup/{id}/confirm', [RiderController::class, 'confirmPickup'])
             ->name('orders.pickup.confirm');
 
         Route::get('/deliver/{id}', [RiderController::class, 'deliver'])
             ->name('orders.delivery');
 
+        Route::post('/deliver/{id}/start', [RiderController::class, 'startDelivery'])
+            ->name('orders.delivery.start');
+
         Route::post('/deliver/{id}/confirm', [RiderController::class, 'confirmDelivery'])
             ->name('orders.delivery.confirm');
+
+        Route::post('/deliver/{id}/fail', [RiderController::class, 'failDelivery'])
+            ->name('orders.delivery.fail');
+
+        Route::post('/deliver/{id}/retry', [RiderController::class, 'retryDelivery'])
+            ->name('orders.delivery.retry');
 
         Route::get('/earnings', [RiderController::class, 'earnings'])
             ->name('earnings.index');
@@ -558,6 +875,21 @@ Route::prefix('rider')->name('rider.')->group(function () {
 
         Route::get('/messages', [RiderController::class, 'messages'])
             ->name('messages.index');
+
+        Route::patch('/account/profile', [RiderController::class, 'updateProfile'])
+            ->name('profile.update');
+
+        Route::patch('/account/password', [RiderController::class, 'updatePassword'])
+            ->name('profile.password.update');
+
+        Route::patch('/account/address/home', [RiderController::class, 'updateHomeAddress'])
+            ->name('profile.address.home.update');
+
+        Route::post('/account/addresses', [RiderController::class, 'storeAddress'])
+            ->name('profile.addresses.store');
+
+        Route::patch('/account/vehicle', [RiderController::class, 'updateVehicle'])
+            ->name('profile.vehicle.update');
 
         Route::get('/account', [RiderController::class, 'account'])
             ->name('profile.index');

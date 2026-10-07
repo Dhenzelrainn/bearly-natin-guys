@@ -489,3 +489,33 @@
         min-width: 100%;
     }
 }
+
+.chat-selected-file {
+    max-width: 180px;
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.message-text {
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+
+.message-attachment {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 7px;
+    color: var(--brown-700);
+    font-size: 11px;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+    text-decoration: underline;
+}
+
+.message-bubble.is-mine .message-attachment {
+    color: #fff;
+}

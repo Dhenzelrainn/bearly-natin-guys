@@ -12,11 +12,14 @@ use App\Models\LogisticsProfile;
 use App\Models\RiderProfile;
 use App\Models\Role;
 use App\Models\SellerProfile;
+use App\Models\SortingCenter;
+use App\Models\SortingZone;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
 
 class RegistrationLifecycleService
@@ -100,7 +103,7 @@ class RegistrationLifecycleService
                             $application['business_category']
                             ?? $user->business_category
                         ),
-                    'status' => AccountStatus::Pending->value,
+                    'status' => 'submitted',
                     'submitted_at' => now(),
                 ]);
             } else {
@@ -119,7 +122,7 @@ class RegistrationLifecycleService
                             ?? $user->business_category
                         )
                         ?? $accountApplication->business_category_id,
-                    'status' => AccountStatus::Pending->value,
+                    'status' => 'submitted',
                     'submitted_at' =>
                         $accountApplication->submitted_at
                         ?? now(),
@@ -160,34 +163,52 @@ class RegistrationLifecycleService
     public function approve(
         User $user,
         User $approver
-    ): void {
-        DB::transaction(function () use ($user, $approver): void {
-            $application = $this->ensureLegacyApplication($user);
-            $role = $this->role((string) $user->role);
+    ): AccountApplication {
+        return DB::transaction(function () use ($user, $approver): AccountApplication {
+            $lockedUser = User::query()
+                ->lockForUpdate()
+                ->findOrFail($user->id);
 
-            $user->roles()->syncWithoutDetaching([
+            $application = $this->lockReviewableApplication($lockedUser);
+            $role = $application->requestedRole;
+
+            $this->ensureRequiredDocumentsAreVerified($application);
+
+            $lockedUser->roles()->syncWithoutDetaching([
                 $role->id => [
                     'assigned_by' => $approver->id,
                     'assigned_at' => now(),
                 ],
             ]);
 
-            if ($application) {
-                $application->forceFill([
-                    'status' => 'approved',
-                    'review_started_at' =>
-                        $application->review_started_at ?? now(),
-                    'decided_at' => now(),
-                    'reviewed_by' => $approver->id,
-                    'decision_reason' => null,
-                    'revision_notes' => null,
-                ])->save();
-            }
+            $application->forceFill([
+                'status' => 'approved',
+                'review_started_at' =>
+                    $application->review_started_at ?? now(),
+                'decided_at' => now(),
+                'reviewed_by' => $approver->id,
+                'decision_reason' => null,
+                'revision_notes' => null,
+            ])->save();
+
+            $lockedUser->forceFill([
+                'role' => $role->name,
+                'status' => AccountStatus::Active->value,
+                'approved_by' => $approver->id,
+                'approved_at' => now(),
+                'rejection_reason' => null,
+            ])->save();
 
             $this->createApprovedProfile(
-                $user,
+                $lockedUser,
                 $application
             );
+
+            return $application->fresh([
+                'user',
+                'requestedRole',
+                'documents',
+            ]);
         });
     }
 
@@ -195,17 +216,17 @@ class RegistrationLifecycleService
         User $user,
         User $reviewer,
         string $reason
-    ): void {
-        DB::transaction(function () use (
+    ): AccountApplication {
+        return DB::transaction(function () use (
             $user,
             $reviewer,
             $reason
-        ): void {
-            $application = $this->ensureLegacyApplication($user);
+        ): AccountApplication {
+            $lockedUser = User::query()
+                ->lockForUpdate()
+                ->findOrFail($user->id);
 
-            if (! $application) {
-                return;
-            }
+            $application = $this->lockReviewableApplication($lockedUser);
 
             $application->forceFill([
                 'status' => AccountStatus::Rejected->value,
@@ -214,8 +235,142 @@ class RegistrationLifecycleService
                 'decided_at' => now(),
                 'reviewed_by' => $reviewer->id,
                 'decision_reason' => $reason,
+                'revision_notes' => null,
             ])->save();
+
+            $lockedUser->forceFill([
+                'status' => AccountStatus::Rejected->value,
+                'approved_by' => $reviewer->id,
+                'approved_at' => now(),
+                'rejection_reason' => $reason,
+            ])->save();
+
+            return $application->fresh([
+                'user',
+                'requestedRole',
+                'documents',
+            ]);
         });
+    }
+
+    public function requestRevision(
+        User $user,
+        User $reviewer,
+        string $notes
+    ): AccountApplication {
+        return DB::transaction(function () use ($user, $reviewer, $notes): AccountApplication {
+            $lockedUser = User::query()
+                ->lockForUpdate()
+                ->findOrFail($user->id);
+
+            $application = $this->lockReviewableApplication($lockedUser);
+
+            $application->forceFill([
+                'status' => 'needs_revision',
+                'review_started_at' => $application->review_started_at ?? now(),
+                'reviewed_by' => $reviewer->id,
+                'revision_notes' => $notes,
+                'decision_reason' => null,
+                'decided_at' => null,
+            ])->save();
+
+            $lockedUser->forceFill([
+                'status' => AccountStatus::NeedsRevision->value,
+                'approved_by' => $reviewer->id,
+                'approved_at' => null,
+                'rejection_reason' => null,
+            ])->save();
+
+            return $application->fresh([
+                'user',
+                'requestedRole',
+                'documents',
+            ]);
+        });
+    }
+
+    private function lockReviewableApplication(User $user): AccountApplication
+    {
+        $application = $this->ensureLegacyApplication($user);
+
+        abort_unless($application, 422);
+
+        $application = AccountApplication::query()
+            ->with(['requestedRole', 'documents'])
+            ->lockForUpdate()
+            ->findOrFail($application->id);
+
+        if ($application->status === AccountStatus::Pending->value) {
+            $application->forceFill(['status' => 'submitted'])->save();
+        }
+
+        abort_unless(
+            $application->user_id === $user->id
+            && $application->requestedRole?->name === $user->role
+            && in_array(
+                $application->status,
+                ['submitted', 'under_review', 'needs_revision'],
+                true
+            ),
+            422
+        );
+
+        return $application;
+    }
+
+    private function applicationStatusForUser(User $user): string
+    {
+        return match ($user->status) {
+            AccountStatus::Active->value => 'approved',
+            AccountStatus::Rejected->value => 'rejected',
+            AccountStatus::NeedsRevision->value => 'needs_revision',
+            default => 'submitted',
+        };
+    }
+
+    private function ensureRequiredDocumentsAreVerified(
+        AccountApplication $application
+    ): void {
+        $required = match ($application->requestedRole->name) {
+            UserRole::Buyer->value => [
+                ['government_id', 'valid_id'],
+            ],
+
+            UserRole::Seller->value,
+            UserRole::Logistics->value => [
+                ['government_id', 'valid_id'],
+                ['business_permit'],
+            ],
+
+            UserRole::Rider->value => [
+                ['driver_license'],
+                ['or_cr'],
+            ],
+
+            default => [],
+        };
+
+        $documents = $application
+            ->documents
+            ->keyBy('document_type');
+
+        $unverified = collect($required)->filter(
+            fn (array $types): bool =>
+                ! collect($types)->contains(
+                    fn (string $type): bool =>
+                        $documents->has($type)
+                        && $documents
+                            ->get($type)
+                            ->verification_status === 'verified'
+                )
+        );
+
+        if ($unverified->isNotEmpty()) {
+            throw ValidationException::withMessages([
+                'documents' =>
+                    'All required documents must be verified before approval.',
+            ]);
+        }
     }
 
     /**
@@ -282,7 +437,7 @@ class RegistrationLifecycleService
 
         if ($application) {
             $application->forceFill([
-                'status' => (string) $user->status,
+                'status' => $this->applicationStatusForUser($user),
                 'decided_at' =>
                     $user->status === AccountStatus::Rejected->value
                         ? (
@@ -388,10 +543,7 @@ class RegistrationLifecycleService
             'business_name' => $user->business_name,
             'business_category_id' =>
                 $this->categoryId($user->business_category),
-            'status' =>
-                $user->status === AccountStatus::Active->value
-                    ? 'approved'
-                    : (string) $user->status,
+            'status' => $this->applicationStatusForUser($user),
             'submitted_at' => $user->created_at ?? now(),
             'decided_at' =>
                 in_array(
@@ -485,6 +637,10 @@ class RegistrationLifecycleService
     ): void {
         $path = (string) ($document['path'] ?? '');
         $type = (string) ($document['type'] ?? '');
+
+        if ($type === 'valid_id') {
+            $type = 'government_id';
+        }
 
         if ($path === '' || $type === '') {
             return;
@@ -582,21 +738,121 @@ class RegistrationLifecycleService
                 );
             }
 
-            RiderProfile::updateOrCreate(
-                ['user_id' => $user->id],
-                [
-                    'logistics_profile_id' =>
-                        $sponsorProfile->id,
-                    'vehicle_type' =>
-                        $user->vehicle_type
-                        ?: 'Not specified',
-                    'plate_number' =>
-                        $user->plate_number,
-                    'availability_status' => 'offline',
-                    'verification_status' => 'approved',
-                ]
+            $this->ensureRiderProfile(
+                $user,
+                $sponsorProfile
             );
+
+            return;
         }
+    }
+
+    private function ensureRiderProfile(
+        User $user,
+        LogisticsProfile $sponsorProfile
+    ): RiderProfile {
+        $profile = RiderProfile::query()
+            ->where(
+                'user_id',
+                $user->id
+            )
+            ->first();
+
+        $isNew = ! $profile;
+
+        if (! $profile) {
+            $profile = new RiderProfile([
+                'user_id' => $user->id,
+            ]);
+        }
+
+        $validHomeCenter = null;
+
+        if ($profile->home_sorting_center_id) {
+            $validHomeCenter =
+                SortingCenter::query()
+                    ->whereKey(
+                        $profile
+                            ->home_sorting_center_id
+                    )
+                    ->where(
+                        'logistics_profile_id',
+                        $sponsorProfile->id
+                    )
+                    ->where(
+                        'status',
+                        'active'
+                    )
+                    ->first();
+        }
+
+        if (! $validHomeCenter) {
+            $validHomeCenter =
+                SortingCenter::query()
+                    ->where(
+                        'logistics_profile_id',
+                        $sponsorProfile->id
+                    )
+                    ->where(
+                        'status',
+                        'active'
+                    )
+                    ->oldest('id')
+                    ->first();
+
+            $profile->home_sorting_center_id =
+                $validHomeCenter?->id;
+
+            $profile->current_zone_id = null;
+        }
+
+        if (
+            $profile->current_zone_id
+            && $profile->home_sorting_center_id
+        ) {
+            $currentZoneIsValid =
+                SortingZone::query()
+                    ->whereKey(
+                        $profile->current_zone_id
+                    )
+                    ->where(
+                        'sorting_center_id',
+                        $profile
+                            ->home_sorting_center_id
+                    )
+                    ->where(
+                        'status',
+                        'active'
+                    )
+                    ->exists();
+
+            if (! $currentZoneIsValid) {
+                $profile->current_zone_id =
+                    null;
+            }
+        }
+
+        $profile->logistics_profile_id =
+            $sponsorProfile->id;
+
+        $profile->vehicle_type =
+            $user->vehicle_type
+            ?: 'Not specified';
+
+        $profile->plate_number =
+            $user->plate_number;
+
+        if ($isNew) {
+            $profile->availability_status =
+                'offline';
+        }
+
+        $profile->verification_status =
+            'approved';
+
+        $profile->save();
+
+        return $profile->refresh();
     }
 
     private function ensureLogisticsProfile(
@@ -608,7 +864,7 @@ class RegistrationLifecycleService
             ->latest('id')
             ->first();
 
-        return LogisticsProfile::updateOrCreate(
+        $profile = LogisticsProfile::updateOrCreate(
             ['user_id' => $user->id],
             [
                 'application_id' => $application?->id,
@@ -627,6 +883,95 @@ class RegistrationLifecycleService
                 'status' => 'active',
             ]
         );
+
+        $this->ensureSortingCenter(
+            $user,
+            $profile
+        );
+
+        return $profile;
+    }
+
+    private function ensureSortingCenter(
+        User $user,
+        LogisticsProfile $profile
+    ): SortingCenter {
+        $address = Address::query()
+            ->where('user_id', $user->id)
+            ->where(
+                'label',
+                $this->addressLabel(
+                    UserRole::Logistics->value
+                )
+            )
+            ->latest('id')
+            ->first();
+
+        $address ??= Address::query()
+            ->where('user_id', $user->id)
+            ->where('is_default_pickup', true)
+            ->latest('id')
+            ->first();
+
+        $address ??= $user->addresses()
+            ->latest('id')
+            ->first();
+
+        if (! $address) {
+            $address = $this->storeAddress(
+                $user,
+                UserRole::Logistics->value,
+                [
+                    'street' =>
+                        $user->street_address
+                        ?: 'Not provided',
+                    'barangay' =>
+                        $user->barangay
+                        ?: 'Not provided',
+                    'municipality' =>
+                        $user->city
+                        ?: 'Not provided',
+                    'province' =>
+                        $user->province
+                        ?: 'Not provided',
+                ]
+            );
+        }
+
+        $center = SortingCenter::query()
+            ->where(
+                'logistics_profile_id',
+                $profile->id
+            )
+            ->oldest('id')
+            ->first();
+
+        if ($center) {
+            $center->forceFill([
+                'address_id' => $address->id,
+                'name' => $profile->display_name,
+                'contact_phone' => $profile->contact_phone,
+            ])->save();
+
+            return $center;
+        }
+
+        return SortingCenter::create([
+            'logistics_profile_id' => $profile->id,
+            'address_id' => $address->id,
+            'name' => $profile->display_name,
+            'code' => $this->sortingCenterCode(
+                $profile
+            ),
+            'contact_phone' => $profile->contact_phone,
+            'status' => 'active',
+        ]);
+    }
+
+    private function sortingCenterCode(
+        LogisticsProfile $profile
+    ): string {
+        return 'SC-' . $profile->id;
     }
 
     private function role(string $name): Role

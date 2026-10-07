@@ -4,8 +4,14 @@ namespace App\Http\Controllers;
 
 use App\Enums\AccountStatus;
 use App\Enums\UserRole;
+use App\Models\AccountApplication;
+use App\Models\Conversation;
+use App\Models\Dispute;
+use App\Models\ReturnRequest;
 use App\Models\User;
-use Illuminate\Support\Facades\Schema;
+use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 class AdminController extends Controller
@@ -51,44 +57,41 @@ class AdminController extends Controller
         ]));
     }
 
-    public function registrations(): View
+    public function registrations(Request $request): View
     {
-        $applications = [];
+        $search = trim((string) $request->query('search'));
+        $role = (string) $request->query('role');
+        $status = (string) $request->query('status');
+        $reviewableStatuses = ['submitted', 'under_review', 'needs_revision'];
 
-        if (Schema::hasTable('users')) {
-            $applications = User::query()
-                ->whereIn('role', UserRole::adminApproved())
-                ->whereIn('status', [
-                    AccountStatus::Pending->value,
-                    AccountStatus::NeedsRevision->value,
-                ])
-                ->latest('created_at')
-                ->get()
-                ->map(fn (User $user) => [
-                    'id' => 'DB-'.$user->id,
-                    'database_id' => $user->id,
-                    'name' => $user->business_name ?: $user->name,
-                    'role' => ucfirst($user->role),
-                    'email' => $user->email,
-                    'submitted' => $user->created_at?->format('M j, Y') ?? 'Recently',
-                    'status' => $user->status === AccountStatus::NeedsRevision->value
-                        ? 'Needs Review'
-                        : 'Pending',
-                    'category' => $user->business_category ?: '—',
-                    'documents' => array_values(array_filter([
-                        $user->valid_id_path
-                            ? ['label' => 'Government ID', 'type' => 'valid-id']
-                            : null,
-                        $user->business_permit_path
-                            ? ['label' => 'Business Permit', 'type' => 'business-permit']
-                            : null,
-                    ])),
-                ])
-                ->all();
-        }
+        $applications = AccountApplication::query()
+            ->with(['user', 'requestedRole', 'businessCategory', 'documents'])
+            ->whereIn('status', $reviewableStatuses)
+            ->whereHas('requestedRole', fn ($query) => $query->whereIn('name', UserRole::adminApproved()))
+            ->whereHas('user', fn ($query) => $query->whereIn('status', [
+                AccountStatus::Pending->value,
+                AccountStatus::NeedsRevision->value,
+            ]))
+            ->when($search !== '', function ($query) use ($search): void {
+                $query->where(function ($query) use ($search): void {
+                    $query->where('application_no', 'like', "%{$search}%")
+                        ->orWhere('business_name', 'like', "%{$search}%")
+                        ->orWhereHas('user', fn ($userQuery) => $userQuery
+                            ->where('name', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%"));
+                });
+            })
+            ->when(in_array($role, UserRole::adminApproved(), true), fn ($query) => $query
+                ->whereHas('requestedRole', fn ($roleQuery) => $roleQuery->where('name', $role)))
+            ->when(in_array($status, $reviewableStatuses, true), fn ($query) => $query->where('status', $status))
+            ->orderByDesc('submitted_at')
+            ->orderByDesc('id')
+            ->paginate(10)
+            ->withQueryString();
 
         return view('admin.registrations.index', $this->base([
             'applications' => $applications,
+            'filters' => compact('search', 'role', 'status'),
         ]));
     }
 
@@ -498,94 +501,87 @@ class AdminController extends Controller
 
     public function sellerUsers(): View
     {
-        $sellers = User::query()
-            ->where('role', UserRole::Seller->value)
-            ->whereIn('status', [
-                AccountStatus::Active->value,
-                AccountStatus::Suspended->value,
-                AccountStatus::Deactivated->value,
-            ])
-            ->with([
-                'sellerProfile.store.products',
-            ])
-            ->latest('approved_at')
-            ->latest('created_at')
-            ->get();
-
         return view('admin.users.sellers', $this->base([
-            'users' => $sellers->map(function (User $user) {
-                $productCount = $user->sellerProfile?->store?->products?->count() ?? 0;
-
-                return [
-                    'id' => 'SEL-'.str_pad((string) $user->id, 6, '0', STR_PAD_LEFT),
-                    'database_id' => $user->id,
-                    'name' => $user->business_name ?: $user->name,
-                    'owner' => $user->name ?: '—',
-                    'email' => $user->email,
-                    'category' => $user->business_category ?: 'Uncategorized',
-                    'joined' => ($user->approved_at ?? $user->created_at)?->format('M d, Y') ?? '—',
-                    'products' => $productCount,
-                    'status' => match ($user->status) {
-                        AccountStatus::Active->value => 'Active',
-                        AccountStatus::Suspended->value => 'Suspended',
-                        AccountStatus::Deactivated->value => 'Deactivated',
-                        default => ucwords(str_replace('_', ' ', $user->status)),
-                    },
-                ];
-            })->values()->all(),
+            'users' => [
+                [
+                    'id' => 'SEL-7719',
+                    'name' => 'Mara Home Goods',
+                    'owner' => 'Maria L. Santos',
+                    'email' => 'mara@example.test',
+                    'category' => 'Home & Living',
+                    'joined' => 'Jun 28, 2026',
+                    'products' => 48,
+                    'status' => 'Active',
+                ],
+                [
+                    'id' => 'SEL-6507',
+                    'name' => 'TechVault PH',
+                    'owner' => 'Daniel P. Reyes',
+                    'email' => 'techvault@example.test',
+                    'category' => 'Electronics & Gadgets',
+                    'joined' => 'Jun 02, 2026',
+                    'products' => 31,
+                    'status' => 'Suspended',
+                ],
+                [
+                    'id' => 'SEL-6128',
+                    'name' => 'Chrono Alley',
+                    'owner' => 'Luis Fernandez',
+                    'email' => 'chrono@example.test',
+                    'category' => 'Jewelry & Watches',
+                    'joined' => 'May 15, 2026',
+                    'products' => 27,
+                    'status' => 'Active',
+                ],
+                [
+                    'id' => 'SEL-5880',
+                    'name' => 'Everyday Finds',
+                    'owner' => 'Clarissa Go',
+                    'email' => 'everyday@example.test',
+                    'category' => 'Home & Living',
+                    'joined' => 'Apr 26, 2026',
+                    'products' => 54,
+                    'status' => 'Active',
+                ],
+            ],
         ]));
     }
 
     public function logisticsUsers(): View
     {
-        $users = User::query()
-            ->where('role', UserRole::Logistics->value)
-            ->whereIn('status', [
-                AccountStatus::Active->value,
-                AccountStatus::Suspended->value,
-                AccountStatus::Deactivated->value,
-            ])
-            ->latest('approved_at')
-            ->latest('created_at')
-            ->get()
-            ->map(function (User $user) {
-                $location = collect([
-                    $user->city,
-                    $user->province,
-                ])->filter()->implode(', ');
-
-                $assignedRiders = User::query()
-                    ->where('role', UserRole::Rider->value)
-                    ->where('logistics_id', $user->id)
-                    ->whereIn('status', [
-                        AccountStatus::Active->value,
-                        AccountStatus::Suspended->value,
-                        AccountStatus::Deactivated->value,
-                    ])
-                    ->count();
-
-                return [
-                    'id' => 'LOG-'.str_pad((string) $user->id, 4, '0', STR_PAD_LEFT),
-                    'database_id' => $user->id,
-                    'name' => $user->business_name ?: $user->name,
-                    'manager' => $user->name ?: '—',
-                    'email' => $user->email,
-                    'location' => $location ?: '—',
-                    'riders' => $assignedRiders,
-                    'joined' => ($user->approved_at ?? $user->created_at)?->format('M d, Y') ?? '—',
-                    'status' => match ($user->status) {
-                        AccountStatus::Active->value => 'Active',
-                        AccountStatus::Suspended->value => 'Suspended',
-                        AccountStatus::Deactivated->value => 'Deactivated',
-                        default => ucwords(str_replace('_', ' ', $user->status)),
-                    },
-                ];
-            })
-            ->values()
-            ->all();
-
         return view('admin.users.logistics', $this->base([
-            'users' => $users,
+            'users' => [
+                [
+                    'id' => 'LOG-4101',
+                    'name' => 'Laguna Central Logistics',
+                    'manager' => 'Nathan D. Garcia',
+                    'email' => 'laguna.central@example.test',
+                    'location' => 'Santa Cruz, Laguna',
+                    'riders' => 18,
+                    'joined' => 'May 07, 2026',
+                    'status' => 'Active',
+                ],
+                [
+                    'id' => 'LOG-4105',
+                    'name' => 'South Laguna Sorting Hub',
+                    'manager' => 'Clarisse M. Villanueva',
+                    'email' => 'southlaguna@example.test',
+                    'location' => 'Calamba City, Laguna',
+                    'riders' => 12,
+                    'joined' => 'May 29, 2026',
+                    'status' => 'Active',
+                ],
+                [
+                    'id' => 'LOG-4109',
+                    'name' => 'Bearly South Distribution Center',
+                    'manager' => 'Paolo A. Fernandez',
+                    'email' => 'bearlysouth@example.test',
+                    'location' => 'San Pablo City, Laguna',
+                    'riders' => 15,
+                    'joined' => 'Jun 10, 2026',
+                    'status' => 'Suspended',
+                ],
+            ],
         ]));
     }
 
@@ -649,24 +645,271 @@ class AdminController extends Controller
 
     public function disputes(): View
     {
-        return view('admin.compliance.disputes', $this->base([
-            'disputes' => [
-                ['id' => 'DSP-1048', 'subject' => 'Item arrived damaged', 'buyer' => 'Karen Yu', 'seller' => 'Mara Home Goods', 'courier' => 'Jared Molina', 'amount' => '₱2,480', 'priority' => 'High', 'status' => 'Under Review', 'opened' => 'Aug 24, 9:18 AM'],
-                ['id' => 'DSP-1047', 'subject' => 'Missing accessory', 'buyer' => 'Theo Garcia', 'seller' => 'TechVault PH', 'courier' => 'Noah Santos', 'amount' => '₱1,299', 'priority' => 'Medium', 'status' => 'Awaiting Seller', 'opened' => 'Aug 23, 4:42 PM'],
-                ['id' => 'DSP-1046', 'subject' => 'Delivery marked completed early', 'buyer' => 'Liza Ong', 'seller' => 'Everyday Finds', 'courier' => 'Leah Ramos', 'amount' => '₱849', 'priority' => 'Medium', 'status' => 'Coordinating', 'opened' => 'Aug 23, 11:07 AM'],
-            ],
-            'evidence' => [
-                ['label' => 'Buyer photo', 'type' => 'Image', 'meta' => 'damaged-package.jpg • 1.8 MB'],
-                ['label' => 'Order invoice', 'type' => 'Document', 'meta' => 'invoice-1048.pdf • 284 KB'],
-                ['label' => 'Rider proof', 'type' => 'Image', 'meta' => 'delivery-proof.jpg • 1.1 MB'],
-            ],
-            'timeline' => [
-                ['time' => '9:18 AM', 'text' => 'Buyer submitted complaint and photo evidence.'],
-                ['time' => '9:36 AM', 'text' => 'Seller acknowledged the case and requested parcel photos.'],
-                ['time' => '10:02 AM', 'text' => 'Rider uploaded delivery proof.'],
-                ['time' => '10:24 AM', 'text' => 'Admin review started.'],
-            ],
-        ]));
+        $records = Dispute::query()
+            ->with([
+                'sellerOrder.store',
+                'returnRequest',
+                'shipment',
+                'opener',
+                'assignee',
+                'participants',
+                'evidence.uploader',
+                'events.actor',
+            ])
+            ->whereNotIn('status', [
+                'resolved',
+                'closed',
+            ])
+            ->orderByRaw("
+                CASE priority
+                    WHEN 'urgent' THEN 1
+                    WHEN 'high' THEN 2
+                    WHEN 'medium' THEN 3
+                    WHEN 'normal' THEN 4
+                    WHEN 'low' THEN 5
+                    ELSE 6
+                END
+            ")
+            ->orderBy('response_due_at')
+            ->orderByDesc('opened_at')
+            ->get();
+
+        $disputes = $records
+            ->map(function (Dispute $dispute): array {
+                $buyer = $dispute->participants
+                    ->first(
+                        fn ($participant) => $participant->pivot->participant_role === 'buyer'
+                    );
+
+                $seller = $dispute->participants
+                    ->first(
+                        fn ($participant) => $participant->pivot->participant_role === 'seller'
+                    );
+
+                $rider = $dispute->participants
+                    ->first(
+                        fn ($participant) => $participant->pivot->participant_role === 'rider'
+                    );
+
+                $logistics = $dispute->participants
+                    ->first(
+                        fn ($participant) => $participant->pivot->participant_role === 'logistics'
+                    );
+
+                $priority = Str::of($dispute->priority)
+                    ->replace(['_', '-'], ' ')
+                    ->title()
+                    ->toString();
+
+                $status = match ($dispute->status) {
+                    'open' => 'Open',
+                    'under_review' => 'Under Review',
+                    'awaiting_buyer' => 'Awaiting Buyer',
+                    'awaiting_seller' => 'Awaiting Seller',
+                    'awaiting_logistics' => 'Awaiting Logistics',
+                    'awaiting_evidence' => 'Awaiting Evidence',
+                    'coordinating' => 'Coordinating',
+                    'escalated' => 'Escalated',
+                    'resolved' => 'Resolved',
+                    'closed' => 'Closed',
+
+                    default => Str::of($dispute->status)
+                        ->replace(['_', '-'], ' ')
+                        ->title()
+                        ->toString(),
+                };
+
+                $evidence = $dispute->evidence
+                    ->sortBy('created_at')
+                    ->values()
+                    ->map(function ($item): array {
+                        $type = Str::lower((string) $item->type);
+
+                        return [
+                            'id' => $item->id,
+
+                            'label' => $item->description
+                                    ?: $item->original_name,
+
+                            'type' => Str::contains($type, [
+                                'image',
+                                'photo',
+                                'picture',
+                            ])
+                                    ? 'Image'
+                                    : 'Document',
+
+                            'meta' => collect([
+                                $item->original_name,
+                                $item->uploader?->name,
+                            ])
+                                ->filter()
+                                ->implode(' • '),
+
+                            'download_url' => route(
+                                'admin.disputes.evidence.download',
+                                $item
+                            ),
+                        ];
+                    })
+                    ->all();
+
+                $timeline = $dispute->events
+                    ->sortBy('created_at')
+                    ->values()
+                    ->map(function ($event): array {
+                        $eventLabel = Str::of(
+                            $event->event_type
+                        )
+                            ->replace(['_', '-'], ' ')
+                            ->title()
+                            ->toString();
+
+                        $actor = $event->actor?->name;
+
+                        $text = $event->note;
+
+                        if (! $text) {
+                            $text = $actor
+                                ? "{$actor}: {$eventLabel}"
+                                : $eventLabel;
+                        }
+
+                        return [
+                            'time' => $event->created_at
+                                ?->format('g:i A')
+                                ?? '—',
+
+                            'text' => $text,
+                        ];
+                    })
+                    ->all();
+
+                /*
+                * Internal notes belong to dispute_events,
+                * not the final resolution column.
+                */
+                $latestInternalNote = $dispute->events
+                    ->where('event_type', 'internal_note')
+                    ->sortByDesc('created_at')
+                    ->first();
+
+                /*
+                * Resolution outcome is stored in the
+                * metadata of the resolved event.
+                */
+                $resolutionEvent = $dispute->events
+                    ->where('event_type', 'resolved')
+                    ->sortByDesc('created_at')
+                    ->first();
+
+                return [
+                    'database_id' => $dispute->id,
+
+                    'id' => $dispute->dispute_no,
+
+                    'subject' => $dispute->subject,
+
+                    'buyer' => $buyer?->name
+                        ?? (
+                            $dispute->opener?->role === 'buyer'
+                                ? $dispute->opener->name
+                                : '—'
+                        ),
+
+                    'buyer_user_id' => $buyer?->id
+                        ?? (
+                            $dispute->opener?->role === 'buyer'
+                                ? $dispute->opener?->id
+                                : null
+                        ),
+
+                    'seller' => $dispute->sellerOrder?->store?->name
+                        ?? $seller?->name
+                        ?? '—',
+
+                    'seller_user_id' => $seller?->id,
+
+                    'courier' => $rider?->name
+                        ?? $logistics?->name
+                        ?? '—',
+
+                    'rider_user_id' => $rider?->id,
+
+                    'logistics_user_id' => $logistics?->id,
+
+                    'amount' => $dispute->amount_minor !== null
+                        ? '₱'.number_format(
+                            $dispute->amount_minor / 100,
+                            2
+                        )
+                        : '—',
+
+                    'priority' => $priority,
+
+                    'status' => $status,
+
+                    'opened' => $dispute->opened_at
+                        ?->format('M j, g:i A')
+                        ?? '—',
+
+                    'summary' => $dispute->description,
+
+                    'assignee' => $dispute->assignee?->name
+                        ?? 'Unassigned',
+
+                    'response_due' => $dispute->response_due_at
+                        ?->format('M j, g:i A'),
+
+                    'resolution' => $dispute->resolution,
+
+                    /*
+                    * These URLs are intentionally generated
+                    * directly for now so this page can still
+                    * render before we paste the new routes.
+                    */
+                    'note_url' => url(
+                        "/admin/disputes/{$dispute->id}/notes"
+                    ),
+
+                    'resolve_url' => url(
+                        "/admin/disputes/{$dispute->id}/resolve"
+                    ),
+
+                    'message_url' => route(
+                        'admin.messages.disputes.open',
+                        $dispute
+                    ),
+
+                    'update_url' => route(
+                        'admin.disputes.update',
+                        $dispute
+                    ),
+
+                    'evidence' => $evidence,
+
+                    'timeline' => $timeline,
+
+                    'internalNote' => $latestInternalNote?->note
+                        ?? '',
+
+                    'resolutionOutcome' => $resolutionEvent?->metadata['outcome']
+                        ?? '',
+                ];
+            })
+            ->values()
+            ->all();
+
+        $firstDispute = $disputes[0] ?? null;
+
+        return view(
+            'admin.compliance.disputes',
+            $this->base([
+                'disputes' => $disputes,
+                'evidence' => $firstDispute['evidence'] ?? [],
+                'timeline' => $firstDispute['timeline'] ?? [],
+            ])
+        );
     }
 
     public function productViolations(): View
@@ -735,171 +978,386 @@ class AdminController extends Controller
 
     public function returnsRefunds(): View
     {
-        return view('admin.compliance.returns-refunds', $this->base([
-            'cases' => [
-                [
-                    'id' => 'REF-2208',
-                    'order' => 'ORD-50192',
-                    'buyer' => 'Karen Yu',
-                    'seller' => 'Mara Home Goods',
-                    'reason' => 'Item arrived damaged',
-                    'amount' => '₱2,480',
-                    'requested' => 'Aug 26, 2026',
-                    'type' => 'Return & Refund',
-                    'status' => 'Escalated',
-                    'seller_response' => 'Seller requested additional parcel photos before approving the return.',
-                    'buyer_request' => 'Buyer requests a full refund and return shipping assistance.',
-                ],
-                [
-                    'id' => 'REF-2209',
-                    'order' => 'ORD-50188',
-                    'buyer' => 'Theo Garcia',
-                    'seller' => 'TechVault PH',
-                    'reason' => 'Missing accessory',
-                    'amount' => '₱1,299',
-                    'requested' => 'Aug 25, 2026',
-                    'type' => 'Partial Refund',
-                    'status' => 'Under Review',
-                    'seller_response' => 'Seller confirmed that the accessory may have been omitted during packing.',
-                    'buyer_request' => 'Buyer is requesting compensation for the missing accessory.',
-                ],
-                [
-                    'id' => 'REF-2210',
-                    'order' => 'ORD-50171',
-                    'buyer' => 'Liza Ong',
-                    'seller' => 'Everyday Finds',
-                    'reason' => 'Wrong item received',
-                    'amount' => '₱849',
-                    'requested' => 'Aug 25, 2026',
-                    'type' => 'Return & Refund',
-                    'status' => 'Awaiting Seller',
-                    'seller_response' => 'Seller has not yet submitted a final response.',
-                    'buyer_request' => 'Buyer requests replacement or full refund after returning the incorrect item.',
-                ],
-                [
-                    'id' => 'REF-2211',
-                    'order' => 'ORD-50154',
-                    'buyer' => 'Marco Lim',
-                    'seller' => 'Chrono Alley',
-                    'reason' => 'Product not as described',
-                    'amount' => '₱6,390',
-                    'requested' => 'Aug 24, 2026',
-                    'type' => 'Refund Only',
-                    'status' => 'Resolved',
-                    'seller_response' => 'Seller agreed to the refund after reviewing the submitted evidence.',
-                    'buyer_request' => 'Buyer requested a full refund based on significant differences from the listing.',
-                ],
-            ],
-        ]));
+        $returnRequests = ReturnRequest::query()
+            ->with([
+                'order',
+                'buyer',
+                'store',
+                'sellerOrder',
+                'items.orderItem',
+                'evidence',
+                'reviewer',
+                'refunds',
+            ])
+            ->orderByDesc('submitted_at')
+            ->orderByDesc('id')
+            ->get();
+
+        $cases = $returnRequests
+            ->map(function (ReturnRequest $returnRequest): array {
+                $requestType = match ($returnRequest->request_type) {
+                    'return_refund',
+                    'return_and_refund',
+                    'return & refund' => 'Return & Refund',
+
+                    'partial_refund',
+                    'partial refund' => 'Partial Refund',
+
+                    'refund_only',
+                    'refund only' => 'Refund Only',
+
+                    default => Str::of($returnRequest->request_type)
+                        ->replace(['_', '-'], ' ')
+                        ->title()
+                        ->toString(),
+                };
+
+                $status = match ($returnRequest->status) {
+                    'submitted' => 'Awaiting Seller',
+                    'awaiting_seller' => 'Awaiting Seller',
+                    'under_review' => 'Under Review',
+                    'escalated' => 'Escalated',
+                    'awaiting_evidence' => 'Awaiting Evidence',
+                    'approved' => 'Approved',
+                    'rejected' => 'Rejected',
+                    'resolved' => 'Resolved',
+
+                    default => Str::of($returnRequest->status)
+                        ->replace(['_', '-'], ' ')
+                        ->title()
+                        ->toString(),
+                };
+
+                $reason = Str::of($returnRequest->reason_code)
+                    ->replace(['_', '-'], ' ')
+                    ->title()
+                    ->toString();
+
+                return [
+                    'database_id' => $returnRequest->id,
+
+                    'id' => $returnRequest->return_no,
+
+                    'order' => $returnRequest->order?->order_no
+                        ?? 'Order unavailable',
+
+                    'buyer' => $returnRequest->buyer?->name
+                        ?? 'Buyer unavailable',
+
+                    'seller' => $returnRequest->store?->name
+                        ?? 'Seller unavailable',
+
+                    'reason' => $reason,
+
+                    'amount' => '₱'.number_format(
+                        $returnRequest->requested_amount_minor / 100,
+                        2
+                    ),
+
+                    'requested' => $returnRequest->submitted_at
+                        ?->format('M j, Y')
+                        ?? '—',
+
+                    'type' => $requestType,
+
+                    'status' => $status,
+
+                    'seller_response' => $returnRequest->seller_response
+                        ?: 'No seller response submitted yet.',
+
+                    'buyer_request' => $returnRequest->buyer_note
+                        ?: 'No additional buyer note was provided.',
+                ];
+            })
+            ->values()
+            ->all();
+
+        return view(
+            'admin.compliance.returns-refunds',
+            $this->base([
+                'cases' => $cases,
+            ])
+        );
     }
 
-    public function commissions(): View
+    public function messages(Request $request): View
     {
-        $ledger = [
-            ['date' => 'Aug 24, 2026', 'order' => 'ORD-50192', 'seller' => 'Mara Home Goods', 'gross' => 2480.00],
-            ['date' => 'Aug 24, 2026', 'order' => 'ORD-50188', 'seller' => 'Chrono Alley', 'gross' => 6390.00],
-            ['date' => 'Aug 23, 2026', 'order' => 'ORD-50171', 'seller' => 'Everyday Finds', 'gross' => 1299.00],
-            ['date' => 'Aug 23, 2026', 'order' => 'ORD-50154', 'seller' => 'TechVault PH', 'gross' => 4299.00],
-            ['date' => 'Aug 22, 2026', 'order' => 'ORD-50111', 'seller' => 'Mara Home Goods', 'gross' => 3190.00],
-        ];
+        $admin = $request->user();
 
-        $ledger = array_map(function ($row) {
-            $row['commission'] = $row['gross'] * 0.10;
-            $row['sellerNet'] = $row['gross'] * 0.90;
+        $recipients = User::query()
+            ->where('id', '!=', $admin->id)
+            ->where('status', 'active')
+            ->whereHas('roles', function ($query) {
+                $query->whereIn('name', [
+                    'buyer',
+                    'seller',
+                    'logistics',
+                    'rider',
+                ]);
+            })
+            ->with([
+                'roles:id,name',
+                'sellerProfile.store',
+                'logisticsProfile',
+                'riderProfile',
+            ])
+            ->orderBy('name')
+            ->get()
+            ->map(function (User $user): array {
+                $role = $user->roles
+                    ->first(
+                        fn ($role) => in_array(
+                            $role->name,
+                            [
+                                'buyer',
+                                'seller',
+                                'logistics',
+                                'rider',
+                            ],
+                            true
+                        )
+                    )
+                    ?->name
+                    ?? $user->role
+                    ?? 'user';
 
-            return $row;
-        }, $ledger);
+                $displayName = match ($role) {
+                    'seller' => $user->sellerProfile?->store?->name
+                        ?? $user->name,
 
-        return view('admin.finance.commissions', $this->base([
-            'rate' => 10,
-            'ledger' => $ledger,
-        ]));
-    }
+                    'logistics' => $user->logisticsProfile?->center_name
+                        ?? $user->name,
 
-    public function transactions(): View
-    {
-        $transactions = [
-            ['id' => 'TXN-260824-0192', 'date' => '2026-08-24', 'order' => 'ORD-50192', 'seller' => 'Mara Home Goods', 'buyer' => 'Karen Yu', 'method' => 'GCash', 'gross' => 2480.00, 'refund' => 0.00, 'status' => 'Completed'],
-            ['id' => 'TXN-260824-0188', 'date' => '2026-08-24', 'order' => 'ORD-50188', 'seller' => 'Chrono Alley', 'buyer' => 'Marco Lim', 'method' => 'Card', 'gross' => 6390.00, 'refund' => 0.00, 'status' => 'Completed'],
-            ['id' => 'TXN-260823-0171', 'date' => '2026-08-23', 'order' => 'ORD-50171', 'seller' => 'Everyday Finds', 'buyer' => 'Bianca Lim', 'method' => 'Cash on Delivery', 'gross' => 1299.00, 'refund' => 0.00, 'status' => 'Pending'],
-            ['id' => 'TXN-260823-0154', 'date' => '2026-08-23', 'order' => 'ORD-50154', 'seller' => 'TechVault PH', 'buyer' => 'Paolo Reyes', 'method' => 'Maya', 'gross' => 4299.00, 'refund' => 4299.00, 'status' => 'Refunded'],
-            ['id' => 'TXN-260822-0111', 'date' => '2026-08-22', 'order' => 'ORD-50111', 'seller' => 'Mara Home Goods', 'buyer' => 'Angela Torres', 'method' => 'GCash', 'gross' => 3190.00, 'refund' => 0.00, 'status' => 'Completed'],
-            ['id' => 'TXN-260821-0097', 'date' => '2026-08-21', 'order' => 'ORD-50097', 'seller' => 'Everyday Finds', 'buyer' => 'Carlo Reyes', 'method' => 'Card', 'gross' => 1875.00, 'refund' => 0.00, 'status' => 'Failed'],
-        ];
+                    default => $user->name,
+                };
 
-        $transactions = array_map(function ($row) {
-            $commissionBase = $row['status'] === 'Completed'
-                ? max(0, $row['gross'] - $row['refund'])
-                : 0;
-            $row['commission'] = $commissionBase * 0.10;
-            $row['sellerNet'] = $commissionBase * 0.90;
+                return [
+                    'id' => $user->id,
+                    'name' => $displayName,
+                    'account_name' => $user->name,
+                    'email' => $user->email,
+                    'role' => $role,
+                ];
+            })
+            ->values()
+            ->all();
 
-            return $row;
-        }, $transactions);
+        $records = Conversation::query()
+            ->with([
+                'creator',
+                'participants.sellerProfile.store',
+                'latestMessage.sender',
+                'messages' => fn ($query) => $query
+                    ->with([
+                        'sender',
+                        'attachments',
+                    ])
+                    ->orderBy('sent_at'),
+            ])
+            ->whereHas(
+                'participants',
+                fn ($query) => $query->where(
+                    'users.id',
+                    $admin->id
+                )
+            )
+            ->orderByDesc('last_message_at')
+            ->orderByDesc('updated_at')
+            ->get();
 
-        return view('admin.finance.transactions', $this->base([
-            'rate' => 10,
-            'transactions' => $transactions,
-        ]));
-    }
+        $conversations = $records
+            ->map(function (Conversation $conversation) use ($admin): array {
+                $adminParticipant = $conversation
+                    ->participants
+                    ->firstWhere('id', $admin->id);
 
-    public function payments(): View
-    {
-        return view('admin.finance.payments', $this->base([
-            'payments' => [
-                ['id' => 'PAY-2608-041', 'seller' => 'Mara Home Goods', 'period' => 'Aug 16–22, 2026', 'gross' => 184210.00, 'commission' => 18421.00, 'adjustments' => -1250.00, 'net' => 164539.00, 'due' => '2026-08-26', 'paid' => null, 'reference' => '—', 'status' => 'Pending'],
-                ['id' => 'PAY-2608-040', 'seller' => 'Chrono Alley', 'period' => 'Aug 16–22, 2026', 'gross' => 142880.00, 'commission' => 14288.00, 'adjustments' => 0.00, 'net' => 128592.00, 'due' => '2026-08-26', 'paid' => null, 'reference' => '—', 'status' => 'Processing'],
-                ['id' => 'PAY-2608-039', 'seller' => 'Everyday Finds', 'period' => 'Aug 9–15, 2026', 'gross' => 119520.00, 'commission' => 11952.00, 'adjustments' => -640.00, 'net' => 106928.00, 'due' => '2026-08-19', 'paid' => '2026-08-19', 'reference' => 'BNK-849301', 'status' => 'Paid'],
-                ['id' => 'PAY-2608-038', 'seller' => 'TechVault PH', 'period' => 'Aug 9–15, 2026', 'gross' => 96410.00, 'commission' => 9641.00, 'adjustments' => -4299.00, 'net' => 82470.00, 'due' => '2026-08-19', 'paid' => null, 'reference' => '—', 'status' => 'On Hold'],
-                ['id' => 'PAY-2608-037', 'seller' => 'Mara Home Goods', 'period' => 'Aug 9–15, 2026', 'gross' => 156780.00, 'commission' => 15678.00, 'adjustments' => 0.00, 'net' => 141102.00, 'due' => '2026-08-19', 'paid' => '2026-08-18', 'reference' => 'BNK-848775', 'status' => 'Paid'],
-            ],
-        ]));
-    }
+                $otherParticipant = $conversation
+                    ->participants
+                    ->first(
+                        fn ($participant) => $participant->id !== $admin->id
+                    );
 
-    public function reports(): View
-    {
-        return view('admin.finance.reports', $this->base([
-            'reportKpis' => [
-                ['label' => 'Net Sales', 'value' => '₱1,154,820', 'note' => '+11.2% vs previous period'],
-                ['label' => 'Orders', 'value' => '8,421', 'note' => '+7.8% vs previous period'],
-                ['label' => 'Platform Commission', 'value' => '₱128,313', 'note' => '10% configured rate'],
-                ['label' => 'Avg. Order Value', 'value' => '₱152.40', 'note' => '+2.1% vs previous period'],
-            ],
-            'salesSeries' => [64, 71, 69, 78, 86, 82, 93, 99, 106, 112, 121, 134],
-            'topSellers' => [
-                ['seller' => 'Mara Home Goods', 'sales' => '₱184,210', 'commission' => '₱18,421'],
-                ['seller' => 'Chrono Alley', 'sales' => '₱142,880', 'commission' => '₱14,288'],
-                ['seller' => 'Everyday Finds', 'sales' => '₱119,520', 'commission' => '₱11,952'],
-                ['seller' => 'TechVault PH', 'sales' => '₱96,410', 'commission' => '₱9,641'],
-            ],
-            'settlementRows' => [
-                ['seller' => 'Mara Home Goods', 'period' => 'Aug 16–22, 2026', 'net' => '₱164,539', 'status' => 'Pending'],
-                ['seller' => 'Chrono Alley', 'period' => 'Aug 16–22, 2026', 'net' => '₱128,592', 'status' => 'Processing'],
-                ['seller' => 'Everyday Finds', 'period' => 'Aug 9–15, 2026', 'net' => '₱106,928', 'status' => 'Paid'],
-            ],
-            'refundRows' => [
-                ['case' => 'REF-2211', 'order' => 'ORD-50154', 'seller' => 'TechVault PH', 'amount' => '₱4,299', 'status' => 'Approved'],
-                ['case' => 'REF-2209', 'order' => 'ORD-50132', 'seller' => 'Everyday Finds', 'amount' => '₱640', 'status' => 'Processing'],
-                ['case' => 'REF-2204', 'order' => 'ORD-50088', 'seller' => 'Mara Home Goods', 'amount' => '₱1,250', 'status' => 'Completed'],
-            ],
-        ]));
-    }
+                $participantRole = $otherParticipant
+                    ?->pivot
+                    ?->participant_role
+                    ?? $otherParticipant?->role
+                    ?? 'User';
 
-    public function messages(): View
-    {
-        return view('admin.communication.messages', $this->base([
-            'conversations' => [
-                ['id' => 1, 'name' => 'Mara Home Goods', 'role' => 'Seller', 'preview' => 'We uploaded the additional photos.', 'time' => '6:42 PM', 'unread' => 2, 'initials' => 'MH'],
-                ['id' => 2, 'name' => 'Karen Yu', 'role' => 'Buyer', 'preview' => 'Thank you for reviewing my complaint.', 'time' => '5:18 PM', 'unread' => 0, 'initials' => 'KY'],
-                ['id' => 3, 'name' => 'Jared Molina', 'role' => 'Rider', 'preview' => 'Delivery proof has been uploaded.', 'time' => '3:11 PM', 'unread' => 0, 'initials' => 'JM'],
-                ['id' => 4, 'name' => 'TechVault PH', 'role' => 'Seller', 'preview' => 'Can we clarify the compliance notice?', 'time' => '1:54 PM', 'unread' => 1, 'initials' => 'TV'],
-            ],
-            'messages' => [
-                ['from' => 'them', 'text' => 'Good afternoon. We uploaded the additional photos requested for case DSP-1048.', 'time' => '6:34 PM'],
-                ['from' => 'me', 'text' => 'Received. We are reviewing the evidence from all parties now.', 'time' => '6:36 PM'],
-                ['from' => 'them', 'text' => 'Thank you. Please let us know if you need a clearer copy of the packing photo.', 'time' => '6:42 PM'],
-            ],
-        ]));
+                $role = Str::of($participantRole)
+                    ->replace(['_', '-'], ' ')
+                    ->title()
+                    ->toString();
+
+                /*
+                * Seller conversations should show the store
+                * name when one exists. Other roles use the
+                * participant's account name.
+                */
+                $name = $participantRole === 'seller'
+                    ? (
+                        $otherParticipant
+                            ?->sellerProfile
+                            ?->store
+                            ?->name
+                        ?? $otherParticipant?->name
+                        ?? 'Unknown Seller'
+                    )
+                    : (
+                        $otherParticipant?->name
+                        ?? 'Unknown User'
+                    );
+
+                $initials = collect(
+                    preg_split(
+                        '/\s+/',
+                        trim($name)
+                    ) ?: []
+                )
+                    ->filter()
+                    ->take(2)
+                    ->map(
+                        fn ($part) => Str::upper(
+                            Str::substr($part, 0, 1)
+                        )
+                    )
+                    ->implode('');
+
+                $latestMessage = $conversation->latestMessage;
+
+                /*
+                * Count inbound messages newer than the
+                * Admin participant's last-read timestamp.
+                */
+                $lastReadAt = $adminParticipant
+                    ?->pivot
+                    ?->last_read_at;
+
+                $unread = $conversation
+                    ->messages
+                    ->filter(function ($message) use (
+                        $admin,
+                        $lastReadAt
+                    ): bool {
+                        if ($message->sender_id === $admin->id) {
+                            return false;
+                        }
+
+                        if (! $lastReadAt) {
+                            return true;
+                        }
+
+                        return $message->sent_at
+                            && $message->sent_at->isAfter(
+                                Carbon::parse(
+                                    $lastReadAt
+                                )
+                            );
+                    })
+                    ->count();
+
+                return [
+                    'database_id' => $conversation->id,
+
+                    'id' => $conversation->id,
+
+                    'name' => $name,
+
+                    'role' => $role,
+
+                    'preview' => $latestMessage?->body
+                        ?? 'No messages yet.',
+
+                    'time' => $latestMessage?->sent_at
+                        ?->format('g:i A')
+                        ?? '',
+
+                    'unread' => $unread,
+
+                    'initials' => $initials ?: '—',
+
+                    'subject' => $conversation->subject,
+
+                    'status' => $conversation->status,
+
+                    'type' => $conversation->type,
+
+                    'messages' => $conversation
+                        ->messages
+                        ->map(
+                            fn ($message) => [
+                                'id' => $message->id,
+
+                                'from' => $message->sender_id === $admin->id
+                                    ? 'me'
+                                    : 'them',
+
+                                'text' => $message->body,
+
+                                'time' => $message->sent_at
+                                    ?->format('g:i A')
+                                    ?? '',
+
+                                'message_type' => $message->message_type,
+
+                                'attachments' => $message->attachments
+                                    ->map(
+                                        fn ($attachment) => [
+                                            'id' => $attachment->id,
+
+                                            'name' => $attachment->original_name,
+
+                                            'mime_type' => $attachment->mime_type,
+
+                                            'size_bytes' => $attachment->size_bytes,
+
+                                            'download_url' => route(
+                                                'admin.messages.attachments.download',
+                                                $attachment
+                                            ),
+                                        ]
+                                    )
+                                    ->values()
+                                    ->all(),
+                            ]
+                        )
+                        ->values()
+                        ->all(),
+                ];
+            })
+            ->values()
+            ->all();
+
+        $requestedConversationId =
+            (int) $request->query(
+                'conversation',
+                0
+            );
+
+        $activeConversation =
+            $requestedConversationId > 0
+                ? collect($conversations)
+                    ->first(
+                        fn ($conversation) => (int) $conversation['database_id']
+                            === $requestedConversationId
+                    )
+                : null;
+
+        $activeConversation ??=
+            $conversations[0] ?? null;
+
+        return view(
+            'admin.communication.messages',
+            $this->base([
+                'conversations' => $conversations,
+
+                'messages' => $activeConversation['messages']
+                    ?? [],
+
+                'activeConversation' => $activeConversation,
+
+                'recipients' => $recipients,
+            ])
+        );
     }
 
     public function announcements(): View

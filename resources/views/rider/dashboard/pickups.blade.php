@@ -1,11 +1,250 @@
 @extends('rider.layouts.app')
-@section('title','Items for Pickup')
-@section('page-title','Items for Pickup')
+
+@section('title', 'Pickup Queue')
+@section('page-title', 'Items for Pickup')
+
 @section('content')
-<div class="page-header"><div><p class="page-kicker">Rider pickup queue</p><h2>Seller parcels ready for collection</h2><p>Review pickup alerts, accept nearby requests, and begin assigned seller pickups.</p></div><div class="page-actions"><span class="rider-availability">Available for jobs</span><button class="button" type="button" data-refresh-preview><i data-lucide="refresh-cw"></i>Refresh queue</button></div></div>
-<section class="metric-strip"><article class="metric-item"><span class="metric-icon"><i data-lucide="package-check"></i></span><span class="metric-copy"><small>Assigned pickup</small><strong>1</strong><span>Next window at 2:30 PM</span></span></article><article class="metric-item"><span class="metric-icon"><i data-lucide="radar"></i></span><span class="metric-copy"><small>Available nearby</small><strong>2</strong><span>Within a 6 km radius</span></span></article><article class="metric-item"><span class="metric-icon"><i data-lucide="boxes"></i></span><span class="metric-copy"><small>Expected parcels</small><strong>13</strong><span>Across all pickup jobs</span></span></article><article class="metric-item"><span class="metric-icon"><i data-lucide="wallet"></i></span><span class="metric-copy"><small>Potential earnings</small><strong>₱150</strong><span>If all jobs are completed</span></span></article></section>
-<div class="content-grid" style="margin-bottom:20px"><section class="panel"><div class="panel-header"><div><h3>Real-time pickup alerts</h3><p>Latest notices from Sellers and your assigned Logistics center.</p></div><span class="status-badge is-success">Live preview</span></div><div class="panel-body alert-feed">@foreach($alerts as $alert)<div class="alert-row"><span><i data-lucide="bell-ring"></i></span><span><strong>{{ $alert['title'] }}</strong><small>{{ $alert['detail'] }}</small></span><time>{{ $alert['time'] }}</time></div>@endforeach</div></section><aside class="panel"><div class="panel-header"><div><h3>Today’s pickup plan</h3><p>Capacity and return target.</p></div></div><div class="panel-body attention-list"><div class="attention-item"><i data-lucide="clock-3"></i><span><strong>2:30 PM first window</strong><small>TechVault PH · San Rafael</small></span></div><div class="attention-item"><i data-lucide="package"></i><span><strong>13 parcel capacity</strong><small>Motorcycle box has 18 slots</small></span></div><div class="attention-item"><i data-lucide="warehouse"></i><span><strong>Return to Intake Bay 2</strong><small>Before the 5:30 PM cutoff</small></span></div></div></aside></div>
-<section class="panel" data-table-scope><div class="panel-header"><div><h3>Pickup opportunities</h3><p>Assigned and available seller collections.</p></div></div><div class="table-toolbar"><div class="search-field"><i data-lucide="search"></i><input type="search" data-table-search placeholder="Search seller, pickup ID, or location"></div><select class="filter-select" data-filter-status><option value="">All job states</option><option>Assigned</option><option>Available</option><option>Accepted</option></select></div><div class="panel-body"><div class="job-grid">
-@foreach($pickups as $pickup)<article class="job-card" data-row data-record-row data-record-type="pickupJobs" data-record-id="{{ $pickup['id'] }}" data-status="{{ $pickup['status'] }}"><div class="job-card-head"><div><h3>{{ $pickup['seller'] }}</h3><small>{{ $pickup['id'] }}</small></div><span class="status-badge" data-status-badge data-status="{{ $pickup['status'] }}">{{ $pickup['status'] }}</span></div><div class="job-card-body"><div class="job-detail"><i data-lucide="map-pin"></i><span>{{ $pickup['address'] }}<small>{{ $pickup['distance'] }} from your current area</small></span></div><div class="job-detail"><i data-lucide="boxes"></i><span>{{ $pickup['parcels'] }} parcels<small>Seller reports all packages ready</small></span></div><div class="job-detail"><i data-lucide="clock"></i><span>{{ $pickup['window'] }}<small>Requested pickup window</small></span></div></div><div class="job-card-footer">@if($pickup['status']==='Assigned')<a class="button button-primary" href="{{ route('rider.orders.pickup',$pickup['id']) }}">Start pickup</a>@else<button class="button button-primary" type="button" data-accept-pickup>Accept job</button><button class="button" type="button" data-preview-detail>Details</button>@endif</div></article>@endforeach
-</div><p class="empty-copy" data-empty-cards hidden>No pickup jobs match the selected filters.</p></div></section>
+<div class="page-header">
+    <div>
+        <p class="page-kicker">
+            Rider pickup queue
+        </p>
+
+        <h2>
+            Assigned seller pickups
+        </h2>
+
+        <p>
+            Review pickup jobs assigned to you by your
+            Logistics provider.
+        </p>
+    </div>
+
+    <div class="page-actions">
+        <a
+            class="button"
+            href="{{ route('rider.dashboard.pickups') }}"
+        >
+            <i data-lucide="refresh-cw"></i>
+            Refresh queue
+        </a>
+    </div>
+</div>
+
+<section class="metric-strip">
+    <article class="metric-item">
+        <span class="metric-icon">
+            <i data-lucide="package-check"></i>
+        </span>
+
+        <span class="metric-copy">
+            <small>Assigned</small>
+
+            <strong>
+                {{ $pickupMetrics['assigned'] }}
+            </strong>
+
+            <span>
+                Waiting for your response
+            </span>
+        </span>
+    </article>
+
+    <article class="metric-item">
+        <span class="metric-icon">
+            <i data-lucide="bike"></i>
+        </span>
+
+        <span class="metric-copy">
+            <small>In progress</small>
+
+            <strong>
+                {{ $pickupMetrics['in_progress'] }}
+            </strong>
+
+            <span>
+                Accepted or already collected
+            </span>
+        </span>
+    </article>
+
+    <article class="metric-item">
+        <span class="metric-icon">
+            <i data-lucide="boxes"></i>
+        </span>
+
+        <span class="metric-copy">
+            <small>Expected parcels</small>
+
+            <strong>
+                {{ $pickupMetrics['parcels'] }}
+            </strong>
+
+            <span>
+                Across active pickup assignments
+            </span>
+        </span>
+    </article>
+
+    <article class="metric-item">
+        <span class="metric-icon">
+            <i data-lucide="calendar-clock"></i>
+        </span>
+
+        <span class="metric-copy">
+            <small>Due today</small>
+
+            <strong>
+                {{ $pickupMetrics['due_today'] }}
+            </strong>
+
+            <span>
+                Pickup requests scheduled today
+            </span>
+        </span>
+    </article>
+</section>
+
+<section
+    class="panel"
+    data-table-scope
+>
+    <div class="panel-header">
+        <div>
+            <h3>
+                Pickup assignments
+            </h3>
+
+            <p>
+                Only jobs assigned to your Rider account
+                are shown here.
+            </p>
+        </div>
+    </div>
+
+    <div class="table-toolbar">
+        <div class="search-field">
+            <i data-lucide="search"></i>
+
+            <input
+                type="search"
+                data-table-search
+                placeholder="Search seller, pickup number, or address"
+            >
+        </div>
+
+        <select
+            class="filter-select"
+            data-filter-status
+        >
+            <option value="">
+                All job states
+            </option>
+
+            <option value="assigned">
+                Assigned
+            </option>
+
+            <option value="accepted">
+                Accepted
+            </option>
+
+            <option value="arrived">
+                Arrived
+            </option>
+
+            <option value="picked_up">
+                Picked Up
+            </option>
+        </select>
+    </div>
+
+    <div class="panel-body">
+        @if($pickups->isEmpty())
+            <p class="empty-copy">
+                No active pickup assignments.
+            </p>
+        @else
+            <div class="job-grid">
+                @foreach($pickups as $pickup)
+                    <article
+                        class="job-card"
+                        data-row
+                        data-status="{{ $pickup['status_raw'] }}"
+                    >
+                        <div class="job-card-head">
+                            <div>
+                                <h3>
+                                    {{ $pickup['seller'] }}
+                                </h3>
+
+                                <small>
+                                    {{ $pickup['id'] }}
+                                </small>
+                            </div>
+
+                            <span
+                                class="status-badge"
+                                data-status="{{ $pickup['status_raw'] }}"
+                            >
+                                {{ $pickup['status'] }}
+                            </span>
+                        </div>
+
+                        <div class="job-card-body">
+                            <div class="job-detail">
+                                <i data-lucide="map-pin"></i>
+
+                                <span>
+                                    {{ $pickup['address'] }}
+
+                                    <small>
+                                        Seller pickup address
+                                    </small>
+                                </span>
+                            </div>
+
+                            <div class="job-detail">
+                                <i data-lucide="boxes"></i>
+
+                                <span>
+                                    {{ $pickup['parcels'] }}
+                                    {{ Str::plural('parcel', $pickup['parcels']) }}
+
+                                    <small>
+                                        Physical packages in this request
+                                    </small>
+                                </span>
+                            </div>
+
+                            <div class="job-detail">
+                                <i data-lucide="clock"></i>
+
+                                <span>
+                                    {{ $pickup['window'] }}
+
+                                    <small>
+                                        Requested pickup window
+                                    </small>
+                                </span>
+                            </div>
+                        </div>
+
+                        <div class="job-card-footer">
+                            <a
+                                class="button button-primary"
+                                href="{{ route(
+                                    'rider.orders.pickup',
+                                    $pickup['id']
+                                ) }}"
+                            >
+                                Review pickup
+                            </a>
+                        </div>
+                    </article>
+                @endforeach
+            </div>
+        @endif
+    </div>
+</section>
 @endsection

@@ -18,8 +18,49 @@ class Parcel extends Model
         return $this->belongsTo(Waybill::class);
     }
 
+    public function currentSortingCenter()
+    {
+        return $this->belongsTo(
+            SortingCenter::class,
+            'current_sorting_center_id'
+        );
+    }
+
+    public function currentZone()
+    {
+        return $this->belongsTo(
+            SortingZone::class,
+            'current_zone_id'
+        );
+    }
+
     public function events()
     {
-        return $this->hasMany(ShipmentEvent::class);
+        return $this->hasMany(ShipmentEvent::class)
+            ->orderBy('occurred_at');
+    }
+
+    public function pickupRequests()
+    {
+        return $this->belongsToMany(
+            PickupRequest::class,
+            'pickup_request_parcels'
+        )->withPivot('added_at');
+    }
+
+    public function dispatchBatches()
+    {
+        return $this->belongsToMany(
+            DispatchBatch::class,
+            'dispatch_batch_parcels'
+        )->withPivot([
+            'sequence',
+            'loaded_at',
+        ]);
+    }
+
+    public function deliveryAttempts()
+    {
+        return $this->hasMany(DeliveryAttempt::class);
     }
 }

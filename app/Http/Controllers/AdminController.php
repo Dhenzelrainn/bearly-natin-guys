@@ -89,6 +89,46 @@ class AdminController extends Controller
             ->paginate(10)
             ->withQueryString();
 
+            $applications->through(function (AccountApplication $application): array {
+                return [
+                    'database_id' => $application->user_id,
+                    'application_id' => $application->id,
+
+                    'id' => $application->application_no,
+
+                    'name' => $application->user?->name ?? 'Unknown applicant',
+                    'email' => $application->user?->email ?? '—',
+
+                    'role' => str($application->requestedRole?->name ?? 'unknown')
+                        ->replace('_', ' ')
+                        ->title()
+                        ->toString(),
+
+                    'category' => $application->businessCategory?->name ?? '—',
+
+                    'submitted' => $application->submitted_at?->format('M j, Y')
+                        ?? 'Not submitted',
+
+                    'status' => str($application->status)
+                        ->replace('_', ' ')
+                        ->title()
+                        ->toString(),
+
+                    'documents' => $application->documents
+                        ->map(fn ($document): array => [
+                            'id' => $document->id,
+
+                            'type' => $document->document_type,
+
+                            'label' => str($document->document_type)
+                                ->replace('_', ' ')
+                                ->title()
+                                ->toString(),
+                        ])
+                        ->all(),
+                ];
+            });
+
         return view('admin.registrations.index', $this->base([
             'applications' => $applications,
             'filters' => compact('search', 'role', 'status'),

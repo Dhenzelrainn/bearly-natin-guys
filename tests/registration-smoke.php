@@ -61,7 +61,7 @@ check(str_contains(view('emails.registration-code',['code'=>'123456'])->render()
 $data=['role'=>'buyer','first_name'=>'Test','last_name'=>'Buyer','middle_initial'=>'r','sex'=>'prefer_not_to_say','birthday'=>'2000-01-01','email'=>'test@example.com','contact_number'=>'09171234567','phone_country'=>'PH','province'=>'Laguna','city'=>'Pila','city_code'=>'0403422000','barangay'=>'Bulilan Norte','street_name'=>'Test Street','house_number'=>'1','postal_code'=>'4010','password'=>'Testing123','password_confirmation'=>'Testing123','terms'=>'1'];
 $files=['valid_id'=>Illuminate\Http\UploadedFile::fake()->create('id.pdf', 10, 'application/pdf')];
 $reg=Illuminate\Http\Request::create('/register','POST',$data,[],$files);$reg->setLaravelSession($session);
-$controller=app(App\Http\Controllers\auth\BearlyAuthController::class);
+$controller=app(App\Http\Controllers\Auth\BearlyAuthController::class);
 $response=$controller->register($reg);$user=App\Models\User::first();
 check($user && $user->status==='pending' && $user->middle_initial==='R.' && $user->email_verified_at && !$user->phone_verified_at && $user->contact_number==='+639171234567','Verified buyer saved pending with normalized phone and initial');
 Illuminate\Support\Facades\Storage::disk('local')->delete($user->valid_id_path);

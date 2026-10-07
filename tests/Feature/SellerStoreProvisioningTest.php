@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Models\AccountApplication;
+use App\Models\Role;
 use App\Models\SellerProfile;
 use App\Models\Store;
 use App\Models\User;
@@ -14,13 +16,19 @@ class SellerStoreProvisioningTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_seller_approval_creates_one_draft_store_and_is_idempotent(): void
+    public function test_seller_approval_creates_one_draft_store_and_provisioning_is_idempotent(): void
     {
         $seller = $this->seller('Sundays Market');
         $approver = $this->admin();
 
+        $this->prepareSellerForApproval(
+            $seller,
+            $approver
+        );
+
         $this->actingAs($approver)
             ->post(route('admin.applications.approve', $seller))
+            ->assertSessionHasNoErrors()
             ->assertRedirect();
 
         $sellerProfile = $seller->sellerProfile()->firstOrFail();
@@ -37,10 +45,21 @@ class SellerStoreProvisioningTest extends TestCase
             'publication_status' => 'published',
         ]);
 
-        app(RegistrationLifecycleService::class)->approve($seller->fresh(), $approver);
+        app(RegistrationLifecycleService::class)
+            ->backfillUser($seller->fresh());
 
-        $this->assertSame(1, SellerProfile::where('user_id', $seller->id)->count());
-        $this->assertSame(1, Store::where('seller_profile_id', $sellerProfile->id)->count());
+        $this->assertSame(
+            1,
+            SellerProfile::where('user_id', $seller->id)->count()
+        );
+
+        $this->assertSame(
+            1,
+            Store::where(
+                'seller_profile_id',
+                $sellerProfile->id
+            )->count()
+        );
     }
 
     public function test_newly_provisioned_store_is_not_visible_to_buyers(): void
@@ -48,7 +67,13 @@ class SellerStoreProvisioningTest extends TestCase
         $seller = $this->seller('Hidden Market');
         $approver = $this->admin();
 
-        app(RegistrationLifecycleService::class)->approve($seller, $approver);
+        $this->prepareSellerForApproval(
+            $seller,
+            $approver
+        );
+
+        app(RegistrationLifecycleService::class)
+            ->approve($seller, $approver);
 
         $store = $seller->fresh('sellerProfile')->sellerProfile->store;
         $buyer = User::create([
@@ -95,7 +120,14 @@ class SellerStoreProvisioningTest extends TestCase
         ]);
 
         $approver = $this->admin();
-        app(RegistrationLifecycleService::class)->approve($seller, $approver);
+
+        $this->prepareSellerForApproval(
+            $seller,
+            $approver
+        );
+
+        app(RegistrationLifecycleService::class)
+            ->approve($seller, $approver);
 
         $targetProfile = $seller->fresh('sellerProfile')->sellerProfile;
 
@@ -118,6 +150,47 @@ class SellerStoreProvisioningTest extends TestCase
             'status' => 'pending',
             'password' => Hash::make('Password123'),
         ]);
+    }
+
+    private function prepareSellerForApproval(
+        User $seller,
+        User $approver
+    ): AccountApplication {
+        $sellerRole = Role::query()->firstOrCreate(
+            ['name' => 'seller'],
+            ['display_name' => 'Seller'],
+        );
+
+        $application = AccountApplication::query()->create([
+            'application_no' =>
+                'APP-STORE-'.str()->upper(str()->random(8)),
+            'user_id' => $seller->id,
+            'requested_role_id' => $sellerRole->id,
+            'business_name' => $seller->business_name,
+            'status' => 'under_review',
+            'submitted_at' => now(),
+            'review_started_at' => now(),
+        ]);
+
+        foreach (
+            ['government_id', 'business_permit']
+            as $documentType
+        ) {
+            $application->documents()->create([
+                'document_type' => $documentType,
+                'file_path' =>
+                    'test/'.$documentType.'.pdf',
+                'original_name' =>
+                    $documentType.'.pdf',
+                'mime_type' => 'application/pdf',
+                'size_bytes' => 100,
+                'verification_status' => 'verified',
+                'verified_by' => $approver->id,
+                'verified_at' => now(),
+            ]);
+        }
+
+        return $application;
     }
 
     private function admin(): User

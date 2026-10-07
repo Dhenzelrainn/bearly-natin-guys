@@ -252,9 +252,9 @@
                     @forelse ($application['documents'] as $document)
                         <a
                             class="document-preview"
-                            href="{{ route('admin.applications.document', [
-                                'user' => $application['database_id'],
-                                'type' => $document['type'],
+                            href="{{ route('admin.application-documents.show', [
+                                'application' => $application['application_id'],
+                                'document' => $document['id'],
                             ]) }}"
                             target="_blank"
                             rel="noopener"

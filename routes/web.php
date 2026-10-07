@@ -1,7 +1,7 @@
 <?php
 
-use App\Http\Controllers\auth\BearlyAuthController;
-use App\Http\Controllers\auth\EmailVerificationController;
+use App\Http\Controllers\Auth\BearlyAuthController;
+use App\Http\Controllers\Auth\EmailVerificationController;
 use App\Http\Controllers\PostalCodeController;
 use App\Http\Controllers\AccountApprovalController;
 use App\Http\Controllers\AdminController;

@@ -6050,3 +6050,564 @@ table {
     line-height: 1.15;
     color: var(--admin-text, #2f211b);
 }
+
+/* =========================================================
+   ADMIN CENTER — SHARED READABILITY AND DIALOG REFINEMENT
+   ========================================================= */
+
+.admin-topbar h1 {
+    display: block;
+}
+
+.page-hero > div > .eyebrow {
+    display: none;
+}
+
+.admin-content {
+    padding-top: 22px;
+}
+
+.admin-topbar-left {
+    min-width: 0;
+}
+
+.admin-topbar-actions {
+    margin-left: auto;
+}
+
+.admin-nav-label {
+    font-size: 11px;
+    letter-spacing: .06em;
+}
+
+.admin-nav-children .admin-nav-link {
+    min-height: 36px;
+    font-size: 12px;
+}
+
+.admin-nav > .admin-nav-link {
+    font-size: 13px;
+}
+
+.page-hero h1 {
+    font-size: clamp(27px, 2.1vw, 31px);
+}
+
+.panel-heading h2 {
+    font-size: 18px;
+}
+
+.panel-heading p,
+.page-hero p {
+    font-size: 13px;
+}
+
+.admin-table,
+.data-table {
+    font-size: 13px;
+}
+
+.admin-table th,
+.data-table th {
+    padding: 12px 14px;
+    color: #66584f;
+    font-size: 11px;
+}
+
+.admin-table td,
+.data-table td {
+    padding: 13px 14px;
+    color: #443a34;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.admin-table td small,
+.admin-table .table-meta,
+.admin-table .muted,
+.admin-table small,
+.data-table td small,
+.data-table .table-meta,
+.data-table .muted,
+.data-table small {
+    color: #71665f;
+    font-size: 12px;
+}
+
+.status-badge,
+.badge,
+.chip,
+.tag {
+    font-size: 11px;
+}
+
+.button {
+    min-height: 42px;
+    font-size: 13px;
+}
+
+.button-small {
+    min-height: 36px;
+    font-size: 12px;
+}
+
+.form-field > span,
+.field-label,
+.form-field label {
+    color: #51463f;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.form-field input,
+.form-field select,
+.form-field textarea,
+.select-field,
+.date-field {
+    min-height: 44px;
+    font-size: 14px;
+}
+
+.form-field textarea {
+    min-height: 96px;
+}
+
+.modal-card {
+    width: min(94vw, 640px);
+    max-height: min(90vh, 900px);
+    margin-top: 5vh;
+    padding: 24px;
+    border-radius: 14px;
+}
+
+.modal-card.modal-wide {
+    width: min(94vw, 1040px);
+}
+
+.modal-heading {
+    margin-bottom: 20px;
+}
+
+.modal-heading h2 {
+    font-size: 21px;
+}
+
+.modal-card .eyebrow {
+    font-size: 11px;
+}
+
+.modal-card .review-grid {
+    grid-template-columns: minmax(160px, 210px) minmax(0, 1fr);
+    gap: 20px;
+}
+
+.review-profile {
+    min-width: 0;
+    align-items: center;
+}
+
+.review-profile .avatar,
+.modal-card .avatar,
+.admin-modal .avatar {
+    width: 56px;
+    height: 56px;
+    min-width: 56px;
+    min-height: 56px;
+    flex: 0 0 56px;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    overflow: hidden;
+}
+
+.review-profile h3 {
+    font-size: 16px;
+    line-height: 1.4;
+}
+
+.review-profile p,
+.review-profile > small {
+    font-size: 13px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+
+.review-details .detail-grid > div {
+    min-height: 48px;
+    gap: 10px;
+    padding: 11px 0;
+}
+
+.review-details .detail-grid > div span,
+.detail-grid span {
+    color: #71645c;
+    font-size: 12px;
+}
+
+.review-details .detail-grid > div strong,
+.detail-grid strong {
+    color: #34271f;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.review-details .section-subtitle,
+.section-subtitle {
+    font-size: 15px;
+}
+
+.document-preview {
+    min-width: min(100%, 280px);
+    max-width: 100%;
+    padding: 10px 12px;
+}
+
+.document-preview strong {
+    font-size: 13px;
+}
+
+.document-preview small {
+    font-size: 12px;
+}
+
+.modal-wide .decision-footer {
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.modal-wide .decision-footer form:has(textarea[name="reason"]) {
+    display: grid;
+    grid-template-columns: minmax(180px, 1fr) auto;
+    align-items: end;
+    gap: 12px;
+    flex: 1 1 420px;
+}
+
+.modal-wide .decision-footer form:has(textarea[name="reason"]) .form-field {
+    min-width: 0;
+}
+
+.modal-wide .decision-footer form:has(textarea[name="reason"]) textarea {
+    min-height: 88px;
+}
+
+.settings-commission-field {
+    max-width: 360px;
+}
+
+.settings-grid {
+    grid-template-columns: minmax(260px, .8fr) minmax(0, 1.2fr);
+}
+
+.admin-body :focus-visible {
+    outline: 3px solid rgba(196, 127, 39, .6);
+    outline-offset: 2px;
+}
+
+/* Keep the messaging composer visible while long conversations scroll. */
+.messaging-shell {
+    height: min(680px, calc(100vh - 300px));
+    min-height: 420px;
+    grid-template-rows: minmax(0, 1fr);
+}
+
+.messaging-shell .chat-pane {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.messaging-shell .chat-header,
+.messaging-shell .chat-context,
+.messaging-shell .message-composer {
+    flex: 0 0 auto;
+}
+
+.messaging-shell .message-thread {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+@media (max-width: 780px) {
+    .admin-topbar-left {
+        flex: 1 1 auto;
+        gap: 7px;
+    }
+
+    .admin-topbar h1 {
+        font-size: clamp(15px, 3.6vw, 20px);
+        line-height: 1.2;
+    }
+
+    .messaging-shell {
+        height: auto;
+        min-height: 0;
+    }
+
+    .messaging-shell .chat-pane {
+        height: min(68vh, 600px);
+        min-height: 420px;
+    }
+
+    .modal-card,
+    .modal-card.modal-wide {
+        width: min(96vw, 720px);
+        max-height: 92vh;
+        margin-top: 3vh;
+        padding: 18px;
+    }
+
+    .modal-card .review-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .review-profile {
+        align-items: center;
+        text-align: center;
+    }
+
+    .modal-wide .decision-footer form:has(textarea[name="reason"]) {
+        grid-template-columns: 1fr;
+        flex-basis: 100%;
+    }
+
+    .admin-table th,
+    .admin-table td,
+    .data-table th,
+    .data-table td {
+        padding: 11px 12px;
+    }
+}
+
+@media (max-width: 560px) {
+    .admin-nav-children .admin-nav-link,
+    .admin-nav > .admin-nav-link {
+        font-size: 13px;
+    }
+
+    .panel-heading h2 {
+        font-size: 17px;
+    }
+
+    .modal-heading h2 {
+        font-size: 19px;
+    }
+}
+
+/* =========================================================
+   ADMIN DASHBOARD — KPI AND EMPTY CHART LAYOUT
+   ========================================================= */
+
+.dashboard-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 14px;
+    margin-bottom: 16px;
+}
+
+.dashboard-kpi-card {
+    display: flex;
+    min-width: 0;
+    min-height: 164px;
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 15px 16px;
+    border: 1px solid var(--admin-border);
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: 0 5px 18px rgba(48, 32, 25, .055);
+}
+
+.dashboard-kpi-card-top {
+    display: flex;
+    width: 100%;
+    min-height: 34px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 9px;
+}
+
+.dashboard-kpi-card .metric-icon {
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
+    border: 1px solid #ead8c7;
+    border-radius: 8px;
+    background: #fff5e9;
+    color: var(--brown-700);
+}
+
+.dashboard-kpi-status {
+    max-width: calc(100% - 44px);
+    padding: 4px 8px;
+    border-radius: 7px;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1.3;
+    text-align: right;
+}
+
+.dashboard-kpi-status.is-success {
+    background: var(--success-soft);
+    color: #327347;
+}
+
+.dashboard-kpi-status.is-warning {
+    background: #fff5df;
+    color: #94600b;
+}
+
+.dashboard-kpi-status.is-danger {
+    background: var(--danger-soft);
+    color: var(--danger);
+}
+
+.dashboard-kpi-status.is-neutral {
+    background: #f5f1ed;
+    color: #665a52;
+}
+
+.dashboard-kpi-card > p {
+    margin: 0 0 2px;
+    color: #655b54;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.dashboard-kpi-card > strong {
+    display: block;
+    max-width: 100%;
+    color: var(--brown-950);
+    font-size: clamp(22px, 1.8vw, 27px);
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: -.025em;
+    overflow-wrap: anywhere;
+}
+
+.dashboard-kpi-card > small {
+    display: block;
+    margin-top: auto;
+    padding-top: 6px;
+    color: #756a63;
+    font-size: 11px;
+    line-height: 1.45;
+}
+
+.platform-overview-panel {
+    display: flex;
+    min-height: 88px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    margin-bottom: 16px;
+    padding: 12px 18px;
+}
+
+.platform-overview-panel .panel-heading {
+    margin: 0;
+}
+
+.platform-overview-panel .panel-heading h2 {
+    margin: 0;
+    font-size: 16px;
+}
+
+.platform-overview-metric {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 12px;
+}
+
+.platform-overview-metric > div {
+    display: grid;
+    grid-template-columns: auto auto;
+    align-items: baseline;
+    gap: 0 8px;
+}
+
+.platform-overview-metric strong {
+    grid-row: span 2;
+    color: var(--brown-950);
+    font-size: 23px;
+    line-height: 1.1;
+}
+
+.platform-overview-metric span:not(.metric-icon) {
+    color: #443a34;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.platform-overview-metric small {
+    color: #756a63;
+    font-size: 11px;
+    line-height: 1.4;
+}
+
+.dashboard-chart-empty {
+    display: flex;
+    min-height: 260px;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 24px;
+    color: #756a63;
+    text-align: center;
+}
+
+.dashboard-chart-empty > svg {
+    width: 28px;
+    height: 28px;
+    margin-bottom: 3px;
+    color: var(--brown-500);
+}
+
+.dashboard-chart-empty strong {
+    color: var(--brown-950);
+    font-size: 14px;
+}
+
+.dashboard-chart-empty span {
+    max-width: 380px;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+@media (max-width: 1000px) {
+    .dashboard-kpi-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 680px) {
+    .dashboard-kpi-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .dashboard-kpi-card {
+        min-height: 146px;
+    }
+
+    .platform-overview-panel {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .platform-overview-metric > div {
+        grid-template-columns: 1fr;
+    }
+
+    .platform-overview-metric strong {
+        grid-row: auto;
+    }
+
+    .dashboard-chart-empty {
+        min-height: 210px;
+    }
+}

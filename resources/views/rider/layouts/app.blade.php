@@ -12,7 +12,7 @@
     <aside class="ops-sidebar" aria-label="Rider navigation">
         <div class="ops-sidebar-header">
             <button class="ops-menu-button ops-collapse" type="button" data-sidebar-collapse aria-label="Toggle sidebar"><i data-lucide="menu"></i></button>
-            <a href="{{ route('rider.dashboard.deliveries') }}" class="ops-brand"><img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly"><span class="ops-brand-subtitle">Rider Center</span></a>
+            <a href="{{ route('rider.dashboard.deliveries') }}" class="ops-brand"><img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly"><span class="ops-brand-subtitle">Rider Center</span></a>
         </div>
         <nav class="ops-nav">
             <p class="ops-nav-label">Workspace</p>

@@ -1,7 +1,7 @@
 @extends('layouts.admin')
 
 @section('title', 'Dashboard Overview')
-@section('page-title', 'Dashboard Overview')
+
 
 @section('content')
 <section class="page-hero compact-hero">
@@ -20,19 +20,86 @@
     </div>
 </section>
 
-<section class="kpi-grid">
-    @foreach ($kpis as $kpi)
-        <article class="kpi-card">
-            <div class="kpi-card-top">
-                <span class="metric-icon"><i data-lucide="{{ $kpi['icon'] }}"></i></span>
-                <span class="metric-trend trend-{{ $kpi['trend'] }}">{{ $kpi['change'] }}</span>
-            </div>
-            <p>{{ $kpi['label'] }}</p>
-            <strong>{{ $kpi['value'] }}</strong>
-            <small>Recent platform activity and administrative updates.</small>
-        </article>
+@php
+    $kpisByLabel = collect($kpis)->keyBy('label');
+    $primaryKpiOrder = [
+        'Total Users',
+        'Buyers',
+        'Sellers',
+        'Logistics & Riders',
+        'Pending Applications',
+        'Restricted Accounts',
+        'Active Orders',
+        'Gross Sales',
+    ];
+    $adminRecordsKpi = $kpisByLabel->get('Admin Records');
+    $hasSalesData = collect($salesByMonth)->sum() > 0;
+@endphp
+
+<section class="dashboard-kpi-grid" aria-label="Key platform metrics">
+    @foreach ($primaryKpiOrder as $label)
+        @php
+            $kpi = $kpisByLabel->get($label);
+        @endphp
+        @if ($kpi)
+            @php
+                $metricCount = (int) preg_replace('/\D+/', '', $kpi['value']);
+                $activeCount = (int) preg_replace('/\D+/', '', $kpi['change']);
+                $description = match ($label) {
+                    'Total Users' => 'All registered accounts across Bearly.',
+                    'Buyers' => 'Buyer accounts on the platform.',
+                    'Sellers' => 'Seller accounts on the platform.',
+                    'Logistics & Riders' => 'Logistics centers and rider accounts.',
+                    'Pending Applications' => 'Applications awaiting review.',
+                    'Restricted Accounts' => 'Suspended or deactivated accounts.',
+                    'Active Orders' => 'Orders still in progress.',
+                    'Gross Sales' => 'Payments recorded as paid this year.',
+                    default => '',
+                };
+                $showStatus = ! in_array($label, ['Buyers', 'Sellers'], true);
+                $statusText = match ($label) {
+                    'Pending Applications' => $metricCount > 0 ? $kpi['change'] : 'No pending reviews',
+                    'Restricted Accounts' => $metricCount > 0 ? $kpi['change'] : 'None',
+                    default => $kpi['change'],
+                };
+                $statusClass = match ($label) {
+                    'Total Users' => $activeCount > 0 ? 'is-success' : 'is-neutral',
+                    'Pending Applications' => $metricCount > 0 ? 'is-warning' : 'is-neutral',
+                    'Restricted Accounts' => $metricCount > 0 ? 'is-danger' : 'is-neutral',
+                    default => 'is-neutral',
+                };
+            @endphp
+
+            <article class="dashboard-kpi-card">
+                <div class="dashboard-kpi-card-top">
+                    <span class="metric-icon" aria-hidden="true"><i data-lucide="{{ $kpi['icon'] }}"></i></span>
+                    @if ($showStatus)
+                        <span class="dashboard-kpi-status {{ $statusClass }}">{{ $statusText }}</span>
+                    @endif
+                </div>
+                <p>{{ $kpi['label'] }}</p>
+                <strong>{{ $kpi['value'] }}</strong>
+                <small>{{ $description }}</small>
+            </article>
+        @endif
     @endforeach
 </section>
+
+@if ($adminRecordsKpi)
+    <section class="platform-overview-panel panel" aria-labelledby="platform-overview-title">
+        <div class="panel-heading">
+            <h2 id="platform-overview-title">Platform overview</h2>
+        </div>
+        <div class="platform-overview-metric">
+            <span class="metric-icon" aria-hidden="true"><i data-lucide="{{ $adminRecordsKpi['icon'] }}"></i></span>
+            <div>
+                <strong>{{ $adminRecordsKpi['value'] }}</strong>
+                <span>Admin records</span>
+                <small>Announcements, policies, and system settings</small>
+            </div>
+        </div>
+    </section>
+@endif
 
 <section class="dashboard-grid dashboard-grid-main">
     <article class="panel panel-large">
@@ -49,18 +116,26 @@
             </div>
         </div>
 
-        <div class="chart-shell">
-            <div class="chart-y-labels"><span>₱1.5M</span><span>₱1.0M</span><span>₱500K</span><span>₱0</span></div>
-            <div class="bar-chart" aria-label="Sales bar chart">
-                @php $months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; @endphp
-                @foreach ($salesByMonth as $index => $height)
-                    <div class="bar-column" data-dashboard-bar>
-                        <div class="bar-track"><span style="height: {{ min(100, $height / 1.45) }}%"></span></div>
-                        <small>{{ $months[$index] }}</small>
-                    </div>
-                @endforeach
+        @if ($hasSalesData)
+            <div class="chart-shell">
+                <div class="chart-y-labels"><span>₱1.5M</span><span>₱1.0M</span><span>₱500K</span><span>₱0</span></div>
+                <div class="bar-chart" aria-label="Sales bar chart">
+                    @php $months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; @endphp
+                    @foreach ($salesByMonth as $index => $height)
+                        <div class="bar-column" data-dashboard-bar>
+                            <div class="bar-track"><span style="height: {{ min(100, $height / 1.45) }}%"></span></div>
+                            <small>{{ $months[$index] }}</small>
+                        </div>
+                    @endforeach
+                </div>
             </div>
-        </div>
+        @else
+            <div class="dashboard-chart-empty" role="status">
+                <i data-lucide="chart-column" aria-hidden="true"></i>
+                <strong>No paid sales recorded this year</strong>
+                <span>Monthly sales activity will appear here when payments are recorded.</span>
+            </div>
+        @endif
     </article>
 
     <aside class="panel attention-panel">

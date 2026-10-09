@@ -206,7 +206,7 @@ $adminNavGroups = [
             <a href="{{ route('admin.dashboard') }}" class="admin-brand">
 
                 <img
-                    src="{{ asset('images/bearly-logo.png') }}"
+                    src="{{ asset('images/bearly-logo-2.png') }}"
                     alt="Bearly"
                     class="admin-brand-logo"
                 >
@@ -346,6 +346,19 @@ $adminNavGroups = [
 
         <header class="admin-topbar">
 
+    @php
+        $adminTopbarTitle = match (true) {
+            request()->routeIs('admin.dashboard') => 'Dashboard Overview',
+            request()->routeIs('admin.registrations*') => 'Registration Management',
+            request()->routeIs('admin.users*') => 'User Management',
+            request()->routeIs('admin.compliance*', 'admin.disputes*', 'admin.violations*') => 'Compliance & Disputes',
+            request()->routeIs('admin.commissions', 'admin.transactions', 'admin.payments', 'admin.reports', 'admin.orders', 'admin.fulfillment') => 'Finance & Reports',
+            request()->routeIs('admin.messages', 'admin.announcements') => 'Communication',
+            request()->routeIs('admin.settings', 'admin.account', 'admin.policies', 'admin.audit-logs') => 'System Management',
+            default => trim(View::yieldContent('page-title', 'Admin Center')) ?: 'Admin Center',
+        };
+    @endphp
+
     <div class="admin-topbar-left">
 
         <button
@@ -363,7 +376,7 @@ $adminNavGroups = [
         </button>
 
         <h1>
-            @yield('page-title', 'Admin Center')
+            {{ $adminTopbarTitle }}
         </h1>
 
     </div>

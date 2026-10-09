@@ -52,4 +52,9 @@ class Store extends Model
                 ->where('standing_status', 'good_standing')
                 ->whereHas('user', fn (Builder $users) => $users->where('status', 'active')));
     }
+
+    public function pickupRequests()
+    {
+        return $this->hasMany(PickupRequest::class);
+    }
 }

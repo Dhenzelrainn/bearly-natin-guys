@@ -113,6 +113,7 @@
                         data-flag-reason="{{ $item['reason'] }}"
                         data-flag-risk="{{ $item['risk'] }}"
                         data-flag-warnings="{{ $item['warnings'] }}"
+                        data-decision-url="{{ $item['decision_url'] }}"
                     >
 
                         <span class="flag-icon">
@@ -152,12 +153,17 @@
             <div class="drawer-section"><span>Risk level</span><strong data-drawer-risk>High</strong></div>
             <div class="drawer-section"><span>Existing warnings</span><strong><span data-drawer-warnings>0</span> warning(s)</strong></div>
             <div class="drawer-callout"><i data-lucide="shield-alert"></i><div><strong>Reason for review</strong><p data-drawer-reason>Reason</p></div></div>
-            <label class="form-field"><span>Admin notes</span><textarea rows="5" placeholder="Add a clear explanation for the seller..." data-compliance-notes></textarea><small data-compliance-note-error hidden>Please add admin notes before issuing a warning or suspending a seller.</small></label>
-            <div class="drawer-actions">
-                <button class="button button-secondary" type="button" data-compliance-action="compliant"><i data-lucide="shield-check"></i> Mark compliant</button>
-                <button class="button button-warning" type="button" data-compliance-action="warning"><i data-lucide="triangle-alert"></i> Issue warning</button>
-                <button class="button button-danger" type="button" data-compliance-action="suspend"><i data-lucide="ban"></i> Suspend seller</button>
-            </div>
+            <form method="POST" data-compliance-decision-form>
+                @csrf
+                <label class="form-field"><span>Admin notes</span><textarea name="note" rows="5" required placeholder="Add a clear explanation for the seller..." data-compliance-notes></textarea><small data-compliance-note-error hidden>Please add admin notes before recording a decision.</small></label>
+                <div class="drawer-actions">
+                    <button class="button button-secondary" type="submit" name="decision" value="dismiss"><i data-lucide="shield-check"></i> Dismiss</button>
+                    <button class="button button-warning" type="submit" name="decision" value="request_correction"><i data-lucide="rotate-ccw"></i> Request correction</button>
+                    <button class="button button-warning" type="submit" name="decision" value="confirm"><i data-lucide="triangle-alert"></i> Confirm violation</button>
+                    <button class="button button-danger-soft" type="submit" name="decision" value="warn_seller"><i data-lucide="badge-alert"></i> Issue warning</button>
+                    <button class="button button-danger" type="submit" name="decision" value="remove_product"><i data-lucide="ban"></i> Remove product</button>
+                </div>
+            </form>
         </aside>
     </div>
     @endsection

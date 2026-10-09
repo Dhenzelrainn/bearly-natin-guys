@@ -196,7 +196,7 @@
         <div
             class="table-empty"
             data-table-empty="returns-table"
-            hidden
+            @if (count($cases) > 0) hidden @endif
         >
             <i data-lucide="search-x"></i>
             <strong>No cases found</strong>
@@ -327,40 +327,73 @@
             data-return-actions
         >
 
-            <button
-                type="button"
-                class="button button-primary"
-                data-return-action="approve"
-                data-return-button="approve"
-                data-mock-action="{{ $case['id'] }} approved for refund."
+            <form
+                method="POST"
+                action="{{ route(
+                    'admin.compliance.returns-refunds.approve',
+                    $case['database_id']
+                ) }}"
+                data-return-form
             >
-                <i data-lucide="circle-check"></i>
-                Approve Refund
-            </button>
+                @csrf
+
+                <button
+                    type="submit"
+                    class="button button-primary"
+                    data-return-action="approve"
+                    data-return-button="approve"
+                    data-functional-action="return-decision"
+                >
+                    <i data-lucide="circle-check"></i>
+                    Approve Refund
+                </button>
+            </form>
 
 
-            <button
-                type="button"
-                class="button button-danger-soft"
-                data-return-action="reject"
-                data-return-button="reject"
-                data-mock-action="{{ $case['id'] }} refund request rejected."
+            <form
+                method="POST"
+                action="{{ route(
+                    'admin.compliance.returns-refunds.reject',
+                    $case['database_id']
+                ) }}"
+                data-return-form
             >
-                <i data-lucide="circle-x"></i>
-                Reject Request
-            </button>
+                @csrf
+
+                <button
+                    type="submit"
+                    class="button button-danger-soft"
+                    data-return-action="reject"
+                    data-return-button="reject"
+                    data-functional-action="return-decision"
+                >
+                    <i data-lucide="circle-x"></i>
+                    Reject Request
+                </button>
+            </form>
 
 
-            <button
-                type="button"
-                class="button button-ghost"
-                data-return-action="evidence"
-                data-return-button="evidence"
-                data-mock-action="Additional evidence requested for {{ $case['id'] }}."
+            <form
+                method="POST"
+                action="{{ route(
+                    'admin.compliance.returns-refunds.request-evidence',
+                    $case['database_id']
+                ) }}"
+                data-return-form
             >
-                <i data-lucide="file-search"></i>
-                Request Evidence
-            </button>
+                @csrf
+
+                <button
+                    type="submit"
+                    class="button button-ghost"
+                    data-return-action="evidence"
+                    data-return-button="evidence"
+                    data-functional-action="return-decision"
+                >
+                    <i data-lucide="file-search"></i>
+                    Request Evidence
+                </button>
+            </form>
 
 
             <button

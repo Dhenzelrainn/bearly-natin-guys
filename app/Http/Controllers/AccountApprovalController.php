@@ -8,103 +8,75 @@ use App\Models\User;
 use App\Services\RegistrationLifecycleService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 class AccountApprovalController extends Controller
 {
     public function approveByAdmin(
         Request $request,
-        User $user
+        User $user,
+        RegistrationLifecycleService $lifecycle
     ): RedirectResponse {
-        abort_unless(
-            in_array(
-                $user->role,
-                UserRole::adminApproved(),
-                true
-            ),
-            422
+        $this->ensureAdminReviewable($user);
+
+        $application = $lifecycle->approve($user, $request->user());
+
+        return back()
+            ->with('success', "{$user->name}'s {$user->role} account was approved.")
+            ->with('review_application_id', $application->id);
+    }
+
+    public function requestRevisionByAdmin(
+        Request $request,
+        User $user,
+        RegistrationLifecycleService $lifecycle
+    ): RedirectResponse {
+        $this->ensureAdminReviewable($user);
+
+        $validated = $request->validate([
+            'revision_notes' => ['required', 'string', 'max:1000'],
+        ]);
+
+        $application = $lifecycle->requestRevision(
+            $user,
+            $request->user(),
+            $validated['revision_notes']
         );
 
-        abort_unless(
-            in_array(
-                $user->status,
-                [
-                    AccountStatus::Pending->value,
-                    AccountStatus::NeedsRevision->value,
-                ],
-                true
-            ),
-            422
-        );
-
-        $this->approve($user, $request->user());
-
-        return back()->with(
-            'success',
-            "{$user->name}'s {$user->role} account was approved."
-        );
+        return back()
+            ->with('success', "Revision was requested from {$user->name}.")
+            ->with('review_application_id', $application->id);
     }
 
     public function rejectByAdmin(
         Request $request,
-        User $user
+        User $user,
+        RegistrationLifecycleService $lifecycle
     ): RedirectResponse {
-        abort_unless(
-            in_array(
-                $user->role,
-                UserRole::adminApproved(),
-                true
-            ),
-            422
+        $this->ensureAdminReviewable($user);
+
+        $validated = $request->validate([
+            'reason' => ['required', 'string', 'max:1000'],
+        ]);
+
+        $application = $lifecycle->reject(
+            $user,
+            $request->user(),
+            $validated['reason']
         );
 
-        abort_unless(
-            in_array(
-                $user->status,
-                [
-                    AccountStatus::Pending->value,
-                    AccountStatus::NeedsRevision->value,
-                ],
-                true
-            ),
-            422
-        );
-
-        $this->reject($request, $user);
-
-        return back()->with(
-            'success',
-            "{$user->name}'s application was rejected."
-        );
+        return back()
+            ->with('success', "{$user->name}'s application was rejected.")
+            ->with('review_application_id', $application->id);
     }
 
     public function approveRider(
         Request $request,
-        User $user
+        User $user,
+        RegistrationLifecycleService $lifecycle
     ): RedirectResponse {
-        abort_unless(
-            $user->role === UserRole::Rider->value,
-            422
-        );
+        $this->ensureRiderReviewable($request, $user);
 
-        abort_unless(
-            $user->logistics_id === $request->user()->id,
-            403
-        );
-
-        abort_unless(
-            in_array(
-                $user->status,
-                [
-                    AccountStatus::Pending->value,
-                    AccountStatus::NeedsRevision->value,
-                ],
-                true
-            ),
-            422
-        );
-
-        $this->approve($user, $request->user());
+        $lifecycle->approve($user, $request->user());
 
         return back()->with(
             'success',
@@ -114,18 +86,47 @@ class AccountApprovalController extends Controller
 
     public function rejectRider(
         Request $request,
-        User $user
+        User $user,
+        RegistrationLifecycleService $lifecycle
     ): RedirectResponse {
+        $this->ensureRiderReviewable($request, $user);
+
+        $validated = $request->validate([
+            'reason' => ['required', 'string', 'max:1000'],
+        ]);
+
+        $lifecycle->reject(
+            $user,
+            $request->user(),
+            $validated['reason']
+        );
+
+        return back()->with(
+            'success',
+            "{$user->name}'s Rider application was rejected."
+        );
+    }
+
+    private function ensureAdminReviewable(User $user): void
+    {
         abort_unless(
-            $user->role === UserRole::Rider->value,
+            in_array($user->role, UserRole::adminApproved(), true),
             422
         );
 
-        abort_unless(
-            $user->logistics_id === $request->user()->id,
-            403
-        );
+        $this->ensurePending($user);
+    }
 
+    private function ensureRiderReviewable(Request $request, User $user): void
+    {
+        abort_unless($user->role === UserRole::Rider->value, 422);
+        abort_unless($user->logistics_id === $request->user()->id, 403);
+
+        $this->ensurePending($user);
+    }
+
+    private function ensurePending(User $user): void
+    {
         abort_unless(
             in_array(
                 $user->status,
@@ -137,65 +138,5 @@ class AccountApprovalController extends Controller
             ),
             422
         );
-
-        $this->reject($request, $user);
-
-        return back()->with(
-            'success',
-            "{$user->name}'s Rider application was rejected."
-        );
-    }
-
-    private function approve(
-        User $application,
-        User $approver
-    ): void {
-        DB::transaction(function () use (
-            $application,
-            $approver
-        ): void {
-            $application->forceFill([
-                'status' => AccountStatus::Active->value,
-                'approved_by' => $approver->id,
-                'approved_at' => now(),
-                'rejection_reason' => null,
-            ])->save();
-
-            app(RegistrationLifecycleService::class)
-                ->approve($application, $approver);
-        });
-    }
-
-    private function reject(
-        Request $request,
-        User $application
-    ): void {
-        $validated = $request->validate([
-            'reason' => [
-                'required',
-                'string',
-                'max:1000',
-            ],
-        ]);
-
-        DB::transaction(function () use (
-            $request,
-            $application,
-            $validated
-        ): void {
-            $application->forceFill([
-                'status' => AccountStatus::Rejected->value,
-                'approved_by' => $request->user()->id,
-                'approved_at' => now(),
-                'rejection_reason' => $validated['reason'],
-            ])->save();
-
-            app(RegistrationLifecycleService::class)
-                ->reject(
-                    $application,
-                    $request->user(),
-                    $validated['reason']
-                );
-        });
     }
 }

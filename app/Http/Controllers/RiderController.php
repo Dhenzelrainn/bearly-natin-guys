@@ -4,14 +4,21 @@ namespace App\Http\Controllers;
 
 use App\Enums\AccountStatus;
 use App\Enums\UserRole;
+use App\Enums\ParcelStatus;
+use App\Models\PickupAssignment;
 use App\Models\User;
+use App\Services\RiderPickupService;
+use App\Services\RiderDeliveryService;
 use App\Services\EmailVerificationService;
 use App\Services\InternationalPhone;
 use App\Services\RegistrationLifecycleService;
 use Illuminate\Http\Request;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 class RiderController extends Controller
@@ -22,40 +29,596 @@ class RiderController extends Controller
         $user = Auth::user();
 
         $name = $user?->name ?: 'Bearly Rider';
-        $initials = collect(preg_split('/\s+/', trim($name)))
+
+        $initials = collect(
+            preg_split('/\s+/', trim($name))
+        )
             ->filter()
             ->take(2)
-            ->map(fn (string $part) => strtoupper(mb_substr($part, 0, 1)))
+            ->map(
+                fn (string $part) =>
+                    strtoupper(
+                        mb_substr($part, 0, 1)
+                    )
+            )
             ->implode('');
 
-        $logistics = null;
+        $riderProfile = $user
+            ?->riderProfile()
+            ->with([
+                'logisticsProfile.user',
+            ])
+            ->first();
 
-        if ($user?->logistics_id) {
-            $logistics = User::query()
+        /*
+        * Normalized RiderProfile is authoritative.
+        *
+        * Legacy user vehicle fields remain only as a
+        * compatibility fallback for accounts that have
+        * not yet been normalized.
+        */
+        $vehicle =
+            $riderProfile?->vehicle_type
+            ?: $user?->vehicle_type
+            ?: 'Not specified';
+
+        $plate =
+            $riderProfile?->plate_number
+            ?: $user?->plate_number
+            ?: '—';
+
+        /*
+        * Prefer the normalized Logistics relationship.
+        *
+        * Fall back to users.logistics_id only for legacy
+        * Rider accounts that have no RiderProfile yet.
+        */
+        $logisticsUser =
+            $riderProfile
+                ?->logisticsProfile
+                ?->user;
+
+        if (! $logisticsUser && $user?->logistics_id) {
+            $logisticsUser = User::query()
                 ->whereKey($user->logistics_id)
-                ->where('role', UserRole::Logistics->value)
+                ->where(
+                    'role',
+                    UserRole::Logistics->value
+                )
                 ->first();
         }
 
         return [
             'rider' => [
                 'name' => $name,
-                'initials' => $initials ?: 'BR',
-                'email' => $user?->email ?: '',
-                'role' => 'Rider',
-                'vehicle' => $user?->vehicle_type ?: 'Not specified',
-                'plate' => $user?->plate_number ?: '—',
-                'status' => $user?->status
-                    ? ucwords(str_replace('_', ' ', $user->status))
-                    : 'Unknown',
+
+                'initials' =>
+                    $initials ?: 'BR',
+
+                'email' =>
+                    $user?->email ?: '',
+
+                'role' =>
+                    'Rider',
+
+                'vehicle' =>
+                    $vehicle,
+
+                'plate' =>
+                    $plate,
+
+                'status' =>
+                    $user?->status
+                        ? ucwords(
+                            str_replace(
+                                '_',
+                                ' ',
+                                $user->status
+                            )
+                        )
+                        : 'Unknown',
             ],
+
             'logistics' => [
-                'name' => $logistics
-                    ? ($logistics->business_name ?: $logistics->name)
-                    : 'Not assigned',
+                'name' =>
+                    $logisticsUser
+                        ? (
+                            $logisticsUser->business_name
+                            ?: $logisticsUser->name
+                        )
+                        : 'Not assigned',
             ],
+
             'topNotifications' => [],
         ];
+    }
+
+    private function deliveryAssignmentsFor(
+        ?User $user
+    ): Collection {
+        if (! $user) {
+            return collect();
+        }
+
+        $profile = $user
+            ->riderProfile()
+            ->first();
+
+        if (! $profile) {
+            return collect();
+        }
+
+        $batches = $profile
+            ->dispatchBatches()
+            ->whereNotIn(
+                'status',
+                [
+                    'cancelled',
+                ]
+            )
+            ->with([
+                'sortingZone:id,code,name',
+
+                'parcels.shipment.waybill',
+
+                'parcels.shipment.sellerOrder.order',
+            ])
+            ->orderByDesc('dispatched_at')
+            ->orderByDesc('id')
+            ->get();
+
+        /*
+        * First create one row per
+        * batch + shipment combination.
+        */
+        $rows = $batches
+            ->flatMap(
+                function ($batch) {
+                    return $batch
+                        ->parcels
+                        ->groupBy('shipment_id')
+                        ->map(
+                            function (
+                                Collection $parcels
+                            ) use ($batch) {
+                                $shipment =
+                                    $parcels
+                                        ->first()
+                                        ?->shipment;
+
+                                $order =
+                                    $shipment
+                                        ?->sellerOrder
+                                        ?->order;
+
+                                if (
+                                    ! $shipment
+                                    || ! $order
+                                ) {
+                                    return null;
+                                }
+
+                                $address = collect([
+                                    $order->address_line,
+                                    $order->barangay,
+                                    $order->city_municipality,
+                                    $order->province,
+                                    $order->postal_code,
+                                ])
+                                    ->filter()
+                                    ->implode(', ');
+
+                                $codMinor =
+                                    (int) (
+                                        $shipment
+                                            ->cod_amount_minor
+                                        ?? 0
+                                    );
+
+                                return [
+                                    'shipment_id' =>
+                                        $shipment->id,
+
+                                    'id' =>
+                                        $shipment
+                                            ->shipment_no,
+
+                                    'waybill' =>
+                                        $shipment
+                                            ->waybill
+                                            ?->waybill_no
+                                        ?? 'No waybill',
+
+                                    'customer' =>
+                                        $order
+                                            ->recipient_name
+                                        ?: 'Recipient',
+
+                                    'contact' =>
+                                        $order
+                                            ->recipient_phone
+                                        ?: '',
+
+                                    'address' =>
+                                        $address
+                                        ?: 'Address unavailable',
+
+                                    'payment_status' =>
+                                        $order
+                                            ->payment_status
+                                        ?: 'unknown',
+
+                                    'cod_minor' =>
+                                        $codMinor,
+
+                                    'zone' =>
+                                        $batch
+                                            ->sortingZone
+                                            ?->code
+                                        ?? 'Unassigned',
+
+                                    'zone_name' =>
+                                        $batch
+                                            ->sortingZone
+                                            ?->name
+                                        ?? '',
+
+                                    'batch_no' =>
+                                        $batch->batch_no,
+
+                                    'dispatched_at' =>
+                                        $batch
+                                            ->dispatched_at,
+
+                                    'parcels' =>
+                                        $parcels
+                                            ->map(
+                                                fn ($parcel) => [
+                                                    'id' =>
+                                                        $parcel
+                                                            ->id,
+
+                                                    'parcel_no' =>
+                                                        $parcel
+                                                            ->parcel_no,
+
+                                                    'status' =>
+                                                        $parcel
+                                                            ->status,
+
+                                                    'size_class' =>
+                                                        $parcel
+                                                            ->size_class,
+
+                                                    'weight_kg' =>
+                                                        $parcel
+                                                            ->weight_kg,
+                                                ]
+                                            )
+                                            ->values(),
+                                ];
+                            }
+                        );
+                }
+            )
+            ->filter();
+
+        /*
+        * A shipment can theoretically appear in
+        * more than one dispatch batch. Merge those
+        * rows into one customer delivery stop.
+        */
+        return $rows
+            ->groupBy('shipment_id')
+            ->map(
+                function (Collection $rows) {
+                    $first =
+                        $rows->first();
+
+                    $parcels = $rows
+                        ->pluck('parcels')
+                        ->flatten(1)
+                        ->unique('id')
+                        ->values();
+
+                    $zones = $rows
+                        ->pluck('zone')
+                        ->filter()
+                        ->unique()
+                        ->values();
+
+                    $zoneNames = $rows
+                        ->pluck('zone_name')
+                        ->filter()
+                        ->unique()
+                        ->values();
+
+                    $batchNumbers = $rows
+                        ->pluck('batch_no')
+                        ->filter()
+                        ->unique()
+                        ->values();
+
+                    return array_merge(
+                        $first,
+                        [
+                            'parcels' =>
+                                $parcels,
+
+                            'parcel_count' =>
+                                $parcels->count(),
+
+                            'status' =>
+                                $this
+                                    ->deliveryAssignmentStatus(
+                                        $parcels
+                                    ),
+
+                            'zone' =>
+                                $zones->implode(', '),
+
+                            'zone_name' =>
+                                $zoneNames
+                                    ->implode(', '),
+
+                            'batch_no' =>
+                                $batchNumbers
+                                    ->implode(', '),
+
+                            'dispatched_at' =>
+                                $rows
+                                    ->pluck(
+                                        'dispatched_at'
+                                    )
+                                    ->filter()
+                                    ->sort()
+                                    ->first(),
+                        ]
+                    );
+                }
+            )
+            ->sortByDesc('dispatched_at')
+            ->values();
+    }
+
+    private function pickupAssignmentsFor(
+        ?User $user
+    ): Collection {
+        if (! $user) {
+            return collect();
+        }
+
+        $profile = $user
+            ->riderProfile()
+            ->first();
+
+        if (! $profile) {
+            return collect();
+        }
+
+        return $profile
+            ->pickupAssignments()
+            ->whereNotIn(
+                'status',
+                [
+                    'completed',
+                    'cancelled',
+                ]
+            )
+            ->with([
+                'pickupRequest.store.sellerProfile.user',
+                'pickupRequest.pickupAddress',
+                'pickupRequest.parcels.waybill',
+            ])
+            ->orderByDesc('assigned_at')
+            ->orderByDesc('id')
+            ->get()
+            ->map(
+                fn (PickupAssignment $assignment): array =>
+                    $this->pickupAssignmentRow(
+                        $assignment
+                    )
+            )
+            ->filter()
+            ->values();
+    }
+
+    private function pickupAssignmentRow(
+        PickupAssignment $assignment
+    ): array {
+        $pickup = $assignment->pickupRequest;
+
+        if (! $pickup) {
+            return [];
+        }
+
+        $store = $pickup->store;
+        $address = $pickup->pickupAddress;
+
+        $sellerName =
+            $store?->name
+            ?: $store?->sellerProfile?->user?->name
+            ?: 'Unknown Seller';
+
+        $contact =
+            $address?->phone
+            ?: $store?->contact_phone
+            ?: $store?->sellerProfile?->user?->contact_number
+            ?: 'Not provided';
+
+        $addressText = collect([
+            $address?->house_number,
+            $address?->street,
+            $address?->barangay
+                ? 'Brgy. '.$address->barangay
+                : null,
+            $address?->city_municipality,
+            $address?->province,
+            $address?->postal_code,
+        ])
+            ->filter(
+                fn ($value) =>
+                    filled($value)
+            )
+            ->implode(', ');
+
+        $window =
+            $pickup->window_start
+            && $pickup->window_end
+                ? $pickup->window_start
+                    ->format('M j, Y · g:i A')
+                    .'–'
+                    .$pickup->window_end
+                        ->format('g:i A')
+                : 'Not scheduled';
+
+        $manifest = $pickup
+            ->parcels
+            ->map(
+                fn ($parcel): array => [
+                    'parcel_no' =>
+                        $parcel->parcel_no,
+
+                    'waybill' =>
+                        $parcel->waybill?->waybill_no
+                        ?: 'Not generated',
+
+                    'size' =>
+                        $parcel->size_class
+                            ? ucwords(
+                                str_replace(
+                                    '_',
+                                    ' ',
+                                    $parcel->size_class
+                                )
+                            )
+                            : 'Not specified',
+
+                    'qty' => 1,
+
+                    'status' =>
+                        ucwords(
+                            str_replace(
+                                '_',
+                                ' ',
+                                $parcel->status
+                            )
+                        ),
+                ]
+            )
+            ->values()
+            ->all();
+
+        return [
+            'id' =>
+                $pickup->pickup_no,
+
+            'assignment_id' =>
+                $assignment->id,
+
+            'seller' =>
+                $sellerName,
+
+            'contact' =>
+                $contact,
+
+            'address' =>
+                $addressText
+                    ?: 'Pickup address unavailable',
+
+            'parcels' =>
+                count($manifest),
+
+            'window' =>
+                $window,
+
+            'status' =>
+                ucwords(
+                    str_replace(
+                        '_',
+                        ' ',
+                        $assignment->status
+                    )
+                ),
+
+            'status_raw' =>
+                $assignment->status,
+
+            'assigned_at' =>
+                $assignment->assigned_at
+                    ?->format(
+                        'M j, Y · g:i A'
+                    )
+                ?: 'Not recorded',
+
+            'is_due_today' =>
+                $pickup
+                    ->requested_date
+                    ?->isToday()
+                ?? false,
+
+            'instructions' =>
+                $pickup->seller_instructions
+                ?: 'No special seller instructions.',
+
+            'assignment_notes' =>
+                $assignment->notes,
+
+            'manifest' =>
+                $manifest,
+        ];
+    }
+
+    private function deliveryAssignmentStatus(
+        Collection $parcels
+    ): string {
+        $statuses =
+            $parcels->pluck('status');
+
+        if (
+            $statuses->contains(
+                fn ($status) => in_array(
+                    $status,
+                    [
+                        ParcelStatus::Failed->value,
+                        ParcelStatus::Returned->value,
+                        ParcelStatus::Lost->value,
+                        ParcelStatus::Damaged->value,
+                    ],
+                    true
+                )
+            )
+        ) {
+            return 'Delivery Failed';
+        }
+
+        if (
+            $statuses->isNotEmpty()
+            && $statuses->every(
+                fn ($status) =>
+                    $status
+                    === ParcelStatus::Delivered->value
+            )
+        ) {
+            return 'Delivered';
+        }
+
+        if (
+            $statuses->contains(
+                fn ($status) => in_array(
+                    $status,
+                    [
+                        ParcelStatus::OutForDelivery->value,
+                        ParcelStatus::Delivered->value,
+                    ],
+                    true
+                )
+            )
+        ) {
+            return 'Out for Delivery';
+        }
+
+        return 'Assigned';
     }
 
     public function landing()
@@ -220,150 +783,433 @@ class RiderController extends Controller
             ->with('registration_pending', true);
     }
 
-    public function pickupsDashboard()
+    public function pickupsDashboard(): View
     {
-        return view('rider.dashboard.pickups', $this->shared() + [
-            'pickups' => [
-                [
-                    'id' => 'PU-24091',
-                    'seller' => 'TechVault PH',
-                    'address' => 'Brgy. San Rafael, San Pablo City',
-                    'distance' => '2.3 km',
-                    'parcels' => 6,
-                    'window' => '2:30–3:30 PM',
-                    'status' => 'Assigned',
-                ],
-                [
-                    'id' => 'PU-24094',
-                    'seller' => 'Mara Home Goods',
-                    'address' => 'Brgy. Del Remedio, San Pablo City',
-                    'distance' => '4.1 km',
-                    'parcels' => 4,
-                    'window' => '3:30–4:30 PM',
-                    'status' => 'Available',
-                ],
-                [
-                    'id' => 'PU-24095',
-                    'seller' => 'Tiny Tails Pet Co.',
-                    'address' => 'Brgy. San Roque, San Pablo City',
-                    'distance' => '5.7 km',
-                    'parcels' => 3,
-                    'window' => '4:00–5:00 PM',
-                    'status' => 'Available',
-                ],
-            ],
-            'alerts' => [
-                ['time' => '2 min ago', 'title' => 'New nearby pickup', 'detail' => 'Mara Home Goods · 4 parcels · 4.1 km'],
-                ['time' => '18 min ago', 'title' => 'Pickup window updated', 'detail' => 'TechVault PH is ready from 2:30–3:30 PM'],
-                ['time' => '35 min ago', 'title' => 'Sorting center reminder', 'detail' => 'Return collected parcels to Intake Bay 2'],
-            ],
-        ]);
-    }
+        /** @var User|null $user */
+        $user = Auth::user();
 
-    public function deliveriesDashboard()
-    {
-        return view('rider.dashboard.deliveries', $this->shared() + [
-            'deliveries' => [
-                [
-                    'id' => 'DL-8412',
-                    'waybill' => 'BRL-983410',
-                    'customer' => 'Karen Yu',
-                    'address' => 'Brgy. San Lucas 1, San Pablo City',
-                    'zone' => 'SP-N1',
-                    'cod' => '₱1,290',
-                    'status' => 'In Transit',
-                ],
-                [
-                    'id' => 'DL-8413',
-                    'waybill' => 'BRL-983411',
-                    'customer' => 'Alyssa Tan',
-                    'address' => 'Brgy. San Rafael, San Pablo City',
-                    'zone' => 'SP-N1',
-                    'cod' => 'Paid',
-                    'status' => 'Assigned',
-                ],
-                [
-                    'id' => 'DL-8414',
-                    'waybill' => 'BRL-983416',
-                    'customer' => 'Miguel Ramos',
-                    'address' => 'Brgy. San Antonio 2, San Pablo City',
-                    'zone' => 'SP-N1',
-                    'cod' => '₱680',
-                    'status' => 'Assigned',
-                ],
-            ],
-            'availablePickups' => [
-                ['id' => 'PU-24094', 'seller' => 'Mara Home Goods', 'area' => 'San Pablo South', 'parcels' => 4, 'distance' => '4.1 km'],
-                ['id' => 'PU-24095', 'seller' => 'Tiny Tails Pet Co.', 'area' => 'San Pablo North', 'parcels' => 3, 'distance' => '5.7 km'],
-            ],
-        ]);
-    }
+        $pickups =
+            $this->pickupAssignmentsFor(
+                $user
+            );
 
-    public function pickup(string $id)
-    {
-        return view('rider.orders.pickup', $this->shared() + [
-            'job' => [
-                'id' => $id,
-                'seller' => 'TechVault PH',
-                'contact' => '0917 555 0148',
-                'address' => 'Unit 4, San Rafael Commercial Arcade, Brgy. San Rafael, San Pablo City',
-                'window' => '2:30–3:30 PM',
-                'distance' => '2.3 km',
-                'instructions' => 'Use the loading entrance beside the pharmacy. Ask for the seller operations desk.',
-                'manifest' => [
-                    [
-                        'waybill' => 'BRL-983410',
-                        'size' => 'Small',
-                        'qty' => 1,
-                    ],
-                    [
-                        'waybill' => 'BRL-983411',
-                        'size' => 'Medium',
-                        'qty' => 1,
-                    ],
-                    [
-                        'waybill' => 'BRL-983415',
-                        'size' => 'Small',
-                        'qty' => 1,
-                    ],
-                ],
-            ],
-        ]);
-    }
+        return view(
+            'rider.dashboard.pickups',
+            $this->shared() + [
+                'pickups' =>
+                    $pickups,
 
-    public function confirmPickup(Request $request, string $id)
-    {
-        return back()->with(
-            'job_status',
-            "Pickup {$id} confirmed. Front-end session state updated."
+                'pickupMetrics' => [
+                    'assigned' =>
+                        $pickups
+                            ->where(
+                                'status_raw',
+                                'assigned'
+                            )
+                            ->count(),
+
+                    'in_progress' =>
+                        $pickups
+                            ->whereIn(
+                                'status_raw',
+                                [
+                                    'accepted',
+                                    'arrived',
+                                    'picked_up',
+                                ]
+                            )
+                            ->count(),
+
+                    'parcels' =>
+                        $pickups
+                            ->sum('parcels'),
+
+                    'due_today' =>
+                        $pickups
+                            ->where(
+                                'is_due_today',
+                                true
+                            )
+                            ->count(),
+                ],
+            ]
         );
     }
 
-    public function deliver(string $id)
+    public function deliveriesDashboard(): View
     {
-        return view('rider.orders.delivery', $this->shared() + [
-            'job' => [
-                'id' => $id,
-                'waybill' => 'BRL-983410',
-                'customer' => 'Karen Yu',
-                'contact' => '0918 441 2207',
-                'address' => 'Blk 7 Lot 12, Brgy. San Lucas 1, San Pablo City',
-                'payment' => 'Cash on Delivery',
-                'amount' => '₱1,290',
-                'notes' => 'Call upon arrival. Brown gate beside the pharmacy.',
-                'distance' => '3.8 km',
-                'estimated_time' => '14 minutes',
-                'coordinates' => '14.0717° N, 121.3256° E',
-            ],
-        ]);
+        /** @var User|null $user */
+        $user = Auth::user();
+
+        $assignments =
+            $this->deliveryAssignmentsFor(
+                $user
+            );
+
+        $deliveries = $assignments
+            ->filter(
+                fn (array $delivery) =>
+                    in_array(
+                        $delivery['status'],
+                        [
+                            'Assigned',
+                            'Out for Delivery',
+                            'Delivery Failed',
+                        ],
+                        true
+                    )
+            )
+            ->values();
+
+        $parcels = $deliveries
+            ->pluck('parcels')
+            ->flatten(1);
+
+        $assignedParcels =
+            $parcels
+                ->where(
+                    'status',
+                    ParcelStatus::Dispatched->value
+                )
+                ->count();
+
+        $outForDelivery =
+            $parcels
+                ->where(
+                    'status',
+                    ParcelStatus::OutForDelivery->value
+                )
+                ->count();
+
+        $codMinor = $deliveries
+            ->sum(
+                fn (array $delivery) =>
+                    (int) $delivery['cod_minor']
+            );
+
+        return view(
+            'rider.dashboard.deliveries',
+            $this->shared() + [
+                'deliveries' =>
+                    $deliveries,
+
+                'metrics' => [
+                    'assigned_parcels' =>
+                        $assignedParcels,
+
+                    'out_for_delivery' =>
+                        $outForDelivery,
+
+                    'active_stops' =>
+                        $deliveries->count(),
+
+                    'cod_minor' =>
+                        $codMinor,
+                ],
+            ]
+        );
     }
 
-    public function confirmDelivery(Request $request, string $id)
-    {
-        return back()->with(
-            'job_status',
-            "Delivery {$id} confirmed. Earnings preview updated."
+    public function pickup(
+        string $id
+    ): View {
+        /** @var User|null $user */
+        $user = Auth::user();
+
+        $profile = $user
+            ?->riderProfile()
+            ->first();
+
+        abort_unless(
+            $profile,
+            404
         );
+
+        $assignment = $profile
+            ->pickupAssignments()
+            ->whereNotIn(
+                'status',
+                [
+                    'completed',
+                    'cancelled',
+                ]
+            )
+            ->whereHas(
+                'pickupRequest',
+                fn ($query) =>
+                    $query->where(
+                        'pickup_no',
+                        $id
+                    )
+            )
+            ->with([
+                'pickupRequest.store.sellerProfile.user',
+                'pickupRequest.pickupAddress',
+                'pickupRequest.parcels.waybill',
+            ])
+            ->orderByDesc('id')
+            ->firstOrFail();
+
+        return view(
+            'rider.orders.pickup',
+            $this->shared() + [
+                'job' =>
+                    $this->pickupAssignmentRow(
+                        $assignment
+                    ),
+            ]
+        );
+    }
+
+    public function acceptPickup(
+        string $id,
+        RiderPickupService $pickupService
+    ): RedirectResponse {
+        /** @var User $user */
+        $user = Auth::user();
+
+        $pickupService->acceptPickup(
+            $id,
+            $user
+        );
+
+        return redirect()
+            ->route(
+                'rider.orders.pickup',
+                $id
+            )
+            ->with(
+                'job_status',
+                'Pickup assignment accepted.'
+            );
+    }
+
+    public function confirmPickup(
+        string $id,
+        RiderPickupService $pickupService
+    ): RedirectResponse {
+        /** @var User $user */
+        $user = Auth::user();
+
+        $pickupService->confirmPickup(
+            $id,
+            $user
+        );
+
+        return redirect()
+            ->route(
+                'rider.orders.pickup',
+                $id
+            )
+            ->with(
+                'job_status',
+                'Pickup confirmed. Parcels are now marked as picked up.'
+            );
+    }
+
+    public function deliver(
+        string $id
+    ): View {
+        /** @var User|null $user */
+        $user = Auth::user();
+
+        $job = $this
+            ->deliveryAssignmentsFor(
+                $user
+            )
+            ->firstWhere(
+                'id',
+                $id
+            );
+
+        abort_unless(
+            $job,
+            404
+        );
+
+        return view(
+            'rider.orders.delivery',
+            $this->shared() + [
+                'job' => $job,
+            ]
+        );
+    }
+
+    public function startDelivery(
+        string $id,
+        RiderDeliveryService $deliveryService
+    ): RedirectResponse {
+        /** @var User $user */
+        $user = Auth::user();
+
+        $deliveryService->startDelivery(
+            $id,
+            $user
+        );
+
+        return redirect()
+            ->route(
+                'rider.orders.delivery',
+                $id
+            )
+            ->with(
+                'job_status',
+                'Delivery started. Assigned parcels are now out for delivery.'
+            );
+    }
+
+    public function confirmDelivery(
+        Request $request,
+        string $id,
+        RiderDeliveryService $deliveryService
+    ): RedirectResponse {
+        $validated = $request->validate([
+            'recipient_name' => [
+                'required',
+                'string',
+                'max:160',
+            ],
+
+            'proof_photo' => [
+                'required',
+                'image',
+                'mimes:jpg,jpeg,png,webp',
+                'max:5120',
+            ],
+
+            'notes' => [
+                'nullable',
+                'string',
+                'max:1000',
+            ],
+
+            'latitude' => [
+                'nullable',
+                'numeric',
+                'between:-90,90',
+            ],
+
+            'longitude' => [
+                'nullable',
+                'numeric',
+                'between:-180,180',
+            ],
+        ]);
+
+        /** @var User $user */
+        $user = Auth::user();
+
+        $deliveryService->completeDelivery(
+            $id,
+            $user,
+            $request->file('proof_photo'),
+            $validated['recipient_name'],
+            $validated['notes'] ?? null,
+            isset($validated['latitude'])
+                ? (float) $validated['latitude']
+                : null,
+            isset($validated['longitude'])
+                ? (float) $validated['longitude']
+                : null
+        );
+
+        return redirect()
+            ->route(
+                'rider.orders.delivery',
+                $id
+            )
+            ->with(
+                'job_status',
+                'Delivery completed successfully.'
+            );
+    }
+
+    public function failDelivery(
+        Request $request,
+        string $id,
+        RiderDeliveryService $deliveryService
+    ): RedirectResponse {
+        $validated = $request->validate([
+            'failure_reason' => [
+                'required',
+                'string',
+                'max:500',
+            ],
+
+            'notes' => [
+                'nullable',
+                'string',
+                'max:1000',
+            ],
+
+            'next_attempt_at' => [
+                'nullable',
+                'date',
+                'after:now',
+            ],
+
+            'latitude' => [
+                'nullable',
+                'numeric',
+                'between:-90,90',
+            ],
+
+            'longitude' => [
+                'nullable',
+                'numeric',
+                'between:-180,180',
+            ],
+        ]);
+
+        /** @var User $user */
+        $user = Auth::user();
+
+        $deliveryService->failDelivery(
+            $id,
+            $user,
+            $validated['failure_reason'],
+            $validated['notes'] ?? null,
+            isset($validated['latitude'])
+                ? (float) $validated['latitude']
+                : null,
+            isset($validated['longitude'])
+                ? (float) $validated['longitude']
+                : null,
+            $validated['next_attempt_at'] ?? null
+        );
+
+        return redirect()
+            ->route(
+                'rider.orders.delivery',
+                $id
+            )
+            ->with(
+                'job_status',
+                'Failed delivery attempt recorded.'
+            );
+    }
+
+    public function retryDelivery(
+        string $id,
+        RiderDeliveryService $deliveryService
+    ): RedirectResponse {
+        /** @var User $user */
+        $user = Auth::user();
+
+        $deliveryService->retryDelivery(
+            $id,
+            $user
+        );
+
+        return redirect()
+            ->route(
+                'rider.orders.delivery',
+                $id
+            )
+            ->with(
+                'job_status',
+                'Delivery retry started.'
+            );
     }
 
     public function earnings()
@@ -492,33 +1338,709 @@ class RiderController extends Controller
         ]);
     }
 
-    public function account()
+    public function updateProfile(
+        Request $request
+    ): RedirectResponse {
+        /** @var User $user */
+        $user = $request->user();
+
+        $riderProfile = $user
+            ->riderProfile()
+            ->firstOrFail();
+
+        $validated = $request->validate([
+            'name' => [
+                'required',
+                'string',
+                'max:160',
+            ],
+
+            'sex' => [
+                'required',
+                'in:Male,Female,Prefer not to say',
+            ],
+
+            'contact' => [
+                'required',
+                'string',
+                'max:30',
+            ],
+
+            'birthday' => [
+                'nullable',
+                'date',
+                'before:today',
+            ],
+
+            'emergency_contact_name' => [
+                'nullable',
+                'string',
+                'max:160',
+            ],
+
+            'emergency_contact_phone' => [
+                'nullable',
+                'string',
+                'max:30',
+            ],
+        ]);
+
+        $user->update([
+            'name' =>
+                trim($validated['name']),
+
+            'sex' =>
+                match ($validated['sex']) {
+                    'Male' => 'male',
+                    'Female' => 'female',
+                    default => 'prefer_not_to_say',
+                },
+
+            'contact_number' =>
+                trim($validated['contact']),
+
+            'birthday' =>
+                $validated['birthday'] ?? null,
+        ]);
+
+        $riderProfile->update([
+            'emergency_contact_name' =>
+                filled(
+                    $validated['emergency_contact_name']
+                        ?? null
+                )
+                    ? trim(
+                        $validated[
+                            'emergency_contact_name'
+                        ]
+                    )
+                    : null,
+
+            'emergency_contact_phone' =>
+                filled(
+                    $validated['emergency_contact_phone']
+                        ?? null
+                )
+                    ? trim(
+                        $validated[
+                            'emergency_contact_phone'
+                        ]
+                    )
+                    : null,
+        ]);
+
+        return redirect(
+            route('rider.profile.index')
+            . '#profile'
+        )->with(
+            'success',
+            'Rider profile updated successfully.'
+        );
+    }
+
+    public function updatePassword(
+        Request $request
+    ): RedirectResponse {
+        /** @var User $user */
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'current_password' => [
+                'required',
+                'string',
+            ],
+
+            'new_password' => [
+                'required',
+                'string',
+                'min:8',
+                'confirmed',
+            ],
+        ]);
+
+        if (! Hash::check(
+            $validated['current_password'],
+            $user->password
+        )) {
+            return redirect(
+                route('rider.profile.index')
+                . '#security'
+            )->withErrors([
+                'current_password' =>
+                    'The current password is incorrect.',
+            ]);
+        }
+
+        $user->update([
+            'password' => Hash::make(
+                $validated['new_password']
+            ),
+        ]);
+
+        return redirect(
+            route('rider.profile.index')
+            . '#security'
+        )->with(
+            'success',
+            'Password updated successfully.'
+        );
+    }
+
+    public function updateHomeAddress(
+        Request $request
+    ): RedirectResponse {
+        /** @var User $user */
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'house_number' => [
+                'nullable',
+                'string',
+                'max:40',
+            ],
+
+            'street' => [
+                'required',
+                'string',
+                'max:180',
+            ],
+
+            'barangay' => [
+                'required',
+                'string',
+                'max:120',
+            ],
+
+            'city' => [
+                'required',
+                'string',
+                'max:120',
+            ],
+
+            'province' => [
+                'required',
+                'string',
+                'max:120',
+            ],
+
+            'postal_code' => [
+                'nullable',
+                'string',
+                'max:10',
+            ],
+        ]);
+
+        /*
+        * Rider registration uses the normalized "Home"
+        * label. Migrated accounts may not have one yet,
+        * so create it without touching other addresses.
+        */
+        $address = $user
+            ->addresses()
+            ->where('label', 'Home')
+            ->latest('id')
+            ->first();
+
+        if (! $address) {
+            $address = $user
+                ->addresses()
+                ->make([
+                    'label' => 'Home',
+                    'is_default_shipping' => false,
+                    'is_default_pickup' => false,
+                ]);
+        }
+
+        $address->fill([
+            'recipient_name' =>
+                $user->name
+                ?: trim(
+                    ($user->first_name ?? '')
+                    .' '
+                    .($user->last_name ?? '')
+                ),
+
+            'phone' =>
+                $user->contact_number ?: null,
+
+            'house_number' =>
+                filled($validated['house_number'] ?? null)
+                    ? trim($validated['house_number'])
+                    : null,
+
+            'street' =>
+                trim($validated['street']),
+
+            'barangay' =>
+                trim($validated['barangay']),
+
+            'city_municipality' =>
+                trim($validated['city']),
+
+            'province' =>
+                trim($validated['province']),
+
+            'postal_code' =>
+                filled($validated['postal_code'] ?? null)
+                    ? trim($validated['postal_code'])
+                    : null,
+        ]);
+
+        $address->save();
+
+        return redirect(
+            route('rider.profile.index')
+            . '#addresses'
+        )->with(
+            'success',
+            'Home address updated successfully.'
+        );
+    }
+
+    public function storeAddress(
+        Request $request
+    ): RedirectResponse {
+        /** @var User $user */
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'label' => [
+                'required',
+                'string',
+                'max:50',
+
+                function ($attribute, $value, $fail): void {
+                    if (
+                        strtolower(
+                            trim((string) $value)
+                        ) === 'home'
+                    ) {
+                        $fail(
+                            'Use the Home address editor to update your primary address.'
+                        );
+                    }
+                },
+            ],
+
+            'house_number' => [
+                'nullable',
+                'string',
+                'max:40',
+            ],
+
+            'street' => [
+                'required',
+                'string',
+                'max:180',
+            ],
+
+            'barangay' => [
+                'required',
+                'string',
+                'max:120',
+            ],
+
+            'city' => [
+                'required',
+                'string',
+                'max:120',
+            ],
+
+            'province' => [
+                'required',
+                'string',
+                'max:120',
+            ],
+
+            'postal_code' => [
+                'nullable',
+                'string',
+                'max:10',
+            ],
+        ]);
+
+        $user
+            ->addresses()
+            ->create([
+                'label' =>
+                    trim($validated['label']),
+
+                'recipient_name' =>
+                    $user->name
+                    ?: trim(
+                        ($user->first_name ?? '')
+                        .' '
+                        .($user->last_name ?? '')
+                    ),
+
+                'phone' =>
+                    $user->contact_number ?: null,
+
+                'house_number' =>
+                    filled($validated['house_number'] ?? null)
+                        ? trim($validated['house_number'])
+                        : null,
+
+                'street' =>
+                    trim($validated['street']),
+
+                'barangay' =>
+                    trim($validated['barangay']),
+
+                'city_municipality' =>
+                    trim($validated['city']),
+
+                'province' =>
+                    trim($validated['province']),
+
+                'postal_code' =>
+                    filled($validated['postal_code'] ?? null)
+                        ? trim($validated['postal_code'])
+                        : null,
+
+                'is_default_shipping' =>
+                    false,
+
+                'is_default_pickup' =>
+                    false,
+            ]);
+
+        return redirect(
+            route('rider.profile.index')
+            . '#addresses'
+        )->with(
+            'success',
+            'Rider address added successfully.'
+        );
+    }
+
+    public function updateVehicle(
+        Request $request
+    ): RedirectResponse {
+        /** @var User $user */
+        $user = $request->user();
+
+        $riderProfile = $user
+            ->riderProfile()
+            ->firstOrFail();
+
+        $validated = $request->validate([
+            'vehicle_type' => [
+                'required',
+                'string',
+                'max:80',
+            ],
+
+            'plate_number' => [
+                'required',
+                'string',
+                'max:30',
+            ],
+
+            'vehicle_model' => [
+                'nullable',
+                'string',
+                'max:160',
+            ],
+
+            'parcel_capacity' => [
+                'nullable',
+                'integer',
+                'min:1',
+            ],
+        ]);
+
+        $vehicleType = trim(
+            $validated['vehicle_type']
+        );
+
+        $plateNumber = strtoupper(
+            trim($validated['plate_number'])
+        );
+
+        DB::transaction(
+            function () use (
+                $user,
+                $riderProfile,
+                $validated,
+                $vehicleType,
+                $plateNumber
+            ): void {
+                /*
+                * RiderProfile is authoritative.
+                */
+                $riderProfile->update([
+                    'vehicle_type' =>
+                        $vehicleType,
+
+                    'plate_number' =>
+                        $plateNumber,
+
+                    'vehicle_model' =>
+                        filled(
+                            $validated['vehicle_model']
+                            ?? null
+                        )
+                            ? trim(
+                                $validated['vehicle_model']
+                            )
+                            : null,
+
+                    'parcel_capacity' =>
+                        $validated[
+                            'parcel_capacity'
+                        ] ?? null,
+                ]);
+
+                /*
+                * Keep legacy compatibility fields
+                * synchronized because lifecycle code
+                * may still read these during migration.
+                */
+                $user->update([
+                    'vehicle_type' =>
+                        $vehicleType,
+
+                    'plate_number' =>
+                        $plateNumber,
+                ]);
+            }
+        );
+
+        return redirect(
+            route('rider.profile.index')
+            . '#vehicle'
+        )->with(
+            'success',
+            'Vehicle details updated successfully.'
+        );
+    }
+
+    public function account(): View
     {
         /** @var User $user */
         $user = Auth::user();
 
-        $address = collect([
-            $user->street_address,
-            $user->barangay,
-            $user->city,
-            $user->province,
-        ])->filter()->implode(', ');
+        $riderProfile = $user
+            ->riderProfile()
+            ->with([
+                'logisticsProfile.user',
+                'homeSortingCenter',
+                'currentZone',
+            ])
+            ->first();
 
-        return view('rider.profile.index', $this->shared() + [
-            'profile' => [
-                'contact' => $user->contact_number ?: '',
-                'birthday' => $user->birthday?->format('Y-m-d') ?? '',
-                'sex' => $user->sex
-                    ? ucwords(str_replace('_', ' ', $user->sex))
-                    : 'Prefer not to say',
-                'address' => $address,
-                'emergency_contact' => '',
-                'preferred_area' => collect([$user->city, $user->province])
-                    ->filter()
-                    ->implode(', '),
-                'vehicle_model' => '',
-                'parcel_capacity' => '',
-            ],
-        ]);
+        $addressModels = $user
+            ->addresses()
+            ->orderByRaw(
+                "CASE WHEN label = 'Home' THEN 0 ELSE 1 END"
+            )
+            ->orderBy('label')
+            ->orderBy('id')
+            ->get();
+
+        /*
+        * Rider registration stores its normalized
+        * registration address under the "Home" label.
+        *
+        * Additional Rider addresses remain separate
+        * and must never masquerade as the Home address.
+        */
+
+        $formatAddress = function ($item): string {
+            if (! $item) {
+                return 'No address on file';
+            }
+
+            return collect([
+                $item->house_number,
+                $item->street,
+
+                filled($item->barangay)
+                    ? 'Brgy. '.$item->barangay
+                    : null,
+
+                $item->city_municipality,
+                $item->province,
+                $item->postal_code,
+            ])
+                ->filter(
+                    fn ($value) =>
+                        filled($value)
+                )
+                ->implode(', ');
+        };
+
+        $homeAddress = $addressModels
+            ->firstWhere('label', 'Home');
+
+        $addressText = $formatAddress(
+            $homeAddress
+        );
+
+        $additionalAddresses = $addressModels
+            ->reject(
+                fn ($item) =>
+                    $item->label === 'Home'
+            )
+            ->map(
+                fn ($item): array => [
+                    'id' =>
+                        $item->id,
+
+                    'label' =>
+                        $item->label,
+
+                    'address' =>
+                        $formatAddress($item),
+                ]
+            )
+            ->values()
+            ->all();
+
+        $sex = match ($user->sex) {
+            'male' =>
+                'Male',
+
+            'female' =>
+                'Female',
+
+            'prefer_not_to_say' =>
+                'Prefer not to say',
+
+            default =>
+                'Prefer not to say',
+        };
+
+        $emergencyContact = collect([
+            $riderProfile?->emergency_contact_name,
+            $riderProfile?->emergency_contact_phone,
+        ])
+            ->filter(
+                fn ($value) =>
+                    filled($value)
+            )
+            ->implode(' · ');
+
+        $currentZone =
+            $riderProfile?->currentZone;
+
+        if ($currentZone) {
+            $preferredArea =
+                $currentZone->name
+                .(
+                    filled($currentZone->code)
+                        ? ' · '.$currentZone->code
+                        : ''
+                );
+        } else {
+            $preferredArea =
+                $riderProfile
+                    ?->homeSortingCenter
+                    ?->name
+                ?: 'Not assigned';
+        }
+
+        $verificationStatus =
+            $riderProfile?->verification_status
+            ?: 'pending';
+
+        return view(
+            'rider.profile.index',
+            $this->shared() + [
+                'profile' => [
+                    'contact' =>
+                        $user->contact_number ?: '',
+
+                    'birthday' =>
+                        $user->birthday
+                            ?->format('Y-m-d')
+                        ?? '',
+
+                    'sex' =>
+                        $sex,
+
+                    'address' =>
+                        $addressText,
+
+                    'emergency_contact' =>
+                        $emergencyContact,
+
+                    'emergency_contact_name' =>
+                        $riderProfile
+                            ?->emergency_contact_name
+                        ?: '',
+
+                    'emergency_contact_phone' =>
+                        $riderProfile
+                            ?->emergency_contact_phone
+                        ?: '',
+
+                    'preferred_area' =>
+                        $preferredArea,
+
+                    'vehicle_type' =>
+                        $riderProfile?->vehicle_type
+                        ?: 'Not specified',
+
+                    'plate_number' =>
+                        $riderProfile?->plate_number
+                        ?: '',
+
+                    'vehicle_model' =>
+                        $riderProfile?->vehicle_model
+                        ?: '',
+
+                    'parcel_capacity' =>
+                        $riderProfile?->parcel_capacity
+                        ?? '',
+
+                    'verification_status' =>
+                        $verificationStatus,
+
+                    'verification_label' =>
+                        ucwords(
+                            str_replace(
+                                '_',
+                                ' ',
+                                $verificationStatus
+                            )
+                        ),
+
+                    'home_sorting_center' =>
+                        $riderProfile
+                            ?->homeSortingCenter
+                            ?->name
+                        ?: 'Not assigned',
+
+                    'current_zone' =>
+                        $currentZone?->name
+                        ?: 'Not assigned',
+                ],
+
+                'homeAddress' => [
+                    'house_number' =>
+                        $homeAddress?->house_number ?: '',
+
+                    'street' =>
+                        $homeAddress?->street ?: '',
+
+                    'barangay' =>
+                        $homeAddress?->barangay ?: '',
+
+                    'city' =>
+                        $homeAddress?->city_municipality ?: '',
+
+                    'province' =>
+                        $homeAddress?->province ?: '',
+
+                    'postal_code' =>
+                        $homeAddress?->postal_code ?: '',
+                ],
+
+                'additionalAddresses' =>
+                    $additionalAddresses,
+            ]
+        );
     }
 }

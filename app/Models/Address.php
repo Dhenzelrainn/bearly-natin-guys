@@ -13,11 +13,19 @@ class Address extends Model
 
     protected function casts(): array
     {
-        return ['is_default_shipping' => 'boolean', 'is_default_pickup' => 'boolean'];
+        return [
+            'is_default_shipping' => 'boolean',
+            'is_default_pickup' => 'boolean',
+        ];
     }
 
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function sortingCenters()
+    {
+        return $this->hasMany(SortingCenter::class);
     }
 }

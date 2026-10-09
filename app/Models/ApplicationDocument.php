@@ -12,4 +12,11 @@ class ApplicationDocument extends Model
     {
         return $this->belongsTo(AccountApplication::class);
     }
+
+    protected function casts(): array
+    {
+        return [
+            'verified_at' => 'datetime',
+        ];
+    }
 }

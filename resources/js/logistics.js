@@ -1,17 +1,4 @@
-const STORAGE_KEY = 'bearlyLogisticsStateV2';
-
-const readState = () => {
-    try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch { return {}; }
-};
-const writeState = (next) => localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-const updateState = (section, key, value) => {
-    const state = readState();
-    state[section] = state[section] || {};
-    state[section][key] = value;
-    writeState(state);
-};
 const normalize = (value) => String(value || '').trim().toLowerCase().replaceAll('_', ' ');
-const prettyStatus = (value) => String(value || '').replaceAll('_', ' ').toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
 const escapeHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, (character) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' })[character]);
 const refreshIcons = () => window.lucide?.createIcons();
 
@@ -37,9 +24,6 @@ function setupShell() {
     document.querySelector('[data-mobile-menu]')?.addEventListener('click', () => body.classList.add('sidebar-open'));
     document.querySelector('[data-overlay]')?.addEventListener('click', closeMobile);
     document.querySelectorAll('[data-dismiss]').forEach((button) => button.addEventListener('click', () => button.closest('.flash-banner')?.remove()));
-    document.querySelectorAll('[data-preview-action]').forEach((button) => button.addEventListener('click', () => {
-        toast(button.dataset.success || 'Action completed in this front-end preview.');
-    }));
 
     document.querySelectorAll('[data-popover-toggle]').forEach((button) => button.addEventListener('click', (event) => {
         event.stopPropagation();
@@ -81,11 +65,96 @@ function setupModals() {
 
 function setupTabs() {
     document.querySelectorAll('[data-tabs]').forEach((tabs) => {
-        tabs.querySelectorAll('[data-tab]').forEach((button) => button.addEventListener('click', () => {
-            tabs.querySelectorAll('[data-tab]').forEach((item) => item.classList.toggle('is-active', item === button));
-            const scope = tabs.closest('[data-tab-scope]') || document;
-            scope.querySelectorAll('[data-tab-panel]').forEach((panel) => { panel.hidden = panel.dataset.tabPanel !== button.dataset.tab; });
-        }));
+        const buttons = [
+            ...tabs.querySelectorAll('[data-tab]'),
+        ];
+
+        const scope =
+            tabs.closest('[data-tab-scope]') ||
+            document;
+
+        const panels = [
+            ...scope.querySelectorAll(
+                '[data-tab-panel]'
+            ),
+        ];
+
+        const activate = (
+            tabName,
+            updateHash = false
+        ) => {
+            const activeButton = buttons.find(
+                (button) =>
+                    button.dataset.tab === tabName
+            );
+
+            if (!activeButton) {
+                return;
+            }
+
+            buttons.forEach((button) => {
+                button.classList.toggle(
+                    'is-active',
+                    button === activeButton
+                );
+            });
+
+            panels.forEach((panel) => {
+                panel.hidden =
+                    panel.dataset.tabPanel !==
+                    tabName;
+            });
+
+            if (updateHash) {
+                history.replaceState(
+                    null,
+                    '',
+                    `#${tabName}`
+                );
+            }
+        };
+
+        buttons.forEach((button) => {
+            button.addEventListener(
+                'click',
+                () => {
+                    activate(
+                        button.dataset.tab,
+                        true
+                    );
+                }
+            );
+        });
+
+        const requestedTab =
+            window.location.hash
+                .replace('#', '');
+
+        if (
+            requestedTab &&
+            buttons.some(
+                (button) =>
+                    button.dataset.tab ===
+                    requestedTab
+            )
+        ) {
+            activate(requestedTab);
+
+            return;
+        }
+
+        const initialButton =
+            buttons.find((button) =>
+                button.classList.contains(
+                    'is-active'
+                )
+            ) || buttons[0];
+
+        if (initialButton) {
+            activate(
+                initialButton.dataset.tab
+            );
+        }
     });
 }
 
@@ -116,126 +185,7 @@ function setupTables() {
     });
 }
 
-function setRowStatus(row, status) {
-    row.dataset.status = status;
-    const badge = row.querySelector('[data-status-badge]');
-    if (badge) { badge.dataset.status = status; badge.textContent = prettyStatus(status); }
-}
-
-function setupStatusActions() {
-    const state = readState();
-    document.querySelectorAll('[data-record-row]').forEach((row) => {
-        const saved = state[row.dataset.recordType]?.[row.dataset.recordId];
-        if (typeof saved === 'string') setRowStatus(row, saved);
-    });
-    document.querySelectorAll('[data-set-status]').forEach((button) => button.addEventListener('click', () => {
-        let row = button.closest('[data-record-row]');
-        if (!row) {
-            const modalName = button.closest('[data-modal]')?.dataset.modal || '';
-            const recordId = modalName.replace(/^(review|pickup|delivery)-/, '');
-            row = [...document.querySelectorAll('[data-record-row]')].find((item) => item.dataset.recordId === recordId);
-        }
-        if (!row) return;
-        const status = button.dataset.setStatus;
-        setRowStatus(row, status);
-        updateState(row.dataset.recordType, row.dataset.recordId, status);
-        if (button.dataset.removeOnAction === 'true') row.classList.add('is-filtered-out');
-        window.closeLogisticsModals?.();
-        toast(button.dataset.success || `Status updated to ${prettyStatus(status)}.`);
-    }));
-    document.querySelectorAll('[data-toggle-record]').forEach((button) => button.addEventListener('click', () => {
-        const row = button.closest('[data-record-row]');
-        const next = normalize(row?.dataset.status) === 'active' ? 'Inactive' : 'Active';
-        if (!row) return;
-        setRowStatus(row, next);
-        updateState(row.dataset.recordType, row.dataset.recordId, next);
-        button.textContent = next === 'Active' ? 'Deactivate' : 'Activate';
-        toast(`${row.dataset.recordId} is now ${next.toLowerCase()}.`);
-    }));
-}
-
-function setupIncoming() {
-    const form = document.querySelector('[data-incoming-form]');
-    const tbody = document.querySelector('[data-incoming-body]');
-    if (!form || !tbody) return;
-    const addRow = (data, received = 'Just now') => {
-        if ([...tbody.querySelectorAll('[data-record-id]')].some((item) => item.dataset.recordId === data.waybill)) return;
-        const row = document.createElement('tr');
-        row.dataset.row = '';
-        row.dataset.recordRow = '';
-        row.dataset.recordType = 'incoming';
-        row.dataset.recordId = data.waybill;
-        row.dataset.status = 'AT_SORTING_CENTER';
-        row.dataset.zone = data.destination;
-        row.innerHTML = `<td><span class="cell-title"><strong>${escapeHtml(data.waybill)}</strong><small>${escapeHtml(data.order)}</small></span></td><td>${escapeHtml(data.seller)}</td><td>${escapeHtml(data.rider)}</td><td>${escapeHtml(received)}</td><td>${escapeHtml(data.pieces)}</td><td>${escapeHtml(data.weight)} kg</td><td>${escapeHtml(data.destination)}</td><td><span class="status-badge is-info" data-status-badge data-status="AT_SORTING_CENTER">At Sorting Center</span></td><td><button class="button button-small" type="button" data-send-sorting>Send to sorting</button></td>`;
-        tbody.prepend(row);
-    };
-    [...(readState().incomingRows || [])].reverse().forEach((item) => addRow(item, 'Saved preview'));
-    form.addEventListener('submit', (event) => {
-        event.preventDefault();
-        if (!form.reportValidity()) return;
-        const data = Object.fromEntries(new FormData(form));
-        addRow(data);
-        const state = readState();
-        state.incomingRows = [data, ...(state.incomingRows || [])].slice(0, 25);
-        writeState(state);
-        form.reset();
-        window.closeLogisticsModals?.();
-        toast(`${data.waybill} logged at the sorting center.`);
-        refreshIcons();
-    });
-    document.addEventListener('click', (event) => {
-        const button = event.target.closest('[data-send-sorting]');
-        if (!button) return;
-        const row = button.closest('tr');
-        setRowStatus(row, 'Ready for Sorting');
-        updateState('incoming', row.dataset.recordId, 'Ready for Sorting');
-        button.disabled = true;
-        button.textContent = 'Queued';
-        toast('Parcel added to the sorting queue.');
-    });
-}
-
-function setupSorting() {
-    document.querySelectorAll('[data-sort-parcel]').forEach((button) => button.addEventListener('click', () => {
-        const row = button.closest('[data-record-row]');
-        const select = row?.querySelector('[data-zone-select]');
-        if (!row || !select?.value) { toast('Select a destination zone first.'); return; }
-        row.dataset.zone = select.value;
-        setRowStatus(row, 'Sorted');
-        updateState('sorting', row.dataset.recordId, { status: 'Sorted', zone: select.value });
-        toast(`${row.dataset.recordId} sorted to ${select.value}.`);
-    }));
-    const state = readState();
-    document.querySelectorAll('[data-record-type="sorting"]').forEach((row) => {
-        const saved = state.sorting?.[row.dataset.recordId];
-        if (saved && typeof saved === 'object') {
-            setRowStatus(row, saved.status);
-            const select = row.querySelector('[data-zone-select]');
-            if (select) select.value = saved.zone;
-        }
-    });
-}
-
-function setupDispatch() {
-    const state = readState();
-    document.querySelectorAll('[data-dispatch-zone]').forEach((row) => {
-        const saved = state.dispatch?.[row.dataset.dispatchZone];
-        if (saved) { row.querySelector('[data-rider-select]').value = saved.rider; row.querySelector('[data-dispatch-status]').textContent = `Assigned to ${saved.rider}`; }
-    });
-    document.querySelectorAll('[data-dispatch-action]').forEach((button) => button.addEventListener('click', () => {
-        const row = button.closest('[data-dispatch-zone]');
-        const rider = row.querySelector('[data-rider-select]').value;
-        if (!rider) { toast('Choose an active rider before dispatching.'); return; }
-        updateState('dispatch', row.dataset.dispatchZone, { rider, status: 'ASSIGNED_TO_RIDER', updatedAt: new Date().toISOString() });
-        row.querySelector('[data-dispatch-status]').textContent = `Assigned to ${rider}`;
-        button.textContent = 'Reassign';
-        toast(`${row.dataset.dispatchZone} assigned to ${rider}.`);
-    }));
-}
-
 function setupReports() {
-    document.querySelector('[data-report-apply]')?.addEventListener('click', () => toast('Report preview refreshed for the selected range.'));
     document.querySelector('[data-report-export]')?.addEventListener('click', () => {
         const rows = [['Rider','Assigned','Delivered','Failed','Success Rate']];
         document.querySelectorAll('[data-report-row]').forEach((row) => rows.push([...row.children].map((cell) => cell.innerText.trim())));
@@ -250,63 +200,765 @@ function setupReports() {
 }
 
 function setupChat() {
-    const conversations = [...document.querySelectorAll('[data-conversation]')];
-    const name = document.querySelector('[data-chat-name]');
-    const role = document.querySelector('[data-chat-role]');
-    const messages = document.querySelector('[data-chat-messages]');
-    const input = document.querySelector('[data-chat-input]');
-    if (!conversations.length || !messages) return;
-    let active = conversations[0].dataset.conversation;
-    const baseThreads = {
-        'techvault-ph': [{ mine:false, text:'Good afternoon! Our six-parcel pickup batch is ready at the counter.', time:'2:07 PM' },{ mine:true, text:'Received. The request is verified and a rider will arrive within your selected window.', time:'2:10 PM' }],
-        'nico-flores': [{ mine:false, text:'I finished the SP-N1 route. All eight parcels were delivered.', time:'1:51 PM' }],
-        'bearly-admin': [{ mine:false, text:'Please review the three pending rider credentials before the 4 PM dispatch.', time:'11:24 AM' }],
+    const conversations = [
+        ...document.querySelectorAll(
+            '[data-conversation]'
+        ),
+    ];
+
+    const name =
+        document.querySelector(
+            '[data-chat-name]'
+        );
+
+    const role =
+        document.querySelector(
+            '[data-chat-role]'
+        );
+
+    const messages =
+        document.querySelector(
+            '[data-chat-messages]'
+        );
+
+    const input =
+        document.querySelector(
+            '[data-chat-input]'
+        );
+
+    const sendButton =
+        document.querySelector(
+            '[data-chat-send]'
+        );
+
+    const attachmentButton =
+        document.querySelector(
+            '[data-chat-attachment-button]'
+        );
+
+    const attachmentInput =
+        document.querySelector(
+            '[data-chat-attachment]'
+        );
+
+    const attachmentName =
+        document.querySelector(
+            '[data-chat-attachment-name]'
+        );
+
+    if (!messages) {
+        return;
+    }
+
+    const conversationData =
+        window.bearlyLogisticsConversations
+        || {};
+
+    const csrfToken =
+        document
+            .querySelector(
+                'meta[name="csrf-token"]'
+            )
+            ?.getAttribute(
+                'content'
+            )
+        || '';
+
+    if (!conversations.length) {
+        if (name) {
+            name.textContent =
+                'No conversation selected';
+        }
+
+        if (role) {
+            role.textContent = '';
+        }
+
+        if (input) {
+            input.disabled = true;
+        }
+
+        if (sendButton) {
+            sendButton.disabled = true;
+        }
+
+        if (attachmentButton) {
+            attachmentButton.disabled = true;
+        }
+
+        if (attachmentInput) {
+            attachmentInput.disabled = true;
+        }
+
+        messages.innerHTML = `
+            <div class="table-empty">
+                Your Logistics conversations
+                will appear here.
+            </div>
+        `;
+
+        return;
+    }
+
+    let active = String(
+        conversations[0]
+            .dataset
+            .conversation
+    );
+
+    let sending = false;
+
+    const activeConversation = () =>
+        conversationData[active]
+        || null;
+
+    const maxAttachmentSize =
+        10 * 1024 * 1024;
+
+    const clearAttachment = () => {
+        if (attachmentInput) {
+            attachmentInput.value = '';
+        }
+
+        if (attachmentName) {
+            attachmentName.textContent = '';
+            attachmentName.hidden = true;
+        }
     };
+
+    const selectedAttachment = () =>
+        attachmentInput
+            ?.files
+            ?.[0]
+        || null;
+
+    const reading = new Set();
+
+    const markRead = async (
+        conversationId
+    ) => {
+        const id =
+            String(
+                conversationId
+            );
+
+        const conversation =
+            conversationData[id];
+
+        if (
+            !conversation
+            || !conversation.read_url
+            || Number(
+                conversation.unread
+                || 0
+            ) <= 0
+            || reading.has(id)
+        ) {
+            return;
+        }
+
+        reading.add(id);
+
+        try {
+            const response =
+                await fetch(
+                    conversation.read_url,
+                    {
+                        method: 'POST',
+
+                        credentials:
+                            'same-origin',
+
+                        headers: {
+                            'Accept':
+                                'application/json',
+
+                            'X-CSRF-TOKEN':
+                                csrfToken,
+                        },
+                    }
+                );
+
+            if (!response.ok) {
+                return;
+            }
+
+            conversation.unread = 0;
+
+            const button =
+                conversations.find(
+                    (item) =>
+                        String(
+                            item
+                                .dataset
+                                .conversation
+                        ) === id
+                );
+
+            if (button) {
+                button.dataset.unread =
+                    '0';
+            }
+        } finally {
+            reading.delete(id);
+        }
+    };
+
     const render = () => {
-        const button = conversations.find((item) => item.dataset.conversation === active);
-        if (name) name.textContent = button?.dataset.name || 'Conversation';
-        if (role) role.textContent = button?.dataset.role || '';
-        const saved = readState().messages?.[active] || [];
-        messages.innerHTML = [...(baseThreads[active] || []), ...saved].map((item) => `<div class="message-bubble ${item.mine ? 'is-mine' : ''}">${escapeHtml(item.text)}<small>${escapeHtml(item.time)}</small></div>`).join('');
-        messages.scrollTop = messages.scrollHeight;
+        const button =
+            conversations.find(
+                (item) =>
+                    String(
+                        item.dataset.conversation
+                    ) === active
+            );
+
+        const conversation =
+            activeConversation()
+            || {};
+
+        if (name) {
+            name.textContent =
+                conversation.name
+                || button?.dataset.name
+                || 'Conversation';
+        }
+
+        if (role) {
+            role.textContent =
+                conversation.role
+                || button?.dataset.role
+                || '';
+        }
+
+        const isOpen =
+            conversation.status
+            === 'open';
+
+        if (input) {
+            input.disabled =
+                !isOpen
+                || sending;
+
+            input.placeholder =
+                isOpen
+                    ? 'Write a message…'
+                    : 'This conversation is closed';
+        }
+
+        if (sendButton) {
+            sendButton.disabled =
+                !isOpen
+                || sending;
+        }
+
+        if (attachmentButton) {
+            attachmentButton.disabled =
+                !isOpen
+                || sending;
+        }
+
+        if (attachmentInput) {
+            attachmentInput.disabled =
+                !isOpen
+                || sending;
+        }
+
+        const thread =
+            Array.isArray(
+                conversation.messages
+            )
+                ? conversation.messages
+                : [];
+
+        messages.innerHTML =
+            thread.length
+                ? thread
+                    .map(
+                        (item) => `
+                            <div
+                                class="
+                                    message-bubble
+                                    ${
+                                        item.mine
+                                            ? 'is-mine'
+                                            : ''
+                                    }
+                                "
+                            >
+                                ${item.text
+                                    ? `
+                                        <div class="message-text">
+                                            ${escapeHtml(
+                                                item.text
+                                            )}
+                                        </div>
+                                    `
+                                    : ''}
+
+                                ${(Array.isArray(
+                                    item.attachments
+                                )
+                                    ? item.attachments
+                                    : [])
+                                    .map(
+                                        (attachment) => `
+                                            <a
+                                                class="message-attachment"
+                                                href="${escapeHtml(
+                                                    attachment.download_url
+                                                )}"
+                                                download
+                                            >
+                                                <span aria-hidden="true">📎</span>
+                                                <span>${escapeHtml(
+                                                    attachment.name
+                                                )}</span>
+                                            </a>
+                                        `
+                                    )
+                                    .join('')}
+
+                                <small>
+                                    ${escapeHtml(
+                                        item.time
+                                    )}
+                                </small>
+                            </div>
+                        `
+                    )
+                    .join('')
+                : `
+                    <div class="table-empty">
+                        No messages yet.
+                    </div>
+                `;
+
+        messages.scrollTop =
+            messages.scrollHeight;
     };
-    conversations.forEach((button) => button.addEventListener('click', () => {
-        active = button.dataset.conversation;
-        conversations.forEach((item) => item.classList.toggle('is-active', item === button));
+
+    const selectConversation = (
+        button
+    ) => {
+        clearAttachment();
+
+        active = String(
+            button.dataset.conversation
+        );
+
+        conversations.forEach(
+            (item) =>
+                item.classList.toggle(
+                    'is-active',
+                    item === button
+                )
+        );
+
         render();
-    }));
-    const send = () => {
-        const text = input?.value.trim();
-        if (!text) return;
-        const state = readState();
-        state.messages = state.messages || {};
-        state.messages[active] = state.messages[active] || [];
-        state.messages[active].push({ mine:true, text, time:new Date().toLocaleTimeString([], { hour:'numeric', minute:'2-digit' }) });
-        writeState(state);
-        input.value = '';
-        render();
+        markRead(active);
     };
-    document.querySelector('[data-chat-send]')?.addEventListener('click', send);
-    input?.addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); send(); } });
+
+    conversations.forEach(
+        (button) =>
+            button.addEventListener(
+                'click',
+                () =>
+                    selectConversation(
+                        button
+                    )
+            )
+    );
+
+    attachmentButton
+        ?.addEventListener(
+            'click',
+            () => attachmentInput?.click()
+        );
+
+    attachmentInput
+        ?.addEventListener(
+            'change',
+            () => {
+                const attachment =
+                    selectedAttachment();
+
+                if (!attachment) {
+                    clearAttachment();
+                    return;
+                }
+
+                if (
+                    attachment.size
+                    > maxAttachmentSize
+                ) {
+                    clearAttachment();
+                    toast(
+                        'Attachments must be 10 MB or smaller.'
+                    );
+                    return;
+                }
+
+                if (attachmentName) {
+                    attachmentName.textContent =
+                        attachment.name;
+
+                    attachmentName.hidden = false;
+                }
+            }
+        );
+
+    const send = async () => {
+        if (
+            sending
+            || !input
+        ) {
+            return;
+        }
+
+        const text =
+            input.value.trim();
+
+        const attachment =
+            selectedAttachment();
+
+        if (
+            !text
+            && !attachment
+        ) {
+            return;
+        }
+
+        const conversation =
+            activeConversation();
+
+        if (
+            !conversation
+            || conversation.status
+                !== 'open'
+            || !conversation.send_url
+        ) {
+            return;
+        }
+
+        sending = true;
+        render();
+
+        try {
+            const formData =
+                new FormData();
+
+            formData.append(
+                'message',
+                text
+            );
+
+            if (attachment) {
+                formData.append(
+                    'attachment',
+                    attachment
+                );
+            }
+
+            const response =
+                await fetch(
+                    conversation.send_url,
+                    {
+                        method: 'POST',
+
+                        headers: {
+                            'Accept':
+                                'application/json',
+
+                            'X-CSRF-TOKEN':
+                                csrfToken,
+                        },
+
+                        body: formData,
+                    }
+                );
+
+            const data =
+                await response.json();
+
+            if (!response.ok) {
+                const validationMessage =
+                    data.errors
+                        ?.message
+                        ?.[0]
+                    || data.errors
+                        ?.attachment
+                        ?.[0];
+
+                throw new Error(
+                    validationMessage
+                    || data.message
+                    || 'Unable to send message.'
+                );
+            }
+
+            conversation.messages =
+                Array.isArray(
+                    conversation.messages
+                )
+                    ? conversation.messages
+                    : [];
+
+            conversation
+                .messages
+                .push(
+                    data.data
+                );
+
+            conversation.preview =
+                data.data.text;
+
+            conversation.time =
+                data.data.time;
+
+            conversation.unread = 0;
+
+            const button =
+                conversations.find(
+                    (item) =>
+                        String(
+                            item
+                                .dataset
+                                .conversation
+                        ) === active
+                );
+
+            if (button) {
+                const preview =
+                    button.querySelector(
+                        '.conversation-copy small'
+                    );
+
+                const time =
+                    button.querySelector(
+                        '.conversation-time'
+                    );
+
+                if (preview) {
+                    preview.textContent =
+                        data.data.text;
+                }
+
+                if (time) {
+                    time.textContent =
+                        data.data.time;
+                }
+
+                button.dataset.unread =
+                    '0';
+            }
+
+            input.value = '';
+            clearAttachment();
+
+            toast(
+                'Message sent successfully.'
+            );
+        } catch (error) {
+            toast(
+                error.message
+                || 'Unable to send message.'
+            );
+        } finally {
+            sending = false;
+            render();
+
+            if (
+                !input.disabled
+            ) {
+                input.focus();
+            }
+        }
+    };
+
+    sendButton
+        ?.addEventListener(
+            'click',
+            send
+        );
+
+    input
+        ?.addEventListener(
+            'keydown',
+            (event) => {
+                if (
+                    event.key
+                    !== 'Enter'
+                ) {
+                    return;
+                }
+
+                event.preventDefault();
+                send();
+            }
+        );
+
     render();
+    markRead(active);
 }
 
-function setupAccount() {
-    document.querySelectorAll('[data-preview-form]').forEach((form) => form.addEventListener('submit', (event) => {
-        event.preventDefault();
-        if (!form.reportValidity()) return;
-        updateState('forms', form.dataset.previewForm, Object.fromEntries(new FormData(form)));
-        toast(form.dataset.success || 'Changes saved in this preview.');
-    }));
-    const passwordForm = document.querySelector('[data-password-form]');
-    passwordForm?.addEventListener('submit', (event) => {
-        event.preventDefault();
-        const next = passwordForm.querySelector('[name="new_password"]').value;
-        const confirm = passwordForm.querySelector('[name="new_password_confirmation"]').value;
-        if (next.length < 8 || next !== confirm) { toast('Passwords must match and contain at least 8 characters.'); return; }
-        passwordForm.reset();
-        toast('Password update validated for this preview.');
-    });
+function setupNewConversation() {
+    const modal =
+        document.querySelector(
+            '[data-modal="new-conversation"]'
+        );
+
+    const opener =
+        document.querySelector(
+            '[data-modal-open="new-conversation"]'
+        );
+
+    const form =
+        document.querySelector(
+            '[data-new-conversation-form]'
+        );
+
+    if (
+        !modal
+        || !form
+    ) {
+        return;
+    }
+
+    const submit =
+        form.querySelector(
+            '[data-new-conversation-submit]'
+        );
+
+    const csrfToken =
+        document
+            .querySelector(
+                'meta[name="csrf-token"]'
+            )
+            ?.getAttribute(
+                'content'
+            )
+        || '';
+
+    const open = () => {
+        modal.hidden = false;
+    };
+
+    const close = () => {
+        modal.hidden = true;
+    };
+
+    opener?.addEventListener(
+        'click',
+        open
+    );
+
+    modal
+        .querySelectorAll(
+            '[data-modal-close]'
+        )
+        .forEach(
+            (button) =>
+                button.addEventListener(
+                    'click',
+                    close
+                )
+        );
+
+    form.addEventListener(
+        'submit',
+        async (event) => {
+            event.preventDefault();
+
+            if (
+                !form.reportValidity()
+            ) {
+                return;
+            }
+
+            const url =
+                form.dataset.storeUrl;
+
+            if (!url) {
+                return;
+            }
+
+            if (submit) {
+                submit.disabled = true;
+            }
+
+            const formData =
+                new FormData(form);
+
+            try {
+                const response =
+                    await fetch(
+                        url,
+                        {
+                            method: 'POST',
+
+                            headers: {
+                                'Accept':
+                                    'application/json',
+
+                                'Content-Type':
+                                    'application/json',
+
+                                'X-CSRF-TOKEN':
+                                    csrfToken,
+                            },
+
+                            body:
+                                JSON.stringify(
+                                    Object.fromEntries(
+                                        formData
+                                    )
+                                ),
+                        }
+                    );
+
+                const data =
+                    await response.json();
+
+                if (!response.ok) {
+                    const firstError =
+                        Object
+                            .values(
+                                data.errors
+                                || {}
+                            )
+                            .flat()
+                            .find(Boolean);
+
+                    throw new Error(
+                        firstError
+                        || data.message
+                        || 'Unable to start conversation.'
+                    );
+                }
+
+                form.reset();
+
+                toast(
+                    'Conversation started successfully.'
+                );
+
+                window.location.assign(
+                    data.redirect_url
+                    || window.location.href
+                );
+            } catch (error) {
+                toast(
+                    error.message
+                    || 'Unable to start conversation.'
+                );
+            } finally {
+                if (submit) {
+                    submit.disabled = false;
+                }
+            }
+        }
+    );
 }
 
 function setupRegistrationEmail(form) {
@@ -1846,5 +2498,13 @@ function setupRegistration() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    setupShell(); setupModals(); setupTabs(); setupIncoming(); setupTables(); setupStatusActions(); setupSorting(); setupDispatch(); setupReports(); setupChat(); setupAccount(); setupRegistration(); refreshIcons();
+    setupShell();
+    setupModals();
+    setupTabs();
+    setupTables();
+    setupReports();
+    setupChat();
+    setupNewConversation();
+    setupRegistration();
+    refreshIcons();
 });

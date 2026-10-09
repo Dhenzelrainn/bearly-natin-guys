@@ -21,44 +21,30 @@
     <article class="panel settings-editor-panel">
         <div class="panel-heading">
             <div>
-                <span class="eyebrow">Marketplace Configuration</span>
-                <h2>General platform settings</h2>
+                <span class="eyebrow">Transactions</span>
+                <h2>Platform commission</h2>
             </div>
         </div>
 
-        <div class="form-grid two-column-form">
-            <label class="form-field">
-                <span>Marketplace name</span>
+        <label class="form-field settings-commission-field">
+            <span>Platform commission rate</span>
+            <div class="input-with-suffix">
                 <input
-                    type="text"
-                    value="Bearly"
-                    data-setting-marketplace-name
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    value="10"
+                    data-setting-commission-rate
                 >
-            </label>
-
-            <label class="form-field">
-                <span>Platform commission rate</span>
-                <div class="input-with-suffix">
-                    <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        step="0.1"
-                        value="10"
-                        data-setting-commission-rate
-                    >
-                    <span>%</span>
-                </div>
-            </label>
-        </div>
-
-        <label class="form-field">
-            <span>Marketplace description</span>
-            <textarea
-                rows="4"
-                data-setting-marketplace-description
-            >Bearly is an e-commerce marketplace connecting Buyers, Sellers, Logistics Centers, and Riders.</textarea>
+                <span>%</span>
+            </div>
         </label>
+
+        <div hidden aria-hidden="true">
+            <input type="text" value="Bearly" data-setting-marketplace-name tabindex="-1">
+            <textarea data-setting-marketplace-description tabindex="-1">Bearly is an e-commerce marketplace connecting Buyers, Sellers, Logistics Centers, and Riders.</textarea>
+        </div>
     </article>
 
     <aside class="panel">

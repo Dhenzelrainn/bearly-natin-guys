@@ -10,7 +10,11 @@ class AccountApplication extends Model
 
     protected function casts(): array
     {
-        return ['submitted_at' => 'datetime', 'decided_at' => 'datetime'];
+        return [
+            'submitted_at' => 'datetime',
+            'review_started_at' => 'datetime',
+            'decided_at' => 'datetime',
+        ];
     }
 
     public function user()
@@ -31,5 +35,10 @@ class AccountApplication extends Model
     public function sponsorLogisticsProfile()
     {
         return $this->belongsTo(LogisticsProfile::class, 'sponsor_logistics_profile_id');
+    }
+
+    public function businessCategory()
+    {
+        return $this->belongsTo(Category::class, 'business_category_id');
     }
 }

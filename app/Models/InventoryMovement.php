@@ -12,11 +12,20 @@ class InventoryMovement extends Model
 
     protected function casts(): array
     {
-        return ['occurred_at' => 'datetime'];
+        return [
+            'occurred_at' => 'datetime',
+            'reserved_delta' => 'integer',
+            'reserved_balance_after' => 'integer',
+        ];
     }
 
     public function variant()
     {
         return $this->belongsTo(ProductVariant::class, 'variant_id');
+    }
+
+    public function createdBy()
+    {
+        return $this->belongsTo(User::class, 'created_by');
     }
 }

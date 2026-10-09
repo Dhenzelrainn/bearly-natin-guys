@@ -10,9 +10,10 @@ use App\Models\ProductVariant;
 use App\Models\Store;
 use App\Models\Wishlist;
 use App\Services\BuyerCatalogService;
+use App\Services\InternationalPhone;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
@@ -273,7 +274,7 @@ class BuyerController extends Controller
 
         $phone = preg_replace('/[^0-9+]/', '', $phone) ?: '';
 
-        return app(\App\Services\InternationalPhone::class)
+        return app(InternationalPhone::class)
             ->normalize($phone, 'PH');
     }
 
@@ -590,10 +591,7 @@ class BuyerController extends Controller
         $query = Product::query()
             ->with(['store', 'variants' => fn ($variants) => $variants->where('is_active', true)])
             ->withMin('variants', 'price_minor')
-            ->where('product_status', 'active')
-            ->where('compliance_status', 'clear')
-            ->whereHas('store', fn ($stores) => $stores->where('publication_status', 'published'))
-            ->whereHas('variants', fn ($variants) => $variants->where('is_active', true));
+            ->visibleToBuyers();
 
         if ($request->category && $request->category !== 'All') {
             $query->whereHas('category', function ($categories) use ($request) {
@@ -653,18 +651,16 @@ class BuyerController extends Controller
         $product->load('store');
 
         if (! $this->hasBuyerTables() ||
-            $product->product_status !== 'active' ||
-            $product->compliance_status !== 'clear' ||
-            $product->store?->publication_status !== 'published' ||
-            ! $product->variants()->where('is_active', true)->exists()) {
+            ! Product::query()->visibleToBuyers()->whereKey($product->getKey())->exists()) {
             abort(404);
         }
 
         $product->load([
             'category',
+            'subcategory',
             'store.sellerProfile',
             'variants' => fn ($variants) => $variants->where('is_active', true)->orderBy('position'),
-            'images' => fn ($images) => $images->orderBy('position'),
+            'images' => fn ($images) => $images->with('variant')->orderBy('position'),
         ]);
 
         $relatedProducts = $catalog->cards(
@@ -682,42 +678,119 @@ class BuyerController extends Controller
         ]);
     }
 
-    public function showStore(Store $store, BuyerCatalogService $catalog): View
+    public function showStore(Request $request, Store $store, BuyerCatalogService $catalog): View
     {
-        abort_unless($store->publication_status === 'published', 404);
+        abort_unless(
+            Store::query()->visibleToBuyers()->whereKey($store->getKey())->exists(),
+            404,
+        );
 
-        $store->load('sellerProfile');
+        $store->load([
+            'sellerProfile.user',
+            'sellerProfile.approvedCategory',
+            'promotionalBanners' => fn ($banners) => $banners->where('is_active', true),
+        ]);
         $products = $catalog->publishedProducts(null, $store);
+        $storeSubcategories = $products
+            ->pluck('subcategory')
+            ->filter()
+            ->unique('id')
+            ->sortBy('name')
+            ->values();
+        $selectedSubcategoryId = null;
+
+        if ($request->filled('subcategory')) {
+            $requestedSubcategory = (string) $request->query('subcategory');
+
+            if (! ctype_digit($requestedSubcategory)) {
+                abort(404);
+            }
+
+            $selectedSubcategoryId = (int) $requestedSubcategory;
+
+            if (! $storeSubcategories->contains('id', $selectedSubcategoryId)) {
+                abort(404);
+            }
+
+            $products = $products
+                ->where('subcategory_id', $selectedSubcategoryId)
+                ->values();
+        }
+        $promoBanners = $store->promotionalBanners
+            ->map(fn ($banner): array => [
+                'path' => $banner->image_path,
+                'url' => Storage::disk('public')->url($banner->image_path),
+                'title' => $banner->title ?? '',
+                'link' => $this->safeStoreLink($banner->link),
+            ])
+            ->values()
+            ->all();
+
+        if ($promoBanners === [] && filled($store->promo_banner_path)) {
+            $promoBanners[] = [
+                'path' => $store->promo_banner_path,
+                'url' => Storage::disk('public')->url($store->promo_banner_path),
+                'title' => $store->promo_banner_title ?? '',
+                'link' => $this->safeStoreLink($store->promo_banner_link),
+            ];
+        }
+
+        $category = $store->sellerProfile?->approvedCategory?->name
+            ?: $store->sellerProfile?->user?->business_category
+            ?: 'Marketplace Seller';
 
         return view('buyer.stores.show', [
             'store' => $store,
-            'products' => $catalog->cards($products, request()->user()),
+            'category' => $category,
+            'logoUrl' => $store->logo_path
+                ? Storage::disk('public')->url($store->logo_path)
+                : null,
+            'coverUrl' => $store->banner_path
+                ? Storage::disk('public')->url($store->banner_path)
+                : null,
+            'promoBanners' => $promoBanners,
+            'storeSubcategories' => $storeSubcategories,
+            'selectedSubcategoryId' => $selectedSubcategoryId,
+            'products' => $catalog->cards($products, $request->user(), true),
         ]);
     }
 
-    public function cart(Request $request): View
+    private function safeStoreLink(?string $link): ?string
+    {
+        $link = trim((string) $link);
+
+        if ($link === '' || filter_var($link, FILTER_VALIDATE_URL) === false) {
+            return null;
+        }
+
+        return in_array(strtolower((string) parse_url($link, PHP_URL_SCHEME)), ['http', 'https'], true)
+            ? $link
+            : null;
+    }
+
+    public function cart(Request $request, BuyerCatalogService $catalog): View
     {
         $cart = $this->currentCart($request->user(), false);
 
         return view('buyer.cart', [
-            'cartItems' => $cart ? $this->cartPayload($cart) : [],
+            'cartItems' => $cart ? $this->cartPayload($cart, $catalog) : [],
         ]);
     }
 
-    public function cartData(Request $request): JsonResponse
+    public function cartData(Request $request, BuyerCatalogService $catalog): JsonResponse
     {
         $cart = $this->currentCart($request->user(), false);
 
         return response()->json([
             'data' => [
-                'items' => $cart ? $this->cartPayload($cart) : [],
+                'items' => $cart ? $this->cartPayload($cart, $catalog) : [],
                 'cart_count' => $this->cartCount($request->user()),
             ],
             'message' => 'Cart retrieved successfully.',
         ]);
     }
 
-    public function addToCart(Request $request): JsonResponse
+    public function addToCart(Request $request, BuyerCatalogService $catalog): JsonResponse
     {
         $data = $request->validate([
             'product_variant_id' => ['nullable', 'integer', 'exists:product_variants,id'],
@@ -744,15 +817,11 @@ class BuyerController extends Controller
             }
 
             $variant = $variantQuery->lockForUpdate()->firstOrFail();
-            $product = $variant->product;
-
-            abort_unless(
-                $product &&
-                $product->product_status === 'active' &&
-                $product->compliance_status === 'clear' &&
-                $product->store?->publication_status === 'published',
-                404
-            );
+            $product = Product::query()
+                ->visibleToBuyers()
+                ->whereKey($variant->product_id)
+                ->lockForUpdate()
+                ->firstOrFail();
 
             $cart = $this->currentCart($request->user());
             $existingItem = $cart->items()
@@ -770,26 +839,32 @@ class BuyerController extends Controller
             if ($existingItem) {
                 $existingItem->update(['quantity' => $quantity]);
 
-                return $existingItem->fresh('variant.product.store');
+                return $existingItem->fresh([
+                    'variant.product.store',
+                    'variant.product.images.variant',
+                ]);
             }
 
             return $cart->items()->create([
                 'product_variant_id' => $variant->id,
                 'quantity' => (int) $data['quantity'],
                 'selected' => true,
-            ])->load('variant.product.store');
+            ])->load([
+                'variant.product.store',
+                'variant.product.images.variant',
+            ]);
         });
 
         return response()->json([
             'data' => [
-                'item' => $this->cartItemPayload($item),
+                'item' => $this->cartItemPayload($item, $catalog),
                 'cart_count' => $this->cartCount($request->user()),
             ],
             'message' => 'Product added to cart',
         ]);
     }
 
-    public function updateCart(Request $request, CartItem $cartItem): JsonResponse
+    public function updateCart(Request $request, CartItem $cartItem, BuyerCatalogService $catalog): JsonResponse
     {
         $data = $request->validate(['quantity' => 'required|integer|min:1']);
         $cart = $this->currentCart($request->user(), false);
@@ -797,19 +872,19 @@ class BuyerController extends Controller
 
         $cartItem = DB::transaction(function () use ($cart, $cartItem, $data) {
             $item = $cart->items()
-                ->with('variant.product.store')
+                ->with([
+                    'variant.product.store',
+                    'variant.product.images.variant',
+                ])
                 ->lockForUpdate()
                 ->findOrFail($cartItem->id);
 
-            abort_unless(
-                $item->variant &&
-                $item->variant->is_active &&
-                $item->variant->product &&
-                $item->variant->product->product_status === 'active' &&
-                $item->variant->product->compliance_status === 'clear' &&
-                $item->variant->product->store?->publication_status === 'published',
-                404
-            );
+            abort_unless($item->variant && $item->variant->is_active, 404);
+            Product::query()
+                ->visibleToBuyers()
+                ->whereKey($item->variant->product_id)
+                ->lockForUpdate()
+                ->firstOrFail();
 
             if ((int) $data['quantity'] > $item->variant->available_stock) {
                 throw ValidationException::withMessages([
@@ -818,12 +893,15 @@ class BuyerController extends Controller
             }
             $item->update(['quantity' => (int) $data['quantity']]);
 
-            return $item->fresh('variant.product.store');
+            return $item->fresh([
+                'variant.product.store',
+                'variant.product.images.variant',
+            ]);
         });
 
         return response()->json([
             'data' => [
-                'item' => $this->cartItemPayload($cartItem),
+                'item' => $this->cartItemPayload($cartItem, $catalog),
                 'cart_count' => $this->cartCount($request->user()),
             ],
             'message' => 'Cart updated',
@@ -869,10 +947,7 @@ class BuyerController extends Controller
         Product::query()
             ->with('store')
             ->whereKey($data['product_id'])
-            ->where('product_status', 'active')
-            ->where('compliance_status', 'clear')
-            ->whereHas('store', fn ($stores) => $stores->where('publication_status', 'published'))
-            ->whereHas('variants', fn ($variants) => $variants->where('is_active', true))
+            ->visibleToBuyers()
             ->firstOrFail();
 
         $isWishlisted = DB::transaction(function () use ($request, $data): bool {
@@ -929,24 +1004,32 @@ class BuyerController extends Controller
             : 0;
     }
 
-    private function cartPayload(Cart $cart): array
+    private function cartPayload(Cart $cart, BuyerCatalogService $catalog): array
     {
         return $cart->items()
-            ->with(['variant.product.store', 'variant.product.images'])
+            ->with([
+                'variant.product.store',
+                'variant.product.images.variant',
+            ])
             ->orderBy('id')
             ->get()
-            ->map(fn (CartItem $item) => $this->cartItemPayload($item))
+            ->map(fn (CartItem $item) => $this->cartItemPayload($item, $catalog))
             ->values()
             ->all();
     }
 
-    private function cartItemPayload(CartItem $item): array
+    private function cartItemPayload(CartItem $item, BuyerCatalogService $catalog): array
     {
         $variant = $item->variant;
         $product = $variant?->product;
-        $image = $product?->images?->firstWhere('is_primary', true)
-            ?: $product?->images?->first();
-        $imagePath = (string) ($image?->path ?? '');
+        $productImages = $product?->images;
+        $primaryImage = $productImages?->whereNull('variant_id')->firstWhere('is_primary', true)
+            ?: $productImages?->whereNull('variant_id')->first();
+        $variantImageUrl = $product && $variant
+            ? $catalog->variantImageUrl($product, $variant)
+            : null;
+        $imagePath = (string) ($primaryImage?->path ?? '');
+        $imageDisk = (string) ($primaryImage?->disk ?: 'public');
 
         return [
             'id' => $item->id,
@@ -958,11 +1041,13 @@ class BuyerController extends Controller
             'price_minor' => (int) ($variant?->price_minor ?? 0),
             'quantity' => (int) $item->quantity,
             'selected' => (bool) $item->selected,
-            'image' => $imagePath === ''
+            'image' => filled($variantImageUrl)
+                ? $variantImageUrl
+                : ($imagePath === ''
                 ? ''
                 : (Str::startsWith($imagePath, ['http://', 'https://', '/'])
                     ? $imagePath
-                    : Storage::disk('public')->url($imagePath)),
+                    : Storage::disk($imageDisk)->url($imagePath))),
             'seller_name' => $product?->store?->name ?? 'Bearly seller',
         ];
     }
@@ -972,11 +1057,7 @@ class BuyerController extends Controller
         return Wishlist::query()
             ->where('user_id', $user->id)
             ->whereHas('product', function ($products) {
-                $products
-                    ->where('product_status', 'active')
-                    ->where('compliance_status', 'clear')
-                    ->whereHas('store', fn ($stores) => $stores->where('publication_status', 'published'))
-                    ->whereHas('variants', fn ($variants) => $variants->where('is_active', true));
+                $products->visibleToBuyers();
             })
             ->with(['product.store', 'product.category', 'product.images', 'product.variants' => fn ($variants) => $variants->where('is_active', true)->orderBy('position')])
             ->latest('id')
@@ -987,6 +1068,7 @@ class BuyerController extends Controller
                     ?: $product?->images?->first();
                 $variant = $product?->variants?->first();
                 $imagePath = (string) ($image?->path ?? '');
+                $imageDisk = (string) ($image?->disk ?: 'public');
 
                 return [
                     'id' => $item->id,
@@ -999,7 +1081,7 @@ class BuyerController extends Controller
                         ? ''
                         : (Str::startsWith($imagePath, ['http://', 'https://', '/'])
                             ? $imagePath
-                            : Storage::disk('public')->url($imagePath)),
+                            : Storage::disk($imageDisk)->url($imagePath)),
                     'seller_name' => $product?->store?->name ?? 'Bearly seller',
                 ];
             })

@@ -281,6 +281,8 @@ Table inventory_movements {
   type varchar(40) [not null]
   quantity_delta int [not null]
   balance_after int [not null]
+  reserved_delta bigint [not null]
+  reserved_balance_after int
   reference_type varchar(50)
   reference_id bigint
   reason varchar(255)
@@ -346,6 +348,8 @@ Table order_items {
   variant_name varchar(140) [not null]
   sku varchar(80) [not null]
   options json
+  product_image_disk varchar(40)
+  product_image_path varchar(500)
   unit_price_minor bigint [not null]
   quantity int [not null]
   discount_minor bigint [not null]
@@ -379,6 +383,12 @@ Table orders {
   cancel_reason text
   created_at timestamp
   updated_at timestamp
+
+  checkout_request_key char(36)
+
+  indexes {
+    (buyer_id, checkout_request_key) [unique]
+  }
 }
 
 Table parcels {
@@ -576,6 +586,10 @@ Table product_variants {
   created_at timestamp
   updated_at timestamp
   deleted_at timestamp
+  package_weight_kg decimal(10,3)
+  package_length_cm decimal(10,2)
+  package_width_cm decimal(10,2)
+  package_height_cm decimal(10,2)
 }
 
 Table product_violations {
@@ -605,6 +619,7 @@ Table products {
   id bigint [pk, increment, not null]
   store_id bigint [not null]
   category_id bigint [not null]
+  subcategory_id bigint
   name varchar(180) [not null]
   slug varchar(220) [not null]
   description text
@@ -739,6 +754,21 @@ Table roles {
   updated_at timestamp
 }
 
+Table seller_order_status_histories {
+  id bigint [pk, increment, not null]
+  seller_order_id bigint [not null]
+  from_status varchar(30)
+  to_status varchar(30) [not null]
+  actor_user_id bigint
+  reason text
+  occurred_at timestamp [not null]
+  created_at timestamp [not null]
+
+  indexes {
+    (seller_order_id, occurred_at)
+  }
+}
+
 Table seller_orders {
   id bigint [pk, increment, not null]
   seller_order_no varchar(32) [not null, unique]
@@ -760,6 +790,22 @@ Table seller_orders {
   seller_note text
   created_at timestamp
   updated_at timestamp
+  delivery_provider_key varchar(50)
+  shipping_quote json
+}
+
+Table shipping_rates {
+  id bigint [pk, increment, not null]
+  provider_key varchar(50) [not null]
+  route_tier varchar(40) [not null]
+  first_kg_fee_minor bigint [not null]
+  additional_kg_surcharge_minor bigint
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (provider_key, route_tier) [unique]
+  }
 }
 
 Table seller_payouts {
@@ -910,6 +956,57 @@ Table stores {
   created_at timestamp
   updated_at timestamp
   deleted_at timestamp
+}
+
+Table store_promotion_products {
+  id bigint [pk, increment, not null]
+  store_promotion_id bigint [not null]
+  product_id bigint [not null]
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (store_promotion_id, product_id) [unique]
+    (product_id, store_promotion_id)
+  }
+}
+
+Table store_promotions {
+  id bigint [pk, increment, not null]
+  store_id bigint [not null]
+  created_by bigint
+  name varchar(80) [not null]
+  type varchar(32) [not null]
+  discount_percent int
+  voucher_amount_minor bigint
+  starts_on date [not null]
+  ends_on date [not null]
+  minimum_spend_minor bigint [not null]
+  redemption_limit int
+  per_buyer_limit int [not null]
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (store_id, starts_on, ends_on)
+  }
+}
+
+Table store_subcategories {
+  id bigint [pk, increment, not null]
+  store_id bigint [not null]
+  parent_category_id bigint [not null]
+  name varchar(120) [not null]
+  slug varchar(140) [not null]
+  is_active boolean [not null]
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (store_id, parent_category_id, name) [unique]
+    (store_id, parent_category_id, slug) [unique]
+    (store_id, is_active)
+  }
 }
 
 Table support_tickets {
@@ -1131,6 +1228,7 @@ Ref: product_violations.product_report_id > product_reports.id
 Ref: product_violations.rule_id > compliance_rules.id
 Ref: product_violations.seller_profile_id > seller_profiles.id
 Ref: products.category_id > categories.id
+Ref: products.subcategory_id > store_subcategories.id
 Ref: products.store_id > stores.id
 Ref: refunds.approved_by > users.id
 Ref: refunds.order_id > orders.id
@@ -1156,6 +1254,8 @@ Ref: rider_profiles.user_id > users.id
 Ref: role_user.assigned_by > users.id
 Ref: role_user.role_id > roles.id
 Ref: role_user.user_id > users.id
+Ref: seller_order_status_histories.actor_user_id > users.id
+Ref: seller_order_status_histories.seller_order_id > seller_orders.id
 Ref: seller_orders.order_id > orders.id
 Ref: seller_orders.store_id > stores.id
 Ref: seller_payouts.seller_profile_id > seller_profiles.id
@@ -1184,6 +1284,12 @@ Ref: sorting_centers.address_id > addresses.id
 Ref: sorting_centers.logistics_profile_id > logistics_profiles.id
 Ref: sorting_zones.sorting_center_id > sorting_centers.id
 Ref: stores.seller_profile_id > seller_profiles.id
+Ref: store_promotion_products.product_id > products.id
+Ref: store_promotion_products.store_promotion_id > store_promotions.id
+Ref: store_promotions.created_by > users.id
+Ref: store_promotions.store_id > stores.id
+Ref: store_subcategories.parent_category_id > categories.id
+Ref: store_subcategories.store_id > stores.id
 Ref: support_tickets.assigned_to > users.id
 Ref: support_tickets.user_id > users.id
 Ref: system_settings.updated_by > users.id

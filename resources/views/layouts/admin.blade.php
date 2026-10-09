@@ -162,6 +162,11 @@ $adminNavGroups = [
                 'icon' => 'settings',
             ],
             [
+                'label' => 'Shipping Rates',
+                'route' => 'admin.shipping-rates',
+                'icon' => 'map-pinned',
+            ],
+            [
                 'label' => 'Account',
                 'route' => 'admin.account',
                 'icon' => 'user-round-cog',

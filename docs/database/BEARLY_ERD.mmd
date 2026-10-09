@@ -260,6 +260,8 @@ erDiagram
         varchar type
         int quantity_delta
         int balance_after
+        bigint reserved_delta
+        int reserved_balance_after
         varchar reference_type
         bigint reference_id
         varchar reason
@@ -320,6 +322,8 @@ erDiagram
         varchar variant_name
         varchar sku
         json options
+        varchar product_image_disk
+        varchar product_image_path
         bigint unit_price_minor
         int quantity
         bigint discount_minor
@@ -352,6 +356,7 @@ erDiagram
         text cancel_reason
         timestamp created_at
         timestamp updated_at
+        char checkout_request_key
     }
     parcels {
         bigint id PK
@@ -536,6 +541,10 @@ erDiagram
         timestamp created_at
         timestamp updated_at
         timestamp deleted_at
+        decimal package_weight_kg
+        decimal package_length_cm
+        decimal package_width_cm
+        decimal package_height_cm
     }
     product_violations {
         bigint id PK
@@ -563,6 +572,7 @@ erDiagram
         bigint id PK
         bigint store_id
         bigint category_id
+        bigint subcategory_id
         varchar name
         varchar slug
         text description
@@ -688,6 +698,16 @@ erDiagram
         timestamp created_at
         timestamp updated_at
     }
+    seller_order_status_histories {
+        bigint id PK
+        bigint seller_order_id
+        varchar from_status
+        varchar to_status
+        bigint actor_user_id
+        text reason
+        timestamp occurred_at
+        timestamp created_at
+    }
     seller_orders {
         bigint id PK
         varchar seller_order_no UK
@@ -707,6 +727,17 @@ erDiagram
         timestamp completed_at
         timestamp cancelled_at
         text seller_note
+        timestamp created_at
+        timestamp updated_at
+        varchar delivery_provider_key
+        json shipping_quote
+    }
+    shipping_rates {
+        bigint id PK
+        varchar provider_key
+        varchar route_tier
+        bigint first_kg_fee_minor
+        bigint additional_kg_surcharge_minor
         timestamp created_at
         timestamp updated_at
     }
@@ -850,6 +881,39 @@ erDiagram
         timestamp created_at
         timestamp updated_at
         timestamp deleted_at
+    }
+    store_promotion_products {
+        bigint id PK
+        bigint store_promotion_id
+        bigint product_id
+        timestamp created_at
+        timestamp updated_at
+    }
+    store_promotions {
+        bigint id PK
+        bigint store_id
+        bigint created_by
+        varchar name
+        varchar type
+        tinyint discount_percent
+        bigint voucher_amount_minor
+        date starts_on
+        date ends_on
+        bigint minimum_spend_minor
+        int redemption_limit
+        smallint per_buyer_limit
+        timestamp created_at
+        timestamp updated_at
+    }
+    store_subcategories {
+        bigint id PK
+        bigint store_id
+        bigint parent_category_id
+        varchar name
+        varchar slug
+        tinyint is_active
+        timestamp created_at
+        timestamp updated_at
     }
     support_tickets {
         bigint id PK
@@ -1063,6 +1127,7 @@ erDiagram
     compliance_rules ||--o{ product_violations : rule_id
     seller_profiles ||--|{ product_violations : seller_profile_id
     categories ||--|{ products : category_id
+    store_subcategories ||--o{ products : subcategory_id
     stores ||--|{ products : store_id
     users ||--o{ refunds : approved_by
     orders ||--|{ refunds : order_id
@@ -1088,11 +1153,19 @@ erDiagram
     users ||--o{ role_user : assigned_by
     roles ||--|{ role_user : role_id
     users ||--|{ role_user : user_id
+    users ||--o{ seller_order_status_histories : actor_user_id
+    seller_orders ||--|{ seller_order_status_histories : seller_order_id
     orders ||--|{ seller_orders : order_id
     stores ||--|{ seller_orders : store_id
+    products ||--o{ store_promotion_products : product_id
+    store_promotions ||--o{ store_promotion_products : store_promotion_id
+    users ||--o{ store_promotions : created_by
+    stores ||--o{ store_promotions : store_id
     seller_profiles ||--|{ seller_payouts : seller_profile_id
     account_applications ||--o{ seller_profiles : application_id
     categories ||--o{ seller_profiles : approved_category_id
+    categories ||--o{ store_subcategories : parent_category_id
+    stores ||--o{ store_subcategories : store_id
     addresses ||--o{ seller_profiles : pickup_address_id
     users ||--|{ seller_profiles : user_id
     platform_commissions ||--o{ seller_transactions : commission_id

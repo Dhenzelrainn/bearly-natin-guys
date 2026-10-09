@@ -7,6 +7,7 @@ use App\Models\Cart;
 use App\Models\CartItem;
 use App\Models\Category;
 use App\Models\Product;
+use App\Models\ProductImage;
 use App\Models\ProductVariant;
 use App\Models\SellerProfile;
 use App\Models\Store;
@@ -42,22 +43,22 @@ class BuyerAccountIntegrationTest extends TestCase
             ->assertSee('id="likes-sort"', false)
             ->assertSee('You may also like')
             ->assertSee('href="'.url('/home#results').'"', false)
-             ->assertSee('My Vouchers')
-             ->assertSee('images/vouchers/Bearly-voucher-icon.png', false)
-             ->assertSee('data-notification-trigger', false)
-             ->assertSee('id="buyer-notification-popover"', false)
-             ->assertSee('View all notifications')
-             ->assertSee('Edit Profile')
+            ->assertSee('My Vouchers')
+            ->assertSee('images/vouchers/Bearly-voucher-icon.png', false)
+            ->assertSee('data-notification-trigger', false)
+            ->assertSee('id="buyer-notification-popover"', false)
+            ->assertSee('View all notifications')
+            ->assertSee('Edit Profile')
             ->assertSee('Save Changes')
             ->assertDontSee('Mia Santos');
 
         $this->actingAs($buyer)
             ->get('/home')
             ->assertOk()
-             ->assertSee('"wishlist_key":"pet-supplies:1"', false)
-             ->assertSee('data-notification-trigger', false)
-             ->assertSee('id="buyer-notification-popover"', false)
-             ->assertSee('href="'.url('/profile#vouchers').'"', false)
+            ->assertSee('"wishlist_key":"pet-supplies:1"', false)
+            ->assertSee('data-notification-trigger', false)
+            ->assertSee('id="buyer-notification-popover"', false)
+            ->assertSee('href="'.url('/profile#vouchers').'"', false)
             ->assertSee('href="'.url('/profile?voucher=shipping#vouchers').'"', false);
 
         $this->actingAs($buyer)
@@ -195,6 +196,85 @@ class BuyerAccountIntegrationTest extends TestCase
                 'quantity' => 1,
             ])
             ->assertNotFound();
+    }
+
+    public function test_cart_uses_selected_variant_color_image_and_falls_back_to_primary(): void
+    {
+        $buyer = $this->makeBuyer('cart-image-buyer@example.test', 'Cart Image Buyer');
+        ['product' => $product, 'variant' => $smallRed] = $this->makeProduct();
+        $smallRed->update([
+            'name' => 'Small / Red',
+            'options' => ['Size' => 'Small', 'Color' => 'Red'],
+            'position' => 1,
+        ]);
+        $largeRed = ProductVariant::create([
+            'product_id' => $product->id,
+            'sku' => 'CART-LARGE-RED-'.uniqid(),
+            'name' => 'Large / Red',
+            'options' => ['Size' => 'Large', 'Color' => 'Red'],
+            'price_minor' => 52900,
+            'stock_on_hand' => 5,
+            'stock_reserved' => 0,
+            'is_active' => true,
+            'position' => 2,
+        ]);
+        $blue = ProductVariant::create([
+            'product_id' => $product->id,
+            'sku' => 'CART-SMALL-BLUE-'.uniqid(),
+            'name' => 'Small / Blue',
+            'options' => ['Size' => 'Small', 'Color' => 'Blue'],
+            'price_minor' => 49900,
+            'stock_on_hand' => 5,
+            'stock_reserved' => 0,
+            'is_active' => true,
+            'position' => 3,
+        ]);
+        $primaryPath = 'seller-products/cart-primary.jpg';
+        $redVariantPath = 'seller-products/cart-red.jpg';
+
+        ProductImage::create([
+            'product_id' => $product->id,
+            'path' => $primaryPath,
+            'disk' => 'public',
+            'purpose' => 'primary',
+            'alt_text' => 'Primary product image',
+            'position' => 0,
+            'is_primary' => true,
+        ]);
+        ProductImage::create([
+            'product_id' => $product->id,
+            'variant_id' => $smallRed->id,
+            'path' => $redVariantPath,
+            'disk' => 'public',
+            'purpose' => 'variant',
+            'alt_text' => 'Red variant image',
+            'position' => 1,
+            'is_primary' => false,
+        ]);
+
+        $this->actingAs($buyer)
+            ->postJson('/cart/add', [
+                'product_variant_id' => $largeRed->id,
+                'quantity' => 1,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.item.variant_name', 'Large / Red')
+            ->assertJsonPath('data.item.image', Storage::disk('public')->url($redVariantPath));
+
+        $this->actingAs($buyer)
+            ->postJson('/cart/add', [
+                'product_variant_id' => $blue->id,
+                'quantity' => 1,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.item.variant_name', 'Small / Blue')
+            ->assertJsonPath('data.item.image', Storage::disk('public')->url($primaryPath));
+
+        $this->actingAs($buyer)
+            ->getJson('/cart/data')
+            ->assertOk()
+            ->assertJsonPath('data.items.0.image', Storage::disk('public')->url($redVariantPath))
+            ->assertJsonPath('data.items.1.image', Storage::disk('public')->url($primaryPath));
     }
 
     public function test_wishlist_and_addresses_are_scoped_to_the_authenticated_buyer(): void

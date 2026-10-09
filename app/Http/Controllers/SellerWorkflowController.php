@@ -2,7 +2,16 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\SellerOrder;
+use App\Services\BuyerCatalogService;
+use App\Services\SellerIdentityService;
+use App\Services\SellerOrderWorkflowService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class SellerWorkflowController extends Controller
@@ -12,9 +21,10 @@ class SellerWorkflowController extends Controller
     private function seller(): array
     {
         return app(
-            \App\Services\SellerIdentityService::class
+            SellerIdentityService::class
         )->current();
     }
+
     private function notifications(): array
     {
         return [
@@ -56,147 +66,159 @@ class SellerWorkflowController extends Controller
         );
     }
 
-    private function ordersData(): array
+    private function persistedOrdersData(Request $request, BuyerCatalogService $catalog): array
     {
-        return [
-            [
-                'id' => '#BR-1060', 'customer' => 'Angela Cruz', 'items' => '1 item',
-                'item_detail' => 'Classic Linen Shirt · Olive / Medium',
-                'payment' => 'GCash · Paid', 'payment_key' => 'paid', 'total' => '₱1,299',
-                'deadline' => 'Today · 12:00 PM', 'date_key' => 'today', 'urgent' => true,
-                'status' => 'Placed', 'canonical_status' => 'PLACED', 'status_key' => 'new', 'tone' => 'new',
-                'responsibility' => 'Seller', 'next_step' => 'Review the order and confirm stock before accepting.',
-                'action' => 'Review & Confirm', 'action_url' => null,
-            ],
-            [
-                'id' => '#BR-1059', 'customer' => 'Noah Reyes', 'items' => '2 items',
-                'item_detail' => 'Canvas Tote Bag · Natural ×2',
-                'payment' => 'Cash on Delivery', 'payment_key' => 'cod', 'total' => '₱1,798',
-                'deadline' => 'Today · 12:30 PM', 'date_key' => 'today', 'urgent' => true,
-                'status' => 'Placed', 'canonical_status' => 'PLACED', 'status_key' => 'new', 'tone' => 'new',
-                'responsibility' => 'Seller', 'next_step' => 'Review the order and confirm stock before accepting.',
-                'action' => 'Review & Confirm', 'action_url' => null,
-            ],
-            [
-                'id' => '#BR-1058', 'customer' => 'Maria Santos', 'items' => '2 items',
-                'item_detail' => 'Classic Linen Shirt · Cream / Large + Canvas Tote Bag',
-                'payment' => 'GCash · Paid', 'payment_key' => 'paid', 'total' => '₱1,850',
-                'deadline' => 'Today · 1:00 PM', 'date_key' => 'today', 'urgent' => true,
-                'status' => 'Confirmed', 'canonical_status' => 'CONFIRMED', 'status_key' => 'to-prepare', 'tone' => 'prepare',
-                'responsibility' => 'Seller', 'next_step' => 'Start preparing and packing the confirmed order.',
-                'action' => 'Start Preparing', 'action_url' => null,
-            ],
-            [
-                'id' => '#BR-1057', 'customer' => 'Carlo Reyes', 'items' => '1 item',
-                'item_detail' => 'Everyday Sneakers · White / Size 39',
-                'payment' => 'Cash on Delivery', 'payment_key' => 'cod', 'total' => '₱1,780',
-                'deadline' => 'Today · 1:30 PM', 'date_key' => 'today', 'urgent' => true,
-                'status' => 'Preparing', 'canonical_status' => 'PREPARING', 'status_key' => 'to-prepare', 'tone' => 'prepare',
-                'responsibility' => 'Seller', 'next_step' => 'Finish packing, print the waybill, then mark the parcel ready for pickup.',
-                'action' => 'Continue Packing', 'action_url' => null,
-            ],
-            [
-                'id' => '#BR-1056', 'customer' => 'Ana Cruz', 'items' => '3 items',
-                'item_detail' => 'Classic Linen Shirt bundle · 3 pieces',
-                'payment' => 'Maya · Paid', 'payment_key' => 'paid', 'total' => '₱2,450',
-                'deadline' => 'Today · 3:00 PM', 'date_key' => 'today', 'urgent' => false,
-                'status' => 'Ready for Pickup', 'canonical_status' => 'READY_FOR_PICKUP', 'status_key' => 'ready-pickup', 'tone' => 'pickup',
-                'responsibility' => 'Seller / Logistics', 'next_step' => 'Submit the labeled parcel for logistics approval and rider assignment.',
-                'action' => 'Arrange Pickup', 'action_url' => route('seller.fulfillment.pickups'),
-            ],
-            [
-                'id' => '#BR-1055', 'customer' => 'Sofia Mendoza', 'items' => '1 item',
-                'item_detail' => 'Canvas Tote Bag · Natural',
-                'payment' => 'Cash on Delivery', 'payment_key' => 'cod', 'total' => '₱899',
-                'deadline' => 'Today · 3:00 PM', 'date_key' => 'today', 'urgent' => false,
-                'status' => 'Ready for Pickup', 'canonical_status' => 'READY_FOR_PICKUP', 'status_key' => 'ready-pickup', 'tone' => 'pickup',
-                'responsibility' => 'Seller / Logistics', 'next_step' => 'Submit the labeled parcel for logistics approval and rider assignment.',
-                'action' => 'Arrange Pickup', 'action_url' => route('seller.fulfillment.pickups'),
-            ],
-            [
-                'id' => '#BR-1054', 'customer' => 'Jamie Lim', 'items' => '2 items',
-                'item_detail' => 'Everyday Sneakers + Canvas Tote Bag',
-                'payment' => 'GCash · Paid', 'payment_key' => 'paid', 'total' => '₱2,679',
-                'deadline' => 'Picked up today', 'date_key' => 'today', 'urgent' => false,
-                'status' => 'At Sorting Center', 'canonical_status' => 'AT_SORTING_CENTER', 'status_key' => 'shipped', 'tone' => 'transit',
-                'responsibility' => 'Logistics', 'next_step' => 'Sorting center scans and routes the parcel by destination.',
-                'action' => 'Track Shipment', 'action_url' => route('seller.fulfillment.tracking'),
-            ],
-            [
-                'id' => '#BR-1053', 'customer' => 'Miguel Garcia', 'items' => '1 item',
-                'item_detail' => 'Classic Linen Shirt · Cream / Large',
-                'payment' => 'GCash · Paid', 'payment_key' => 'paid', 'total' => '₱1,299',
-                'deadline' => 'In logistics network', 'date_key' => 'upcoming', 'urgent' => false,
-                'status' => 'Sorted', 'canonical_status' => 'SORTED', 'status_key' => 'shipped', 'tone' => 'transit',
-                'responsibility' => 'Logistics', 'next_step' => 'Logistics assigns the correct delivery rider for the destination area.',
-                'action' => 'Track Shipment', 'action_url' => route('seller.fulfillment.tracking'),
-            ],
-            [
-                'id' => '#BR-1052', 'customer' => 'Liam Reyes', 'items' => '1 item',
-                'item_detail' => 'Canvas Tote Bag · Natural',
-                'payment' => 'GCash · Paid', 'payment_key' => 'paid', 'total' => '₱899',
-                'deadline' => 'ETA today', 'date_key' => 'today', 'urgent' => false,
-                'status' => 'Out for Delivery', 'canonical_status' => 'OUT_FOR_DELIVERY', 'status_key' => 'shipped', 'tone' => 'transit',
-                'responsibility' => 'Courier', 'next_step' => 'Courier delivers the parcel to the buyer.',
-                'action' => 'Track Shipment', 'action_url' => route('seller.fulfillment.tracking'),
-            ],
-            [
-                'id' => '#BR-1051', 'customer' => 'Kim Chua', 'items' => '1 item',
-                'item_detail' => 'Everyday Sneakers · Black / Size 40',
-                'payment' => 'Maya · Paid', 'payment_key' => 'paid', 'total' => '₱1,780',
-                'deadline' => 'Delivered today', 'date_key' => 'today', 'urgent' => false,
-                'status' => 'Delivered', 'canonical_status' => 'DELIVERED', 'status_key' => 'shipped', 'tone' => 'transit',
-                'responsibility' => 'Buyer', 'next_step' => 'Wait for buyer confirmation. Earnings stay pending until the order becomes COMPLETED.',
-                'action' => 'View Delivery', 'action_url' => route('seller.fulfillment.tracking'),
-            ],
-            [
-                'id' => '#BR-1050', 'customer' => 'Paolo Ramos', 'items' => '1 item',
-                'item_detail' => 'Classic Linen Shirt · Olive / Medium',
-                'payment' => 'GCash · Paid', 'payment_key' => 'paid', 'total' => '₱1,299',
-                'deadline' => 'Completed Sep 10', 'date_key' => 'upcoming', 'urgent' => false,
-                'status' => 'Completed', 'canonical_status' => 'COMPLETED', 'status_key' => 'completed', 'tone' => 'completed',
-                'responsibility' => 'System', 'next_step' => '10% platform commission is finalized and seller net earnings become available.',
-                'action' => 'View Earnings', 'action_url' => route('seller.finance.transactions'),
-            ],
-            [
-                'id' => '#BR-1049', 'customer' => 'Daniel Tan', 'items' => '2 items',
-                'item_detail' => 'Canvas Tote Bag ×2',
-                'payment' => 'Cash on Delivery', 'payment_key' => 'cod', 'total' => '₱1,798',
-                'deadline' => 'Failed delivery yesterday', 'date_key' => 'upcoming', 'urgent' => true,
-                'status' => 'Delivery Failed', 'canonical_status' => 'DELIVERY_FAILED', 'status_key' => 'shipped', 'tone' => 'cancelled',
-                'responsibility' => 'Courier / Logistics', 'next_step' => 'Review the failure reason. Logistics may reschedule delivery or return the parcel.',
-                'action' => 'Review Exception', 'action_url' => route('seller.fulfillment.tracking'),
-            ],
-            [
-                'id' => '#BR-1048', 'customer' => 'Mae Villanueva', 'items' => '1 item',
-                'item_detail' => 'Classic Linen Shirt · Cream / Small',
-                'payment' => 'Cancelled', 'payment_key' => 'paid', 'total' => '₱1,299',
-                'deadline' => 'Cancelled Sep 8', 'date_key' => 'upcoming', 'urgent' => false,
-                'status' => 'Cancelled', 'canonical_status' => 'CANCELLED', 'status_key' => 'cancelled-returned', 'tone' => 'cancelled',
-                'responsibility' => 'System', 'next_step' => 'No platform commission and no seller earnings are recorded for a cancelled order.',
-                'action' => 'View Details', 'action_url' => null,
-            ],
-            [
-                'id' => '#BR-1047', 'customer' => 'Anne Cruz', 'items' => '1 item',
-                'item_detail' => 'Classic Linen Shirt · Olive / Medium',
-                'payment' => 'Refunded', 'payment_key' => 'paid', 'total' => '₱1,299',
-                'deadline' => 'Returned Sep 7', 'date_key' => 'upcoming', 'urgent' => false,
-                'status' => 'Returned / Refunded', 'canonical_status' => 'RETURNED', 'status_key' => 'cancelled-returned', 'tone' => 'cancelled',
-                'responsibility' => 'Platform / Logistics', 'next_step' => 'The refunded sale reverses both seller earnings and the related platform commission.',
-                'action' => 'View Return Case', 'action_url' => route('seller.orders.returns'),
-            ],
-        ];
+        $storeId = $request->user()->sellerProfile?->store?->id;
+        if (! $storeId) {
+            return [];
+        }
+
+        return SellerOrder::query()
+            ->where('store_id', $storeId)
+            ->with(['order.payments', 'items.product.images.variant', 'items.variant', 'statusHistory.actor'])
+            ->latest('created_at')
+            ->get()
+            ->map(function (SellerOrder $sellerOrder) use ($catalog): array {
+                $order = $sellerOrder->order;
+                $status = (string) $sellerOrder->status;
+                [$label, $canonical, $filter, $tone] = match ($status) {
+                    'pending', 'placed' => ['Placed', 'PLACED', 'new', 'new'],
+                    'accepted' => ['Confirmed', 'CONFIRMED', 'to-prepare', 'prepare'],
+                    'packing' => ['Preparing', 'PREPARING', 'to-prepare', 'prepare'],
+                    'ready_for_pickup' => ['Ready for Pickup', 'READY_FOR_PICKUP', 'ready-pickup', 'pickup'],
+                    'handed_to_logistics' => ['Handed to Logistics', 'PICKED_UP', 'shipped', 'transit'],
+                    'completed' => ['Completed', 'COMPLETED', 'completed', 'completed'],
+                    'cancelled' => ['Cancelled', 'CANCELLED', 'cancelled-returned', 'cancelled'],
+                    default => [Str::headline($status), strtoupper($status), 'all', 'new'],
+                };
+                $payment = $order?->payments?->first();
+                $paymentLabel = $payment?->method === 'cod'
+                    ? ($status === 'cancelled'
+                        ? 'Cash on Delivery · Seller Order cancelled'
+                        : match ($payment->status) {
+                            'cancelled' => 'Cash on Delivery · Cancelled',
+                            'paid' => 'Cash on Delivery · Collected',
+                            default => 'Cash on Delivery · Unpaid',
+                        })
+                    : Str::headline((string) ($payment?->method ?? 'Payment pending'));
+                $items = $sellerOrder->items;
+                $quantity = (int) $items->sum('quantity');
+                $itemDetail = $items->map(function ($item): string {
+                    $name = trim($item->product_name.' · '.$item->variant_name, ' ·');
+
+                    return $name.((int) $item->quantity > 1 ? ' × '.$item->quantity : '');
+                })->implode(' + ');
+                $itemRows = $items->map(function ($item) use ($catalog): array {
+                    $imagePath = trim((string) $item->product_image_path);
+                    $imageDisk = (string) ($item->product_image_disk ?: 'public');
+
+                    if ($imagePath === '' && $item->product && $item->variant) {
+                        $image = $catalog->orderImageRecord($item->product, $item->variant);
+                        $imagePath = trim((string) ($image?->path ?? ''));
+                        $imageDisk = (string) ($image?->disk ?: 'public');
+                    }
+
+                    return [
+                        'name' => $item->product_name,
+                        'variant' => $item->variant_name,
+                        'sku' => $item->sku,
+                        'quantity' => (int) $item->quantity,
+                        'unit_price_minor' => (int) $item->unit_price_minor,
+                        'unit_price' => number_format(((int) $item->unit_price_minor) / 100, 2, '.', ''),
+                        'subtotal_minor' => (int) $item->subtotal_minor,
+                        'image' => $this->sellerOrderImageUrl($imagePath, $imageDisk),
+                    ];
+                })->values();
+                $address = $order ? implode(', ', array_filter([
+                    $order->recipient_name,
+                    $order->address_line,
+                    $order->barangay,
+                    $order->city_municipality,
+                    $order->province,
+                    $order->postal_code,
+                ])) : '';
+                $createdAt = $sellerOrder->created_at;
+                $dateKey = $createdAt?->isToday() ? 'today' : 'upcoming';
+                $deadline = $createdAt
+                    ? ($createdAt->isToday() ? 'Today · '.$createdAt->format('g:i A') : $createdAt->format('M j, Y'))
+                    : '—';
+
+                return [
+                    'id' => '#'.$sellerOrder->seller_order_no,
+                    'customer' => (string) ($order?->recipient_name ?? 'Buyer'),
+                    'items' => $quantity.' '.($quantity === 1 ? 'item' : 'items'),
+                    'item_detail' => $itemDetail ?: 'Order items',
+                    'item_rows' => $itemRows->all(),
+                    'payment' => $paymentLabel,
+                    'payment_key' => $payment?->method === 'cod' ? 'cod' : 'paid',
+                    'total' => '₱'.number_format(((int) $sellerOrder->total_minor) / 100, 2),
+                    'deadline' => $deadline,
+                    'date_key' => $dateKey,
+                    'urgent' => false,
+                    'status' => $label,
+                    'canonical_status' => $canonical,
+                    'status_key' => $filter,
+                    'tone' => $tone,
+                    'responsibility' => $status === 'handed_to_logistics' ? 'Logistics' : ($status === 'completed' || $status === 'cancelled' ? 'System' : 'Seller'),
+                    'next_step' => match ($status) {
+                        'pending', 'placed' => 'Review the order details and confirm that your Store can fulfill it, or cancel with a reason.',
+                        'accepted' => 'Verify the items and quantities, then start preparing the order.',
+                        'packing' => 'Complete the packing checklist before marking the order ready for pickup.',
+                        'ready_for_pickup' => 'This order is ready. Waybill generation and logistics pickup are not connected here yet.',
+                        'handed_to_logistics' => 'The parcel has been handed to logistics.',
+                        'completed' => 'This Seller Order is complete.',
+                        'cancelled' => 'This Seller Order was cancelled.',
+                        default => 'Review the saved Seller Order status and history.',
+                    },
+                    'action' => match ($status) {
+                        'pending', 'placed' => 'Confirm Order',
+                        'accepted' => 'Start Preparing',
+                        'packing' => 'Mark Ready for Pickup',
+                        default => 'View Details',
+                    },
+                    'transition_action' => match ($status) {
+                        'pending', 'placed' => 'confirm',
+                        'accepted' => 'start_preparing',
+                        'packing' => 'mark_ready',
+                        default => null,
+                    },
+                    'transition_url' => route('seller.orders.status', ['sellerOrder' => $sellerOrder->id]),
+                    'status_history' => $sellerOrder->statusHistory->map(fn ($entry): array => [
+                        'status' => $entry->to_status,
+                        'actor' => $entry->actor?->name ?? 'Former user',
+                        'reason' => $entry->reason,
+                        'occurred_at' => $entry->occurred_at?->toIso8601String(),
+                    ])->all(),
+                    'action_url' => null,
+                    'order_date' => $createdAt?->format('M j, Y g:i A') ?? '',
+                    'address' => $address,
+                    'sku' => $items->count() === 1 ? (string) $items->first()->sku : '',
+                    'product_image' => (string) ($itemRows->first()['image'] ?? ''),
+                ];
+            })
+            ->all();
     }
 
-    public function dashboard(): View
+    private function sellerOrderImageUrl(string $path, string $disk): string
+    {
+        if ($path === '') {
+            return '';
+        }
+
+        return Str::startsWith($path, ['http://', 'https://', '/'])
+            ? $path
+            : Storage::disk($disk)->url($path);
+    }
+
+    public function dashboard(Request $request, BuyerCatalogService $catalog): View
     {
         $finance = $this->financeSnapshot();
-        $orders = collect($this->ordersData());
+        $orders = collect($this->persistedOrdersData($request, $catalog));
 
         $newOrders = $orders->where('status_key', 'new')->count();
         $toPrepare = $orders->where('status_key', 'to-prepare')->count();
         $readyPickup = $orders->where('status_key', 'ready-pickup')->count();
-        $waybillToPrint = 1;
+        $waybillToPrint = 0;
 
         return view('seller.Dashboard.dashboard', [
             'seller' => $this->seller(),
@@ -250,9 +272,9 @@ class SellerWorkflowController extends Controller
         ]);
     }
 
-    public function orders(Request $request): View
+    public function orders(Request $request, BuyerCatalogService $catalog): View
     {
-        $orders = $this->ordersData();
+        $orders = $this->persistedOrdersData($request, $catalog);
         $allowed = ['all', 'new', 'to-prepare', 'ready-pickup', 'shipped', 'completed', 'cancelled-returned'];
         $requestedStatus = (string) $request->query('status', 'all');
         $defaultStatus = in_array($requestedStatus, $allowed, true) ? $requestedStatus : 'all';
@@ -263,10 +285,10 @@ class SellerWorkflowController extends Controller
             'notifications' => $this->notifications(),
             'defaultOrderStatus' => $defaultStatus,
             'orderQueue' => [
-                ['label' => 'New orders', 'count' => $count('new'), 'note' => 'Confirm stock before accepting', 'icon' => 'clipboard-list', 'tone' => 'gold'],
+                ['label' => 'New orders', 'count' => $count('new'), 'note' => 'Awaiting Seller review', 'icon' => 'clipboard-list', 'tone' => 'gold'],
                 ['label' => 'To prepare', 'count' => $count('to-prepare'), 'note' => 'Confirmed and preparing', 'icon' => 'package', 'tone' => 'olive'],
-                ['label' => 'Waybill to print', 'count' => 1, 'note' => 'Print before marking ready', 'icon' => 'printer', 'tone' => 'blue'],
-                ['label' => 'Ready for pickup', 'count' => $count('ready-pickup'), 'note' => 'Submit to logistics', 'icon' => 'truck', 'tone' => 'brown'],
+                ['label' => 'Waybill to print', 'count' => 0, 'note' => 'Waybill workflow is not connected yet', 'icon' => 'printer', 'tone' => 'blue'],
+                ['label' => 'Ready for pickup', 'count' => $count('ready-pickup'), 'note' => 'Pickup scheduling is not connected yet', 'icon' => 'truck', 'tone' => 'brown'],
             ],
             'orderTabs' => [
                 ['key' => 'all', 'label' => 'All Orders', 'count' => count($orders)],
@@ -279,6 +301,54 @@ class SellerWorkflowController extends Controller
             ],
             'orders' => $orders,
         ]);
+    }
+
+    public function updateOrderStatus(
+        Request $request,
+        string $sellerOrder,
+        SellerOrderWorkflowService $workflow,
+    ): JsonResponse|RedirectResponse {
+        $validated = $request->validate([
+            'action' => ['required', 'string', Rule::in(['confirm', 'start_preparing', 'mark_ready', 'cancel'])],
+            'reason' => ['nullable', 'string', 'required_if:action,cancel', 'min:5', 'max:1000'],
+        ]);
+
+        $sellerOrder = $workflow->transition(
+            $request->user(),
+            (int) $sellerOrder,
+            $validated['action'],
+            $validated['reason'] ?? null,
+        );
+
+        $message = match ($validated['action']) {
+            'confirm' => 'Order confirmed. You can now prepare it.',
+            'start_preparing' => 'Order moved to preparation.',
+            'mark_ready' => 'Order marked ready for pickup.',
+            'cancel' => 'Seller Order cancelled and its reserved stock released.',
+        };
+        $statusFilter = match ($sellerOrder->status) {
+            'pending' => 'new',
+            'accepted', 'packing' => 'to-prepare',
+            'ready_for_pickup' => 'ready-pickup',
+            'cancelled' => 'cancelled-returned',
+            default => 'all',
+        };
+        $redirectTo = route('seller.orders', ['status' => $statusFilter]);
+
+        $request->session()->flash('success', $message);
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'data' => [
+                    'seller_order_no' => $sellerOrder->seller_order_no,
+                    'status' => $sellerOrder->status,
+                    'redirect_to' => $redirectTo,
+                ],
+                'message' => $message,
+            ]);
+        }
+
+        return redirect()->to($redirectTo);
     }
 
     public function waybills(): View

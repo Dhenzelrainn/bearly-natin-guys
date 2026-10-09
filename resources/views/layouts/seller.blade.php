@@ -173,6 +173,9 @@
 @if (session('success'))
     <div class="seller-toast is-visible" data-server-toast role="status">{{ session('success') }}</div>
 @endif
+@if ($errors->any())
+    <div class="seller-toast is-visible" data-server-error role="alert">{{ $errors->first() }}</div>
+@endif
 <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
 </body>
 </html>

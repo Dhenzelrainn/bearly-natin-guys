@@ -2,10 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Product;
+use App\Services\SellerIdentityService;
 use App\Services\SellerProductService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class SellerProductController extends Controller
@@ -13,9 +16,10 @@ class SellerProductController extends Controller
     private function seller(): array
     {
         return app(
-            \App\Services\SellerIdentityService::class
+            SellerIdentityService::class
         )->current();
     }
+
     private function notifications(): array
     {
         return [
@@ -36,77 +40,144 @@ class SellerProductController extends Controller
             'id' => '',
             'name' => '',
             'category' => '',
+            'subcategory_id' => null,
+            'subcategory' => '',
             'description' => '',
             'sku' => '',
             'price' => 0,
             'discount_percent' => 0,
             'voucher_eligible' => false,
             'stock' => 0,
+            'reserved_stock' => 0,
             'low_stock_threshold' => 5,
+            'package_weight_kg' => '',
+            'package_length_cm' => '',
+            'package_width_cm' => '',
+            'package_height_cm' => '',
             'option_one_name' => '',
             'option_one_values' => '',
             'option_two_name' => '',
             'option_two_values' => '',
             'variants' => [],
+            'payment_methods' => [],
+            'product_mode' => 'single',
             'status' => 'Draft',
             'previous_status' => 'Active',
             'image' => null,
+            'image_url' => null,
             'gallery_images' => [],
+            'gallery_image_urls' => [],
+            'media_preview' => [],
         ], $product);
     }
 
-    private function validateProduct(Request $request): array
-    {
+    private function validateProduct(
+        Request $request,
+        SellerProductService $products,
+        ?string $lockedProductMode = null,
+        ?Product $existingProduct = null,
+    ): array {
         $registeredCategory = $this->registeredCategory($request);
+        $storeId = $products->storeFor($request->user())->id;
+        $categoryId = $products->categoryFor($request->user())->id;
+        $productMode = $lockedProductMode ?? $request->input('product_mode');
 
-        return $request->validate([
+        if (! in_array($productMode, ['single', 'with_variants'], true)) {
+            $submittedVariants = collect($request->input('variants', []))
+                ->filter(fn ($variant): bool => is_array($variant)
+                    && is_scalar($variant['label'] ?? null)
+                    && trim((string) $variant['label']) !== '');
+            $hasVariantInputs = filled($request->input('option_one_values'))
+                || filled($request->input('option_two_values'))
+                || $submittedVariants->count() > 1
+                || $submittedVariants->contains(fn (array $variant): bool => strtolower(trim((string) ($variant['label'] ?? ''))) !== 'default');
+            $productMode = $hasVariantInputs ? 'with_variants' : 'single';
+        }
+
+        // Product type is chosen on creation and derived from persisted variants on edit.
+        $request->merge(['product_mode' => $productMode]);
+
+        if (! array_key_exists('payment_methods', $request->all())) {
+            $request->merge([
+                'payment_methods' => $request->boolean('payment_methods_present') ? [] : ['cod', 'online'],
+            ]);
+        }
+
+        $validated = $request->validate([
+            'product_mode' => ['required', Rule::in(['single', 'with_variants'])],
             'name' => ['required', 'string', 'max:120'],
             'category' => ['required', 'string', Rule::in([$registeredCategory])],
+            'subcategory_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('store_subcategories', 'id')
+                    ->where('store_id', $storeId)
+                    ->where('parent_category_id', $categoryId)
+                    ->where('is_active', true),
+            ],
+            'new_subcategory_name' => ['nullable', 'string', 'max:120'],
             'description' => ['nullable', 'string', 'max:1000'],
             'sku' => ['nullable', 'string', 'max:60'],
             'price' => ['required', 'numeric', 'min:0'],
-            'discount_percent' => ['nullable', 'integer', 'min:0', 'max:90'],
+            'package_weight_kg' => ['exclude_if:product_mode,with_variants', 'required_if:product_mode,single', 'numeric', 'gt:0', 'max:1000'],
+            'package_length_cm' => ['exclude_if:product_mode,with_variants', 'required_if:product_mode,single', 'numeric', 'gt:0', 'max:1000'],
+            'package_width_cm' => ['exclude_if:product_mode,with_variants', 'required_if:product_mode,single', 'numeric', 'gt:0', 'max:1000'],
+            'package_height_cm' => ['exclude_if:product_mode,with_variants', 'required_if:product_mode,single', 'numeric', 'gt:0', 'max:1000'],
             'voucher_eligible' => ['nullable', 'boolean'],
+            'payment_methods_present' => ['nullable', 'boolean'],
+            'payment_methods' => ['required', 'array', 'min:1', 'max:2'],
+            'payment_methods.*' => ['required', 'string', Rule::in(['cod', 'online']), 'distinct:strict'],
             'stock' => ['required', 'integer', 'min:0'],
-            'low_stock_threshold' => ['required', 'integer', 'min:0'],
-            'option_one_name' => ['nullable', 'string', 'max:40'],
-            'option_one_values' => ['nullable', 'string', 'max:250'],
-            'option_two_name' => ['nullable', 'string', 'max:40'],
-            'option_two_values' => ['nullable', 'string', 'max:250'],
-            'variants' => ['nullable', 'array', 'max:100'],
-            'variants.*.label' => ['required_with:variants', 'string', 'max:120'],
+            'low_stock_threshold' => [
+                ! $existingProduct && $productMode === 'single' ? 'required' : 'nullable',
+                'integer',
+                'min:0',
+                'max:4294967295',
+            ],
+            'option_one_name' => ['exclude_if:product_mode,single', 'nullable', 'string', 'max:40'],
+            'option_one_values' => ['exclude_if:product_mode,single', 'nullable', 'string', 'max:250'],
+            'option_two_name' => ['exclude_if:product_mode,single', 'nullable', 'string', 'max:40'],
+            'option_two_values' => ['exclude_if:product_mode,single', 'nullable', 'string', 'max:250'],
+            'variants' => ['exclude_if:product_mode,single', 'required_if:product_mode,with_variants', 'array', 'min:1', 'max:100'],
+            'variants.*.label' => ['required_with:variants', 'string', 'max:120', 'distinct:ignore_case'],
             'variants.*.sku' => ['nullable', 'string', 'max:80'],
             'variants.*.price' => ['nullable', 'numeric', 'min:0'],
             'variants.*.stock' => ['required_with:variants', 'integer', 'min:0'],
+            'variants.*.low_stock_threshold' => ['nullable', 'integer', 'min:0', 'max:4294967295'],
+            'variants.*.package_weight_kg' => ['required_with:variants', 'numeric', 'gt:0', 'max:1000'],
+            'variants.*.package_length_cm' => ['required_with:variants', 'numeric', 'gt:0', 'max:1000'],
+            'variants.*.package_width_cm' => ['required_with:variants', 'numeric', 'gt:0', 'max:1000'],
+            'variants.*.package_height_cm' => ['required_with:variants', 'numeric', 'gt:0', 'max:1000'],
             'image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
             'gallery_images' => ['nullable', 'array', 'max:4'],
             'gallery_images.*' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+            'variant_images' => ['exclude_if:product_mode,single', 'nullable', 'array', 'max:100'],
+            'variant_images.*' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+            'remove_product_images' => ['nullable', 'array', 'max:25'],
+            'remove_product_images.*' => [
+                'required',
+                'integer',
+                'distinct',
+                Rule::exists('product_images', 'id')
+                    ->where('product_id', $existingProduct?->id ?? 0),
+            ],
             'intent' => ['required', 'in:draft,publish'],
         ], [
             'category.in' => 'Products must match the seller’s approved business category.',
+            'subcategory_id.exists' => 'Choose a subcategory belonging to your store and approved category.',
         ]);
+
+        if (filled($validated['subcategory_id'] ?? null)
+            && filled(trim((string) ($validated['new_subcategory_name'] ?? '')))) {
+            throw ValidationException::withMessages([
+                'new_subcategory_name' => 'Choose an existing subcategory or create a new one, not both.',
+            ]);
+        }
+
+        return $validated;
     }
 
-    private function normalizedVariants(array $validated, float $basePrice): array
-    {
-        return collect($validated['variants'] ?? [])
-            ->filter(fn (array $variant) => trim((string) ($variant['label'] ?? '')) !== '')
-            ->values()
-            ->map(function (array $variant, int $index) use ($basePrice) {
-                return [
-                    'label' => trim((string) $variant['label']),
-                    'sku' => trim((string) ($variant['sku'] ?? '')),
-                    'price' => isset($variant['price']) && $variant['price'] !== ''
-                        ? (float) $variant['price']
-                        : $basePrice,
-                    'stock' => max(0, (int) ($variant['stock'] ?? 0)),
-                    'position' => $index + 1,
-                ];
-            })
-            ->all();
-    }
-
-    public function createProduct(Request $request): View
+    public function createProduct(Request $request, SellerProductService $products): View
     {
         $registeredCategory = $this->registeredCategory($request);
 
@@ -115,19 +186,27 @@ class SellerProductController extends Controller
             'notifications' => $this->notifications(),
             'categories' => [$registeredCategory],
             'registeredCategory' => $registeredCategory,
-            'product' => $this->normalizeProduct(['category' => $registeredCategory]),
+            'subcategories' => $products->subcategoriesFor($request->user()),
+            'product' => $this->normalizeProduct([
+                'category' => $registeredCategory,
+                'subcategory_id' => null,
+                'subcategory' => '',
+            ]),
             'mode' => 'create',
         ]);
     }
 
     public function addProduct(Request $request, SellerProductService $products): RedirectResponse
     {
-        $validated = $this->validateProduct($request);
+        $validated = $this->validateProduct($request, $products);
         $products->save(
             $request->user(),
             $validated,
             $request->file('image'),
             $request->file('gallery_images', []),
+            null,
+            $request->file('variant_images', []),
+            $validated['remove_product_images'] ?? [],
         );
 
         return redirect()->route('seller.products')->with(
@@ -149,6 +228,7 @@ class SellerProductController extends Controller
             'notifications' => $this->notifications(),
             'categories' => [$registeredCategory],
             'registeredCategory' => $registeredCategory,
+            'subcategories' => $products->subcategoriesFor($request->user()),
             'product' => $item,
             'mode' => 'edit',
         ]);
@@ -156,14 +236,16 @@ class SellerProductController extends Controller
 
     public function updateProduct(Request $request, string $product, SellerProductService $products): RedirectResponse
     {
-        $validated = $this->validateProduct($request);
         $existing = $products->findForSeller($request->user(), $product);
+        $validated = $this->validateProduct($request, $products, $products->productMode($existing), $existing);
         $products->save(
             $request->user(),
             $validated,
             $request->file('image'),
             $request->file('gallery_images', []),
             $existing,
+            $request->file('variant_images', []),
+            $validated['remove_product_images'] ?? [],
         );
 
         return redirect()->route('seller.products')->with(
@@ -176,8 +258,17 @@ class SellerProductController extends Controller
 
     public function toggleProductArchive(Request $request, string $product, SellerProductService $products): RedirectResponse
     {
-        $products->archive($request->user(), $product);
+        $filters = $request->validate([
+            'search' => ['nullable', 'string', 'max:120'],
+            'subcategory' => ['nullable', 'regex:/^(none|[1-9][0-9]*)$/'],
+            'status' => ['nullable', 'string', 'max:32'],
+        ]);
+        $filters = array_filter($filters, fn ($value): bool => $value !== null && $value !== '');
+        $updatedProduct = $products->archive($request->user(), $product);
+        $message = $updatedProduct->product_status === 'archived'
+            ? 'Product archived.'
+            : 'Product restored to its previous status.';
 
-        return redirect()->route('seller.products')->with('success', 'Product status updated.');
+        return redirect()->route('seller.products', $filters)->with('success', $message);
     }
 }

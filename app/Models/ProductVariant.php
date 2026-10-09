@@ -13,7 +13,14 @@ class ProductVariant extends Model
 
     protected function casts(): array
     {
-        return ['options' => 'array', 'is_active' => 'boolean'];
+        return [
+            'options' => 'array',
+            'is_active' => 'boolean',
+            'package_weight_kg' => 'decimal:3',
+            'package_length_cm' => 'decimal:2',
+            'package_width_cm' => 'decimal:2',
+            'package_height_cm' => 'decimal:2',
+        ];
     }
 
     public function product()

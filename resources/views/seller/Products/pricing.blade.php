@@ -6,13 +6,6 @@
 
 @section('content')
 @php
-    $pricingDemoImages = [
-        'Classic Linen Shirt' => asset('images/landing-page/products/cotton-tshirt.jpg'),
-        'Canvas Tote Bag' => asset('images/landing-page/products/canvas-tote.jpg'),
-        'Everyday Sneakers' => asset('images/landing-page/products/everyday-sneakers.jpg'),
-        'Minimalist Crossbody Bag' => asset('images/landing-page/products/canvas-tote.jpg'),
-    ];
-
     $summaryItems = collect($summary ?? []);
     $activePromotions = $summaryItems->firstWhere('label', 'Active Promotions')['value'] ?? count($campaigns ?? []);
     $discountedProducts = $summaryItems->firstWhere('label', 'Discounted Products')['value'] ?? collect($products ?? [])->where('discount_percent', '>', 0)->count();
@@ -28,11 +21,11 @@
                 <span>Active promotions</span>
             </div>
             <div class="pricing-summary-metric">
-                <strong>{{ $discountedProducts }}</strong>
+                <strong data-pricing-summary="discounted">{{ $discountedProducts }}</strong>
                 <span>Discounted products</span>
             </div>
             <div class="pricing-summary-metric">
-                <strong>{{ $voucherEligible }}</strong>
+                <strong data-pricing-summary="voucher-eligible">{{ $voucherEligible }}</strong>
                 <span>Voucher eligible</span>
             </div>
         </div>
@@ -47,7 +40,7 @@
         <section class="pricing-ending-notice" aria-label="Promotion ending soon">
             <div class="pricing-ending-copy">
                 <i data-lucide="clock-3" aria-hidden="true"></i>
-                <strong>{{ $endingSoon }} {{ $endingSoon === 1 ? 'promotion ends' : 'promotions end' }} within 48 hours</strong>
+                <strong>{{ $endingSoon }} {{ $endingSoon === 1 ? 'promotion ends' : 'promotions end' }} within 2 days</strong>
             </div>
             <a href="{{ route('seller.products.pricing', ['tab' => 'campaigns']) }}">
                 <span>Review promotion</span>
@@ -104,22 +97,19 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach ($products as $product)
+                        @forelse ($products as $product)
                             @php
                                 $salePrice = $product['price'] * (1 - ($product['discount_percent'] / 100));
                                 $pricingState = $product['discount_percent'] > 0 ? 'discounted' : 'regular';
-                                $demoImage = $pricingDemoImages[$product['name']] ?? null;
                                 $isVoucherEligible = (bool) $product['voucher_eligible'];
                                 $statusKey = strtolower($product['status'] ?? 'Draft');
                             @endphp
-                            <tr data-pricing-row data-state="{{ $pricingState }}" data-search="{{ strtolower($product['name'].' '.$product['sku']) }}">
+                            <tr data-pricing-row data-product-id="{{ $product['id'] }}" data-state="{{ $pricingState }}" data-search="{{ strtolower($product['name'].' '.$product['sku']) }}">
                                 <td>
                                     <div class="pricing-product-cell">
                                         <span class="pricing-product-image">
-                                            @if ($product['image'])
-                                                <img src="{{ asset('storage/'.$product['image']) }}" alt="{{ $product['name'] }}">
-                                            @elseif ($demoImage)
-                                                <img src="{{ $demoImage }}" alt="{{ $product['name'] }}">
+                                            @if ($product['image_url'])
+                                                <img src="{{ $product['image_url'] }}" alt="{{ $product['name'] }}" loading="lazy">
                                             @else
                                                 <i data-lucide="package" aria-hidden="true"></i>
                                             @endif
@@ -130,14 +120,12 @@
                                         </span>
                                     </div>
                                 </td>
-                                <td><span class="pricing-money">₱{{ number_format($product['price'], 2) }}</span></td>
-                                <td><strong class="pricing-sale-value">₱{{ number_format($salePrice, 2) }}</strong></td>
+                                <td><span class="pricing-money" data-price-regular-display>₱{{ number_format($product['price'], 2) }}</span></td>
+                                <td><strong class="pricing-sale-value" data-price-sale-display>₱{{ number_format($salePrice, 2) }}</strong></td>
                                 <td>
-                                    @if ($product['discount_percent'] > 0)
-                                        <span class="pricing-discount-text">{{ $product['discount_percent'] }}% off</span>
-                                    @else
-                                        <span class="pricing-muted">—</span>
-                                    @endif
+                                    <span class="{{ $product['discount_percent'] > 0 ? 'pricing-discount-text' : 'pricing-muted' }}" data-price-discount-display>
+                                        {{ $product['discount_percent'] > 0 ? $product['discount_percent'].'% off' : '—' }}
+                                    </span>
                                 </td>
                                 <td>
                                     <span class="pricing-voucher-state {{ $isVoucherEligible ? 'is-eligible' : 'is-ineligible' }}">
@@ -152,13 +140,41 @@
                                     </span>
                                 </td>
                                 <td>
-                                    <button class="pricing-row-action" type="button" data-pricing-open="price" data-product='@json($product)'>
-                                        <i data-lucide="pencil" aria-hidden="true"></i>
-                                        <span>Edit price</span>
-                                    </button>
+                                    @if ($product['status'] === 'Archived')
+                                        <button
+                                            class="pricing-row-action"
+                                            type="button"
+                                            disabled
+                                            title="Restore this product before changing its price or discount."
+                                            aria-label="Archived product. Restore to edit its price or discount."
+                                        >
+                                            <i data-lucide="archive" aria-hidden="true"></i>
+                                            <span>Restore to edit</span>
+                                        </button>
+                                    @else
+                                        <button
+                                            class="pricing-row-action"
+                                            type="button"
+                                            data-pricing-open="price"
+                                            data-pricing-url="{{ route('seller.products.pricing.update', ['product' => $product['id']]) }}"
+                                            data-product='@json($product)'
+                                            {{ empty($product['variants']) ? 'disabled' : '' }}
+                                            @if (empty($product['variants'])) title="No active SKUs to reprice" @endif
+                                        >
+                                            <i data-lucide="pencil" aria-hidden="true"></i>
+                                            <span>Edit price</span>
+                                        </button>
+                                    @endif
                                 </td>
                             </tr>
-                        @endforeach
+                        @empty
+                <tr class="pricing-empty-row">
+                    <td class="pricing-empty-cell" colspan="7">
+                        <strong>No products to price yet</strong>
+                        <span>Add a product with an active SKU to manage its price and discount.</span>
+                    </td>
+                </tr>
+                        @endforelse
                     </tbody>
                 </table>
 
@@ -182,7 +198,7 @@
             <div class="promotion-panel-heading">
                 <div>
                     <h3>Promotion campaigns</h3>
-                    <p>Track active, scheduled, and ended promotions without leaving the pricing workspace.</p>
+                    <p>Saved campaign schedules are for Seller Center tracking only; Buyer pricing and voucher redemption are not connected yet.</p>
                 </div>
                 <a class="promotion-row-action" href="{{ route('seller.products.pricing.create') }}">
                     <i data-lucide="plus" aria-hidden="true"></i>
@@ -196,34 +212,32 @@
                         <tr>
                             <th>Promotion</th>
                             <th>Type</th>
+                            <th>Offer</th>
                             <th>Schedule</th>
                             <th>Products</th>
-                            <th>Attributed sales</th>
                             <th>Status</th>
-                            <th>Action</th>
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach ($campaigns as $campaign)
+                        @forelse ($campaigns as $campaign)
                             <tr>
                                 <td>
                                     <span class="campaign-name">
                                         <strong>{{ $campaign['name'] }}</strong>
-                                        <small>{{ $campaign['status'] === 'Active' ? 'Currently visible to eligible buyers' : 'Campaign period finished' }}</small>
+                                        <small>{{ $campaign['terms'] }}</small>
                                     </span>
                                 </td>
                                 <td>{{ $campaign['type'] }}</td>
+                                <td><strong>{{ $campaign['offer'] }}</strong></td>
                                 <td>{{ $campaign['period'] }}</td>
-                                <td>{{ $campaign['products'] }}</td>
-                                <td><strong>{{ $campaign['sales'] }}</strong></td>
+                                <td>{{ $campaign['product_count'] }} {{ $campaign['product_count'] === 1 ? 'product' : 'products' }}</td>
                                 <td><span class="campaign-status is-{{ $campaign['status_key'] }}">{{ $campaign['status'] }}</span></td>
-                                <td>
-                                    <button class="promotion-row-action" type="button" data-pricing-demo="{{ $campaign['status'] === 'Active' ? 'Campaign manager' : 'Campaign report' }} opened for {{ $campaign['name'] }}.">
-                                        {{ $campaign['status'] === 'Active' ? 'Manage' : 'View report' }}
-                                    </button>
-                                </td>
                             </tr>
-                        @endforeach
+                        @empty
+                            <tr>
+                                <td colspan="6" class="promotion-empty-state">No saved promotion campaigns yet.</td>
+                            </tr>
+                        @endforelse
                     </tbody>
                 </table>
             </div>
@@ -248,16 +262,13 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach ($products as $product)
-                            @php($demoImage = $pricingDemoImages[$product['name']] ?? null)
-                            <tr>
+                        @forelse ($products as $product)
+                            <tr data-voucher-row data-product-id="{{ $product['id'] }}">
                                 <td>
                                     <div class="pricing-product-cell">
                                         <span class="pricing-product-image">
-                                            @if ($product['image'])
-                                                <img src="{{ asset('storage/'.$product['image']) }}" alt="{{ $product['name'] }}">
-                                            @elseif ($demoImage)
-                                                <img src="{{ $demoImage }}" alt="{{ $product['name'] }}">
+                                            @if ($product['image_url'])
+                                                <img src="{{ $product['image_url'] }}" alt="{{ $product['name'] }}" loading="lazy">
                                             @else
                                                 <i data-lucide="package" aria-hidden="true"></i>
                                             @endif
@@ -268,17 +279,27 @@
                                         </span>
                                     </div>
                                 </td>
-                                <td>₱{{ number_format($product['price'], 2) }}</td>
+                                <td data-voucher-regular-display>₱{{ number_format($product['price'], 2) }}</td>
                                 <td>{{ $product['status'] }}</td>
                                 <td>
                                     <label class="pricing-switch">
-                                        <input type="checkbox" {{ $product['voucher_eligible'] ? 'checked' : '' }} {{ $product['status'] === 'Archived' ? 'disabled' : '' }} data-voucher-toggle>
+                                        <input
+                                            type="checkbox"
+                                            {{ $product['voucher_eligible'] ? 'checked' : '' }}
+                                            {{ $product['status'] === 'Archived' ? 'disabled' : '' }}
+                                            data-voucher-toggle
+                                            data-voucher-url="{{ route('seller.products.pricing.voucher', ['product' => $product['id']]) }}"
+                                        >
                                         <i aria-hidden="true"></i>
                                         <span>{{ $product['voucher_eligible'] ? 'Eligible' : 'Not eligible' }}</span>
                                     </label>
                                 </td>
                             </tr>
-                        @endforeach
+                        @empty
+                            <tr>
+                                <td colspan="4" class="promotion-empty-state">Add a product with an active SKU to manage voucher eligibility.</td>
+                            </tr>
+                        @endforelse
                     </tbody>
                 </table>
             </div>
@@ -302,17 +323,20 @@
                 <span>Regular price</span>
                 <div class="pricing-input-shell">
                     <span class="pricing-input-affix is-prefix" aria-hidden="true">₱</span>
-                    <input type="number" min="0" step="0.01" inputmode="decimal" aria-label="Regular price" data-price-regular>
+                    <input type="number" min="0" max="9999999999.99" step="0.01" inputmode="decimal" aria-label="Regular price" required data-price-regular>
                 </div>
             </label>
             <label>
                 <span>Discount</span>
                 <div class="pricing-input-shell">
-                    <input type="number" min="0" max="90" step="1" inputmode="numeric" aria-label="Discount percentage" data-price-discount>
+                    <input type="number" min="0" max="90" step="1" inputmode="numeric" placeholder="0" aria-label="Discount percentage" data-price-discount>
                     <span class="pricing-input-affix is-suffix" aria-hidden="true">%</span>
                 </div>
+                <small>Leave blank for no discount (0%).</small>
             </label>
         </div>
+
+        <p class="pricing-form-note">This change applies to all <strong data-price-variant-count>0</strong> active SKU variants of this product.</p>
 
         <div class="pricing-calculation">
             <div><span>Buyer pays</span><strong data-price-sale>₱0.00</strong></div>

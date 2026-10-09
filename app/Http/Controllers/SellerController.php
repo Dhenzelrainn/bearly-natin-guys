@@ -2,24 +2,35 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Address;
 use App\Models\AccountApplication;
+use App\Models\Address;
+use App\Models\StorePromotion;
 use App\Models\StorePromotionalBanner;
+use App\Services\InternationalPhone;
+use App\Services\SellerIdentityService;
+use App\Services\SellerInventoryService;
+use App\Services\SellerPricingService;
 use App\Services\SellerProductService;
+use App\Services\SellerPromotionService;
+use App\Services\StoreAppearanceService;
+use App\Services\StorePublicationService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\View\View;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
+use Illuminate\View\View;
 
 class SellerController extends Controller
 {
     private function seller(): array
     {
         return app(
-            \App\Services\SellerIdentityService::class
+            SellerIdentityService::class
         )->current();
     }
+
     private function notifications(): array
     {
         return [
@@ -185,7 +196,7 @@ class SellerController extends Controller
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
             'conversations' => [
-                ['id' => 1, 'buyer' => 'Maria Santos', 'initials' => 'MS', 'time' => '10:24 AM', 'last' => "Large please, if it’s still available.", 'context' => 'Order #BR-1058', 'order' => '#BR-1058', 'product' => 'Classic Linen Shirt', 'variant' => 'Medium', 'price' => '₱1,299', 'status' => 'To Prepare', 'unread' => 1, 'type' => 'order', 'active' => 'Active 8 min ago', 'member' => 'October 12, 2023', 'previous' => 6, 'messages' => [['from' => 'buyer', 'text' => 'Hi, can I change the size from Medium to Large?', 'time' => '10:18 AM'], ['from' => 'seller', 'text' => 'Hi Maria! Yes, we can change the size to Large for you. Would you like me to proceed?', 'time' => '10:20 AM'], ['from' => 'buyer', 'text' => "Large please, if it’s still available.", 'time' => '10:24 AM']]],
+                ['id' => 1, 'buyer' => 'Maria Santos', 'initials' => 'MS', 'time' => '10:24 AM', 'last' => 'Large please, if it’s still available.', 'context' => 'Order #BR-1058', 'order' => '#BR-1058', 'product' => 'Classic Linen Shirt', 'variant' => 'Medium', 'price' => '₱1,299', 'status' => 'To Prepare', 'unread' => 1, 'type' => 'order', 'active' => 'Active 8 min ago', 'member' => 'October 12, 2023', 'previous' => 6, 'messages' => [['from' => 'buyer', 'text' => 'Hi, can I change the size from Medium to Large?', 'time' => '10:18 AM'], ['from' => 'seller', 'text' => 'Hi Maria! Yes, we can change the size to Large for you. Would you like me to proceed?', 'time' => '10:20 AM'], ['from' => 'buyer', 'text' => 'Large please, if it’s still available.', 'time' => '10:24 AM']]],
                 ['id' => 2, 'buyer' => 'Juan Dela Cruz', 'initials' => 'JD', 'time' => '9:58 AM', 'last' => 'When will my order be shipped?', 'context' => 'Order #BR-1055', 'order' => '#BR-1055', 'product' => 'Canvas Tote Bag', 'variant' => 'Natural', 'price' => '₱899', 'status' => 'To Prepare', 'unread' => 2, 'type' => 'order', 'active' => 'Active 20 min ago', 'member' => 'January 8, 2025', 'previous' => 2, 'messages' => [['from' => 'buyer', 'text' => 'Hello, when will my order be shipped?', 'time' => '9:58 AM']]],
                 ['id' => 3, 'buyer' => 'Angela Cruz', 'initials' => 'AC', 'time' => 'Yesterday', 'last' => 'Do you have this in black?', 'context' => 'Classic Linen Shirt', 'order' => 'No active order', 'product' => 'Classic Linen Shirt', 'variant' => 'Product inquiry', 'price' => '₱1,299', 'status' => 'Product Inquiry', 'unread' => 1, 'type' => 'product', 'active' => 'Active yesterday', 'member' => 'March 14, 2026', 'previous' => 1, 'messages' => [['from' => 'buyer', 'text' => 'Hi! Do you have the Classic Linen Shirt in black?', 'time' => 'Yesterday · 4:18 PM']]],
                 ['id' => 4, 'buyer' => 'Liam Reyes', 'initials' => 'LR', 'time' => 'Yesterday', 'last' => 'Thank you, I’ll wait for it.', 'context' => 'Order #BR-1049', 'order' => '#BR-1049', 'product' => 'Everyday Sneakers', 'variant' => 'White / Size 40', 'price' => '₱1,499', 'status' => 'In Transit', 'unread' => 0, 'type' => 'order', 'active' => 'Active yesterday', 'member' => 'June 2, 2024', 'previous' => 4, 'messages' => [['from' => 'buyer', 'text' => 'Can you check the latest delivery update?', 'time' => 'Yesterday · 1:05 PM'], ['from' => 'seller', 'text' => 'Your parcel is already in transit. You can also track it from your order page.', 'time' => 'Yesterday · 1:12 PM'], ['from' => 'buyer', 'text' => 'Thank you, I’ll wait for it.', 'time' => 'Yesterday · 1:14 PM']]],
@@ -348,52 +359,104 @@ class SellerController extends Controller
     private function workspacePages(): array
     {
         return [
-            'fulfillment-waybills' => ['title' => 'Waybills', 'subtitle' => 'Generate and print shipping labels for packed orders.', 'kpis' => [['Ready to print','3'],['Printed today','12'],['Reprint needed','1'],['Pickup cutoff','2:30 PM']], 'columns' => ['Order','Courier','Packages','Destination','Label Status','Pickup','Status'], 'rows' => [['#BR-1057','Bearly Logistics','1','Santa Rosa, Laguna','Ready to print','Today · 3:00 PM','Pending'], ['#BR-1056','Bearly Logistics','2','Calamba, Laguna','Printed','Today · 3:00 PM','Ready']], 'action' => 'Print Waybill'],
-            'fulfillment-pickups' => ['title' => 'Pickup Requests', 'subtitle' => 'Submit labeled and packed parcels for logistics approval and pickup assignment.', 'kpis' => [['Ready to request','2'],['Approved today','5'],['Awaiting approval','1'],['Next approved pickup','3:00 PM']], 'columns' => ['Request','Orders','Packages','Logistics Provider','Preferred Time','Pickup Location','Status'], 'rows' => [['PU-0901-01','3 orders','4','Bearly Logistics','Today · 3:00 PM','Juan’s Clothing Shop','Approved'], ['Draft request','2 orders','2','Bearly Logistics','Choose preferred time','Store address','Draft']], 'action' => 'View Request'],
-            'fulfillment-tracking' => ['title' => 'Shipment Tracking', 'subtitle' => 'Monitor parcels after rider handover through sorting and final delivery.', 'kpis' => [['At sorting center','3'],['Assigned to rider','2'],['Out for delivery','2'],['Delivered today','9']], 'columns' => ['Tracking No.','Order','Logistics Provider','Destination','Latest Update','Updated','Status'], 'rows' => [['BRLY-784201','#BR-1054','Bearly Logistics','Biñan, Laguna','Parcel received at sorting center','Today · 8:40 AM','At Sorting Center'], ['BRLY-784188','#BR-1052','Bearly Logistics','Cabuyao, Laguna','Assigned to delivery rider','Today · 9:15 AM','Assigned to Rider'], ['BRLY-784176','#BR-1051','Bearly Logistics','Calamba, Laguna','Rider is delivering the parcel','Today · 10:05 AM','Out for Delivery']], 'action' => 'Track'],
-            'products-pricing' => ['title' => 'Pricing & Promotions', 'subtitle' => 'Manage product prices, discounts, and voucher eligibility.', 'kpis' => [['Active products','24'],['Discounted','6'],['Voucher eligible','12'],['Ending soon','2']], 'columns' => ['Product','SKU','Regular Price','Sale Price','Discount','Voucher','Status'], 'rows' => [['Classic Linen Shirt','CLS-LINEN-SHIRT','₱1,299','₱1,169','10%','Eligible','Active'], ['Canvas Tote Bag','CNV-TOTE-BAG','₱899','₱899','—','Not eligible','Regular']], 'action' => 'Edit Pricing'],
-            'settings-account' => ['title' => 'Account', 'subtitle' => 'Manage the seller contact information used for account communication.', 'kpis' => [['Account status','Active'],['Email','Verified'],['Phone','Verified'],['Role','Seller']], 'columns' => ['Field','Current Value','Visibility','Verification','Last Updated','Managed By','Status'], 'rows' => [['Full name','Bea Rivera','Private','Verified','Registration','Seller','Locked'], ['Email','bea@juansclothing.test','Private','Verified','Aug 31, 2026','Seller','Active']], 'action' => 'Edit'],
-            'settings-security' => ['title' => 'Security', 'subtitle' => 'Protect account access and review recent sign-in activity.', 'kpis' => [['Password','Set'],['Two-step verification','Off'],['Active sessions','1'],['Security alerts','0']], 'columns' => ['Security Item','Current State','Recommendation','Last Updated','Device','Location','Status'], 'rows' => [['Password','Set','Change regularly','Aug 20, 2026','—','—','Protected'], ['Current session','Active','Recognized device','Now','Windows · Edge','Laguna','Active']], 'action' => 'Manage'],
-            'settings-notifications' => ['title' => 'Notifications', 'subtitle' => 'Choose which seller events are shown in-app or sent by email.', 'kpis' => [['Order alerts','On'],['Stock alerts','On'],['Pickup alerts','On'],['Marketing','Off']], 'columns' => ['Notification','In-app','Email','Trigger','Priority','Last Sent','Status'], 'rows' => [['New order','Enabled','Enabled','Order placed','High','5 min ago','Active'], ['Low stock','Enabled','Enabled','Below threshold','Medium','42 min ago','Active']], 'action' => 'Configure'],
+            'fulfillment-waybills' => ['title' => 'Waybills', 'subtitle' => 'Generate and print shipping labels for packed orders.', 'kpis' => [['Ready to print', '3'], ['Printed today', '12'], ['Reprint needed', '1'], ['Pickup cutoff', '2:30 PM']], 'columns' => ['Order', 'Courier', 'Packages', 'Destination', 'Label Status', 'Pickup', 'Status'], 'rows' => [['#BR-1057', 'Bearly Logistics', '1', 'Santa Rosa, Laguna', 'Ready to print', 'Today · 3:00 PM', 'Pending'], ['#BR-1056', 'Bearly Logistics', '2', 'Calamba, Laguna', 'Printed', 'Today · 3:00 PM', 'Ready']], 'action' => 'Print Waybill'],
+            'fulfillment-pickups' => ['title' => 'Pickup Requests', 'subtitle' => 'Submit labeled and packed parcels for logistics approval and pickup assignment.', 'kpis' => [['Ready to request', '2'], ['Approved today', '5'], ['Awaiting approval', '1'], ['Next approved pickup', '3:00 PM']], 'columns' => ['Request', 'Orders', 'Packages', 'Logistics Provider', 'Preferred Time', 'Pickup Location', 'Status'], 'rows' => [['PU-0901-01', '3 orders', '4', 'Bearly Logistics', 'Today · 3:00 PM', 'Juan’s Clothing Shop', 'Approved'], ['Draft request', '2 orders', '2', 'Bearly Logistics', 'Choose preferred time', 'Store address', 'Draft']], 'action' => 'View Request'],
+            'fulfillment-tracking' => ['title' => 'Shipment Tracking', 'subtitle' => 'Monitor parcels after rider handover through sorting and final delivery.', 'kpis' => [['At sorting center', '3'], ['Assigned to rider', '2'], ['Out for delivery', '2'], ['Delivered today', '9']], 'columns' => ['Tracking No.', 'Order', 'Logistics Provider', 'Destination', 'Latest Update', 'Updated', 'Status'], 'rows' => [['BRLY-784201', '#BR-1054', 'Bearly Logistics', 'Biñan, Laguna', 'Parcel received at sorting center', 'Today · 8:40 AM', 'At Sorting Center'], ['BRLY-784188', '#BR-1052', 'Bearly Logistics', 'Cabuyao, Laguna', 'Assigned to delivery rider', 'Today · 9:15 AM', 'Assigned to Rider'], ['BRLY-784176', '#BR-1051', 'Bearly Logistics', 'Calamba, Laguna', 'Rider is delivering the parcel', 'Today · 10:05 AM', 'Out for Delivery']], 'action' => 'Track'],
+            'products-pricing' => ['title' => 'Pricing & Promotions', 'subtitle' => 'Manage product prices, discounts, and voucher eligibility.', 'kpis' => [['Active products', '24'], ['Discounted', '6'], ['Voucher eligible', '12'], ['Ending soon', '2']], 'columns' => ['Product', 'SKU', 'Regular Price', 'Sale Price', 'Discount', 'Voucher', 'Status'], 'rows' => [['Classic Linen Shirt', 'CLS-LINEN-SHIRT', '₱1,299', '₱1,169', '10%', 'Eligible', 'Active'], ['Canvas Tote Bag', 'CNV-TOTE-BAG', '₱899', '₱899', '—', 'Not eligible', 'Regular']], 'action' => 'Edit Pricing'],
+            'settings-account' => ['title' => 'Account', 'subtitle' => 'Manage the seller contact information used for account communication.', 'kpis' => [['Account status', 'Active'], ['Email', 'Verified'], ['Phone', 'Verified'], ['Role', 'Seller']], 'columns' => ['Field', 'Current Value', 'Visibility', 'Verification', 'Last Updated', 'Managed By', 'Status'], 'rows' => [['Full name', 'Bea Rivera', 'Private', 'Verified', 'Registration', 'Seller', 'Locked'], ['Email', 'bea@juansclothing.test', 'Private', 'Verified', 'Aug 31, 2026', 'Seller', 'Active']], 'action' => 'Edit'],
+            'settings-security' => ['title' => 'Security', 'subtitle' => 'Protect account access and review recent sign-in activity.', 'kpis' => [['Password', 'Set'], ['Two-step verification', 'Off'], ['Active sessions', '1'], ['Security alerts', '0']], 'columns' => ['Security Item', 'Current State', 'Recommendation', 'Last Updated', 'Device', 'Location', 'Status'], 'rows' => [['Password', 'Set', 'Change regularly', 'Aug 20, 2026', '—', '—', 'Protected'], ['Current session', 'Active', 'Recognized device', 'Now', 'Windows · Edge', 'Laguna', 'Active']], 'action' => 'Manage'],
+            'settings-notifications' => ['title' => 'Notifications', 'subtitle' => 'Choose which seller events are shown in-app or sent by email.', 'kpis' => [['Order alerts', 'On'], ['Stock alerts', 'On'], ['Pickup alerts', 'On'], ['Marketing', 'Off']], 'columns' => ['Notification', 'In-app', 'Email', 'Trigger', 'Priority', 'Last Sent', 'Status'], 'rows' => [['New order', 'Enabled', 'Enabled', 'Order placed', 'High', '5 min ago', 'Active'], ['Low stock', 'Enabled', 'Enabled', 'Below threshold', 'Medium', '42 min ago', 'Active']], 'action' => 'Configure'],
         ];
     }
 
-    public function inventory(): View
+    public function inventory(Request $request, SellerInventoryService $inventory): View
     {
-        return view('seller.Products.inventory', [
+        return view('seller.Products.inventory', array_merge([
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
-            'inventoryTotal' => 48,
-            'inventorySummary' => [
-                ['label' => 'Total SKUs', 'value' => '48', 'note' => '24 active products', 'icon' => 'box', 'tone' => 'neutral'],
-                ['label' => 'Available Units', 'value' => '1,246', 'note' => 'Across all variations', 'icon' => 'package-check', 'tone' => 'success'],
-                ['label' => 'Low Stock', 'value' => '5', 'note' => 'Below threshold', 'icon' => 'triangle-alert', 'tone' => 'warning'],
-                ['label' => 'Out of Stock', 'value' => '2', 'note' => 'Needs restocking', 'icon' => 'circle-x', 'tone' => 'danger'],
-            ],
-            'inventoryAttention' => ['total' => 7, 'low' => 5, 'out' => 2],
-            'inventoryTabs' => [
-                ['key' => 'all', 'label' => 'All Inventory', 'count' => 48],
-                ['key' => 'low-stock', 'label' => 'Low Stock', 'count' => 5],
-                ['key' => 'out-of-stock', 'label' => 'Out of Stock', 'count' => 2],
-                ['key' => 'archived', 'label' => 'Archived', 'count' => null],
-            ],
-            'inventoryCategories' => ['Fashion and Apparel'],
-            'inventoryItems' => [
-                ['id' => 'inv-1', 'parent' => 'classic-linen-shirt', 'variation_row' => false, 'product' => 'Classic Linen Shirt', 'sku' => 'CLS-OLV-M', 'variation' => 'Olive / Medium', 'category' => 'Fashion and Apparel', 'icon' => 'shirt', 'on_hand' => 12, 'reserved' => 3, 'available' => 9, 'threshold' => 5, 'status' => 'In Stock', 'status_key' => 'in-stock'],
-                ['id' => 'inv-2', 'parent' => 'classic-linen-shirt', 'variation_row' => true, 'product' => 'Classic Linen Shirt', 'sku' => 'CLS-CRM-L', 'variation' => 'Cream / Large', 'category' => 'Fashion and Apparel', 'icon' => 'shirt', 'on_hand' => 6, 'reserved' => 2, 'available' => 4, 'threshold' => 5, 'status' => 'Low Stock', 'status_key' => 'low-stock'],
-                ['id' => 'inv-3', 'parent' => 'canvas-tote-bag', 'variation_row' => false, 'product' => 'Canvas Tote Bag', 'sku' => 'CTB-NAT-OS', 'variation' => 'Natural / One Size', 'category' => 'Fashion and Apparel', 'icon' => 'shopping-bag', 'on_hand' => 7, 'reserved' => 5, 'available' => 2, 'threshold' => 4, 'status' => 'Low Stock', 'status_key' => 'low-stock'],
-                ['id' => 'inv-4', 'parent' => 'everyday-sneakers', 'variation_row' => false, 'product' => 'Everyday Sneakers', 'sku' => 'ES-WHT-38', 'variation' => 'White / Size 38', 'category' => 'Fashion and Apparel', 'icon' => 'footprints', 'on_hand' => 0, 'reserved' => 0, 'available' => 0, 'threshold' => 3, 'status' => 'Out of Stock', 'status_key' => 'out-of-stock'],
-                ['id' => 'inv-5', 'parent' => 'everyday-sneakers', 'variation_row' => true, 'product' => 'Everyday Sneakers', 'sku' => 'ES-BLK-40', 'variation' => 'Black / Size 40', 'category' => 'Fashion and Apparel', 'icon' => 'footprints', 'on_hand' => 18, 'reserved' => 4, 'available' => 14, 'threshold' => 3, 'status' => 'In Stock', 'status_key' => 'in-stock'],
-            ],
-            'stockMovements' => [
-                ['date' => 'Aug 31, 2026 · 10:30 AM', 'type' => 'Order Deduction', 'tone' => 'order', 'product' => 'Classic Linen Shirt', 'sku' => 'CLS-OLV-M', 'variation' => 'Olive / Medium', 'reference' => 'Order #BR-1058', 'quantity' => '−2', 'direction' => 'negative', 'balance' => 12, 'actor' => 'System'],
-                ['date' => 'Aug 31, 2026 · 9:15 AM', 'type' => 'Reservation', 'tone' => 'reservation', 'product' => 'Canvas Tote Bag', 'sku' => 'CTB-NAT-OS', 'variation' => 'Natural / One Size', 'reference' => 'Order #BR-1057', 'quantity' => '−1', 'direction' => 'negative', 'balance' => 7, 'actor' => 'System'],
-                ['date' => 'Aug 30, 2026 · 4:42 PM', 'type' => 'Manual Addition', 'tone' => 'addition', 'product' => 'Everyday Sneakers', 'sku' => 'ES-BLK-40', 'variation' => 'Black / Size 40', 'reference' => 'Stock count', 'quantity' => '+8', 'direction' => 'positive', 'balance' => 18, 'actor' => 'Bea Rivera'],
-                ['date' => 'Aug 30, 2026 · 2:10 PM', 'type' => 'Damage Adjustment', 'tone' => 'damage', 'product' => 'Classic Linen Shirt', 'sku' => 'CLS-CRM-L', 'variation' => 'Cream / Large', 'reference' => 'Damaged item', 'quantity' => '−1', 'direction' => 'negative', 'balance' => 6, 'actor' => 'Bea Rivera'],
-            ],
+        ], $inventory->inventoryFor($request->user())));
+    }
+
+    public function updateProductPricing(Request $request, string $product, SellerPricingService $pricing): JsonResponse
+    {
+        $validated = $request->validate([
+            'regular_price' => ['required', 'string', 'regex:/^\d{1,10}(?:\.\d{1,2})?$/D'],
+            'discount_percent' => ['sometimes', 'nullable', 'integer', 'between:0,90'],
+        ]);
+
+        return response()->json([
+            'data' => $pricing->updateProductPricing(
+                $request->user(),
+                $product,
+                $validated['regular_price'],
+                (int) ($validated['discount_percent'] ?? 0),
+            ),
+            'message' => 'Product pricing saved.',
         ]);
     }
 
+    public function updateVoucherEligibility(Request $request, string $product, SellerPricingService $pricing): JsonResponse
+    {
+        $validated = $request->validate([
+            'voucher_eligible' => ['required', 'boolean'],
+        ]);
+
+        return response()->json([
+            'data' => $pricing->setVoucherEligibility(
+                $request->user(),
+                $product,
+                (bool) $validated['voucher_eligible'],
+            ),
+            'message' => 'Voucher eligibility saved.',
+        ]);
+    }
+
+    public function adjustInventory(Request $request, SellerInventoryService $inventory): RedirectResponse
+    {
+        $validated = $request->validate([
+            'inventory_action' => ['required', 'in:adjust'],
+            'variant_ids' => ['required', 'array', 'min:1', 'max:500'],
+            'variant_ids.*' => ['required', 'integer', 'min:1', 'distinct'],
+            'mode' => ['required', Rule::in(['add', 'remove', 'set'])],
+            'quantity' => ['required', 'integer', 'min:0', 'max:4294967295'],
+            'reason' => ['required', Rule::in(array_keys(SellerInventoryService::ADJUSTMENT_REASONS))],
+            'reason_note' => ['nullable', 'string', 'max:180'],
+        ]);
+
+        $changed = $inventory->adjustStock(
+            $request->user(),
+            $validated['variant_ids'],
+            $validated['mode'],
+            (int) $validated['quantity'],
+            $validated['reason'],
+            $validated['reason_note'] ?? null,
+        );
+
+        return back()->with(
+            'success',
+            $changed > 0
+                ? "Stock adjusted and recorded for {$changed} SKU(s)."
+                : 'No stock balance changes were needed.',
+        );
+    }
+
+    public function setInventoryThreshold(Request $request, SellerInventoryService $inventory): RedirectResponse
+    {
+        $validated = $request->validate([
+            'inventory_action' => ['required', 'in:threshold'],
+            'variant_ids' => ['required', 'array', 'min:1', 'max:500'],
+            'variant_ids.*' => ['required', 'integer', 'min:1', 'distinct'],
+            'threshold' => ['required', 'integer', 'min:0', 'max:4294967295'],
+        ]);
+
+        $updated = $inventory->setThreshold(
+            $request->user(),
+            $validated['variant_ids'],
+            (int) $validated['threshold'],
+        );
+
+        return back()->with('success', "Low-stock threshold saved for {$updated} SKU(s).");
+    }
 
     public function orders(Request $request): View
     {
@@ -542,7 +605,7 @@ class SellerController extends Controller
         $storeData = [
             'name' => $store->name,
             'location' => $storeLocation ?: 'Pickup address not set',
-            'category' => $user->business_category ?: 'Marketplace Seller',
+            'category' => $sellerProfile->approvedCategory?->name ?? $user->business_category ?? 'Marketplace Seller',
             'description' => $store->description ?? '',
             'email' => $store->contact_email ?? '',
             'phone' => $store->contact_phone
@@ -611,9 +674,21 @@ class SellerController extends Controller
 
         abort_if($store === null, 404, 'Store not found.');
 
+        $phoneInput = preg_replace('/[^\d+]/', '', $validated['phone']) ?? '';
+
+        try {
+            $phone = app(InternationalPhone::class)->normalize($phoneInput, 'PH');
+        } catch (ValidationException $e) {
+            $messages = $e->errors()['contact_number'] ?? [$e->getMessage()];
+
+            return back()
+                ->withErrors(['phone' => $messages])
+                ->withInput();
+        }
+
         $store->update([
-            'contact_email' => $validated['email'],
-            'contact_phone' => $validated['phone'],
+            'contact_email' => strtolower(trim($validated['email'])),
+            'contact_phone' => $phone,
         ]);
 
         return redirect()
@@ -636,6 +711,7 @@ class SellerController extends Controller
             ->map(fn (StorePromotionalBanner $banner): array => [
                 'id' => $banner->id,
                 'path' => $banner->image_path,
+                'url' => Storage::disk('public')->url($banner->image_path),
                 'title' => $banner->title ?? '',
                 'link' => $banner->link ?? '',
             ])
@@ -646,6 +722,7 @@ class SellerController extends Controller
             $promoBanners[] = [
                 'id' => null,
                 'path' => $storeRecord->promo_banner_path,
+                'url' => Storage::disk('public')->url($storeRecord->promo_banner_path),
                 'title' => $storeRecord->promo_banner_title ?? '',
                 'link' => $storeRecord->promo_banner_link ?? '',
             ];
@@ -653,12 +730,18 @@ class SellerController extends Controller
 
         $store = [
             'name' => $storeRecord->name,
-            'category' => $user->business_category ?: 'Marketplace Seller',
+            'category' => $sellerProfile->approvedCategory?->name ?? $user->business_category ?? 'Marketplace Seller',
             'description' => $storeRecord->description ?? '',
             'announcement' => $storeRecord->announcement ?? '',
             'operating_hours' => $storeRecord->operating_hours ?? '',
             'profile_photo' => $storeRecord->logo_path,
+            'profile_photo_url' => $storeRecord->logo_path
+                ? Storage::disk('public')->url($storeRecord->logo_path)
+                : null,
             'cover_photo' => $storeRecord->banner_path,
+            'cover_photo_url' => $storeRecord->banner_path
+                ? Storage::disk('public')->url($storeRecord->banner_path)
+                : null,
             'promo_banner' => $storeRecord->promo_banner_path,
             'promo_banner_title' => $storeRecord->promo_banner_title ?? '',
             'promo_banner_link' => $storeRecord->promo_banner_link ?? '',
@@ -675,22 +758,46 @@ class SellerController extends Controller
         ]);
     }
 
-    public function saveStoreAppearance(Request $request): RedirectResponse
+    public function saveStoreAppearance(Request $request, StoreAppearanceService $appearanceService): RedirectResponse
     {
         $validated = $request->validate([
             'description' => ['nullable', 'string', 'max:500'],
             'announcement' => ['nullable', 'string', 'max:180'],
             'operating_hours' => ['nullable', 'string', 'max:120'],
-            'profile_photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
-            'cover_photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:20480'],
+            'remove_profile_photo' => ['nullable', 'boolean'],
+            'remove_cover_photo' => ['nullable', 'boolean'],
+            'profile_photo' => [
+                'nullable',
+                'file',
+                'image',
+                'mimetypes:image/jpeg,image/png,image/webp',
+                'extensions:jpg,jpeg,png,webp',
+                'max:10240',
+            ],
+            'cover_photo' => [
+                'nullable',
+                'file',
+                'image',
+                'mimetypes:image/jpeg,image/png,image/webp',
+                'extensions:jpg,jpeg,png,webp',
+                'max:20480',
+            ],
+            'promo_banner_form' => ['nullable', 'boolean'],
             'promo_banner_ids' => ['nullable', 'array'],
-            'promo_banner_ids.*' => ['nullable', 'integer'],
+            'promo_banner_ids.*' => ['nullable', 'integer', 'min:1', 'distinct'],
             'promo_banners' => ['nullable', 'array'],
-            'promo_banners.*' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:20480'],
+            'promo_banners.*' => [
+                'nullable',
+                'file',
+                'image',
+                'mimetypes:image/jpeg,image/png,image/webp',
+                'extensions:jpg,jpeg,png,webp',
+                'max:20480',
+            ],
             'promo_banner_titles' => ['nullable', 'array'],
             'promo_banner_titles.*' => ['nullable', 'string', 'max:160'],
             'promo_banner_links' => ['nullable', 'array'],
-            'promo_banner_links.*' => ['nullable', 'url', 'max:500'],
+            'promo_banner_links.*' => ['nullable', 'url:http,https', 'max:500'],
             'shipping_policy' => ['nullable', 'string', 'max:3000'],
             'return_policy' => ['nullable', 'string', 'max:3000'],
             'warranty_policy' => ['nullable', 'string', 'max:3000'],
@@ -704,80 +811,33 @@ class SellerController extends Controller
 
         abort_if($store === null, 404, 'Store not found.');
 
-        $updates = [
-            'description' => $validated['description'] ?? '',
-            'announcement' => $validated['announcement'] ?? '',
-            'operating_hours' => $validated['operating_hours'] ?? '',
-            'shipping_policy' => $validated['shipping_policy'] ?? '',
-            'return_policy' => $validated['return_policy'] ?? '',
-            'warranty_policy' => $validated['warranty_policy'] ?? '',
-        ];
-
-        if ($request->hasFile('profile_photo')) {
-            $updates['logo_path'] = $request->file('profile_photo')->store('seller-store', 'public');
-        }
-
-        if ($request->hasFile('cover_photo')) {
-            $updates['banner_path'] = $request->file('cover_photo')->store('seller-store', 'public');
-        }
-
-        $store->update($updates);
-
-        $existingIds = collect($validated['promo_banner_ids'] ?? [])
-            ->filter(fn ($id): bool => is_numeric($id))
-            ->map(fn ($id): int => (int) $id)
-            ->values();
-        $titles = $validated['promo_banner_titles'] ?? [];
-        $links = $validated['promo_banner_links'] ?? [];
-
-        $store->promotionalBanners()
-            ->whereNotIn('id', $existingIds->all())
-            ->delete();
-
-        foreach ($existingIds as $position => $id) {
-            $store->promotionalBanners()->whereKey($id)->update([
-                'title' => $titles[$position] ?? '',
-                'link' => $links[$position] ?? '',
-                'position' => $position,
-                'is_active' => true,
-            ]);
-        }
-
-        foreach ($request->file('promo_banners', []) as $position => $file) {
-            if ($file === null) {
-                continue;
-            }
-
-            $store->promotionalBanners()->create([
-                'image_path' => $file->store('seller-store', 'public'),
-                'title' => $titles[$position] ?? '',
-                'link' => $links[$position] ?? '',
-                'position' => $existingIds->count() + $position,
-                'is_active' => true,
-            ]);
-        }
+        $appearanceService->save(
+            $store,
+            $validated,
+            $request->file('profile_photo'),
+            $request->file('cover_photo'),
+            $request->file('promo_banners', []),
+        );
 
         return redirect()
             ->route('seller.store.appearance')
             ->with('success', 'Store appearance saved successfully.');
     }
 
-    public function publicationSettings(Request $request, SellerProductService $productService): View
+    public function publicationSettings(Request $request, StorePublicationService $publicationService): View
     {
         $user = $request->user();
-        $sellerProfile = $user->sellerProfile;
-
-        abort_if($sellerProfile === null, 404, 'Seller profile not found.');
-
-        $storeRecord = $productService->storeFor($user);
+        $state = $publicationService->readiness($user);
+        $storeRecord = $state['store'];
+        $requirementsState = $state['requirements'];
 
         $requirements = [
-            ['label' => 'Business information verified', 'detail' => 'Store name and category were approved during registration.', 'complete' => filled($sellerProfile->approved_at), 'route' => 'seller.store'],
-            ['label' => 'Contact information added', 'detail' => 'Buyers and the platform have valid store contact details.', 'complete' => filled($storeRecord->contact_email) && filled($storeRecord->contact_phone), 'route' => 'seller.store'],
-            ['label' => 'Store description added', 'detail' => 'Explain what your store sells and what buyers can expect.', 'complete' => filled($storeRecord->description), 'route' => 'seller.store.appearance'],
-            ['label' => 'Profile photo added', 'detail' => 'Use a clear square image that identifies your store.', 'complete' => filled($storeRecord->logo_path), 'route' => 'seller.store.appearance'],
-            ['label' => 'Cover photo added', 'detail' => 'Use a storefront banner suitable for desktop and mobile.', 'complete' => filled($storeRecord->banner_path), 'route' => 'seller.store.appearance'],
-            ['label' => 'At least one active product', 'detail' => 'A published store must have something available to buyers.', 'complete' => $storeRecord->products()->where('product_status', 'active')->where('compliance_status', 'clear')->whereHas('variants', fn ($variants) => $variants->where('is_active', true))->exists(), 'route' => 'seller.products'],
+            ['label' => 'Business information verified', 'detail' => 'Store name and category were approved during registration.', 'complete' => $requirementsState['seller_approved'], 'route' => 'seller.store'],
+            ['label' => 'Contact information added', 'detail' => 'Buyers and the platform have valid store contact details.', 'complete' => $requirementsState['contact_information'], 'route' => 'seller.store'],
+            ['label' => 'Store description added', 'detail' => 'Explain what your store sells and what buyers can expect.', 'complete' => $requirementsState['description'], 'route' => 'seller.store.appearance'],
+            ['label' => 'Profile photo added', 'detail' => 'Use a clear square image that identifies your store.', 'complete' => $requirementsState['profile_photo'], 'route' => 'seller.store.appearance'],
+            ['label' => 'Cover photo added', 'detail' => 'Use a storefront banner suitable for desktop and mobile.', 'complete' => $requirementsState['cover_photo'], 'route' => 'seller.store.appearance'],
+            ['label' => 'At least one active product', 'detail' => 'A published store must have something available to buyers.', 'complete' => $requirementsState['eligible_product'], 'route' => 'seller.products'],
         ];
 
         $completeCount = collect($requirements)->where('complete', true)->count();
@@ -799,39 +859,24 @@ class SellerController extends Controller
         ]);
     }
 
-    public function updatePublication(Request $request, SellerProductService $productService): RedirectResponse|\Illuminate\Http\JsonResponse
+    public function updatePublication(Request $request, StorePublicationService $publicationService): RedirectResponse|JsonResponse
     {
         $validated = $request->validate(['published' => ['required', 'boolean']]);
-        $sellerProfile = $request->user()->sellerProfile;
-
-        abort_if($sellerProfile === null, 404, 'Seller profile not found.');
-
-        $store = $productService->storeFor($request->user());
-
-        $ready = filled($sellerProfile->approved_at)
-            && filled($store->contact_email)
-            && filled($store->contact_phone)
-            && filled($store->description)
-            && filled($store->logo_path)
-            && filled($store->banner_path)
-            && $store->products()->where('product_status', 'active')->where('compliance_status', 'clear')->whereHas('variants', fn ($variants) => $variants->where('is_active', true))->exists();
-
-        if ($validated['published'] && ! $ready) {
-            $message = 'Complete every store publication requirement before publishing.';
+        try {
+            $store = $publicationService->setPublished(
+                $request->user(),
+                (bool) $validated['published'],
+            );
+        } catch (ValidationException $exception) {
+            $errors = $exception->errors();
+            $message = $errors['published'][0] ?? 'Store publication requirements are not complete.';
 
             if ($request->expectsJson()) {
-                return response()->json(['message' => $message], 422);
+                return response()->json(['message' => $message, 'errors' => $errors], 422);
             }
 
-            return back()->withErrors(['published' => $message]);
+            return back()->withErrors($errors);
         }
-
-        DB::transaction(function () use ($store, $validated): void {
-            $store->update([
-                'publication_status' => $validated['published'] ? 'published' : 'draft',
-                'published_at' => $validated['published'] ? now() : null,
-            ]);
-        });
 
         if ($request->expectsJson()) {
             return response()->json([
@@ -850,278 +895,72 @@ class SellerController extends Controller
             : 'Store unpublished successfully.');
     }
 
-    private function productCategories(): array
-    {
-        return [
-            'Fashion and Apparel',
-            'Jewelry and Watches',
-            'Electronics and Gadgets',
-            'Home and Furniture',
-            'Beauty and Personal Care',
-            'Food and Gourmet',
-            'Sports and Outdoors',
-            'Books and Stationery',
-            'Automotive and Parts',
-            'Toys and Hobbies',
-            'Other',
-        ];
-    }
-
-    private function normalizeProduct(array $product): array
-    {
-        return array_merge([
-            'id' => '',
-            'name' => '',
-            'category' => '',
-            'description' => '',
-            'sku' => '',
-            'price' => 0,
-            'discount_percent' => 0,
-            'voucher_eligible' => false,
-            'stock' => 0,
-            'low_stock_threshold' => 5,
-            'option_one_name' => '',
-            'option_one_values' => '',
-            'option_two_name' => '',
-            'option_two_values' => '',
-            'status' => 'Draft',
-            'previous_status' => 'Active',
-            'image' => null,
-            'gallery_images' => [],
-        ], $product);
-    }
-
-    private function validateProduct(Request $request): array
-    {
-        return $request->validate([
-            'name' => ['required', 'string', 'max:120'],
-            'category' => ['required', 'string', 'max:80'],
-            'description' => ['nullable', 'string', 'max:1000'],
-            'sku' => ['nullable', 'string', 'max:60'],
-            'price' => ['required', 'numeric', 'min:0'],
-            'discount_percent' => ['nullable', 'integer', 'min:0', 'max:90'],
-            'voucher_eligible' => ['nullable', 'boolean'],
-            'stock' => ['required', 'integer', 'min:0'],
-            'low_stock_threshold' => ['required', 'integer', 'min:0'],
-            'option_one_name' => ['nullable', 'string', 'max:40'],
-            'option_one_values' => ['nullable', 'string', 'max:250'],
-            'option_two_name' => ['nullable', 'string', 'max:40'],
-            'option_two_values' => ['nullable', 'string', 'max:250'],
-            'image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
-            'gallery_images' => ['nullable', 'array', 'max:4'],
-            'gallery_images.*' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
-            'intent' => ['required', 'in:draft,publish'],
-        ]);
-    }
-
     public function products(Request $request, SellerProductService $productService): View
     {
-        $products = $productService->productsForSeller($request->user());
+        $filters = $request->validate([
+            'search' => ['nullable', 'string', 'max:120'],
+            'subcategory' => ['nullable', 'regex:/^(none|[1-9][0-9]*)$/'],
+            'status' => ['nullable', 'string', 'max:32'],
+        ]);
+        $listing = $productService->productManagementListing($request->user(), $filters);
 
         return view('seller.Products.products', [
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
-            'products' => $products,
-            'categories' => $products->pluck('category')->filter()->unique()->sort()->values(),
-            'statuses' => $products->pluck('status')->filter()->unique()->sort()->values(),
-            'counts' => [
-                'all' => $products->count(),
-                'active' => $products->where('status', 'Active')->count(),
-                'low' => $products->filter(fn (array $product) => $product['status'] === 'Active'
-                    && (int) $product['stock'] <= (int) $product['low_stock_threshold'])->count(),
-                'archived' => $products->where('status', 'Archived')->count(),
-            ],
+            ...$listing,
         ]);
     }
 
-    public function pricing(Request $request, SellerProductService $productService): View
-    {
-        $storedProducts = $productService->productsForSeller($request->user());
-
-        $products = $storedProducts->isNotEmpty() ? $storedProducts : collect([
-            ['id' => 'demo-1', 'name' => 'Classic Linen Shirt', 'sku' => 'CLS-LINEN-SHIRT', 'category' => 'Fashion and Apparel', 'price' => 1299, 'discount_percent' => 10, 'voucher_eligible' => true, 'stock' => 42, 'status' => 'Active', 'image' => null],
-            ['id' => 'demo-2', 'name' => 'Canvas Tote Bag', 'sku' => 'CNV-TOTE-BAG', 'category' => 'Fashion and Apparel', 'price' => 899, 'discount_percent' => 0, 'voucher_eligible' => true, 'stock' => 31, 'status' => 'Active', 'image' => null],
-            ['id' => 'demo-3', 'name' => 'Everyday Sneakers', 'sku' => 'EV-SNKRS-WHT', 'category' => 'Fashion and Apparel', 'price' => 1780, 'discount_percent' => 15, 'voucher_eligible' => false, 'stock' => 18, 'status' => 'Active', 'image' => null],
-            ['id' => 'demo-4', 'name' => 'Minimalist Crossbody Bag', 'sku' => 'MCB-BRN-01', 'category' => 'Fashion and Apparel', 'price' => 1050, 'discount_percent' => 0, 'voucher_eligible' => false, 'stock' => 24, 'status' => 'Draft', 'image' => null],
-        ])->map(fn (array $product) => $this->normalizeProduct($product));
+    public function pricing(
+        Request $request,
+        SellerProductService $productService,
+        SellerPromotionService $promotionService,
+    ): View {
+        $products = $productService->productsForSeller($request->user());
+        $promotionListing = $promotionService->listingFor($request->user());
 
         return view('seller.Products.pricing', [
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
             'products' => $products,
             'summary' => [
-                ['label' => 'Active Promotions', 'value' => '2', 'note' => 'Across 2 products', 'icon' => 'badge-percent', 'tone' => 'gold'],
+                ['label' => 'Active Promotions', 'value' => (string) $promotionListing['active_count'], 'note' => 'Seller-side campaign schedule', 'icon' => 'badge-percent', 'tone' => 'gold'],
                 ['label' => 'Discounted Products', 'value' => (string) $products->where('discount_percent', '>', 0)->count(), 'note' => 'Current sale prices', 'icon' => 'tags', 'tone' => 'olive'],
                 ['label' => 'Voucher Eligible', 'value' => (string) $products->where('voucher_eligible', true)->count(), 'note' => 'Can join store vouchers', 'icon' => 'ticket-percent', 'tone' => 'brown'],
-                ['label' => 'Ending Soon', 'value' => '1', 'note' => 'Within the next 48 hours', 'icon' => 'clock-3', 'tone' => 'warning'],
+                ['label' => 'Ending Soon', 'value' => (string) $promotionListing['ending_soon_count'], 'note' => 'Within the next two days', 'icon' => 'clock-3', 'tone' => 'warning'],
             ],
-            'campaigns' => [
-                ['name' => 'September Payday Sale', 'type' => 'Product Discount', 'period' => 'Sep 1–5, 2026', 'products' => 2, 'sales' => '₱18,420', 'status' => 'Active', 'status_key' => 'active'],
-                ['name' => 'New Buyer Voucher', 'type' => 'Store Voucher', 'period' => 'Sep 1–30, 2026', 'products' => 3, 'sales' => '₱6,390', 'status' => 'Active', 'status_key' => 'active'],
-                ['name' => 'August Weekend Deal', 'type' => 'Product Discount', 'period' => 'Aug 24–25, 2026', 'products' => 4, 'sales' => '₱27,860', 'status' => 'Ended', 'status_key' => 'ended'],
-            ],
+            'campaigns' => $promotionListing['campaigns'],
         ]);
     }
 
-
-    public function createPromotion(Request $request, SellerProductService $productService): View
+    public function createPromotion(Request $request, SellerPromotionService $promotionService): View
     {
-        $storedProducts = $productService->productsForSeller($request->user());
-
-        $products = $storedProducts->isNotEmpty() ? $storedProducts : collect([
-            ['id' => 'demo-1', 'name' => 'Classic Linen Shirt', 'sku' => 'CLS-LINEN-SHIRT', 'category' => 'Fashion and Apparel', 'price' => 1299, 'discount_percent' => 10, 'voucher_eligible' => true, 'stock' => 42, 'status' => 'Active', 'image' => null],
-            ['id' => 'demo-2', 'name' => 'Canvas Tote Bag', 'sku' => 'CNV-TOTE-BAG', 'category' => 'Fashion and Apparel', 'price' => 899, 'discount_percent' => 0, 'voucher_eligible' => true, 'stock' => 31, 'status' => 'Active', 'image' => null],
-            ['id' => 'demo-3', 'name' => 'Everyday Sneakers', 'sku' => 'EV-SNKRS-WHT', 'category' => 'Fashion and Apparel', 'price' => 1780, 'discount_percent' => 15, 'voucher_eligible' => false, 'stock' => 18, 'status' => 'Active', 'image' => null],
-            ['id' => 'demo-4', 'name' => 'Minimalist Crossbody Bag', 'sku' => 'MCB-BRN-01', 'category' => 'Fashion and Apparel', 'price' => 1050, 'discount_percent' => 0, 'voucher_eligible' => false, 'stock' => 24, 'status' => 'Draft', 'image' => null],
-        ])->map(fn (array $product) => $this->normalizeProduct($product));
-
         return view('seller.Products.promotion-form', [
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
-            'products' => $products->where('status', '!=', 'Archived')->values(),
+            'products' => $promotionService->eligibleProductsFor($request->user()),
         ]);
     }
 
-    public function createProduct(): View
+    public function storePromotion(Request $request, SellerPromotionService $promotionService): RedirectResponse
     {
-        return view('seller.Products.product-form', [
-            'seller' => $this->seller(),
-            'notifications' => $this->notifications(),
-            'categories' => $this->productCategories(),
-            'product' => $this->normalizeProduct([]),
-            'mode' => 'create',
-        ]);
-    }
-
-    public function addProduct(Request $request): RedirectResponse
-    {
-        $validated = $this->validateProduct($request);
-        $products = $request->session()->get('seller.products', []);
-        $id = (string) ((int) collect($products)->max(fn ($item) => (int) ($item['id'] ?? 0)) + 1);
-
-        $galleryImages = [];
-        foreach ($request->file('gallery_images', []) as $image) {
-            $galleryImages[] = $image->store('seller-products', 'public');
-        }
-
-        $products[] = $this->normalizeProduct([
-            'id' => $id,
-            'name' => $validated['name'],
-            'category' => $validated['category'],
-            'description' => $validated['description'] ?? '',
-            'sku' => ($validated['sku'] ?? '') ?: 'BR-'.str_pad($id, 4, '0', STR_PAD_LEFT),
-            'price' => (float) $validated['price'],
-            'discount_percent' => (int) ($validated['discount_percent'] ?? 0),
-            'voucher_eligible' => (bool) ($validated['voucher_eligible'] ?? false),
-            'stock' => (int) $validated['stock'],
-            'low_stock_threshold' => (int) $validated['low_stock_threshold'],
-            'option_one_name' => $validated['option_one_name'] ?? '',
-            'option_one_values' => $validated['option_one_values'] ?? '',
-            'option_two_name' => $validated['option_two_name'] ?? '',
-            'option_two_values' => $validated['option_two_values'] ?? '',
-            'status' => $validated['intent'] === 'publish' ? 'Active' : 'Draft',
-            'previous_status' => $validated['intent'] === 'publish' ? 'Active' : 'Draft',
-            'image' => $request->hasFile('image')
-                ? $request->file('image')->store('seller-products', 'public')
-                : null,
-            'gallery_images' => $galleryImages,
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:80'],
+            'type' => ['required', Rule::in([StorePromotion::TYPE_STORE_VOUCHER])],
+            'value' => ['required', 'string', 'regex:/^\d{1,10}(?:\.\d{1,2})?$/D'],
+            'start_date' => ['required', 'date_format:Y-m-d'],
+            'end_date' => ['required', 'date_format:Y-m-d', 'after_or_equal:start_date'],
+            'products' => ['required', 'array', 'min:1', 'max:100'],
+            'products.*' => ['required', 'integer', 'distinct'],
+            'minimum_spend' => ['nullable', 'string', 'regex:/^\d{1,10}(?:\.\d{1,2})?$/D'],
+            'redemption_limit' => ['nullable', 'integer', 'min:1', 'max:4294967295'],
+            'buyer_limit' => ['required', 'integer', 'between:1,3'],
         ]);
 
-        $request->session()->put('seller.products', $products);
+        $promotionService->create($request->user(), $validated);
 
-        return redirect()->route('seller.products')->with(
-            'success',
-            $validated['intent'] === 'publish' ? 'Product published successfully.' : 'Product saved as a draft.'
-        );
-    }
-
-    public function editProduct(Request $request, string $product): View
-    {
-        $item = collect($request->session()->get('seller.products', []))
-            ->first(fn (array $item) => (string) ($item['id'] ?? '') === $product);
-
-        abort_if(!$item, 404);
-
-        return view('seller.Products.product-form', [
-            'seller' => $this->seller(),
-            'notifications' => $this->notifications(),
-            'categories' => $this->productCategories(),
-            'product' => $this->normalizeProduct($item),
-            'mode' => 'edit',
-        ]);
-    }
-
-    public function updateProduct(Request $request, string $product): RedirectResponse
-    {
-        $validated = $this->validateProduct($request);
-        $found = false;
-
-        $products = collect($request->session()->get('seller.products', []))
-            ->map(function (array $item) use ($request, $validated, $product, &$found) {
-                if ((string) ($item['id'] ?? '') !== $product) {
-                    return $item;
-                }
-
-                $found = true;
-                $item = $this->normalizeProduct($item);
-                $newGalleryImages = $request->file('gallery_images', []);
-                $galleryImages = $item['gallery_images'];
-                if (count($newGalleryImages) > 0) {
-                    $galleryImages = [];
-                    foreach ($newGalleryImages as $image) {
-                        $galleryImages[] = $image->store('seller-products', 'public');
-                    }
-                }
-
-                return array_merge($item, [
-                    'name' => $validated['name'],
-                    'category' => $validated['category'],
-                    'description' => $validated['description'] ?? '',
-                    'sku' => ($validated['sku'] ?? '') ?: $item['sku'],
-                    'price' => (float) $validated['price'],
-                    'discount_percent' => (int) ($validated['discount_percent'] ?? 0),
-                    'voucher_eligible' => (bool) ($validated['voucher_eligible'] ?? false),
-                    'stock' => (int) $validated['stock'],
-                    'low_stock_threshold' => (int) $validated['low_stock_threshold'],
-                    'option_one_name' => $validated['option_one_name'] ?? '',
-                    'option_one_values' => $validated['option_one_values'] ?? '',
-                    'option_two_name' => $validated['option_two_name'] ?? '',
-                    'option_two_values' => $validated['option_two_values'] ?? '',
-                    'status' => $validated['intent'] === 'publish' ? 'Active' : 'Draft',
-                    'previous_status' => $validated['intent'] === 'publish' ? 'Active' : 'Draft',
-                    'image' => $request->hasFile('image')
-                        ? $request->file('image')->store('seller-products', 'public')
-                        : $item['image'],
-                    'gallery_images' => $galleryImages,
-                ]);
-            })->values()->all();
-
-        abort_unless($found, 404);
-        $request->session()->put('seller.products', $products);
-
-        return redirect()->route('seller.products')->with(
-            'success',
-            $validated['intent'] === 'publish' ? 'Product changes published.' : 'Product changes saved as a draft.'
-        );
-    }
-
-    public function toggleProductArchive(Request $request, string $product): RedirectResponse
-    {
-        $products = collect($request->session()->get('seller.products', []))
-            ->map(function (array $item) use ($product) {
-                if ((string) ($item['id'] ?? '') === $product) {
-                    $item = $this->normalizeProduct($item);
-                    if ($item['status'] === 'Archived') {
-                        $item['status'] = $item['previous_status'] ?: 'Draft';
-                    } else {
-                        $item['previous_status'] = $item['status'];
-                        $item['status'] = 'Archived';
-                    }
-                }
-                return $item;
-            })->values()->all();
-
-        $request->session()->put('seller.products', $products);
-        return redirect()->route('seller.products')->with('success', 'Product status updated.');
+        return redirect()
+            ->route('seller.products.pricing', ['tab' => 'campaigns'])
+            ->with('success', 'Promotion saved in Seller Center. It does not change Buyer prices or voucher redemption yet.');
     }
 }

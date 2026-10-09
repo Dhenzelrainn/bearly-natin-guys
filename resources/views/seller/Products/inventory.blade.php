@@ -5,25 +5,17 @@
 @section('topbar-subtitle', 'Monitor stock levels and product variations.')
 
 @section('content')
-@php
-    $inventoryImages = [
-        'Classic Linen Shirt' => asset('images/landing-page/products/cotton-tshirt.jpg'),
-        'Canvas Tote Bag' => asset('images/landing-page/products/canvas-tote.jpg'),
-        'Everyday Sneakers' => asset('images/landing-page/products/everyday-sneakers.jpg'),
-    ];
-@endphp
-
 <div class="inventory-topline">
     <div class="inventory-quick-metrics" aria-label="Inventory summary">
         <div class="inventory-quick-metric">
-            <strong>{{ $inventoryTotal }}</strong>
+            <strong>{{ number_format($inventoryTotal) }}</strong>
             <span>Total SKUs</span>
         </div>
 
         <span class="inventory-metric-divider" aria-hidden="true"></span>
 
         <div class="inventory-quick-metric">
-            <strong>{{ $inventorySummary[1]['value'] }}</strong>
+            <strong>{{ number_format($inventorySummary[1]['value']) }}</strong>
             <span>Available units</span>
         </div>
     </div>
@@ -48,8 +40,8 @@
         </span>
 
         <p>
-            <strong>{{ $inventoryAttention['total'] }} items need restocking</strong>
-            <span>· {{ $inventoryAttention['low'] }} low stock, {{ $inventoryAttention['out'] }} out of stock</span>
+            <strong>{{ number_format($inventoryAttention['total']) }} SKU(s) need restocking</strong>
+            <span>· {{ number_format($inventoryAttention['low']) }} low stock, {{ number_format($inventoryAttention['out']) }} out of stock</span>
         </p>
     </div>
 
@@ -90,12 +82,15 @@
             </label>
 
             <label class="inventory-select">
-                <span class="sr-only">Filter by category</span>
-                <select data-inventory-category>
-                    <option value="">All Categories</option>
-                    @foreach ($inventoryCategories as $category)
-                        <option value="{{ strtolower($category) }}">{{ $category }}</option>
+                <span class="sr-only">Filter by subcategory</span>
+                <select data-inventory-subcategory>
+                    <option value="">All Subcategories</option>
+                    @foreach ($inventorySubcategories as $subcategory)
+                        <option value="{{ $subcategory['id'] }}">{{ $subcategory['name'] }}</option>
                     @endforeach
+                    @if ($inventoryHasUncategorized)
+                        <option value="uncategorized">Uncategorized</option>
+                    @endif
                 </select>
             </label>
 
@@ -116,12 +111,16 @@
             </label>
 
             <div>
-                <button type="button" disabled data-inventory-bulk="Adjust stock">
+                <button type="button" disabled data-inventory-bulk="adjust-stock">
                     <i data-lucide="package-plus"></i>
                     Adjust stock
                 </button>
 
-                <button type="button" disabled data-inventory-bulk="Set threshold">
+                <button
+                    type="button"
+                    @disabled($inventoryTotal === 0)
+                    data-inventory-bulk="set-threshold"
+                >
                     <i data-lucide="sliders-horizontal"></i>
                     Set threshold
                 </button>
@@ -151,14 +150,12 @@
 
                 <tbody>
                     @foreach ($inventoryItems as $item)
-                        @php($productImage = $inventoryImages[$item['product']] ?? null)
-
                         <tr
                             data-inventory-row
                             data-id="{{ $item['id'] }}"
                             data-product="{{ strtolower($item['product']) }}"
                             data-search="{{ strtolower($item['product'].' '.$item['sku'].' '.$item['variation']) }}"
-                            data-category="{{ strtolower($item['category']) }}"
+                            data-subcategory="{{ $item['subcategory_id'] ?? 'uncategorized' }}"
                             data-status="{{ $item['status_key'] }}"
                             data-parent="{{ $item['parent'] }}"
                             data-variation-row="{{ $item['variation_row'] ? 'true' : 'false' }}"
@@ -177,8 +174,8 @@
                             <td>
                                 <div class="inventory-product-cell">
                                     <span class="inventory-product-thumb">
-                                        @if ($productImage)
-                                            <img src="{{ $productImage }}" alt="" aria-hidden="true">
+                                        @if ($item['image'])
+                                            <img src="{{ $item['image'] }}" alt="" aria-hidden="true" loading="lazy">
                                         @else
                                             <i data-lucide="{{ $item['icon'] }}"></i>
                                         @endif
@@ -227,17 +224,17 @@
                 </tbody>
             </table>
 
-            <div class="inventory-no-results" data-inventory-no-results hidden>
+            <div class="inventory-no-results" data-inventory-no-results @if ($inventoryItems->isNotEmpty()) hidden @endif>
                 <i data-lucide="package-search"></i>
                 <strong>No matching inventory</strong>
-                <span>Try changing the search or stock filters.</span>
+                <span>Try changing the search or stock filters, or add a product with a variation.</span>
             </div>
         </div>
 
         <footer class="inventory-table-footer">
             <span>
-                <strong data-inventory-visible-count>{{ count($inventoryItems) }}</strong>
-                sample SKUs shown
+                <strong data-inventory-visible-count>{{ $inventoryTotal }}</strong>
+                SKUs shown
             </span>
         </footer>
     </div>
@@ -255,6 +252,7 @@
                     <th>Date</th>
                     <th>Product / SKU</th>
                     <th>Type</th>
+                    <th>Reason</th>
                     <th>Quantity</th>
                     <th>Balance</th>
                     <th>Actioned by</th>
@@ -270,6 +268,7 @@
                             <small>{{ $movement['sku'] }}</small>
                         </td>
                         <td>{{ $movement['type'] }}</td>
+                        <td>{{ $movement['reason'] }}</td>
                         <td>
                             <strong class="movement-quantity quantity-{{ $movement['direction'] }}">
                                 {{ $movement['quantity'] }}
@@ -279,12 +278,15 @@
                         <td>{{ $movement['actor'] }}</td>
                     </tr>
                 @endforeach
+                @if ($stockMovements->isEmpty())
+                    <tr><td colspan="7">No stock movements recorded yet.</td></tr>
+                @endif
             </tbody>
         </table>
     </div>
 </section>
 
-<div class="seller-modal inventory-adjust-modal" data-modal="inventory-adjust" hidden>
+<div class="seller-modal inventory-adjust-modal" data-modal="inventory-adjust" @if (old('inventory_action') !== 'adjust') hidden @endif>
     <button
         class="modal-backdrop"
         type="button"
@@ -309,64 +311,118 @@
             </button>
         </div>
 
-        <p class="inventory-adjust-product" data-adjust-item-label>
-            Selected inventory item
-        </p>
+        <form method="POST" action="{{ route('seller.inventory.adjustments') }}" data-inventory-adjust-form>
+            @csrf
+            <input type="hidden" name="inventory_action" value="adjust">
+            <div data-adjust-variant-ids>
+                @foreach (old('variant_ids', []) as $variantId)
+                    <input type="hidden" name="variant_ids[]" value="{{ $variantId }}">
+                @endforeach
+            </div>
+            @if (old('inventory_action') === 'adjust' && $errors->any())
+                <div class="form-alert products-alert" role="alert">
+                    <ul>@foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul>
+                </div>
+            @endif
+            <p class="inventory-adjust-product" data-adjust-item-label>
+                {{ count(old('variant_ids', [])) }} selected SKU(s)
+            </p>
 
-        <input type="hidden" data-adjust-item-id>
+            <div class="inventory-current-stock">
+                <span>Current on-hand quantity</span>
+                <strong data-adjust-current>—</strong>
+            </div>
 
-        <div class="inventory-current-stock">
-            <span>Current on-hand quantity</span>
-            <strong data-adjust-current>0</strong>
-        </div>
+            <div class="inventory-adjust-grid">
+                <label class="seller-field">
+                    <span>Adjustment</span>
+                    <select name="mode" data-adjust-mode required>
+                        <option value="add" @selected(old('mode', 'add') === 'add')>Add stock</option>
+                        <option value="remove" @selected(old('mode') === 'remove')>Remove stock</option>
+                        <option value="set" @selected(old('mode') === 'set')>Set exact quantity</option>
+                    </select>
+                </label>
 
-        <div class="inventory-adjust-grid">
+                <label class="seller-field">
+                    <span>Quantity</span>
+                    <input
+                        type="number"
+                        name="quantity"
+                        min="{{ old('mode', 'add') === 'set' ? 0 : 1 }}"
+                        max="{{ old('mode', 'add') === 'set' ? 4294967295 : 2147483647 }}"
+                        step="1"
+                        value="{{ old('quantity', 1) }}"
+                        data-adjust-quantity
+                        required
+                    >
+                </label>
+            </div>
+
             <label class="seller-field">
-                <span>Adjustment</span>
-                <select data-adjust-mode>
-                    <option value="add">Add stock</option>
-                    <option value="remove">Remove stock</option>
-                    <option value="set">Set exact quantity</option>
+                <span>Reason</span>
+                <select name="reason" data-adjust-reason required>
+                    @foreach ($adjustmentReasons as $value => $label)
+                        <option value="{{ $value }}" @selected(old('reason', 'new_stock_received') === $value)>{{ $label }}</option>
+                    @endforeach
                 </select>
             </label>
 
             <label class="seller-field">
-                <span>Quantity</span>
-                <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value="1"
-                    data-adjust-quantity
-                >
+                <span>Notes <small>(optional)</small></span>
+                <input type="text" name="reason_note" value="{{ old('reason_note') }}" maxlength="180" placeholder="Reference or brief details">
             </label>
+
+            <p class="inventory-preview-note">
+                <i data-lucide="info"></i>
+                Adjustments are saved to stock history. Stock cannot be reduced below units reserved for orders.
+            </p>
+
+            <div class="modal-actions">
+                <button class="draft-button" type="button" data-modal-close>Cancel</button>
+                <button class="seller-primary-button" type="submit">Apply Adjustment</button>
+            </div>
+        </form>
+    </section>
+</div>
+
+<div class="seller-modal inventory-adjust-modal" data-modal="inventory-threshold" @if (old('inventory_action') !== 'threshold') hidden @endif>
+    <button class="modal-backdrop" type="button" data-modal-close aria-label="Close threshold update"></button>
+
+    <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="inventory-threshold-title">
+        <div class="modal-heading">
+            <div>
+                <span class="section-kicker">Inventory settings</span>
+                <h3 id="inventory-threshold-title">Set Low-Stock Threshold</h3>
+            </div>
+            <button type="button" data-modal-close aria-label="Close"><i data-lucide="x"></i></button>
         </div>
 
-        <label class="seller-field">
-            <span>Reason</span>
-            <select data-adjust-reason>
-                <option>New stock received</option>
-                <option>Manual stock count</option>
-                <option>Damaged item</option>
-                <option>Returned order</option>
-                <option>Other adjustment</option>
-            </select>
-        </label>
+        <form method="POST" action="{{ route('seller.inventory.thresholds') }}" data-inventory-threshold-form>
+            @csrf
+            <input type="hidden" name="inventory_action" value="threshold">
+            <div data-threshold-variant-ids>
+                @foreach (old('variant_ids', []) as $variantId)
+                    <input type="hidden" name="variant_ids[]" value="{{ $variantId }}">
+                @endforeach
+            </div>
+            @if (old('inventory_action') === 'threshold' && $errors->any())
+                <div class="form-alert products-alert" role="alert">
+                    <ul>@foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul>
+                </div>
+            @endif
+            <p class="inventory-adjust-product" data-threshold-selected-label>{{ count(old('variant_ids', [])) }} selected SKU(s)</p>
 
-        <p class="inventory-preview-note">
-            <i data-lucide="info"></i>
-            This updates the current browser preview only. It will reset after refreshing the page.
-        </p>
+            <label class="seller-field">
+                <span>Alert when available stock reaches</span>
+                <input type="number" name="threshold" min="0" max="4294967295" step="1" value="{{ old('threshold', 5) }}" required>
+                <small>Applied to every selected SKU. Reserved units are not counted as available.</small>
+            </label>
 
-        <div class="modal-actions">
-            <button class="draft-button" type="button" data-modal-close>
-                Cancel
-            </button>
-
-            <button class="seller-primary-button" type="button" data-apply-stock-adjustment>
-                Apply Adjustment
-            </button>
-        </div>
+            <div class="modal-actions">
+                <button class="draft-button" type="button" data-modal-close>Cancel</button>
+                <button class="seller-primary-button" type="submit">Save Threshold</button>
+            </div>
+        </form>
     </section>
 </div>
 @endsection

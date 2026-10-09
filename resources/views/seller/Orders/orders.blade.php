@@ -11,12 +11,15 @@
 <div class="page-heading orders-page-heading">
     <div>
         <h2>Order Management</h2>
-        <p>Confirm orders, prepare parcels, and monitor delivery.</p>
+        <p>Confirm new orders, prepare them for pickup, and keep each Store’s order status up to date.</p>
     </div>
-    <button class="orders-export-button" type="button" data-order-demo="Order list exported for preview.">
-        <i data-lucide="download"></i> Export orders
-    </button>
 </div>
+
+@if (session('success'))
+    <p class="orders-success-note" role="status">{{ session('success') }}</p>
+@endif
+
+<p class="orders-workflow-note" role="note">Seller actions end at Ready for Pickup. Waybills, pickup scheduling, and logistics handoff are not connected to this workflow yet.</p>
 
 <section class="order-queue" aria-label="Orders requiring action">
     @foreach ($orderQueue as $queue)
@@ -81,27 +84,10 @@
         </button>
     </div>
 
-    <div class="order-bulk-bar" data-order-bulk-bar>
-        <label class="order-check-all">
-            <input type="checkbox" data-order-check-all>
-            <span><strong data-order-selected-count>0</strong> selected</span>
-        </label>
-
-        <div class="order-bulk-actions">
-            <button type="button" disabled data-order-bulk-action="Print waybill">
-                <i data-lucide="printer"></i>Print waybill
-            </button>
-            <button type="button" disabled data-order-bulk-action="Arrange pickup">
-                <i data-lucide="truck"></i>Arrange pickup
-            </button>
-        </div>
-    </div>
-
     <div class="orders-table-wrap">
         <table class="orders-table orders-table-polished">
             <thead>
                 <tr>
-                    <th aria-label="Select order"></th>
                     <th>Order</th>
                     <th>Customer</th>
                     <th>Items</th>
@@ -133,15 +119,15 @@
                         data-order-item-count="{{ $order['items'] }}"
                         data-order-deadline="{{ $order['deadline'] }}"
                         data-order-action="{{ $order['action'] }}"
+                        data-order-transition-action="{{ $order['transition_action'] ?? '' }}"
+                        data-order-transition-url="{{ $order['transition_url'] }}"
                         data-order-date-copy="{{ $order['order_date'] ?? $order['date'] ?? $order['date_key'] ?? '' }}"
                         data-order-address="{{ $order['address'] ?? $order['shipping_address'] ?? '' }}"
                         data-order-sku="{{ $order['sku'] ?? '' }}"
                         data-order-product-image="{{ $order['product_image'] ?? $order['image'] ?? '' }}"
                         data-order-items-json="{{ e(json_encode($order['item_rows'] ?? $order['order_items'] ?? [])) }}"
+                        data-order-status-history="{{ e(json_encode($order['status_history'] ?? [])) }}"
                     >
-                        <td>
-                            <input type="checkbox" aria-label="Select {{ $order['id'] }}" data-order-check>
-                        </td>
                         <td>
                             <button
                                 class="order-id-button"
@@ -155,8 +141,19 @@
                         </td>
                         <td><strong class="order-customer">{{ $order['customer'] }}</strong></td>
                         <td>
-                            <span>{{ $order['items'] }}</span>
-                            <small class="order-item-mini">{{ $order['item_detail'] }}</small>
+                            <div class="order-product-cell">
+                                <span class="order-product-thumb" aria-hidden="true">
+                                    @if (!empty($order['product_image']))
+                                        <img src="{{ $order['product_image'] }}" alt="" loading="lazy">
+                                    @else
+                                        <i data-lucide="package"></i>
+                                    @endif
+                                </span>
+                                <span class="order-product-copy">
+                                    <span>{{ $order['items'] }}</span>
+                                    <small class="order-item-mini">{{ $order['item_detail'] }}</small>
+                                </span>
+                            </div>
                         </td>
                         <td>
                             <span class="payment-label payment-{{ $order['payment_key'] }}">
@@ -210,90 +207,78 @@
     <footer class="orders-table-footer">
         <span>
             Showing <strong data-order-visible-count>{{ count($orders) }}</strong>
-            of {{ count($orders) }} preview orders
+            of {{ count($orders) }} orders
         </span>
     </footer>
-</section>
-
-<section class="orders-handoff-grid">
-    <article class="seller-panel handoff-card">
-        <span class="handoff-icon"><i data-lucide="printer"></i></span>
-        <div>
-            <span class="section-kicker">Step 1</span>
-            <h3>Prepare the parcel & waybill</h3>
-            <p>Waybill creation belongs to Fulfillment. Orders only send eligible parcels into that workspace.</p>
-        </div>
-        <a class="seller-secondary-button" href="{{ route('seller.fulfillment.waybills') }}">
-            Open Waybills <i data-lucide="arrow-right"></i>
-        </a>
-    </article>
-
-    <article class="seller-panel handoff-card">
-        <span class="handoff-icon"><i data-lucide="truck"></i></span>
-        <div>
-            <span class="section-kicker">Step 2</span>
-            <h3>Arrange logistics pickup</h3>
-            <p>After a labeled parcel is ready, submit the pickup request. Logistics controls approval and rider assignment.</p>
-        </div>
-        <a class="seller-secondary-button" href="{{ route('seller.fulfillment.pickups') }}">
-            Open Pickup Requests <i data-lucide="arrow-right"></i>
-        </a>
-    </article>
 </section>
 
 <div class="seller-modal bearly-action-modal" data-bearly-action-modal hidden>
     <button class="modal-backdrop" type="button" data-bearly-action-close aria-label="Close order dialog"></button>
 
-    <section class="bearly-action-card" role="dialog" aria-modal="true" aria-labelledby="bearly-action-title">
-        <header class="bearly-action-header">
-            <span class="bearly-action-header-icon" data-bearly-action-icon>
-                <i data-lucide="clipboard-check"></i>
-            </span>
+    <form data-bearly-transition-form method="post" action="">
+        @csrf
+        @method('PATCH')
+        <input type="hidden" name="action" value="" data-bearly-action-field>
 
-            <div class="bearly-action-heading-copy">
-                <span class="section-kicker">Order workflow</span>
-                <h3 id="bearly-action-title" data-bearly-action-title>Order Details</h3>
-                <p data-bearly-action-subtitle>Review the order information.</p>
-            </div>
+        <section class="bearly-action-card" role="dialog" aria-modal="true" aria-labelledby="bearly-action-title">
+            <header class="bearly-action-header">
+                <span class="bearly-action-header-icon" data-bearly-action-icon>
+                    <i data-lucide="clipboard-check"></i>
+                </span>
 
-            <span class="bearly-action-badge" data-bearly-action-badge>Placed</span>
+                <div class="bearly-action-heading-copy">
+                    <span class="section-kicker">Order workflow</span>
+                    <h3 id="bearly-action-title" data-bearly-action-title>Order Details</h3>
+                    <p data-bearly-action-subtitle>Review the order information.</p>
+                </div>
 
-            <button class="bearly-action-x" type="button" data-bearly-action-close aria-label="Close">
-                <i data-lucide="x"></i>
-            </button>
-        </header>
+                <span class="bearly-action-badge" data-bearly-action-badge>Placed</span>
 
-        <section class="bearly-action-summary">
-            <div><span>Order</span><strong data-bearly-order-id>—</strong></div>
-            <div><span>Customer</span><strong data-bearly-order-customer>—</strong></div>
-            <div><span data-bearly-date-label>Order Date</span><strong data-bearly-order-date>—</strong></div>
-            <div>
-                <span>Payment Method</span>
-                <strong class="bearly-action-payment">
-                    <i data-lucide="circle-check"></i>
-                    <b data-bearly-order-payment>—</b>
-                </strong>
-            </div>
-            <div class="bearly-action-address-cell" data-bearly-address-cell>
-                <span data-bearly-address-label>Shipping Address</span>
-                <strong data-bearly-order-address>—</strong>
-            </div>
-            <div><span>Total Amount</span><strong data-bearly-order-total>—</strong></div>
+                <button class="bearly-action-x" type="button" data-bearly-action-close aria-label="Close">
+                    <i data-lucide="x"></i>
+                </button>
+            </header>
+
+            <section class="bearly-action-summary">
+                <div><span>Order</span><strong data-bearly-order-id>—</strong></div>
+                <div><span>Customer</span><strong data-bearly-order-customer>—</strong></div>
+                <div><span data-bearly-date-label>Order Date</span><strong data-bearly-order-date>—</strong></div>
+                <div>
+                    <span>Payment Method</span>
+                    <strong class="bearly-action-payment">
+                        <i data-lucide="circle-check"></i>
+                        <b data-bearly-order-payment>—</b>
+                    </strong>
+                </div>
+                <div class="bearly-action-address-cell" data-bearly-address-cell>
+                    <span data-bearly-address-label>Shipping Address</span>
+                    <strong data-bearly-order-address>—</strong>
+                </div>
+                <div><span>Total Amount</span><strong data-bearly-order-total>—</strong></div>
+            </section>
+
+            <section class="bearly-action-items-section">
+                <div class="bearly-action-section-heading">
+                    <h4>Items <span data-bearly-item-count></span></h4>
+                </div>
+                <div class="bearly-action-items" data-bearly-items></div>
+            </section>
+
+            <div data-bearly-action-context></div>
+            <p class="bearly-action-error" data-bearly-action-error role="alert" hidden></p>
+
+            <section class="bearly-action-cancel-fields" data-bearly-cancel-controls hidden>
+                <label for="bearly-cancel-reason">Why are you cancelling this Seller Order?</label>
+                <textarea id="bearly-cancel-reason" name="reason" rows="3" minlength="5" maxlength="1000" data-bearly-cancel-reason disabled></textarea>
+                <small>Cancellation is only available before you confirm the order. Reserved stock for these items will be released.</small>
+                <button class="bearly-action-cancel-back" type="button" data-bearly-cancel-back hidden>Keep this order</button>
+            </section>
+
+            <footer class="bearly-action-footer" data-bearly-action-footer>
+                <button class="bearly-action-secondary" type="button" data-bearly-action-close>Close</button>
+                <button class="bearly-action-primary" type="submit" data-bearly-action-primary>Continue</button>
+            </footer>
         </section>
-
-        <section class="bearly-action-items-section">
-            <div class="bearly-action-section-heading">
-                <h4>Items <span data-bearly-item-count></span></h4>
-            </div>
-            <div class="bearly-action-items" data-bearly-items></div>
-        </section>
-
-        <div data-bearly-action-context></div>
-
-        <footer class="bearly-action-footer" data-bearly-action-footer>
-            <button class="bearly-action-secondary" type="button" data-bearly-action-close>Close</button>
-            <button class="bearly-action-primary" type="button" data-bearly-action-primary>Continue</button>
-        </footer>
-    </section>
+    </form>
 </div>
 @endsection

@@ -6,6 +6,7 @@
 @section('content')
 <form method="POST" action="{{ route('seller.store.appearance.save') }}" enctype="multipart/form-data" data-storefront-form>
     @csrf
+    <input type="hidden" name="promo_banner_form" value="1">
 
 <div class="page-heading storefront-page-heading">
     <div><span class="section-kicker">Buyer-facing store</span><h2>Store Appearance</h2><p>Manage the information and images buyers see when they visit your store.</p></div>
@@ -21,26 +22,36 @@
         <section class="storefront-panel" aria-labelledby="store-images-title">
             <div class="storefront-panel-heading"><span class="storefront-panel-icon"><i data-lucide="images"></i></span><div><h3 id="store-images-title">Store Images</h3><p>Use clear, original images that represent your actual store.</p></div></div>
             <div class="storefront-upload-grid">
-                <label class="storefront-upload profile-upload" data-storefront-upload="profile">
-                    <span class="storefront-field-label">Profile photo</span>
-                    <span class="storefront-profile-drop" data-storefront-drop>
-                        <span class="storefront-profile-placeholder" data-storefront-profile-placeholder>
-                            @if ($store['profile_photo'])<img src="{{ asset('storage/'.$store['profile_photo']) }}" alt="Current store profile photo">@else{{ strtoupper(substr($store['name'], 0, 1)) }}@endif
+                <div class="storefront-image-field">
+                    <label class="storefront-upload profile-upload" data-storefront-upload="profile">
+                        <span class="storefront-field-label">Profile photo</span>
+                        <span class="storefront-profile-drop" data-storefront-drop>
+                            <span class="storefront-profile-placeholder" data-storefront-profile-placeholder>
+                                @if ($store['profile_photo_url'])<img src="{{ $store['profile_photo_url'] }}" alt="Current store profile photo">@else{{ strtoupper(substr($store['name'], 0, 1)) }}@endif
+                            </span>
+                            <strong>Choose profile photo</strong><small>Square JPG, PNG, or WebP · Up to 10MB</small>
                         </span>
-                        <strong>Choose profile photo</strong><small>Square JPG, PNG, or WebP · Up to 5MB</small>
-                    </span>
-                    <input type="file" name="profile_photo" accept="image/jpeg,image/png,image/webp" data-storefront-image="profile" hidden>
-                </label>
-                <label class="storefront-upload cover-upload" data-storefront-upload="cover">
-                    <span class="storefront-field-label">Cover photo</span>
-                    <span class="storefront-cover-drop" data-storefront-drop>
-                        <span data-storefront-cover-placeholder>
-                            @if ($store['cover_photo'])<img src="{{ asset('storage/'.$store['cover_photo']) }}" alt="Current store cover photo">@else<i data-lucide="image-up"></i>@endif
+                        <input type="file" name="profile_photo" accept="image/jpeg,image/png,image/webp" data-storefront-image="profile" hidden>
+                    </label>
+                    @if ($store['profile_photo'])
+                        <label class="storefront-remove-image"><input type="checkbox" name="remove_profile_photo" value="1" @checked(old('remove_profile_photo'))> <span>Remove current photo</span></label>
+                    @endif
+                </div>
+                <div class="storefront-image-field">
+                    <label class="storefront-upload cover-upload" data-storefront-upload="cover">
+                        <span class="storefront-field-label">Cover photo</span>
+                        <span class="storefront-cover-drop" data-storefront-drop>
+                            <span data-storefront-cover-placeholder>
+                                @if ($store['cover_photo_url'])<img src="{{ $store['cover_photo_url'] }}" alt="Current store cover photo">@else<i data-lucide="image-up"></i>@endif
+                            </span>
+                            <strong>Choose cover photo</strong><small>Recommended 1600 × 500 · Up to 20MB</small>
                         </span>
-                        <strong>Choose cover photo</strong><small>Recommended 1600 × 500 · Up to 10MB</small>
-                    </span>
-                    <input type="file" name="cover_photo" accept="image/jpeg,image/png,image/webp" data-storefront-image="cover" hidden>
-                </label>
+                        <input type="file" name="cover_photo" accept="image/jpeg,image/png,image/webp" data-storefront-image="cover" hidden>
+                    </label>
+                    @if ($store['cover_photo'])
+                        <label class="storefront-remove-image"><input type="checkbox" name="remove_cover_photo" value="1" @checked(old('remove_cover_photo'))> <span>Remove current photo</span></label>
+                    @endif
+                </div>
             </div>
             <p class="storefront-guidance"><i data-lucide="info"></i>Avoid contact details, misleading promotions, or copyrighted brand assets in your store images.</p>
         </section>
@@ -51,9 +62,9 @@
                 @if ($store['promo_banners'][0]['id'] ?? false)<input type="hidden" name="promo_banner_ids[]" value="{{ $store['promo_banners'][0]['id'] }}">@endif
                 <label class="storefront-upload promo-upload">
                     <span class="storefront-field-label">Banner image</span>
-                    <span class="storefront-promo-drop">
+                    <span class="storefront-promo-drop" data-promo-drop>
                         @if (filled($store['promo_banners'][0]['path'] ?? null))
-                            <img src="{{ asset('storage/'.$store['promo_banners'][0]['path']) }}" alt="Current promotional banner" data-promo-image>
+                            <img src="{{ $store['promo_banners'][0]['url'] }}" alt="Current promotional banner" data-promo-image>
                         @else
                             <i data-lucide="image-plus"></i><strong>Choose promotional banner</strong>
                         @endif
@@ -62,8 +73,8 @@
                     <input type="file" name="promo_banners[]" accept="image/jpeg,image/png,image/webp" data-storefront-image="promo" hidden>
                 </label>
                 <div class="storefront-promo-fields">
-                    <label class="storefront-description-field"><span>Banner title</span><input type="text" name="promo_banner_titles[]" maxlength="160" value="{{ old('promo_banner_title', $store['promo_banners'][0]['title'] ?? '') }}" placeholder="Example: New arrivals are here"></label>
-                    <label class="storefront-description-field"><span>Optional link</span><input type="url" name="promo_banner_links[]" maxlength="500" value="{{ old('promo_banner_link', $store['promo_banners'][0]['link'] ?? '') }}" placeholder="https://your-store-page.example"></label>
+                    <label class="storefront-description-field"><span>Banner title</span><input type="text" name="promo_banner_titles[]" maxlength="160" value="{{ old('promo_banner_titles.0', $store['promo_banners'][0]['title'] ?? '') }}" placeholder="Example: New arrivals are here"></label>
+                    <label class="storefront-description-field"><span>Optional link</span><input type="url" name="promo_banner_links[]" maxlength="500" value="{{ old('promo_banner_links.0', $store['promo_banners'][0]['link'] ?? '') }}" placeholder="https://your-store-page.example"></label>
                 </div>
                 <button class="storefront-remove-promo" type="button" data-remove-promo-banner><i data-lucide="trash-2"></i><span>Remove banner</span></button>
             </div>
@@ -72,7 +83,7 @@
                     <input type="hidden" name="promo_banner_ids[]" value="{{ $banner['id'] }}">
                     <label class="storefront-upload promo-upload">
                         <span class="storefront-field-label">Banner image</span>
-                        <span class="storefront-promo-drop" data-promo-drop><img src="{{ asset('storage/'.$banner['path']) }}" alt="Current promotional banner" data-promo-image><strong>Replace banner</strong><small>JPG, PNG, or WebP · Up to 20MB</small></span>
+                        <span class="storefront-promo-drop" data-promo-drop><img src="{{ $banner['url'] }}" alt="Current promotional banner" data-promo-image><strong>Replace banner</strong><small>JPG, PNG, or WebP · Up to 20MB</small></span>
                         <input type="file" name="promo_banners[]" accept="image/jpeg,image/png,image/webp" data-storefront-image="promo" hidden>
                     </label>
                     <div class="storefront-promo-fields">
@@ -126,7 +137,7 @@
             <div class="buyer-store-preview">
                 <div class="buyer-store-cover" data-storefront-preview-cover>
                     @if ($store['cover_photo'])
-                        <img src="{{ asset('storage/'.$store['cover_photo']) }}" alt="{{ $store['name'] }} cover photo">
+                        <img src="{{ $store['cover_photo_url'] }}" alt="{{ $store['name'] }} cover photo">
                     @else
                         <span>Store cover</span>
                     @endif
@@ -134,7 +145,7 @@
                 <div class="buyer-store-profile">
                     <span class="buyer-store-avatar" data-storefront-preview-profile>
                         @if ($store['profile_photo'])
-                            <img src="{{ asset('storage/'.$store['profile_photo']) }}" alt="{{ $store['name'] }} profile photo">
+                            <img src="{{ $store['profile_photo_url'] }}" alt="{{ $store['name'] }} profile photo">
                         @else
                             {{ strtoupper(substr($store['name'], 0, 1)) }}
                         @endif
@@ -153,7 +164,7 @@
                     <div class="buyer-store-promo-track">
                         @foreach ($store['promo_banners'] as $index => $banner)
                             <div class="buyer-store-promo-slide{{ $index === 0 ? ' is-active' : '' }}" data-storefront-promo-slide data-slide-index="{{ $index }}" @if ($index > 0) hidden @endif>
-                                <img src="{{ asset('storage/'.$banner['path']) }}" alt="{{ $banner['title'] ?: 'Promotional banner preview' }}">
+                                <img src="{{ $banner['url'] }}" alt="{{ $banner['title'] ?: 'Promotional banner preview' }}">
                                 <span class="buyer-store-promo-overlay" data-storefront-preview-promo-title @if (!filled($banner['title'])) hidden @endif>{{ $banner['title'] }}</span>
                             </div>
                         @endforeach

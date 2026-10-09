@@ -1,6 +1,11 @@
 const bootSeller = () => {
     window.lucide?.createIcons();
 
+    const productFilterForm = document.querySelector('[data-product-filter-form]');
+    productFilterForm?.querySelectorAll('[data-product-filter-auto-submit]').forEach((control) => {
+        control.addEventListener('change', () => productFilterForm.requestSubmit());
+    });
+
     const shell = document.querySelector('[data-seller-shell]');
     const menuButton = document.querySelector('[data-seller-menu]');
     const mobileMenuButton = document.querySelector('[data-seller-mobile-menu]');
@@ -106,32 +111,19 @@ const bootSeller = () => {
     });
 
     const productPrice = document.querySelector('[data-product-price]');
-    const productDiscount = document.querySelector('[data-product-discount]');
+    const productEditor = document.querySelector('[data-product-editor]');
+    const productDiscount = Math.min(90, Math.max(0, Number(productEditor?.dataset.productDiscountPercent || 0)));
     const productSalePrice = document.querySelector('[data-sale-price]');
     const updateSalePrice = () => {
         if (!productSalePrice) return;
         const price = Math.max(0, Number(productPrice?.value || 0));
-        const discount = Math.min(90, Math.max(0, Number(productDiscount?.value || 0)));
-        const salePrice = price * (1 - (discount / 100));
+        const salePrice = price * (1 - (productDiscount / 100));
         productSalePrice.textContent = `₱${salePrice.toLocaleString('en-PH', {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2,
         })}`;
     };
     productPrice?.addEventListener('input', updateSalePrice);
-    productDiscount?.addEventListener('input', updateSalePrice);
-
-    const productImageInput = document.querySelector('[data-product-image-input]');
-    productImageInput?.addEventListener('change', () => {
-        const file = productImageInput.files?.[0];
-        const preview = document.querySelector('[data-product-image-preview]');
-        if (!file || !preview) return;
-        const image = document.createElement('img');
-        image.alt = 'Selected product preview';
-        image.src = URL.createObjectURL(file);
-        image.addEventListener('load', () => URL.revokeObjectURL(image.src), { once: true });
-        preview.replaceChildren(image);
-    });
 
     const galleryInput = document.querySelector('input[name="gallery_images[]"]');
     galleryInput?.addEventListener('change', () => {
@@ -155,24 +147,6 @@ const bootSeller = () => {
             preview.src = URL.createObjectURL(file);
         });
     });
-
-    const applyProductFilters = () => {
-        const search = document.querySelector('[data-product-search]')?.value.trim().toLowerCase() ?? '';
-        const category = document.querySelector('[data-product-category]')?.value ?? '';
-        const status = document.querySelector('[data-product-status]')?.value ?? '';
-        let visible = 0;
-        document.querySelectorAll('[data-product-row]').forEach((row) => {
-            const matches = (!search || row.dataset.name.includes(search))
-                && (!category || row.dataset.category === category)
-                && (!status || row.dataset.status === status);
-            row.hidden = !matches;
-            if (matches) visible += 1;
-        });
-        const noResults = document.querySelector('[data-no-results]');
-        if (noResults) noResults.hidden = visible > 0;
-    };
-    document.querySelector('[data-product-search]')?.addEventListener('input', applyProductFilters);
-    document.querySelectorAll('[data-product-category],[data-product-status]').forEach((select) => select.addEventListener('change', applyProductFilters));
 
     /* Orders page: frontend-only filtering, selection, and preview actions. */
     const orderWorkspace = document.querySelector('[data-orders-workspace]');
@@ -319,21 +293,90 @@ const bootSeller = () => {
     });
 
 
-    /* Inventory page — frontend-only controls and non-persistent stock preview. */
+    /* Seller inventory filters and persisted adjustment forms. */
     const inventoryWorkspace = document.querySelector('[data-inventory-workspace]');
 
     if (inventoryWorkspace) {
         let activeInventoryStatus = 'all';
         const inventoryRows = [...inventoryWorkspace.querySelectorAll('[data-inventory-row]')];
         const inventorySearch = inventoryWorkspace.querySelector('[data-inventory-search]');
-        const inventoryCategory = inventoryWorkspace.querySelector('[data-inventory-category]');
-        const inventoryStatus = inventoryWorkspace.querySelector('[data-inventory-status]');
+        const inventorySubcategory = inventoryWorkspace.querySelector('[data-inventory-subcategory]');
         const showVariations = inventoryWorkspace.querySelector('[data-inventory-variations]');
         const checkAll = inventoryWorkspace.querySelector('[data-inventory-check-all]');
         const selectedCount = inventoryWorkspace.querySelector('[data-inventory-selected-count]');
         const visibleCount = inventoryWorkspace.querySelector('[data-inventory-visible-count]');
         const noResults = inventoryWorkspace.querySelector('[data-inventory-no-results]');
         const bulkButtons = [...inventoryWorkspace.querySelectorAll('[data-inventory-bulk]')];
+        const adjustModal = document.querySelector('[data-modal="inventory-adjust"]');
+        const thresholdModal = document.querySelector('[data-modal="inventory-threshold"]');
+        const adjustForm = adjustModal?.querySelector('[data-inventory-adjust-form]');
+        const thresholdForm = thresholdModal?.querySelector('[data-inventory-threshold-form]');
+        const adjustMode = adjustForm?.querySelector('[data-adjust-mode]');
+        const adjustQuantity = adjustForm?.querySelector('[data-adjust-quantity]');
+        const adjustCurrent = adjustForm?.querySelector('[data-adjust-current]');
+
+        if ((adjustModal && !adjustModal.hidden) || (thresholdModal && !thresholdModal.hidden)) {
+            document.body.style.overflow = 'hidden';
+        }
+
+        const fillVariantIds = (container, ids) => {
+            if (!container) return;
+            container.replaceChildren();
+            ids.forEach((id) => {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'variant_ids[]';
+                input.value = String(id);
+                container.append(input);
+            });
+        };
+
+        const openInventoryModal = (modal) => {
+            if (!modal) return;
+            modal.hidden = false;
+            document.body.style.overflow = 'hidden';
+            modal.querySelector('input:not([type="hidden"]), select')?.focus();
+        };
+
+        const selectedVariantIds = () => inventoryRows
+            .filter((row) => row.querySelector('[data-inventory-check]')?.checked)
+            .map((row) => row.dataset.id);
+
+        const openAdjustment = (ids, label) => {
+            if (!adjustModal || !adjustForm || ids.length === 0) return;
+            adjustForm.reset();
+            fillVariantIds(adjustForm.querySelector('[data-adjust-variant-ids]'), ids);
+            const itemLabel = adjustForm.querySelector('[data-adjust-item-label]');
+            if (itemLabel) itemLabel.textContent = label;
+            const selectedRows = ids
+                .map((id) => inventoryRows.find((row) => row.dataset.id === String(id)))
+                .filter(Boolean);
+            if (adjustCurrent) {
+                adjustCurrent.textContent = selectedRows.length === 1
+                    ? selectedRows[0].dataset.onHand
+                    : 'Varies';
+            }
+            if (adjustMode) adjustMode.value = 'add';
+            if (adjustQuantity) {
+                adjustQuantity.value = '1';
+                adjustQuantity.min = '1';
+                adjustQuantity.max = '2147483647';
+            }
+            openInventoryModal(adjustModal);
+        };
+
+        const openThreshold = (ids, target = 'selected') => {
+            if (!thresholdModal || !thresholdForm || ids.length === 0) return;
+            thresholdForm.reset();
+            fillVariantIds(thresholdForm.querySelector('[data-threshold-variant-ids]'), ids);
+            const label = thresholdForm.querySelector('[data-threshold-selected-label]');
+            if (label) {
+                label.textContent = target === 'visible'
+                    ? `No rows selected. This will apply to all ${ids.length} SKU${ids.length === 1 ? '' : 's'} currently shown by your filters.`
+                    : `This will apply to ${ids.length} selected SKU${ids.length === 1 ? '' : 's'}.`;
+            }
+            openInventoryModal(thresholdModal);
+        };
 
         const updateInventorySelection = () => {
             const visibleChecks = inventoryRows
@@ -342,7 +385,11 @@ const bootSeller = () => {
             const checked = inventoryRows.filter((row) => row.querySelector('[data-inventory-check]')?.checked).length;
 
             if (selectedCount) selectedCount.textContent = checked;
-            bulkButtons.forEach((button) => { button.disabled = checked === 0; });
+            bulkButtons.forEach((button) => {
+                button.disabled = button.dataset.inventoryBulk === 'set-threshold'
+                    ? visibleChecks.length === 0
+                    : checked === 0;
+            });
 
             if (checkAll) {
                 checkAll.checked = visibleChecks.length > 0 && visibleChecks.every((checkbox) => checkbox?.checked);
@@ -350,21 +397,40 @@ const bootSeller = () => {
             }
         };
 
+        const clearInventorySelection = () => {
+            inventoryRows.forEach((row) => {
+                const checkbox = row.querySelector('[data-inventory-check]');
+                if (checkbox) checkbox.checked = false;
+            });
+
+            if (checkAll) {
+                checkAll.checked = false;
+                checkAll.indeterminate = false;
+            }
+        };
+
         const applyInventoryFilters = () => {
             const search = inventorySearch?.value.trim().toLowerCase() ?? '';
-            const category = inventoryCategory?.value ?? '';
-            const selectedStatus = inventoryStatus?.value ?? '';
+            const subcategory = inventorySubcategory?.value ?? '';
             const variationsVisible = showVariations?.checked ?? true;
             let visible = 0;
 
             inventoryRows.forEach((row) => {
-                const matches = (activeInventoryStatus === 'all' || row.dataset.status === activeInventoryStatus)
-                    && (!selectedStatus || row.dataset.status === selectedStatus)
+                const matchesStatus = activeInventoryStatus === 'all'
+                    ? row.dataset.status !== 'archived'
+                    : activeInventoryStatus === 'needs-restocking'
+                        ? ['low-stock', 'out-of-stock'].includes(row.dataset.status)
+                        : row.dataset.status === activeInventoryStatus;
+                const matches = matchesStatus
                     && (!search || row.dataset.search.includes(search))
-                    && (!category || row.dataset.category === category)
+                    && (!subcategory || row.dataset.subcategory === subcategory)
                     && (variationsVisible || row.dataset.variationRow !== 'true');
 
                 row.hidden = !matches;
+                if (!matches) {
+                    const checkbox = row.querySelector('[data-inventory-check]');
+                    if (checkbox) checkbox.checked = false;
+                }
                 if (matches) visible += 1;
             });
 
@@ -386,16 +452,15 @@ const bootSeller = () => {
         });
 
         inventorySearch?.addEventListener('input', applyInventoryFilters);
-        inventoryCategory?.addEventListener('change', applyInventoryFilters);
-        inventoryStatus?.addEventListener('change', applyInventoryFilters);
+        inventorySubcategory?.addEventListener('change', applyInventoryFilters);
         showVariations?.addEventListener('change', applyInventoryFilters);
 
         inventoryWorkspace.querySelector('[data-inventory-reset]')?.addEventListener('click', () => {
             if (inventorySearch) inventorySearch.value = '';
-            if (inventoryCategory) inventoryCategory.value = '';
-            if (inventoryStatus) inventoryStatus.value = '';
+            if (inventorySubcategory) inventorySubcategory.value = '';
             if (showVariations) showVariations.checked = true;
             activeInventoryStatus = 'all';
+            clearInventorySelection();
 
             inventoryWorkspace.querySelectorAll('[data-inventory-tab]').forEach((tab) => {
                 const active = tab.dataset.inventoryTab === 'all';
@@ -404,6 +469,16 @@ const bootSeller = () => {
             });
 
             applyInventoryFilters();
+        });
+
+        document.querySelector('[data-inventory-alerts]')?.addEventListener('click', () => {
+            if (inventorySearch) inventorySearch.value = '';
+            if (inventorySubcategory) inventorySubcategory.value = '';
+            if (showVariations) showVariations.checked = true;
+            clearInventorySelection();
+
+            inventoryWorkspace.querySelector('[data-inventory-tab="needs-restocking"]')?.click();
+            inventoryWorkspace.scrollIntoView({ behavior: 'smooth', block: 'start' });
         });
 
         checkAll?.addEventListener('change', () => {
@@ -417,100 +492,34 @@ const bootSeller = () => {
         inventoryRows.forEach((row) => row.querySelector('[data-inventory-check]')?.addEventListener('change', updateInventorySelection));
 
         bulkButtons.forEach((button) => button.addEventListener('click', () => {
-            const count = Number(selectedCount?.textContent ?? 0);
-            if (!toast || count === 0) return;
-            toast.textContent = `${button.dataset.inventoryBulk} selected for ${count} inventory item${count === 1 ? '' : 's'} (preview only).`;
-            toast.classList.add('is-visible');
-            window.clearTimeout(window.sellerToastTimer);
-            window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3000);
+            const ids = selectedVariantIds();
+            if (button.dataset.inventoryBulk === 'adjust-stock') {
+                openAdjustment(ids, `${ids.length} selected SKU${ids.length === 1 ? '' : 's'}`);
+            }
+            if (button.dataset.inventoryBulk === 'set-threshold') {
+                const targets = ids.length > 0
+                    ? ids
+                    : inventoryRows.filter((row) => !row.hidden).map((row) => row.dataset.id);
+                openThreshold(targets, ids.length > 0 ? 'selected' : 'visible');
+            }
         }));
+
+        adjustMode?.addEventListener('change', () => {
+            if (adjustQuantity) {
+                const exactBalance = adjustMode.value === 'set';
+                adjustQuantity.min = exactBalance ? '0' : '1';
+                adjustQuantity.max = exactBalance ? '4294967295' : '2147483647';
+            }
+        });
+
+        document.querySelectorAll('[data-adjust-stock]').forEach((button) => {
+            button.addEventListener('click', () => {
+                openAdjustment([button.dataset.itemId], button.dataset.itemLabel || 'Selected inventory item');
+            });
+        });
 
         applyInventoryFilters();
     }
-
-    const adjustModal = document.querySelector('[data-modal="inventory-adjust"]');
-    const adjustItemId = adjustModal?.querySelector('[data-adjust-item-id]');
-    const adjustItemLabel = adjustModal?.querySelector('[data-adjust-item-label]');
-    const adjustCurrent = adjustModal?.querySelector('[data-adjust-current]');
-    const adjustMode = adjustModal?.querySelector('[data-adjust-mode]');
-    const adjustQuantity = adjustModal?.querySelector('[data-adjust-quantity]');
-
-    document.querySelectorAll('[data-adjust-stock]').forEach((button) => {
-        button.addEventListener('click', () => {
-            const row = button.closest('[data-inventory-row]');
-            if (!adjustModal || !row) return;
-            if (adjustItemId) adjustItemId.value = button.dataset.itemId;
-            if (adjustItemLabel) adjustItemLabel.textContent = button.dataset.itemLabel;
-            if (adjustCurrent) adjustCurrent.textContent = row.dataset.onHand;
-            if (adjustMode) adjustMode.value = 'add';
-            if (adjustQuantity) adjustQuantity.value = '1';
-            adjustModal.hidden = false;
-            document.body.style.overflow = 'hidden';
-            adjustQuantity?.focus();
-        });
-    });
-
-    adjustModal?.querySelector('[data-apply-stock-adjustment]')?.addEventListener('click', () => {
-        const row = document.querySelector(`[data-inventory-row][data-id="${adjustItemId?.value}"]`);
-        if (!row) return;
-
-        const current = Math.max(0, Number(row.dataset.onHand || 0));
-        const reserved = Math.max(0, Number(row.dataset.reserved || 0));
-        const threshold = Math.max(0, Number(row.dataset.threshold || 0));
-        const quantity = Math.max(0, Math.floor(Number(adjustQuantity?.value || 0)));
-        let next = current;
-
-        if (adjustMode?.value === 'add') next = current + quantity;
-        if (adjustMode?.value === 'remove') next = Math.max(0, current - quantity);
-        if (adjustMode?.value === 'set') next = quantity;
-
-        const available = Math.max(0, next - reserved);
-        const statusKey = available === 0 ? 'out-of-stock' : available <= threshold ? 'low-stock' : 'in-stock';
-        const statusLabel = statusKey === 'out-of-stock' ? 'Out of Stock' : statusKey === 'low-stock' ? 'Low Stock' : 'In Stock';
-        const status = row.querySelector('[data-stock-status]');
-        const availableCell = row.querySelector('[data-stock-available]');
-
-        row.dataset.onHand = String(next);
-        row.dataset.status = statusKey;
-        if (row.querySelector('[data-stock-on-hand]')) row.querySelector('[data-stock-on-hand]').textContent = next;
-        if (availableCell) {
-            availableCell.textContent = available;
-            availableCell.classList.toggle('is-empty', available === 0);
-        }
-        if (status) {
-            status.textContent = statusLabel;
-            status.className = `inventory-stock-badge stock-${statusKey}`;
-        }
-
-        const action = row.querySelector('[data-adjust-stock]');
-        if (action) action.textContent = available === 0 ? 'Restock' : 'Adjust Stock';
-        if (adjustModal) adjustModal.hidden = true;
-        document.body.style.overflow = '';
-
-        if (toast) {
-            toast.textContent = `Stock preview updated to ${next}. Refreshing the page will reset this change.`;
-            toast.classList.add('is-visible');
-            window.clearTimeout(window.sellerToastTimer);
-            window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3400);
-        }
-
-        inventoryWorkspace?.querySelector('[data-inventory-search]')?.dispatchEvent(new Event('input'));
-    });
-
-    document.querySelector('[data-inventory-alerts]')?.addEventListener('click', () => {
-        document.querySelector('[data-inventory-tab="low-stock"]')?.click();
-        document.querySelector('[data-inventory-workspace]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
-
-    document.querySelectorAll('[data-inventory-demo]').forEach((button) => {
-        button.addEventListener('click', () => {
-            if (!toast) return;
-            toast.textContent = `${button.dataset.inventoryDemo} Frontend preview only.`;
-            toast.classList.add('is-visible');
-            window.clearTimeout(window.sellerToastTimer);
-            window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3000);
-        });
-    });
 
     /* Returns & refunds: Shopee-style case filtering and ERP resolution preview. */
     const returnsWorkspace = document.querySelector('[data-returns-workspace]');
@@ -770,7 +779,7 @@ const bootSeller = () => {
         window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3400);
     });
 
-    /* Store appearance — frontend-only image, description, and buyer preview. */
+    /* Store appearance — persisted image, description, and buyer preview. */
     const appearance = document.querySelector('[data-storefront-appearance]');
     if (appearance) {
         const appearanceForm = appearance.closest('form');
@@ -801,7 +810,7 @@ const bootSeller = () => {
         const previewAnnouncement = appearance.querySelector('[data-storefront-preview-announcement]');
         const hours = appearance.querySelector('[data-storefront-hours]');
         const previewHours = appearance.querySelector('[data-storefront-preview-hours]');
-        const promoTitle = appearance.querySelector('[name="promo_banner_title"]');
+        const promoTitle = appearance.querySelector('[name="promo_banner_titles[]"]');
         const previewPromoTitle = appearance.querySelector('[data-storefront-preview-promo-title]');
 
         description?.addEventListener('input', () => {
@@ -844,10 +853,34 @@ const bootSeller = () => {
             previewPromoTitle.hidden = !promoTitle.value.trim();
         });
 
+        const updatePromoUploadPreview = (input, src) => {
+            const drop = input.closest('[data-promo-banner-item]')?.querySelector('[data-promo-drop]');
+            if (!drop || !src) return;
+
+            let image = drop.querySelector('[data-promo-image]');
+            if (!image) {
+                image = document.createElement('img');
+                image.dataset.promoImage = '';
+                drop.querySelector('[data-lucide]')?.remove();
+                const label = drop.querySelector('strong');
+                if (label) label.textContent = 'Replace banner';
+                drop.prepend(image);
+            }
+
+            image.src = src;
+            image.alt = 'Selected promotional banner';
+        };
+
         appearance.querySelectorAll('[data-storefront-image]').forEach((input) => {
             input.addEventListener('change', () => {
                 const file = input.files?.[0];
                 if (!file) return;
+
+                if (input.dataset.storefrontImage === 'profile' || input.dataset.storefrontImage === 'cover') {
+                    const removalName = input.dataset.storefrontImage === 'profile' ? 'remove_profile_photo' : 'remove_cover_photo';
+                    const removal = appearance.querySelector(`[name="${removalName}"]`);
+                    if (removal) removal.checked = false;
+                }
 
                 const maximum = ['cover', 'promo'].includes(input.dataset.storefrontImage) ? 20 : 10;
                 if (file.size > maximum * 1024 * 1024) {
@@ -875,6 +908,7 @@ const bootSeller = () => {
                         appearance.querySelector('[data-storefront-cover-placeholder]')?.replaceChildren(createPreview());
                         appearance.querySelector('[data-storefront-preview-cover]')?.replaceChildren(createPreview());
                     } else if (input.dataset.storefrontImage === 'promo') {
+                        updatePromoUploadPreview(input, reader.result);
                         const preview = appearance.querySelector('[data-storefront-preview-promo]');
                         const slide = preview?.querySelector('[data-storefront-promo-slide]');
                         if (slide) {
@@ -964,7 +998,16 @@ const bootSeller = () => {
         };
 
         appearance.addEventListener('change', (event) => {
-            if (event.target.matches('[data-storefront-image="promo"]')) renderPromoCarousel();
+            if (!event.target.matches('[data-storefront-image="promo"]')) return;
+
+            const file = event.target.files?.[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.addEventListener('load', () => updatePromoUploadPreview(event.target, reader.result));
+                reader.readAsDataURL(file);
+            }
+
+            renderPromoCarousel();
         });
         appearance.addEventListener('input', (event) => {
             if (event.target.matches('input[name="promo_banner_titles[]"]')) renderPromoCarousel();
@@ -1172,13 +1215,55 @@ const bootSeller = () => {
 
     /* Product pricing and promotion workspace. */
     const pricingWorkspace = document.querySelector('[data-pricing-workspace]');
+    const showPricingToast = (message) => {
+        if (!toast) return;
+        toast.textContent = message;
+        toast.classList.add('is-visible');
+        window.clearTimeout(window.sellerToastTimer);
+        window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3400);
+    };
+    const formatPricingMoney = (minor) => `₱${(Number(minor) / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    let applyPricingFilters = () => {};
+    const updatePricingSummary = () => {
+        if (!pricingWorkspace) return;
+        const summaryDiscounted = pricingWorkspace.querySelector('[data-pricing-summary="discounted"]');
+        const summaryVoucherEligible = pricingWorkspace.querySelector('[data-pricing-summary="voucher-eligible"]');
+        if (summaryDiscounted) {
+            summaryDiscounted.textContent = pricingWorkspace.querySelectorAll('[data-pricing-row][data-state="discounted"]').length;
+        }
+        if (summaryVoucherEligible) {
+            summaryVoucherEligible.textContent = pricingWorkspace.querySelectorAll('[data-voucher-toggle]:checked').length;
+        }
+    };
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+    const sendPricingMutation = async (endpoint, body) => {
+        const response = await fetch(endpoint, {
+            method: 'PATCH',
+            headers: {
+                Accept: 'application/json',
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+            },
+            body: JSON.stringify(body),
+        });
+        const result = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+            throw new Error(result.message && result.message !== 'The given data was invalid.'
+                ? result.message
+                : Object.values(result.errors || {}).flat()[0] || 'Unable to save pricing changes.');
+        }
+
+        return result;
+    };
+
     if (pricingWorkspace) {
         const pricingRows = [...pricingWorkspace.querySelectorAll('[data-pricing-row]')];
         const pricingSearch = pricingWorkspace.querySelector('[data-pricing-search]');
         const pricingStatus = pricingWorkspace.querySelector('[data-pricing-status]');
         const pricingCount = pricingWorkspace.querySelector('[data-pricing-count]');
         const pricingEmpty = pricingWorkspace.querySelector('[data-pricing-empty]');
-        const applyPricingFilters = () => {
+        applyPricingFilters = () => {
             const query = pricingSearch?.value.trim().toLowerCase() ?? '';
             const status = pricingStatus?.value ?? '';
             let visible = 0;
@@ -1188,7 +1273,7 @@ const bootSeller = () => {
                 if (match) visible += 1;
             });
             if (pricingCount) pricingCount.textContent = visible;
-            if (pricingEmpty) pricingEmpty.hidden = visible > 0;
+            if (pricingEmpty) pricingEmpty.hidden = pricingRows.length === 0 || visible > 0;
         };
         pricingSearch?.addEventListener('input', applyPricingFilters);
         pricingStatus?.addEventListener('change', applyPricingFilters);
@@ -1214,15 +1299,10 @@ const bootSeller = () => {
     if (pricingWorkspace && requestedPricingTab) {
         pricingWorkspace.querySelector('[data-pricing-tab="' + requestedPricingTab + '"]')?.click();
     }
-    if (pricingParams.get('created') === '1' && toast) {
-        toast.textContent = 'Promotion created for this frontend preview.';
-        toast.classList.add('is-visible');
-        window.clearTimeout(window.sellerToastTimer);
-        window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3200);
-    }
-
     const priceModal = document.querySelector('[data-modal="pricing-price"]');
     const campaignModal = document.querySelector('[data-modal="pricing-campaign"]');
+    let activePricingButton = null;
+    let activePricingProduct = null;
     const calculatePrice = () => {
         if (!priceModal) return;
         const regular = Math.max(0, Number(priceModal.querySelector('[data-price-regular]')?.value || 0));
@@ -1240,23 +1320,79 @@ const bootSeller = () => {
         if (!modal) return;
         if (isPrice) {
             const product = JSON.parse(button.dataset.product);
+            activePricingButton = button;
+            activePricingProduct = product;
             modal.querySelector('[data-price-product]').textContent = product.name;
             modal.querySelector('[data-price-regular]').value = product.price;
-            modal.querySelector('[data-price-discount]').value = product.discount_percent;
+            const discountInput = modal.querySelector('[data-price-discount]');
+            const currentDiscount = Number(product.discount_percent || 0);
+            discountInput.value = currentDiscount > 0 ? String(currentDiscount) : '';
+            modal.querySelector('[data-price-variant-count]').textContent = product.variants?.length || 0;
             calculatePrice();
         }
         modal.hidden = false;
         document.body.style.overflow = 'hidden';
     }));
     priceModal?.querySelectorAll('[data-price-regular],[data-price-discount]').forEach((input) => input.addEventListener('input', calculatePrice));
-    priceModal?.querySelector('[data-price-save]')?.addEventListener('click', () => {
-        priceModal.hidden = true;
-        document.body.style.overflow = '';
-        if (toast) {
-            toast.textContent = 'Product price updated for this frontend preview.';
-            toast.classList.add('is-visible');
-            window.clearTimeout(window.sellerToastTimer);
-            window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3200);
+    priceModal?.querySelector('[data-price-save]')?.addEventListener('click', async (event) => {
+        const button = event.currentTarget;
+        const regularInput = priceModal.querySelector('[data-price-regular]');
+        const discountInput = priceModal.querySelector('[data-price-discount]');
+
+        if (!regularInput?.reportValidity() || (discountInput && !discountInput.reportValidity()) || !activePricingButton) return;
+
+        const discountPercent = Number(discountInput?.value || 0);
+
+        const endpoint = activePricingButton.dataset.pricingUrl;
+        const originalLabel = button.textContent;
+        button.disabled = true;
+        button.textContent = 'Saving…';
+
+        try {
+            const result = await sendPricingMutation(endpoint, {
+                regular_price: regularInput.value,
+                discount_percent: discountPercent,
+            });
+            const data = result.data || {};
+            const productId = String(data.product_id);
+            const pricingRow = [...pricingWorkspace?.querySelectorAll('[data-pricing-row]') || []]
+                .find((row) => row.dataset.productId === productId);
+            const voucherRow = [...pricingWorkspace?.querySelectorAll('[data-voucher-row]') || []]
+                .find((row) => row.dataset.productId === productId);
+
+            if (pricingRow) {
+                const saleDisplay = pricingRow.querySelector('[data-price-sale-display]');
+                const regularDisplay = pricingRow.querySelector('[data-price-regular-display]');
+                const discountDisplay = pricingRow.querySelector('[data-price-discount-display]');
+                const hasDiscount = Number(data.discount_percent) > 0;
+
+                if (regularDisplay) regularDisplay.textContent = formatPricingMoney(data.regular_price_minor);
+                if (saleDisplay) saleDisplay.textContent = formatPricingMoney(data.sale_price_minor);
+                if (discountDisplay) {
+                    discountDisplay.textContent = hasDiscount ? `${data.discount_percent}% off` : '—';
+                    discountDisplay.classList.toggle('pricing-discount-text', hasDiscount);
+                    discountDisplay.classList.toggle('pricing-muted', !hasDiscount);
+                }
+                pricingRow.dataset.state = hasDiscount ? 'discounted' : 'regular';
+                activePricingProduct.price = Number(data.regular_price_minor) / 100;
+                activePricingProduct.discount_percent = Number(data.discount_percent);
+                activePricingButton.dataset.product = JSON.stringify(activePricingProduct);
+                applyPricingFilters();
+            }
+
+            const voucherRegularDisplay = voucherRow?.querySelector('[data-voucher-regular-display]');
+            if (voucherRegularDisplay) voucherRegularDisplay.textContent = formatPricingMoney(data.regular_price_minor);
+
+            updatePricingSummary();
+
+            priceModal.hidden = true;
+            document.body.style.overflow = '';
+            showPricingToast(result.message || 'Product pricing saved.');
+        } catch (error) {
+            showPricingToast(error.message || 'Unable to save product pricing.');
+        } finally {
+            button.disabled = false;
+            button.textContent = originalLabel;
         }
     });
     campaignModal?.querySelector('[data-campaign-save]')?.addEventListener('click', () => {
@@ -1265,30 +1401,48 @@ const bootSeller = () => {
         campaignModal.hidden = true;
         document.body.style.overflow = '';
         if (toast) {
-            toast.textContent = `${name.value.trim()} created as a frontend preview.`;
+            toast.textContent = `${name.value.trim()} preview is ready; it was not saved.`;
             toast.classList.add('is-visible');
             window.clearTimeout(window.sellerToastTimer);
             window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3200);
         }
     });
-    document.querySelectorAll('[data-voucher-toggle]').forEach((toggle) => toggle.addEventListener('change', () => {
+    document.querySelectorAll('[data-voucher-toggle]').forEach((toggle) => toggle.addEventListener('change', async () => {
+        const previousValue = !toggle.checked;
+        const wasDisabled = toggle.disabled;
         const label = toggle.closest('.pricing-switch')?.querySelector('span');
-        if (label) label.textContent = toggle.checked ? 'Eligible' : 'Not eligible';
-    }));
-    document.querySelectorAll('[data-pricing-demo]').forEach((button) => button.addEventListener('click', () => {
-        if (!toast) return;
-        toast.textContent = `${button.dataset.pricingDemo} Frontend preview only.`;
-        toast.classList.add('is-visible');
-        window.clearTimeout(window.sellerToastTimer);
-        window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3000);
-    }));
+        toggle.disabled = true;
 
+        try {
+            const result = await sendPricingMutation(toggle.dataset.voucherUrl, {
+                voucher_eligible: toggle.checked,
+            });
+            toggle.checked = Boolean(result.data?.voucher_eligible);
+            if (label) label.textContent = toggle.checked ? 'Eligible' : 'Not eligible';
+            const productId = toggle.closest('[data-voucher-row]')?.dataset.productId;
+            const pricingRow = [...pricingWorkspace?.querySelectorAll('[data-pricing-row]') || []]
+                .find((row) => row.dataset.productId === productId);
+            const voucherState = pricingRow?.querySelector('.pricing-voucher-state');
+            if (voucherState) {
+                voucherState.classList.toggle('is-eligible', toggle.checked);
+                voucherState.classList.toggle('is-ineligible', !toggle.checked);
+                const voucherLabel = voucherState.querySelector('span');
+                if (voucherLabel) voucherLabel.textContent = toggle.checked ? 'Eligible' : 'Not eligible';
+            }
+            updatePricingSummary();
+            showPricingToast(result.message || 'Voucher eligibility saved.');
+        } catch (error) {
+            toggle.checked = previousValue;
+            if (label) label.textContent = previousValue ? 'Eligible' : 'Not eligible';
+            updatePricingSummary();
+            showPricingToast(error.message || 'Unable to save voucher eligibility.');
+        } finally {
+            toggle.disabled = wasDisabled;
+        }
+    }));
     const promotionForm = document.querySelector('[data-promotion-form]');
     if (promotionForm) {
-        const type = promotionForm.querySelector('[data-promotion-type]');
         const value = promotionForm.querySelector('[data-promotion-value]');
-        const valueLabel = promotionForm.querySelector('[data-promotion-value-label]');
-        const valueSuffix = promotionForm.querySelector('[data-promotion-value-suffix]');
         const name = promotionForm.querySelector('[data-promotion-name]');
         const start = promotionForm.querySelector('[data-promotion-start]');
         const end = promotionForm.querySelector('[data-promotion-end]');
@@ -1296,34 +1450,27 @@ const bootSeller = () => {
         const selectAll = promotionForm.querySelector('[data-promotion-select-all]');
 
         const syncPromotionSummary = () => {
-            const currentType = type?.value || 'Product Discount';
             const currentValue = Math.max(0, Number(value?.value || 0));
             const selected = checks.filter((check) => check.checked).length;
             const summaryName = promotionForm.querySelector('[data-promotion-summary-name]');
-            const summaryType = promotionForm.querySelector('[data-promotion-summary-type]');
             const summaryValue = promotionForm.querySelector('[data-promotion-summary-value]');
             const summaryProducts = promotionForm.querySelector('[data-promotion-summary-products]');
             const summarySchedule = promotionForm.querySelector('[data-promotion-summary-schedule]');
 
             if (summaryName) summaryName.textContent = name?.value.trim() || 'Untitled promotion';
-            if (summaryType) summaryType.textContent = currentType;
-            if (summaryValue) summaryValue.textContent = currentType === 'Store Voucher' ? '₱' + currentValue.toLocaleString('en-PH') + ' voucher' : currentValue + '% off';
+            if (summaryValue) summaryValue.textContent = currentValue > 0
+                ? '₱' + currentValue.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' voucher'
+                : 'Enter voucher amount';
             if (summaryProducts) summaryProducts.textContent = selected + ' selected';
             if (summarySchedule) summarySchedule.textContent = start?.value && end?.value ? start.value + ' to ' + end.value : 'Not set';
 
-            if (valueLabel) valueLabel.textContent = currentType === 'Store Voucher' ? 'Voucher amount' : 'Discount percentage';
-            if (valueSuffix) valueSuffix.textContent = currentType === 'Store Voucher' ? '₱' : '%';
-            if (value) {
-                if (currentType === 'Store Voucher') value.removeAttribute('max');
-                else value.setAttribute('max', '90');
-            }
             if (selectAll) {
                 selectAll.checked = checks.length > 0 && selected === checks.length;
                 selectAll.indeterminate = selected > 0 && selected < checks.length;
             }
         };
 
-        [type, value, name, start, end].forEach((field) => {
+        [value, name, start, end].forEach((field) => {
             field?.addEventListener('input', syncPromotionSummary);
             field?.addEventListener('change', syncPromotionSummary);
         });
@@ -1334,9 +1481,8 @@ const bootSeller = () => {
         });
 
         promotionForm.addEventListener('submit', (event) => {
-            event.preventDefault();
-            if (!promotionForm.reportValidity()) return;
             if (!checks.some((check) => check.checked)) {
+                event.preventDefault();
                 if (toast) {
                     toast.textContent = 'Select at least one eligible product.';
                     toast.classList.add('is-visible');
@@ -1346,7 +1492,12 @@ const bootSeller = () => {
                 checks[0]?.focus();
                 return;
             }
-            window.location.href = promotionForm.dataset.successUrl || '/seller/products/pricing';
+
+            const submitter = event.submitter;
+            if (submitter) {
+                submitter.disabled = true;
+                submitter.setAttribute('aria-busy', 'true');
+            }
         });
 
         syncPromotionSummary();
@@ -2615,6 +2766,12 @@ const setupBearlyOrderActionModal = () => {
     const itemCount = q('[data-bearly-item-count]');
     const items = q('[data-bearly-items]');
     const context = q('[data-bearly-action-context]');
+    const transitionForm = q('[data-bearly-transition-form]');
+    const actionField = q('[data-bearly-action-field]');
+    const actionError = q('[data-bearly-action-error]');
+    const cancelControls = q('[data-bearly-cancel-controls]');
+    const cancelReason = q('[data-bearly-cancel-reason]');
+    const cancelBack = q('[data-bearly-cancel-back]');
     const primary = q('[data-bearly-action-primary]');
     const footer = q('[data-bearly-action-footer]');
 
@@ -2625,7 +2782,6 @@ const setupBearlyOrderActionModal = () => {
         PLACED: 'Placed',
         CONFIRMED: 'Confirmed',
         PREPARING: 'Preparing',
-        PACKED: 'Packed',
         READY_FOR_PICKUP: 'Ready for Pickup',
         PICKED_UP: 'Picked Up',
         AT_SORTING_CENTER: 'At Sorting Center',
@@ -2643,7 +2799,6 @@ const setupBearlyOrderActionModal = () => {
         ['PLACED', 'Placed'],
         ['CONFIRMED', 'Confirmed'],
         ['PREPARING', 'Preparing'],
-        ['PACKED', 'Packed'],
         ['READY_FOR_PICKUP', 'Ready for Pickup'],
         ['PICKED_UP', 'Picked Up'],
         ['AT_SORTING_CENTER', 'At Sorting Center'],
@@ -2655,10 +2810,9 @@ const setupBearlyOrderActionModal = () => {
     ];
 
     const configFor = (row, mode) => {
-        const status = (row.dataset.orderCanonical || '').toUpperCase();
-        const action = (row.dataset.orderAction || '').toLowerCase();
+        const transition = row.dataset.orderTransitionAction || '';
 
-        if (mode === 'details' || action.includes('view detail') || action.includes('track')) {
+        if (mode === 'details' || !transition) {
             return {
                 type: 'details',
                 title: 'Order Details',
@@ -2668,53 +2822,36 @@ const setupBearlyOrderActionModal = () => {
             };
         }
 
-        if (action.includes('review') || action.includes('confirm') || status === 'PLACED') {
+        if (transition === 'confirm') {
             return {
                 type: 'review',
                 title: 'Review and Confirm Order',
                 subtitle: 'Check the order details and confirm if you can fulfill this order.',
                 icon: 'clipboard-check',
                 button: 'Confirm Order',
+                action: 'confirm',
             };
         }
 
-        if (action.includes('start preparing') || status === 'CONFIRMED') {
+        if (transition === 'start_preparing') {
             return {
                 type: 'prepare',
                 title: 'Start Preparing Order',
                 subtitle: 'Prepare the correct items and organize them for packing.',
                 icon: 'package-check',
                 button: 'Start Preparing',
+                action: 'start_preparing',
             };
         }
 
-        if (action.includes('continue packing') || action.includes('packing') || status === 'PREPARING') {
+        if (transition === 'mark_ready') {
             return {
                 type: 'packing',
-                title: 'Continue Packing',
-                subtitle: 'Finish packing and get the parcel ready for its shipping label.',
+                title: 'Complete Packing',
+                subtitle: 'Complete the checks before marking this order ready for pickup.',
                 icon: 'package',
-                button: 'Continue Packing',
-            };
-        }
-
-        if (action.includes('waybill') || action.includes('label') || status === 'PACKED') {
-            return {
-                type: 'waybill',
-                title: 'Print Waybill / Label',
-                subtitle: 'Generate and print the shipping label for this order.',
-                icon: 'printer',
-                button: 'Print Waybill',
-            };
-        }
-
-        if (action.includes('ready') || action.includes('pickup') || status === 'READY_FOR_PICKUP') {
-            return {
-                type: 'ready',
-                title: 'Mark as Ready for Pickup',
-                subtitle: 'Confirm that the parcel is packed, labeled, and ready for pickup.',
-                icon: 'truck',
                 button: 'Mark as Ready',
+                action: 'mark_ready',
             };
         }
 
@@ -2771,7 +2908,7 @@ const setupBearlyOrderActionModal = () => {
 
     const formatOrderDate = (rawValue) => {
         const raw = String(rawValue || '').trim();
-        if (!raw) return 'Not available in preview';
+        if (!raw) return 'Not available';
 
         const lower = raw.toLowerCase();
 
@@ -2784,7 +2921,7 @@ const setupBearlyOrderActionModal = () => {
         }
 
         if (['upcoming', 'previous', 'upcoming / previous'].includes(lower)) {
-            return 'Not available in preview';
+            return 'Not available';
         }
 
         const parsed = new Date(raw);
@@ -2812,6 +2949,18 @@ const setupBearlyOrderActionModal = () => {
 
     const parseItemsJson = (row) => {
         const raw = (row.dataset.orderItemsJson || '').trim();
+        if (!raw) return [];
+
+        try {
+            const value = JSON.parse(raw);
+            return Array.isArray(value) ? value : [];
+        } catch (_) {
+            return [];
+        }
+    };
+
+    const parseStatusHistory = (row) => {
+        const raw = (row.dataset.orderStatusHistory || '').trim();
         if (!raw) return [];
 
         try {
@@ -2986,27 +3135,14 @@ const setupBearlyOrderActionModal = () => {
     const notice = (iconName, text) =>
         `<section class="bearly-action-notice"><span><i data-lucide="${iconName}"></i></span><p>${text}</p></section>`;
 
-    const escapeHtml = (value) =>
-        String(value ?? '').replace(
-            /[&<>"']/g,
-            (character) =>
-                ({
-                    '&': '&amp;',
-                    '<': '&lt;',
-                    '>': '&gt;',
-                    '"': '&quot;',
-                    "'": '&#39;',
-                })[character],
-        );
-
     const renderContext = (row, config) => {
         context.innerHTML = '';
 
         if (config.type === 'review') {
-            context.innerHTML = notice(
+            context.innerHTML = `${notice(
                 'info',
-                'By confirming, you accept this order and will prepare it for pickup.',
-            );
+                'Confirm only after checking that your Store can fulfill every item and quantity in this order.',
+            )}<button class="bearly-action-cancel-start" type="button" data-bearly-cancel-start>Cancel this order instead</button>`;
         } else if (config.type === 'prepare') {
             context.innerHTML = `
                 <section class="bearly-action-next">
@@ -3036,6 +3172,7 @@ const setupBearlyOrderActionModal = () => {
                         <input type="checkbox" data-bearly-pack-check>
                         <span>Parcel is secure and in good condition</span>
                     </label>
+                    <p class="bearly-action-check-note">Waybill creation and logistics pickup are handled separately and are not enabled here.</p>
                 </section>
             `;
 
@@ -3051,47 +3188,6 @@ const setupBearlyOrderActionModal = () => {
                     primary.disabled = done !== checks.length;
                 });
             });
-        } else if (config.type === 'waybill') {
-            const ship =
-                row.dataset.orderAddress ||
-                'Shipping address will appear here when connected to order data.';
-
-            context.innerHTML = `
-                <section class="bearly-action-shipping">
-                    <h4>Shipping Details</h4>
-                    <div class="bearly-action-address-box">
-                        <i data-lucide="map-pin"></i>
-                        <div>
-                            <strong>Delivery Address</strong>
-                            <small></small>
-                        </div>
-                    </div>
-
-                    <div class="bearly-action-waybill-preview">
-                        <div class="bearly-action-barcode" aria-hidden="true"></div>
-                        <div>
-                            <strong>Order ${escapeHtml(row.dataset.orderId || '')}</strong>
-                            <small>Shipping label preview with recipient and order details.</small>
-                        </div>
-                        <span class="bearly-action-print-pill">
-                            <i data-lucide="printer"></i>
-                            Print Preview
-                        </span>
-                    </div>
-
-                    ${notice(
-                        'printer',
-                        'Print the waybill and attach it securely to the package.',
-                    )}
-                </section>
-            `;
-
-            context.querySelector('.bearly-action-address-box small').textContent = ship;
-        } else if (config.type === 'ready') {
-            context.innerHTML = notice(
-                'truck',
-                'Once marked as ready, this parcel can proceed to logistics pickup. No delivery agency is assigned here.',
-            );
         } else {
             const current = (row.dataset.orderCanonical || '').toUpperCase();
 
@@ -3104,13 +3200,13 @@ const setupBearlyOrderActionModal = () => {
                 ];
             }
 
-            if (current === 'RETURNED') {
+        if (current === 'RETURNED') {
                 timelineFlow = [...flow.slice(0, 10), ['RETURNED', 'Returned']];
             }
 
             if (current === 'DELIVERY_FAILED') {
                 timelineFlow = [
-                    ...flow.slice(0, 10),
+                    ...flow.slice(0, 9),
                     ['DELIVERY_FAILED', 'Delivery Failed'],
                 ];
             }
@@ -3180,6 +3276,40 @@ const setupBearlyOrderActionModal = () => {
 
             wrap.append(left, timeline);
             context.append(wrap);
+
+            const history = parseStatusHistory(row);
+            const historySection = document.createElement('section');
+            historySection.className = 'bearly-action-history';
+            const historyHeading = document.createElement('h4');
+            historyHeading.textContent = 'Status History';
+            historySection.append(historyHeading);
+
+            if (history.length === 0) {
+                const empty = document.createElement('p');
+                empty.className = 'bearly-action-history-empty';
+                empty.textContent = 'No Seller status changes have been recorded yet.';
+                historySection.append(empty);
+            } else {
+                const list = document.createElement('ol');
+                history.forEach((entry) => {
+                    const item = document.createElement('li');
+                    const heading = document.createElement('strong');
+                    const statusKey = String(entry.status || '').toUpperCase();
+                    heading.textContent = statusLabels[statusKey] || statusKey.replaceAll('_', ' ') || 'Status updated';
+                    const meta = document.createElement('small');
+                    meta.textContent = [entry.actor || 'Former user', formatOrderDate(entry.occurred_at)].filter(Boolean).join(' · ');
+                    item.append(heading, meta);
+                    if (entry.reason) {
+                        const reason = document.createElement('p');
+                        reason.textContent = entry.reason;
+                        item.append(reason);
+                    }
+                    list.append(item);
+                });
+                historySection.append(list);
+            }
+
+            context.append(historySection);
         }
     };
 
@@ -3188,6 +3318,17 @@ const setupBearlyOrderActionModal = () => {
         lastFocus = trigger;
 
         const config = configFor(row, mode);
+
+        transitionForm.setAttribute('action', row.dataset.orderTransitionUrl || '');
+        actionField.value = config.action || '';
+        actionError.hidden = true;
+        actionError.textContent = '';
+        cancelControls.hidden = true;
+        cancelReason.value = '';
+        cancelReason.required = false;
+        cancelReason.disabled = true;
+        cancelBack.hidden = true;
+        primary.classList.remove('is-danger');
 
         title.textContent = config.title;
         subtitle.textContent = config.subtitle;
@@ -3255,21 +3396,6 @@ const setupBearlyOrderActionModal = () => {
         active = null;
     };
 
-    const showToast = (message) => {
-        const toast = document.querySelector('[data-seller-toast]');
-        if (!toast) return;
-
-        toast.textContent = message;
-        toast.classList.add('is-visible');
-
-        clearTimeout(window.__bearlyActionToast);
-
-        window.__bearlyActionToast = setTimeout(
-            () => toast.classList.remove('is-visible'),
-            3000,
-        );
-    };
-
     document.addEventListener(
         'click',
         (event) => {
@@ -3296,16 +3422,77 @@ const setupBearlyOrderActionModal = () => {
         .querySelectorAll('[data-bearly-action-close]')
         .forEach((button) => button.addEventListener('click', close));
 
-    primary.addEventListener('click', () => {
+    context.addEventListener('click', (event) => {
+        const cancelStart = event.target.closest('[data-bearly-cancel-start]');
+        if (!cancelStart || !active) return;
+
+        cancelControls.hidden = false;
+        cancelReason.disabled = false;
+        cancelReason.required = true;
+        cancelStart.hidden = true;
+        cancelBack.hidden = false;
+        actionField.value = 'cancel';
+        primary.textContent = 'Cancel Seller Order';
+        primary.classList.add('is-danger');
+        cancelReason.focus();
+    });
+
+    cancelBack.addEventListener('click', () => {
         if (!active) return;
 
         const config = configFor(active.row, active.mode);
+        cancelControls.hidden = true;
+        cancelReason.value = '';
+        cancelReason.required = false;
+        cancelReason.disabled = true;
+        const cancelStart = context.querySelector('[data-bearly-cancel-start]');
+        if (cancelStart) cancelStart.hidden = false;
+        cancelBack.hidden = true;
+        actionField.value = config.action || '';
+        primary.textContent = config.button || '';
+        primary.classList.remove('is-danger');
+        actionError.hidden = true;
+        actionError.textContent = '';
+    });
 
-        showToast(
-            `${config.button} previewed. Backend status change is not connected yet.`,
-        );
+    transitionForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (!active || !transitionForm.reportValidity()) return;
 
-        close();
+        const submitAction = actionField.value;
+        const submitLabel = primary.textContent;
+        primary.disabled = true;
+        primary.textContent = 'Saving…';
+        actionError.hidden = true;
+        actionError.textContent = '';
+
+        try {
+            const endpoint = transitionForm.getAttribute('action');
+            if (!endpoint) throw new Error('The order action endpoint is missing. Refresh and try again.');
+
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    Accept: 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: new FormData(transitionForm),
+            });
+            const result = await response.json().catch(() => ({}));
+
+            if (!response.ok) {
+                const validationMessage = Object.values(result.errors || {}).flat()[0];
+                throw new Error(validationMessage || result.message || 'Unable to update this order. Refresh and try again.');
+            }
+
+            window.location.assign(result.data?.redirect_to || window.location.href);
+        } catch (error) {
+            actionError.textContent = error.message || 'Unable to update this order. Refresh and try again.';
+            actionError.hidden = false;
+            primary.disabled = false;
+            primary.textContent = submitLabel;
+            if (submitAction === 'cancel') cancelReason.focus();
+        }
     });
 
     document.addEventListener('keydown', (event) => {

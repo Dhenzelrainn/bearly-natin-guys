@@ -554,6 +554,8 @@ Conventions: money integers are centavos; timestamps are UTC at storage boundari
 | `created_by` | `bigint unsigned` | YES | — | MUL |
 | `occurred_at` | `timestamp` | NO | — |  |
 | `created_at` | `timestamp` | NO | CURRENT_TIMESTAMP |  |
+| `reserved_delta` | `bigint` | NO | 0 |  |
+| `reserved_balance_after` | `int unsigned` | YES | — |  |
 
 **Foreign keys**
 
@@ -666,6 +668,8 @@ Conventions: money integers are centavos; timestamps are UTC at storage boundari
 | `variant_name` | `varchar(140)` | NO | — |  |
 | `sku` | `varchar(80)` | NO | — |  |
 | `options` | `json` | YES | — |  |
+| `product_image_disk` | `varchar(40)` | YES | — |  |
+| `product_image_path` | `varchar(500)` | YES | — |  |
 | `unit_price_minor` | `bigint unsigned` | NO | — |  |
 | `quantity` | `int unsigned` | NO | — |  |
 | `discount_minor` | `bigint unsigned` | NO | 0 |  |
@@ -713,6 +717,7 @@ Conventions: money integers are centavos; timestamps are UTC at storage boundari
 | `cancel_reason` | `text` | YES | — |  |
 | `created_at` | `timestamp` | YES | — |  |
 | `updated_at` | `timestamp` | YES | — |  |
+| `checkout_request_key` | `char(36)` | YES | — | MUL |
 
 **Foreign keys**
 
@@ -722,6 +727,7 @@ Conventions: money integers are centavos; timestamps are UTC at storage boundari
 **Indexes**
 
 - `orders_buyer_id_created_at_index` (buyer_id,created_at) — index.
+- `orders_buyer_checkout_request_unique` (buyer_id,checkout_request_key) — unique.
 - `orders_order_no_unique` (order_no) — unique.
 - `orders_shipping_address_id_foreign` (shipping_address_id) — index.
 - `orders_status_created_at_index` (status,created_at) — index.
@@ -1012,6 +1018,10 @@ Conventions: money integers are centavos; timestamps are UTC at storage boundari
 | `product_id` | `bigint unsigned` | NO | — | MUL |
 | `variant_id` | `bigint unsigned` | YES | — | MUL |
 | `path` | `varchar(500)` | NO | — |  |
+| `disk` | `varchar(40)` | NO | public |  |
+| `mime_type` | `varchar(100)` | YES | — |  |
+| `size_bytes` | `bigint unsigned` | YES | — |  |
+| `purpose` | `varchar(40)` | NO | product_image |  |
 | `alt_text` | `varchar(255)` | YES | — |  |
 | `position` | `smallint unsigned` | NO | 0 |  |
 | `is_primary` | `tinyint(1)` | NO | 0 |  |
@@ -1077,6 +1087,10 @@ Conventions: money integers are centavos; timestamps are UTC at storage boundari
 | `created_at` | `timestamp` | YES | — |  |
 | `updated_at` | `timestamp` | YES | — |  |
 | `deleted_at` | `timestamp` | YES | — |  |
+| `package_weight_kg` | `decimal(10,3)` | YES | — |  |
+| `package_length_cm` | `decimal(10,2)` | YES | — |  |
+| `package_width_cm` | `decimal(10,2)` | YES | — |  |
+| `package_height_cm` | `decimal(10,2)` | YES | — |  |
 
 **Foreign keys**
 
@@ -1139,14 +1153,18 @@ Conventions: money integers are centavos; timestamps are UTC at storage boundari
 | `id` | `bigint unsigned` | NO | — | PRI |
 | `store_id` | `bigint unsigned` | NO | — | MUL |
 | `category_id` | `bigint unsigned` | NO | — | MUL |
+| `subcategory_id` | `bigint unsigned` | YES | — | MUL |
 | `name` | `varchar(180)` | NO | — |  |
 | `slug` | `varchar(220)` | NO | — |  |
 | `description` | `text` | YES | — |  |
 | `product_status` | `varchar(30)` | NO | draft |  |
 | `compliance_status` | `varchar(30)` | NO | pending_scan | MUL |
 | `voucher_eligible` | `tinyint(1)` | NO | 0 |  |
+| `payment_methods` | `json` | YES | — |  |
 | `published_at` | `timestamp` | YES | — |  |
 | `archived_at` | `timestamp` | YES | — |  |
+| `archived_previous_status` | `varchar(30)` | YES | — |  |
+| `archived_previous_published_at` | `timestamp` | YES | — |  |
 | `removed_at` | `timestamp` | YES | — |  |
 | `removed_reason` | `text` | YES | — |  |
 | `created_at` | `timestamp` | YES | — |  |
@@ -1156,12 +1174,14 @@ Conventions: money integers are centavos; timestamps are UTC at storage boundari
 **Foreign keys**
 
 - `category_id` → `categories.id`; update NO ACTION, delete RESTRICT.
+- `subcategory_id` → `store_subcategories.id`; update NO ACTION, delete SET NULL.
 - `store_id` → `stores.id`; update NO ACTION, delete RESTRICT.
 
 **Indexes**
 
 - `products_category_id_foreign` (category_id) — index.
 - `products_compliance_status_updated_at_index` (compliance_status,updated_at) — index.
+- `products_subcategory_id_foreign` (subcategory_id) — index.
 - `products_store_id_product_status_index` (store_id,product_status) — index.
 - `products_store_id_slug_unique` (store_id,slug) — unique.
 
@@ -1395,6 +1415,29 @@ Conventions: money integers are centavos; timestamps are UTC at storage boundari
 
 - `roles_name_unique` (name) — unique.
 
+## `seller_order_status_histories`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `seller_order_id` | `bigint unsigned` | NO | — | MUL |
+| `from_status` | `varchar(30)` | YES | — |  |
+| `to_status` | `varchar(30)` | NO | — |  |
+| `actor_user_id` | `bigint unsigned` | YES | — | MUL |
+| `reason` | `text` | YES | — |  |
+| `occurred_at` | `timestamp` | NO | — |  |
+| `created_at` | `timestamp` | NO | CURRENT_TIMESTAMP |  |
+
+**Foreign keys**
+
+- `actor_user_id` → `users.id`; update NO ACTION, delete SET NULL.
+- `seller_order_id` → `seller_orders.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `seller_order_status_history_order_time_index` (seller_order_id,occurred_at) — index.
+- `seller_order_status_histories_actor_user_id_foreign` (actor_user_id) — index.
+
 ## `seller_orders`
 
 | Column | MySQL type | Null | Default | Key |
@@ -1403,7 +1446,7 @@ Conventions: money integers are centavos; timestamps are UTC at storage boundari
 | `seller_order_no` | `varchar(32)` | NO | — | UNI |
 | `order_id` | `bigint unsigned` | NO | — | MUL |
 | `store_id` | `bigint unsigned` | NO | — | MUL |
-| `status` | `varchar(30)` | NO | placed |  |
+| `status` | `varchar(30)` | NO | pending |  |
 | `subtotal_minor` | `bigint unsigned` | NO | — |  |
 | `discount_minor` | `bigint unsigned` | NO | 0 |  |
 | `shipping_fee_minor` | `bigint unsigned` | NO | 0 |  |
@@ -1419,6 +1462,8 @@ Conventions: money integers are centavos; timestamps are UTC at storage boundari
 | `seller_note` | `text` | YES | — |  |
 | `created_at` | `timestamp` | YES | — |  |
 | `updated_at` | `timestamp` | YES | — |  |
+| `delivery_provider_key` | `varchar(50)` | YES | — |  |
+| `shipping_quote` | `json` | YES | — |  |
 
 **Foreign keys**
 
@@ -1711,6 +1756,81 @@ Conventions: money integers are centavos; timestamps are UTC at storage boundari
 - `stores_seller_profile_id_unique` (seller_profile_id) — unique.
 - `stores_slug_unique` (slug) — unique.
 
+## `store_promotion_products`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---:|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `store_promotion_id` | `bigint unsigned` | NO | — | MUL |
+| `product_id` | `bigint unsigned` | NO | — | MUL |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `product_id` → `products.id`; update NO ACTION, delete CASCADE.
+- `store_promotion_id` → `store_promotions.id`; update NO ACTION, delete CASCADE.
+
+**Indexes**
+
+- `store_promotion_products_product_id_store_promotion_id_index` (product_id,store_promotion_id) — index.
+- `store_promotion_products_store_promotion_id_product_id_unique` (store_promotion_id,product_id) — unique.
+
+## `store_promotions`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---:|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `store_id` | `bigint unsigned` | NO | — | MUL |
+| `created_by` | `bigint unsigned` | YES | — | MUL |
+| `name` | `varchar(80)` | NO | — |  |
+| `type` | `varchar(32)` | NO | — |  |
+| `discount_percent` | `tinyint unsigned` | YES | — |  |
+| `voucher_amount_minor` | `bigint unsigned` | YES | — |  |
+| `starts_on` | `date` | NO | — |  |
+| `ends_on` | `date` | NO | — |  |
+| `minimum_spend_minor` | `bigint unsigned` | NO | 0 |  |
+| `redemption_limit` | `int unsigned` | YES | — |  |
+| `per_buyer_limit` | `smallint unsigned` | NO | 1 |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `created_by` → `users.id`; update NO ACTION, delete SET NULL.
+- `store_id` → `stores.id`; update NO ACTION, delete CASCADE.
+
+**Indexes**
+
+- `store_promotions_created_by_foreign` (created_by) — index.
+- `store_promotions_store_id_starts_on_ends_on_index` (store_id,starts_on,ends_on) — index.
+
+## `store_subcategories`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `store_id` | `bigint unsigned` | NO | — | MUL |
+| `parent_category_id` | `bigint unsigned` | NO | — | MUL |
+| `name` | `varchar(120)` | NO | — |  |
+| `slug` | `varchar(140)` | NO | — |  |
+| `is_active` | `tinyint(1)` | NO | 1 |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `parent_category_id` → `categories.id`; update NO ACTION, delete CASCADE.
+- `store_id` → `stores.id`; update NO ACTION, delete CASCADE.
+
+**Indexes**
+
+- `store_subcategories_parent_category_id_foreign` (parent_category_id) — index.
+- `store_subcategories_store_id_is_active_index` (store_id,is_active) — index.
+- `store_subcategories_store_parent_name_unique` (store_id,parent_category_id,name) — unique.
+- `store_subcategories_store_parent_slug_unique` (store_id,parent_category_id,slug) — unique.
+- `store_subcategories_store_id_foreign` (store_id) — index.
+
 ## `support_tickets`
 
 | Column | MySQL type | Null | Default | Key |
@@ -1741,6 +1861,29 @@ Conventions: money integers are centavos; timestamps are UTC at storage boundari
 - `support_tickets_assigned_to_foreign` (assigned_to) — index.
 - `support_tickets_ticket_no_unique` (ticket_no) — unique.
 - `support_tickets_user_id_foreign` (user_id) — index.
+
+## `shipping_rates`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `provider_key` | `varchar(50)` | NO | bearly_logistics |  |
+| `route_tier` | `varchar(40)` | NO | — |  |
+| `first_kg_fee_minor` | `bigint unsigned` | NO | — |  |
+| `additional_kg_surcharge_minor` | `bigint unsigned` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Indexes**
+
+- `shipping_rates_provider_key_route_tier_unique` (provider_key,route_tier) — unique.
+
+The initial `bearly_logistics` rows use first-kilogram fees of 3400, 4000,
+6000, and 10000 centavos for the four configured route tiers. Additional-
+kilogram surcharges intentionally remain `NULL` until an Admin configures
+them. The volumetric divisor is stored in `system_settings` under
+`shipping.volumetric_divisor`, with the configuration default of 5000 when no
+setting row exists.
 
 ## `system_settings`
 
@@ -1925,4 +2068,3 @@ Conventions: money integers are centavos; timestamps are UTC at storage boundari
 - `wishlists_product_id_foreign` (product_id) — index.
 - `wishlists_session_token_product_id_index` (session_token,product_id) — index.
 - `wishlists_user_id_product_id_unique` (user_id,product_id) — unique.
-

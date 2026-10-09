@@ -9,14 +9,14 @@
         <h2>Product Management</h2>
         <p>Manage your catalog, pricing, product status, and inventory.</p>
     </div>
-    @if ($products->isNotEmpty())
+    @if ($counts['all'] > 0)
         <a class="seller-primary-button page-add-button" href="{{ route('seller.products.create') }}">
             <i data-lucide="plus"></i>Add Product
         </a>
     @endif
 </section>
 
-@if ($products->isEmpty())
+@if ($counts['all'] === 0)
     <section class="seller-panel product-onboarding-card" aria-labelledby="empty-products-title">
         <span class="product-empty-icon" aria-hidden="true">
             <i data-lucide="package-open"></i>
@@ -50,57 +50,88 @@
         @endforeach
     </section>
 
-    <section class="product-filter-bar" data-product-filters aria-label="Product filters">
+    <form class="product-filter-bar" method="GET" action="{{ route('seller.products') }}" aria-label="Product filters" data-product-filter-form>
         <label class="product-search">
-            <i data-lucide="search"></i>
-            <input type="search" placeholder="Search by product name or SKU" data-product-search>
+            <i data-lucide="search" aria-hidden="true"></i>
+            <input type="search" name="search" value="{{ request('search') }}" placeholder="Search by product name or variant SKU" aria-label="Search by product name or active variant SKU">
         </label>
-        <select aria-label="Filter by category" data-product-category>
-            <option value="">All Categories</option>
-            @foreach ($categories as $category)<option>{{ $category }}</option>@endforeach
-        </select>
-        <select aria-label="Filter by status" data-product-status>
-            <option value="">All Statuses</option>
-            @foreach ($statuses as $status)<option>{{ $status }}</option>@endforeach
-        </select>
-    </section>
+        <label class="product-filter-select">
+            <span>Subcategory</span>
+            <select name="subcategory" aria-label="Filter by subcategory" data-product-filter-auto-submit>
+                <option value="">All Subcategories</option>
+                <option value="none" @selected(request('subcategory') === 'none')>No subcategory</option>
+                @foreach ($subcategories as $subcategory)
+                    <option value="{{ $subcategory->id }}" @selected((string) request('subcategory') === (string) $subcategory->id)>{{ $subcategory->name }}</option>
+                @endforeach
+            </select>
+        </label>
+        <label class="product-filter-select">
+            <span>Status</span>
+            <select name="status" aria-label="Filter by status" data-product-filter-auto-submit>
+                <option value="">All Statuses</option>
+                @foreach ($statuses as $status)<option value="{{ $status }}" @selected(request('status') === $status)>{{ $status }}</option>@endforeach
+            </select>
+        </label>
+        <div class="product-filter-actions">
+            <button class="seller-secondary-button" type="submit"><i data-lucide="filter" aria-hidden="true"></i>Apply</button>
+            @if (request()->hasAny(['search', 'subcategory', 'status']))
+                <a class="product-filter-reset" href="{{ route('seller.products') }}">Clear</a>
+            @endif
+        </div>
+    </form>
 
     <section class="seller-panel product-table-card">
         <div class="product-table-wrap">
             <table class="product-management-table">
                 <thead>
-                    <tr><th>Product</th><th>Category</th><th>Price</th><th>Stock</th><th>Status</th><th>Actions</th></tr>
+                    <tr><th>Product</th><th>Subcategory</th><th>Price</th><th>Stock</th><th>Status</th><th>Actions</th></tr>
                 </thead>
                 <tbody>
                     @foreach ($products as $product)
                         @php
                             $discount = (int) $product['discount_percent'];
                             $salePrice = (float) $product['price'] * (1 - ($discount / 100));
+                            $variantLabels = collect($product['variants'] ?? [])
+                                ->pluck('label')
+                                ->filter()
+                                ->values();
+                            $variantPreview = $variantLabels->take(2)->implode(' · ');
+                            $remainingVariants = max(0, $variantLabels->count() - 2);
                             $isLowStock = $product['status'] === 'Active'
                                 && (int) $product['stock'] <= (int) $product['low_stock_threshold'];
                         @endphp
                         <tr
                             data-product-row
-                            data-name="{{ strtolower($product['name'].' '.$product['sku']) }}"
-                            data-category="{{ $product['category'] }}"
+                            data-name="{{ strtolower($product['name'].' '.collect($product['variants'] ?? [])->pluck('sku')->implode(' ')) }}"
+                            data-subcategory="{{ $product['subcategory'] }}"
                             data-status="{{ $product['status'] }}"
                         >
                             <td>
                                 <div class="product-name-cell">
                                     <span class="product-image">
-                                        @if ($product['image'])
-                                            <img src="{{ asset('storage/'.$product['image']) }}" alt="{{ $product['name'] }}">
+                                        @if ($product['image_url'])
+                                            <img src="{{ $product['image_url'] }}" alt="{{ $product['name'] }}" loading="lazy">
                                         @else
                                             <i data-lucide="package"></i>
                                         @endif
                                     </span>
                                     <span class="product-name-copy">
                                         <strong>{{ $product['name'] }}</strong>
-                                        <small>{{ $product['sku'] ?: 'No SKU assigned' }}</small>
+                                        <small>{{ $variantLabels->count() > 1 ? 'Variant SKUs managed per combination' : ($product['sku'] ?: 'No SKU assigned') }}</small>
+                                        @if ($variantLabels->isNotEmpty())
+                                            <small class="product-variant-summary">
+                                                {{ $variantLabels->count() }} {{ $variantLabels->count() === 1 ? 'variant' : 'variants' }} · {{ $variantPreview }}@if ($remainingVariants > 0) · +{{ $remainingVariants }} more @endif
+                                            </small>
+                                        @endif
                                     </span>
                                 </div>
                             </td>
-                            <td>{{ $product['category'] }}</td>
+                            <td>
+                                <span class="product-category-cell">
+                                    <strong>{{ $product['subcategory'] ?: 'No subcategory' }}</strong>
+                                    <small>{{ $product['category'] }}</small>
+                                </span>
+                            </td>
                             <td>
                                 <span class="product-price-cell">
                                     <strong>₱{{ number_format($discount > 0 ? $salePrice : $product['price'], 2) }}</strong>
@@ -119,7 +150,7 @@
                                     <a class="row-action" href="{{ route('seller.products.edit', $product['id']) }}" title="Edit product" aria-label="Edit {{ $product['name'] }}">
                                         <i data-lucide="pencil"></i>
                                     </a>
-                                    <form method="POST" action="{{ route('seller.products.archive', $product['id']) }}">
+                                    <form method="POST" action="{{ route('seller.products.archive', array_merge(['product' => $product['id']], request()->only(['search', 'subcategory', 'status']))) }}">
                                         @csrf
                                         @method('PATCH')
                                         <button class="row-action" type="submit" title="{{ $product['status'] === 'Archived' ? 'Restore' : 'Archive' }} product" aria-label="{{ $product['status'] === 'Archived' ? 'Restore' : 'Archive' }} {{ $product['name'] }}">
@@ -130,13 +161,43 @@
                             </td>
                         </tr>
                     @endforeach
+                    @if ($products->isEmpty())
+                        <tr><td colspan="6">
+                            <div class="no-filter-results">
+                                <i data-lucide="search-x" aria-hidden="true"></i>
+                                <strong>No matching products</strong>
+                                <span>Try another name, active variant SKU, subcategory, or status.</span>
+                            </div>
+                        </td></tr>
+                    @endif
                 </tbody>
             </table>
         </div>
-        <div class="no-filter-results" data-no-results hidden>
-            <i data-lucide="search-x"></i>
-            <strong>No matching products</strong>
-            <span>Try a different search term or filter.</span>
+        <div class="product-pagination">
+            <span>
+                @if ($products->total() > 0)
+                    Showing {{ $products->firstItem() }}–{{ $products->lastItem() }} of {{ $products->total() }} products
+                @else
+                    No products match these filters
+                @endif
+            </span>
+            @if ($products->hasPages())
+                <nav class="product-pagination-controls" aria-label="Product pages">
+                    @if ($products->onFirstPage())
+                        <span class="is-disabled" aria-disabled="true">Previous</span>
+                    @else
+                        <a href="{{ $products->previousPageUrl() }}" rel="prev">Previous</a>
+                    @endif
+                    @foreach ($products->getUrlRange(max(1, $products->currentPage() - 2), min($products->lastPage(), $products->currentPage() + 2)) as $page => $url)
+                        <a href="{{ $url }}" @if ($page === $products->currentPage()) aria-current="page" class="is-current" @endif>{{ $page }}</a>
+                    @endforeach
+                    @if ($products->hasMorePages())
+                        <a href="{{ $products->nextPageUrl() }}" rel="next">Next</a>
+                    @else
+                        <span class="is-disabled" aria-disabled="true">Next</span>
+                    @endif
+                </nav>
+            @endif
         </div>
     </section>
 @endif

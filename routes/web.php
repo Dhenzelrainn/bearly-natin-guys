@@ -1,19 +1,21 @@
 <?php
 
-use App\Http\Controllers\auth\BearlyAuthController;
-use App\Http\Controllers\auth\EmailVerificationController;
-use App\Http\Controllers\PostalCodeController;
 use App\Http\Controllers\AccountApprovalController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AdminRoleApplicationController;
+use App\Http\Controllers\auth\BearlyAuthController;
+use App\Http\Controllers\auth\EmailVerificationController;
+use App\Http\Controllers\BuyerCheckoutController;
 use App\Http\Controllers\BuyerController;
 use App\Http\Controllers\LogisticsController;
+use App\Http\Controllers\PostalCodeController;
 use App\Http\Controllers\ProductComplianceController;
 use App\Http\Controllers\PsgcController;
 use App\Http\Controllers\RiderController;
 use App\Http\Controllers\SellerController;
 use App\Http\Controllers\SellerProductController;
 use App\Http\Controllers\SellerWorkflowController;
+use App\Http\Controllers\ShippingRateController;
 use App\Http\Controllers\WaybillScanController;
 use Illuminate\Support\Facades\Route;
 
@@ -157,8 +159,22 @@ Route::middleware(['auth', 'role:buyer'])->group(function () {
     Route::delete('/addresses/{address}', [BuyerController::class, 'deleteAddress'])
         ->name('buyer.addresses.delete');
 
-    Route::view('/checkout', 'buyer.checkout')
+    Route::get('/checkout', [BuyerCheckoutController::class, 'index'])
         ->name('checkout');
+
+    Route::post('/checkout/quote', [BuyerCheckoutController::class, 'quote'])
+        ->name('checkout.quote');
+
+    Route::post('/checkout', [BuyerCheckoutController::class, 'place'])
+        ->name('checkout.place');
+
+    Route::get('/checkout/confirmation/{orderNo}', [BuyerCheckoutController::class, 'confirmation'])
+        ->where('orderNo', '[A-Za-z0-9-]+')
+        ->name('checkout.confirmation');
+
+    Route::post('/checkout/orders/{order}/cancel', [BuyerCheckoutController::class, 'cancel'])
+        ->whereNumber('order')
+        ->name('checkout.cancel');
 
     Route::view('/chat', 'buyer.chat')
         ->name('buyer.chat');
@@ -284,6 +300,12 @@ Route::prefix('admin')
         Route::get('/settings', [AdminController::class, 'settings'])
             ->name('settings');
 
+        Route::get('/shipping-rates', [ShippingRateController::class, 'index'])
+            ->name('shipping-rates');
+
+        Route::put('/shipping-rates', [ShippingRateController::class, 'update'])
+            ->name('shipping-rates.update');
+
         Route::get('/policies', [AdminController::class, 'policies'])
             ->name('policies');
 
@@ -326,6 +348,10 @@ Route::prefix('seller')
 
         Route::get('/orders', [SellerWorkflowController::class, 'orders'])
             ->name('orders');
+
+        Route::patch('/orders/{sellerOrder}/status', [SellerWorkflowController::class, 'updateOrderStatus'])
+            ->whereNumber('sellerOrder')
+            ->name('orders.status');
 
         Route::get('/orders/returns-refunds', [SellerWorkflowController::class, 'returns'])
             ->name('orders.returns');
@@ -388,11 +414,26 @@ Route::prefix('seller')
         Route::get('/inventory', [SellerController::class, 'inventory'])
             ->name('inventory');
 
+        Route::post('/inventory/adjustments', [SellerController::class, 'adjustInventory'])
+            ->name('inventory.adjustments');
+
+        Route::post('/inventory/thresholds', [SellerController::class, 'setInventoryThreshold'])
+            ->name('inventory.thresholds');
+
         Route::get('/products/pricing', [SellerController::class, 'pricing'])
             ->name('products.pricing');
 
         Route::get('/products/pricing/create', [SellerController::class, 'createPromotion'])
             ->name('products.pricing.create');
+
+        Route::post('/products/pricing', [SellerController::class, 'storePromotion'])
+            ->name('products.pricing.store');
+
+        Route::patch('/products/pricing/{product}', [SellerController::class, 'updateProductPricing'])
+            ->name('products.pricing.update');
+
+        Route::patch('/products/pricing/{product}/voucher', [SellerController::class, 'updateVoucherEligibility'])
+            ->name('products.pricing.voucher');
 
         Route::get('/products/create', [SellerProductController::class, 'createProduct'])
             ->name('products.create');

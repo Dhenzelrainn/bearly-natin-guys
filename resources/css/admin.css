@@ -6033,3 +6033,74 @@ table {
     line-height: 1.15;
     color: var(--admin-text, #2f211b);
 }
+
+.shipping-rate-table-wrap {
+    overflow-x: auto;
+    margin: 0 0 14px;
+    border: 1px solid var(--admin-border, #e7dfd6);
+    border-radius: 10px;
+    background: #fff;
+}
+
+.shipping-rate-table-wrap .admin-table {
+    min-width: 680px;
+    font-size: 12px;
+}
+
+.shipping-rate-table-wrap .admin-table th {
+    font-size: 10px;
+}
+
+.shipping-rate-table-wrap .admin-table td:first-child {
+    min-width: 260px;
+}
+
+.shipping-rate-table-wrap .admin-table td:first-child small {
+    display: block;
+    margin-top: 4px;
+    color: var(--admin-muted, #7d7069);
+    font-size: 11px;
+    line-height: 1.45;
+}
+
+.shipping-rate-table-wrap .admin-table input {
+    width: 100%;
+    min-width: 145px;
+    height: 40px;
+    padding: 0 10px;
+    border: 1px solid var(--admin-border, #e7dfd6);
+    border-radius: 7px;
+    color: var(--admin-text, #2f211b);
+    font: inherit;
+}
+
+.shipping-rate-table-wrap .admin-table input:focus,
+#volumetric-divisor:focus {
+    border-color: var(--brown-500, #8b5e43);
+    outline: 2px solid rgb(139 94 67 / 18%);
+    outline-offset: 1px;
+}
+
+#volumetric-divisor {
+    width: min(100%, 240px);
+    height: 42px;
+    padding: 0 11px;
+    border: 1px solid var(--admin-border, #e7dfd6);
+    border-radius: 7px;
+    color: var(--admin-text, #2f211b);
+    font: inherit;
+}
+
+.settings-note {
+    margin: 12px 0 16px;
+    color: var(--admin-muted, #7d7069);
+    font-size: 12px;
+    line-height: 1.55;
+}
+
+@media (max-width: 700px) {
+    .shipping-rate-table-wrap .admin-table td,
+    .shipping-rate-table-wrap .admin-table th {
+        padding: 10px;
+    }
+}

@@ -8,6 +8,11 @@ class SellerOrder extends Model
 {
     protected $guarded = [];
 
+    protected function casts(): array
+    {
+        return ['shipping_quote' => 'array'];
+    }
+
     public function order()
     {
         return $this->belongsTo(Order::class);
@@ -21,6 +26,13 @@ class SellerOrder extends Model
     public function items()
     {
         return $this->hasMany(OrderItem::class);
+    }
+
+    public function statusHistory()
+    {
+        return $this->hasMany(SellerOrderStatusHistory::class)
+            ->orderBy('occurred_at')
+            ->orderBy('id');
     }
 
     public function shipments()

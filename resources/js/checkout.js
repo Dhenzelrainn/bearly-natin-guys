@@ -1,66 +1,226 @@
 (() => {
-  const PREVIEW_KEY = window.bearlyStorageKey?.('preview-cart') || 'bearly-preview-cart-v1';
   const SELECTION_KEY = window.bearlyStorageKey?.('checkout-selection') || 'bearly-checkout-selection-v1';
-  const VOUCHER_KEY = window.bearlyStorageKey?.('claimed-vouchers') || 'bearly-claimed-vouchers-v1';
+  const PREVIEW_KEY = window.bearlyStorageKey?.('preview-cart') || 'bearly-preview-cart-v1';
   const $ = id => document.getElementById(id);
-  const money = value => '₱' + Number(value || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const money = minor => '₱' + (Number(minor || 0) / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const csrf = () => document.querySelector('meta[name="csrf-token"]')?.content || '';
   const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[char]));
   const imageUrl = value => { const image = String(value || '').trim(); return !image ? '/images/bearly-logo.png' : /^(https?:|\/|data:)/.test(image) ? image : `/${image.replace(/^\.\//, '')}`; };
-  let shipping = 50, shippingBase = 50, discount = 0, payment = 'Cash on Delivery', voucher = null, allItems = [], items = [], addresses = [];
+  let allItems = [], items = [], addresses = [], address = null, quote = null, quoting = false, quoteRequest = 0;
 
-  function readPreview() { try { const value = JSON.parse(localStorage.getItem(PREVIEW_KEY) || '[]'); return Array.isArray(value) ? value.map(item => ({ ...item, source: 'preview', key: `preview:${item.key || item.product_id}` })) : []; } catch { return []; } }
-  function selectedKeys() { try { const value = JSON.parse(localStorage.getItem(SELECTION_KEY) || '[]'); return Array.isArray(value) ? value : []; } catch { return []; } }
-  function toast(message) { const element = $('checkout-toast'); element.textContent = message; element.classList.add('show'); clearTimeout(window.__checkoutToast); window.__checkoutToast = setTimeout(() => element.classList.remove('show'), 1700); }
-  function subtotal() { return items.reduce((sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 1), 0); }
-  function syncShipping() { const shippingDiscount = voucher?.shippingVoucher ? voucher.shippingPercent ? Math.min(shippingBase, shippingBase * (voucher.shippingPercent / 100)) : Math.min(Number(voucher.discount || 0), shippingBase) : 0; shipping = Math.max(0, shippingBase - shippingDiscount); }
-  function renderAddress(address) { const tag = $('address-default-tag'); if (tag) tag.hidden = !address?.isDefault; if (!address) return; $('address-name').textContent = address.name; $('address-phone').textContent = address.phone; $('address-text').textContent = [address.street, address.barangay, address.city, address.province, address.postal].filter(Boolean).join(', '); }
-  async function loadAddresses() { try { const response = await fetch('/addresses/data', { headers: { 'Accept': 'application/json' } }); const result = await response.json(); addresses = Array.isArray(result.data) ? result.data : []; renderAddress(addresses.find(address => address.isDefault) || addresses[0]); } catch { addresses = []; } }
-  function render() {
-    if (!items.length) { $('checkout-empty').hidden = false; return; }
-    $('checkout-empty').hidden = true;
-    $('checkout-products').innerHTML = items.map(item => `<article class="checkout-product"><div class="checkout-product-main"><img src="${escapeHtml(imageUrl(item.image || item.photo))}" onerror="this.onerror=null;this.src='/images/bearly-logo.png'" alt="${escapeHtml(item.name)}"><div><div class="checkout-product-name">${escapeHtml(item.name)}</div><div class="checkout-product-meta">${item.variant_name ? escapeHtml(item.variant_name) : ''}${item.color ? `Variation: ${escapeHtml(item.color)}` : ''}${item.size ? ` · ${escapeHtml(item.size)}` : ''}</div></div></div><div>${money(item.price)}</div><div>${Number(item.quantity || 1)}</div><div class="checkout-product-subtotal">${money(Number(item.price || 0) * Number(item.quantity || 1))}</div></article>`).join('');
-    const quantity = items.reduce((sum, item) => sum + Number(item.quantity || 1), 0), sub = subtotal(), total = Math.max(0, sub + shipping - discount);
-    $('order-items').textContent = quantity; $('summary-subtotal').textContent = money(sub); $('summary-shipping').textContent = money(shipping); $('summary-discount').textContent = `−${money(discount)}`; $('summary-total').textContent = money(total); $('order-total').textContent = money(total); $('shipping-price').textContent = money(shipping); $('payment-label').textContent = payment; $('voucher-status').textContent = voucher ? voucher.label : 'No voucher selected';
+  function storedKeys() {
+    try {
+      const value = JSON.parse(localStorage.getItem(SELECTION_KEY) || '[]');
+      return Array.isArray(value) ? value.map(String) : [];
+    } catch { return []; }
   }
-  function choose(title, options, onPick) { $('choice-title').textContent = title; $('choice-options').innerHTML = options.map((option, index) => `<button class="choice-option" data-choice="${index}" type="button"><span>${escapeHtml(option.label)}</span><strong>${escapeHtml(option.note || '')}</strong></button>`).join(''); $('choice-modal').hidden = false; $('choice-options').onclick = event => { const button = event.target.closest('[data-choice]'); if (!button) return; onPick(options[Number(button.dataset.choice)]); $('choice-modal').hidden = true; render(); }; }
-  document.querySelector('[data-close]').onclick = () => $('choice-modal').hidden = true;
-  $('change-shipping').onclick = () => choose('Choose Shipping Option', [{ label:'Standard Delivery', note:'₱50', price:50, days:'Estimated 3–7 days' }, { label:'Economy Delivery', note:'₱35', price:35, days:'Estimated 5–10 days' }, { label:'Express Delivery', note:'₱120', price:120, days:'Estimated 1–2 days' }], option => { shippingBase = option.price; syncShipping(); $('shipping-label').textContent = option.label; $('shipping-label').nextElementSibling.textContent = option.days; });
-  $('voucher-btn').onclick = () => {
-    let claimed = []; try { claimed = JSON.parse(localStorage.getItem(VOUCHER_KEY) || '[]'); } catch {}
-    const catalog = [
-      { id:'BEARLY50', label:'BEARLY50', note:'₱50 off · Min ₱399', discount:50, min:399 },
-      { id:'BEARLY100', label:'BEARLY100', note:'₱100 off · Min ₱799', discount:100, min:799 },
-      { id:'PAYDAY30', label:'PAYDAY30', note:'30% off up to ₱150 · Min ₱599', percent:30, cap:150, min:599 },
-      { id:'BEARLY30', label:'BEARLY30', note:'₱30 off · Min ₱300', discount:30, min:300 },
-      { id:'BEARLYSHIP', label:'BEARLYSHIP', note:'Free shipping up to ₱50 · Min ₱499', discount:50, min:499, shippingVoucher:true },
-      { id:'BEARLYSHIP50', label:'BEARLYSHIP50', note:'50% off shipping · Min ₱99', shippingPercent:50, min:99, shippingVoucher:true },
-      { id:'BEARLYSHIP30', label:'BEARLYSHIP30', note:'₱30 off shipping · Min ₱399', discount:30, min:399, shippingVoucher:true },
-      { id:'BEARLYELEC150', label:'BEARLYELEC150', note:'₱150 off · Min ₱1,500', discount:150, min:1500 },
-      { id:'BEARLYMENS100', label:'BEARLYMENS100', note:'₱100 off · Min ₱800', discount:100, min:800 },
-      { id:'BEARLYHOME80', label:'BEARLYHOME80', note:'₱80 off · Min ₱600', discount:80, min:600 },
-      { id:'SHOPHOME50', label:'SHOPHOME50', note:'₱50 off Bearly Home Store · Min ₱499', discount:50, min:499, shopVoucher:true },
-      { id:'SHOPTECH100', label:'SHOPTECH100', note:'₱100 off Tech Haven · Min ₱999', discount:100, min:999, shopVoucher:true },
-      { id:'SHOPSTYLE15', label:'SHOPSTYLE15', note:'15% off Everyday Style Shop · Min ₱799', percent:15, cap:150, min:799, shopVoucher:true },
-      { id:'BEARLYNEW60', label:'BEARLYNEW60', note:'₱60 off · Min ₱600', discount:60, min:600 },
-      { id:'BEARLYNEW120', label:'BEARLYNEW120', note:'₱120 off · Min ₱1,200', discount:120, min:1200 },
-      { id:'BEARLYNEW200', label:'BEARLYNEW200', note:'₱200 off · Min ₱2,000', discount:200, min:2000 },
-    ];
-    const eligible = catalog.filter(option => claimed.includes(option.id)); if (!eligible.length) { toast('Claim a preview voucher from My Vouchers first.'); setTimeout(() => window.location.href = '/profile#vouchers', 700); return; }
-     choose('Select Bearly Voucher', [{ label:'No Voucher', note:'₱0 off', discount:0 }, ...eligible], option => { if (!option.id) { discount = 0; voucher = null; syncShipping(); return; } if (subtotal() < option.min) { discount = 0; voucher = null; syncShipping(); toast(`Minimum spend is ₱${option.min}.`); return; } voucher = option; discount = option.shippingVoucher ? 0 : option.percent ? Math.min(option.cap, subtotal() * (option.percent / 100)) : Math.min(option.discount || 0, subtotal()); syncShipping(); });
-  };
-  $('change-address').onclick = () => { if (!addresses.length) { window.location.href = '/addresses'; return; } choose('Choose Delivery Address', addresses.map(address => ({ ...address, label: `${address.name} · ${address.phone}`, note: [address.street, address.barangay, address.city, address.province, address.postal].filter(Boolean).join(', ') })), renderAddress); };
-  $('place-order').onclick = () => toast('Checkout preview only. No order or payment was created.');
+
+  function hasPreviewItems() {
+    try {
+      const value = JSON.parse(localStorage.getItem(PREVIEW_KEY) || '[]');
+      return Array.isArray(value) && value.length > 0;
+    } catch { return false; }
+  }
+
+  function showError(message) {
+    const node = $('checkout-error');
+    node.textContent = message || 'Unable to calculate shipping. Review your address and selected products.';
+    node.hidden = false;
+  }
+
+  function renderAddress() {
+    if (!address) return;
+    $('checkout-address-id').value = address.id;
+    $('address-name').textContent = address.name || 'Recipient';
+    $('address-phone').textContent = address.phone || 'No phone saved';
+    $('address-text').textContent = [address.street, address.barangay, address.city, address.province, address.postal].filter(Boolean).join(', ');
+    $('address-default-tag').hidden = !address.isDefault;
+  }
+
+  function renderItems() {
+    $('checkout-products').innerHTML = items.map(item => {
+      const productName = item.product_name || item.name || 'Product';
+      const unitPrice = Number(item.unit_price_minor ?? item.price_minor ?? 0);
+      const subtotal = Number(item.subtotal_minor ?? unitPrice * Number(item.quantity || 0));
+      const options = item.options && typeof item.options === 'object'
+        ? Object.entries(item.options).map(([name, value]) => `${name}: ${value}`).join(' · ')
+        : '';
+
+      return `<article class="checkout-product">
+        <div class="checkout-product-main"><img src="${escapeHtml(imageUrl(item.image))}" onerror="this.onerror=null;this.src='/images/bearly-logo.png'" alt="${escapeHtml(productName)}">
+          <div><div class="checkout-product-name">${escapeHtml(productName)}</div><div class="checkout-product-meta">${escapeHtml(item.variant_name || '')}${options ? ` · ${escapeHtml(options)}` : ''}</div><small>${escapeHtml(item.seller_name || 'Bearly Seller')}</small></div>
+        </div>
+        <div>${money(unitPrice)}</div><div>${Number(item.quantity || 0)}</div><div class="checkout-product-subtotal">${money(subtotal)}</div>
+      </article>`;
+    }).join('');
+
+    const quantity = items.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+    $('order-items').textContent = quantity;
+    $('summary-subtotal').textContent = money(items.reduce((sum, item) => {
+      const unitPrice = Number(item.unit_price_minor ?? item.price_minor ?? 0);
+      return sum + Number(item.subtotal_minor ?? unitPrice * Number(item.quantity || 0));
+    }, 0));
+  }
+
+  function renderQuote() {
+    if (!quote) {
+      $('shipping-price').textContent = '—';
+      $('summary-shipping').textContent = '—';
+      $('summary-total').textContent = '—';
+      $('order-total').textContent = '—';
+      $('shipping-breakdown').replaceChildren();
+      return;
+    }
+
+    $('shipping-price').textContent = money(quote.shipping_fee_minor);
+    $('summary-shipping').textContent = money(quote.shipping_fee_minor);
+    $('summary-total').textContent = money(quote.total_minor);
+    $('order-total').textContent = money(quote.total_minor);
+    $('shipping-breakdown').innerHTML = (quote.seller_orders || []).map(sellerOrder => {
+      const route = sellerOrder.quote || {};
+      const dimensions = route.parcel_dimensions_cm || {};
+      const size = [dimensions.length, dimensions.width, dimensions.height].map(value => Number(value || 0).toLocaleString('en-PH', { maximumFractionDigits: 2 })).join(' × ');
+      return `<div class="shipping-estimate-row"><span>${escapeHtml(sellerOrder.store_name)} · ${escapeHtml(route.route_label || 'Shipping')} · ${Number(route.billable_weight_kg || 0)} kg (${size} cm)</span><strong>${money(sellerOrder.shipping_fee_minor)}</strong></div>`;
+    }).join('');
+  }
+
+  async function requestQuote() {
+    const requestNumber = ++quoteRequest;
+    quote = null;
+    renderQuote();
+    $('checkout-quote-token').value = '';
+    $('checkout-error').hidden = true;
+    const button = $('place-order');
+    button.disabled = true;
+
+    if (!items.length || !address) {
+      $('checkout-status').textContent = !items.length ? 'Select saved cart items to continue.' : 'Add a saved delivery address to continue.';
+      return;
+    }
+
+    quoting = true;
+    $('checkout-status').textContent = 'Calculating estimated shipping…';
+    try {
+      const response = await fetch('/checkout/quote', {
+        method: 'POST',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf() },
+        body: JSON.stringify({ address_id: address.id, cart_item_ids: items.map(item => Number(item.id)) }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (requestNumber !== quoteRequest) return;
+      if (!response.ok) {
+        const message = Object.values(result.errors || {}).flat()[0] || result.message || 'Unable to calculate shipping.';
+        throw new Error(message);
+      }
+      quote = result.data;
+      const quotedItems = new Map((quote.items || []).map(item => [String(item.cart_item_id), item]));
+      if (quotedItems.size !== items.length || items.some(item => !quotedItems.has(String(item.id)))) {
+        quote = null;
+        throw new Error('Your saved cart changed. Return to your cart and review the selected items.');
+      }
+      items = items.map(item => ({ ...item, ...quotedItems.get(String(item.id)) }));
+      if (quote.delivery_address && Number(quote.delivery_address.id) === Number(address.id)) {
+        address = { ...address, ...quote.delivery_address };
+        renderAddress();
+      }
+      $('checkout-quote-token').value = String(quote.quote_token || '');
+      renderItems();
+      renderQuote();
+      $('checkout-status').textContent = 'Shipping is estimated per Seller Order. The order will use the rates and measurements shown here.';
+      button.disabled = false;
+    } catch (error) {
+      if (requestNumber !== quoteRequest) return;
+      $('checkout-status').textContent = 'Checkout needs attention before the order can be placed.';
+      showError(error.message);
+    } finally {
+      if (requestNumber === quoteRequest) quoting = false;
+    }
+  }
+
+  function chooseAddress() {
+    if (!addresses.length) {
+      window.location.href = '/addresses';
+      return;
+    }
+    $('choice-title').textContent = 'Choose delivery address';
+    $('choice-options').innerHTML = addresses.map((value, index) => {
+      const details = [value.street, value.barangay, value.city, value.province, value.postal].filter(Boolean).join(', ');
+      return `<button class="choice-option" data-address-choice="${index}" type="button"><span>${escapeHtml(value.name)} · ${escapeHtml(value.phone)}</span><strong>${escapeHtml(details)}${value.isDefault ? ' · Default' : ''}</strong></button>`;
+    }).join('');
+    $('choice-modal').hidden = false;
+  }
+
+  $('change-address').addEventListener('click', chooseAddress);
+  $('choice-options').addEventListener('click', event => {
+    const button = event.target.closest('[data-address-choice]');
+    if (!button) return;
+    address = addresses[Number(button.dataset.addressChoice)] || null;
+    $('choice-modal').hidden = true;
+    renderAddress();
+    requestQuote();
+  });
+  document.querySelector('[data-close]').addEventListener('click', () => { $('choice-modal').hidden = true; });
+
+  $('checkout-form').addEventListener('submit', event => {
+    if (!quote || !$('checkout-quote-token').value || quoting || !address || !items.length) {
+      event.preventDefault();
+      if (!quote && !quoting) requestQuote();
+      return;
+    }
+
+    const fields = $('checkout-cart-item-ids');
+    fields.replaceChildren(...items.map(item => {
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'cart_item_ids[]';
+      input.value = String(item.id);
+      return input;
+    }));
+    try { localStorage.removeItem(SELECTION_KEY); } catch { /* storage is optional */ }
+    const button = $('place-order');
+    button.disabled = true;
+    button.textContent = 'Placing order…';
+  });
 
   async function load() {
     try {
-      const response = await fetch('/cart/data', { headers: { 'Accept': 'application/json' } });
-      const result = await response.json();
-      const live = Array.isArray(result.data?.items) ? result.data.items.map(item => ({ ...item, source:'live', key:`live:${item.id}`, price:Number(item.price_minor || 0) / 100 })) : [];
-      allItems = [...live, ...readPreview()];
-    } catch { allItems = readPreview(); }
-    const keys = selectedKeys(); items = keys.length ? allItems.filter(item => keys.includes(item.key)) : allItems;
-    await loadAddresses(); render();
+      const [cartResponse, addressResponse] = await Promise.all([
+        fetch('/cart/data', { headers: { Accept: 'application/json' } }),
+        fetch('/addresses/data', { headers: { Accept: 'application/json' } }),
+      ]);
+      if (!cartResponse.ok || !addressResponse.ok) throw new Error('Unable to load your cart or saved addresses.');
+      const cartResult = await cartResponse.json();
+      const addressResult = await addressResponse.json();
+      allItems = Array.isArray(cartResult.data?.items) ? cartResult.data.items : [];
+      addresses = Array.isArray(addressResult.data) ? addressResult.data : [];
+
+      const keys = storedKeys();
+      items = keys.length
+        ? allItems.filter(item => keys.includes(`live:${item.id}`))
+        : allItems;
+      address = addresses.find(value => value.isDefault) || addresses[0] || null;
+
+      if (hasPreviewItems()) $('local-preview-warning').hidden = false;
+      renderItems();
+      renderAddress();
+
+      if (!items.length) {
+        $('checkout-empty').hidden = false;
+        $('checkout-status').textContent = 'No saved cart items are selected.';
+        return;
+      }
+      if (!address) {
+        $('checkout-status').textContent = 'Add a saved delivery address to see shipping.';
+        showError('You need a saved delivery address before checking out.');
+        return;
+      }
+
+      await requestQuote();
+    } catch (error) {
+      $('checkout-status').textContent = 'Your checkout details could not be loaded.';
+      showError(error.message);
+    }
   }
+
   load();
 })();

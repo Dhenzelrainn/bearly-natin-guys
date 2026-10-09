@@ -1,3 +1,42 @@
+@php
+    $detailImages = [];
+    $seenDetailImageUrls = [];
+    $appendDetailImage = function (string $url, string $label, ?int $variantId = null) use (&$detailImages, &$seenDetailImageUrls): void {
+        $url = trim($url);
+
+        if ($url === '' || isset($seenDetailImageUrls[$url])) {
+            return;
+        }
+
+        $seenDetailImageUrls[$url] = true;
+        $detailImages[] = [
+            'url' => $url,
+            'label' => $label,
+            'variant_id' => $variantId,
+        ];
+    };
+
+    if (filled($productCard['image'] ?? null)) {
+        $appendDetailImage((string) $productCard['image'], 'Product image');
+    }
+
+    foreach ($productCard['gallery'] as $index => $image) {
+        $appendDetailImage((string) $image, 'Gallery image '.($index + 1));
+    }
+
+    foreach ($productCard['variants'] as $variant) {
+        if (! filled($variant['image'] ?? null)) {
+            continue;
+        }
+
+        $variantLabel = filled($variant['color'] ?? '')
+            ? ucfirst((string) $variant['color']).' variant image ('.$variant['name'].')'
+            : 'Variant image ('.$variant['name'].')';
+
+        $appendDetailImage((string) $variant['image'], $variantLabel, (int) $variant['id']);
+    }
+@endphp
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -19,8 +58,11 @@
         .detail-primary-image { aspect-ratio:1 / 1; display:grid; place-items:center; overflow:hidden; border-radius:12px; background:#eee5da; }
         .detail-primary-image img { width:100%; height:100%; object-fit:cover; }
         .detail-primary-image.is-empty::before { content:'No product image'; color:#806f60; font-weight:600; }
-        .detail-gallery { display:flex; gap:10px; margin-top:12px; flex-wrap:wrap; }
-        .detail-gallery img { width:68px; height:68px; object-fit:cover; border:1px solid #decfbe; border-radius:10px; }
+        .detail-gallery { display:flex; gap:10px; margin-top:12px; overflow-x:auto; padding:2px 2px 6px; }
+        .detail-gallery button { flex:0 0 68px; width:68px; height:68px; padding:0; overflow:hidden; border:1px solid #decfbe; border-radius:10px; background:#fff; cursor:pointer; }
+        .detail-gallery button[aria-pressed="true"] { border-color:#9a5a0a; box-shadow:0 0 0 2px rgba(154,90,10,.16); }
+        .detail-gallery button:focus-visible { outline:3px solid #9a5a0a; outline-offset:2px; }
+        .detail-gallery img { display:block; width:100%; height:100%; object-fit:cover; }
         .detail-kicker { margin:0 0 8px; color:#9a6d2f; font-size:12px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; }
         .detail-info h1 { margin:0; color:#39251b; font-size:clamp(28px,4vw,46px); line-height:1.1; }
         .detail-price { display:block; margin:18px 0 8px; color:#5b351f; font-size:32px; font-weight:800; }
@@ -29,6 +71,9 @@
         .detail-seller-avatar { display:grid; place-items:center; width:42px; height:42px; border-radius:50%; background:#5b3827; color:#fff; font-weight:800; }
         .detail-seller small { display:block; color:#88776a; }
         .detail-seller a { color:#5a3522; font-weight:800; text-decoration:none; }
+        .detail-payment-methods { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin:14px 0; color:#6c6055; font-size:12px; }
+        .detail-payment-methods strong { color:#57483e; }
+        .detail-payment-methods span { padding:5px 9px; border:1px solid #eadfd3; border-radius:7px; background:#fbf7f1; color:#5a3522; font-weight:700; }
         .detail-options { display:grid; gap:10px; margin:20px 0; }
         .detail-options label { color:#57483e; font-size:13px; font-weight:700; }
         .detail-options select { width:100%; margin-top:5px; padding:12px 14px; border:1px solid #d8c8b8; border-radius:10px; background:#fff; color:#39251b; font:inherit; }
@@ -68,13 +113,23 @@
             <section class="detail-media" aria-label="Product images">
                 <div class="detail-primary-image {{ $productCard['image'] ? '' : 'is-empty' }}">
                     @if ($productCard['image'])
-                        <img src="{{ $productCard['image'] }}" alt="{{ $product->name }}">
+                        <img src="{{ $productCard['image'] }}" alt="{{ $product->name }}" data-detail-primary-image data-default-image="{{ $productCard['image'] }}">
                     @endif
                 </div>
-                @if (count($productCard['gallery']))
-                    <div class="detail-gallery">
-                        @foreach ($productCard['gallery'] as $image)
-                            <img src="{{ $image }}" alt="{{ $product->name }} gallery image">
+                @if (count($detailImages))
+                    <div class="detail-gallery" role="group" aria-label="Product image choices">
+                        @foreach ($detailImages as $image)
+                            <button
+                                type="button"
+                                data-detail-thumbnail
+                                data-image-src="{{ $image['url'] }}"
+                                data-image-alt="{{ $image['label'] }}"
+                                @if ($image['variant_id']) data-variant-id="{{ $image['variant_id'] }}" @endif
+                                aria-label="View {{ $image['label'] }}"
+                                aria-pressed="{{ $image['url'] === $productCard['image'] ? 'true' : 'false' }}"
+                            >
+                                <img src="{{ $image['url'] }}" alt="" aria-hidden="true" loading="lazy">
+                            </button>
                         @endforeach
                     </div>
                 @endif
@@ -85,6 +140,14 @@
                 <h1>{{ $product->name }}</h1>
                 <strong class="detail-price" data-detail-price>₱{{ number_format($productCard['price'], 2) }}</strong>
                 <p class="detail-description">{{ $product->description ?: 'This seller has not added a product description yet.' }}</p>
+                @if (!empty($productCard['payment_methods']))
+                    <div class="detail-payment-methods" aria-label="Payment methods listed by seller">
+                        <strong>Payment options:</strong>
+                        @foreach ($productCard['payment_methods'] as $method)
+                            <span>{{ $method === 'cod' ? 'Cash on Delivery' : 'Online' }}</span>
+                        @endforeach
+                    </div>
+                @endif
 
                 <div class="detail-seller">
                     <span class="detail-seller-avatar" aria-hidden="true">{{ strtoupper(substr($product->store?->name ?: 'B', 0, 1)) }}</span>
@@ -96,7 +159,7 @@
                         <label for="detail-variant">Choose variation</label>
                         <select id="detail-variant" data-detail-variant>
                             @foreach ($productCard['variants'] as $variant)
-                                <option value="{{ $variant['id'] }}" data-price="{{ $variant['price'] }}" data-stock="{{ $variant['stock'] }}">{{ $variant['name'] }} · ₱{{ number_format($variant['price'], 2) }}</option>
+                                <option value="{{ $variant['id'] }}" data-price="{{ $variant['price'] }}" data-stock="{{ $variant['stock'] }}" data-image="{{ $variant['image'] }}">{{ $variant['name'] }} · ₱{{ number_format($variant['price'], 2) }}</option>
                             @endforeach
                         </select>
                     </div>
@@ -129,14 +192,20 @@
         (() => {
             const variants = @json($productCard['variants']);
             const select = document.querySelector('[data-detail-variant]');
-            const price = document.querySelector('[data-detail-price]');
-            const stock = document.querySelector('[data-detail-stock]');
-            const button = document.querySelector('[data-detail-add]');
-            const toast = document.querySelector('[data-detail-toast]');
-            const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
-            const current = () => variants.find(item => Number(item.id) === Number(select?.value)) || variants[0];
-            const render = () => { const item = current(); if (!item) return; price.textContent = `₱${Number(item.price).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; stock.textContent = `${item.stock} piece(s) available`; button.disabled = Number(item.stock) < 1; };
-            select?.addEventListener('change', render);
+             const price = document.querySelector('[data-detail-price]');
+             const stock = document.querySelector('[data-detail-stock]');
+             const primaryImage = document.querySelector('[data-detail-primary-image]');
+              const button = document.querySelector('[data-detail-add]');
+              const toast = document.querySelector('[data-detail-toast]');
+              const thumbnails = [...document.querySelectorAll('[data-detail-thumbnail]')];
+              const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+              const productName = @json($product->name);
+             const current = () => variants.find(item => Number(item.id) === Number(select?.value)) || variants[0];
+              const selectThumbnail = source => thumbnails.forEach(thumbnail => thumbnail.setAttribute('aria-pressed', String(thumbnail.dataset.imageSrc === source)));
+              const showImage = (source, alt) => { if (!primaryImage || !source) return; primaryImage.src = source; primaryImage.alt = alt || productName; selectThumbnail(source); };
+              const render = () => { const item = current(); if (!item) return; price.textContent = `₱${Number(item.price).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; stock.textContent = `${item.stock} piece(s) available`; button.disabled = Number(item.stock) < 1; if (primaryImage) { const image = item.image || primaryImage.dataset.defaultImage || primaryImage.src; showImage(image, `${productName} - ${item.name}`); } };
+              thumbnails.forEach(thumbnail => thumbnail.addEventListener('click', () => { const variantId = Number(thumbnail.dataset.variantId || 0); if (variantId && select) { select.value = String(variantId); render(); return; } showImage(thumbnail.dataset.imageSrc, thumbnail.dataset.imageAlt); }));
+             select?.addEventListener('change', render);
             button?.addEventListener('click', async () => { const item = current(); if (!item || Number(item.stock) < 1) return; button.disabled = true; try { const response = await fetch('{{ route('cart.add') }}', { method:'POST', headers:{ Accept:'application/json', 'Content-Type':'application/json', 'X-CSRF-TOKEN':csrf }, body:JSON.stringify({ product_variant_id:item.id, quantity:1 }) }); const result = await response.json().catch(() => ({})); if (!response.ok) throw new Error(Object.values(result.errors || {}).flat()[0] || result.message || 'Unable to add this product.'); toast.textContent = 'Added to your live cart.'; window.BearlyNavbarState?.sync?.(); } catch (error) { toast.textContent = error.message; } finally { render(); } });
             render();
         })();

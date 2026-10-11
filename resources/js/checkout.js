@@ -195,9 +195,12 @@
       addresses = Array.isArray(addressResult.data) ? addressResult.data : [];
 
       const keys = storedKeys();
-      items = keys.length
-        ? allItems.filter(item => keys.includes(`live:${item.id}`))
-        : allItems;
+      const directItemId = new URLSearchParams(window.location.search).get('item');
+      items = directItemId !== null
+        ? allItems.filter(item => String(item.id) === directItemId)
+        : keys.length
+          ? allItems.filter(item => keys.includes(`live:${item.id}`))
+          : allItems;
       address = addresses.find(value => value.isDefault) || addresses[0] || null;
 
       if (hasPreviewItems()) $('local-preview-warning').hidden = false;

@@ -22,4 +22,9 @@ class SellerPayout extends Model
     {
         return $this->belongsTo(SellerProfile::class);
     }
+
+    public function items()
+    {
+        return $this->hasMany(SellerPayoutItem::class);
+    }
 }

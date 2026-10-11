@@ -13,6 +13,21 @@ class Shipment extends Model
         return $this->belongsTo(SellerOrder::class);
     }
 
+    public function logisticsProfile()
+    {
+        return $this->belongsTo(LogisticsProfile::class);
+    }
+
+    public function originAddress()
+    {
+        return $this->belongsTo(Address::class, 'origin_address_id');
+    }
+
+    public function destinationAddress()
+    {
+        return $this->belongsTo(Address::class, 'destination_address_id');
+    }
+
     public function waybill()
     {
         return $this->hasOne(Waybill::class);
@@ -26,5 +41,10 @@ class Shipment extends Model
     public function events()
     {
         return $this->hasMany(ShipmentEvent::class)->orderBy('occurred_at');
+    }
+
+    public function codCashCollection()
+    {
+        return $this->hasOne(CodCashCollection::class);
     }
 }

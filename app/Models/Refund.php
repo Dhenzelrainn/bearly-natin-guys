@@ -16,6 +16,7 @@ class Refund extends Model
             'processed_at' => 'datetime',
             'completed_at' => 'datetime',
             'failed_at' => 'datetime',
+            'external_paid_on' => 'date',
         ];
     }
 
@@ -52,6 +53,16 @@ class Refund extends Model
     public function sellerTransactions()
     {
         return $this->hasMany(SellerTransaction::class);
+    }
+
+    public function sellerRecovery()
+    {
+        return $this->hasOne(SellerRefundRecovery::class);
+    }
+
+    public function cashPayout()
+    {
+        return $this->hasOne(RefundCashPayout::class);
     }
 
     public function approver()

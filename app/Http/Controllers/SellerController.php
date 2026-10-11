@@ -7,6 +7,7 @@ use App\Models\Address;
 use App\Models\StorePromotion;
 use App\Models\StorePromotionalBanner;
 use App\Services\InternationalPhone;
+use App\Services\ProductReviewService;
 use App\Services\SellerIdentityService;
 use App\Services\SellerInventoryService;
 use App\Services\SellerPricingService;
@@ -210,19 +211,39 @@ class SellerController extends Controller
         ]);
     }
 
-    public function customerFeedback(): View
+    public function customerFeedback(Request $request, ProductReviewService $reviews): View
     {
+        $storeId = $request->user()->sellerProfile?->store?->id;
+
+        abort_unless($storeId, 404, 'Seller Store not found.');
+
+        $feedback = $reviews->storeFeedback((int) $storeId);
+
         return view('seller.CustomerService.feedback', [
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
-            'summary' => ['rating' => '4.7', 'total' => 126, 'new' => 3, 'response_rate' => '91%'],
-            'distribution' => [5 => 82, 4 => 29, 3 => 10, 2 => 3, 1 => 2],
-            'reviews' => [
-                ['id' => 1, 'customer' => 'Maria Santos', 'initials' => 'MS', 'order' => '#BR-1048', 'product' => 'Classic Linen Shirt', 'variant' => 'Olive / Medium', 'rating' => 5, 'date' => 'Today · 9:32 AM', 'comment' => 'Great quality and comfortable fit. The size guide was accurate.', 'status' => 'new', 'response' => null],
-                ['id' => 2, 'customer' => 'Carlo Reyes', 'initials' => 'CR', 'order' => '#BR-1047', 'product' => 'Canvas Tote Bag', 'variant' => 'Natural', 'rating' => 4, 'date' => 'Yesterday · 4:18 PM', 'comment' => 'Good material and looks durable. Packaging could be improved.', 'status' => 'new', 'response' => null],
-                ['id' => 3, 'customer' => 'Anne Cruz', 'initials' => 'AC', 'order' => '#BR-1046', 'product' => 'Everyday Sneakers', 'variant' => 'White / Size 38', 'rating' => 5, 'date' => 'Aug 30 · 11:06 AM', 'comment' => 'Arrived in good condition and exactly as shown.', 'status' => 'replied', 'response' => 'Thank you, Anne! We’re glad the sneakers arrived safely and met your expectations.'],
-                ['id' => 4, 'customer' => 'Miguel Tan', 'initials' => 'MT', 'order' => '#BR-1045', 'product' => 'Classic Linen Shirt', 'variant' => 'Cream / Large', 'rating' => 3, 'date' => 'Aug 28 · 2:44 PM', 'comment' => 'The shirt is nice, but delivery took longer than expected.', 'status' => 'replied', 'response' => 'Thank you for sharing this. We’ll coordinate delivery concerns more closely with logistics.'],
+            'summary' => $feedback['summary'],
+            'distribution' => $feedback['distribution'],
+            'reviews' => $feedback['reviews'],
+        ]);
+    }
+
+    public function replyFeedback(Request $request, int $review, ProductReviewService $reviews): JsonResponse
+    {
+        $data = $request->validate([
+            'response' => ['required', 'string', 'max:400'],
+        ]);
+
+        $model = $reviews->reply($request->user(), $review, (string) $data['response']);
+
+        return response()->json([
+            'data' => [
+                'id' => (int) $model->id,
+                'status' => 'replied',
+                'response' => (string) $model->seller_response,
+                'response_at' => $model->seller_response_at?->format('M j, Y g:i A'),
             ],
+            'message' => 'Reply posted.',
         ]);
     }
 

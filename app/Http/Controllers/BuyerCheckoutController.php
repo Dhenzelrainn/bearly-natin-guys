@@ -3,10 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Models\Order;
+use App\Services\BuyerCatalogService;
+use App\Services\BuyerOrderConfirmationService;
 use App\Services\CheckoutService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
 
@@ -66,15 +69,75 @@ class BuyerCheckoutController extends Controller
         return redirect()->route('checkout.confirmation', $order->order_no);
     }
 
-    public function confirmation(Request $request, string $orderNo): View
+    public function confirmation(Request $request, string $orderNo, BuyerOrderConfirmationService $confirmation, BuyerCatalogService $catalog): View
     {
         $order = Order::query()
-            ->with(['sellerOrders.store', 'sellerOrders.items', 'payments'])
+            ->with(['sellerOrders.store', 'sellerOrders.items.product.images.variant', 'sellerOrders.items.variant', 'sellerOrders.shipments', 'payments'])
             ->where('buyer_id', $request->user()->id)
             ->where('order_no', $orderNo)
             ->firstOrFail();
 
-        return view('buyer.checkout-confirmation', ['order' => $order]);
+        $itemImages = [];
+        foreach ($order->sellerOrders as $sellerOrder) {
+            foreach ($sellerOrder->items as $item) {
+                $itemImages[$item->id] = $catalog->orderItemImageUrl($item);
+            }
+        }
+
+        return view('buyer.checkout-confirmation', [
+            'order' => $order,
+            'canConfirmReceipt' => $confirmation->canConfirm($order),
+            'receiptConfirmed' => $confirmation->isConfirmed($order),
+            'itemImages' => $itemImages,
+            'fulfillmentLabels' => $order->sellerOrders->mapWithKeys(fn ($sellerOrder) => [
+                $sellerOrder->id => $this->fulfillmentLabel($sellerOrder),
+            ])->all(),
+            'placedAtLabel' => $order->placed_at || $order->created_at
+                ? Carbon::parse($order->placed_at ?? $order->created_at)->format('M j, Y g:i A')
+                : '—',
+            'shippingAddressLabel' => implode(', ', array_filter([
+                $order->recipient_name,
+                $order->address_line,
+                $order->barangay,
+                $order->city_municipality,
+                $order->province,
+                $order->postal_code,
+            ])) ?: '—',
+        ]);
+    }
+
+    private function fulfillmentLabel($sellerOrder): string
+    {
+        if ($sellerOrder->status === 'completed') {
+            return 'Completed';
+        }
+
+        if ($sellerOrder->status === 'cancelled') {
+            return 'Cancelled';
+        }
+
+        $statuses = $sellerOrder->shipments->pluck('status')->filter()->unique()->values();
+
+        if ($statuses->isNotEmpty() && $statuses->every(fn (string $status): bool => $status === 'delivered')) {
+            return 'Delivered · awaiting your confirmation';
+        }
+
+        if ($statuses->contains('out_for_delivery')) {
+            return 'Out for delivery';
+        }
+
+        if ($statuses->contains(fn (string $status): bool => in_array($status, ['picked_up', 'at_sorting_center', 'sorted', 'dispatched'], true))) {
+            return 'In transit with Bearly Logistics';
+        }
+
+        return match ($sellerOrder->status) {
+            'pending', 'placed' => 'Order placed',
+            'accepted' => 'Confirmed by Seller',
+            'packing' => 'Being prepared',
+            'ready_for_pickup' => 'Ready for pickup',
+            'handed_to_logistics' => 'Handed to Logistics',
+            default => str_replace('_', ' ', ucfirst($sellerOrder->status)),
+        };
     }
 
     public function cancel(Request $request, int $order, CheckoutService $checkout): RedirectResponse
@@ -90,5 +153,13 @@ class BuyerCheckoutController extends Controller
 
         return redirect()->route('checkout.confirmation', $model->order_no)
             ->with('success', 'The order was cancelled and reserved stock was released.');
+    }
+
+    public function confirmReceipt(Request $request, int $order, BuyerOrderConfirmationService $confirmation): RedirectResponse
+    {
+        $model = $confirmation->confirmReceipt($request->user(), $order);
+
+        return redirect()->route('checkout.confirmation', $model->order_no)
+            ->with('success', 'Receipt confirmed. This order is now complete.');
     }
 }

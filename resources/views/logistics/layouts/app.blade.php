@@ -24,6 +24,7 @@
             <p class="ops-nav-label">Operations</p>
             <a href="{{ route('logistics.riders.index') }}" class="ops-nav-link {{ request()->routeIs('logistics.riders.*') ? 'is-active' : '' }}"><i data-lucide="users-round"></i><span>Rider Management</span>@if(($pendingRiderCount ?? 0) > 0)<span class="nav-count">{{ $pendingRiderCount }}</span>@endif</a>
             <a href="{{ route('logistics.pickups.index') }}" class="ops-nav-link {{ request()->routeIs('logistics.pickups.*') ? 'is-active' : '' }}"><i data-lucide="package-check"></i><span>Pickup Requests</span></a>
+            <a href="{{ route('logistics.cash.index') }}" class="ops-nav-link {{ request()->routeIs('logistics.cash.*') ? 'is-active' : '' }}"><i data-lucide="banknote"></i><span>Cash custody</span></a>
             <a href="{{ route('logistics.sorting.incoming') }}" class="ops-nav-link {{ request()->routeIs('logistics.sorting.incoming') ? 'is-active' : '' }}"><i data-lucide="package-open"></i><span>Incoming Parcels</span></a>
             <a href="{{ route('logistics.sorting.center') }}" class="ops-nav-link {{ request()->routeIs('logistics.sorting.center') ? 'is-active' : '' }}"><i data-lucide="warehouse"></i><span>Sorting Center</span></a>
             <a href="{{ route('logistics.dispatch.index') }}" class="ops-nav-link {{ request()->routeIs('logistics.dispatch.index') ? 'is-active' : '' }}"><i data-lucide="route"></i><span>Delivery Assignment</span></a>

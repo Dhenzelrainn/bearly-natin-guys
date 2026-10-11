@@ -2,16 +2,29 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\CodCashCollection;
 use App\Models\Order;
 use App\Models\PlatformCommission;
 use App\Models\Refund;
+use App\Models\RefundCashPayout;
 use App\Models\SellerPayout;
 use App\Models\SellerTransaction;
 use App\Models\SystemSetting;
+use App\Services\AuditService;
+use App\Services\CodCashCollectionService;
+use App\Services\RefundCashPayoutService;
+use App\Services\SellerPayoutService;
 use Carbon\CarbonInterface;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class AdminFinanceController extends Controller
 {
@@ -118,16 +131,165 @@ class AdminFinanceController extends Controller
         ));
     }
 
-    public function payments(Request $request): View
-    {
+    public function payments(
+        Request $request,
+        SellerPayoutService $sellerPayouts,
+        CodCashCollectionService $codCash,
+        RefundCashPayoutService $refundCash,
+    ): View {
         $payments = SellerPayout::query()
-            ->with('sellerProfile.store')
+            ->with(['sellerProfile.store', 'items'])
             ->latest('period_end')
             ->get()
             ->map(fn (SellerPayout $payout): array => $this->mapPayout($payout))
             ->values();
 
-        return view('admin.finance.payments', $this->base($request) + compact('payments'));
+        $eligibleSellers = $sellerPayouts->eligibleBySeller();
+        $codCollections = $codCash->codCollectionsForFinance();
+        $refundsReadyForCashDispatch = $refundCash->refundsReadyForCashDispatch();
+        $refundCashPayouts = $refundCash->refundPayoutsForFinance();
+
+        return view('admin.finance.payments', $this->base($request) + compact(
+            'payments',
+            'eligibleSellers',
+            'codCollections',
+            'refundsReadyForCashDispatch',
+            'refundCashPayouts',
+        ));
+    }
+
+    public function reconcileCodCash(
+        Request $request,
+        CodCashCollection $collection,
+        CodCashCollectionService $codCash,
+    ): RedirectResponse {
+        $data = $request->validate([
+            'received_amount' => ['required', 'string', 'regex:/^\d{1,8}(?:\.\d{1,2})?$/'],
+            'reference' => ['required', 'string', 'max:150'],
+        ]);
+        $codCash->reconcileAtFinance($request->user(), (int) $collection->id, $this->amountToMinor($data['received_amount']), trim($data['reference']));
+
+        return back()->with('success', "COD cash {$collection->collection_no} was reconciled to the Finance receipt reference.");
+    }
+
+    public function generateSellerPayout(Request $request, SellerPayoutService $sellerPayouts): RedirectResponse
+    {
+        $data = $request->validate([
+            'seller_profile_id' => ['required', 'integer', 'exists:seller_profiles,id'],
+            'reason' => ['required', 'string', 'min:5', 'max:1000'],
+        ]);
+        $payout = $sellerPayouts->generateForSeller($request->user(), (int) $data['seller_profile_id'], trim($data['reason']), $request);
+
+        return back()->with('success', "Seller settlement {$payout->payout_no} was generated for ₱".number_format((int) $payout->net_minor / 100, 2).'. No payout was sent.');
+    }
+
+    public function recordSellerPayout(Request $request, SellerPayout $payout, SellerPayoutService $sellerPayouts): RedirectResponse
+    {
+        $data = $request->validate([
+            'external_payout_confirmed' => ['required', 'accepted'],
+            'actual_amount' => ['required', 'string', 'regex:/^\d{1,8}(?:\.\d{1,2})?$/'],
+            'method' => ['required', Rule::in(['gcash', 'bank_transfer', 'cash', 'other'])],
+            'reference' => ['required', 'string', 'max:150'],
+            'paid_on' => ['required', 'date_format:Y-m-d', 'before_or_equal:today'],
+            'reason' => ['required', 'string', 'min:5', 'max:1000'],
+            'receipt' => ['required', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:5120'],
+        ], [
+            'external_payout_confirmed.accepted' => 'Confirm that the external Seller payout has already happened.',
+            'receipt.required' => 'Upload the external transfer receipt or Seller acknowledgment.',
+        ]);
+        /** @var UploadedFile $receipt */
+        $receipt = $data['receipt'];
+        $recorded = $sellerPayouts->markPaid(
+            $request->user(),
+            (int) $payout->id,
+            $this->amountToMinor($data['actual_amount']),
+            $data['method'],
+            trim($data['reference']),
+            $data['paid_on'],
+            trim($data['reason']),
+            $receipt,
+            $request,
+        );
+
+        return back()->with('success', "{$recorded->payout_no} was recorded as externally paid. Bearly did not initiate a transfer.");
+    }
+
+    public function issueRefundCash(
+        Request $request,
+        Refund $refund,
+        RefundCashPayoutService $refundCash,
+    ): RedirectResponse {
+        $request->validate([
+            'cash_issued_confirmed' => ['required', 'accepted'],
+        ], [
+            'cash_issued_confirmed.accepted' => 'Confirm that Finance has physically handed the refund cash to Logistics.',
+        ]);
+        $payout = $refundCash->issueToLogistics($request->user(), (int) $refund->id, $request);
+
+        return back()->with('success', "Cash handoff recorded. Reference: {$payout->finance_issue_reference}. Refund cash {$payout->payout_no} is awaiting Logistics receipt; Bearly did not move cash.");
+    }
+
+    public function completeRefundCash(
+        Request $request,
+        RefundCashPayout $payout,
+        RefundCashPayoutService $refundCash,
+    ): RedirectResponse {
+        $data = $request->validate([
+            'buyer_receipt_verified' => ['required', 'accepted'],
+            'completion_reason' => ['required', 'string', 'min:5', 'max:1000'],
+        ], [
+            'buyer_receipt_verified.accepted' => 'Confirm that the Logistics-verified Buyer acknowledgment is genuine and matches the recorded refund.',
+        ]);
+        $completed = $refundCash->completeAtFinance($request->user(), (int) $payout->id, trim($data['completion_reason']), $request);
+
+        return back()->with('success', "Refund {$completed->refund?->refund_no} was completed after Buyer receipt verification.");
+    }
+
+    public function downloadRefundCashAcknowledgment(Request $request, RefundCashPayout $payout, AuditService $audit): BinaryFileResponse
+    {
+        abort_unless($payout->status === 'awaiting_finance_completion'
+            && $payout->acknowledgment_disk === 'local'
+            && filled($payout->acknowledgment_path)
+            && Storage::disk('local')->exists($payout->acknowledgment_path), 404);
+        $audit->record(
+            action: 'refund_cash.acknowledgment_downloaded',
+            module: 'Finance',
+            subject: $payout,
+            description: "Signed Buyer acknowledgment reviewed by Finance for {$payout->payout_no}.",
+            newValues: ['original_name' => $payout->acknowledgment_original_name],
+            severity: 'info',
+            request: $request,
+        );
+
+        return response()->download(
+            Storage::disk('local')->path($payout->acknowledgment_path),
+            $this->safeDownloadName($payout->acknowledgment_original_name ?: 'buyer-acknowledgment'),
+            ['Cache-Control' => 'private, no-store', 'X-Content-Type-Options' => 'nosniff'],
+        );
+    }
+
+    public function downloadSellerPayoutReceipt(Request $request, SellerPayout $payout, AuditService $audit): BinaryFileResponse
+    {
+        abort_unless($payout->status === 'paid'
+            && $payout->receipt_disk === 'local'
+            && filled($payout->receipt_path)
+            && Storage::disk('local')->exists($payout->receipt_path), 404);
+
+        $audit->record(
+            action: 'seller_payout.receipt_downloaded',
+            module: 'Finance',
+            subject: $payout,
+            description: "Receipt downloaded for Seller payout {$payout->payout_no}.",
+            newValues: ['receipt_original_name' => $payout->receipt_original_name],
+            severity: 'info',
+            request: $request,
+        );
+
+        return response()->download(
+            Storage::disk('local')->path($payout->receipt_path),
+            $this->safeDownloadName($payout->receipt_original_name ?: 'seller-payout-receipt'),
+            ['Cache-Control' => 'private, no-store', 'X-Content-Type-Options' => 'nosniff'],
+        );
     }
 
     public function reports(Request $request): View
@@ -141,7 +303,7 @@ class AdminFinanceController extends Controller
             ->with(['sellerOrder.store', 'refund'])
             ->get();
         $payouts = SellerPayout::query()->with('sellerProfile.store')->latest('period_end')->get();
-        $refunds = Refund::query()->with(['order', 'returnRequest.store'])->latest()->get();
+        $refunds = Refund::query()->with(['order', 'returnRequest.store', 'sellerRecovery'])->latest()->get();
 
         $grossSalesMinor = (int) $paidOrders->sum('total_minor');
         $refundMinor = (int) $completedRefunds->sum('amount_minor');
@@ -169,8 +331,14 @@ class AdminFinanceController extends Controller
             'case' => $refund->refund_no,
             'order' => $refund->order?->order_no ?? '—',
             'seller' => $refund->returnRequest?->store?->name ?? '—',
-            'amount' => $this->money((int) $refund->amount_minor),
+            'amount' => $this->money((int) ($refund->payout_amount_minor ?? $refund->amount_minor)),
             'status' => str($refund->status)->replace('_', ' ')->title()->toString(),
+            'responsible_party' => $refund->financially_responsible_party
+                ? str($refund->financially_responsible_party)->title()->toString()
+                : 'Not recorded',
+            'seller_recovery' => $refund->sellerRecovery
+                ? $this->money(max(0, (int) $refund->sellerRecovery->amount_minor - (int) $refund->sellerRecovery->recovered_amount_minor)).' outstanding'
+                : 'None',
         ])->values();
         $orderMix = $this->orderMix($paidOrders);
         $reportStart = now()->startOfYear()->format('Y-m-d');
@@ -250,6 +418,7 @@ class AdminFinanceController extends Controller
     {
         return [
             'id' => $payout->payout_no,
+            'record_id' => (int) $payout->id,
             'seller' => $this->payoutSellerName($payout),
             'period' => $this->period($payout->period_start, $payout->period_end),
             'gross' => $payout->gross_minor / 100,
@@ -260,6 +429,9 @@ class AdminFinanceController extends Controller
             'paid' => $payout->paid_at?->format('Y-m-d'),
             'reference' => $payout->reference ?: '—',
             'status' => $this->payoutDisplayStatus($payout),
+            'item_count' => $payout->items->count(),
+            'method' => $payout->external_method,
+            'has_receipt' => filled($payout->receipt_path),
         ];
     }
 
@@ -369,6 +541,22 @@ class AdminFinanceController extends Controller
         $prefix = $minor < 0 ? '−' : '';
 
         return $prefix.'₱'.number_format(abs($minor) / 100, 2);
+    }
+
+    private function amountToMinor(string $amount): int
+    {
+        if (! preg_match('/^(\d{1,8})(?:\.(\d{1,2}))?$/', $amount, $matches)) {
+            throw ValidationException::withMessages(['amount' => 'Enter an amount with no more than two decimal places.']);
+        }
+
+        return ((int) $matches[1] * 100) + (int) str_pad($matches[2] ?? '', 2, '0', STR_PAD_RIGHT);
+    }
+
+    private function safeDownloadName(string $name): string
+    {
+        $safe = preg_replace('/[^A-Za-z0-9._ -]/', '_', basename(str_replace('\\', '/', $name))) ?: 'seller-payout-receipt';
+
+        return Str::limit($safe, 200, '');
     }
 
     private function base(Request $request): array

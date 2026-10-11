@@ -222,7 +222,8 @@ class OrdersCheckoutIntegrationTest extends TestCase
             ->assertDontSee('Second Seller Item')
             ->assertSee('data-bearly-action-modal', false)
             ->assertSee('data-order-transition-action="confirm"', false)
-            ->assertSee('Waybills, pickup scheduling, and logistics handoff are not connected');
+            ->assertSee('Pickup Requests')
+            ->assertSee('Logistics verifies the request and assigns a Rider.');
     }
 
     public function test_seller_can_advance_its_order_and_each_transition_is_audited(): void
@@ -524,7 +525,7 @@ class OrdersCheckoutIntegrationTest extends TestCase
         $this->productImage($primaryProduct, null, 'seller-products/primary-fallback.jpg', 'product_image', true);
 
         $cartItems = [
-            $this->cartItem($buyer, $exactVariant, 1),
+            $this->cartItem($buyer, $exactVariant, 2),
             $this->cartItem($buyer, $legacyVariant, 1),
             $this->cartItem($buyer, $primaryVariant, 1),
         ];
@@ -545,11 +546,23 @@ class OrdersCheckoutIntegrationTest extends TestCase
         $this->assertSame('seller-products/legacy-navy.jpg', $itemsByProduct->get($legacyProduct->id)->product_image_path);
         $this->assertSame('seller-products/primary-fallback.jpg', $itemsByProduct->get($primaryProduct->id)->product_image_path);
 
-        $this->actingAs($seller)->get(route('seller.orders'))
+        $response = $this->actingAs($seller)->get(route('seller.orders'))
             ->assertOk()
             ->assertSee('exact-sku.jpg')
             ->assertSee('legacy-navy.jpg')
             ->assertSee('primary-fallback.jpg');
+
+        preg_match('/data-order-items-json="([^"]*)"/', $response->getContent(), $itemAttribute);
+        $this->assertNotEmpty($itemAttribute);
+        // The browser decodes attributes once. Double-escaped JSON must fail this check.
+        $modalItems = json_decode(html_entity_decode($itemAttribute[1], ENT_QUOTES | ENT_HTML5, 'UTF-8'), true, 512, JSON_THROW_ON_ERROR);
+        $exactModalItem = collect($modalItems)->firstWhere('sku', 'IMAGE-EXACT-001');
+        $this->assertSame('Exact SKU Image Item', $exactModalItem['name']);
+        $this->assertSame('Small / Black', $exactModalItem['variant']);
+        $this->assertSame(2, $exactModalItem['quantity']);
+        $this->assertSame(1000, $exactModalItem['unit_price_minor']);
+        $this->assertSame(2000, $exactModalItem['subtotal_minor']);
+        $this->assertStringContainsString('exact-sku.jpg', $exactModalItem['image']);
 
         $this->actingAs($seller)->put(route('seller.products.update', $exactProduct), [
             'product_mode' => 'with_variants',

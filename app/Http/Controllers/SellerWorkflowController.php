@@ -2,10 +2,19 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Address;
+use App\Models\PickupRequest;
+use App\Models\Refund;
+use App\Models\ReturnEvidence;
+use App\Models\ReturnRequest;
 use App\Models\SellerOrder;
+use App\Models\SellerProfile;
 use App\Services\BuyerCatalogService;
 use App\Services\SellerIdentityService;
+use App\Services\SellerOrderTrackingService;
 use App\Services\SellerOrderWorkflowService;
+use App\Services\SellerPickupRequestService;
+use App\Services\ReturnRefundService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -13,6 +22,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class SellerWorkflowController extends Controller
 {
@@ -66,7 +76,11 @@ class SellerWorkflowController extends Controller
         );
     }
 
-    private function persistedOrdersData(Request $request, BuyerCatalogService $catalog): array
+    private function persistedOrdersData(
+        Request $request,
+        BuyerCatalogService $catalog,
+        SellerOrderTrackingService $tracking,
+    ): array
     {
         $storeId = $request->user()->sellerProfile?->store?->id;
         if (! $storeId) {
@@ -75,22 +89,19 @@ class SellerWorkflowController extends Controller
 
         return SellerOrder::query()
             ->where('store_id', $storeId)
-            ->with(['order.payments', 'items.product.images.variant', 'items.variant', 'statusHistory.actor'])
+            ->with([
+                'order.payments',
+                'items.product.images.variant',
+                'items.variant',
+                'statusHistory.actor',
+                'shipments.events',
+            ])
             ->latest('created_at')
             ->get()
-            ->map(function (SellerOrder $sellerOrder) use ($catalog): array {
+            ->map(function (SellerOrder $sellerOrder) use ($catalog, $tracking): array {
                 $order = $sellerOrder->order;
                 $status = (string) $sellerOrder->status;
-                [$label, $canonical, $filter, $tone] = match ($status) {
-                    'pending', 'placed' => ['Placed', 'PLACED', 'new', 'new'],
-                    'accepted' => ['Confirmed', 'CONFIRMED', 'to-prepare', 'prepare'],
-                    'packing' => ['Preparing', 'PREPARING', 'to-prepare', 'prepare'],
-                    'ready_for_pickup' => ['Ready for Pickup', 'READY_FOR_PICKUP', 'ready-pickup', 'pickup'],
-                    'handed_to_logistics' => ['Handed to Logistics', 'PICKED_UP', 'shipped', 'transit'],
-                    'completed' => ['Completed', 'COMPLETED', 'completed', 'completed'],
-                    'cancelled' => ['Cancelled', 'CANCELLED', 'cancelled-returned', 'cancelled'],
-                    default => [Str::headline($status), strtoupper($status), 'all', 'new'],
-                };
+                $trackingState = $tracking->snapshot($sellerOrder);
                 $payment = $order?->payments?->first();
                 $paymentLabel = $payment?->method === 'cod'
                     ? ($status === 'cancelled'
@@ -155,21 +166,13 @@ class SellerWorkflowController extends Controller
                     'deadline' => $deadline,
                     'date_key' => $dateKey,
                     'urgent' => false,
-                    'status' => $label,
-                    'canonical_status' => $canonical,
-                    'status_key' => $filter,
-                    'tone' => $tone,
-                    'responsibility' => $status === 'handed_to_logistics' ? 'Logistics' : ($status === 'completed' || $status === 'cancelled' ? 'System' : 'Seller'),
-                    'next_step' => match ($status) {
-                        'pending', 'placed' => 'Review the order details and confirm that your Store can fulfill it, or cancel with a reason.',
-                        'accepted' => 'Verify the items and quantities, then start preparing the order.',
-                        'packing' => 'Complete the packing checklist before marking the order ready for pickup.',
-                        'ready_for_pickup' => 'This order is ready. Waybill generation and logistics pickup are not connected here yet.',
-                        'handed_to_logistics' => 'The parcel has been handed to logistics.',
-                        'completed' => 'This Seller Order is complete.',
-                        'cancelled' => 'This Seller Order was cancelled.',
-                        default => 'Review the saved Seller Order status and history.',
-                    },
+                    'status' => $trackingState['status_label'],
+                    'status_detail' => $trackingState['status_detail'],
+                    'canonical_status' => $trackingState['canonical_status'],
+                    'status_key' => $trackingState['status_key'],
+                    'tone' => $trackingState['tone'],
+                    'responsibility' => $trackingState['responsibility'],
+                    'next_step' => $trackingState['next_step'],
                     'action' => match ($status) {
                         'pending', 'placed' => 'Confirm Order',
                         'accepted' => 'Start Preparing',
@@ -183,12 +186,9 @@ class SellerWorkflowController extends Controller
                         default => null,
                     },
                     'transition_url' => route('seller.orders.status', ['sellerOrder' => $sellerOrder->id]),
-                    'status_history' => $sellerOrder->statusHistory->map(fn ($entry): array => [
-                        'status' => $entry->to_status,
-                        'actor' => $entry->actor?->name ?? 'Former user',
-                        'reason' => $entry->reason,
-                        'occurred_at' => $entry->occurred_at?->toIso8601String(),
-                    ])->all(),
+                    'tracking_url' => route('seller.orders.tracking', ['sellerOrder' => $sellerOrder->id]),
+                    'status_history' => $trackingState['timeline_history'],
+                    'tracking_updated_at' => $trackingState['updated_at'],
                     'action_url' => null,
                     'order_date' => $createdAt?->format('M j, Y g:i A') ?? '',
                     'address' => $address,
@@ -210,10 +210,14 @@ class SellerWorkflowController extends Controller
             : Storage::disk($disk)->url($path);
     }
 
-    public function dashboard(Request $request, BuyerCatalogService $catalog): View
+    public function dashboard(
+        Request $request,
+        BuyerCatalogService $catalog,
+        SellerOrderTrackingService $tracking,
+    ): View
     {
         $finance = $this->financeSnapshot();
-        $orders = collect($this->persistedOrdersData($request, $catalog));
+        $orders = collect($this->persistedOrdersData($request, $catalog, $tracking));
 
         $newOrders = $orders->where('status_key', 'new')->count();
         $toPrepare = $orders->where('status_key', 'to-prepare')->count();
@@ -272,9 +276,13 @@ class SellerWorkflowController extends Controller
         ]);
     }
 
-    public function orders(Request $request, BuyerCatalogService $catalog): View
+    public function orders(
+        Request $request,
+        BuyerCatalogService $catalog,
+        SellerOrderTrackingService $tracking,
+    ): View
     {
-        $orders = $this->persistedOrdersData($request, $catalog);
+        $orders = $this->persistedOrdersData($request, $catalog, $tracking);
         $allowed = ['all', 'new', 'to-prepare', 'ready-pickup', 'shipped', 'completed', 'cancelled-returned'];
         $requestedStatus = (string) $request->query('status', 'all');
         $defaultStatus = in_array($requestedStatus, $allowed, true) ? $requestedStatus : 'all';
@@ -285,10 +293,10 @@ class SellerWorkflowController extends Controller
             'notifications' => $this->notifications(),
             'defaultOrderStatus' => $defaultStatus,
             'orderQueue' => [
-                ['label' => 'New orders', 'count' => $count('new'), 'note' => 'Awaiting Seller review', 'icon' => 'clipboard-list', 'tone' => 'gold'],
-                ['label' => 'To prepare', 'count' => $count('to-prepare'), 'note' => 'Confirmed and preparing', 'icon' => 'package', 'tone' => 'olive'],
-                ['label' => 'Waybill to print', 'count' => 0, 'note' => 'Waybill workflow is not connected yet', 'icon' => 'printer', 'tone' => 'blue'],
-                ['label' => 'Ready for pickup', 'count' => $count('ready-pickup'), 'note' => 'Pickup scheduling is not connected yet', 'icon' => 'truck', 'tone' => 'brown'],
+                ['key' => 'new', 'label' => 'New orders', 'count' => $count('new'), 'note' => 'Awaiting Seller review', 'icon' => 'clipboard-list', 'tone' => 'gold'],
+                ['key' => 'to-prepare', 'label' => 'To prepare', 'count' => $count('to-prepare'), 'note' => 'Confirmed and preparing', 'icon' => 'package', 'tone' => 'olive'],
+                ['key' => 'waybill', 'label' => 'Waybill to print', 'count' => 0, 'note' => 'Waybill workflow is not connected yet', 'icon' => 'printer', 'tone' => 'blue'],
+                ['key' => 'ready-pickup', 'label' => 'Ready for pickup', 'count' => $count('ready-pickup'), 'note' => 'Schedule collection with Logistics', 'icon' => 'truck', 'tone' => 'brown'],
             ],
             'orderTabs' => [
                 ['key' => 'all', 'label' => 'All Orders', 'count' => count($orders)],
@@ -351,6 +359,28 @@ class SellerWorkflowController extends Controller
         return redirect()->to($redirectTo);
     }
 
+    public function orderTracking(
+        Request $request,
+        string $sellerOrder,
+        SellerOrderTrackingService $tracking,
+    ): JsonResponse {
+        $storeId = $request->user()->sellerProfile?->store?->id;
+        abort_unless($storeId, 404, 'Seller Store not found.');
+
+        $sellerOrder = SellerOrder::query()
+            ->where('store_id', $storeId)
+            ->with([
+                'statusHistory.actor',
+                'shipments.events',
+            ])
+            ->findOrFail($sellerOrder);
+
+        return response()->json([
+            'data' => $tracking->snapshot($sellerOrder),
+            'message' => 'Seller Order tracking updated.',
+        ])->header('Cache-Control', 'private, no-store');
+    }
+
     public function waybills(): View
     {
         return view('seller.fulfillment.waybills', [
@@ -374,27 +404,166 @@ class SellerWorkflowController extends Controller
         ]);
     }
 
-    public function pickupRequests(): View
+    public function pickupRequests(Request $request, SellerPickupRequestService $pickupService): View
     {
+        $user = $request->user();
+        $sellerProfile = SellerProfile::query()
+            ->where('user_id', $user->id)
+            ->with('pickupAddress')
+            ->first();
+        $store = $sellerProfile?->store;
+
+        abort_unless($sellerProfile && $store, 404, 'Seller Store not found.');
+
+        $eligibleOrders = SellerOrder::query()
+            ->where('store_id', $store->id)
+            ->where('status', 'ready_for_pickup')
+            ->whereDoesntHave('shipments')
+            ->whereHas('order', fn ($query) => $query->where('status', '!=', 'cancelled'))
+            ->with('order')
+            ->orderBy('ready_at')
+            ->orderBy('id')
+            ->get()
+            ->map(function (SellerOrder $sellerOrder): array {
+                $quote = (array) $sellerOrder->shipping_quote;
+                $weight = $quote['actual_weight_kg'] ?? null;
+                $order = $sellerOrder->order;
+
+                return [
+                    'id' => (int) $sellerOrder->id,
+                    'order' => '#'.$sellerOrder->seller_order_no,
+                    'packages' => 1,
+                    'weight' => is_numeric($weight) && (float) $weight > 0
+                        ? number_format((float) $weight, 3).' kg actual weight'
+                        : 'Package details unavailable',
+                    'destination' => $order
+                        ? implode(', ', array_filter([
+                            $order->city_municipality,
+                            $order->province,
+                        ]))
+                        : 'Destination unavailable',
+                ];
+            });
+
+        $pickupRequests = PickupRequest::query()
+            ->where('store_id', $store->id)
+            ->with([
+                'logisticsProfile',
+                'pickupAddress',
+                'latestAssignment.riderProfile.user',
+                'parcels.waybill',
+                'parcels.shipment.sellerOrder',
+            ])
+            ->latest('created_at')
+            ->get();
+
+        $requests = $pickupRequests
+            ->map(function (PickupRequest $pickupRequest): array {
+                $parcels = $pickupRequest->parcels
+                    ->filter(fn ($parcel): bool => (int) $parcel->shipment?->logistics_profile_id === (int) $pickupRequest->logistics_profile_id
+                        && (int) $parcel->shipment?->sellerOrder?->store_id === (int) $pickupRequest->store_id)
+                    ->values();
+                $sellerOrders = $parcels
+                    ->map(fn ($parcel) => $parcel->shipment?->sellerOrder)
+                    ->filter()
+                    ->unique('id')
+                    ->values();
+                [$status, $statusKey] = $this->sellerPickupStatus($pickupRequest);
+                $start = $pickupRequest->window_start;
+                $end = $pickupRequest->window_end;
+                $date = $pickupRequest->requested_date;
+                $dateKey = $date?->isToday()
+                    ? 'today'
+                    : ($date?->isTomorrow() ? 'tomorrow' : 'other');
+
+                return [
+                    'id' => $pickupRequest->pickup_no,
+                    'orders' => $sellerOrders->count().' '.($sellerOrders->count() === 1 ? 'order' : 'orders'),
+                    'order_numbers' => $sellerOrders->pluck('seller_order_no')->implode(', '),
+                    'packages' => $parcels->count(),
+                    'provider' => $pickupRequest->logisticsProfile?->display_name ?? 'Provider unavailable',
+                    'schedule' => ($date?->format('M j, Y') ?? 'Date unavailable').' · '.($start?->format('g:i A') ?? '—').'–'.($end?->format('g:i A') ?? '—'),
+                    'date_key' => $dateKey,
+                    'address' => $this->sellerPickupAddressLabel($pickupRequest->pickupAddress),
+                    'rider' => $pickupRequest->latestAssignment?->riderProfile?->user?->name ?? 'Awaiting assignment',
+                    'instructions' => $pickupRequest->seller_instructions ?: 'No pickup instructions.',
+                    'status' => $status,
+                    'status_key' => $statusKey,
+                ];
+            })
+            ->values();
+
         return view('seller.fulfillment.pickups', [
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
-            'summary' => [
-                ['label' => 'Ready to Request', 'value' => '2', 'note' => 'Labeled parcels', 'icon' => 'package-check', 'tone' => 'gold'],
-                ['label' => 'Awaiting Approval', 'value' => '1', 'note' => 'Submitted to logistics', 'icon' => 'hourglass', 'tone' => 'brown'],
-                ['label' => 'Rider Assigned', 'value' => '1', 'note' => 'Pickup scheduled', 'icon' => 'bike', 'tone' => 'olive'],
-                ['label' => 'Picked Up Today', 'value' => '1', 'note' => 'Handover confirmed', 'icon' => 'truck', 'tone' => 'info'],
-            ],
-            'eligibleOrders' => [
-                ['order' => '#BR-1056', 'tracking' => 'BRLY-784231', 'packages' => 1, 'weight' => '0.9 kg'],
-                ['order' => '#BR-1055', 'tracking' => 'BRLY-784230', 'packages' => 1, 'weight' => '0.5 kg'],
-            ],
-            'requests' => [
-                ['id' => 'PU-0911-04', 'orders' => '1 order', 'packages' => 1, 'provider' => 'Bearly Logistics', 'schedule' => 'Today · 3:00–5:00 PM', 'address' => 'Juan’s Clothing Shop, Santa Rosa', 'rider' => 'Marco Dela Cruz · Rider 014', 'status' => 'Rider Assigned', 'status_key' => 'assigned'],
-                ['id' => 'PU-0911-03', 'orders' => '1 order', 'packages' => 1, 'provider' => 'Bearly Logistics', 'schedule' => 'Tomorrow · 10:00 AM–12:00 PM', 'address' => 'Juan’s Clothing Shop, Santa Rosa', 'rider' => 'Awaiting assignment', 'status' => 'Pending Approval', 'status_key' => 'pending'],
-                ['id' => 'PU-0911-01', 'orders' => '1 order', 'packages' => 1, 'provider' => 'Bearly Logistics', 'schedule' => 'Today · 11:00 AM', 'address' => 'Juan’s Clothing Shop, Santa Rosa', 'rider' => 'Paolo Reyes · Rider 008', 'status' => 'Picked Up', 'status_key' => 'picked-up'],
-            ],
+            'eligibleOrders' => $eligibleOrders->all(),
+            'requests' => $requests->all(),
+            'providers' => $pickupService->activeProviders(),
+            'pickupAddress' => $this->sellerPickupAddressLabel($sellerProfile->pickupAddress),
+            'pickupPhone' => $sellerProfile->pickupAddress?->phone,
         ]);
+    }
+
+    public function storePickupRequest(Request $request, SellerPickupRequestService $pickupService): RedirectResponse
+    {
+        $validated = $request->validate([
+            'order_ids' => ['required', 'array', 'min:1', 'max:30'],
+            'order_ids.*' => ['required', 'integer', 'min:1', 'distinct'],
+            'logistics_profile_id' => ['required', 'integer', 'min:1'],
+            'requested_date' => ['required', 'date_format:Y-m-d', 'after_or_equal:today'],
+            'pickup_window' => ['required', 'string', Rule::in(array_keys(SellerPickupRequestService::PICKUP_WINDOWS))],
+            'instructions' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $pickupRequest = $pickupService->create(
+            $request->user(),
+            (int) $validated['logistics_profile_id'],
+            array_map('intval', $validated['order_ids']),
+            $validated['requested_date'],
+            $validated['pickup_window'],
+            $validated['instructions'] ?? null,
+        );
+
+        return redirect()
+            ->route('seller.fulfillment.pickups')
+            ->with('success', "{$pickupRequest->pickup_no} submitted to Logistics. They will verify the request and assign a Rider.");
+    }
+
+    /** @return array{0: string, 1: string} */
+    private function sellerPickupStatus(PickupRequest $pickupRequest): array
+    {
+        return match ($pickupRequest->status) {
+            'requested' => ['Pending Approval', 'pending'],
+            'verified' => ['Verified · Awaiting Rider', 'pending'],
+            'scheduled' => $pickupRequest->latestAssignment?->status === 'picked_up'
+                ? ['Rider Collected', 'picked-up']
+                : ['Rider Assigned', 'assigned'],
+            'completed' => ['Received at Sorting Center', 'picked-up'],
+            'cancelled' => ['Rejected', 'cancelled'],
+            'failed' => ['Pickup Failed', 'cancelled'],
+            default => [Str::headline($pickupRequest->status), 'pending'],
+        };
+    }
+
+    private function sellerPickupAddressLabel(?Address $address): string
+    {
+        if (! $address) {
+            return 'Pickup address not set';
+        }
+
+        $street = trim(implode(' ', array_filter([
+            trim((string) $address->house_number),
+            trim((string) $address->street),
+        ])));
+
+        return implode(', ', array_filter([
+            trim((string) $address->recipient_name),
+            $street,
+            trim((string) $address->barangay),
+            trim((string) $address->city_municipality),
+            trim((string) $address->province),
+            trim((string) $address->postal_code),
+        ]));
     }
 
     public function shipmentTracking(): View
@@ -418,38 +587,307 @@ class SellerWorkflowController extends Controller
         ]);
     }
 
-    public function returns(): View
+    public function returns(Request $request): View
     {
+        $store = $request->user()->sellerProfile?->store;
+        abort_unless($store, 404);
+
+        $returnRequests = ReturnRequest::query()
+            ->where('store_id', $store->id)
+            ->with(['order', 'buyer', 'sellerOrder', 'items.orderItem', 'evidence', 'events.actor', 'refunds.commissions', 'refunds.sellerTransactions', 'refunds.sellerRecovery.events.sellerPayout', 'returnShipment.waybill', 'returnShipment.events'])
+            ->latest('submitted_at')
+            ->latest('id')
+            ->get();
+        $cases = $returnRequests->map(fn (ReturnRequest $case): array => $this->returnCaseData($case))->all();
+        $completedThisMonthMinor = Refund::query()
+            ->whereHas('returnRequest', fn ($query) => $query->where('store_id', $store->id))
+            ->where('status', 'completed')
+            ->whereBetween('completed_at', [now()->startOfMonth(), now()->endOfMonth()])
+            ->sum('amount_minor');
+        $countFor = fn (array $statuses): int => $returnRequests->whereIn('status', $statuses)->count();
+
         return view('seller.Orders.returns-refunds.returns', [
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
             'summary' => [
-                ['label' => 'Action Required', 'value' => '2', 'note' => 'Seller must respond', 'icon' => 'triangle-alert', 'tone' => 'warning'],
-                ['label' => 'Under Review', 'value' => '2', 'note' => 'Platform/admin reviewing', 'icon' => 'scan-search', 'tone' => 'neutral'],
-                ['label' => 'Return in Progress', 'value' => '1', 'note' => 'Logistics handling return', 'icon' => 'package-open', 'tone' => 'info'],
-                ['label' => 'Refunded This Month', 'value' => '₱1,299', 'note' => 'Commission reversed', 'icon' => 'badge-check', 'tone' => 'success'],
+                ['label' => 'Action Required', 'value' => (string) $countFor(['awaiting_seller']), 'note' => 'Seller response required', 'icon' => 'triangle-alert', 'tone' => 'warning'],
+                ['label' => 'Under Review', 'value' => (string) $countFor(['under_review', 'awaiting_evidence']), 'note' => 'Admin review or evidence requested', 'icon' => 'scan-search', 'tone' => 'neutral'],
+                ['label' => 'Return in Progress', 'value' => (string) $countFor(['return_pickup_requested', 'return_in_transit', 'awaiting_inspection']), 'note' => 'Bearly Logistics and Seller inspection', 'icon' => 'package-open', 'tone' => 'info'],
+                ['label' => 'Refunded This Month', 'value' => $this->money((int) $completedThisMonthMinor / 100), 'note' => 'Externally paid and recorded', 'icon' => 'badge-check', 'tone' => 'success'],
             ],
             'tabs' => [
-                ['key' => 'all', 'label' => 'All Cases', 'count' => 6],
-                ['key' => 'action-required', 'label' => 'Action Required', 'count' => 2],
-                ['key' => 'under-review', 'label' => 'Under Review', 'count' => 2],
-                ['key' => 'return-shipping', 'label' => 'Return Shipping', 'count' => 1],
-                ['key' => 'resolved', 'label' => 'Resolved', 'count' => 1],
+                ['key' => 'all', 'label' => 'All Cases', 'count' => $returnRequests->count()],
+                ['key' => 'action-required', 'label' => 'Action Required', 'count' => $countFor(['awaiting_seller'])],
+                ['key' => 'under-review', 'label' => 'Under Review', 'count' => $countFor(['under_review', 'awaiting_evidence'])],
+                ['key' => 'return-shipping', 'label' => 'Return Shipping', 'count' => $countFor(['return_pickup_requested', 'return_in_transit', 'awaiting_inspection'])],
+                ['key' => 'refund-pending', 'label' => 'Refund Pending', 'count' => $countFor(['refund_pending'])],
+                ['key' => 'resolved', 'label' => 'Resolved', 'count' => $countFor(['resolved', 'rejected'])],
             ],
-            'returns' => $this->returnCases(),
+            'returns' => $cases,
         ]);
     }
 
-    public function returnDetails(string $caseId): View
+    public function returnDetails(Request $request, string $caseId, BuyerCatalogService $catalog): View
     {
-        $case = collect($this->returnCases())->firstWhere('id', strtoupper($caseId));
-        abort_if($case === null, 404);
+        $store = $request->user()->sellerProfile?->store;
+        abort_unless($store, 404);
+        $returnRequest = ReturnRequest::query()
+            ->where('store_id', $store->id)
+            ->where('return_no', strtoupper($caseId))
+            ->with(['order', 'buyer', 'sellerOrder', 'items.orderItem.product.images.variant', 'items.orderItem.variant', 'evidence', 'events.actor', 'refunds.commissions', 'refunds.sellerTransactions', 'refunds.sellerRecovery.events.sellerPayout', 'returnShipment.waybill', 'returnShipment.events'])
+            ->firstOrFail();
+        $case = $this->returnCaseData($returnRequest, $catalog);
 
         return view('seller.Orders.returns-refunds.return-details', [
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
             'case' => $case,
         ]);
+    }
+
+    public function respondToReturn(Request $request, int $returnRequest, ReturnRefundService $returns): RedirectResponse
+    {
+        $data = $request->validate([
+            'response' => ['required', 'string', 'min:5', 'max:2000'],
+            'evidence' => ['required', 'array', 'min:1', 'max:5'],
+            'evidence.*' => ['required', 'file', 'mimes:jpg,jpeg,png,webp,pdf,mp4,mov', 'max:10240'],
+        ]);
+
+        $case = $returns->sellerRespond(
+            $request->user(),
+            $returnRequest,
+            trim($data['response']),
+            array_values($request->file('evidence', [])),
+        );
+
+        return redirect()
+            ->route('seller.orders.returns.show', $case->return_no)
+            ->with('success', 'Your response and evidence were submitted for Admin review.');
+    }
+
+    public function inspectReturn(Request $request, int $returnRequest, ReturnRefundService $returns): RedirectResponse
+    {
+        $data = $request->validate([
+            'items' => ['required', 'array', 'min:1', 'max:50'],
+            'items.*.condition_code' => ['required', Rule::in(['sellable', 'damaged', 'opened', 'missing_parts'])],
+            'items.*.resolution' => ['required', Rule::in(['restock', 'quarantine', 'dispose'])],
+        ]);
+
+        $case = $returns->inspectReturn($request->user(), $returnRequest, $data['items']);
+
+        return redirect()
+            ->route('seller.orders.returns.show', $case->return_no)
+            ->with('success', 'Inspection was recorded. Admin can now record the approved external refund payout.');
+    }
+
+    public function addReturnEvidence(Request $request, int $returnRequest, ReturnRefundService $returns): RedirectResponse
+    {
+        $data = $request->validate([
+            'note' => ['nullable', 'string', 'max:1000'],
+            'evidence' => ['nullable', 'array', 'max:5'],
+            'evidence.*' => ['required', 'file', 'mimes:jpg,jpeg,png,webp,pdf,mp4,mov', 'max:10240'],
+        ]);
+        $files = array_values($request->file('evidence', []));
+        if ($files === [] && ! filled($data['note'] ?? null)) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['evidence' => 'Add a note or at least one evidence file.']);
+        }
+
+        $case = $returns->addSellerEvidence($request->user(), $returnRequest, $data['note'] ?? null, $files);
+
+        return redirect()->route('seller.orders.returns.show', $case->return_no)->with('success', 'Additional Seller evidence was submitted to Admin.');
+    }
+
+    public function downloadReturnEvidence(Request $request, ReturnEvidence $evidence)
+    {
+        $this->ensureSellerCanAccessReturnEvidence($request, $evidence);
+
+        $name = $this->returnEvidenceFilename($evidence);
+
+        return response()->download(
+            Storage::disk('local')->path($evidence->file_path),
+            Str::limit($name, 200, ''),
+            ['X-Content-Type-Options' => 'nosniff'],
+        );
+    }
+
+    public function viewReturnEvidence(Request $request, ReturnEvidence $evidence): StreamedResponse
+    {
+        $this->ensureSellerCanAccessReturnEvidence($request, $evidence);
+
+        $mimeType = strtolower((string) $evidence->mime_type);
+        abort_unless(in_array($mimeType, [
+            'image/jpeg',
+            'image/png',
+            'image/webp',
+            'application/pdf',
+            'video/mp4',
+            'video/quicktime',
+        ], true), 404);
+
+        return Storage::disk('local')->response(
+            $evidence->file_path,
+            Str::limit($this->returnEvidenceFilename($evidence), 200, ''),
+            [
+                'Content-Type' => $mimeType,
+                'Cache-Control' => 'private, no-store',
+                'X-Content-Type-Options' => 'nosniff',
+                'Content-Security-Policy' => "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'",
+            ],
+            'inline',
+        );
+    }
+
+    private function ensureSellerCanAccessReturnEvidence(Request $request, ReturnEvidence $evidence): void
+    {
+        $storeId = $request->user()->sellerProfile?->store?->id;
+        abort_unless($storeId && (int) $evidence->returnRequest?->store_id === (int) $storeId, 404);
+        abort_unless(Storage::disk('local')->exists($evidence->file_path), 404);
+    }
+
+    private function returnEvidenceFilename(ReturnEvidence $evidence): string
+    {
+        return preg_replace('/[^A-Za-z0-9._ -]/', '_', basename(str_replace('\\', '/', $evidence->original_name))) ?: 'return-evidence';
+    }
+
+    /** @return array<string, mixed> */
+    private function returnCaseData(ReturnRequest $case, ?BuyerCatalogService $catalog = null): array
+    {
+        $items = $case->items;
+        $evidenceCount = $case->evidence->count();
+        $requestType = $case->request_type === 'refund_only' ? 'Refund Only' : 'Return & Refund';
+        $status = match ($case->status) {
+            'awaiting_seller' => ['Action Required', 'action-required', 'warning'],
+            'under_review', 'awaiting_evidence' => ['Under Review', 'under-review', 'review'],
+            'return_pickup_requested', 'return_in_transit', 'awaiting_inspection' => ['Return in Progress', 'return-shipping', 'shipping'],
+            'refund_pending' => ['Refund Payout Pending', 'refund-pending', 'review'],
+            'resolved' => ['Resolved', 'resolved', 'resolved'],
+            'rejected' => ['Rejected', 'resolved', 'warning'],
+            default => [Str::headline($case->status), 'under-review', 'neutral'],
+        };
+        $refund = $case->refunds->sortByDesc('id')->first();
+        $evidenceRequestEvent = $case->events->where('event_type', 'additional_evidence_requested')->last();
+        $sellerEvidenceSubmitted = $evidenceRequestEvent && $case->events->contains(
+            fn ($event): bool => (int) $event->id > (int) $evidenceRequestEvent->id
+                && $event->event_type === 'seller_evidence_submitted',
+        );
+        $commissionReversal = (int) ($refund?->commissions->where('type', 'refund_reversal')->sum('amount_minor') ?? 0);
+        $sellerRecovery = $refund?->sellerRecovery;
+        $legacySellerDebit = abs((int) ($refund?->sellerTransactions->where('type', 'refund_reversal')->sum('amount_minor') ?? 0));
+        $sellerRecoveryMinor = (int) ($sellerRecovery?->amount_minor ?? $legacySellerDebit);
+        $sellerRecoveredMinor = (int) ($sellerRecovery?->recovered_amount_minor ?? 0);
+        $sellerRecoveryOutstandingMinor = max(0, $sellerRecoveryMinor - $sellerRecoveredMinor);
+        $commissionEffect = $refund?->status === 'completed'
+            ? ($refund->financially_responsible_party === 'platform'
+                ? 'Platform-funded refund; no Seller commission reversal'
+                : ($commissionReversal > 0 ? '+'.$this->money($commissionReversal / 100).' commission reversed' : 'No commission reversal recorded'))
+            : 'No finalized financial adjustment';
+        $earningsEffect = $refund?->status === 'completed'
+            ? ($refund->financially_responsible_party === 'platform'
+                ? 'No Seller recovery; Platform is responsible'
+                : ($sellerRecoveryMinor > 0
+                    ? $this->money($sellerRecoveryOutstandingMinor / 100).' recoverable from Seller'.($sellerRecoveredMinor > 0 ? ' · '.$this->money($sellerRecoveredMinor / 100).' recovered' : ' · not automatically deducted')
+                    : 'No Seller recovery recorded'))
+            : 'No finalized financial adjustment';
+        $productNames = $items->map(fn ($item): string => trim(
+            (string) ($item->orderItem?->product_name ?? 'Purchased item')
+            .' · '.(string) ($item->orderItem?->variant_name ?? 'Standard')
+            .' × '.(int) $item->quantity
+        ))->all();
+        $deadline = $case->status === 'awaiting_seller'
+            ? ($case->response_due_at?->format('M j, Y · g:i A') ?? 'Response due date not recorded')
+            : ($case->seller_responded_at?->format('M j, Y · g:i A') ?? 'Seller response not yet submitted');
+
+        return [
+            'database_id' => (int) $case->id,
+            'id' => $case->return_no,
+            'order' => $case->order?->order_no ?? 'Order unavailable',
+            'seller_order' => $case->sellerOrder?->seller_order_no ?? '—',
+            'customer' => $case->buyer?->name ?? 'Buyer unavailable',
+            'product' => $productNames ? implode('; ', $productNames) : 'Purchased item unavailable',
+            'items' => $items->map(fn ($item): array => [
+                'id' => (int) $item->id,
+                'name' => $item->orderItem?->product_name ?? 'Purchased item',
+                'variant' => $item->orderItem?->variant_name ?? 'Standard',
+                'sku' => $item->orderItem?->sku ?? '—',
+                'image' => $catalog && $item->orderItem
+                    ? $catalog->orderItemImageUrl($item->orderItem)
+                    : null,
+                'quantity' => (int) $item->quantity,
+                'amount' => $this->money((int) $item->refund_amount_minor / 100),
+                'condition_code' => $item->condition_code,
+                'resolution' => $item->resolution,
+            ])->all(),
+            'request' => $requestType,
+            'reason' => Str::headline($case->reason_code),
+            'amount' => $this->money((int) $case->requested_amount_minor / 100),
+            'submitted' => $case->submitted_at?->format('M j, Y · g:i A') ?? '—',
+            'deadline' => $deadline,
+            'status' => $status[0],
+            'status_raw' => $case->status,
+            'evidence_requested_from' => (string) ($evidenceRequestEvent?->metadata['requested_from'] ?? 'both'),
+            'seller_evidence_submitted' => $sellerEvidenceSubmitted,
+            'status_key' => $status[1],
+            'tone' => $status[2],
+            'evidence' => $evidenceCount.' '.Str::plural('file', $evidenceCount),
+            'evidence_files' => $case->evidence->map(fn ($evidence): array => [
+                'id' => (int) $evidence->id,
+                'name' => $evidence->original_name,
+                'type' => $evidence->type,
+                'mime_type' => strtolower((string) $evidence->mime_type),
+                'is_image' => str_starts_with(strtolower((string) $evidence->mime_type), 'image/'),
+                'size' => (int) ($evidence->size_bytes ?? 0),
+                'view_url' => route('seller.orders.returns.evidence.view', $evidence->id),
+            ])->all(),
+            'buyer_note' => $case->buyer_note ?: 'No additional buyer note was provided.',
+            'seller_response' => $case->seller_response ?: 'No Seller response submitted yet.',
+            'resolution' => $case->resolution ?: 'No final resolution has been recorded.',
+            'action' => $case->status === 'awaiting_seller' ? 'Respond' : 'View case',
+            'tracking' => $requestType === 'Refund Only'
+                ? 'Not required'
+                : ($case->returnShipment?->waybill?->waybill_no ?: 'Awaiting Admin approval'),
+            'return_status' => $case->returnShipment?->status,
+            'shipment_events' => ($case->returnShipment?->events ?? collect())->map(fn ($event): array => [
+                'label' => Str::headline(str_replace(['shipment_', 'parcel_'], '', $event->event_type)),
+                'note' => $event->notes,
+                'at' => $event->occurred_at?->format('M j, Y · g:i A') ?? '—',
+            ])->all(),
+            'commission_effect' => $commissionEffect,
+            'earnings_effect' => $earningsEffect,
+            'refund' => $refund ? [
+                'id' => (int) $refund->id,
+                'number' => $refund->refund_no,
+                'amount' => $this->money((int) $refund->amount_minor / 100),
+                'payout_amount' => $refund->payout_amount_minor !== null
+                    ? $this->money((int) $refund->payout_amount_minor / 100)
+                    : null,
+                'status' => $refund->status,
+                'method' => $refund->method,
+                'reference' => $refund->provider_reference,
+                'paid_on' => $refund->external_paid_on?->format('M j, Y'),
+                'financially_responsible_party' => $refund->financially_responsible_party,
+                'financial_responsibility_reason' => $refund->financial_responsibility_reason,
+                'seller_recovery' => $sellerRecovery ? [
+                    'amount_minor' => (int) $sellerRecovery->amount_minor,
+                    'recovered_amount_minor' => (int) $sellerRecovery->recovered_amount_minor,
+                    'outstanding_minor' => max(0, (int) $sellerRecovery->amount_minor - (int) $sellerRecovery->recovered_amount_minor),
+                    'status' => $sellerRecovery->status,
+                    'events' => $sellerRecovery->events->map(fn ($event): array => [
+                        'method' => $event->method,
+                        'amount_minor' => (int) $event->amount_minor,
+                        'reference' => $event->external_reference,
+                        'recovered_on' => $event->recovered_on?->format('M j, Y') ?? '—',
+                        'payout_no' => $event->sellerPayout?->payout_no,
+                    ])->all(),
+                ] : null,
+            ] : null,
+            'events' => $case->events->map(fn ($event): array => [
+                'type' => Str::headline($event->event_type),
+                'actor' => $event->actor?->name ?? 'Bearly',
+                'note' => $event->note,
+                'at' => $event->created_at?->format('M j, Y · g:i A') ?? '—',
+                'metadata' => $event->metadata ?? [],
+            ])->all(),
+        ];
     }
 
     private function returnCases(): array

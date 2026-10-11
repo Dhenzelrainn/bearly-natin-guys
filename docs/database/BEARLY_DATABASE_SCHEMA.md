@@ -1,6 +1,6 @@
 # Bearly Database Schema Dictionary
 
-> Generated from a clean MySQL migration. Laravel migrations remain the executable source of truth.
+> Generated from a clean MySQL migration. Laravel migrations remain the executable source of truth. Sections tagged as added by `2026_10_11_000001_create_cod_cash_and_refund_cash_workflows` describe the current additive migration and still require MySQL migration/rollback verification before release.
 
 Conventions: money integers are centavos; timestamps are UTC at storage boundaries; workflow statuses use application strings rather than MySQL enums; nullable foreign keys represent optional actors or later assignments.
 
@@ -465,8 +465,10 @@ Conventions: money integers are centavos; timestamps are UTC at storage boundari
 | `dispute_id` | `bigint unsigned` | NO | — | MUL |
 | `uploaded_by` | `bigint unsigned` | YES | — | MUL |
 | `type` | `varchar(30)` | NO | — |  |
+| `mime_type` | `varchar(100)` | YES | — |  |
 | `file_path` | `varchar(500)` | NO | — |  |
 | `original_name` | `varchar(255)` | NO | — |  |
+| `size_bytes` | `bigint unsigned` | YES | — |  |
 | `description` | `varchar(500)` | YES | — |  |
 | `created_at` | `timestamp` | NO | CURRENT_TIMESTAMP |  |
 
@@ -801,6 +803,58 @@ Conventions: money integers are centavos; timestamps are UTC at storage boundari
 - `payments_payment_no_unique` (payment_no) — unique.
 - `payments_provider_reference_index` (provider_reference) — index.
 
+## `cod_cash_collections` (added by `2026_10_11_000001_create_cod_cash_and_refund_cash_workflows`)
+
+Each outbound COD shipment has at most one Rider collection record. `amount_due_minor`, `amount_collected_minor`, and signed `discrepancy_minor` are integer centavos. A disputed amount never captures the marketplace payment or makes proceeds settlement-eligible.
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `collection_no` | `varchar(40)` | NO | — | UNI |
+| `shipment_id` | `bigint unsigned` | NO | — | UNI |
+| `payment_id` | `bigint unsigned` | NO | — | MUL |
+| `order_id` | `bigint unsigned` | NO | — | MUL |
+| `seller_order_id` | `bigint unsigned` | NO | — | MUL |
+| `logistics_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `rider_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `amount_due_minor` | `bigint unsigned` | NO | — |  |
+| `amount_collected_minor` | `bigint unsigned` | NO | — |  |
+| `discrepancy_minor` | `bigint` | NO | 0 |  |
+| `amount_received_by_logistics_minor` | `bigint unsigned` | YES | — |  |
+| `amount_remitted_to_finance_minor` | `bigint unsigned` | YES | — |  |
+| `amount_reconciled_minor` | `bigint unsigned` | YES | — |  |
+| `status` | `varchar(32)` | NO | collected |  |
+| `collected_at` | `timestamp` | NO | — |  |
+| `collected_by` | `bigint unsigned` | NO | — | MUL |
+| `logistics_reference` | `varchar(150)` | YES | — |  |
+| `logistics_received_at` | `timestamp` | YES | — |  |
+| `logistics_received_by` | `bigint unsigned` | YES | — | MUL |
+| `finance_remittance_reference` | `varchar(150)` | YES | — |  |
+| `remitted_to_finance_at` | `timestamp` | YES | — |  |
+| `remitted_to_finance_by` | `bigint unsigned` | YES | — | MUL |
+| `finance_reference` | `varchar(150)` | YES | — |  |
+| `reconciled_at` | `timestamp` | YES | — |  |
+| `reconciled_by` | `bigint unsigned` | YES | — | MUL |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `shipment_id` → `shipments.id`; delete RESTRICT. Collection is unique per shipment.
+- `payment_id` → `payments.id`; `order_id` → `orders.id`; `seller_order_id` → `seller_orders.id`; all delete RESTRICT.
+- `logistics_profile_id` → `logistics_profiles.id`; `rider_profile_id` → `rider_profiles.id`; delete RESTRICT.
+- Rider, Logistics, and Finance actor foreign keys reference `users.id`; original collector deletion is RESTRICT, later actor deletion sets NULL.
+
+**Indexes**
+
+- `cod_cash_logistics_status_idx` (logistics_profile_id,status,collected_at).
+- `cod_cash_payment_status_idx` (payment_id,status).
+- `cod_cash_seller_order_status_idx` (seller_order_id,status).
+
+## `cod_cash_collection_events` (added by `2026_10_11_000001_create_cod_cash_and_refund_cash_workflows`)
+
+Append-only custody history. Contains the collection ID, event type, from/to roles and optional users, actor, integer-centavo amount, reference, note, optional JSON metadata, occurrence timestamp, and creation timestamp. Collection deletion is RESTRICT; actor/from/to user deletion sets nullable actor references to NULL. Indexed by (`cod_cash_collection_id`,`occurred_at`).
+
 ## `pickup_assignments`
 
 | Column | MySQL type | Null | Default | Key |
@@ -856,8 +910,12 @@ Conventions: money integers are centavos; timestamps are UTC at storage boundari
 | `id` | `bigint unsigned` | NO | — | PRI |
 | `pickup_no` | `varchar(32)` | NO | — | UNI |
 | `store_id` | `bigint unsigned` | NO | — | MUL |
+| `return_request_id` | `bigint unsigned` | YES | — | UNI |
 | `logistics_profile_id` | `bigint unsigned` | NO | — | MUL |
 | `pickup_address_id` | `bigint unsigned` | NO | — | MUL |
+| `pickup_address_snapshot` | `json` | YES | — |  |
+| `return_pickup_date` | `date` | YES | — |  |
+| `return_pickup_window` | `varchar(30)` | YES | — |  |
 | `status` | `varchar(30)` | NO | requested |  |
 | `requested_date` | `date` | NO | — |  |
 | `window_start` | `datetime` | NO | — |  |
@@ -873,6 +931,7 @@ Conventions: money integers are centavos; timestamps are UTC at storage boundari
 
 **Foreign keys**
 
+- `return_request_id` → `return_requests.id`; update NO ACTION, delete SET NULL.
 - `logistics_profile_id` → `logistics_profiles.id`; update NO ACTION, delete RESTRICT.
 - `pickup_address_id` → `addresses.id`; update NO ACTION, delete RESTRICT.
 - `store_id` → `stores.id`; update NO ACTION, delete RESTRICT.
@@ -883,6 +942,7 @@ Conventions: money integers are centavos; timestamps are UTC at storage boundari
 - `pickup_requests_logistics_profile_id_status_requested_date_index` (logistics_profile_id,status,requested_date) — index.
 - `pickup_requests_pickup_address_id_foreign` (pickup_address_id) — index.
 - `pickup_requests_pickup_no_unique` (pickup_no) — unique.
+- `pickup_requests_return_request_id_unique` (return_request_id) — unique.
 - `pickup_requests_store_id_foreign` (store_id) — index.
 - `pickup_requests_verified_by_foreign` (verified_by) — index.
 
@@ -1195,10 +1255,20 @@ Conventions: money integers are centavos; timestamps are UTC at storage boundari
 | `payment_id` | `bigint unsigned` | YES | — | MUL |
 | `order_id` | `bigint unsigned` | NO | — | MUL |
 | `amount_minor` | `bigint unsigned` | NO | — |  |
+| `payout_amount_minor` | `bigint unsigned` | YES | — |  |
 | `status` | `varchar(30)` | NO | pending |  |
+| `financially_responsible_party` | `varchar(20)` | YES | — |  |
+| `financial_responsibility_reason` | `text` | YES | — |  |
 | `method` | `varchar(30)` | NO | — |  |
 | `provider_reference` | `varchar(150)` | YES | — |  |
+| `external_paid_on` | `date` | YES | — |  |
+| `payout_receipt_disk` | `varchar(50)` | YES | — |  |
+| `payout_receipt_path` | `varchar(500)` | YES | — |  |
+| `payout_receipt_mime_type` | `varchar(100)` | YES | — |  |
+| `payout_receipt_original_name` | `varchar(255)` | YES | — |  |
+| `payout_receipt_size_bytes` | `bigint unsigned` | YES | — |  |
 | `approved_by` | `bigint unsigned` | YES | — | MUL |
+| `processed_by` | `bigint unsigned` | YES | — | MUL |
 | `approved_at` | `timestamp` | YES | — |  |
 | `processed_at` | `timestamp` | YES | — |  |
 | `completed_at` | `timestamp` | YES | — |  |
@@ -1209,6 +1279,7 @@ Conventions: money integers are centavos; timestamps are UTC at storage boundari
 
 **Foreign keys**
 
+- `processed_by` → `users.id`; update NO ACTION, delete SET NULL.
 - `approved_by` → `users.id`; update NO ACTION, delete SET NULL.
 - `order_id` → `orders.id`; update NO ACTION, delete RESTRICT.
 - `payment_id` → `payments.id`; update NO ACTION, delete RESTRICT.
@@ -1218,9 +1289,78 @@ Conventions: money integers are centavos; timestamps are UTC at storage boundari
 
 - `refunds_approved_by_foreign` (approved_by) — index.
 - `refunds_order_id_foreign` (order_id) — index.
+- `refunds_processed_by_foreign` (processed_by) — index.
 - `refunds_payment_id_foreign` (payment_id) — index.
 - `refunds_refund_no_unique` (refund_no) — unique.
 - `refunds_return_request_id_foreign` (return_request_id) — index.
+
+## `refund_cash_payouts` (added by `2026_10_11_000001_create_cod_cash_and_refund_cash_workflows`)
+
+One cash-custody workflow per approved refund. Buyer acknowledgment files are stored on a private Laravel disk; rows keep file metadata and path only. `delivery_attempt_count` includes failed and successful Rider delivery attempts.
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `payout_no` | `varchar(40)` | NO | — | UNI |
+| `refund_id` | `bigint unsigned` | NO | — | UNI |
+| `return_request_id` | `bigint unsigned` | NO | — | MUL |
+| `logistics_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `rider_profile_id` | `bigint unsigned` | YES | — | MUL |
+| `amount_minor` | `bigint unsigned` | NO | — |  |
+| `status` | `varchar(40)` | NO | awaiting_logistics_receipt |  |
+| `finance_issue_reference` | `varchar(150)` | YES | — |  |
+| `issued_to_logistics_at` | `timestamp` | YES | — |  |
+| `issued_to_logistics_by` | `bigint unsigned` | YES | — | MUL |
+| `logistics_receipt_reference` | `varchar(150)` | YES | — |  |
+| `received_by_logistics_at` | `timestamp` | YES | — |  |
+| `received_by_logistics` | `bigint unsigned` | YES | — | MUL |
+| `assigned_at` | `timestamp` | YES | — |  |
+| `assigned_by` | `bigint unsigned` | YES | — | MUL |
+| `received_by_rider_at` | `timestamp` | YES | — |  |
+| `received_by_rider_user_id` | `bigint unsigned` | YES | — | MUL |
+| `started_at` | `timestamp` | YES | — |  |
+| `last_attempt_at` | `timestamp` | YES | — |  |
+| `failure_reason` | `text` | YES | — |  |
+| `amount_returned_to_logistics_minor` | `bigint unsigned` | YES | — |  |
+| `cash_return_reference` | `varchar(150)` | YES | — |  |
+| `cash_returned_to_logistics_at` | `timestamp` | YES | — |  |
+| `cash_returned_to_logistics_by` | `bigint unsigned` | YES | — | MUL |
+| `logistics_cash_return_reference` | `varchar(150)` | YES | — |  |
+| `logistics_cash_return_received_at` | `timestamp` | YES | — |  |
+| `logistics_cash_return_received_by` | `bigint unsigned` | YES | — | MUL |
+| `recipient_name` | `varchar(160)` | YES | — |  |
+| `acknowledgment_reference` | `varchar(150)` | YES | — |  |
+| `acknowledgment_disk` | `varchar(32)` | YES | — |  |
+| `acknowledgment_path` | `varchar(500)` | YES | — |  |
+| `acknowledgment_mime_type` | `varchar(100)` | YES | — |  |
+| `acknowledgment_original_name` | `varchar(255)` | YES | — |  |
+| `acknowledgment_size_bytes` | `bigint unsigned` | YES | — |  |
+| `delivered_at` | `timestamp` | YES | — |  |
+| `delivered_by_user_id` | `bigint unsigned` | YES | — | MUL |
+| `logistics_verified_at` | `timestamp` | YES | — |  |
+| `logistics_verified_by` | `bigint unsigned` | YES | — | MUL |
+| `completed_at` | `timestamp` | YES | — |  |
+| `completed_by` | `bigint unsigned` | YES | — | MUL |
+| `delivery_attempt_count` | `int unsigned` | NO | 0 |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `refund_id` → `refunds.id`; `return_request_id` → `return_requests.id`; delete RESTRICT. `refund_id` is unique.
+- `logistics_profile_id` → `logistics_profiles.id`; delete RESTRICT. `rider_profile_id` → `rider_profiles.id`; delete SET NULL.
+- Finance, Logistics, Rider, and completion actor references point to `users.id`; delete SET NULL.
+
+**Indexes**
+
+- `refund_cash_logistics_status_idx` (logistics_profile_id,status,created_at).
+- `refund_cash_rider_status_idx` (rider_profile_id,status).
+
+`acknowledgment_reference` stores the active Rider delivery attempt's system-generated reference. It is generated when Logistics assigns a Rider (or by an explicit Logistics preparation action for a legacy assignment) so Logistics can print the form before dispatch. The matching `refund_cash_payout_events.reference` preserves assignment, delivery-start, and failed-attempt references for audit; reassignment after a confirmed cash return replaces the active value with the next attempt's reference.
+
+## `refund_cash_payout_events` (added by `2026_10_11_000001_create_cod_cash_and_refund_cash_workflows`)
+
+Append-only refund custody history with payout ID, event type, from/to statuses, nullable actor, integer-centavo amount, reference, note, optional JSON metadata, occurrence timestamp, and creation timestamp. Payout deletion is RESTRICT; actor deletion sets NULL. Indexed by (`refund_cash_payout_id`,`occurred_at`).
 
 ## `return_evidence`
 
@@ -1230,8 +1370,10 @@ Conventions: money integers are centavos; timestamps are UTC at storage boundari
 | `return_request_id` | `bigint unsigned` | NO | — | MUL |
 | `uploaded_by` | `bigint unsigned` | YES | — | MUL |
 | `type` | `varchar(30)` | NO | — |  |
+| `mime_type` | `varchar(100)` | YES | — |  |
 | `file_path` | `varchar(500)` | NO | — |  |
 | `original_name` | `varchar(255)` | NO | — |  |
+| `size_bytes` | `bigint unsigned` | YES | — |  |
 | `description` | `varchar(500)` | YES | — |  |
 | `created_at` | `timestamp` | NO | CURRENT_TIMESTAMP |  |
 
@@ -1244,6 +1386,29 @@ Conventions: money integers are centavos; timestamps are UTC at storage boundari
 
 - `return_evidence_return_request_id_foreign` (return_request_id) — index.
 - `return_evidence_uploaded_by_foreign` (uploaded_by) — index.
+
+## `return_events`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `return_request_id` | `bigint unsigned` | NO | — | MUL |
+| `actor_user_id` | `bigint unsigned` | YES | — | MUL |
+| `event_type` | `varchar(50)` | NO | — |  |
+| `from_status` | `varchar(40)` | YES | — |  |
+| `to_status` | `varchar(40)` | YES | — |  |
+| `note` | `text` | YES | — |  |
+| `metadata` | `json` | YES | — |  |
+| `created_at` | `timestamp` | NO | CURRENT_TIMESTAMP |  |
+
+**Foreign keys**
+
+- `actor_user_id` → `users.id`; update NO ACTION, delete SET NULL.
+- `return_request_id` → `return_requests.id`; update NO ACTION, delete CASCADE.
+
+**Indexes**
+
+- `return_events_return_request_id_created_at_index` (return_request_id,created_at) — index.
 
 ## `return_items`
 
@@ -1283,7 +1448,7 @@ Conventions: money integers are centavos; timestamps are UTC at storage boundari
 | `reason_code` | `varchar(50)` | NO | — |  |
 | `buyer_note` | `text` | YES | — |  |
 | `seller_response` | `text` | YES | — |  |
-| `status` | `varchar(40)` | NO | submitted |  |
+| `status` | `varchar(40)` | NO | awaiting_seller |  |
 | `requested_amount_minor` | `bigint unsigned` | NO | — |  |
 | `response_due_at` | `timestamp` | YES | — |  |
 | `submitted_at` | `timestamp` | NO | — |  |
@@ -1493,17 +1658,50 @@ Conventions: money integers are centavos; timestamps are UTC at storage boundari
 | `due_at` | `timestamp` | YES | — |  |
 | `paid_at` | `timestamp` | YES | — |  |
 | `reference` | `varchar(150)` | YES | — |  |
+| `external_method` | `varchar(40)` | YES | — |  |
+| `receipt_disk` | `varchar(32)` | YES | — |  |
+| `receipt_path` | `varchar(500)` | YES | — |  |
+| `receipt_mime_type` | `varchar(100)` | YES | — |  |
+| `receipt_original_name` | `varchar(255)` | YES | — |  |
+| `receipt_size_bytes` | `bigint unsigned` | YES | — |  |
+| `paid_by` | `bigint unsigned` | YES | — | MUL |
+| `payment_reason` | `text` | YES | — |  |
 | `created_at` | `timestamp` | YES | — |  |
 | `updated_at` | `timestamp` | YES | — |  |
 
 **Foreign keys**
 
 - `seller_profile_id` → `seller_profiles.id`; update NO ACTION, delete RESTRICT.
+- `paid_by` → `users.id`; update NO ACTION, delete SET NULL.
 
 **Indexes**
 
 - `seller_payouts_payout_no_unique` (payout_no) — unique.
 - `seller_payouts_seller_profile_id_foreign` (seller_profile_id) — index.
+- `seller_payouts_paid_by_foreign` (paid_by) — index.
+
+## `seller_payout_items` (added by `2026_10_11_000001_create_cod_cash_and_refund_cash_workflows`)
+
+Links each posted Seller sale transaction to at most one pending/external-paid settlement; payout creation does not itself transfer funds.
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `seller_payout_id` | `bigint unsigned` | NO | — | MUL |
+| `seller_transaction_id` | `bigint unsigned` | NO | — | UNI |
+| `gross_minor` | `bigint unsigned` | NO | — |  |
+| `commission_minor` | `bigint unsigned` | NO | — |  |
+| `net_minor` | `bigint` | NO | — |  |
+| `created_at` | `timestamp` | NO | CURRENT_TIMESTAMP |  |
+
+**Foreign keys**
+
+- `seller_payout_id` → `seller_payouts.id`; `seller_transaction_id` → `seller_transactions.id`; delete RESTRICT.
+
+**Indexes**
+
+- `seller_payout_items_seller_transaction_id_unique` (seller_transaction_id) — unique.
+- `seller_payout_items_batch_idx` (seller_payout_id,seller_transaction_id) — index.
 
 ## `seller_profiles`
 
@@ -1536,6 +1734,57 @@ Conventions: money integers are centavos; timestamps are UTC at storage boundari
 - `seller_profiles_approved_category_id_foreign` (approved_category_id) — index.
 - `seller_profiles_pickup_address_id_foreign` (pickup_address_id) — index.
 - `seller_profiles_user_id_unique` (user_id) — unique.
+
+## `seller_refund_recoveries`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `refund_id` | `bigint unsigned` | NO | — | UNI |
+| `seller_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `amount_minor` | `bigint unsigned` | NO | — |  |
+| `recovered_amount_minor` | `bigint unsigned` | NO | 0 |  |
+| `status` | `varchar(30)` | NO | pending |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `refund_id` → `refunds.id`; update NO ACTION, delete RESTRICT.
+- `seller_profile_id` → `seller_profiles.id`; update NO ACTION, delete RESTRICT.
+
+**Indexes**
+
+- `seller_refund_recoveries_refund_id_unique` (refund_id) — unique.
+- `seller_refund_recoveries_seller_profile_id_status_index` (seller_profile_id,status) — index.
+
+## `seller_refund_recovery_events`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `seller_refund_recovery_id` | `bigint unsigned` | NO | — | MUL |
+| `recorded_by` | `bigint unsigned` | YES | — | MUL |
+| `seller_payout_id` | `bigint unsigned` | YES | — | MUL |
+| `method` | `varchar(30)` | NO | — |  |
+| `amount_minor` | `bigint unsigned` | NO | — |  |
+| `external_reference` | `varchar(150)` | NO | — |  |
+| `recovered_on` | `date` | NO | — |  |
+| `note` | `text` | YES | — |  |
+| `created_at` | `timestamp` | NO | CURRENT_TIMESTAMP |  |
+
+**Foreign keys**
+
+- `recorded_by` → `users.id`; update NO ACTION, delete SET NULL.
+- `seller_payout_id` → `seller_payouts.id`; update NO ACTION, delete RESTRICT.
+- `seller_refund_recovery_id` → `seller_refund_recoveries.id`; update NO ACTION, delete CASCADE.
+
+**Indexes**
+
+- `seller_refund_recovery_events_recorded_by_foreign` (recorded_by) — index.
+- `seller_refund_recovery_events_seller_payout_id_foreign` (seller_payout_id) — index.
+- `seller_refund_recovery_events_history_index` (seller_refund_recovery_id,created_at) — index.
+- `seller_refund_recovery_events_seller_refund_recovery_id_foreign` (seller_refund_recovery_id) — index.
 
 ## `seller_transactions`
 

@@ -63,84 +63,155 @@ const peso = value =>
         maximumFractionDigits: 0,
     }).format(value);
 
-function productReviewsMarkup(product) {
-    const rating = Math.max(0, Math.min(5, Number(product?.rating) || 4.8));
-    const reviewCount = Math.max(1, Number(product?.review_count) || 18);
-    const reviewImage = product?.image || '';
-    const variation = product?.color || 'Standard';
-    const stars = '★★★★★';
+function reviewProductId(product) {
+    if (!product || product.live !== true) return 0;
+    const raw = String(product.product_id ?? product.id ?? '');
+    return /^\d+$/.test(raw) ? Number(raw) : 0;
+}
+
+function reviewPhotoSrc(value) {
+    const src = String(value || '');
+    if (/^(\/images\/|\/storage\/|data:image\/)/.test(src)) return src;
+    try {
+        const parsed = new URL(src, window.location.origin);
+        if (parsed.origin === window.location.origin && /^(\/images\/|\/storage\/)/.test(parsed.pathname)) return parsed.pathname;
+    } catch (_) {}
+    return '';
+}
+
+function reviewStars(n) {
+    const rating = Math.max(0, Math.min(5, Number(n) || 0));
+    return '★'.repeat(rating) + '☆'.repeat(5 - rating);
+}
+
+function productReviewItem(review) {
+    const media = reviewPhotoSrc(review.photo);
+    return `
+        <article class="pd-review-item" data-rating="${Number(review.rating) || 0}" data-has-media="${media ? 1 : 0}">
+            <div class="pd-review-main">
+                <div class="pd-review-avatar" aria-hidden="true"><i class="mi">person</i></div>
+                <div class="pd-review-copy">
+                    <strong>${escapeHtml(review.name || 'Verified buyer')}</strong>
+                    <div class="pd-review-meta"><span class="pd-review-stars">${reviewStars(review.rating)}</span><time datetime="${escapeHtml(String(review.date || '').replace(' ', 'T'))}">${escapeHtml(review.date_display || review.date || '')}</time><span>Variation: ${escapeHtml(review.variation || 'Standard')}</span></div>
+                    <p>${escapeHtml(review.text || '')}</p>
+                    ${media ? `<div class="pd-review-media"><img src="${escapeHtml(media)}" alt="Review photo" loading="lazy"></div>` : ''}
+                </div>
+            </div>
+            ${review.response ? `
+                <aside class="pd-review-response">
+                    <strong><i class="mi" aria-hidden="true">storefront</i> Seller's Response:</strong>
+                    <p>${escapeHtml(review.response)}</p>
+                    ${review.response_at_display || review.response_at ? `<time datetime="${escapeHtml(String(review.response_at || '').replace(' ', 'T'))}">${escapeHtml(review.response_at_display || review.response_at)}</time>` : ''}
+                </aside>
+            ` : ''}
+        </article>
+    `;
+}
+
+function productReviewsMarkup(product, live) {
+    const productId = reviewProductId(product);
+    const isLive = productId > 0;
+    const writeButton = isLive
+        ? `<button type="button" class="pd-review-write" data-pd-review-live><i class="mi" aria-hidden="true">edit</i> Write a Review</button>`
+        : `<button type="button" class="pd-review-write" data-pd-review><i class="mi" aria-hidden="true">edit</i> Write a Review</button>`;
+    const head = `
+        <div class="pd-reviews-head">
+            <h3 id="pd-reviews-title">Ratings &amp; Reviews</h3>
+            ${writeButton}
+        </div>
+    `;
+
+    if (!isLive) {
+        return `
+            <section class="pd-reviews" aria-labelledby="pd-reviews-title">
+                ${head}
+                <p class="pd-reviews-empty">No reviews yet. Reviews from verified purchases will appear here.</p>
+            </section>
+        `;
+    }
+
+    if (!live) {
+        return `
+            <section class="pd-reviews" aria-labelledby="pd-reviews-title">
+                ${head}
+                <p class="pd-reviews-empty" data-pd-reviews-loading>Loading reviews…</p>
+            </section>
+        `;
+    }
+
+    const summary = live.summary || { count: 0, average: 0, distribution: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 }, with_comments: 0, with_media: 0 };
+    const list = Array.isArray(live.reviews) ? live.reviews : [];
+    const count = Number(summary.count) || 0;
+    const average = Number(summary.average) || 0;
+    const distribution = summary.distribution || {};
     const filters = [
-        `All (${reviewCount})`,
-        `5 Star (${Math.max(1, reviewCount - 3)})`,
-        `4 Star (${Math.max(0, Math.round(reviewCount * .11))})`,
-        `3 Star (${Math.max(0, Math.round(reviewCount * .06))})`,
-        '2 Star (0)',
-        '1 Star (0)',
-        'With Comments (12)',
-        'With Media (6)',
+        ['all', `All (${count})`],
+        ['5', `5 Star (${Number(distribution[5]) || 0})`],
+        ['4', `4 Star (${Number(distribution[4]) || 0})`],
+        ['3', `3 Star (${Number(distribution[3]) || 0})`],
+        ['2', `2 Star (${Number(distribution[2]) || 0})`],
+        ['1', `1 Star (${Number(distribution[1]) || 0})`],
+        ['comments', `With Comments (${Number(summary.with_comments) || 0})`],
+        ['media', `With Media (${Number(summary.with_media) || 0})`],
     ];
-    const reviews = [
-        {
-            name: 's******7',
-            date: '2024-05-12 17:45',
-            text: 'Maganda yung item nila mabait! Maayos ang packaging at mabilis dumating. Definitely recommend.',
-            media: 3,
-            response: 'Maraming salamat po sa inyong tiwala! At nagagalak kami na nagustuhan ito ng inyong alaga.',
-            responseDate: '2024-05-13 09:20',
-        },
-        {
-            name: 'm******f',
-            date: '2024-05-20 19:15',
-            text: 'The item was packed and shipped immediately. Delivery time was reasonable and the quality was good.',
-            media: 0,
-            response: 'Dear customer, thank you so much for your kind words. We are happy to hear that you enjoyed your purchase.',
-            responseDate: '2024-05-21 10:10',
-        },
-    ];
-    const media = reviewImage
-        ? `<div class="pd-review-media">${Array.from({length: 3}, () => `<img src="${escapeHtml(reviewImage)}" alt="Review photo" loading="lazy">`).join('')}</div>`
-        : '';
+
+    if (!count) {
+        return `
+            <section class="pd-reviews" aria-labelledby="pd-reviews-title">
+                ${head}
+                <p class="pd-reviews-empty">No reviews yet. Reviews from verified purchases will appear here.</p>
+            </section>
+        `;
+    }
+
     return `
         <section class="pd-reviews" aria-labelledby="pd-reviews-title">
-            <div class="pd-reviews-head">
-                <h3 id="pd-reviews-title">Ratings &amp; Reviews</h3>
-                <button type="button" class="pd-review-write" data-pd-review>
-                    <i class="mi" aria-hidden="true">edit</i> Write a Review
-                </button>
-            </div>
+            ${head}
             <div class="pd-reviews-summary">
                 <div class="pd-review-score">
-                    <strong>${rating.toFixed(1)}</strong>
+                    <strong>${average.toFixed(1)}</strong>
                     <span>out of 5</span>
-                    <div class="pd-review-stars" aria-label="${rating.toFixed(1)} out of 5 stars">${stars}</div>
-                    <small>(${reviewCount} reviews)</small>
+                    <div class="pd-review-stars" aria-label="${average.toFixed(1)} out of 5 stars">★★★★★</div>
+                    <small>(${count} reviews)</small>
                 </div>
                 <div class="pd-review-filters" aria-label="Review filters">
-                    ${filters.map((filter, index) => `<button type="button" class="${index === 0 ? 'is-active' : ''}" data-pd-review-filter aria-pressed="${index === 0 ? 'true' : 'false'}">${escapeHtml(filter)}</button>`).join('')}
+                    ${filters.map(([value, label], index) => `<button type="button" class="${index === 0 ? 'is-active' : ''}" data-pd-review-filter data-review-filter="${value}" aria-pressed="${index === 0 ? 'true' : 'false'}">${escapeHtml(label)}</button>`).join('')}
                 </div>
             </div>
             <div class="pd-review-list">
-                ${reviews.map(review => `
-                    <article class="pd-review-item">
-                        <div class="pd-review-main">
-                            <div class="pd-review-avatar" aria-hidden="true"><i class="mi">person</i></div>
-                            <div class="pd-review-copy">
-                                <strong>${escapeHtml(review.name)}</strong>
-                                <div class="pd-review-meta"><span class="pd-review-stars">${stars}</span><time datetime="${escapeHtml(review.date.replace(' ', 'T'))}">${escapeHtml(review.date)}</time><span>Variation: ${escapeHtml(variation)}</span></div>
-                                <p>${escapeHtml(review.text)}</p>
-                                ${review.media ? media : ''}
-                            </div>
-                        </div>
-                        <aside class="pd-review-response">
-                            <strong><i class="mi" aria-hidden="true">storefront</i> Seller's Response:</strong>
-                            <p>${escapeHtml(review.response)}</p>
-                            <time datetime="${escapeHtml(review.responseDate.replace(' ', 'T'))}">${escapeHtml(review.responseDate)}</time>
-                        </aside>
-                    </article>
-                `).join('')}
+                ${list.map(productReviewItem).join('')}
             </div>
         </section>
     `;
+}
+
+function mountProductReviews(detail, product) {
+    detail.querySelector('.pd-shell')?.insertAdjacentHTML(
+        'beforeend',
+        productReviewsMarkup(product)
+    );
+    bindProductReviewButton(detail);
+
+    const productId = reviewProductId(product);
+    if (!productId) return;
+
+    fetch(`/products/${productId}/reviews/data?limit=10`, {
+        headers: { 'Accept': 'application/json' },
+    })
+        .then(response => response.json().then(body => ({ ok: response.ok, body })).catch(() => ({ ok: false, body: {} })))
+        .then(({ ok, body }) => {
+            const section = detail.querySelector('.pd-reviews');
+            if (!section || !section.isConnected) return;
+            const live = ok && body && body.data
+                ? body.data
+                : { summary: { count: 0, average: 0, distribution: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 }, with_comments: 0, with_media: 0 }, reviews: [] };
+            const holder = document.createElement('div');
+            holder.innerHTML = productReviewsMarkup(product, live);
+            const fresh = holder.firstElementChild;
+            if (fresh) section.replaceWith(fresh);
+            bindProductReviewButton(detail);
+        })
+        .catch(() => {});
 }
 
 function mountProductGallery(detail, product, fallbackStyle) {
@@ -211,7 +282,22 @@ function bindProductReviewButton(detail) {
                 item.classList.toggle('is-active', selected);
                 item.setAttribute('aria-pressed', selected ? 'true' : 'false');
             });
+            const section = filter.closest('.pd-reviews');
+            const value = filter.dataset.reviewFilter || 'all';
+            section?.querySelectorAll('.pd-review-item').forEach(item => {
+                const rating = Number(item.dataset.rating) || 0;
+                const hasMedia = item.dataset.hasMedia === '1';
+                const show = value === 'all'
+                    || value === 'comments'
+                    || String(rating) === value
+                    || (value === 'media' && hasMedia);
+                item.hidden = !show;
+            });
         });
+    });
+
+    detail?.querySelector('[data-pd-review-live]')?.addEventListener('click', () => {
+        window.location.assign('/profile#reviews');
     });
 
     detail?.querySelector('[data-pd-review]')?.addEventListener('click', () => {
@@ -588,23 +674,15 @@ function initialize() {
 
         const category = $('search-category').value;
         const search = $('search-input').value.trim();
+        const target = new URL($('search-form').action, location.origin);
 
-        if (category) {
-            const target = new URL('/products', location.origin);
-            target.searchParams.set('category', category);
+        if (category) target.searchParams.set('category', category);
+        else target.searchParams.delete('category');
 
-            if (search) {
-                target.searchParams.set('q', search);
-            }
+        if (search) target.searchParams.set('search', search);
+        else target.searchParams.delete('search');
 
-            window.location.href = target.toString();
-            return;
-        }
-
-        state.category = '';
-        state.search = search;
-
-        change();
+        window.location.assign(target.toString());
     });
 
     $('sort').addEventListener('change', () => {
@@ -1354,10 +1432,7 @@ function initialize() {
             </article>
         `;
 
-        detail.querySelector('.pd-shell')?.insertAdjacentHTML(
-            'beforeend',
-            productReviewsMarkup(product)
-        );
+        mountProductReviews(detail, product);
         mountProductGallery(detail, product, homePhotoStyle);
         bindProductReviewButton(detail);
 
@@ -4384,10 +4459,7 @@ function init() {
             </article>
         `;
 
-        detail.querySelector('.pd-shell')?.insertAdjacentHTML(
-            'beforeend',
-            productReviewsMarkup(product)
-        );
+        mountProductReviews(detail, product);
         mountProductGallery(detail, product, photoStyle);
         bindProductReviewButton(detail);
 
@@ -6268,11 +6340,8 @@ function showFeaturedProductFull(product) {
         </article>
     `;
 
-    detail.querySelector('.pd-shell')?.insertAdjacentHTML(
-        'beforeend',
-        productReviewsMarkup(product)
-    );
-    mountProductGallery(detail, product, featuredPhotoStyle);
+        mountProductReviews(detail, product);
+        mountProductGallery(detail, product, featuredPhotoStyle);
     bindProductReviewButton(detail);
 
     function notify(message) {

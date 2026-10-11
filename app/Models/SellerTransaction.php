@@ -40,4 +40,9 @@ class SellerTransaction extends Model
     {
         return $this->belongsTo(PlatformCommission::class, 'commission_id');
     }
+
+    public function payoutItem()
+    {
+        return $this->hasOne(SellerPayoutItem::class);
+    }
 }

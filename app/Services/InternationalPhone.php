@@ -13,6 +13,9 @@ class InternationalPhone
     public function normalize(string $input, string $country): string
     {
         $util = PhoneNumberUtil::getInstance();
+
+        $input = preg_replace('/[\s().-]/u', '', trim($input)) ?? '';
+
         if (! in_array($country, $util->getSupportedRegions(), true) ||
             ! preg_match('/^\+?[0-9]{4,16}$/D', $input)) {
             $this->invalid();

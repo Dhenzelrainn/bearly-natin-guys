@@ -98,6 +98,13 @@ const bootSeller = () => {
         });
     });
 
+    const pickupModalWithErrors = document.querySelector('[data-pickup-reopen]');
+    if (pickupModalWithErrors) {
+        pickupModalWithErrors.hidden = false;
+        document.body.style.overflow = 'hidden';
+        pickupModalWithErrors.querySelector('[name="order_ids[]"]')?.focus();
+    }
+
     const description = document.querySelector('[data-description]');
     const descriptionCount = document.querySelector('[data-description-count]');
     description?.addEventListener('input', () => {
@@ -166,6 +173,22 @@ const bootSeller = () => {
         const noResults = orderWorkspace.querySelector('[data-orders-no-results]');
         const bulkButtons = [...orderWorkspace.querySelectorAll('[data-order-bulk-action]')];
 
+        const refreshOrderStatusCounts = () => {
+            orderWorkspace.querySelectorAll('[data-order-tab]').forEach((tab) => {
+                const count = tab.dataset.orderTab === 'all'
+                    ? orderRows.length
+                    : orderRows.filter((row) => row.dataset.status === tab.dataset.orderTab).length;
+                const countNode = tab.querySelector('span');
+                if (countNode) countNode.textContent = String(count);
+            });
+
+            orderWorkspace.querySelectorAll('[data-order-queue-card]').forEach((card) => {
+                const countNode = card.querySelector('strong');
+                if (!countNode) return;
+                countNode.textContent = String(orderRows.filter((row) => row.dataset.status === card.dataset.orderQueueCard).length);
+            });
+        };
+
         const updateOrderSelection = () => {
             const visibleChecks = orderRows
                 .filter((row) => !row.hidden)
@@ -204,6 +227,11 @@ const bootSeller = () => {
             if (noResults) noResults.hidden = visible > 0;
             updateOrderSelection();
         };
+
+        orderWorkspace.addEventListener('seller:order-tracking-updated', () => {
+            refreshOrderStatusCounts();
+            applyOrderFilters();
+        });
 
         orderWorkspace.querySelectorAll('[data-order-tab]').forEach((tab) => {
             tab.addEventListener('click', () => {
@@ -610,6 +638,35 @@ const bootSeller = () => {
     const caseCharacterCount = document.querySelector('[data-case-character-count]');
     caseResponse?.addEventListener('input', () => {
         if (caseCharacterCount) caseCharacterCount.textContent = caseResponse.value.length;
+    });
+
+    const caseImageDialog = document.querySelector('[data-case-image-dialog]');
+    const caseImage = caseImageDialog?.querySelector('[data-case-image-full]');
+    const caseImageTitle = caseImageDialog?.querySelector('[data-case-image-title]');
+    let lastCaseImageTrigger = null;
+    document.querySelectorAll('[data-case-image-preview]').forEach((button) => {
+        button.addEventListener('click', () => {
+            if (!caseImageDialog || !caseImage || !button.dataset.previewUrl || typeof caseImageDialog.showModal !== 'function') return;
+            lastCaseImageTrigger = button;
+            const name = button.dataset.previewName || 'Evidence image';
+            if (caseImageTitle) caseImageTitle.textContent = name;
+            caseImage.src = button.dataset.previewUrl;
+            caseImage.alt = name;
+            caseImageDialog.showModal();
+        });
+    });
+    caseImageDialog?.querySelector('[data-case-image-close]')?.addEventListener('click', () => caseImageDialog.close());
+    caseImageDialog?.addEventListener('click', (event) => {
+        if (event.target !== caseImageDialog) return;
+        const bounds = caseImageDialog.getBoundingClientRect();
+        if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) {
+            caseImageDialog.close();
+        }
+    });
+    caseImageDialog?.addEventListener('close', () => {
+        caseImage?.removeAttribute('src');
+        caseImage?.removeAttribute('alt');
+        lastCaseImageTrigger?.focus();
     });
 
     document.querySelector('[data-case-evidence-input]')?.addEventListener('change', (event) => {
@@ -1177,21 +1234,28 @@ const bootSeller = () => {
     document.querySelector('[data-waybill-print]')?.addEventListener('click', () => { if (toast) { toast.textContent = 'Waybill sent to the print dialog.'; toast.classList.add('is-visible'); } window.print(); });
 
     document.querySelector('[data-pickup-form]')?.addEventListener('submit', (event) => {
-        event.preventDefault();
-        if (!event.currentTarget.querySelector('[data-pickup-order]:checked')) { if (toast) { toast.textContent = 'Select at least one labeled parcel.'; toast.classList.add('is-visible'); } return; }
-        event.currentTarget.closest('[data-modal]').hidden = true; document.body.style.overflow = '';
-        if (toast) { toast.textContent = 'Pickup request submitted to logistics for approval.'; toast.classList.add('is-visible'); }
+        const selectedOrders = event.currentTarget.querySelectorAll('[data-pickup-order]:checked');
+        if (selectedOrders.length === 0) {
+            event.preventDefault();
+            if (toast) {
+                toast.textContent = 'Select at least one ready order.';
+                toast.classList.add('is-visible');
+            }
+            return;
+        }
+
+        const submit = event.currentTarget.querySelector('[type="submit"]');
+        if (submit) {
+            submit.disabled = true;
+            submit.textContent = 'Submitting…';
+        }
     });
     document.querySelectorAll('[data-pickup-view]').forEach((button) => button.addEventListener('click', () => {
         const item = JSON.parse(button.dataset.pickup); const modal = document.querySelector('[data-modal="pickup-details"]'); if (!modal) return;
         const set = (selector, value) => { const node = modal.querySelector(selector); if (node) node.textContent = value; };
-        set('[data-pickup-id]', item.id); set('[data-pickup-status]', item.status); set('[data-pickup-orders]', `${item.orders} · ${item.packages} parcels`); set('[data-pickup-schedule]', item.schedule); set('[data-pickup-rider]', item.rider); set('[data-pickup-address]', item.address);
-        const actions = modal.querySelector('[data-pickup-actions]'); if (actions) actions.hidden = !['pending', 'assigned'].includes(item.status_key);
-        const cancel = modal.querySelector('[data-pickup-cancel]'); if (cancel) cancel.hidden = item.status_key !== 'pending';
-        const confirm = modal.querySelector('[data-pickup-confirm]'); if (confirm) confirm.hidden = item.status_key !== 'assigned';
+        set('[data-pickup-id]', item.id); set('[data-pickup-status]', item.status); set('[data-pickup-orders]', `${item.orders} (${item.order_numbers || 'Order details unavailable'}) · ${item.packages} ${item.packages === 1 ? 'parcel' : 'parcels'}`); set('[data-pickup-provider]', item.provider); set('[data-pickup-schedule]', item.schedule); set('[data-pickup-rider]', item.rider); set('[data-pickup-address]', item.address); set('[data-pickup-instructions]', item.instructions);
         modal.hidden = false; document.body.style.overflow = 'hidden';
     }));
-    document.querySelectorAll('[data-pickup-cancel],[data-pickup-confirm]').forEach((button) => button.addEventListener('click', () => { button.closest('[data-modal]').hidden = true; document.body.style.overflow = ''; if (toast) { toast.textContent = button.hasAttribute('data-pickup-confirm') ? 'Parcel handover confirmed and orders moved to In Transit.' : 'Pending pickup request cancelled.'; toast.classList.add('is-visible'); } }));
 
     document.querySelector('[data-tracking-attention]')?.addEventListener('click', () => {
         const search = document.querySelector('[data-tracking-search]');
@@ -1648,24 +1712,44 @@ const bootSeller = () => {
             area.querySelector('[data-feedback-form]').hidden = true;
             area.querySelector('[data-feedback-reply]').hidden = false;
         }));
-        feedbackWorkspace.querySelectorAll('[data-feedback-form]').forEach((form) => form.addEventListener('submit', (event) => {
+        feedbackWorkspace.querySelectorAll('[data-feedback-form]').forEach((form) => form.addEventListener('submit', async (event) => {
             event.preventDefault();
             const textarea = form.querySelector('textarea');
             if (!textarea?.value.trim()) { textarea?.focus(); return; }
-            const review = form.closest('[data-feedback-review]');
-            const response = document.createElement('div');
-            response.className = 'seller-feedback-response';
-            const label = document.createElement('span');
-            const copy = document.createElement('p');
-            label.textContent = 'Seller response';
-            copy.textContent = textarea.value.trim();
-            response.append(label, copy);
-            form.closest('[data-feedback-reply-area]').replaceWith(response);
-            review.dataset.status = 'replied';
-            const status = review.querySelector('.feedback-review-status');
-            if (status) { status.textContent = 'Replied'; status.classList.add('is-replied'); }
-            if (toast) { toast.textContent = 'Reply posted for this frontend preview.'; toast.classList.add('is-visible'); }
+            const endpoint = form.dataset.feedbackUrl || '';
+            if (!endpoint) return;
+            const submit = form.querySelector('[type="submit"]');
+            if (submit) submit.disabled = true;
+            try {
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    body: new FormData(form),
+                });
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    const validationMessage = Object.values(result.errors || {}).flat()[0];
+                    throw new Error(validationMessage || result.message || 'Unable to post this reply. Try again.');
+                }
+                const review = form.closest('[data-feedback-review]');
+                const replyBlock = document.createElement('div');
+                replyBlock.className = 'seller-feedback-response';
+                const replyLabel = document.createElement('span');
+                const replyCopy = document.createElement('p');
+                replyLabel.textContent = 'Seller response';
+                replyCopy.textContent = result.data?.response || textarea.value.trim();
+                replyBlock.append(replyLabel, replyCopy);
+                form.closest('[data-feedback-reply-area]').replaceWith(replyBlock);
+                review.dataset.status = 'replied';
+                const status = review.querySelector('.feedback-review-status');
+                if (status) { status.textContent = 'Replied'; status.classList.add('is-replied'); }
+                if (toast) { toast.textContent = 'Reply posted.'; toast.classList.add('is-visible'); }
+            } catch (error) {
+                if (toast) { toast.textContent = error.message || 'Unable to post this reply. Try again.'; toast.classList.add('is-visible'); }
+                if (submit) submit.disabled = false;
+            }
         }));
+        applyFeedbackFilter();
     }
 
     /* Reports — frontend-only filters and export feedback. */
@@ -2777,6 +2861,10 @@ const setupBearlyOrderActionModal = () => {
 
     let lastFocus = null;
     let active = null;
+    let trackingTimer = null;
+    let trackingController = null;
+    let trackingRequestInFlight = false;
+    let lastTrackingSignature = '';
 
     const statusLabels = {
         PLACED: 'Placed',
@@ -2793,6 +2881,8 @@ const setupBearlyOrderActionModal = () => {
         DELIVERY_FAILED: 'Delivery Failed',
         RETURNED: 'Returned',
         CANCELLED: 'Cancelled',
+        RECEIVED: 'At Sorting Center',
+        FAILED: 'Delivery Failed',
     };
 
     const flow = [
@@ -2987,6 +3077,9 @@ const setupBearlyOrderActionModal = () => {
         Number(item.qty ?? item.quantity ?? 1) || 1;
 
     const itemPriceText = (item) => {
+        if (Number.isInteger(item.unit_price_minor)) {
+            return formatItemMoney(item.unit_price_minor);
+        }
         const value = item.unit_price ?? item.price ?? item.amount ?? null;
         if (value === null || value === '') return '';
 
@@ -3000,6 +3093,12 @@ const setupBearlyOrderActionModal = () => {
 
         return String(value);
     };
+
+    const formatItemMoney = (minor) => new Intl.NumberFormat('en-PH', {
+        style: 'currency',
+        currency: 'PHP',
+        maximumFractionDigits: 2,
+    }).format(minor / 100);
 
     const renderItems = (row) => {
         items.replaceChildren();
@@ -3042,21 +3141,33 @@ const setupBearlyOrderActionModal = () => {
                 copy.className = 'bearly-action-item-copy';
 
                 const name = document.createElement('strong');
-                name.textContent = [nameText, itemVariant(item)].filter(Boolean).join(' · ');
+                name.textContent = nameText;
 
                 const meta = document.createElement('small');
                 const skuText = itemSku(item);
                 meta.textContent = skuText ? `SKU: ${skuText}` : 'Order item';
 
                 copy.append(name, meta);
+                const variant = document.createElement('small');
+                variant.textContent = `Variant: ${itemVariant(item) || 'Standard'}`;
+                const quantity = document.createElement('small');
+                quantity.textContent = `Quantity: ${itemQty(item)}`;
+                copy.append(variant, quantity);
 
                 const side = document.createElement('span');
                 side.className = 'bearly-action-item-side';
 
                 const price = itemPriceText(item);
-                side.textContent = price
-                    ? `${price} × ${itemQty(item)}`
-                    : `Qty ${itemQty(item)}`;
+                if (price) {
+                    const unitPrice = document.createElement('small');
+                    unitPrice.textContent = `Unit price: ${price}`;
+                    side.append(unitPrice);
+                }
+                const subtotal = document.createElement('strong');
+                subtotal.textContent = Number.isInteger(item.subtotal_minor)
+                    ? `Subtotal: ${formatItemMoney(item.subtotal_minor)}`
+                    : 'Subtotal unavailable';
+                side.append(subtotal);
 
                 article.append(thumb, copy, side);
                 items.append(article);
@@ -3218,16 +3329,29 @@ const setupBearlyOrderActionModal = () => {
             wrap.className = 'bearly-action-status-layout';
 
             const left = document.createElement('div');
+            const headingRow = document.createElement('div');
+            headingRow.className = 'bearly-action-status-heading';
 
             const heading = document.createElement('h4');
             heading.className = 'bearly-action-status-title';
             heading.textContent = 'Current Order Status';
-            left.append(heading);
+
+            const liveStatus = document.createElement('p');
+            liveStatus.className = 'bearly-action-live-status';
+            liveStatus.dataset.bearlyLiveStatus = '';
+            liveStatus.setAttribute('role', 'status');
+            liveStatus.setAttribute('aria-live', 'polite');
+            liveStatus.textContent = 'Live updates every 15 seconds while this dialog is open.';
+
+            headingRow.append(heading, liveStatus);
+            left.append(headingRow);
 
             const summary = document.createElement('div');
             summary.className = 'bearly-action-next';
             summary.innerHTML =
                 '<span><i data-lucide="info"></i></span><div><small>Next update</small><strong></strong></div>';
+
+            summary.querySelector('small').textContent = `Next update · ${row.dataset.orderOwner || 'Seller'}`;
 
             summary.querySelector('strong').textContent =
                 current === 'CANCELLED'
@@ -3274,20 +3398,17 @@ const setupBearlyOrderActionModal = () => {
                 timeline.append(item);
             });
 
-            wrap.append(left, timeline);
-            context.append(wrap);
-
             const history = parseStatusHistory(row);
             const historySection = document.createElement('section');
             historySection.className = 'bearly-action-history';
             const historyHeading = document.createElement('h4');
-            historyHeading.textContent = 'Status History';
+            historyHeading.textContent = 'Recent Order & Tracking Activity';
             historySection.append(historyHeading);
 
             if (history.length === 0) {
                 const empty = document.createElement('p');
                 empty.className = 'bearly-action-history-empty';
-                empty.textContent = 'No Seller status changes have been recorded yet.';
+                empty.textContent = 'No order or shipment updates have been recorded yet.';
                 historySection.append(empty);
             } else {
                 const list = document.createElement('ol');
@@ -3295,9 +3416,10 @@ const setupBearlyOrderActionModal = () => {
                     const item = document.createElement('li');
                     const heading = document.createElement('strong');
                     const statusKey = String(entry.status || '').toUpperCase();
-                    heading.textContent = statusLabels[statusKey] || statusKey.replaceAll('_', ' ') || 'Status updated';
+                    heading.textContent = entry.label || statusLabels[statusKey] || statusKey.replaceAll('_', ' ') || 'Status updated';
                     const meta = document.createElement('small');
-                    meta.textContent = [entry.actor || 'Former user', formatOrderDate(entry.occurred_at)].filter(Boolean).join(' · ');
+                    const source = entry.source && entry.source !== entry.actor ? entry.source : '';
+                    meta.textContent = [entry.actor || source || 'System', source, formatOrderDate(entry.occurred_at)].filter(Boolean).join(' · ');
                     item.append(heading, meta);
                     if (entry.reason) {
                         const reason = document.createElement('p');
@@ -3309,8 +3431,148 @@ const setupBearlyOrderActionModal = () => {
                 historySection.append(list);
             }
 
-            context.append(historySection);
+            left.append(historySection);
+            wrap.append(left, timeline);
+            context.append(wrap);
         }
+    };
+
+    const trackingSignature = (snapshot) => JSON.stringify({
+        seller_order_status: snapshot.seller_order_status,
+        status_label: snapshot.status_label,
+        status_detail: snapshot.status_detail,
+        canonical_status: snapshot.canonical_status,
+        status_key: snapshot.status_key,
+        next_step: snapshot.next_step,
+        timeline_history: snapshot.timeline_history || [],
+    });
+
+    const applyTrackingSnapshot = (row, snapshot) => {
+        const previousStatusKey = row.dataset.status;
+        const statusLabel = String(snapshot.status_label || 'Order status unavailable');
+        const statusDetail = String(snapshot.status_detail || '');
+
+        row.dataset.status = String(snapshot.status_key || 'all');
+        row.dataset.orderStatusCopy = statusLabel;
+        row.dataset.orderCanonical = String(snapshot.canonical_status || '');
+        row.dataset.orderOwner = String(snapshot.responsibility || '');
+        row.dataset.orderNext = String(snapshot.next_step || '');
+        row.dataset.orderStatusHistory = JSON.stringify(snapshot.timeline_history || []);
+        row.dataset.orderSellerStatus = String(snapshot.seller_order_status || '');
+        row.dataset.search = `${row.dataset.orderId || ''} ${row.dataset.orderCustomer || ''} ${snapshot.canonical_status || ''} ${statusLabel}`.toLowerCase();
+
+        const statusBadge = row.querySelector('[data-order-status-badge]');
+        if (statusBadge) {
+            statusBadge.className = `order-status-badge order-status-${String(snapshot.tone || 'new')}`;
+            statusBadge.setAttribute('aria-label', [statusLabel, statusDetail].filter(Boolean).join('. '));
+
+            let labelNode = statusBadge.querySelector('[data-order-status-label]');
+            if (!labelNode) {
+                labelNode = document.createElement('span');
+                labelNode.dataset.orderStatusLabel = '';
+                statusBadge.replaceChildren(labelNode);
+            }
+            labelNode.textContent = statusLabel;
+
+            let detailNode = statusBadge.querySelector('[data-order-status-detail]');
+            if (statusDetail && !detailNode) {
+                detailNode = document.createElement('small');
+                detailNode.dataset.orderStatusDetail = '';
+                statusBadge.append(detailNode);
+            } else if (!statusDetail && detailNode) {
+                detailNode.remove();
+            }
+            if (detailNode) detailNode.textContent = statusDetail;
+        }
+
+        if (previousStatusKey !== row.dataset.status) {
+            row.dispatchEvent(new CustomEvent('seller:order-tracking-updated', { bubbles: true }));
+        }
+
+        return trackingSignature(snapshot);
+    };
+
+    const setLiveTrackingMessage = (message) => {
+        const note = context.querySelector('[data-bearly-live-status]');
+        if (note) note.textContent = message;
+    };
+
+    const refreshActiveTracking = async () => {
+        if (!active || modal.hidden || document.hidden || trackingRequestInFlight) return;
+
+        const row = active.row;
+        const endpoint = row.dataset.orderTrackingUrl;
+        if (!endpoint) return;
+
+        trackingRequestInFlight = true;
+        const controller = new AbortController();
+        trackingController = controller;
+
+        try {
+            const response = await fetch(endpoint, {
+                cache: 'no-store',
+                headers: {
+                    Accept: 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                signal: controller.signal,
+            });
+            const result = await response.json().catch(() => ({}));
+
+            if (!response.ok || !result.data || active?.row !== row || modal.hidden) {
+                if (!response.ok) throw new Error(result.message || 'Tracking refresh unavailable.');
+                return;
+            }
+
+            const signature = applyTrackingSnapshot(row, result.data);
+            if (signature !== lastTrackingSignature) {
+                lastTrackingSignature = signature;
+                const config = configFor(row, active.mode);
+                badge.textContent = result.data.status_label || 'Order';
+                // Action modes own interactive state (packing checklist,
+                // cancel reason). Re-render only the read-only details view
+                // so live updates never wipe in-progress seller input.
+                if (config.type === 'details') {
+                    renderContext(row, config);
+                    window.lucide?.createIcons();
+                }
+            }
+
+            setLiveTrackingMessage(`Live · checked ${formatOrderDate(new Date())}`);
+
+            if (['completed', 'cancelled'].includes(result.data.seller_order_status)) {
+                window.clearInterval(trackingTimer);
+                trackingTimer = null;
+            }
+        } catch (error) {
+            if (error.name !== 'AbortError' && active?.row === row && !modal.hidden) {
+                setLiveTrackingMessage('Live refresh unavailable · showing the last saved update.');
+            }
+        } finally {
+            if (trackingController === controller) {
+                trackingRequestInFlight = false;
+                trackingController = null;
+            }
+        }
+    };
+
+    const beginTrackingUpdates = () => {
+        window.clearInterval(trackingTimer);
+        trackingController?.abort();
+        trackingRequestInFlight = false;
+        lastTrackingSignature = '';
+        if (!active?.row.dataset.orderTrackingUrl) return;
+        refreshActiveTracking();
+        trackingTimer = window.setInterval(refreshActiveTracking, 15000);
+    };
+
+    const stopTrackingUpdates = () => {
+        window.clearInterval(trackingTimer);
+        trackingTimer = null;
+        trackingController?.abort();
+        trackingController = null;
+        trackingRequestInFlight = false;
+        lastTrackingSignature = '';
     };
 
     const open = (row, mode, trigger) => {
@@ -3387,9 +3649,11 @@ const setupBearlyOrderActionModal = () => {
         window.lucide?.createIcons();
 
         (config.button ? primary : q('.bearly-action-x'))?.focus();
+        beginTrackingUpdates();
     };
 
     const close = () => {
+        stopTrackingUpdates();
         modal.hidden = true;
         document.body.classList.remove('modal-open');
         lastFocus?.focus?.();
@@ -3497,6 +3761,10 @@ const setupBearlyOrderActionModal = () => {
 
     document.addEventListener('keydown', (event) => {
         if (event.key === 'Escape' && !modal.hidden) close();
+    });
+
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) refreshActiveTracking();
     });
 };
 

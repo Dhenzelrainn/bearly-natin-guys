@@ -2,6 +2,13 @@ import { getCountries, getCountryCallingCode, getExampleNumber, parsePhoneNumber
 import examples from 'libphonenumber-js/mobile/examples';
 import metadata from 'libphonenumber-js/metadata.max.json';
 
+export function isValidPhilippineMobile(value) {
+    const phone = parsePhoneNumberFromString(String(value || ''), 'PH');
+
+    return phone?.country === 'PH' && phone.isValid() &&
+        ['MOBILE', 'FIXED_LINE_OR_MOBILE'].includes(phone.getType());
+}
+
 export function setupPhone(form, role) {
     const country = form.elements.phone_country;
     const national = form.querySelector('[data-phone-national]');

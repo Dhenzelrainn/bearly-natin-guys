@@ -305,6 +305,24 @@ class BearlyAuthController extends Controller
             'email' => strtolower(trim((string) $request->input('email'))),
         ]);
 
+        $phoneCountry = strtoupper(trim((string) $request->input('phone_country')));
+        $contactNumber = trim((string) $request->input('contact_number'));
+
+        if ($contactNumber !== '' && $phoneCountry !== '') {
+            $request->merge([
+                'contact_number' => app(InternationalPhone::class)
+                    ->normalize($contactNumber, $phoneCountry),
+            ]);
+        }
+
+        foreach (['first_name', 'last_name'] as $nameField) {
+            $name = $request->input($nameField);
+
+            if (is_string($name)) {
+                $request->merge([$nameField => trim($name)]);
+            }
+        }
+
         $emailRules = [
             'required',
             'email',
@@ -318,13 +336,28 @@ class BearlyAuthController extends Controller
 
         $data = $request->validate([
             'role' => ['required', Rule::in([UserRole::Buyer->value, UserRole::Seller->value])],
-            'first_name' => ['required', 'string', 'max:60', 'regex:/^[\pL\s\'\-]+$/u'],
-            'last_name' => ['required', 'string', 'max:60', 'regex:/^[\pL\s\'\-]+$/u'],
+            'first_name' => ['required', 'string', 'min:2', 'max:50', 'regex:/^[\pL\s\'\-]+$/u'],
+            'last_name' => ['required', 'string', 'min:2', 'max:50', 'regex:/^[\pL\s\'\-]+$/u'],
             'middle_initial' => ['nullable', 'string', 'max:2', 'regex:/^[A-Za-z]\.?$/D'],
             'sex' => ['required', Rule::in(['female', 'male', 'prefer_not_to_say'])],
-            'birthday' => ['required', 'date', 'before:today'],
+            'birthday' => [
+                'required',
+                'bail',
+                'date',
+                'before:today',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    if (Carbon::parse((string) $value)->gt(today()->subYears(18))) {
+                        $fail('You must be at least 18 years old to register.');
+                    }
+                },
+            ],
             'email' => $emailRules,
-            'contact_number' => ['required', 'string', 'max:17'],
+            'contact_number' => [
+                'required',
+                'string',
+                'max:17',
+                Rule::unique('users', 'contact_number'),
+            ],
             'phone_country' => ['required', 'string', 'size:2'],
             'city_code' => ['nullable', 'regex:/^[0-9]{6,10}$/D'],
             'postal_manual' => ['nullable', 'boolean'],
@@ -343,9 +376,6 @@ class BearlyAuthController extends Controller
         ], [
             'email.in' => 'Use the same email address that was verified by Google.',
         ]);
-
-        $data['contact_number'] = app(InternationalPhone::class)
-            ->normalize($data['contact_number'], $data['phone_country']);
 
         app(PostalCodeLookup::class)->validate($data);
 

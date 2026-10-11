@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\AccountStatus;
 use App\Enums\UserRole;
+use App\Mail\ApplicationDecisionNotice;
 use App\Models\AccountApplication;
 use App\Models\LogisticsProfile;
 use App\Models\Role;
@@ -12,12 +13,26 @@ use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class AccountApprovalWorkflowTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_application_decision_notice_renders_the_reason(): void
+    {
+        $message = (new ApplicationDecisionNotice(
+            'Maria Santos',
+            UserRole::Seller->value,
+            'needs_revision',
+            'Upload a readable business permit.'
+        ))->render();
+
+        $this->assertStringContainsString('Needs Revision', $message);
+        $this->assertStringContainsString('Upload a readable business permit.', $message);
+    }
 
     protected function setUp(): void
     {
@@ -30,6 +45,7 @@ class AccountApprovalWorkflowTest extends TestCase
         ]);
 
         $this->seed(DatabaseSeeder::class);
+        Mail::fake();
     }
 
     public function test_buyer_application_is_saved_for_admin_approval(): void
@@ -246,14 +262,17 @@ class AccountApprovalWorkflowTest extends TestCase
                 'sex' => 'Female',
                 'email' => 'mika@example.test',
                 'contact_number' =>
-                    '09181234567',
+                    '09281234567',
                 'birthday' => '1995-03-20',
                 'province' => 'Laguna',
                 'municipality' =>
                     'Santa Cruz',
+                'city_code' => '0403426000',
                 'barangay' => 'Poblacion',
                 'street' => 'Guevara Avenue',
                 'house_number' => '8',
+                'postal_code' => '4009',
+                'postal_manual' => '0',
                 'valid_id' =>
                     UploadedFile::fake()
                         ->create(
@@ -365,10 +384,13 @@ class AccountApprovalWorkflowTest extends TestCase
                 'birthday' => '1998-05-14',
                 'province' => 'Laguna',
                 'municipality' =>
-                    'San Pablo City',
+                    'City of San Pablo',
                 'barangay' => 'San Rafael',
                 'street' => 'Rider Road',
                 'house_number' => '3',
+                'city_code' => '0403424000',
+                'postal_code' => '4000',
+                'postal_manual' => '0',
                 'vehicle_type' =>
                     'Motorcycle',
                 'plate_number' =>
@@ -527,6 +549,14 @@ class AccountApprovalWorkflowTest extends TestCase
                     )
                 )
                 ->assertSessionHasNoErrors();
+
+            Mail::assertQueued(
+                ApplicationDecisionNotice::class,
+                fn (ApplicationDecisionNotice $mail): bool =>
+                    $mail->hasTo($applicant->email)
+                    && $mail->decision === 'approved'
+                    && $mail->role === $role
+            );
 
             $application->refresh();
             $applicant->refresh();
@@ -698,6 +728,14 @@ class AccountApprovalWorkflowTest extends TestCase
                 $application->id
             );
 
+        Mail::assertQueued(
+            ApplicationDecisionNotice::class,
+            fn (ApplicationDecisionNotice $mail): bool =>
+                $mail->hasTo($seller->email)
+                && $mail->decision === 'needs_revision'
+                && $mail->reason === 'Upload a readable business permit.'
+        );
+
         $application->refresh();
         $seller->refresh();
 
@@ -781,6 +819,14 @@ class AccountApprovalWorkflowTest extends TestCase
                 'review_application_id',
                 $application->id
             );
+
+        Mail::assertQueued(
+            ApplicationDecisionNotice::class,
+            fn (ApplicationDecisionNotice $mail): bool =>
+                $mail->hasTo($buyer->email)
+                && $mail->decision === 'rejected'
+                && $mail->reason === 'The submitted identity details do not match.'
+        );
 
         $application->refresh();
         $buyer->refresh();
@@ -936,6 +982,14 @@ class AccountApprovalWorkflowTest extends TestCase
                 )
             )
             ->assertSessionHasNoErrors();
+
+        Mail::assertQueued(
+            ApplicationDecisionNotice::class,
+            fn (ApplicationDecisionNotice $mail): bool =>
+                $mail->hasTo($rider->email)
+                && $mail->decision === 'approved'
+                && $mail->role === UserRole::Rider->value
+        );
 
         $rider->refresh();
         $riderApplication->refresh();

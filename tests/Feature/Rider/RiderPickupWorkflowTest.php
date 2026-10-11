@@ -13,6 +13,7 @@ use App\Models\Parcel;
 use App\Models\PickupAssignment;
 use App\Models\PickupRequest;
 use App\Models\RiderProfile;
+use App\Models\ReturnRequest;
 use App\Models\SellerOrder;
 use App\Models\SellerProfile;
 use App\Models\Shipment;
@@ -169,6 +170,73 @@ class RiderPickupWorkflowTest extends TestCase
                     'rider',
             ]
         );
+    }
+
+    public function test_rider_pickup_moves_return_case_into_transit(): void
+    {
+        $provider = $this->makeProvider('RETURN-PICKUP');
+        $rider = $this->makeRider($provider, 'RETURN-PICKUP');
+        $seller = $this->makeSeller('RETURN-PICKUP');
+        $record = $this->makePickupAssignment($provider, $seller, $rider, 'RETURN-PICKUP');
+
+        $returnRequest = ReturnRequest::query()->create([
+            'return_no' => 'RR-RIDER-PICKUP-001',
+            'order_id' => $record['order']->id,
+            'seller_order_id' => $record['sellerOrder']->id,
+            'buyer_id' => $record['order']->buyer_id,
+            'store_id' => $seller['store']->id,
+            'request_type' => 'return_refund',
+            'reason_code' => 'other',
+            'status' => 'return_pickup_requested',
+            'requested_amount_minor' => 10000,
+            'submitted_at' => now(),
+        ]);
+        $record['assignment']->delete();
+        $record['pickup']->update([
+            'return_request_id' => $returnRequest->id,
+            'status' => 'requested',
+            'pickup_address_snapshot' => [
+                'recipient_name' => $record['order']->recipient_name,
+                'phone' => $record['order']->recipient_phone,
+                'street' => $record['order']->address_line,
+                'barangay' => $record['order']->barangay,
+                'city_municipality' => $record['order']->city_municipality,
+                'province' => $record['order']->province,
+                'postal_code' => $record['order']->postal_code,
+            ],
+        ]);
+        $record['shipment']->update([
+            'purpose' => 'return',
+            'status' => ShipmentStatus::ReadyForPickup->value,
+        ]);
+        $returnRequest->update(['return_shipment_id' => $record['shipment']->id]);
+
+        $this->actingAs($provider['user'])
+            ->post(route('logistics.pickups.verify', $record['pickup']->id))
+            ->assertRedirect();
+
+        $this->actingAs($provider['user'])
+            ->post(route('logistics.pickups.assign', $record['pickup']->id), [
+                'rider_profile_id' => $rider->id,
+            ])
+            ->assertRedirect();
+
+        $this->actingAs($rider->user)
+            ->post(route('rider.orders.pickup.accept', $record['pickup']->pickup_no))
+            ->assertRedirect();
+
+        $this->actingAs($rider->user)
+            ->post(route('rider.orders.pickup.confirm', $record['pickup']->pickup_no))
+            ->assertRedirect();
+
+        $this->assertSame('return_in_transit', $returnRequest->fresh()->status);
+        $this->assertDatabaseHas('return_events', [
+            'return_request_id' => $returnRequest->id,
+            'event_type' => 'return_picked_up',
+            'from_status' => 'return_pickup_requested',
+            'to_status' => 'return_in_transit',
+            'actor_user_id' => $rider->user_id,
+        ]);
     }
 
     public function test_pickup_cannot_be_confirmed_before_acceptance(): void
@@ -710,6 +778,44 @@ class RiderPickupWorkflowTest extends TestCase
             );
     }
 
+    public function test_rider_can_reopen_completed_pickup_as_read_only_after_sorting_center_intake(): void
+    {
+        $provider = $this->makeProvider('COMPLETED-DETAIL');
+        $rider = $this->makeRider(
+            $provider,
+            'COMPLETED-DETAIL'
+        );
+        $seller = $this->makeSeller('COMPLETED-DETAIL');
+        $record = $this->makePickupAssignment(
+            $provider,
+            $seller,
+            $rider,
+            'COMPLETED-DETAIL',
+            'completed'
+        );
+
+        $record['parcel']->update([
+            'status' => ParcelStatus::Received->value,
+        ]);
+        $record['shipment']->update([
+            'status' => ShipmentStatus::AtSortingCenter->value,
+        ]);
+
+        $this
+            ->actingAs($rider->user)
+            ->get(
+                route(
+                    'rider.orders.pickup',
+                    $record['pickup']->pickup_no
+                )
+            )
+            ->assertOk()
+            ->assertSee('Completed')
+            ->assertSee($seller['store']->name)
+            ->assertSee($record['parcel']->parcel_no)
+            ->assertSee('Pickup complete. Logistics received all parcels');
+    }
+
     public function test_rider_cannot_view_another_riders_pickup(): void
     {
         $provider =
@@ -780,6 +886,171 @@ class RiderPickupWorkflowTest extends TestCase
             ->assertSee(
                 'No active pickup assignments.'
             );
+    }
+
+    public function test_approved_rider_can_control_availability_and_logistics_only_lists_available_riders(): void
+    {
+        $provider = $this->makeProvider('AVAILABILITY');
+        $riderProfile = $this->makeRider(
+            $provider,
+            'AVAILABILITY'
+        );
+        $riderProfile->update([
+            'availability_status' => 'offline',
+        ]);
+
+        $this
+            ->actingAs($riderProfile->user)
+            ->get(route('rider.dashboard.pickups'))
+            ->assertOk()
+            ->assertSee('Offline')
+            ->assertSee('Go available');
+
+        $this
+            ->from(route('rider.dashboard.pickups'))
+            ->actingAs($riderProfile->user)
+            ->patch(
+                route('rider.availability.update'),
+                [
+                    'availability_status' => 'available',
+                    'verification_status' => 'pending',
+                    'logistics_profile_id' => 999999,
+                ]
+            )
+            ->assertRedirect(route('rider.dashboard.pickups'))
+            ->assertSessionHas(
+                'success',
+                'You are now available for new pickup assignments.'
+            );
+
+        $this->assertDatabaseHas('rider_profiles', [
+            'id' => $riderProfile->id,
+            'availability_status' => 'available',
+            'verification_status' => 'approved',
+            'logistics_profile_id' => $provider['profile']->id,
+        ]);
+
+        $this
+            ->actingAs($provider['user'])
+            ->get(route('logistics.pickups.index'))
+            ->assertOk()
+            ->assertViewHas(
+                'availableRiders',
+                fn (array $riders): bool => collect($riders)
+                    ->contains(
+                        fn (array $rider): bool =>
+                            $rider['id'] === $riderProfile->id
+                    )
+            );
+
+        $this
+            ->actingAs($provider['user'])
+            ->get(route('logistics.riders.index'))
+            ->assertOk()
+            ->assertSee('Availability')
+            ->assertSee('Available')
+            ->assertViewHas(
+                'riders',
+                function (array $riders) use (
+                    $riderProfile
+                ): bool {
+                    $rider = collect($riders)->firstWhere(
+                        'profile_id',
+                        $riderProfile->id
+                    );
+
+                    return $rider !== null
+                        && $rider['availability'] === 'Available'
+                        && $rider['availability_status'] === 'available';
+                }
+            );
+
+        $this
+            ->from(route('rider.dashboard.pickups'))
+            ->actingAs($riderProfile->user)
+            ->patch(
+                route('rider.availability.update'),
+                ['availability_status' => 'offline']
+            )
+            ->assertRedirect(route('rider.dashboard.pickups'));
+
+        $this->assertDatabaseHas('rider_profiles', [
+            'id' => $riderProfile->id,
+            'availability_status' => 'offline',
+        ]);
+
+        $this
+            ->actingAs($provider['user'])
+            ->get(route('logistics.pickups.index'))
+            ->assertOk()
+            ->assertViewHas(
+                'availableRiders',
+                fn (array $riders): bool => collect($riders)
+                    ->doesntContain(
+                        fn (array $rider): bool =>
+                            $rider['id'] === $riderProfile->id
+                    )
+            );
+
+        $this
+            ->actingAs($provider['user'])
+            ->get(route('logistics.riders.index'))
+            ->assertOk()
+            ->assertSee('Offline')
+            ->assertViewHas(
+                'riders',
+                function (array $riders) use (
+                    $riderProfile
+                ): bool {
+                    $rider = collect($riders)->firstWhere(
+                        'profile_id',
+                        $riderProfile->id
+                    );
+
+                    return $rider !== null
+                        && $rider['availability'] === 'Offline';
+                }
+            );
+    }
+
+    public function test_rider_cannot_set_availability_before_profile_approval_or_use_other_states(): void
+    {
+        $provider = $this->makeProvider('AVAILABILITY-GATE');
+        $riderProfile = $this->makeRider(
+            $provider,
+            'AVAILABILITY-GATE'
+        );
+
+        $riderProfile->update([
+            'availability_status' => 'offline',
+            'verification_status' => 'pending',
+        ]);
+
+        $this
+            ->actingAs($riderProfile->user)
+            ->patch(
+                route('rider.availability.update'),
+                ['availability_status' => 'available']
+            )
+            ->assertForbidden();
+
+        $riderProfile->update([
+            'verification_status' => 'approved',
+        ]);
+
+        $this
+            ->actingAs($riderProfile->user)
+            ->patchJson(
+                route('rider.availability.update'),
+                ['availability_status' => 'busy']
+            )
+            ->assertUnprocessable();
+
+        $this->assertDatabaseHas('rider_profiles', [
+            'id' => $riderProfile->id,
+            'availability_status' => 'offline',
+            'verification_status' => 'approved',
+        ]);
     }
 
     private function makeProvider(

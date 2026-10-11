@@ -64,8 +64,18 @@ class ReturnRequest extends Model
         return $this->hasMany(Refund::class);
     }
 
+    public function cashPayout()
+    {
+        return $this->hasOne(RefundCashPayout::class);
+    }
+
     public function disputes()
     {
         return $this->hasMany(Dispute::class);
+    }
+
+    public function events()
+    {
+        return $this->hasMany(ReturnEvent::class)->orderBy('created_at')->orderBy('id');
     }
 }

@@ -5,11 +5,17 @@ namespace Tests\Feature\Rider;
 use App\Enums\ParcelStatus;
 use App\Enums\ShipmentStatus;
 use App\Models\Address;
+use App\Models\Category;
 use App\Models\DispatchBatch;
 use App\Models\LogisticsProfile;
 use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Parcel;
+use App\Models\Product;
+use App\Models\ProductVariant;
 use App\Models\RiderProfile;
+use App\Models\ReturnItem;
+use App\Models\ReturnRequest;
 use App\Models\SellerOrder;
 use App\Models\SellerProfile;
 use App\Models\Shipment;
@@ -20,6 +26,7 @@ use App\Models\User;
 use App\Models\Waybill;
 use App\Enums\DeliveryAttemptOutcome;
 use App\Services\RiderDeliveryService;
+use App\Services\ReturnRefundService;
 use Illuminate\Auth\Access\AuthorizationException;
 use InvalidArgumentException;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
@@ -848,6 +855,41 @@ class RiderDeliveryWorkflowTest extends TestCase
 
             ->assertNotFound();
 
+    }
+
+    public function test_out_for_delivery_detail_prioritizes_handoff_and_collapses_failure_form(): void
+    {
+        $rider = $this->makeRider('DELIVERY-DETAIL-UI');
+        $assignment = $this->makeDispatchAssignment(
+            $rider,
+            'DELIVERY-DETAIL-UI',
+            1,
+            20000,
+            'Handoff Recipient'
+        );
+
+        app(RiderDeliveryService::class)->startDelivery(
+            $assignment['shipment']->shipment_no,
+            $rider->user
+        );
+
+        $this
+            ->actingAs($rider->user)
+            ->get(
+                route(
+                    'rider.orders.delivery',
+                    $assignment['shipment']->shipment_no
+                )
+            )
+            ->assertOk()
+            ->assertSee('Complete delivery')
+            ->assertSee('Collect from recipient')
+            ->assertSee('₱200.00')
+            ->assertSee('Received by')
+            ->assertSee('Delivery proof photo')
+            ->assertSee('delivery-form', false)
+            ->assertSee('class="delivery-failure"', false)
+            ->assertSee('Report a failed attempt');
     }
 
     public function test_dashboard_is_zero_safe_without_assignments(): void
@@ -2305,6 +2347,133 @@ class RiderDeliveryWorkflowTest extends TestCase
             'to_status' => ShipmentStatus::Delivered->value,
             'actor_user_id' => $rider->user_id,
             'source' => 'rider',
+        ]);
+    }
+
+    public function test_return_delivery_requires_seller_inspection_before_restock(): void
+    {
+        Storage::fake('local');
+
+        $rider = $this->makeRider('RETURN-DELIVERY');
+        $assignment = $this->makeDispatchAssignment(
+            $rider,
+            'RETURN-DELIVERY',
+            1,
+            0,
+            'Seller Representative'
+        );
+        $sellerOrder = SellerOrder::query()->findOrFail($assignment['shipment']->seller_order_id);
+        $store = Store::query()->with('sellerProfile.user')->findOrFail($sellerOrder->store_id);
+        $seller = $store->sellerProfile->user;
+        $sellerAddress = Address::query()->create([
+            'user_id' => $seller->id,
+            'label' => 'Seller Return Address',
+            'recipient_name' => $seller->name,
+            'phone' => '09170000002',
+            'house_number' => '8',
+            'street' => 'Seller Return Road',
+            'barangay' => 'San Rafael',
+            'city_municipality' => 'San Pablo City',
+            'province' => 'Laguna',
+            'postal_code' => '4000',
+        ]);
+        $assignment['shipment']->update([
+            'purpose' => 'return',
+            'destination_address_id' => $sellerAddress->id,
+        ]);
+
+        $order = Order::query()->findOrFail($sellerOrder->order_id);
+        $returnRequest = ReturnRequest::query()->create([
+            'return_no' => 'RR-RIDER-DELIVERY-001',
+            'order_id' => $order->id,
+            'seller_order_id' => $sellerOrder->id,
+            'buyer_id' => $order->buyer_id,
+            'store_id' => $store->id,
+            'request_type' => 'return_refund',
+            'reason_code' => 'item_arrived_damaged',
+            'status' => 'return_in_transit',
+            'requested_amount_minor' => 10000,
+            'submitted_at' => now(),
+        ]);
+        $returnRequest->update(['return_shipment_id' => $assignment['shipment']->id]);
+
+        $category = Category::query()->create([
+            'name' => 'Return Workflow Test',
+            'slug' => 'return-workflow-test',
+        ]);
+        $product = Product::query()->create([
+            'store_id' => $store->id,
+            'category_id' => $category->id,
+            'name' => 'Returned Item',
+            'slug' => 'returned-item',
+            'product_status' => 'active',
+            'compliance_status' => 'passed',
+        ]);
+        $variant = ProductVariant::query()->create([
+            'product_id' => $product->id,
+            'sku' => 'RETURN-ITEM-001',
+            'name' => 'Standard',
+            'price_minor' => 10000,
+            'stock_on_hand' => 3,
+            'is_active' => true,
+        ]);
+        $orderItem = OrderItem::query()->create([
+            'seller_order_id' => $sellerOrder->id,
+            'product_id' => $product->id,
+            'product_variant_id' => $variant->id,
+            'product_name' => $product->name,
+            'variant_name' => $variant->name,
+            'sku' => $variant->sku,
+            'unit_price_minor' => 10000,
+            'quantity' => 1,
+            'discount_minor' => 0,
+            'subtotal_minor' => 10000,
+        ]);
+        $returnItem = ReturnItem::query()->create([
+            'return_request_id' => $returnRequest->id,
+            'order_item_id' => $orderItem->id,
+            'quantity' => 1,
+            'refund_amount_minor' => 10000,
+        ]);
+
+        $delivery = app(RiderDeliveryService::class);
+        $delivery->startDelivery($assignment['shipment']->shipment_no, $rider->user);
+        $shipment = $delivery->completeDelivery(
+            $assignment['shipment']->shipment_no,
+            $rider->user,
+            $this->fakeProofPhoto('return-delivery.png'),
+            'Seller Representative',
+            'Returned parcel received by Seller.',
+            null,
+            null,
+            app(ReturnRefundService::class),
+        );
+
+        $this->assertSame(ShipmentStatus::Delivered->value, $shipment->status);
+        $this->assertSame('awaiting_inspection', $returnRequest->fresh()->status);
+        $this->assertSame(3, (int) $variant->fresh()->stock_on_hand);
+        $this->assertDatabaseHas('return_events', [
+            'return_request_id' => $returnRequest->id,
+            'event_type' => 'return_delivered_to_seller',
+            'from_status' => 'return_in_transit',
+            'to_status' => 'awaiting_inspection',
+        ]);
+
+        $inspected = app(ReturnRefundService::class)->inspectReturn(
+            $seller,
+            $returnRequest->id,
+            [$returnItem->id => ['condition_code' => 'sellable', 'resolution' => 'restock']],
+        );
+
+        $this->assertSame('refund_pending', $inspected->status);
+        $this->assertSame(4, (int) $variant->fresh()->stock_on_hand);
+        $this->assertDatabaseHas('inventory_movements', [
+            'variant_id' => $variant->id,
+            'type' => 'return_restock',
+            'quantity_delta' => 1,
+            'balance_after' => 4,
+            'reference_type' => ReturnRequest::class,
+            'reference_id' => $returnRequest->id,
         ]);
     }
 

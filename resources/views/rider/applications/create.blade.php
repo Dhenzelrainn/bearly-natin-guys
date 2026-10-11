@@ -214,6 +214,8 @@
                                     id="rider-first-name"
                                     name="first_name"
                                     value="{{ old('first_name') }}"
+                                    minlength="2"
+                                    maxlength="50"
                                     autocomplete="given-name"
                                     required
                                 >
@@ -246,6 +248,8 @@
                                     id="rider-last-name"
                                     name="last_name"
                                     value="{{ old('last_name') }}"
+                                    minlength="2"
+                                    maxlength="50"
                                     autocomplete="family-name"
                                     required
                                 >
@@ -290,7 +294,7 @@
                                     id="rider-birthday"
                                     type="date"
                                     name="birthday"
-                                    max="{{ now()->subDay()->format('Y-m-d') }}"
+                                    max="{{ now()->subYears(18)->format('Y-m-d') }}"
                                     value="{{ old('birthday') }}"
                                     autocomplete="bday"
                                     required

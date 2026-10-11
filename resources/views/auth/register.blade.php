@@ -206,9 +206,9 @@
 
             <div class="form-grid three">
 
-                <label>First name<input name="first_name" value="{{ old('first_name', $googleRegistration['first_name'] ?? '') }}" pattern="[A-Za-zÀ-ÿ.' -]+" placeholder="Enter your first name" required></label>
+                <label>First name<input name="first_name" value="{{ old('first_name', $googleRegistration['first_name'] ?? '') }}" minlength="2" maxlength="50" pattern="[A-Za-zÀ-ÿ.' -]+" placeholder="Enter your first name" required></label>
 
-                <label>Last name<input name="last_name" value="{{ old('last_name', $googleRegistration['last_name'] ?? '') }}" pattern="[A-Za-zÀ-ÿ.' -]+" placeholder="Enter your last name" required></label>
+                <label>Last name<input name="last_name" value="{{ old('last_name', $googleRegistration['last_name'] ?? '') }}" minlength="2" maxlength="50" pattern="[A-Za-zÀ-ÿ.' -]+" placeholder="Enter your last name" required></label>
 
                 <label>
 
@@ -304,7 +304,7 @@
 
                 </div>
 
-                <label>Birthday<input id="birthday" type="date" name="birthday" value="{{ old('birthday') }}" max="{{ now()->toDateString() }}" required></label>
+                <label>Birthday<input id="birthday" type="date" name="birthday" value="{{ old('birthday') }}" max="{{ now()->subYears(18)->toDateString() }}" required></label>
 
                 <label>Age <em>(Auto-generated)</em><input id="age" name="age" value="{{ old('age', '--') }}" readonly required></label>
 

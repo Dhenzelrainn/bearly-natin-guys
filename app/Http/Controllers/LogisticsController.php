@@ -26,6 +26,7 @@ use App\Services\DispatchService;
 use App\Services\EmailVerificationService;
 use App\Services\InternationalPhone;
 use App\Services\ParcelSortingService;
+use App\Services\PostalCodeLookup;
 use App\Services\RegistrationLifecycleService;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
@@ -37,7 +38,9 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\View\View;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use Throwable;
 
 class LogisticsController extends Controller
 {
@@ -307,20 +310,45 @@ class LogisticsController extends Controller
             'email' => strtolower(trim((string) $request->input('email'))),
         ]);
 
+        $contactNumber = trim((string) $request->input('contact_number'));
+
+        if ($contactNumber !== '') {
+            $request->merge([
+                'contact_number' => app(InternationalPhone::class)
+                    ->normalize($contactNumber, 'PH'),
+            ]);
+        }
+
+        foreach (['first_name', 'last_name'] as $nameField) {
+            $name = $request->input($nameField);
+
+            if (is_string($name)) {
+                $request->merge([$nameField => trim($name)]);
+            }
+        }
+
         $validated = $request->validate([
             'business_name' => ['required', 'string', 'max:120'],
-            'first_name' => ['required', 'string', 'max:80'],
+            'first_name' => ['required', 'string', 'min:2', 'max:50', 'regex:/^[\pL\s\'\-]+$/u'],
             'middle_initial' => ['nullable', 'string', 'max:2', 'regex:/^[A-Za-z][.]?$/D'],
-            'last_name' => ['required', 'string', 'max:80'],
+            'last_name' => ['required', 'string', 'min:2', 'max:50', 'regex:/^[\pL\s\'\-]+$/u'],
             'sex' => ['required', 'in:Male,Female,Prefer not to say'],
             'email' => ['required', 'email', 'unique:users,email'],
-            'contact_number' => ['required', 'string', 'max:20'],
+            'contact_number' => [
+                'required',
+                'string',
+                'max:17',
+                Rule::unique('users', 'contact_number'),
+            ],
             'birthday' => ['required', 'date', 'before:today'],
             'province' => ['required', 'string', 'max:120'],
             'municipality' => ['required', 'string', 'max:120'],
             'barangay' => ['required', 'string', 'max:120'],
             'street' => ['required', 'string', 'max:180'],
             'house_number' => ['required', 'string', 'max:40'],
+            'postal_code' => ['required', 'digits:4'],
+            'city_code' => ['nullable', 'regex:/^[0-9]{6,10}$/D'],
+            'postal_manual' => ['nullable', 'boolean'],
             'valid_id' => [
                 'required',
                 'file',
@@ -337,11 +365,14 @@ class LogisticsController extends Controller
             'password' => ['required', 'confirmed', 'min:8', 'regex:/[a-z]/', 'regex:/[A-Z]/', 'regex:/[0-9]/'],
         ]);
 
-        $validated['contact_number'] =
-            app(InternationalPhone::class)->normalize(
-                $validated['contact_number'],
-                'PH'
-            );
+        app(PostalCodeLookup::class)->validate([
+            'province' => $validated['province'],
+            'city' => $validated['municipality'],
+            'city_code' => $validated['city_code'] ?? null,
+            'postal_code' => $validated['postal_code'],
+            'postal_manual' => $validated['postal_manual'] ?? false,
+        ]);
+
         $verification = app(EmailVerificationService::class);
         $verifiedAt = $verification->verifiedAt(
             $request,
@@ -352,70 +383,90 @@ class LogisticsController extends Controller
             ? null
             : strtoupper(substr($validated['middle_initial'], 0, 1)).'.';
 
-        $user = User::create([
-            'name' => trim($validated['first_name'].' '.($middleInitial ?? '').' '.$validated['last_name']),
-            'first_name' => $validated['first_name'],
-            'middle_initial' => $middleInitial,
-            'last_name' => $validated['last_name'],
-            'sex' => match ($validated['sex']) {
-                'Male' => 'male',
-                'Female' => 'female',
-                default => 'prefer_not_to_say',
-            },
-            'birthday' => $validated['birthday'],
-            'email' => $validated['email'],
-            'email_verified_at' => $verifiedAt,
-            'contact_number' => $validated['contact_number'],
-            'phone_country' => 'PH',
-            'terms_accepted_at' => now(),
-            'terms_version' => config('bearly-policies.version'),
-            'privacy_version' => config('bearly-policies.version'),
-            'role' => UserRole::Logistics->value,
-            'status' => AccountStatus::Pending->value,
-            'province' => $validated['province'],
-            'city' => $validated['municipality'],
-            'barangay' => $validated['barangay'],
-            'street_address' => trim($validated['house_number'].' '.$validated['street']),
-            'business_name' => $validated['business_name'],
-            'valid_id_path' => $request->file('valid_id')->store('registration-documents/logistics/valid-ids', 'local'),
-            'business_permit_path' => $request->file('business_permit')->store('registration-documents/logistics/permits', 'local'),
-            'password' => Hash::make($validated['password']),
-        ]);
+        $validIdPath = $request->file('valid_id')
+            ->store('registration-documents/logistics/valid-ids', 'local');
+        $businessPermitPath = $request->file('business_permit')
+            ->store('registration-documents/logistics/permits', 'local');
 
-        app(RegistrationLifecycleService::class)
-            ->recordPendingApplication(
-                $user,
-                UserRole::Logistics->value,
-                [
-                    'house_number' => $validated['house_number'],
-                    'street' => $validated['street'],
-                    'barangay' => $validated['barangay'],
-                    'municipality' => $validated['municipality'],
+        try {
+            $user = DB::transaction(function () use (
+                $validated,
+                $middleInitial,
+                $request,
+                $verifiedAt,
+                $validIdPath,
+                $businessPermitPath
+            ): User {
+                $user = User::create([
+                    'name' => trim($validated['first_name'].' '.($middleInitial ?? '').' '.$validated['last_name']),
+                    'first_name' => $validated['first_name'],
+                    'middle_initial' => $middleInitial,
+                    'last_name' => $validated['last_name'],
+                    'sex' => match ($validated['sex']) {
+                        'Male' => 'male',
+                        'Female' => 'female',
+                        default => 'prefer_not_to_say',
+                    },
+                    'birthday' => $validated['birthday'],
+                    'email' => $validated['email'],
+                    'email_verified_at' => $verifiedAt,
+                    'contact_number' => $validated['contact_number'],
+                    'phone_country' => 'PH',
+                    'terms_accepted_at' => now(),
+                    'terms_version' => config('bearly-policies.version'),
+                    'privacy_version' => config('bearly-policies.version'),
+                    'role' => UserRole::Logistics->value,
+                    'status' => AccountStatus::Pending->value,
                     'province' => $validated['province'],
-                    'postal_code' =>
-                        $validated['postal_code'] ?? null,
-                    'city_code' =>
-                        $validated['city_code'] ?? null,
-                ],
-                [
-                    'business_name' =>
-                        $validated['business_name'],
-                ],
-                [
-                    [
-                        'type' => 'valid_id',
-                        'path' => $user->valid_id_path,
-                        'file' => $request->file('valid_id'),
-                    ],
-                    [
-                        'type' => 'business_permit',
-                        'path' => $user->business_permit_path,
-                        'file' => $request->file(
-                            'business_permit'
-                        ),
-                    ],
-                ]
+                    'city' => $validated['municipality'],
+                    'barangay' => $validated['barangay'],
+                    'street_address' => trim($validated['house_number'].' '.$validated['street']),
+                    'business_name' => $validated['business_name'],
+                    'valid_id_path' => $validIdPath,
+                    'business_permit_path' => $businessPermitPath,
+                    'password' => Hash::make($validated['password']),
+                ]);
+
+                app(RegistrationLifecycleService::class)
+                    ->recordPendingApplication(
+                        $user,
+                        UserRole::Logistics->value,
+                        [
+                            'house_number' => $validated['house_number'],
+                            'street' => $validated['street'],
+                            'barangay' => $validated['barangay'],
+                            'municipality' => $validated['municipality'],
+                            'province' => $validated['province'],
+                            'postal_code' => $validated['postal_code'],
+                            'city_code' => $validated['city_code'] ?? null,
+                        ],
+                        [
+                            'business_name' => $validated['business_name'],
+                        ],
+                        [
+                            [
+                                'type' => 'valid_id',
+                                'path' => $validIdPath,
+                                'file' => $request->file('valid_id'),
+                            ],
+                            [
+                                'type' => 'business_permit',
+                                'path' => $businessPermitPath,
+                                'file' => $request->file('business_permit'),
+                            ],
+                        ]
+                    );
+
+                return $user;
+            });
+        } catch (Throwable $exception) {
+            Storage::disk('local')->delete(
+                array_filter([$validIdPath, $businessPermitPath])
             );
+
+            throw $exception;
+        }
+
         $verification->forget($request);
 
         session([
@@ -1037,6 +1088,10 @@ class LogisticsController extends Controller
                 ->map(function (
                     RiderProfile $rider
                 ): array {
+                    $availability =
+                        $rider->availability_status
+                        ?: 'offline';
+
                     return [
                         /*
                         * Keep route IDs as User IDs because
@@ -1072,6 +1127,18 @@ class LogisticsController extends Controller
                             $this->riderAccountStatus(
                                 $rider->user?->status
                                 ?? AccountStatus::Active->value
+                            ),
+
+                        'availability_status' =>
+                            $availability,
+
+                        'availability' =>
+                            ucwords(
+                                str_replace(
+                                    '_',
+                                    ' ',
+                                    $availability
+                                )
                             ),
                     ];
                 });
@@ -1488,8 +1555,12 @@ class LogisticsController extends Controller
             ->forLogisticsProfile($profile->id)
             ->with([
                 'store.sellerProfile.user',
+                'returnRequest.buyer',
                 'pickupAddress',
-                'latestAssignment.riderProfile.user',
+                'verifier',
+                'latestAssignment',
+                'assignments.assignedBy',
+                'assignments.riderProfile.user',
                 'parcels' => fn ($query) => $query
                     ->whereHas(
                         'shipment',
@@ -1502,6 +1573,7 @@ class LogisticsController extends Controller
                     ->with([
                         'waybill',
                         'shipment.sellerOrder',
+                        'events.sortingCenter',
                     ]),
             ])
             ->orderByDesc('requested_date')
@@ -1509,100 +1581,9 @@ class LogisticsController extends Controller
             ->get();
 
         $pickups = $pickupRequests
-            ->map(function (
-                PickupRequest $pickupRequest
-            ): array {
-                $assignment =
-                    $pickupRequest->latestAssignment;
-
-                $eligibleParcels =
-                    $pickupRequest->parcels
-                        ->filter(fn ($parcel) =>
-                            $parcel->shipment
-                                ?->logistics_profile_id
-                                === $pickupRequest
-                                    ->logistics_profile_id
-                            && $parcel->shipment
-                                ?->sellerOrder
-                                ?->store_id
-                                === $pickupRequest->store_id
-                        )
-                        ->values();
-
-                $pickupRequest->setRelation(
-                    'parcels',
-                    $eligibleParcels
-                );
-
-                return [
-                    'database_id' =>
-                        $pickupRequest->id,
-                    'id' =>
-                        $pickupRequest->pickup_no,
-                    'seller' =>
-                        $pickupRequest->store?->name
-                        ?: 'Unknown seller',
-                    'location' =>
-                        $this->formattedAddress(
-                            $pickupRequest->pickupAddress
-                        ),
-                    'parcels' =>
-                        $eligibleParcels->count(),
-                    'window' =>
-                        $pickupRequest->window_start
-                            ->format('M j, Y · g:i A')
-                        .'–'
-                        .$pickupRequest->window_end
-                            ->format('g:i A'),
-                    'status' =>
-                        $this->pickupStatusLabel(
-                            $pickupRequest->status
-                        ),
-                    'status_key' =>
-                        $pickupRequest->status,
-                    'contact' =>
-                        $pickupRequest->store
-                            ?->contact_phone
-                        ?: $pickupRequest->store
-                            ?->sellerProfile
-                            ?->user
-                            ?->contact_number
-                        ?: 'Not provided',
-                    'instructions' =>
-                        $pickupRequest
-                            ->seller_instructions
-                        ?: 'No seller instructions.',
-                    'rider' =>
-                        $assignment
-                            ?->riderProfile
-                            ?->user
-                            ?->name
-                        ?: 'Not assigned',
-                    'assignment_status' =>
-                        $assignment?->status,
-                    'parcel_details' =>
-                        $eligibleParcels
-                            ->map(fn ($parcel): array => [
-                                'parcel_no' =>
-                                    $parcel->parcel_no,
-                                'waybill_no' =>
-                                    $parcel->waybill
-                                        ?->waybill_no
-                                    ?: '—',
-                                'shipment_no' =>
-                                    $parcel->shipment
-                                        ?->shipment_no
-                                    ?: '—',
-                                'seller_order_no' =>
-                                    $parcel->shipment
-                                        ?->sellerOrder
-                                        ?->seller_order_no
-                                    ?: '—',
-                            ])
-                            ->values()
-                            ->all(),
-                ];
-            })
+            ->map(fn (PickupRequest $pickupRequest): array =>
+                $this->pickupRequestViewData($pickupRequest)
+            )
             ->values();
 
         $availableRiders = RiderProfile::query()
@@ -1697,6 +1678,313 @@ class LogisticsController extends Controller
                 ],
             ]
         );
+    }
+
+    /**
+     * Build Logistics-only pickup details from provider-scoped fulfillment
+     * records. The returned values are presentation data, not new snapshots.
+     *
+     * @return array<string, mixed>
+     */
+    private function pickupRequestViewData(
+        PickupRequest $pickupRequest
+    ): array {
+        $eligibleParcels = $pickupRequest->parcels
+            ->filter(fn (Parcel $parcel) =>
+                (int) $parcel->shipment?->logistics_profile_id
+                    === (int) $pickupRequest->logistics_profile_id
+                && (int) $parcel->shipment?->sellerOrder?->store_id
+                    === (int) $pickupRequest->store_id
+            )
+            ->values();
+
+        $pickupRequest->setRelation(
+            'parcels',
+            $eligibleParcels
+        );
+
+        $seller = $pickupRequest->store;
+        $sellerUser = $seller?->sellerProfile?->user;
+        $pickupAddress = $pickupRequest->pickupAddress;
+        $addressSnapshot = (array) ($pickupRequest->pickup_address_snapshot ?? []);
+        $isReturnPickup = $pickupRequest->return_request_id !== null && $addressSnapshot !== [];
+        $pickupLocation = $isReturnPickup
+            ? collect([
+                $addressSnapshot['house_number'] ?? null,
+                $addressSnapshot['street'] ?? null,
+                $addressSnapshot['barangay'] ?? null,
+                $addressSnapshot['city_municipality'] ?? null,
+                $addressSnapshot['province'] ?? null,
+                $addressSnapshot['postal_code'] ?? null,
+            ])->filter()->implode(', ')
+            : $this->formattedAddress($pickupAddress);
+        $assignments = $pickupRequest->assignments
+            ->sortBy('assigned_at')
+            ->values();
+
+        $shipments = $eligibleParcels
+            ->map(fn (Parcel $parcel) => $parcel->shipment)
+            ->filter()
+            ->unique('id')
+            ->values();
+
+        $fulfillmentGroups = $shipments
+            ->map(function (Shipment $shipment) use (
+                $eligibleParcels
+            ): array {
+                $shipmentParcels = $eligibleParcels
+                    ->where('shipment_id', $shipment->id)
+                    ->values();
+                $waybill = $shipmentParcels->first()?->waybill;
+
+                return [
+                    'seller_order_no' =>
+                        $shipment->sellerOrder?->seller_order_no
+                        ?: 'Not available',
+                    'shipment_no' => $shipment->shipment_no,
+                    'waybill_no' =>
+                        $waybill?->waybill_no
+                        ?: 'Not generated',
+                    'cod_amount' => (int) $shipment->cod_amount_minor > 0
+                        ? $this->formatPickupMoney(
+                            (int) $shipment->cod_amount_minor
+                        )
+                        : 'No COD',
+                    'parcels' => $shipmentParcels
+                        ->map(function (Parcel $parcel): array {
+                            $dimensions = [
+                                $parcel->length_cm,
+                                $parcel->width_cm,
+                                $parcel->height_cm,
+                            ];
+                            $hasDimensions = collect($dimensions)->every(
+                                fn ($dimension) => is_numeric($dimension)
+                                    && (float) $dimension > 0
+                            );
+
+                            return [
+                                'parcel_no' => $parcel->parcel_no,
+                                'piece' => (int) $parcel->piece_sequence,
+                                'weight' => number_format(
+                                    (float) $parcel->weight_kg,
+                                    3
+                                ).' kg',
+                                'dimensions' => $hasDimensions
+                                    ? implode(' × ', array_map(
+                                        fn ($dimension) => number_format(
+                                            (float) $dimension,
+                                            2
+                                        ),
+                                        $dimensions
+                                    )).' cm'
+                                    : 'Not recorded',
+                                'status' => ucwords(
+                                    str_replace(
+                                        '_',
+                                        ' ',
+                                        (string) $parcel->status
+                                    )
+                                ),
+                            ];
+                        })
+                        ->all(),
+                ];
+            })
+            ->all();
+
+        $totalWeight = $eligibleParcels->sum(
+            fn (Parcel $parcel) => (float) $parcel->weight_kg
+        );
+        $totalCodMinor = $shipments->sum(
+            fn (Shipment $shipment) => (int) $shipment->cod_amount_minor
+        );
+
+        return [
+            'database_id' => $pickupRequest->id,
+            'id' => $pickupRequest->pickup_no,
+            'seller' => $isReturnPickup ? 'Buyer return pickup' : ($seller?->name ?: 'Unknown seller'),
+            'pickup_type' => $isReturnPickup ? 'return' : 'outbound',
+            'location' => $pickupLocation,
+            'contact_name' => $isReturnPickup
+                ? (string) ($addressSnapshot['recipient_name'] ?? 'Buyer')
+                : ($pickupAddress?->recipient_name ?: ($sellerUser?->name ?: 'Not provided')),
+            'contact_phone' => $isReturnPickup
+                ? (string) ($addressSnapshot['phone'] ?? 'Not provided')
+                : ($pickupAddress?->phone ?: $seller?->contact_phone ?: $sellerUser?->contact_number ?: 'Not provided'),
+            'seller_email' => $isReturnPickup
+                ? 'Not provided'
+                : ($seller?->contact_email ?: ($sellerUser?->email ?: 'Not provided')),
+            'operating_hours' =>
+                $seller?->operating_hours
+                ?: 'Not provided',
+            'parcels' => $eligibleParcels->count(),
+            'total_weight' => $eligibleParcels->isNotEmpty()
+                ? number_format((float) $totalWeight, 3).' kg'
+                : 'Not recorded',
+            'total_cod' => $totalCodMinor > 0
+                ? $this->formatPickupMoney((int) $totalCodMinor)
+                : 'No COD',
+            'window' => $pickupRequest->window_start
+                ->format('M j, Y · g:i A')
+                .'–'
+                .$pickupRequest->window_end->format('g:i A'),
+            'submitted_at' => $pickupRequest->created_at
+                ?->format('M j, Y · g:i A') ?: 'Not recorded',
+            'status' => $this->pickupStatusLabel(
+                $pickupRequest->status
+            ),
+            'status_key' => $pickupRequest->status,
+            'instructions' => $pickupRequest->seller_instructions
+                ?: ($isReturnPickup ? 'Buyer return pickup. No return-shipping fee is collected.' : 'No seller instructions.'),
+            'cancellation_reason' =>
+                $pickupRequest->cancellation_reason,
+            'fulfillment_groups' => $fulfillmentGroups,
+            'activity' => $this->pickupRequestActivity(
+                $pickupRequest,
+                $eligibleParcels,
+                $isReturnPickup
+                    ? (string) ($addressSnapshot['recipient_name'] ?? 'Buyer')
+                    : ($sellerUser?->name ?: ($pickupAddress?->recipient_name ?: 'Seller')),
+                $assignments
+            ),
+        ];
+    }
+
+    /**
+     * @param  Collection<int, Parcel>  $parcels
+     * @param  Collection<int, PickupAssignment>  $assignments
+     * @return list<array{title: string, detail: string, occurred_at: string}>
+     */
+    private function pickupRequestActivity(
+        PickupRequest $pickupRequest,
+        Collection $parcels,
+        string $sellerName,
+        Collection $assignments
+    ): array {
+        $activity = [];
+        $append = static function (
+            $date,
+            string $title,
+            string $detail = ''
+        ) use (&$activity): void {
+            if (! $date) {
+                return;
+            }
+
+            $activity[] = [
+                'title' => $title,
+                'detail' => $detail,
+                'occurred_at' => $date->format('M j, Y · g:i A'),
+                'sort' => $date->getTimestamp(),
+            ];
+        };
+
+        $append(
+            $pickupRequest->created_at,
+            'Request submitted',
+            "Submitted by {$sellerName}."
+        );
+        $append(
+            $pickupRequest->verified_at,
+            'Request verified',
+            $pickupRequest->verifier?->name
+                ? "Verified by {$pickupRequest->verifier->name}."
+                : 'Verified by Logistics.'
+        );
+
+        if ($pickupRequest->cancelled_at) {
+            $append(
+                $pickupRequest->cancelled_at,
+                'Request rejected',
+                $pickupRequest->cancellation_reason
+                    ?: 'No rejection reason was recorded.'
+            );
+        }
+
+        foreach ($assignments as $assignment) {
+            $riderName = $assignment->riderProfile?->user?->name
+                ?: 'Rider';
+            $assignedBy = $assignment->assignedBy?->name;
+            $assignmentDetail = $assignedBy
+                ? "{$riderName} assigned by {$assignedBy}."
+                : "Assigned to {$riderName}.";
+
+            if ($assignment->notes) {
+                $assignmentDetail .= " Note: {$assignment->notes}";
+            }
+
+            $append(
+                $assignment->assigned_at,
+                'Rider assigned',
+                $assignmentDetail
+            );
+            $append(
+                $assignment->accepted_at,
+                'Rider accepted',
+                "Accepted by {$riderName}."
+            );
+            $append(
+                $assignment->arrived_at,
+                'Rider arrived at pickup',
+                $riderName
+            );
+            $append(
+                $assignment->picked_up_at,
+                'Parcel collection confirmed',
+                $riderName
+            );
+            $append(
+                $assignment->completed_at,
+                'Pickup completed at Sorting Center',
+                'All parcels in this request were received.'
+            );
+            $append(
+                $assignment->cancelled_at,
+                'Rider assignment cancelled',
+                $riderName
+            );
+        }
+
+        foreach ($parcels as $parcel) {
+            foreach ($parcel->events as $event) {
+                if ($event->event_type !== 'received_at_center') {
+                    continue;
+                }
+
+                $centerName = $event->sortingCenter?->name;
+                $detail = "{$parcel->parcel_no} received"
+                    .($centerName
+                        ? " at {$centerName}."
+                        : ' at a Sorting Center.');
+
+                $append(
+                    $event->occurred_at,
+                    'Parcel received at Sorting Center',
+                    $detail
+                );
+            }
+        }
+
+        return collect($activity)
+            ->sortBy('sort')
+            ->values()
+            ->map(function (array $event): array {
+                unset($event['sort']);
+
+                return $event;
+            })
+            ->all();
+    }
+
+    private function formatPickupMoney(int $minor): string
+    {
+        $negative = $minor < 0;
+        $minor = abs($minor);
+
+        return ($negative ? '-₱' : '₱')
+            .number_format(intdiv($minor, 100))
+            .'.'
+            .str_pad((string) ($minor % 100), 2, '0', STR_PAD_LEFT);
     }
 
     public function verifyPickup(
@@ -1984,6 +2272,7 @@ class LogisticsController extends Controller
             ->with([
                 'shipment.sellerOrder.order',
                 'shipment.sellerOrder.store',
+                'shipment.destinationAddress',
                 'parcels' => fn ($query) => $query
                     ->whereIn('current_sorting_center_id', $centerIds)
                     ->with([
@@ -2001,7 +2290,11 @@ class LogisticsController extends Controller
             $exceptionStatuses
         ): array {
             $parcels = $waybill->parcels;
-            $order = $waybill->shipment?->sellerOrder?->order;
+            $shipment = $waybill->shipment;
+            $order = $shipment?->sellerOrder?->order;
+            $destinationAddress = $shipment?->purpose === 'return'
+                ? $shipment->destinationAddress
+                : null;
             $assignment = $parcels
                 ->flatMap->pickupRequests
                 ->sortByDesc('created_at')
@@ -2039,6 +2332,7 @@ class LogisticsController extends Controller
                     ?->sellerOrder
                     ?->store
                     ?->name ?: 'Unknown Seller',
+                'purpose_label' => $shipment?->purpose === 'return' ? 'Return to Seller' : 'Buyer delivery',
                 'rider' => $assignment
                     ?->riderProfile
                     ?->user
@@ -2050,10 +2344,19 @@ class LogisticsController extends Controller
                     (float) $parcels->sum('weight_kg'),
                     2
                 ).' kg',
-                'destination' => collect([
-                    $order?->city_municipality,
-                    $order?->province,
-                ])->filter()->implode(', ') ?: 'Not provided',
+                'destination' => $destinationAddress
+                    ? collect([
+                        $destinationAddress->house_number,
+                        $destinationAddress->street,
+                        $destinationAddress->barangay,
+                        $destinationAddress->city_municipality,
+                        $destinationAddress->province,
+                        $destinationAddress->postal_code,
+                    ])->filter()->implode(', ')
+                    : (collect([
+                        $order?->city_municipality,
+                        $order?->province,
+                    ])->filter()->implode(', ') ?: 'Not provided'),
                 'status' => $status,
             ];
         })->values();
@@ -2166,6 +2469,7 @@ class LogisticsController extends Controller
                 'waybill',
                 'shipment.sellerOrder.order',
                 'shipment.sellerOrder.store',
+                'shipment.destinationAddress',
                 'currentZone',
             ])
             ->latest('last_event_at')
@@ -2176,6 +2480,9 @@ class LogisticsController extends Controller
             $zonesByCenter
         ): array {
             $order = $parcel->shipment?->sellerOrder?->order;
+            $destinationAddress = $parcel->shipment?->purpose === 'return'
+                ? $parcel->shipment->destinationAddress
+                : null;
             $isException = in_array(
                 $parcel->status,
                 $exceptionStatuses,
@@ -2191,10 +2498,20 @@ class LogisticsController extends Controller
                     ?->sellerOrder
                     ?->store
                     ?->name ?: 'Unknown Seller',
-                'destination' => collect([
-                    $order?->city_municipality,
-                    $order?->province,
-                ])->filter()->implode(', ') ?: 'Not provided',
+                'purpose_label' => $parcel->shipment?->purpose === 'return' ? 'Return to Seller' : 'Buyer delivery',
+                'destination' => $destinationAddress
+                    ? collect([
+                        $destinationAddress->house_number,
+                        $destinationAddress->street,
+                        $destinationAddress->barangay,
+                        $destinationAddress->city_municipality,
+                        $destinationAddress->province,
+                        $destinationAddress->postal_code,
+                    ])->filter()->implode(', ')
+                    : (collect([
+                        $order?->city_municipality,
+                        $order?->province,
+                    ])->filter()->implode(', ') ?: 'Not provided'),
                 'zone_id' => $parcel->current_zone_id,
                 'zone' => $parcel->currentZone?->code ?: '',
                 'zones' => $zonesByCenter

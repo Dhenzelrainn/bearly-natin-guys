@@ -36,6 +36,196 @@
     --topbar-height: 82px;
 }
 
+.admin-body .finance-action-details {
+    min-width: 200px;
+    text-align: left;
+}
+
+.admin-body .finance-action-details > summary {
+    cursor: pointer;
+}
+
+.admin-body .finance-action-form {
+    display: grid;
+    min-width: 220px;
+    gap: 0.55rem;
+    margin-top: 0.65rem;
+    padding: 0.7rem;
+    border: 1px solid var(--border, #ddd);
+    border-radius: 0.7rem;
+    background: #fff;
+}
+
+.admin-body .finance-action-form label {
+    display: grid;
+    gap: 0.25rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.admin-body .finance-action-form input:not([type="checkbox"]),
+.admin-body .finance-action-form select,
+.admin-body .finance-action-form textarea {
+    width: 100%;
+    min-height: 2.4rem;
+    padding: 0.45rem 0.6rem;
+    border: 1px solid var(--border, #ddd);
+    border-radius: 0.55rem;
+    background: #fff;
+    color: inherit;
+}
+
+.admin-body .finance-action-form textarea {
+    min-height: 4rem;
+}
+
+.admin-body .finance-action-form .finance-confirm {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.45rem;
+    font-weight: 500;
+}
+
+.admin-body .finance-action-form .finance-confirm input {
+    margin-top: 0.2rem;
+}
+
+.admin-body .finance-action-form .button {
+    justify-self: start;
+}
+
+.admin-body .finance-action-form p {
+    margin: 0;
+    font-size: 0.8rem;
+}
+
+.admin-body .finance-action-form small,
+.admin-body .table-subline {
+    display: block;
+    margin-top: 0.2rem;
+    font-weight: 400;
+}
+
+@media (max-width: 760px) {
+    .admin-body .finance-action-form {
+        min-width: 190px;
+    }
+}
+
+.admin-body .finance-refund-cash-table {
+    min-width: 1160px;
+    table-layout: fixed;
+}
+
+.admin-body .finance-refund-cash-table th:nth-child(1) { width: 22%; }
+.admin-body .finance-refund-cash-table th:nth-child(2) { width: 18%; }
+.admin-body .finance-refund-cash-table th:nth-child(3) { width: 10%; }
+.admin-body .finance-refund-cash-table th:nth-child(4) { width: 19%; }
+.admin-body .finance-refund-cash-table th:nth-child(5) { width: 31%; }
+
+.admin-body .finance-refund-cash-table th,
+.admin-body .finance-refund-cash-table td {
+    padding: 14px 13px;
+    line-height: 1.55;
+    vertical-align: top;
+}
+
+.admin-body .finance-cash-meta {
+    display: grid;
+    gap: 10px;
+    margin: 0;
+}
+
+.admin-body .finance-cash-meta > div {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+}
+
+.admin-body .finance-cash-meta dt,
+.admin-body .finance-cash-ack > span {
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1.4;
+}
+
+.admin-body .finance-cash-meta dd {
+    min-width: 0;
+    margin: 0;
+    overflow-wrap: anywhere;
+    line-height: 1.45;
+}
+
+.admin-body .finance-cash-meta code,
+.admin-body .finance-cash-ack code {
+    color: var(--brown-900);
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 10px;
+    overflow-wrap: anywhere;
+    white-space: normal;
+}
+
+.admin-body .finance-cash-status {
+    display: grid;
+    justify-items: start;
+    gap: 9px;
+}
+
+.admin-body .finance-cash-ack {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+}
+
+.admin-body .finance-refund-review-form {
+    width: 100%;
+    min-width: 0;
+    gap: 12px;
+    margin-top: 12px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+}
+
+.admin-body .finance-refund-review-form .finance-confirm {
+    align-items: flex-start;
+    font-size: 11px;
+    line-height: 1.5;
+}
+
+.admin-body .finance-refund-review-form .finance-confirm input {
+    flex: 0 0 16px;
+    width: 16px;
+    height: 16px;
+    margin: 2px 0 0;
+}
+
+.admin-body .finance-refund-review-form label:not(.finance-confirm) {
+    gap: 6px;
+    font-size: 11px;
+    line-height: 1.45;
+}
+
+.admin-body .finance-refund-review-form textarea {
+    min-height: 82px;
+    line-height: 1.5;
+}
+
+.admin-body .finance-refund-review-form .button,
+.admin-body .finance-refund-cash-table td:last-child > .button {
+    justify-self: start;
+    max-width: 100%;
+    line-height: 1.4;
+    white-space: normal;
+}
+
+@media (max-width: 760px) {
+    .admin-body .finance-refund-review-form {
+        min-width: 0;
+    }
+}
+
 *, *::before, *::after { box-sizing: border-box; }
 html { min-width: 320px; background: var(--surface); color: var(--text); font-family: "Poppins", sans-serif; }
 body { margin: 0; min-height: 100vh; background: var(--surface); color: var(--text); }
@@ -7105,5 +7295,1190 @@ table {
     .shipping-rate-table-wrap .admin-table td,
     .shipping-rate-table-wrap .admin-table th {
         padding: 10px;
+    }
+}
+
+/* =========================================================
+   RETURNS & REFUNDS — ADMIN CASE REVIEW
+   ========================================================= */
+
+.admin-body .returns-refunds-page .page-hero {
+    padding: 22px 24px;
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: none;
+}
+
+.admin-body .returns-refunds-page .page-hero h1 {
+    font-size: clamp(25px, 2vw, 30px);
+}
+
+.admin-body .returns-refunds-page .page-hero p {
+    max-width: 680px;
+    font-size: 13px;
+}
+
+.admin-body .returns-refunds-page .panel {
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: none;
+}
+
+.admin-body .returns-refunds-page .panel-heading h2 {
+    font-size: 17px;
+}
+
+.admin-body .returns-refunds-page .panel-heading p {
+    max-width: 510px;
+    margin-top: 5px;
+    color: #74665e;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.admin-body .returns-refunds-page .compact-field {
+    min-width: 230px;
+}
+
+.admin-body .returns-refunds-page .field-with-icon input,
+.admin-body .returns-refunds-page .select-field {
+    font-size: 12px;
+}
+
+.admin-body .returns-refunds-page .admin-table {
+    min-width: 860px;
+    font-size: 12px;
+}
+
+.admin-body .returns-refunds-page .admin-table th {
+    padding: 12px;
+    color: #74665e;
+    font-size: 10px;
+}
+
+.admin-body .returns-refunds-page .admin-table td {
+    padding: 14px 12px;
+    color: #51463f;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.admin-body .returns-refunds-page .table-primary-secondary strong {
+    color: #33251e;
+    font-size: 13px;
+}
+
+.admin-body .returns-refunds-page .table-primary-secondary small {
+    color: #74665e;
+    font-size: 11px;
+}
+
+.admin-body .returns-refunds-page .status-badge {
+    font-size: 11px;
+}
+
+.admin-body .returns-refunds-page .button-small {
+    min-height: 38px;
+    font-size: 12px;
+}
+
+.admin-body .returns-refunds-page .modal-shell {
+    z-index: 110;
+}
+
+.admin-body .returns-refunds-page .return-review-dialog {
+    display: flex;
+    width: min(1120px, 100%);
+    max-height: min(900px, calc(100dvh - 32px));
+    flex: 0 1 auto;
+    flex-direction: column;
+    padding: 0;
+    overflow: hidden;
+    border-radius: 14px;
+}
+
+.admin-body .returns-refunds-page .return-review-header {
+    flex: 0 0 auto;
+    align-items: flex-start;
+    margin: 0;
+    padding: 20px 24px 18px;
+    border-bottom: 1px solid #ece4dd;
+}
+
+.admin-body .returns-refunds-page .return-review-id-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+}
+
+.admin-body .returns-refunds-page .return-review-header h2 {
+    margin: 7px 0 0;
+    font-size: 22px;
+}
+
+.admin-body .returns-refunds-page .return-review-header p {
+    margin: 5px 0 0;
+    color: #74665e;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.admin-body .returns-refunds-page .return-review-header .icon-button {
+    width: 40px;
+    height: 40px;
+    flex-basis: 40px;
+}
+
+.admin-body .returns-refunds-page .return-review-content {
+    display: grid;
+    min-height: 0;
+    flex: 1 1 auto;
+    grid-template-columns: minmax(0, 1fr) minmax(225px, 270px);
+    align-items: start;
+    gap: 24px;
+    padding: 20px 24px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.admin-body .returns-refunds-page .return-review-main {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-content: start;
+    gap: 12px;
+}
+
+.admin-body .returns-refunds-page .return-review-main > .section-subtitle,
+.admin-body .returns-refunds-page .return-review-main > .detail-grid,
+.admin-body .returns-refunds-page .return-review-main > .return-items-note,
+.admin-body .returns-refunds-page .return-review-main > .return-evidence-note,
+.admin-body .returns-refunds-page .return-review-main > .return-history-note {
+    grid-column: 1 / -1;
+}
+
+.admin-body .returns-refunds-page .return-review-main > .section-subtitle {
+    margin: 0 0 1px;
+    color: #35251e;
+    font-size: 17px;
+}
+
+.admin-body .returns-refunds-page .return-review-main .detail-grid {
+    gap: 0 18px;
+}
+
+.admin-body .returns-refunds-page .return-review-main .detail-grid > div {
+    min-height: 52px;
+    padding: 10px 0;
+    border-bottom-color: #eee7e1;
+}
+
+.admin-body .returns-refunds-page .return-review-main .detail-grid > div > span:first-child {
+    font-size: 12px;
+}
+
+.admin-body .returns-refunds-page .return-review-main .detail-grid > div strong {
+    font-size: 13px;
+}
+
+.admin-body .returns-refunds-page .return-review-main .detail-note {
+    min-width: 0;
+    margin: 0;
+    padding: 13px 14px;
+    border-color: #ece4dd;
+    border-radius: 9px;
+    background: #fff;
+}
+
+.admin-body .returns-refunds-page .return-review-main .detail-note > span {
+    display: block;
+    color: #51463f;
+    font-size: 13px;
+}
+
+.admin-body .returns-refunds-page .return-review-main .return-party-note {
+    min-height: 100%;
+    background: #fcfaf8;
+}
+
+.admin-body .returns-refunds-page .return-review-main .detail-note > p {
+    color: #5e534c;
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.admin-body .returns-refunds-page .return-items-table-wrap {
+    width: 100%;
+    margin-top: 9px;
+    overflow-x: auto;
+}
+
+.admin-body .returns-refunds-page .return-items-table {
+    width: 100%;
+    min-width: 490px;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.admin-body .returns-refunds-page .return-items-table th {
+    padding: 9px 10px;
+    border-bottom: 1px solid #e9e0d8;
+    color: #71645c;
+    font-size: 10px;
+    font-weight: 650;
+    text-align: left;
+}
+
+.admin-body .returns-refunds-page .return-items-table td {
+    padding: 11px 10px;
+    border-bottom: 1px solid #f0eae5;
+    color: #51463f;
+    vertical-align: top;
+}
+
+.admin-body .returns-refunds-page .return-items-table tr:last-child td {
+    border-bottom: 0;
+}
+
+.admin-body .returns-refunds-page .return-items-table td strong,
+.admin-body .returns-refunds-page .return-items-table td small {
+    display: block;
+}
+
+.admin-body .returns-refunds-page .return-items-table td strong {
+    color: #33251e;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.admin-body .returns-refunds-page .return-items-table td small {
+    margin-top: 3px;
+    color: #74665e;
+    font-size: 11px;
+}
+
+.admin-body .returns-refunds-page .return-empty-cell,
+.admin-body .returns-refunds-page .return-inline-empty {
+    color: #74665e;
+    font-size: 12px;
+}
+
+.admin-body .returns-refunds-page .return-evidence-note > span {
+    margin-bottom: 5px;
+}
+
+.admin-body .returns-refunds-page .return-evidence-row {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: 48px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid #eee7e1;
+}
+
+.admin-body .returns-refunds-page .return-evidence-row:last-child {
+    border-bottom: 0;
+}
+
+.admin-body .returns-refunds-page .return-evidence-icon {
+    display: grid;
+    width: 44px;
+    height: 44px;
+    place-items: center;
+    border: 1px solid #ece4dd;
+    border-radius: 8px;
+    color: #72503b;
+    background: #fbf7f2;
+}
+
+.admin-body .returns-refunds-page .return-evidence-icon svg {
+    width: 17px;
+    height: 17px;
+}
+
+.admin-body .returns-refunds-page .return-evidence-thumb {
+    display: grid;
+    width: 48px;
+    height: 48px;
+    place-items: center;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid #ece4dd;
+    border-radius: 8px;
+    background: #fbf7f2;
+    cursor: zoom-in;
+}
+
+.admin-body .returns-refunds-page .return-evidence-thumb img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.admin-body .returns-refunds-page .return-evidence-copy {
+    min-width: 0;
+}
+
+.admin-body .returns-refunds-page .return-evidence-copy strong,
+.admin-body .returns-refunds-page .return-evidence-copy small {
+    display: block;
+    overflow-wrap: anywhere;
+}
+
+.admin-body .returns-refunds-page .return-evidence-copy strong {
+    color: #35251e;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.admin-body .returns-refunds-page .return-evidence-copy small {
+    margin-top: 3px;
+    color: #74665e;
+    font-size: 11px;
+}
+
+.admin-body .returns-refunds-page .return-evidence-download {
+    color: #71472f;
+    font-size: 12px;
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.admin-body .returns-refunds-page .return-evidence-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 14px;
+}
+
+.admin-body .returns-refunds-page .return-evidence-preview-button {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #71472f;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    cursor: pointer;
+}
+
+.admin-body .returns-refunds-page .return-history-list {
+    display: grid;
+    gap: 0;
+    margin: 10px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.admin-body .returns-refunds-page .return-history-list li {
+    display: grid;
+    grid-template-columns: 12px minmax(0, 1fr);
+    gap: 10px;
+    padding: 0 0 12px;
+}
+
+.admin-body .returns-refunds-page .return-history-marker {
+    width: 8px;
+    height: 8px;
+    margin-top: 5px;
+    border: 2px solid #9a6a49;
+    border-radius: 50%;
+}
+
+.admin-body .returns-refunds-page .return-history-list strong,
+.admin-body .returns-refunds-page .return-history-list small {
+    display: block;
+}
+
+.admin-body .returns-refunds-page .return-history-list strong {
+    color: #35251e;
+    font-size: 12px;
+}
+
+.admin-body .returns-refunds-page .return-history-list small {
+    margin-top: 3px;
+    color: #74665e;
+    font-size: 11px;
+}
+
+.admin-body .returns-refunds-page .return-history-list p {
+    margin: 4px 0 0;
+    color: #5e534c;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.admin-body .returns-refunds-page .return-review-rail {
+    display: grid;
+    min-width: 0;
+    gap: 14px;
+    align-content: start;
+}
+
+.admin-body .returns-refunds-page .return-refund-summary {
+    padding: 16px;
+    border: 1px solid #e9ddd2;
+    border-radius: 10px;
+    background: #fbf7f2;
+}
+
+.admin-body .returns-refunds-page .return-refund-summary span,
+.admin-body .returns-refunds-page .return-refund-summary strong,
+.admin-body .returns-refunds-page .return-refund-summary small {
+    display: block;
+}
+
+.admin-body .returns-refunds-page .return-refund-summary span {
+    color: #65564e;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.admin-body .returns-refunds-page .return-refund-summary strong {
+    margin-top: 7px;
+    color: #35251e;
+    font-size: 25px;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+}
+
+.admin-body .returns-refunds-page .return-refund-summary small {
+    margin-top: 5px;
+    color: #74665e;
+    font-size: 11px;
+}
+
+.admin-body .returns-refunds-page .return-review-rail-section {
+    padding-top: 13px;
+    border-top: 1px solid #eae2db;
+}
+
+.admin-body .returns-refunds-page .return-review-rail-section h3 {
+    margin: 0 0 9px;
+    color: #4a382e;
+    font-size: 13px;
+    font-weight: 650;
+}
+
+.admin-body .returns-refunds-page .return-review-rail-section > p {
+    margin: 0;
+}
+
+.admin-body .returns-refunds-page .return-review-rail-section dl {
+    display: grid;
+    gap: 9px;
+    margin: 0;
+}
+
+.admin-body .returns-refunds-page .return-review-rail-section dl > div {
+    display: grid;
+    grid-template-columns: minmax(72px, .8fr) minmax(0, 1fr);
+    gap: 10px;
+}
+
+.admin-body .returns-refunds-page .return-review-rail-section dt {
+    color: #74665e;
+    font-size: 11px;
+}
+
+.admin-body .returns-refunds-page .return-review-rail-section dd {
+    margin: 0;
+    color: #41352e;
+    font-size: 12px;
+    font-weight: 550;
+    text-align: right;
+    overflow-wrap: anywhere;
+}
+
+.admin-body .returns-refunds-page .return-decision-footer {
+    display: block;
+    flex: 0 0 auto;
+    position: relative;
+    bottom: auto;
+    margin: 0;
+    padding: 14px 24px 18px;
+    border-top: 1px solid #e9e0d9;
+    background: #fff;
+}
+
+.admin-body .returns-refunds-page .return-decision-intro {
+    margin-bottom: 12px;
+}
+
+.admin-body .returns-refunds-page .return-decision-intro strong,
+.admin-body .returns-refunds-page .return-decision-intro span {
+    display: block;
+}
+
+.admin-body .returns-refunds-page .return-decision-intro strong {
+    color: #35251e;
+    font-size: 14px;
+}
+
+.admin-body .returns-refunds-page .return-decision-intro span {
+    margin-top: 3px;
+    color: #74665e;
+    font-size: 11px;
+    line-height: 1.45;
+}
+
+.admin-body .returns-refunds-page .return-action-grid {
+    display: grid;
+    grid-template-columns: minmax(150px, .75fr) minmax(190px, 1fr) minmax(270px, 1.3fr);
+    align-items: stretch;
+}
+
+.admin-body .returns-refunds-page .return-action-grid > form {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 8px;
+    padding: 0 14px;
+    border-left: 1px solid #eee7e1;
+}
+
+.admin-body .returns-refunds-page .return-action-grid > form:first-child {
+    padding-left: 0;
+    border-left: 0;
+}
+
+.admin-body .returns-refunds-page .return-action-grid > form:last-child {
+    padding-right: 0;
+}
+
+.admin-body .returns-refunds-page .return-action-grid label,
+.admin-body .returns-refunds-page .return-payout-form label {
+    display: grid;
+    min-width: 0;
+    gap: 5px;
+    color: #51463f;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.admin-body .returns-refunds-page .return-action-grid form > p {
+    min-height: 32px;
+    margin: 0;
+    color: #74665e;
+    font-size: 11px;
+    line-height: 1.45;
+}
+
+.admin-body .returns-refunds-page .return-action-grid > form > .button {
+    margin-top: auto;
+}
+
+.admin-body .returns-refunds-page .return-action-grid input,
+.admin-body .returns-refunds-page .return-action-grid select,
+.admin-body .returns-refunds-page .return-action-grid textarea,
+.admin-body .returns-refunds-page .return-payout-form input,
+.admin-body .returns-refunds-page .return-payout-form select,
+.admin-body .returns-refunds-page .return-payout-form textarea {
+    width: 100%;
+    min-width: 0;
+    min-height: 40px;
+    padding: 8px 10px;
+    border: 1px solid #e4d9d0;
+    border-radius: 7px;
+    background: #fff;
+    color: #35251e;
+    font: inherit;
+    font-size: 12px;
+}
+
+.admin-body .returns-refunds-page .return-action-grid textarea {
+    min-height: 56px;
+    resize: vertical;
+}
+
+.admin-body .returns-refunds-page .return-payout-form textarea {
+    min-height: 64px;
+    resize: vertical;
+}
+
+.admin-body .returns-refunds-page .return-evidence-request-bottom {
+    display: grid;
+    grid-template-columns: minmax(100px, .75fr) minmax(130px, 1fr);
+    align-items: end;
+    gap: 8px;
+    margin-top: auto;
+}
+
+.admin-body .returns-refunds-page .return-action-grid .button,
+.admin-body .returns-refunds-page .return-payout-form .button {
+    min-height: 40px;
+    font-size: 12px;
+}
+
+.admin-body .returns-refunds-page .return-liability-help {
+    display: block;
+    margin-top: -4px;
+    color: #74665e;
+    font-size: 10px;
+    line-height: 1.45;
+}
+
+.admin-body .returns-refunds-page .return-payout-form label small,
+.admin-body .returns-refunds-page .return-responsibility-form label small {
+    color: #74665e;
+    font-size: 10px;
+    font-weight: 400;
+    line-height: 1.45;
+}
+
+.admin-body .returns-refunds-page .return-recovery-summary {
+    display: grid;
+    gap: 5px;
+    margin-top: 12px;
+    padding-top: 11px;
+    border-top: 1px solid #eee7e1;
+}
+
+.admin-body .returns-refunds-page .return-recovery-summary strong,
+.admin-body .returns-refunds-page .return-recovery-summary span,
+.admin-body .returns-refunds-page .return-recovery-summary small {
+    display: block;
+    overflow-wrap: anywhere;
+}
+
+.admin-body .returns-refunds-page .return-recovery-summary strong {
+    color: #35251e;
+    font-size: 11px;
+}
+
+.admin-body .returns-refunds-page .return-recovery-summary span,
+.admin-body .returns-refunds-page .return-recovery-summary small {
+    color: #6b5a4b;
+    font-size: 10px;
+    line-height: 1.45;
+}
+
+.admin-body .returns-refunds-page .return-seller-recovery-action {
+    display: grid;
+    gap: 9px;
+    margin-top: 16px;
+    padding-top: 15px;
+    border-top: 1px solid #e7dfd6;
+}
+
+.admin-body .returns-refunds-page .return-seller-recovery-action h3,
+.admin-body .returns-refunds-page .return-seller-recovery-action p {
+    margin: 0;
+}
+
+.admin-body .returns-refunds-page .return-seller-recovery-action h3 {
+    color: #35251e;
+    font-size: 13px;
+}
+
+.admin-body .returns-refunds-page .return-seller-recovery-action p {
+    color: #6b5a4b;
+    font-size: 11px;
+    line-height: 1.5;
+}
+
+.admin-body .returns-refunds-page .return-responsibility-form {
+    display: grid;
+    gap: 12px;
+    max-width: 620px;
+}
+
+.admin-body .returns-refunds-page .return-responsibility-form label {
+    display: grid;
+    gap: 5px;
+    color: #51463f;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.admin-body .returns-refunds-page .return-responsibility-form input,
+.admin-body .returns-refunds-page .return-responsibility-form select,
+.admin-body .returns-refunds-page .return-responsibility-form textarea {
+    width: 100%;
+    min-height: 40px;
+    padding: 8px 10px;
+    border: 1px solid #e4d9d0;
+    border-radius: 7px;
+    color: #35251e;
+    background: #fff;
+    font: inherit;
+    font-size: 12px;
+}
+
+.admin-body .returns-refunds-page .return-responsibility-form textarea {
+    min-height: 76px;
+    resize: vertical;
+}
+
+.admin-body .returns-refunds-page .return-recovery-note {
+    grid-column: 1 / -1;
+}
+
+.admin-body .returns-refunds-page .return-recovery-form input[type="file"] {
+    padding: 7px;
+    font-size: 10px;
+}
+
+.admin-body .returns-refunds-page .return-payout-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 12px;
+    padding: 11px 13px;
+    border: 1px solid #eadbc8;
+    border-radius: 8px;
+    background: #fffaf4;
+    color: #79552f;
+}
+
+.admin-body .returns-refunds-page .return-payout-notice > svg {
+    width: 17px;
+    height: 17px;
+    flex: 0 0 17px;
+    margin-top: 2px;
+}
+
+.admin-body .returns-refunds-page .return-payout-notice p,
+.admin-body .returns-refunds-page .return-payout-notice strong,
+.admin-body .returns-refunds-page .return-payout-notice span {
+    display: block;
+    margin: 0;
+}
+
+.admin-body .returns-refunds-page .return-payout-notice strong {
+    font-size: 12px;
+}
+
+.admin-body .returns-refunds-page .return-payout-notice span {
+    margin-top: 2px;
+    color: #6b5a4b;
+    font-size: 11px;
+    line-height: 1.45;
+}
+
+.admin-body .returns-refunds-page .return-payout-disclosure {
+    min-width: 0;
+}
+
+.admin-body .returns-refunds-page .return-payout-disclosure-trigger {
+    display: inline-flex;
+    min-height: 40px;
+    align-items: center;
+    gap: 8px;
+    padding: 0 14px;
+    border: 1px solid #d8c6b7;
+    border-radius: 8px;
+    background: #fff;
+    color: #4a2c20;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    list-style: none;
+}
+
+.admin-body .returns-refunds-page .return-payout-disclosure-trigger::-webkit-details-marker {
+    display: none;
+}
+
+.admin-body .returns-refunds-page .return-payout-disclosure-trigger:hover {
+    border-color: #b98a63;
+    background: #fff8ef;
+}
+
+.admin-body .returns-refunds-page .return-payout-disclosure-trigger:focus-visible,
+.admin-body .returns-refunds-page .return-payout-confirmation input:focus-visible {
+    outline: 2px solid #a36b23;
+    outline-offset: 2px;
+}
+
+.admin-body .returns-refunds-page .return-payout-disclosure[open] .return-payout-disclosure-trigger {
+    margin-bottom: 12px;
+}
+
+.admin-body .returns-refunds-page .return-payout-form {
+    display: grid;
+    grid-template-columns: minmax(150px, .8fr) minmax(200px, 1.2fr) auto;
+    align-items: end;
+    gap: 12px;
+}
+
+.admin-body .returns-refunds-page .return-payout-form .return-payout-confirmation {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: 18px minmax(0, 1fr);
+    align-items: start;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid #eadbc8;
+    border-radius: 8px;
+    background: #fffaf4;
+    color: #51463f;
+    font-weight: 400;
+}
+
+.admin-body .returns-refunds-page .return-payout-confirmation input[type="checkbox"] {
+    width: 18px;
+    min-height: 18px;
+    margin: 2px 0 0;
+    padding: 0;
+    accent-color: #7a351d;
+}
+
+.admin-body .returns-refunds-page .return-payout-confirmation-copy,
+.admin-body .returns-refunds-page .return-payout-confirmation-copy strong,
+.admin-body .returns-refunds-page .return-payout-confirmation-copy small {
+    display: block;
+}
+
+.admin-body .returns-refunds-page .return-payout-confirmation-copy strong {
+    color: #35251e;
+    font-size: 11px;
+}
+
+.admin-body .returns-refunds-page .return-payout-confirmation-copy small {
+    margin-top: 3px;
+    color: #6b5a4b;
+    font-size: 10px;
+    line-height: 1.45;
+}
+
+.admin-body .returns-refunds-page .return-case-state-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 11px;
+    color: #6d5c50;
+}
+
+.admin-body .returns-refunds-page .return-state-check {
+    display: grid;
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
+    place-items: center;
+    border-radius: 8px;
+    background: #f5f1ec;
+    color: #72503b;
+}
+
+.admin-body .returns-refunds-page .return-state-check svg {
+    width: 17px;
+    height: 17px;
+}
+
+.admin-body .returns-refunds-page .return-case-state-note p,
+.admin-body .returns-refunds-page .return-case-state-note strong,
+.admin-body .returns-refunds-page .return-case-state-note span {
+    display: block;
+    margin: 0;
+}
+
+.admin-body .returns-refunds-page .return-case-state-note strong {
+    color: #35251e;
+    font-size: 13px;
+}
+
+.admin-body .returns-refunds-page .return-case-state-note span {
+    margin-top: 3px;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.admin-body .returns-refunds-page .return-modal-state-indicator:not([hidden]) {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    color: #3e7650;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.admin-body .returns-refunds-page .return-modal-state-indicator svg {
+    width: 17px;
+    height: 17px;
+}
+
+.admin-body .returns-refunds-page .return-evidence-image-dialog[open] {
+    display: flex;
+    width: min(920px, calc(100vw - 32px));
+    max-width: calc(100vw - 32px);
+    max-height: calc(100dvh - 32px);
+    flex-direction: column;
+    margin: auto;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid #e7dfd6;
+    border-radius: 12px;
+    color: #2c1a14;
+    background: #fff;
+    box-shadow: 0 18px 55px rgba(44, 26, 20, .24);
+}
+
+.admin-body .returns-refunds-page .return-evidence-image-dialog::backdrop {
+    background: rgba(28, 20, 16, .72);
+}
+
+.admin-body .returns-refunds-page .return-evidence-image-dialog > header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 12px 16px;
+    border-bottom: 1px solid #e7dfd6;
+}
+
+.admin-body .returns-refunds-page .return-evidence-image-dialog h3 {
+    min-width: 0;
+    margin: 0;
+    color: #35251e;
+    font-size: 14px;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.admin-body .returns-refunds-page .return-evidence-image-dialog > header button {
+    display: grid;
+    width: 38px;
+    height: 38px;
+    flex: 0 0 38px;
+    place-items: center;
+    border: 1px solid #e7dfd6;
+    border-radius: 8px;
+    background: #fff;
+    color: #35251e;
+    cursor: pointer;
+}
+
+.admin-body .returns-refunds-page .return-evidence-image-dialog > div {
+    display: grid;
+    min-height: 0;
+    place-items: center;
+    padding: 16px;
+    overflow: auto;
+}
+
+.admin-body .returns-refunds-page .return-evidence-image-dialog img {
+    display: block;
+    max-width: 100%;
+    max-height: calc(100dvh - 120px);
+    object-fit: contain;
+}
+
+.admin-body .returns-refunds-page a:focus-visible,
+.admin-body .returns-refunds-page button:focus-visible,
+.admin-body .returns-refunds-page input:focus-visible,
+.admin-body .returns-refunds-page select:focus-visible,
+.admin-body .returns-refunds-page textarea:focus-visible {
+    outline: 2px solid #a36b23;
+    outline-offset: 2px;
+}
+
+@media (max-width: 960px) {
+    .admin-body .returns-refunds-page .return-review-content {
+        grid-template-columns: minmax(0, 1fr) 230px;
+        gap: 18px;
+        padding-right: 20px;
+        padding-left: 20px;
+    }
+
+    .admin-body .returns-refunds-page .return-action-grid {
+        grid-template-columns: minmax(145px, .8fr) minmax(180px, 1fr);
+        row-gap: 14px;
+    }
+
+    .admin-body .returns-refunds-page .return-action-grid > form:last-child {
+        grid-column: 1 / -1;
+        padding: 12px 0 0;
+        border-top: 1px solid #eee7e1;
+        border-left: 0;
+    }
+
+    .admin-body .returns-refunds-page .return-payout-form {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .admin-body .returns-refunds-page .return-payout-form .button {
+        grid-column: 1 / -1;
+    }
+}
+
+@media (max-width: 720px) {
+    .admin-body .returns-refunds-page .page-hero {
+        align-items: flex-start;
+        padding: 18px;
+    }
+
+    .admin-body .returns-refunds-page .hero-context-stat {
+        padding-left: 12px;
+    }
+
+    .admin-body .returns-refunds-page .panel {
+        padding: 16px;
+    }
+
+    .admin-body .returns-refunds-page .return-review-dialog {
+        max-height: calc(100dvh - 20px);
+        overflow-y: auto;
+    }
+
+    .admin-body .returns-refunds-page .return-review-header {
+        padding: 16px 18px;
+    }
+
+    .admin-body .returns-refunds-page .return-review-header h2 {
+        font-size: 20px;
+    }
+
+    .admin-body .returns-refunds-page .return-review-content {
+        display: flex;
+        flex: 0 0 auto;
+        flex-direction: column-reverse;
+        gap: 18px;
+        padding: 16px 18px;
+        overflow: visible;
+    }
+
+    .admin-body .returns-refunds-page .return-review-main {
+        width: 100%;
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .admin-body .returns-refunds-page .return-review-main > * {
+        grid-column: 1;
+    }
+
+    .admin-body .returns-refunds-page .return-review-rail {
+        width: 100%;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px 16px;
+    }
+
+    .admin-body .returns-refunds-page .return-refund-summary {
+        grid-row: span 2;
+    }
+
+    .admin-body .returns-refunds-page .return-review-rail-section {
+        padding-top: 0;
+        border-top: 0;
+    }
+
+    .admin-body .returns-refunds-page .return-decision-footer {
+        position: static;
+        margin: 0;
+        padding: 15px 18px max(16px, env(safe-area-inset-bottom));
+    }
+
+    .admin-body .returns-refunds-page .return-action-grid {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 12px;
+    }
+
+    .admin-body .returns-refunds-page .return-action-grid > form,
+    .admin-body .returns-refunds-page .return-action-grid > form:first-child,
+    .admin-body .returns-refunds-page .return-action-grid > form:last-child {
+        grid-column: 1;
+        padding: 12px 0 0;
+        border-top: 1px solid #eee7e1;
+        border-left: 0;
+    }
+
+    .admin-body .returns-refunds-page .return-action-grid > form:first-child {
+        padding-top: 0;
+        border-top: 0;
+    }
+
+    .admin-body .returns-refunds-page .return-action-grid form > p {
+        min-height: auto;
+    }
+
+    .admin-body .returns-refunds-page .return-payout-form {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .admin-body .returns-refunds-page .return-payout-form .button {
+        grid-column: 1;
+        width: 100%;
+    }
+
+    .admin-body .returns-refunds-page .return-decision-footer .button {
+        width: 100%;
+    }
+}
+
+@media (max-width: 460px) {
+    .admin-body .returns-refunds-page .page-hero {
+        flex-direction: column;
+    }
+
+    .admin-body .returns-refunds-page .hero-context-stat {
+        width: 100%;
+        padding: 12px 0 0;
+        border-top: 1px solid #eee7e1;
+        border-left: 0;
+    }
+
+    .admin-body .returns-refunds-page .return-review-rail {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .admin-body .returns-refunds-page .return-refund-summary {
+        grid-row: auto;
+    }
+
+    .admin-body .returns-refunds-page .return-review-rail-section {
+        padding-top: 12px;
+        border-top: 1px solid #eae2db;
+    }
+
+    .admin-body .returns-refunds-page .return-evidence-row {
+        grid-template-columns: 42px minmax(0, 1fr);
+        gap: 8px;
+    }
+
+    .admin-body .returns-refunds-page .return-evidence-icon,
+    .admin-body .returns-refunds-page .return-evidence-thumb {
+        grid-column: 1;
+        grid-row: 1 / span 2;
+        width: 42px;
+        height: 42px;
+    }
+
+    .admin-body .returns-refunds-page .return-evidence-copy {
+        grid-column: 2;
+        grid-row: 1;
+    }
+
+    .admin-body .returns-refunds-page .return-evidence-actions {
+        grid-column: 2;
+        grid-row: 2;
+        justify-self: start;
+        gap: 12px;
+    }
+
+    .admin-body .returns-refunds-page .return-evidence-request-bottom {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .admin-body .returns-refunds-page .return-evidence-image-dialog[open] {
+        width: calc(100vw - 20px);
+        max-width: calc(100vw - 20px);
+        max-height: calc(100dvh - 20px);
+    }
+
+    .admin-body .returns-refunds-page .return-evidence-image-dialog > div {
+        max-height: calc(100dvh - 78px);
+        padding: 10px;
+    }
+
+    .admin-body .returns-refunds-page .return-evidence-image-dialog img {
+        max-height: calc(100dvh - 100px);
     }
 }

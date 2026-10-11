@@ -1125,6 +1125,15 @@ class SellerBuyerCatalogIntegrationTest extends TestCase
         ]);
 
         $this->actingAs($seller)
+            ->get('/seller/products/create')
+            ->assertOk()
+            ->assertSee('Variant Images')
+            ->assertSee('data-variant-color-images', false)
+            ->assertSee('data-variant-color-image-input', false)
+            ->assertSee('name="variant_color_images[]"', false)
+            ->assertSee('data-variant-color-image-uploads', false);
+
+        $this->actingAs($seller)
             ->post('/seller/products', [
                 'product_mode' => 'with_variants',
                 'name' => 'Variation Image Shirt',
@@ -1238,11 +1247,15 @@ class SellerBuyerCatalogIntegrationTest extends TestCase
             ->assertSee('data-image-id=', false)
             ->assertSee($mediaPreview[0]['url'], false)
             ->assertSee('src="'.$mediaPreview[0]['url'].'" alt="Primary image"', false)
+            ->assertSee('Variant Images')
+            ->assertSee('data-variant-color-images', false)
+            ->assertSee('name="variant_color_images[]"', false)
+            ->assertSee('data-variant-color-image-uploads', false)
+            ->assertSee('data-variant-matrix', false)
+            ->assertSee('data-variant-rows', false)
             ->assertDontSee('data-variant-product-image', false)
             ->assertSee('Product listing')
             ->assertSee('Accepted payment methods')
-            ->assertDontSee('Set a specific photo for each variation')
-            ->assertDontSee('Variation photo')
             ->assertSee('data-buyer-preview-variant', false)
             ->assertSee('data-saved-product-media', false)
             ->assertSee('variant_label', false)
@@ -1304,6 +1317,105 @@ class SellerBuyerCatalogIntegrationTest extends TestCase
 
         $this->assertDatabaseMissing('product_images', ['id' => $redImage->id]);
         $this->assertDatabaseHas('product_images', ['id' => $variantImages->last()->id]);
+    }
+
+    public function test_variant_color_images_are_uploaded_once_and_shared_by_matching_skus(): void
+    {
+        Storage::fake('public');
+
+        $category = $this->category();
+        $seller = $this->seller($category);
+        $store = Store::create([
+            'seller_profile_id' => $seller->sellerProfile->id,
+            'name' => 'Shared Color Image Store',
+            'slug' => 'shared-color-image-store',
+            'publication_status' => 'published',
+        ]);
+        $payload = [
+            'product_mode' => 'with_variants',
+            'name' => 'Shared Color Image Product',
+            'category' => $category->name,
+            'description' => 'One photo per color shared by matching SKUs.',
+            'price' => '300.00',
+            'stock' => 10,
+            'low_stock_threshold' => 2,
+            'option_one_name' => 'Size',
+            'option_one_values' => 'Small, Large',
+            'option_two_name' => 'Color',
+            'option_two_values' => 'Red, Blue',
+            'variants' => [
+                ['label' => 'Small / Red', 'sku' => 'SHARED-SM-RED', 'price' => '300.00', 'stock' => 2, 'package_weight_kg' => '0.250', 'package_length_cm' => '24', 'package_width_cm' => '18', 'package_height_cm' => '8'],
+                ['label' => 'Large / Red', 'sku' => 'SHARED-LG-RED', 'price' => '300.00', 'stock' => 3, 'package_weight_kg' => '0.250', 'package_length_cm' => '24', 'package_width_cm' => '18', 'package_height_cm' => '8'],
+                ['label' => 'Small / Blue', 'sku' => 'SHARED-SM-BLUE', 'price' => '300.00', 'stock' => 2, 'package_weight_kg' => '0.250', 'package_length_cm' => '24', 'package_width_cm' => '18', 'package_height_cm' => '8'],
+                ['label' => 'Large / Blue', 'sku' => 'SHARED-LG-BLUE', 'price' => '300.00', 'stock' => 3, 'package_weight_kg' => '0.250', 'package_length_cm' => '24', 'package_width_cm' => '18', 'package_height_cm' => '8'],
+            ],
+            'payment_methods' => ['online'],
+            'intent' => 'publish',
+        ];
+
+        $this->actingAs($seller)
+            ->post('/seller/products', $payload)
+            ->assertRedirect('/seller/products');
+
+        $product = Product::query()->where('store_id', $store->id)->firstOrFail();
+
+        $this->actingAs($seller)
+            ->put(route('seller.products.update', $product), array_merge($payload, [
+                'variant_images' => [
+                    0 => UploadedFile::fake()->create('small-red-sku.jpg', 100, 'image/jpeg'),
+                ],
+                'variant_color_images' => [
+                    0 => UploadedFile::fake()->create('red-shirt.jpg', 100, 'image/jpeg'),
+                    1 => UploadedFile::fake()->create('blue-shirt.jpg', 100, 'image/jpeg'),
+                ],
+                'variant_image_colors' => [0 => 'Red', 1 => 'Blue'],
+            ]))
+            ->assertRedirect('/seller/products');
+
+        $colorImages = $product->images()
+            ->where('purpose', 'variant_color')
+            ->with('variant')
+            ->get();
+        $this->assertCount(2, $colorImages);
+        $this->assertSame(['Blue', 'Red'], $colorImages->map(
+            fn (ProductImage $image): string => collect((array) $image->variant->options)
+                ->first(fn ($value, $name): bool => strtolower((string) $name) === 'color')
+        )->sort()->values()->all());
+
+        foreach ($colorImages as $image) {
+            $this->assertSame('public', $image->disk);
+            $this->assertTrue(Storage::disk('public')->exists($image->path));
+        }
+
+        $catalog = app(BuyerCatalogService::class)->card($product->fresh(['variants', 'images']));
+        $smallRed = collect($catalog['variants'])->firstWhere('name', 'Small / Red');
+        $largeRed = collect($catalog['variants'])->firstWhere('name', 'Large / Red');
+        $smallBlue = collect($catalog['variants'])->firstWhere('name', 'Small / Blue');
+        $largeBlue = collect($catalog['variants'])->firstWhere('name', 'Large / Blue');
+
+        $this->assertSame($smallRed['image'], $largeRed['image']);
+        $this->assertSame($smallBlue['image'], $largeBlue['image']);
+        $this->assertNotSame($smallRed['image'], $smallBlue['image']);
+        $redSharedImage = $colorImages->first(fn (ProductImage $image): bool => collect((array) $image->variant->options)
+            ->first(fn ($value, $name): bool => strtolower((string) $name) === 'color') === 'Red'
+        );
+        $this->assertSame(Storage::disk('public')->url($redSharedImage->path), $smallRed['image']);
+        $smallRedVariant = $product->variants()->where('name', 'Small / Red')->firstOrFail();
+        $orderImage = app(BuyerCatalogService::class)->orderImageRecord($product->fresh('images'), $smallRedVariant);
+        $this->assertSame('variant_color', $orderImage?->purpose);
+
+        $formPayload = app(SellerProductService::class)->formPayload($product->fresh(['variants', 'images']));
+        $sharedMedia = collect($formPayload['media_preview'])->where('color_shared', true);
+        $this->assertCount(2, $sharedMedia);
+        $this->assertSame(['Blue', 'Red'], $sharedMedia->pluck('color')->sort()->values()->all());
+
+        $this->actingAs($seller)
+            ->get(route('seller.products.edit', $product))
+            ->assertOk()
+            ->assertSee('Variant Images')
+            ->assertSee('data-color-shared="true"', false)
+            ->assertSee('name="variant_color_images[]"', false)
+            ->assertSee('data-variant-color-image-uploads', false);
     }
 
     public function test_seller_can_remove_saved_product_photos_only_from_their_own_product(): void

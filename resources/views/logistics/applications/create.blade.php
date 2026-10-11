@@ -161,6 +161,8 @@
                                     id="logistics-first-name"
                                     name="first_name"
                                     value="{{ old('first_name') }}"
+                                    minlength="2"
+                                    maxlength="50"
                                     autocomplete="given-name"
                                     required
                                 >
@@ -191,6 +193,8 @@
                                     id="logistics-last-name"
                                     name="last_name"
                                     value="{{ old('last_name') }}"
+                                    minlength="2"
+                                    maxlength="50"
                                     autocomplete="family-name"
                                     required
                                 >

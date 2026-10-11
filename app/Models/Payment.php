@@ -17,4 +17,9 @@ class Payment extends Model
     {
         return $this->belongsTo(Order::class);
     }
+
+    public function codCashCollections()
+    {
+        return $this->hasMany(CodCashCollection::class);
+    }
 }

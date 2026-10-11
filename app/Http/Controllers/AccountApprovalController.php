@@ -4,10 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Enums\AccountStatus;
 use App\Enums\UserRole;
+use App\Mail\ApplicationDecisionNotice;
 use App\Models\User;
 use App\Services\RegistrationLifecycleService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Mail;
 
 class AccountApprovalController extends Controller
 {
@@ -19,6 +21,7 @@ class AccountApprovalController extends Controller
         $this->ensureAdminReviewable($user);
 
         $application = $lifecycle->approve($user, $request->user());
+        $this->notifyApplicant($application->user, 'approved');
 
         return back()
             ->with('success', "{$user->name}'s {$user->role} account was approved.")
@@ -39,6 +42,11 @@ class AccountApprovalController extends Controller
         $application = $lifecycle->requestRevision(
             $user,
             $request->user(),
+            $validated['revision_notes']
+        );
+        $this->notifyApplicant(
+            $application->user,
+            'needs_revision',
             $validated['revision_notes']
         );
 
@@ -63,6 +71,11 @@ class AccountApprovalController extends Controller
             $request->user(),
             $validated['reason']
         );
+        $this->notifyApplicant(
+            $application->user,
+            'rejected',
+            $validated['reason']
+        );
 
         return back()
             ->with('success', "{$user->name}'s application was rejected.")
@@ -76,7 +89,8 @@ class AccountApprovalController extends Controller
     ): RedirectResponse {
         $this->ensureRiderReviewable($request, $user);
 
-        $lifecycle->approve($user, $request->user());
+        $application = $lifecycle->approve($user, $request->user());
+        $this->notifyApplicant($application->user, 'approved');
 
         return back()->with(
             'success',
@@ -95,9 +109,14 @@ class AccountApprovalController extends Controller
             'reason' => ['required', 'string', 'max:1000'],
         ]);
 
-        $lifecycle->reject(
+        $application = $lifecycle->reject(
             $user,
             $request->user(),
+            $validated['reason']
+        );
+        $this->notifyApplicant(
+            $application->user,
+            'rejected',
             $validated['reason']
         );
 
@@ -137,6 +156,21 @@ class AccountApprovalController extends Controller
                 true
             ),
             422
+        );
+    }
+
+    private function notifyApplicant(
+        User $user,
+        string $decision,
+        ?string $reason = null
+    ): void {
+        Mail::to($user->email)->queue(
+            new ApplicationDecisionNotice(
+                $user->name ?: trim($user->first_name.' '.$user->last_name),
+                (string) $user->role,
+                $decision,
+                $reason
+            )
         );
     }
 }

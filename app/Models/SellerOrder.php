@@ -39,4 +39,11 @@ class SellerOrder extends Model
     {
         return $this->hasMany(Shipment::class);
     }
+
+    public function returnRequests()
+    {
+        return $this->hasMany(ReturnRequest::class)
+            ->orderByDesc('submitted_at')
+            ->orderByDesc('id');
+    }
 }

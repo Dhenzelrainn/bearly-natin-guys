@@ -18,10 +18,14 @@
     <a class="checkout-back" href="{{ route('products.index') }}"><span class="material-symbols-outlined">arrow_back</span> Continue Shopping</a>
     @if (session('success'))<p class="checkout-success" role="status">{{ session('success') }}</p>@endif
     <section class="checkout-card confirmation-card">
-        <span class="material-symbols-outlined" aria-hidden="true">{{ $order->status === 'cancelled' ? 'cancel' : 'check_circle' }}</span>
-        <h1>{{ $order->status === 'cancelled' ? 'Order cancelled' : 'Order placed' }}</h1>
+        <span class="material-symbols-outlined" aria-hidden="true">{{ $order->status === 'cancelled' ? 'cancel' : ($order->status === 'fulfilled' ? 'verified' : 'check_circle') }}</span>
+        <h1>{{ $order->status === 'cancelled' ? 'Order cancelled' : ($order->status === 'fulfilled' ? 'Order completed' : 'Order placed') }}</h1>
         <p>Order <strong>{{ $order->order_no }}</strong> · Cash on Delivery</p>
-        <p>Your order is unpaid until delivery. Each Seller will review their part of this checkout.</p>
+        @if ($order->status === 'fulfilled')
+            <p>Payment completed. Thank you for confirming receipt of every item in this order.</p>
+        @else
+            <p>Your order is unpaid until delivery. Each Seller will review their part of this checkout.</p>
+        @endif
         <div class="summary confirmation-totals">
             <div><span>Merchandise subtotal</span><strong>₱{{ number_format($order->subtotal_minor / 100, 2) }}</strong></div>
             <div><span>Estimated shipping</span><strong>₱{{ number_format($order->shipping_fee_minor / 100, 2) }}</strong></div>
@@ -32,13 +36,47 @@
     @foreach ($order->sellerOrders as $sellerOrder)
         <section class="checkout-card confirmation-seller-order">
             <div class="section-title"><span class="material-symbols-outlined">storefront</span>{{ $sellerOrder->store?->name ?? 'Seller' }}</div>
-            <p>Seller Order {{ $sellerOrder->seller_order_no }} · {{ str_replace('_', ' ', ucfirst($sellerOrder->status)) }}</p>
+            <p>Seller Order {{ $sellerOrder->seller_order_no }} · {{ $fulfillmentLabels[$sellerOrder->id] ?? str_replace('_', ' ', ucfirst($sellerOrder->status)) }}</p>
             @foreach ($sellerOrder->items as $item)
-                <div class="confirmation-item"><span>{{ $item->product_name }} · {{ $item->variant_name }} × {{ $item->quantity }}</span><strong>₱{{ number_format($item->subtotal_minor / 100, 2) }}</strong></div>
+                <article class="confirmation-product">
+                    @if (!empty($itemImages[$item->id] ?? ''))
+                        <img src="{{ $itemImages[$item->id] }}" alt="{{ $item->product_name }}" loading="lazy" onerror="this.onerror=null;this.src='/images/bearly-logo.png'">
+                    @else
+                        <span class="confirmation-thumb-fallback" aria-hidden="true"><span class="material-symbols-outlined">shopping_bag</span></span>
+                    @endif
+                    <div class="confirmation-product-copy">
+                        <strong>{{ $item->product_name }}</strong>
+                        <small>{{ $item->variant_name ?: 'Standard' }} · Qty {{ $item->quantity }}</small>
+                        <small>SKU: {{ $item->sku }}</small>
+                    </div>
+                    <div class="confirmation-product-side">
+                        <small>₱{{ number_format($item->unit_price_minor / 100, 2) }} each</small>
+                        <strong>₱{{ number_format($item->subtotal_minor / 100, 2) }}</strong>
+                    </div>
+                </article>
             @endforeach
             <div class="confirmation-item"><span>Estimated Bearly Logistics shipping ({{ $sellerOrder->shipping_quote['route_label'] ?? 'route quote' }}, {{ $sellerOrder->shipping_quote['billable_weight_kg'] ?? '—' }} kg)</span><strong>₱{{ number_format($sellerOrder->shipping_fee_minor / 100, 2) }}</strong></div>
         </section>
     @endforeach
+
+    <section class="checkout-card confirmation-meta">
+        <div><span>Order date</span><strong>{{ $placedAtLabel }}</strong></div>
+        <div><span>Payment</span><strong>Cash on Delivery · {{ ucfirst($order->payment_status) }}</strong></div>
+        <div class="confirmation-meta-address"><span>Deliver to</span><strong>{{ $shippingAddressLabel }}</strong></div>
+    </section>
+
+    @if (($receiptConfirmed ?? false) && $order->status !== 'cancelled')
+        <div class="checkout-complete-note" role="status">
+            <span class="material-symbols-outlined" aria-hidden="true">verified</span>
+            <p><strong>Order completed.</strong> You confirmed receipt of every item in this order.</p>
+        </div>
+    @elseif (($canConfirmReceipt ?? false) && $order->status !== 'cancelled')
+        <form method="post" action="{{ route('checkout.confirm-receipt', $order->id) }}" class="checkout-confirm-form">
+            @csrf
+            <p>Only confirm after you have received every item in this order. Confirmation marks each Seller Order in this checkout as complete.</p>
+            <button class="confirm-btn" type="submit">Confirm receipt — complete order</button>
+        </form>
+    @endif
 
     @if ($order->status === 'processing' && $order->sellerOrders->isNotEmpty() && $order->sellerOrders->every(fn ($sellerOrder) => $sellerOrder->status === 'pending'))
         <form method="post" action="{{ route('checkout.cancel', $order->id) }}" class="checkout-cancel-form">

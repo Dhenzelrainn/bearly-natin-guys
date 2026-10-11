@@ -28,7 +28,10 @@ class SellerInventoryService
 
     private const MAX_MOVEMENT_DELTA = 2_147_483_647;
 
-    public function __construct(private SellerProductService $products) {}
+    public function __construct(
+        private SellerProductService $products,
+        private BuyerCatalogService $catalog,
+    ) {}
 
     /**
      * Build the Seller's inventory workspace entirely from persisted Store data.
@@ -55,8 +58,9 @@ class SellerInventoryService
             ->with([
                 'product.subcategory:id,store_id,name',
                 'product.images' => fn ($images) => $images
-                    ->select(['id', 'product_id', 'variant_id', 'path', 'disk', 'position', 'is_primary'])
+                    ->select(['id', 'product_id', 'variant_id', 'path', 'disk', 'purpose', 'position', 'is_primary'])
                     ->orderBy('position'),
+                'product.images.variant',
             ])
             ->orderBy('product_id')
             ->orderBy('position')
@@ -93,9 +97,8 @@ class SellerInventoryService
                     : (string) $variant->name,
                 'subcategory' => $hasOwnedSubcategory ? (string) $subcategory->name : null,
                 'subcategory_id' => $hasOwnedSubcategory ? (int) $subcategory->id : null,
-                'image' => $image
-                    ? Storage::disk($image->disk ?: 'public')->url($image->path)
-                    : null,
+                'image' => $this->catalog->variantImageUrl($product, $variant)
+                    ?? ($image ? Storage::disk($image->disk ?: 'public')->url($image->path) : null),
                 'icon' => 'package',
                 'on_hand' => (int) $variant->stock_on_hand,
                 'reserved' => (int) $variant->stock_reserved,

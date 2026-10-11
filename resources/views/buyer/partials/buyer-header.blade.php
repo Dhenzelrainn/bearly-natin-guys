@@ -3,7 +3,8 @@
     $headerSearchFormId = $headerSearchFormId ?? 'buyer-header-search-form';
     $headerSearchInputId = $headerSearchInputId ?? 'buyer-header-search';
     $headerSearchInputName = $headerSearchInputName ?? 'search';
-    $headerSearchAction = $headerSearchAction ?? url('/home');
+    $headerSearchAction = $headerSearchAction ?? route('products.index');
+    $headerSearchValue = $headerSearchValue ?? '';
     $headerSearchPlaceholder = $headerSearchPlaceholder ?? 'Search for products, brands or sellers...';
     $headerSearchLabel = $headerSearchLabel ?? 'Search Bearly';
     $headerSearchCategories = $headerSearchCategories ?? [];
@@ -52,7 +53,7 @@
                         @endforeach
                     </select>
                 @endif
-                <input id="{{ $headerSearchInputId }}" name="{{ $headerSearchInputName }}" type="search" placeholder="{{ $headerSearchPlaceholder }}" maxlength="120" autocomplete="off">
+                <input id="{{ $headerSearchInputId }}" name="{{ $headerSearchInputName }}" type="search" value="{{ $headerSearchValue }}" placeholder="{{ $headerSearchPlaceholder }}" maxlength="120" autocomplete="off">
             @endif
             <button type="submit" aria-label="Search"><span class="material-symbols-outlined" aria-hidden="true">search</span></button>
         </form>

@@ -18,6 +18,7 @@
             <p class="ops-nav-label">Workspace</p>
             <a href="{{ route('rider.dashboard.pickups') }}" class="ops-nav-link {{ request()->routeIs('rider.dashboard.pickups','rider.orders.pickup*') ? 'is-active' : '' }}"><i data-lucide="package-plus"></i><span>Items for Pickup</span><span class="nav-count">3</span></a>
             <a href="{{ route('rider.dashboard.deliveries') }}" class="ops-nav-link {{ request()->routeIs('rider.dashboard.deliveries','rider.orders.delivery*') ? 'is-active' : '' }}"><i data-lucide="bike"></i><span>Items for Delivery</span><span class="nav-count">3</span></a>
+            <a href="{{ route('rider.refund-cash.index') }}" class="ops-nav-link {{ request()->routeIs('rider.refund-cash.*') ? 'is-active' : '' }}"><i data-lucide="hand-coins"></i><span>Cash custody</span></a>
             <p class="ops-nav-label">Finance & records</p>
             <a href="{{ route('rider.earnings.index') }}" class="ops-nav-link {{ request()->routeIs('rider.earnings.*') ? 'is-active' : '' }}"><i data-lucide="wallet-cards"></i><span>Earnings</span></a>
             <a href="{{ route('rider.history.index') }}" class="ops-nav-link {{ request()->routeIs('rider.history.*') ? 'is-active' : '' }}"><i data-lucide="history"></i><span>Delivery History</span></a>

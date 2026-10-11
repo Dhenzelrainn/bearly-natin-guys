@@ -43,7 +43,9 @@ class PickupRequestWorkflowTest extends TestCase
         $own = $this->makePickup(
             $provider,
             $seller,
-            'OWN'
+            'OWN',
+            'requested',
+            10000,
         );
         $foreign = $this->makePickup(
             $foreignProvider,
@@ -59,10 +61,25 @@ class PickupRequestWorkflowTest extends TestCase
             ->assertOk()
             ->assertSee($own['pickup']->pickup_no)
             ->assertSee($seller['store']->name)
+            ->assertSee('Pickup window:')
+            ->assertSee('Seller and pickup location')
+            ->assertSee('Request activity')
+            ->assertSee('Request submitted')
+            ->assertSee('1.250 kg total')
+            ->assertSee('Pickup contact')
+            ->assertSee('Seller operating hours')
+            ->assertSee('Parcel and references')
+            ->assertSee('Status and COD')
+            ->assertSee('₱100.00')
+            ->assertSee('Monday–Friday, 9:00 AM–5:00 PM')
             ->assertSee($own['parcel']->parcel_no)
             ->assertSee($own['waybill']->waybill_no)
             ->assertSee($own['shipment']->shipment_no)
             ->assertSee($own['sellerOrder']->seller_order_no)
+            ->assertSee('24.00 × 16.00 × 8.00 cm')
+            ->assertDontSee('Request overview')
+            ->assertSee('data-pickup-rejection-form hidden', false)
+            ->assertSee('data-pickup-reject-toggle', false)
             ->assertDontSee($foreign['pickup']->pickup_no)
             ->assertDontSee($foreignSeller['store']->name)
             ->assertDontSee('PU-24091');
@@ -145,6 +162,13 @@ class PickupRequestWorkflowTest extends TestCase
             $pickup->verified_by
         );
         $this->assertNotNull($pickup->verified_at);
+
+        $this->actingAs($provider['user'])
+            ->get(route('logistics.pickups.index'))
+            ->assertOk()
+            ->assertSee('Request verified')
+            ->assertSee($provider['user']->name)
+            ->assertSee($pickup->verified_at->format('M j, Y'));
     }
 
     public function test_logistics_cannot_view_or_change_foreign_pickup(): void
@@ -238,6 +262,14 @@ class PickupRequestWorkflowTest extends TestCase
             $pickup->cancellation_reason
         );
         $this->assertNotNull($pickup->cancelled_at);
+
+        $this->actingAs($provider['user'])
+            ->get(route('logistics.pickups.index'))
+            ->assertOk()
+            ->assertSee('Request rejected')
+            ->assertSee('Parcel count mismatch.')
+            ->assertDontSee('data-pickup-rejection-form', false)
+            ->assertDontSee('data-pickup-reject-toggle', false);
     }
 
     public function test_verified_pickup_can_be_assigned_to_owned_available_rider(): void
@@ -267,8 +299,7 @@ class PickupRequestWorkflowTest extends TestCase
             ->assertSessionHasNoErrors();
 
         $this->assertDatabaseHas('pickup_assignments', [
-            'pickup_request_id' =>
-                $fulfillment['pickup']->id,
+            'pickup_request_id' => $fulfillment['pickup']->id,
             'rider_profile_id' => $rider->id,
             'status' => 'assigned',
             'assigned_by' => $provider['user']->id,
@@ -286,13 +317,18 @@ class PickupRequestWorkflowTest extends TestCase
         $this->assertDatabaseHas('shipment_events', [
             'shipment_id' => $fulfillment['shipment']->id,
             'event_type' => 'pickup_assigned',
-            'from_status' =>
-                ShipmentStatus::ReadyForPickup->value,
-            'to_status' =>
-                ShipmentStatus::PickupAssigned->value,
+            'from_status' => ShipmentStatus::ReadyForPickup->value,
+            'to_status' => ShipmentStatus::PickupAssigned->value,
             'actor_user_id' => $provider['user']->id,
             'source' => 'logistics',
         ]);
+
+        $this->actingAs($provider['user'])
+            ->get(route('logistics.pickups.index'))
+            ->assertOk()
+            ->assertSee('Rider assigned')
+            ->assertSee($rider->user->name)
+            ->assertSee('Use the seller loading bay.');
     }
 
     public function test_pickup_cannot_be_assigned_to_foreign_or_unavailable_rider(): void
@@ -372,8 +408,7 @@ class PickupRequestWorkflowTest extends TestCase
             ->assertOk()
             ->assertViewHas(
                 'pickupMetrics',
-                fn (array $metrics) =>
-                    $metrics['awaiting_review'] === 1
+                fn (array $metrics) => $metrics['awaiting_review'] === 1
             )
             ->assertSee(
                 route('logistics.pickups.verify', $pending),
@@ -430,8 +465,7 @@ class PickupRequestWorkflowTest extends TestCase
     {
         $user = User::factory()->create([
             'name' => "Logistics {$suffix}",
-            'email' =>
-                'logistics-'.strtolower($suffix).'@example.test',
+            'email' => 'logistics-'.strtolower($suffix).'@example.test',
             'role' => UserRole::Logistics->value,
             'status' => AccountStatus::Active->value,
             'business_name' => "Logistics {$suffix}",
@@ -457,8 +491,7 @@ class PickupRequestWorkflowTest extends TestCase
     {
         $user = User::factory()->create([
             'name' => "Seller {$suffix}",
-            'email' =>
-                'seller-'.strtolower($suffix).'@example.test',
+            'email' => 'seller-'.strtolower($suffix).'@example.test',
             'role' => UserRole::Seller->value,
             'status' => AccountStatus::Active->value,
             'contact_number' => '09171111111',
@@ -490,6 +523,7 @@ class PickupRequestWorkflowTest extends TestCase
             'name' => "Store {$suffix}",
             'slug' => 'store-'.strtolower($suffix),
             'contact_phone' => '09171111111',
+            'operating_hours' => 'Monday–Friday, 9:00 AM–5:00 PM',
             'publication_status' => 'published',
             'published_at' => now(),
         ]);
@@ -509,8 +543,7 @@ class PickupRequestWorkflowTest extends TestCase
     ): RiderProfile {
         $user = User::factory()->create([
             'name' => "Rider {$suffix}",
-            'email' =>
-                'pickup-rider-'.strtolower($suffix).'@example.test',
+            'email' => 'pickup-rider-'.strtolower($suffix).'@example.test',
             'role' => UserRole::Rider->value,
             'status' => AccountStatus::Active->value,
             'logistics_id' => $provider['user']->id,
@@ -530,11 +563,11 @@ class PickupRequestWorkflowTest extends TestCase
         array $provider,
         array $seller,
         string $suffix,
-        string $status = 'requested'
+        string $status = 'requested',
+        int $codAmountMinor = 0,
     ): array {
         $buyer = User::factory()->create([
-            'email' =>
-                'buyer-'.strtolower($suffix).'@example.test',
+            'email' => 'buyer-'.strtolower($suffix).'@example.test',
             'role' => UserRole::Buyer->value,
             'status' => AccountStatus::Active->value,
         ]);
@@ -572,6 +605,7 @@ class PickupRequestWorkflowTest extends TestCase
             'origin_address_id' => $seller['address']->id,
             'purpose' => 'outbound',
             'status' => ShipmentStatus::ReadyForPickup->value,
+            'cod_amount_minor' => $codAmountMinor,
         ]);
 
         $waybill = Waybill::query()->create([
@@ -593,6 +627,9 @@ class PickupRequestWorkflowTest extends TestCase
             'parcel_no' => "PARCEL-{$suffix}",
             'piece_sequence' => 1,
             'weight_kg' => 1.250,
+            'length_cm' => 24,
+            'width_cm' => 16,
+            'height_cm' => 8,
             'status' => 'ready_for_pickup',
         ]);
 

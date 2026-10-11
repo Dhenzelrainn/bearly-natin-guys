@@ -23,16 +23,40 @@ class AdminCommerceController extends Controller
     public function confirmPayment(Request $request, Payment $payment, CommissionLedgerService $ledger, AuditService $audit): RedirectResponse
     {
         $data = $request->validate(['provider_reference' => ['required', 'string', 'max:150']]);
-        DB::transaction(function () use ($request, $payment, $data, $ledger, $audit) {
-            $payment = Payment::lockForUpdate()->findOrFail($payment->id);
+        $confirmed = DB::transaction(function () use ($request, $payment, $data, $ledger, $audit): bool {
+            $paymentStub = Payment::query()->findOrFail($payment->id);
+            $order = Order::query()->whereKey($paymentStub->order_id)->lockForUpdate()->firstOrFail();
+            $payment = Payment::query()->whereKey($paymentStub->id)->where('order_id', $order->id)->lockForUpdate()->firstOrFail();
+
+            if ($payment->status === 'paid') {
+                return false;
+            }
+
+            abort_if(
+                $payment->method === 'cod',
+                409,
+                'COD can only be confirmed from the assigned Rider\'s recorded cash collection.'
+            );
+
+            abort_unless(
+                in_array($payment->status, ['pending', 'authorized'], true)
+                    && $order->status !== 'cancelled',
+                409,
+                'Only a pending or authorized payment for a non-cancelled order can be confirmed.'
+            );
+
             $old = $payment->status;
-            $payment->update(['status' => 'paid', 'provider_reference' => $data['provider_reference'], 'authorized_at' => $payment->authorized_at ?? now(), 'paid_at' => now()]);
-            $payment->order()->update(['payment_status' => 'paid']);
+            $payment->update(['status' => 'paid', 'provider_reference' => trim($data['provider_reference']), 'authorized_at' => $payment->authorized_at ?? now(), 'paid_at' => now()]);
+            $order->update(['payment_status' => 'paid']);
             $ledger->finalize($payment);
-            $audit->record('payment.confirmed', 'finance', $payment, 'Administrator confirmed an order payment.', ['status' => $old], ['status' => 'paid', 'reference' => $data['provider_reference']], 'warning', $request);
+            $audit->record('payment.confirmed', 'finance', $payment, 'Administrator confirmed an order payment.', ['status' => $old], ['status' => 'paid', 'reference' => trim($data['provider_reference'])], 'warning', $request);
+
+            return true;
         }, 3);
 
-        return back()->with('success', 'Payment confirmed and commission ledger finalized.');
+        return back()->with('success', $confirmed
+            ? 'Payment confirmed and commission ledger finalized.'
+            : 'Payment was already confirmed; no changes were made.');
     }
 
     private function base(Request $request): array

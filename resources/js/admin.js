@@ -321,6 +321,8 @@
                 event.preventDefault(); openCommand();
             }
             if (event.key === 'Escape') {
+                if (document.querySelector('[data-return-evidence-dialog][open]')) return;
+
                 closeCommand();
                 closePopovers();
                 closeRegistrationMenus();
@@ -3112,6 +3114,103 @@
                     initialStatus
                 );
             });
+
+        const returnModalTriggers = new Map();
+        let activeReturnModal = null;
+        const returnModalFocusableSelector = [
+            'a[href]',
+            'button:not([disabled])',
+            'input:not([disabled])',
+            'select:not([disabled])',
+            'textarea:not([disabled])',
+            '[tabindex]:not([tabindex="-1"])',
+        ].join(',');
+
+        document.querySelectorAll('[data-open-modal^="return-case-"]').forEach((trigger) => {
+            const modal = document.getElementById(trigger.dataset.openModal);
+            if (!modal) return;
+
+            returnModalTriggers.set(modal, trigger);
+            trigger.addEventListener('click', () => {
+                if (modal.hidden) return;
+                activeReturnModal = modal;
+                modal.querySelector('.return-review-dialog [data-close-modal]')?.focus();
+            });
+        });
+
+        document.querySelectorAll('[data-return-modal]').forEach((modal) => {
+            modal.querySelectorAll('[data-close-modal]').forEach((closeControl) => {
+                closeControl.addEventListener('click', () => {
+                    if (!modal.hidden) return;
+                    returnModalTriggers.get(modal)?.focus();
+                    if (activeReturnModal === modal) activeReturnModal = null;
+                });
+            });
+
+            modal.addEventListener('keydown', (event) => {
+                if (event.target.closest?.('[data-return-evidence-dialog][open]')) return;
+                if (event.key !== 'Tab') return;
+
+                const dialog = modal.querySelector('.return-review-dialog');
+                const focusable = [...(dialog?.querySelectorAll(returnModalFocusableSelector) || [])]
+                    .filter((element) => !element.hidden && element.getClientRects().length > 0);
+                if (!focusable.length) {
+                    event.preventDefault();
+                    dialog?.focus();
+                    return;
+                }
+
+                const first = focusable[0];
+                const last = focusable[focusable.length - 1];
+                if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog)) {
+                    event.preventDefault();
+                    last.focus();
+                } else if (!event.shiftKey && document.activeElement === last) {
+                    event.preventDefault();
+                    first.focus();
+                }
+            });
+        });
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key !== 'Escape' || !activeReturnModal?.hidden) return;
+            returnModalTriggers.get(activeReturnModal)?.focus();
+            activeReturnModal = null;
+        });
+
+        document.querySelectorAll('[data-return-evidence-dialog]').forEach((dialog) => {
+            const returnModal = dialog.closest('[data-return-modal]');
+            const image = dialog.querySelector('[data-return-evidence-full]');
+            const title = dialog.querySelector('[data-return-evidence-title]');
+            let activeEvidenceTrigger = null;
+
+            returnModal?.querySelectorAll('[data-return-evidence-preview]').forEach((trigger) => {
+                trigger.addEventListener('click', () => {
+                    if (!trigger.dataset.previewUrl || typeof dialog.showModal !== 'function') return;
+
+                    activeEvidenceTrigger = trigger;
+                    const name = trigger.dataset.previewName || 'Evidence image';
+                    if (title) title.textContent = name;
+                    if (image) {
+                        image.src = trigger.dataset.previewUrl;
+                        image.alt = name;
+                    }
+                    dialog.showModal();
+                    dialog.querySelector('[data-return-evidence-close]')?.focus();
+                });
+            });
+
+            dialog.querySelector('[data-return-evidence-close]')?.addEventListener('click', () => dialog.close());
+            dialog.addEventListener('click', (event) => {
+                if (event.target === dialog) dialog.close();
+            });
+            dialog.addEventListener('close', () => {
+                image?.removeAttribute('src');
+                image?.removeAttribute('alt');
+                activeEvidenceTrigger?.focus();
+                activeEvidenceTrigger = null;
+            });
+        });
 
         document.querySelectorAll('[data-mock-action]').forEach((button) => {
 

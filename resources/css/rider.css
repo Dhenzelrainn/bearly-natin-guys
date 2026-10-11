@@ -2,6 +2,7 @@
 
 .topbar-divider{width:1px;height:34px;background:var(--line)}
 .rider-availability{display:inline-flex;align-items:center;gap:7px;padding:7px 10px;border:1px solid #cde4d5;border-radius:8px;background:var(--green-soft);color:var(--green);font-size:11px;font-weight:600}.rider-availability:before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.rider-dashboard-actions{align-items:center;flex-wrap:wrap;gap:9px}.rider-availability-control{display:flex;min-width:0;align-items:center;justify-content:space-between;gap:14px;padding:7px 9px 7px 12px;border:1px solid var(--line);border-radius:9px;background:#fff}.rider-availability-copy{display:grid;grid-template-columns:9px minmax(0,1fr);align-items:center;gap:9px;min-width:0}.rider-availability-copy>span:last-child{display:grid;min-width:0}.rider-availability-copy strong{color:var(--ink);font-size:11px;line-height:1.4}.rider-availability-copy small{color:var(--muted);font-size:9px;line-height:1.4}.rider-availability-dot{width:8px;height:8px;border-radius:50%;background:#9b928b}.rider-availability-dot.is-available{background:var(--green)}.rider-availability-dot.is-pending{background:var(--amber)}.rider-availability-control form{flex:0 0 auto;margin:0}.rider-availability-control .button{white-space:nowrap}.rider-availability-control button:focus-visible{outline:3px solid rgba(223,152,37,.55);outline-offset:2px}
 .alert-feed{display:grid;gap:0}.alert-row{display:grid;grid-template-columns:38px minmax(0,1fr) auto;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid var(--line)}.alert-row:last-child{border-bottom:0}.alert-row>span:first-child{width:36px;height:36px;display:grid;place-items:center;border-radius:9px;background:var(--gold-soft);color:var(--brown-700)}.alert-row svg{width:18px}.alert-row strong,.alert-row small{display:block}.alert-row strong{font-size:12px}.alert-row small{margin-top:3px;color:var(--muted);font-size:10px}.alert-row time{color:var(--muted);font-size:9px}
 .job-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.job-card{display:flex;min-width:0;flex-direction:column;border:1px solid var(--line);border-radius:12px;background:#fff;overflow:hidden}.job-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:16px;border-bottom:1px solid var(--line)}.job-card-head h3{margin:0;font-size:14px}.job-card-head small{color:var(--muted);font-size:10px}.job-card-body{display:grid;gap:11px;padding:16px;flex:1}.job-detail{display:grid;grid-template-columns:18px 1fr;gap:8px;align-items:start}.job-detail svg{width:16px;margin-top:2px;color:var(--brown-700)}.job-detail span{font-size:11px}.job-detail small{display:block;color:var(--muted);font-size:9px}.job-card-footer{display:flex;gap:8px;padding:13px 16px;border-top:1px solid var(--line);background:#fcfaf8}.job-card-footer .button{flex:1}
 .workflow-steps{display:grid;grid-template-columns:repeat(3,1fr);margin-bottom:20px;border:1px solid var(--line);border-radius:11px;background:#fff;overflow:hidden}.workflow-step{display:flex;align-items:center;gap:10px;padding:13px 16px;border-right:1px solid var(--line);color:var(--muted)}.workflow-step:last-child{border-right:0}.workflow-step>span:first-child{width:27px;height:27px;display:grid;place-items:center;border:1px solid var(--line);border-radius:50%;font-size:10px}.workflow-step strong{font-size:11px}.workflow-step.is-complete{color:var(--green)}.workflow-step.is-complete>span:first-child{border-color:var(--green);background:var(--green-soft)}.workflow-step.is-current{color:var(--brown-900);background:#fff9ef}.workflow-step.is-current>span:first-child{border-color:var(--gold);background:var(--gold);color:var(--brown-950)}
@@ -12,7 +13,8 @@
 .proof-preview{display:grid;place-items:center;min-height:180px;margin-top:12px;border:1px dashed #b9aaa0;border-radius:10px;background:#fcfaf8;color:var(--muted);text-align:center}.proof-preview svg{width:30px;height:30px;margin-bottom:7px;color:var(--brown-700)}.proof-preview strong,.proof-preview small{display:block}.proof-preview strong{font-size:11px}.proof-preview small{font-size:9px}
 .registration-card.rider-registration{grid-template-columns:320px 1fr}.registration-main .field-grid.three{align-items:start}
 @media(max-width:1100px){.job-grid{grid-template-columns:repeat(2,1fr)}.route-layout{grid-template-columns:1fr}}
-@media(max-width:760px){.job-grid{grid-template-columns:1fr}.workflow-steps{grid-template-columns:1fr}.workflow-step{border-right:0;border-bottom:1px solid var(--line)}.workflow-step:last-child{border-bottom:0}.finance-breakdown{grid-template-columns:1fr}.finance-item{border-right:0;border-bottom:1px solid var(--line)}.finance-item:last-child{border-bottom:0}.registration-card.rider-registration{grid-template-columns:1fr}.topbar-divider{display:none}}
+@media(max-width:760px){.job-grid{grid-template-columns:1fr}.workflow-steps{grid-template-columns:1fr}.workflow-step{border-right:0;border-bottom:1px solid var(--line)}.workflow-step:last-child{border-bottom:0}.finance-breakdown{grid-template-columns:1fr}.finance-item{border-right:0;border-bottom:1px solid var(--line)}.finance-item:last-child{border-bottom:0}.registration-card.rider-registration{grid-template-columns:1fr}.topbar-divider{display:none}.rider-dashboard-actions{width:100%;justify-content:space-between}}
+@media(max-width:520px){.rider-dashboard-actions{align-items:stretch;flex-direction:column}.rider-availability-control{width:100%}.rider-dashboard-actions>.button{justify-content:center}}
 
 /* =========================================================
    RIDER REGISTRATION — ADDRESS STEP HOTFIX
@@ -25,6 +27,70 @@ body[data-module="rider"] .registration-address-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 14px 16px;
     margin-top: 16px;
+}
+
+body[data-module="rider"] .refund-cash-card {
+    margin-bottom: 1rem;
+}
+
+body[data-module="rider"] .cash-rider-form {
+    display: grid;
+    max-width: 680px;
+    gap: 0.75rem;
+}
+
+body[data-module="rider"] .cash-rider-form label {
+    display: grid;
+    gap: 0.3rem;
+    font-weight: 600;
+}
+
+body[data-module="rider"] .cash-rider-form input,
+body[data-module="rider"] .cash-rider-form textarea {
+    width: 100%;
+    min-height: 2.7rem;
+    padding: 0.55rem 0.7rem;
+    border: 1px solid var(--border, #ddd);
+    border-radius: 0.65rem;
+    background: #fff;
+    color: inherit;
+}
+
+body[data-module="rider"] .cash-rider-form textarea {
+    min-height: 5rem;
+}
+
+body[data-module="rider"] .cash-rider-form small {
+    color: var(--muted, #666);
+    font-weight: 400;
+}
+
+body[data-module="rider"] .cash-rider-columns {
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) minmax(240px, 1fr);
+    gap: 1.25rem;
+}
+
+body[data-module="rider"] .cash-rider-fail {
+    align-content: start;
+    padding: 1rem;
+    border: 1px solid var(--border, #ddd);
+    border-radius: 0.8rem;
+}
+
+body[data-module="rider"] .cash-rider-fail h3 {
+    margin: 0;
+}
+
+body[data-module="rider"] .empty-state {
+    padding: 2rem;
+    text-align: center;
+}
+
+@media (max-width: 760px) {
+    body[data-module="rider"] .cash-rider-columns {
+        grid-template-columns: 1fr;
+    }
 }
 
 body[data-module="rider"] .registration-address-grid .field {
@@ -162,4 +228,792 @@ body[data-module="rider"] .registration-section-kicker {
         max-width: none;
         text-align: left;
     }
+}
+
+/* Rider delivery detail: status, manifest, and handoff actions. */
+body[data-module="rider"] .delivery-detail-layout {
+    align-items: start;
+    grid-template-columns: minmax(0, 1.25fr) minmax(380px, .75fr);
+}
+
+body[data-module="rider"] .delivery-detail-main,
+body[data-module="rider"] .delivery-detail-aside {
+    align-content: start;
+    min-width: 0;
+}
+
+body[data-module="rider"] .delivery-detail-layout > .panel,
+body[data-module="rider"] .delivery-detail-layout .panel {
+    min-width: 0;
+}
+
+body[data-module="rider"] .delivery-dispatch-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+body[data-module="rider"] .delivery-payment-grid {
+    display: grid;
+    grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr);
+    gap: 10px;
+    padding: 16px 18px;
+}
+
+body[data-module="rider"] .delivery-payment-state,
+body[data-module="rider"] .delivery-cod-summary {
+    display: grid;
+    align-content: start;
+    justify-items: start;
+    gap: 7px;
+    min-width: 0;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fff;
+}
+
+body[data-module="rider"] .delivery-payment-state > small,
+body[data-module="rider"] .delivery-cod-summary > small {
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.4;
+}
+
+body[data-module="rider"] .delivery-cod-summary.is-cod {
+    border-color: #ead9b5;
+    background: #fffaf0;
+}
+
+body[data-module="rider"] .delivery-cod-summary > strong {
+    color: var(--brown-900);
+    font-size: 20px;
+    line-height: 1.2;
+    font-variant-numeric: tabular-nums;
+}
+
+body[data-module="rider"] .delivery-cod-summary > span {
+    color: var(--muted);
+    font-size: 10px;
+}
+
+body[data-module="rider"] .delivery-parcel-list {
+    display: grid;
+    padding: 0 18px;
+}
+
+body[data-module="rider"] .delivery-parcel-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-width: 0;
+    padding: 13px 0;
+    border-bottom: 1px solid var(--line);
+}
+
+body[data-module="rider"] .delivery-parcel-row:last-child {
+    border-bottom: 0;
+}
+
+body[data-module="rider"] .delivery-parcel-copy {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+}
+
+body[data-module="rider"] .delivery-parcel-copy > strong {
+    overflow-wrap: anywhere;
+    color: var(--ink);
+    font-size: 11px;
+}
+
+body[data-module="rider"] .delivery-parcel-copy > small {
+    color: var(--muted);
+    font-size: 10px;
+}
+
+body[data-module="rider"] .delivery-action-body {
+    display: grid;
+    gap: 16px;
+}
+
+body[data-module="rider"] .delivery-action-note,
+body[data-module="rider"] .delivery-cod-callout {
+    display: flex;
+    align-items: flex-start;
+    gap: 11px;
+    min-width: 0;
+    padding: 12px 13px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fcfaf8;
+}
+
+body[data-module="rider"] .delivery-action-note > svg,
+body[data-module="rider"] .delivery-cod-callout > svg {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+    margin-top: 1px;
+    color: var(--brown-700);
+}
+
+body[data-module="rider"] .delivery-action-note > span,
+body[data-module="rider"] .delivery-cod-callout > span {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+}
+
+body[data-module="rider"] .delivery-action-note strong,
+body[data-module="rider"] .delivery-cod-callout strong {
+    color: var(--ink);
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+body[data-module="rider"] .delivery-action-note small,
+body[data-module="rider"] .delivery-cod-callout small {
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.5;
+}
+
+body[data-module="rider"] .delivery-action-note.is-warning {
+    border-color: #ead9b5;
+    background: #fffaf0;
+}
+
+body[data-module="rider"] .delivery-action-note.is-warning > svg {
+    color: var(--amber);
+}
+
+body[data-module="rider"] .delivery-action-note.is-success {
+    border-color: #cde4d5;
+    background: var(--green-soft);
+}
+
+body[data-module="rider"] .delivery-action-note.is-success > svg {
+    color: var(--green);
+}
+
+body[data-module="rider"] .delivery-cod-callout {
+    border-color: #ead9b5;
+    background: #fffaf0;
+}
+
+body[data-module="rider"] .delivery-cod-callout > svg {
+    color: var(--amber);
+}
+
+body[data-module="rider"] .delivery-form {
+    display: grid;
+    gap: 15px;
+    min-width: 0;
+}
+
+body[data-module="rider"] .delivery-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    min-width: 0;
+}
+
+body[data-module="rider"] .delivery-form-field {
+    display: grid;
+    align-content: start;
+    gap: 6px;
+    min-width: 0;
+    color: var(--ink);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+body[data-module="rider"] .delivery-form-field-wide {
+    grid-column: 1 / -1;
+}
+
+body[data-module="rider"] .delivery-field-label {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    line-height: 1.45;
+}
+
+body[data-module="rider"] .delivery-required,
+body[data-module="rider"] .delivery-optional {
+    flex: 0 0 auto;
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 500;
+}
+
+body[data-module="rider"] .delivery-required {
+    color: var(--brown-700);
+}
+
+body[data-module="rider"] .delivery-control {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
+    padding: 10px 12px;
+    border: 1px solid #d9cec5;
+    border-radius: 8px;
+    outline: 0;
+    background: #fff;
+    color: var(--ink);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 400;
+    transition: border-color .16s ease, box-shadow .16s ease;
+}
+
+body[data-module="rider"] .delivery-control:focus-visible {
+    border-color: var(--brown-700);
+    box-shadow: 0 0 0 3px rgba(97, 70, 55, .13);
+}
+
+body[data-module="rider"] .delivery-control[aria-invalid="true"] {
+    border-color: var(--red);
+}
+
+body[data-module="rider"] .delivery-control::placeholder {
+    color: #9a8f87;
+}
+
+body[data-module="rider"] .delivery-file-control {
+    min-height: 48px;
+    padding: 6px 8px;
+    color: var(--muted);
+    font-size: 11px;
+}
+
+body[data-module="rider"] .delivery-file-control::file-selector-button {
+    min-height: 32px;
+    margin-right: 10px;
+    padding: 5px 10px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: #f8f5f2;
+    color: var(--brown-900);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+body[data-module="rider"] .delivery-textarea {
+    min-height: 88px;
+    resize: vertical;
+}
+
+body[data-module="rider"] .delivery-field-help,
+body[data-module="rider"] .delivery-field-error {
+    display: block;
+    font-size: 11px;
+    font-weight: 400;
+    line-height: 1.5;
+}
+
+body[data-module="rider"] .delivery-field-help {
+    color: var(--muted);
+}
+
+body[data-module="rider"] .delivery-field-error {
+    color: var(--red);
+}
+
+body[data-module="rider"] .delivery-primary-action {
+    display: flex;
+    width: 100%;
+    min-height: 46px;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+body[data-module="rider"] .delivery-primary-action:focus-visible,
+body[data-module="rider"] .delivery-failure-submit:focus-visible {
+    outline: 3px solid rgba(223, 152, 37, .5);
+    outline-offset: 2px;
+}
+
+body[data-module="rider"] .delivery-failure {
+    padding-top: 13px;
+    border-top: 1px solid var(--line);
+}
+
+body[data-module="rider"] .delivery-failure > summary {
+    display: flex;
+    min-height: 50px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    color: var(--ink);
+    cursor: pointer;
+    list-style: none;
+}
+
+body[data-module="rider"] .delivery-failure > summary::-webkit-details-marker {
+    display: none;
+}
+
+body[data-module="rider"] .delivery-failure > summary:focus-visible {
+    border-radius: 6px;
+    outline: 3px solid rgba(223, 152, 37, .45);
+    outline-offset: 3px;
+}
+
+body[data-module="rider"] .delivery-failure-heading {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    min-width: 0;
+}
+
+body[data-module="rider"] .delivery-failure-heading > svg {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+    margin-top: 1px;
+    color: var(--amber);
+}
+
+body[data-module="rider"] .delivery-failure-heading > span {
+    display: grid;
+    gap: 3px;
+}
+
+body[data-module="rider"] .delivery-failure-heading strong {
+    font-size: 12px;
+}
+
+body[data-module="rider"] .delivery-failure-heading small {
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 400;
+    line-height: 1.45;
+}
+
+body[data-module="rider"] .delivery-failure-chevron {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+    color: var(--muted);
+    transition: transform .16s ease;
+}
+
+body[data-module="rider"] .delivery-failure[open] .delivery-failure-chevron {
+    transform: rotate(180deg);
+}
+
+body[data-module="rider"] .delivery-failure-form {
+    padding-top: 14px;
+}
+
+body[data-module="rider"] .delivery-failure-submit {
+    display: flex;
+    width: 100%;
+    min-height: 44px;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border-color: #d8c8bb;
+    background: #fff;
+    color: var(--brown-900);
+}
+
+body[data-module="rider"] .delivery-failure-submit:hover {
+    border-color: #bda693;
+    background: #fcfaf8;
+}
+
+@media (max-width: 1100px) {
+    body[data-module="rider"] .delivery-detail-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 600px) {
+    body[data-module="rider"] .delivery-dispatch-grid,
+    body[data-module="rider"] .delivery-payment-grid,
+    body[data-module="rider"] .delivery-form-grid {
+        grid-template-columns: 1fr;
+    }
+
+    body[data-module="rider"] .delivery-form-field-wide {
+        grid-column: auto;
+    }
+
+    body[data-module="rider"] .delivery-parcel-row {
+        align-items: flex-start;
+    }
+}
+
+/* Refund cash duty: keep assignment identity and the next action easy to scan. */
+body[data-module="rider"] .refund-cash-workspace {
+    width: min(100%, 1380px);
+    margin-inline: auto;
+}
+
+body[data-module="rider"] .refund-cash-hero {
+    margin-bottom: 16px;
+}
+
+body[data-module="rider"] .refund-cash-card {
+    margin-bottom: 18px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 11px;
+    box-shadow: none;
+}
+
+body[data-module="rider"] .refund-cash-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 22px;
+    padding: 18px 21px;
+    border-bottom: 1px solid var(--line);
+    background: #fcfaf8;
+}
+
+body[data-module="rider"] .refund-cash-card-title {
+    min-width: 0;
+}
+
+body[data-module="rider"] .refund-cash-card-title h2 {
+    margin: 6px 0 0;
+    color: var(--brown-950);
+    font-size: 22px;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+}
+
+body[data-module="rider"] .refund-cash-card-title h2 span {
+    color: var(--ink);
+    font-size: 16px;
+    font-weight: 500;
+}
+
+body[data-module="rider"] .refund-cash-card-title p {
+    max-width: 72ch;
+    margin: 8px 0 0;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.55;
+}
+
+body[data-module="rider"] .refund-cash-card-header .status-badge {
+    flex: 0 0 auto;
+    margin-top: 3px;
+}
+
+body[data-module="rider"] .refund-cash-card-header .status-badge[data-status="assigned_to_rider"],
+body[data-module="rider"] .refund-cash-card-header .status-badge[data-status="cash_return_pending"] {
+    background: var(--amber-soft);
+    color: var(--amber);
+}
+
+body[data-module="rider"] .refund-cash-card-header .status-badge[data-status="cash_with_rider"] {
+    background: var(--green-soft);
+    color: var(--green);
+}
+
+body[data-module="rider"] .refund-cash-references {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1px;
+    margin: 0;
+    border-bottom: 1px solid var(--line);
+    background: var(--line);
+}
+
+body[data-module="rider"] .refund-cash-references > div {
+    display: grid;
+    align-content: center;
+    gap: 4px;
+    min-width: 0;
+    padding: 13px 17px;
+    background: #fff;
+}
+
+body[data-module="rider"] .refund-cash-references dt,
+body[data-module="rider"] .refund-cash-detail-list dt {
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.4;
+}
+
+body[data-module="rider"] .refund-cash-references dd,
+body[data-module="rider"] .refund-cash-detail-list dd {
+    min-width: 0;
+    margin: 0;
+    color: var(--ink);
+    font-size: 12px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+
+body[data-module="rider"] .refund-cash-references code {
+    color: var(--brown-800);
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 11px;
+    overflow-wrap: anywhere;
+    white-space: normal;
+}
+
+body[data-module="rider"] .refund-cash-muted {
+    color: var(--muted);
+    font-size: 11px;
+}
+
+body[data-module="rider"] .refund-cash-card-content {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(340px, .9fr);
+    align-items: start;
+    gap: 26px;
+    padding: 21px;
+    background: #fff;
+}
+
+body[data-module="rider"] .refund-cash-details,
+body[data-module="rider"] .refund-cash-next-step {
+    min-width: 0;
+}
+
+body[data-module="rider"] .refund-cash-details h3,
+body[data-module="rider"] .refund-cash-action-heading h3 {
+    margin: 0;
+    color: var(--brown-950);
+    font-size: 16px;
+    line-height: 1.4;
+}
+
+body[data-module="rider"] .refund-cash-detail-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px 24px;
+    margin: 17px 0 0;
+}
+
+body[data-module="rider"] .refund-cash-detail-list > div {
+    display: grid;
+    align-content: start;
+    gap: 4px;
+    min-width: 0;
+}
+
+body[data-module="rider"] .refund-cash-detail-list .refund-cash-detail-wide {
+    grid-column: 1 / -1;
+}
+
+body[data-module="rider"] .refund-cash-detail-list dd {
+    font-size: 13px;
+}
+
+body[data-module="rider"] .refund-cash-next-step {
+    display: grid;
+    align-content: start;
+    gap: 17px;
+    padding: 18px 19px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: #fff;
+}
+
+body[data-module="rider"] .refund-cash-action-heading {
+    display: grid;
+    gap: 5px;
+}
+
+body[data-module="rider"] .refund-cash-action-heading .eyebrow {
+    margin-bottom: 1px;
+}
+
+body[data-module="rider"] .refund-cash-action-heading p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+body[data-module="rider"] .cash-rider-form {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    gap: 9px;
+}
+
+body[data-module="rider"] .cash-rider-form label {
+    margin-top: 3px;
+    color: var(--ink);
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+body[data-module="rider"] .cash-rider-form input,
+body[data-module="rider"] .cash-rider-form textarea {
+    min-width: 0;
+    min-height: 44px;
+    border-color: #d9cec5;
+    border-radius: 8px;
+    font-size: 13px;
+}
+
+body[data-module="rider"] .cash-rider-form input:focus-visible,
+body[data-module="rider"] .cash-rider-form textarea:focus-visible {
+    border-color: var(--brown-700);
+    outline: 0;
+    box-shadow: 0 0 0 3px rgba(97, 70, 55, .13);
+}
+
+body[data-module="rider"] .cash-rider-form input[aria-invalid="true"] {
+    border-color: var(--red);
+}
+
+body[data-module="rider"] .cash-rider-form input[type="file"] {
+    min-height: 48px;
+    padding: 7px;
+    font-size: 11px;
+}
+
+body[data-module="rider"] .cash-rider-form input[type="file"]::file-selector-button {
+    min-height: 30px;
+    margin-right: 8px;
+    padding: 4px 9px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: #f8f5f2;
+    color: var(--brown-900);
+    font: inherit;
+    font-weight: 600;
+}
+
+body[data-module="rider"] .cash-rider-form .button,
+body[data-module="rider"] .refund-cash-simple-action .button {
+    display: flex;
+    width: 100%;
+    min-height: 44px;
+    align-items: center;
+    justify-content: center;
+    margin-top: 5px;
+}
+
+body[data-module="rider"] .refund-cash-field-help {
+    margin-top: -4px;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 400;
+    line-height: 1.45;
+}
+
+body[data-module="rider"] .refund-cash-field-error {
+    color: var(--red);
+    font-size: 11px;
+    font-weight: 500;
+}
+
+body[data-module="rider"] .cash-rider-failure {
+    padding-top: 13px;
+    border-top: 1px solid var(--line);
+}
+
+body[data-module="rider"] .cash-rider-failure summary {
+    min-height: 42px;
+    color: var(--brown-800);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+body[data-module="rider"] .cash-rider-failure summary:focus-visible {
+    border-radius: 5px;
+    outline: 3px solid rgba(223, 152, 37, .45);
+    outline-offset: 2px;
+}
+
+body[data-module="rider"] .cash-rider-failure .cash-rider-form {
+    padding-top: 8px;
+}
+
+body[data-module="rider"] .refund-cash-previous-attempt {
+    margin-top: 18px;
+}
+
+body[data-module="rider"] .refund-cash-errors {
+    margin-bottom: 16px;
+    padding: 13px 16px;
+    border: 1px solid #e7c4c1;
+    border-radius: 8px;
+    background: var(--red-soft);
+    color: var(--red);
+    font-size: 12px;
+}
+
+body[data-module="rider"] .refund-cash-errors ul {
+    margin: 6px 0 0;
+    padding-left: 18px;
+}
+
+body[data-module="rider"] .refund-cash-errors li + li {
+    margin-top: 3px;
+}
+
+body[data-module="rider"] .refund-cash-empty .empty-state {
+    padding: 36px 20px;
+}
+
+@media (max-width: 1000px) {
+    body[data-module="rider"] .refund-cash-card-content {
+        grid-template-columns: 1fr;
+    }
+
+    body[data-module="rider"] .refund-cash-references {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    body[data-module="rider"] .refund-cash-next-step {
+        max-width: 640px;
+    }
+}
+
+@media (max-width: 650px) {
+    body[data-module="rider"] .refund-cash-card-header {
+        flex-direction: column;
+        gap: 12px;
+        padding: 17px;
+    }
+
+    body[data-module="rider"] .refund-cash-card-title h2 {
+        font-size: 20px;
+    }
+
+    body[data-module="rider"] .refund-cash-references {
+        grid-template-columns: 1fr;
+    }
+
+    body[data-module="rider"] .refund-cash-references > div {
+        padding: 10px 17px;
+    }
+
+    body[data-module="rider"] .refund-cash-card-content {
+        gap: 18px;
+        padding: 17px;
+    }
+
+    body[data-module="rider"] .refund-cash-detail-list {
+        grid-template-columns: 1fr;
+        gap: 13px;
+    }
+
+    body[data-module="rider"] .refund-cash-detail-list .refund-cash-detail-wide {
+        grid-column: auto;
+    }
+
+    body[data-module="rider"] .refund-cash-next-step {
+        padding: 15px;
+    }
+
 }

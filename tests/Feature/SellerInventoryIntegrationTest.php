@@ -10,14 +10,50 @@ use App\Models\SellerProfile;
 use App\Models\Store;
 use App\Models\StoreSubcategory;
 use App\Models\User;
+use App\Services\SellerInventoryService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class SellerInventoryIntegrationTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_inventory_rows_show_matching_color_and_sku_images_with_primary_fallback(): void
+    {
+        Storage::fake('public');
+        $category = $this->category();
+        [$seller, $store] = $this->sellerAndStore($category, 'inventory-images');
+        $product = $this->product($store, $category, 'Color Shirt', 'color-shirt');
+        $smallRed = $this->variant($product, 'IMG-S-RED', 'Small / Red', 5, 0, 2);
+        $largeRed = $this->variant($product, 'IMG-L-RED', 'Large / Red', 5, 0, 2);
+        $blue = $this->variant($product, 'IMG-BLUE', 'Small / Blue', 5, 0, 2);
+        $green = $this->variant($product, 'IMG-GREEN', 'Small / Green', 5, 0, 2);
+        $plain = $this->variant($product, 'IMG-PLAIN', 'Default', 5, 0, 2);
+        foreach ([[$smallRed, 'Red'], [$largeRed, 'Red'], [$blue, 'Blue'], [$green, 'Green']] as [$variant, $color]) {
+            $variant->update(['options' => ['Size' => 'Small', 'Colour' => $color]]);
+        }
+        $product->images()->create(['path' => 'inventory/primary.jpg', 'disk' => 'public', 'purpose' => 'primary', 'is_primary' => true]);
+        $product->images()->create(['variant_id' => $smallRed->id, 'path' => 'inventory/red-sku.jpg', 'disk' => 'public', 'purpose' => 'variant_sku']);
+        $redImage = $product->images()->create(['variant_id' => $smallRed->id, 'path' => 'inventory/red.jpg', 'disk' => 'public', 'purpose' => 'variant_color']);
+        $product->images()->create(['variant_id' => $blue->id, 'path' => 'inventory/blue.jpg', 'disk' => 'public', 'purpose' => 'variant_sku']);
+        $product->images()->create(['variant_id' => $green->id, 'path' => 'inventory/green.jpg', 'disk' => 'public', 'purpose' => 'variant']);
+
+        $items = app(SellerInventoryService::class)->inventoryFor($seller)['inventoryItems']->keyBy('id');
+        foreach ([[$smallRed, 'red'], [$largeRed, 'red'], [$blue, 'blue'], [$green, 'green'], [$plain, 'primary']] as [$variant, $filename]) {
+            $this->assertSame(Storage::disk('public')->url("inventory/{$filename}.jpg"), $items[$variant->id]['image']);
+        }
+        $this->actingAs($seller)->get(route('seller.inventory'))
+            ->assertOk()
+            ->assertSee('src="'.Storage::disk('public')->url('inventory/red.jpg').'"', false)
+            ->assertSee('src="'.Storage::disk('public')->url('inventory/blue.jpg').'"', false);
+
+        $redImage->update(['path' => 'inventory/red-replaced.jpg']);
+        $updatedItems = app(SellerInventoryService::class)->inventoryFor($seller)['inventoryItems']->keyBy('id');
+        $this->assertSame(Storage::disk('public')->url('inventory/red-replaced.jpg'), $updatedItems[$largeRed->id]['image']);
+    }
 
     public function test_inventory_page_uses_store_variants_and_scoped_movement_history(): void
     {

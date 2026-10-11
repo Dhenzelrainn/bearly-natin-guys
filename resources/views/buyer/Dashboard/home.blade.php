@@ -190,7 +190,7 @@ $homeFlashDeals = [
 
 
 
-<form class="search" id="search-form" role="search">
+<form class="search" id="search-form" role="search" action="{{ route('products.index') }}" method="get">
 
 
 
@@ -198,13 +198,13 @@ $homeFlashDeals = [
 
 
 
-<select id="search-category"><option value="">All categories</option></select>
+<select id="search-category" name="category"><option value="">All categories</option></select>
 
 
 
 <label class="sr-only" for="search-input">Search products</label>
 
-<input id="search-input" type="search" placeholder="Search for products, brands or sellers..." maxlength="120" autocomplete="off">
+<input id="search-input" name="search" type="search" placeholder="Search for products, brands or sellers..." maxlength="120" autocomplete="off">
 
 
 

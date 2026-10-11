@@ -2,18 +2,24 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\SellerOrderStatus;
+use App\Enums\ShipmentStatus;
 use App\Models\Address;
 use App\Models\Cart;
 use App\Models\CartItem;
+use App\Models\Order;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\Store;
 use App\Models\Wishlist;
 use App\Services\BuyerCatalogService;
+use App\Services\BuyerOrderConfirmationService;
 use App\Services\InternationalPhone;
+use App\Services\ProductReviewService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
@@ -134,6 +140,249 @@ class BuyerController extends Controller
                 ->values(),
             'message' => 'Addresses retrieved successfully.',
         ]);
+    }
+
+    public function productReviewsData(Request $request, Product $product, ProductReviewService $reviews): JsonResponse
+    {
+        abort_unless(
+            Product::query()->visibleToBuyers()->whereKey($product->getKey())->exists(),
+            404
+        );
+
+        $limit = max(1, min((int) $request->query('limit', 10), 50));
+        $list = $reviews->productReviews($product->id, $limit);
+
+        return response()->json([
+            'data' => [
+                'summary' => $reviews->productSummary($product->id),
+                'reviews' => $list->map(fn ($review): array => $reviews->publicPayload($review))->all(),
+            ],
+            'message' => 'Product reviews retrieved successfully.',
+        ]);
+    }
+
+    public function purchaseData(Request $request, BuyerCatalogService $catalog, BuyerOrderConfirmationService $confirmation): JsonResponse
+    {
+        $orders = Order::query()
+            ->where('buyer_id', $request->user()->id)
+            ->with([
+                'sellerOrders.store',
+                'sellerOrders.items.product.images.variant',
+                'sellerOrders.items.variant',
+                'sellerOrders.shipments.events',
+                'sellerOrders.returnRequests',
+            ])
+            ->latest('id')
+            ->get()
+            ->map(fn (Order $order) => $this->purchasePayload($order, $catalog, $confirmation))
+            ->values();
+
+        return response()->json([
+            'data' => $orders,
+            'message' => 'Purchases retrieved successfully.',
+        ]);
+    }
+
+    /** @return array<string, mixed> */
+    private function purchasePayload(Order $order, BuyerCatalogService $catalog, BuyerOrderConfirmationService $confirmation): array
+    {
+        $sellerOrders = $order->sellerOrders;
+        $active = $sellerOrders->reject(fn ($sellerOrder): bool => $sellerOrder->status === SellerOrderStatus::Cancelled->value);
+        $outboundShipments = $sellerOrders->flatMap(fn ($sellerOrder) => $sellerOrder->shipments->where('purpose', 'outbound'));
+        $stores = $sellerOrders->map(fn ($sellerOrder): string => (string) ($sellerOrder->store?->name ?? ''))->filter()->unique()->values();
+
+        if ($order->status === 'cancelled' || ($sellerOrders->isNotEmpty() && $active->isEmpty())) {
+            $bucket = 'cancelled';
+            $label = 'Cancelled';
+        } elseif ($active->isNotEmpty() && $active->every(fn ($sellerOrder): bool => $sellerOrder->status === SellerOrderStatus::Completed->value)) {
+            $bucket = 'completed';
+            $label = 'Completed';
+        } elseif ($active->contains(fn ($sellerOrder): bool => $sellerOrder->status === SellerOrderStatus::Completed->value
+            || $sellerOrder->shipments->where('purpose', 'outbound')->contains(fn ($shipment): bool => in_array($shipment->status, [ShipmentStatus::Delivered->value, ShipmentStatus::OutForDelivery->value], true)))) {
+            $bucket = 'to-receive';
+            $label = 'To Receive';
+        } elseif ($order->status === 'pending_payment') {
+            $bucket = 'to-pay';
+            $label = 'To Pay';
+        } else {
+            $bucket = 'to-ship';
+            $label = 'To Ship';
+        }
+
+        $items = $sellerOrders->flatMap(fn ($sellerOrder) => $sellerOrder->items->map(function ($item) use ($catalog, $sellerOrder): array {
+            return [
+                'name' => (string) $item->product_name,
+                'variation' => (string) ($item->variant_name ?: 'Standard'),
+                'qty' => (int) $item->quantity,
+                'order_item_id' => (int) $item->id,
+                'seller_order_id' => (int) $sellerOrder->id,
+                'price' => ((int) $item->unit_price_minor) / 100,
+                'price_minor' => (int) $item->unit_price_minor,
+                'image' => $catalog->orderItemImageUrl($item),
+                'store_url' => $sellerOrder->store?->slug
+                    ? route('stores.show', $sellerOrder->store->slug, false)
+                    : null,
+            ];
+        }))->values()->all();
+
+        $shop = $stores->isEmpty() ? 'Bearly Store' : $stores->first().($stores->count() > 1 ? ' +'.($stores->count() - 1).' more' : '');
+        // Custom timestamp columns are not date-cast by the model, so parse
+        // defensively instead of assuming a Carbon instance.
+        $rawPlacedAt = $order->placed_at ?? $order->created_at;
+        $placedAt = $rawPlacedAt ? Carbon::parse($rawPlacedAt) : null;
+        $deliveryState = $this->purchaseDeliveryState($order);
+        $deliveredAt = $this->purchaseDeliveredAt($order);
+        $canConfirm = $confirmation->canConfirm($order);
+        $canCancel = $order->status === 'processing'
+            && $sellerOrders->isNotEmpty()
+            && $sellerOrders->every(fn ($sellerOrder): bool => $sellerOrder->status === 'pending');
+
+        return [
+            'id' => (string) $order->order_no,
+            'order_id' => (int) $order->id,
+            'status' => $bucket,
+            'statusLabel' => $label,
+            'shop' => $shop,
+            'date' => $placedAt?->format('M j, Y') ?? '',
+            'time' => $placedAt?->format('g:i A') ?? '',
+            'placed_at' => $placedAt?->toIso8601String(),
+            'total' => ((int) $order->total_minor) / 100,
+            'total_minor' => (int) $order->total_minor,
+            'items' => $items,
+            'seller_orders' => $sellerOrders->map(fn ($sellerOrder): array => [
+                'id' => (int) $sellerOrder->id,
+                'number' => (string) $sellerOrder->seller_order_no,
+                'store' => (string) ($sellerOrder->store?->name ?? 'Seller'),
+                'status' => (string) $sellerOrder->status,
+                'return_url' => $sellerOrder->status === SellerOrderStatus::Completed->value
+                    ? route('buyer.returns.create', $sellerOrder->id)
+                    : null,
+                'return_cases' => $sellerOrder->returnRequests->map(fn ($returnRequest): array => [
+                    'number' => (string) $returnRequest->return_no,
+                    'status' => (string) $returnRequest->status,
+                    'url' => route('buyer.returns.show', $returnRequest->id),
+                ])->values()->all(),
+            ])->values()->all(),
+            'paymentMethod' => 'Cash on Delivery',
+            'server' => true,
+            'can_confirm' => $canConfirm,
+            'can_cancel' => $canCancel,
+            'confirm_url' => $canConfirm ? route('checkout.confirm-receipt', $order->id) : null,
+            'cancel_url' => $canCancel ? route('checkout.cancel', $order->id) : null,
+            'details_url' => route('checkout.confirmation', $order->order_no),
+            'trackingStatus' => $this->purchaseTrackingLabel($bucket, $deliveryState),
+            'delivery_status' => $deliveryState,
+            'delivered_at' => $deliveredAt?->toIso8601String(),
+            'delivered_at_display' => $deliveredAt ? $deliveredAt->format('M j, Y · g:i A') : null,
+            'delivery_address' => [
+                'name' => (string) $order->recipient_name,
+                'phone' => (string) $order->recipient_phone,
+                'street' => (string) $order->address_line,
+                'barangay' => (string) $order->barangay,
+                'city' => (string) $order->city_municipality,
+                'province' => (string) $order->province,
+                'postal' => (string) ($order->postal_code ?? ''),
+            ],
+            'trackingEvents' => $outboundShipments
+                ->flatMap(fn ($shipment) => $shipment->events->map(fn ($event): array => [
+                    'label' => $this->trackingEventLabel((string) $event->event_type, (string) $event->to_status),
+                    'note' => (string) ($event->notes ?? ''),
+                    'date' => $event->occurred_at ? Carbon::parse($event->occurred_at)->toIso8601String() : null,
+                ]))
+                ->filter(fn (array $event): bool => filled($event['date']))
+                ->sortBy('date')
+                ->values()
+                ->all(),
+        ];
+    }
+
+    /**
+     * Physical delivery state derived from the order's shipments, independent
+     * of the purchase bucket (a delivered parcel awaiting buyer confirmation
+     * is still physically delivered).
+     *
+     * @return 'preparing'|'in_transit'|'out_for_delivery'|'delivered'
+     */
+    private function purchaseDeliveryState(Order $order): string
+    {
+        $statuses = $order->sellerOrders
+            ->reject(fn ($sellerOrder): bool => $sellerOrder->status === SellerOrderStatus::Cancelled->value)
+            ->flatMap(fn ($sellerOrder) => $sellerOrder->shipments->where('purpose', 'outbound')->pluck('status'))
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($statuses->isEmpty()) {
+            return 'preparing';
+        }
+
+        if ($statuses->every(fn (string $status): bool => $status === ShipmentStatus::Delivered->value)) {
+            return 'delivered';
+        }
+
+        if ($statuses->contains(ShipmentStatus::OutForDelivery->value)) {
+            return 'out_for_delivery';
+        }
+
+        if ($statuses->contains(fn (string $status): bool => in_array($status, [
+            ShipmentStatus::PickedUp->value,
+            ShipmentStatus::AtSortingCenter->value,
+            ShipmentStatus::Sorted->value,
+            ShipmentStatus::Dispatched->value,
+        ], true))) {
+            return 'in_transit';
+        }
+
+        return 'preparing';
+    }
+
+    private function purchaseDeliveredAt(Order $order): ?Carbon
+    {
+        $occurredAt = $order->sellerOrders
+            ->flatMap(fn ($sellerOrder) => $sellerOrder->shipments
+                ->where('purpose', 'outbound')
+                ->flatMap(fn ($shipment) => $shipment->events))
+            ->filter(fn ($event): bool => (string) $event->to_status === ShipmentStatus::Delivered->value && $event->occurred_at !== null)
+            ->map(fn ($event): Carbon => Carbon::parse($event->occurred_at))
+            ->sort()
+            ->last();
+
+        return $occurredAt;
+    }
+
+    private function purchaseTrackingLabel(string $bucket, string $deliveryState): string
+    {
+        if ($bucket === 'cancelled') {
+            return 'Cancelled';
+        }
+
+        if ($deliveryState === 'delivered') {
+            return 'Delivered';
+        }
+
+        return match ($bucket) {
+            'to-pay' => 'Order Placed',
+            'to-ship' => 'Preparing to Ship',
+            'to-receive' => 'Out for Delivery',
+            'completed' => 'Delivered',
+            'cancelled' => 'Cancelled',
+            default => 'Order update',
+        };
+    }
+
+    private function trackingEventLabel(string $eventType, string $toStatus): string
+    {
+        return match ($eventType) {
+            'shipment_ready_for_pickup' => 'Ready for pickup',
+            'parcel_picked_up', 'shipment_picked_up' => 'Picked up by Bearly Logistics',
+            'received_at_center' => 'Received at sorting center',
+            'parcel_sorted', 'shipment_sorted' => 'Sorted for delivery',
+            'parcel_dispatched', 'shipment_dispatched' => 'Dispatched to delivery rider',
+            'shipment_out_for_delivery', 'parcel_out_for_delivery' => 'Out for delivery',
+            'shipment_delivered', 'parcel_delivered' => 'Delivered',
+            'shipment_delivery_failed', 'parcel_delivery_failed' => 'Delivery attempt unsuccessful',
+            default => Str::of($toStatus ?: $eventType)->replace(['_', '-'], ' ')->title()->toString(),
+        };
     }
 
     public function storeAddress(Request $request): JsonResponse
@@ -558,6 +807,16 @@ class BuyerController extends Controller
 
     public function products(Request $request, BuyerCatalogService $catalog): View
     {
+        $rawSearch = $request->query('search');
+        if (! is_string($rawSearch) || trim($rawSearch) === '') {
+            $rawSearch = $request->query('q', '');
+        }
+        $searchTerm = is_string($rawSearch) ? mb_substr(trim($rawSearch), 0, 120) : '';
+
+        if ($searchTerm !== '' && $this->hasBuyerTables()) {
+            return $this->searchCatalog($request, $catalog, $searchTerm);
+        }
+
         $categoryViews = [
             'men-s-apparel' => 'buyer.Category.MenApparel.mens-apparel',
             'women-s-apparel' => 'buyer.Category.WomenApparel.womens-apparel',
@@ -646,7 +905,79 @@ class BuyerController extends Controller
         ]);
     }
 
-    public function showProduct(Product $product, BuyerCatalogService $catalog): View
+    private function searchCatalog(Request $request, BuyerCatalogService $catalog, string $searchTerm): View
+    {
+        $like = '%'.$searchTerm.'%';
+        $rawCategory = $request->query('category', '');
+        $categoryFilter = is_string($rawCategory) ? trim($rawCategory) : '';
+
+        $stores = Store::query()
+            ->visibleToBuyers()
+            ->where('name', 'like', $like)
+            ->orderByRaw('CASE WHEN name = ? THEN 0 WHEN name LIKE ? THEN 1 ELSE 2 END', [$searchTerm, $searchTerm.'%'])
+            ->orderBy('name')
+            ->limit(8)
+            ->get(['id', 'name', 'slug', 'description', 'logo_path'])
+            ->map(fn (Store $store): array => [
+                'name' => $store->name,
+                'slug' => $store->slug,
+                'description' => $store->description,
+                'logo_url' => $store->logo_path
+                    ? Storage::disk('public')->url($store->logo_path)
+                    : null,
+            ])
+            ->all();
+
+        $productQuery = Product::query()
+            ->with([
+                'category',
+                'subcategory',
+                'store',
+                'images' => fn ($images) => $images->with('variant')->orderBy('position'),
+                'variants' => fn ($variants) => $variants->where('is_active', true)->orderBy('position'),
+            ])
+            ->visibleToBuyers()
+            ->where(function ($matches) use ($like) {
+                $matches->where('products.name', 'like', $like)
+                    ->orWhere('products.description', 'like', $like)
+                    ->orWhereHas('category', fn ($categories) => $categories
+                        ->where('name', 'like', $like)
+                        ->orWhere('slug', 'like', $like))
+                    ->orWhereHas('subcategory', fn ($subcategories) => $subcategories
+                        ->where('name', 'like', $like))
+                    ->orWhereHas('store', fn ($stores) => $stores
+                        ->visibleToBuyers()
+                        ->where('name', 'like', $like));
+            });
+
+        if ($categoryFilter !== '' && strtolower($categoryFilter) !== 'all') {
+            $category = $catalog->categoryForSlug($categoryFilter);
+
+            if ($category) {
+                $productQuery->where('category_id', $category->id);
+            } else {
+                $productQuery->whereHas('category', fn ($categories) => $categories
+                    ->where('slug', $categoryFilter)
+                    ->orWhere('name', $categoryFilter));
+            }
+        }
+
+        $products = $productQuery
+            ->orderByRaw('CASE WHEN products.name = ? THEN 0 WHEN products.name LIKE ? THEN 1 ELSE 2 END', [$searchTerm, $searchTerm.'%'])
+            ->orderByDesc('products.published_at')
+            ->orderByDesc('products.id')
+            ->paginate(12)
+            ->withQueryString();
+
+        return view('buyer.search.index', [
+            'searchTerm' => $searchTerm,
+            'stores' => $stores,
+            'products' => $products,
+            'productCards' => $catalog->cards($products->getCollection(), $request->user()),
+        ]);
+    }
+
+    public function showProduct(Product $product, BuyerCatalogService $catalog, ProductReviewService $reviews): View
     {
         $product->load('store');
 
@@ -658,7 +989,7 @@ class BuyerController extends Controller
         $product->load([
             'category',
             'subcategory',
-            'store.sellerProfile',
+            'store.sellerProfile.pickupAddress',
             'variants' => fn ($variants) => $variants->where('is_active', true)->orderBy('position'),
             'images' => fn ($images) => $images->with('variant')->orderBy('position'),
         ]);
@@ -670,15 +1001,41 @@ class BuyerController extends Controller
                 ->take(4),
             request()->user(),
         );
+        $productCard = $catalog->card($product);
+        $detailVariantSpecs = $product->variants
+            ->mapWithKeys(fn (ProductVariant $variant): array => [(int) $variant->id => [
+                'sku' => (string) $variant->sku,
+                'stock' => (int) $variant->available_stock,
+                'weight_kg' => $variant->package_weight_kg,
+                'length_cm' => $variant->package_length_cm,
+                'width_cm' => $variant->package_width_cm,
+                'height_cm' => $variant->package_height_cm,
+            ]])
+            ->all();
+        $store = $product->store;
 
         return view('buyer.products.show', [
             'product' => $product,
-            'productCard' => $catalog->card($product),
+            'productCard' => $productCard,
             'relatedProducts' => $relatedProducts,
+            'reviewSummary' => $reviews->productSummary($product->id),
+            'productReviews' => $reviews->productReviews($product->id, 50)
+                ->map(fn ($review): array => $reviews->publicPayload($review))
+                ->all(),
+            'detailVariantSpecs' => $detailVariantSpecs,
+            'storeReviewSummary' => $reviews->storeSummary((int) $store->id),
+            'storeProductCount' => Product::query()
+                ->visibleToBuyers()
+                ->where('store_id', $store->id)
+                ->count(),
+            'storeLogoUrl' => $store->logo_path
+                ? Storage::disk('public')->url($store->logo_path)
+                : null,
+            'storeProvince' => trim((string) ($store->sellerProfile?->pickupAddress?->province ?? '')),
         ]);
     }
 
-    public function showStore(Request $request, Store $store, BuyerCatalogService $catalog): View
+    public function showStore(Request $request, Store $store, BuyerCatalogService $catalog, ProductReviewService $reviews): View
     {
         abort_unless(
             Store::query()->visibleToBuyers()->whereKey($store->getKey())->exists(),
@@ -691,6 +1048,9 @@ class BuyerController extends Controller
             'promotionalBanners' => fn ($banners) => $banners->where('is_active', true),
         ]);
         $products = $catalog->publishedProducts(null, $store);
+        $publishedProductCount = $products->count();
+        $productReviewSummaries = $reviews->productSummaries($products->pluck('id')->map(fn ($id): int => (int) $id)->all());
+        $storeReviewSummary = $reviews->storeSummary((int) $store->id);
         $storeSubcategories = $products
             ->pluck('subcategory')
             ->filter()
@@ -738,6 +1098,15 @@ class BuyerController extends Controller
         $category = $store->sellerProfile?->approvedCategory?->name
             ?: $store->sellerProfile?->user?->business_category
             ?: 'Marketplace Seller';
+        $productCards = $catalog->cards($products, $request->user(), true);
+        $productCards = array_map(function (array $product) use ($productReviewSummaries): array {
+            $product['review_summary'] = $productReviewSummaries[(int) $product['id']] ?? [
+                'count' => 0,
+                'average' => 0.0,
+            ];
+
+            return $product;
+        }, $productCards);
 
         return view('buyer.stores.show', [
             'store' => $store,
@@ -751,7 +1120,9 @@ class BuyerController extends Controller
             'promoBanners' => $promoBanners,
             'storeSubcategories' => $storeSubcategories,
             'selectedSubcategoryId' => $selectedSubcategoryId,
-            'products' => $catalog->cards($products, $request->user(), true),
+            'publishedProductCount' => $publishedProductCount,
+            'storeReviewSummary' => $storeReviewSummary,
+            'products' => $productCards,
         ]);
     }
 
@@ -861,6 +1232,69 @@ class BuyerController extends Controller
                 'cart_count' => $this->cartCount($request->user()),
             ],
             'message' => 'Product added to cart',
+        ]);
+    }
+
+    public function buyNow(Request $request, BuyerCatalogService $catalog): JsonResponse
+    {
+        $data = $request->validate([
+            'product_variant_id' => ['required', 'integer', 'exists:product_variants,id'],
+            'quantity' => ['required', 'integer', 'min:1'],
+        ]);
+
+        $item = DB::transaction(function () use ($request, $data) {
+            $variant = ProductVariant::query()
+                ->with('product.store')
+                ->where('is_active', true)
+                ->whereKey($data['product_variant_id'])
+                ->lockForUpdate()
+                ->firstOrFail();
+            Product::query()
+                ->visibleToBuyers()
+                ->whereKey($variant->product_id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ((int) $data['quantity'] > $variant->available_stock) {
+                throw ValidationException::withMessages([
+                    'quantity' => "Only {$variant->available_stock} item(s) are currently available.",
+                ]);
+            }
+
+            $cart = $this->currentCart($request->user());
+            $existingItem = $cart->items()
+                ->where('product_variant_id', $variant->id)
+                ->lockForUpdate()
+                ->first();
+
+            if ($existingItem) {
+                $existingItem->update([
+                    'quantity' => (int) $data['quantity'],
+                    'selected' => true,
+                ]);
+
+                return $existingItem->fresh([
+                    'variant.product.store',
+                    'variant.product.images.variant',
+                ]);
+            }
+
+            return $cart->items()->create([
+                'product_variant_id' => $variant->id,
+                'quantity' => (int) $data['quantity'],
+                'selected' => true,
+            ])->load([
+                'variant.product.store',
+                'variant.product.images.variant',
+            ]);
+        });
+
+        return response()->json([
+            'data' => [
+                'item' => $this->cartItemPayload($item, $catalog),
+                'cart_count' => $this->cartCount($request->user()),
+            ],
+            'message' => 'Product prepared for single-item checkout.',
         ]);
     }
 

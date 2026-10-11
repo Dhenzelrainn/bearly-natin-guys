@@ -47,15 +47,40 @@
         .store-product img, .store-product .store-product-image { display:block; width:100%; aspect-ratio:1/1; object-fit:cover; background:#eee5da; }
         .store-product-copy { padding:14px; }
         .store-product-copy strong { display:block; color:#39251b; line-height:1.35; }
+        .store-product-link { display:block; color:inherit; text-decoration:none; }
         .store-subcategory-filters { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 16px; }
         .store-subcategory-filters a { display:inline-flex; min-height:36px; align-items:center; padding:7px 12px; border:1px solid #dfd2c4; border-radius:999px; color:#604832; background:#fffdfa; font-size:12px; font-weight:600; text-decoration:none; }
         .store-subcategory-filters a[aria-current="page"] { border-color:#6f4a2e; color:#fff; background:#6f4a2e; }
         .store-product-subcategory { display:inline-flex !important; width:fit-content; margin-top:8px !important; padding:4px 7px; border-radius:5px; color:#6c543f !important; background:#f4ece3; font-size:10px; font-weight:600 !important; }
-        .store-product-copy span { display:block; margin-top:7px; color:#6f4a2e; font-weight:800; }
+        .store-product-copy > span { display:block; margin-top:7px; color:#6f4a2e; font-weight:800; }
+        .store-shop-actions { margin-left:auto; }
+        .store-shop-actions a, .store-product-add { display:inline-flex; min-height:40px; align-items:center; justify-content:center; gap:7px; padding:8px 14px; border:1px solid #6f4a2e; border-radius:8px; background:#6f4a2e; color:#fff; font:600 12px Poppins,sans-serif; text-decoration:none; cursor:pointer; }
+        .store-shop-actions a:hover, .store-product-add:hover:not(:disabled) { background:#563823; }
+        .store-stats { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:1px; margin:0 26px 22px; overflow:hidden; border:1px solid #eadfd4; border-radius:10px; background:#eadfd4; }
+        .store-stats > div { min-height:76px; display:flex; flex-direction:column; justify-content:center; padding:12px 16px; background:#fffaf4; }
+        .store-stats strong { color:#39251b; font-size:19px; }
+        .store-stats span { margin-top:2px; color:#75695d; font-size:11px; }
+        .store-products-heading { display:flex; align-items:baseline; justify-content:space-between; gap:12px; }
+        .store-products-heading h2 { margin-bottom:12px; }
+        .store-products-heading > span { color:#75695d; font-size:12px; }
+        .store-toolbar { display:grid; grid-template-columns:minmax(220px,1fr) minmax(190px,260px); gap:12px; margin:0 0 16px; }
+        .store-toolbar label { display:grid; gap:5px; color:#62574e; font-size:11px; font-weight:700; }
+        .store-toolbar input, .store-toolbar select, .store-product-variant { width:100%; min-height:40px; padding:8px 11px; border:1px solid #d8c8b8; border-radius:8px; background:#fffdfa; color:#39251b; font:inherit; font-size:12px; }
+        .store-product[hidden] { display:none !important; }
+        .store-product-rating { display:flex; align-items:center; flex-wrap:wrap; gap:5px; margin-top:7px; color:#75695d; font-size:11px; }
+        .store-product-rating .store-stars { color:#b87511; letter-spacing:1px; }
+        .store-product-copy .store-product-price { margin-top:8px; color:#5b351f; font-size:17px; }
+        .store-product-stock { color:#75695d !important; font-size:11px; font-weight:500 !important; }
+        .store-variant-field { display:grid; gap:5px; margin-top:10px; color:#62574e; font-size:10px; font-weight:700; }
+        .store-product-add { width:100%; min-height:38px; margin-top:10px; }
+        .store-product-add:disabled { border-color:#cfc5bb; background:#cfc5bb; cursor:not-allowed; }
+        .store-product-feedback { min-height:16px; margin:6px 0 0; color:#52703d; font-size:10px; line-height:1.4; }
+        .store-product-feedback a { color:#5b3827; font-weight:700; }
+        .store-filter-empty { margin-top:14px; padding:18px; border:1px dashed #cdbba9; border-radius:10px; color:#75695d; text-align:center; background:#fffdfa; }
         .store-empty { padding:38px 20px; border:1px dashed #cdbba9; border-radius:16px; color:#75695d; text-align:center; background:#fffdfa; }
-        @media (max-width:800px) { .store-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .store-identity { align-items:flex-start; padding:18px; } .store-about { grid-template-columns:1fr; } }
+        @media (max-width:800px) { .store-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .store-identity { align-items:flex-start; padding:18px; } .store-shop-actions { margin-left:0; } .store-about { grid-template-columns:1fr; } .store-stats { margin-right:18px; margin-left:18px; } }
         @media (max-width:620px) { .store-meta, .store-promo-grid { grid-template-columns:1fr; } }
-        @media (max-width:520px) { .store-shell { width:min(100% - 20px,1180px); padding-top:20px; } .store-banner { min-height:150px; } .store-avatar { flex-basis:62px; width:62px; height:62px; margin-top:-44px; font-size:22px; } .store-identity h1 { font-size:25px; } .store-grid { gap:10px; } .store-product-copy { padding:10px; font-size:13px; } }
+        @media (max-width:520px) { .store-shell { width:min(100% - 20px,1180px); padding-top:20px; } .store-banner { min-height:150px; } .store-avatar { flex-basis:62px; width:62px; height:62px; margin-top:-44px; font-size:22px; } .store-identity { flex-wrap:wrap; } .store-identity h1 { font-size:25px; } .store-grid { gap:10px; } .store-product-copy { padding:10px; font-size:13px; } .store-stats { grid-template-columns:repeat(2,minmax(0,1fr)); margin:0 14px 16px; } .store-stats > div { min-height:64px; padding:10px 12px; } .store-stats strong { font-size:16px; } .store-toolbar { grid-template-columns:1fr; } }
     </style>
 </head>
 <body class="bh store-page">
@@ -81,6 +106,13 @@
                     <p class="store-category">{{ $category }}</p>
                     <p>{{ $store->description ?: 'Browse published products from this Bearly store.' }}</p>
                 </div>
+                <div class="store-shop-actions"><a href="#store-products"><span class="material-symbols-outlined" aria-hidden="true">storefront</span>Shop products</a></div>
+            </div>
+            <div class="store-stats" aria-label="Store information">
+                <div><strong>{{ number_format($publishedProductCount) }}</strong><span>Published products</span></div>
+                <div><strong>{{ $storeReviewSummary['count'] > 0 ? number_format($storeReviewSummary['average'], 1) : '—' }}</strong><span>Buyer rating</span></div>
+                <div><strong>{{ number_format($storeReviewSummary['count']) }}</strong><span>Verified product reviews</span></div>
+                <div><strong>{{ $store->created_at?->format('M Y') ?? '—' }}</strong><span>On Bearly since</span></div>
             </div>
             @if (filled($store->announcement) || filled($store->operating_hours))
                 <div class="store-meta">
@@ -115,7 +147,7 @@
             </section>
         @endif
 
-        <section class="store-about" aria-labelledby="store-about-title">
+        <section class="store-about" id="store-about" aria-labelledby="store-about-title">
             <div class="store-about-panel">
                 <h2 id="store-about-title">About this store</h2>
                 <p>{{ $store->description ?: 'This store has not added a description yet.' }}</p>
@@ -130,8 +162,11 @@
             </div>
         </section>
 
-        <section class="store-products" aria-labelledby="store-products-title">
-            <h2 id="store-products-title">Published products</h2>
+        <section class="store-products" id="store-products" aria-labelledby="store-products-title">
+            <div class="store-products-heading">
+                <h2 id="store-products-title">Shop products</h2>
+                <span>{{ count($products) }} shown · {{ $publishedProductCount }} in this store</span>
+            </div>
             @if ($storeSubcategories->isNotEmpty())
                 <nav class="store-subcategory-filters" aria-label="Filter store products by subcategory">
                     <a href="{{ route('stores.show', $store->slug) }}" @if ($selectedSubcategoryId === null) aria-current="page" @endif>All products</a>
@@ -141,22 +176,172 @@
                 </nav>
             @endif
             @if (count($products))
+                <div class="store-toolbar">
+                    <label for="store-product-search">Search this store<input id="store-product-search" type="search" placeholder="Search product name or category" autocomplete="off"></label>
+                    <label for="store-product-sort">Sort products<select id="store-product-sort"><option value="newest">Recently listed</option><option value="price-asc">Price: low to high</option><option value="price-desc">Price: high to low</option><option value="name">Name: A to Z</option></select></label>
+                </div>
                 <div class="store-grid">
                     @foreach ($products as $product)
-                        <a class="store-product" href="{{ route('products.show', $product['id']) }}">
-                            @if ($product['image'])<img src="{{ $product['image'] }}" alt="{{ $product['name'] }}">@else<div class="store-product-image"></div>@endif
+                        @php
+                            $reviewSummary = $product['review_summary'];
+                            $initialVariant = collect($product['variants'])->firstWhere('id', $product['default_variant_id']) ?: ($product['variants'][0] ?? null);
+                        @endphp
+                        <article class="store-product" data-store-product data-product-name="{{ $product['name'] }}" data-product-category="{{ $product['category'] }} {{ $product['seller_subcategory'] ?? '' }}" data-price="{{ $initialVariant['price'] ?? $product['price'] }}" data-position="{{ $loop->index }}">
+                            <a class="store-product-link" href="{{ route('products.show', $product['id']) }}" aria-label="View {{ $product['name'] }}">
+                                @if ($product['image'])<img src="{{ $product['image'] }}" alt="{{ $product['name'] }}" loading="lazy">@else<div class="store-product-image"></div>@endif
+                            </a>
                             <div class="store-product-copy">
-                                <strong>{{ $product['name'] }}</strong>
+                                <a class="store-product-link" href="{{ route('products.show', $product['id']) }}"><strong>{{ $product['name'] }}</strong></a>
                                 @if (filled($product['seller_subcategory'] ?? null))<span class="store-product-subcategory">{{ $product['seller_subcategory'] }}</span>@endif
-                                <span>₱{{ number_format($product['price'], 2) }}</span>
+                                <div class="store-product-rating" role="img" aria-label="{{ $reviewSummary['count'] > 0 ? number_format($reviewSummary['average'], 1).' out of 5, '.$reviewSummary['count'].' reviews' : 'No ratings yet' }}">
+                                    @if ($reviewSummary['count'] > 0)<span class="store-stars" aria-hidden="true">{{ str_repeat('★', (int) round($reviewSummary['average'])) }}{{ str_repeat('☆', 5 - (int) round($reviewSummary['average'])) }}</span><strong>{{ number_format($reviewSummary['average'], 1) }}</strong><span>({{ $reviewSummary['count'] }})</span>@else<span>No ratings yet</span>@endif
+                                </div>
+                                <span class="store-product-price" data-store-price>₱{{ number_format($initialVariant['price'] ?? $product['price'], 2) }}</span>
+                                <span class="store-product-stock" data-store-stock>{{ (int) ($initialVariant['stock'] ?? $product['stock']) }} available</span>
+                                @if (count($product['variants']) > 1)
+                                    <label class="store-variant-field" for="store-variant-{{ $product['id'] }}">Choose variation
+                                        <select class="store-product-variant" id="store-variant-{{ $product['id'] }}" data-store-variant>
+                                            @foreach ($product['variants'] as $variant)
+                                                <option value="{{ $variant['id'] }}" data-price="{{ $variant['price'] }}" data-stock="{{ $variant['stock'] }}" @selected((int) $variant['id'] === (int) ($initialVariant['id'] ?? 0))>{{ $variant['name'] }} · ₱{{ number_format($variant['price'], 2) }}@if ($variant['stock'] < 1) · Out of stock @endif</option>
+                                            @endforeach
+                                        </select>
+                                    </label>
+                                @else
+                                    <span class="store-product-stock">Variation: {{ $initialVariant['name'] ?? 'Standard' }}</span>
+                                @endif
+                                <button class="store-product-add" type="button" data-store-add data-variant-id="{{ $initialVariant['id'] ?? '' }}" aria-label="Add {{ $product['name'] }} to cart" @disabled((int) ($initialVariant['stock'] ?? 0) < 1)>Add to cart</button>
+                                <p class="store-product-feedback" data-store-feedback role="status" aria-live="polite"></p>
                             </div>
-                        </a>
+                        </article>
                     @endforeach
                 </div>
+                <p class="store-filter-empty" data-store-filter-empty hidden>No products match your search.</p>
             @else
                 <div class="store-empty">This store has no published products yet.</div>
             @endif
         </section>
     </main>
+    <script>
+        (() => {
+            const grid = document.querySelector('.store-grid');
+            const search = document.querySelector('#store-product-search');
+            const sort = document.querySelector('#store-product-sort');
+            const empty = document.querySelector('[data-store-filter-empty]');
+            const addUrl = @json(route('cart.add'));
+            const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+            if (!grid) return;
+
+            const cards = [...grid.querySelectorAll('[data-store-product]')];
+            const priceText = value => `₱${Number(value || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+            const syncVariant = (card, select) => {
+                const option = select.selectedOptions[0];
+                if (!option) return;
+
+                const price = Number(option.dataset.price) || 0;
+                const stock = Number(option.dataset.stock) || 0;
+                const button = card.querySelector('[data-store-add]');
+                const priceNode = card.querySelector('[data-store-price]');
+                const stockNode = card.querySelector('[data-store-stock]');
+                card.dataset.price = String(price);
+                if (priceNode) priceNode.textContent = priceText(price);
+                if (stockNode) stockNode.textContent = `${stock} available`;
+                if (button) {
+                    button.dataset.variantId = option.value;
+                    button.disabled = stock < 1;
+                }
+            };
+
+            cards.forEach(card => {
+                const select = card.querySelector('[data-store-variant]');
+                if (!select) return;
+                const selected = select.selectedOptions[0];
+                if (selected && Number(selected.dataset.stock) < 1) {
+                    const available = [...select.options].find(option => Number(option.dataset.stock) > 0);
+                    if (available) select.value = available.value;
+                }
+                syncVariant(card, select);
+            });
+
+            const renderProducts = () => {
+                const query = search?.value.trim().toLocaleLowerCase() || '';
+                const ordered = [...cards];
+                switch (sort?.value) {
+                    case 'price-asc': ordered.sort((a, b) => Number(a.dataset.price) - Number(b.dataset.price)); break;
+                    case 'price-desc': ordered.sort((a, b) => Number(b.dataset.price) - Number(a.dataset.price)); break;
+                    case 'name': ordered.sort((a, b) => (a.dataset.productName || '').localeCompare(b.dataset.productName || '')); break;
+                    default: ordered.sort((a, b) => Number(a.dataset.position) - Number(b.dataset.position));
+                }
+
+                let visible = 0;
+                ordered.forEach(card => {
+                    const haystack = `${card.dataset.productName || ''} ${card.dataset.productCategory || ''}`.toLocaleLowerCase();
+                    card.hidden = query !== '' && !haystack.includes(query);
+                    if (!card.hidden) visible += 1;
+                    grid.append(card);
+                });
+                if (empty) empty.hidden = visible > 0;
+            };
+
+            search?.addEventListener('input', renderProducts);
+            sort?.addEventListener('change', renderProducts);
+            grid.addEventListener('change', event => {
+                const select = event.target.closest('[data-store-variant]');
+                if (select) {
+                    syncVariant(select.closest('[data-store-product]'), select);
+                    renderProducts();
+                }
+            });
+            grid.addEventListener('click', async event => {
+                const button = event.target.closest('[data-store-add]');
+                if (!button || button.disabled) return;
+
+                const card = button.closest('[data-store-product]');
+                const feedback = card?.querySelector('[data-store-feedback]');
+                const variantId = Number(button.dataset.variantId);
+                if (!variantId) return;
+
+                button.disabled = true;
+                button.textContent = 'Adding…';
+                if (feedback) feedback.textContent = '';
+                try {
+                    const response = await fetch(addUrl, {
+                        method: 'POST',
+                        headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf },
+                        body: JSON.stringify({ product_variant_id: variantId, quantity: 1 }),
+                    });
+                    const result = await response.json().catch(() => ({}));
+                    if (!response.ok) {
+                        const validationMessage = Object.values(result.errors || {}).flat()[0];
+                        throw new Error(validationMessage || result.message || 'Unable to add this item to your cart.');
+                    }
+
+                    if (feedback) {
+                        feedback.append(document.createTextNode('Added to cart · '));
+                        const link = document.createElement('a');
+                        link.href = @json(route('cart.view'));
+                        link.textContent = 'View cart';
+                        feedback.append(link);
+                    }
+                    window.bearlyBuyerProfile = {
+                        ...(window.bearlyBuyerProfile || {}),
+                        cartCount: Number(result.data?.cart_count ?? window.bearlyBuyerProfile?.cartCount ?? 0),
+                    };
+                    window.BearlyNavbarState?.sync?.();
+                } catch (error) {
+                    if (feedback) feedback.textContent = error.message || 'Unable to add this item to your cart.';
+                } finally {
+                    button.textContent = 'Add to cart';
+                    const select = card?.querySelector('[data-store-variant]');
+                    const stock = select
+                        ? Number(select.selectedOptions[0]?.dataset.stock || 0)
+                        : Number(card?.querySelector('[data-store-stock]')?.textContent.match(/\d+/)?.[0] || 0);
+                    button.disabled = stock < 1;
+                }
+            });
+
+            renderProducts();
+        })();
+    </script>
 </body>
 </html>

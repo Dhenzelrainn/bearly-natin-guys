@@ -4,6 +4,11 @@
 @section('page-title', 'Items for Pickup')
 
 @section('content')
+@php
+    $isRiderAvailable = ($riderAvailabilityStatus ?? 'offline') === 'available';
+    $isRiderApproved = ($riderVerificationStatus ?? 'pending') === 'approved';
+@endphp
+
 <div class="page-header">
     <div>
         <p class="page-kicker">
@@ -20,7 +25,48 @@
         </p>
     </div>
 
-    <div class="page-actions">
+    <div class="page-actions rider-dashboard-actions">
+        <div class="rider-availability-control">
+            <div class="rider-availability-copy" role="status" aria-live="polite">
+                <span
+                    class="rider-availability-dot {{ $isRiderAvailable ? 'is-available' : ($isRiderApproved ? 'is-offline' : 'is-pending') }}"
+                    aria-hidden="true"
+                ></span>
+                <span>
+                    @if($isRiderApproved)
+                        <strong>{{ $isRiderAvailable ? 'Available' : 'Offline' }}</strong>
+                        <small id="rider-availability-help">
+                            {{ $isRiderAvailable
+                                ? 'Visible for new pickup assignments.'
+                                : 'Hidden from new pickup assignments.' }}
+                        </small>
+                    @else
+                        <strong>Awaiting approval</strong>
+                        <small id="rider-availability-help">Logistics must approve your Rider profile before assignment.</small>
+                    @endif
+                </span>
+            </div>
+
+            @if($isRiderApproved)
+                <form method="POST" action="{{ route('rider.availability.update') }}">
+                    @csrf
+                    @method('PATCH')
+                    <input
+                        type="hidden"
+                        name="availability_status"
+                        value="{{ $isRiderAvailable ? 'offline' : 'available' }}"
+                    >
+                    <button
+                        class="button button-small {{ $isRiderAvailable ? '' : 'button-primary' }}"
+                        type="submit"
+                        aria-describedby="rider-availability-help"
+                    >
+                        {{ $isRiderAvailable ? 'Go offline' : 'Go available' }}
+                    </button>
+                </form>
+            @endif
+        </div>
+
         <a
             class="button"
             href="{{ route('rider.dashboard.pickups') }}"

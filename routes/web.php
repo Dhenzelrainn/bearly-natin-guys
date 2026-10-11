@@ -20,11 +20,15 @@ use App\Http\Controllers\AdminReturnRefundController;
 use App\Http\Controllers\AdminUserController;
 use App\Http\Controllers\ApplicationDocumentController;
 use App\Http\Controllers\BuyerController;
+use App\Http\Controllers\BuyerReturnController;
+use App\Http\Controllers\BuyerReviewController;
 use App\Http\Controllers\LogisticsController;
+use App\Http\Controllers\LogisticsCashController;
 use App\Http\Controllers\PostalCodeController;
 use App\Http\Controllers\ProductComplianceController;
 use App\Http\Controllers\PsgcController;
 use App\Http\Controllers\RiderController;
+use App\Http\Controllers\RiderCashController;
 use App\Http\Controllers\SellerController;
 use App\Http\Controllers\SellerProductController;
 use App\Http\Controllers\SellerWorkflowController;
@@ -160,6 +164,42 @@ Route::middleware(['auth', 'role:buyer'])->group(function () {
     Route::get('/addresses/data', [BuyerController::class, 'addressData'])
         ->name('buyer.addresses.data');
 
+    Route::get('/profile/purchases/data', [BuyerController::class, 'purchaseData'])
+        ->name('buyer.purchases.data');
+
+    Route::get('/profile/seller-orders/{sellerOrder}/return', [BuyerReturnController::class, 'create'])
+        ->whereNumber('sellerOrder')
+        ->name('buyer.returns.create');
+
+    Route::post('/profile/seller-orders/{sellerOrder}/return', [BuyerReturnController::class, 'store'])
+        ->whereNumber('sellerOrder')
+        ->name('buyer.returns.store');
+
+    Route::get('/profile/returns/{returnRequest}', [BuyerReturnController::class, 'show'])
+        ->whereNumber('returnRequest')
+        ->name('buyer.returns.show');
+
+    Route::post('/profile/returns/{returnRequest}/evidence', [BuyerReturnController::class, 'addEvidence'])
+        ->whereNumber('returnRequest')
+        ->name('buyer.returns.evidence.store');
+
+    Route::get('/profile/returns/evidence/{evidence}', [BuyerReturnController::class, 'downloadEvidence'])
+        ->whereNumber('evidence')
+        ->name('buyer.returns.evidence.download');
+
+    Route::get('/profile/returns/refunds/{refund}/receipt', [BuyerReturnController::class, 'downloadRefundReceipt'])
+        ->whereNumber('refund')
+        ->name('buyer.returns.refund-receipt');
+
+    Route::get('/profile/reviews/data', [BuyerReviewController::class, 'index'])
+        ->name('buyer.reviews.data');
+
+    Route::post('/profile/reviews', [BuyerReviewController::class, 'store'])
+        ->name('buyer.reviews.store');
+
+    Route::get('/products/{product}/reviews/data', [BuyerController::class, 'productReviewsData'])
+        ->name('products.reviews.data');
+
     Route::post('/addresses', [BuyerController::class, 'storeAddress'])
         ->name('buyer.addresses.store');
 
@@ -188,6 +228,10 @@ Route::middleware(['auth', 'role:buyer'])->group(function () {
     Route::post('/checkout/orders/{order}/cancel', [BuyerCheckoutController::class, 'cancel'])
         ->whereNumber('order')
         ->name('checkout.cancel');
+
+    Route::post('/checkout/orders/{order}/confirm-receipt', [BuyerCheckoutController::class, 'confirmReceipt'])
+        ->whereNumber('order')
+        ->name('checkout.confirm-receipt');
 
     Route::view('/chat', 'buyer.chat')
         ->name('buyer.chat');
@@ -229,6 +273,9 @@ Route::middleware(['auth', 'role:buyer'])->group(function () {
 
     Route::post('/cart/add', [BuyerController::class, 'addToCart'])
         ->name('cart.add');
+
+    Route::post('/cart/buy-now', [BuyerController::class, 'buyNow'])
+        ->name('cart.buy-now');
 
     Route::patch('/cart/{cartItem}', [BuyerController::class, 'updateCart'])
         ->name('cart.update');
@@ -403,6 +450,42 @@ Route::prefix('admin')
             [AdminReturnRefundController::class, 'requestEvidence']
         )->name('compliance.returns-refunds.request-evidence');
 
+        Route::post(
+            '/compliance/returns-refunds/{refund}/record-payout',
+            [AdminReturnRefundController::class, 'recordPayout']
+        )->whereNumber('refund')
+            ->name('compliance.returns-refunds.record-payout');
+
+        Route::post(
+            '/compliance/returns-refunds/{refund}/responsibility',
+            [AdminReturnRefundController::class, 'recordResponsibility']
+        )->whereNumber('refund')
+            ->name('compliance.returns-refunds.responsibility');
+
+        Route::post(
+            '/compliance/returns-refunds/{refund}/seller-recovery',
+            [AdminReturnRefundController::class, 'recordSellerRecovery']
+        )->whereNumber('refund')
+            ->name('compliance.returns-refunds.seller-recovery');
+
+        Route::get(
+            '/compliance/returns-refunds/{refund}/payout-receipt',
+            [AdminReturnRefundController::class, 'downloadPayoutReceipt']
+        )->whereNumber('refund')
+            ->name('compliance.returns-refunds.payout-receipt');
+
+        Route::get(
+            '/compliance/returns-refunds/evidence/{evidence}',
+            [AdminReturnRefundController::class, 'downloadEvidence']
+        )->whereNumber('evidence')
+            ->name('compliance.returns-refunds.evidence.download');
+
+        Route::get(
+            '/compliance/returns-refunds/evidence/{evidence}/preview',
+            [AdminReturnRefundController::class, 'previewEvidence']
+        )->whereNumber('evidence')
+            ->name('compliance.returns-refunds.evidence.preview');
+
         /*
         |--------------------------------------------------------------------------
         | Commerce / Finance
@@ -425,6 +508,33 @@ Route::prefix('admin')
 
         Route::get('/payments', [AdminFinanceController::class, 'payments'])
             ->name('payments');
+
+        Route::post('/payments/cod/{collection}/reconcile', [AdminFinanceController::class, 'reconcileCodCash'])
+            ->whereNumber('collection')
+            ->name('payments.cod.reconcile');
+
+        Route::post('/payments/seller-settlements', [AdminFinanceController::class, 'generateSellerPayout'])
+            ->name('payments.seller-settlements.store');
+
+        Route::post('/payments/seller-settlements/{payout}/record-paid', [AdminFinanceController::class, 'recordSellerPayout'])
+            ->whereNumber('payout')
+            ->name('payments.seller-settlements.record-paid');
+
+        Route::get('/payments/seller-settlements/{payout}/receipt', [AdminFinanceController::class, 'downloadSellerPayoutReceipt'])
+            ->whereNumber('payout')
+            ->name('payments.seller-settlements.receipt');
+
+        Route::post('/payments/refunds/{refund}/issue-cash', [AdminFinanceController::class, 'issueRefundCash'])
+            ->whereNumber('refund')
+            ->name('payments.refunds.issue-cash');
+
+        Route::post('/payments/refund-cash/{payout}/complete', [AdminFinanceController::class, 'completeRefundCash'])
+            ->whereNumber('payout')
+            ->name('payments.refund-cash.complete');
+
+        Route::get('/payments/refund-cash/{payout}/acknowledgment', [AdminFinanceController::class, 'downloadRefundCashAcknowledgment'])
+            ->whereNumber('payout')
+            ->name('payments.refund-cash.acknowledgment');
 
         Route::get('/reports', [AdminFinanceController::class, 'reports'])
             ->name('reports');
@@ -584,6 +694,10 @@ Route::prefix('seller')
         Route::get('/orders', [SellerWorkflowController::class, 'orders'])
             ->name('orders');
 
+        Route::get('/orders/{sellerOrder}/tracking', [SellerWorkflowController::class, 'orderTracking'])
+            ->whereNumber('sellerOrder')
+            ->name('orders.tracking');
+
         Route::patch('/orders/{sellerOrder}/status', [SellerWorkflowController::class, 'updateOrderStatus'])
             ->whereNumber('sellerOrder')
             ->name('orders.status');
@@ -593,6 +707,26 @@ Route::prefix('seller')
 
         Route::get('/orders/returns-refunds/{caseId}', [SellerWorkflowController::class, 'returnDetails'])
             ->name('orders.returns.show');
+
+        Route::post('/orders/returns-refunds/{returnRequest}/respond', [SellerWorkflowController::class, 'respondToReturn'])
+            ->whereNumber('returnRequest')
+            ->name('orders.returns.respond');
+
+        Route::post('/orders/returns-refunds/{returnRequest}/inspect', [SellerWorkflowController::class, 'inspectReturn'])
+            ->whereNumber('returnRequest')
+            ->name('orders.returns.inspect');
+
+        Route::post('/orders/returns-refunds/{returnRequest}/evidence', [SellerWorkflowController::class, 'addReturnEvidence'])
+            ->whereNumber('returnRequest')
+            ->name('orders.returns.evidence.store');
+
+        Route::get('/orders/returns-refunds/evidence/{evidence}', [SellerWorkflowController::class, 'downloadReturnEvidence'])
+            ->whereNumber('evidence')
+            ->name('orders.returns.evidence.download');
+
+        Route::get('/orders/returns-refunds/evidence/{evidence}/view', [SellerWorkflowController::class, 'viewReturnEvidence'])
+            ->whereNumber('evidence')
+            ->name('orders.returns.evidence.view');
 
         Route::redirect('/orders/new', '/seller/orders?status=new')
             ->name('orders.new');
@@ -611,6 +745,9 @@ Route::prefix('seller')
 
         Route::get('/fulfillment/pickups', [SellerWorkflowController::class, 'pickupRequests'])
             ->name('fulfillment.pickups');
+
+        Route::post('/fulfillment/pickups', [SellerWorkflowController::class, 'storePickupRequest'])
+            ->name('fulfillment.pickups.store');
 
         Route::get('/fulfillment/tracking', [SellerWorkflowController::class, 'shipmentTracking'])
             ->name('fulfillment.tracking');
@@ -700,6 +837,10 @@ Route::prefix('seller')
         Route::get('/support/feedback', [SellerController::class, 'customerFeedback'])
             ->name('support.feedback');
 
+        Route::post('/support/feedback/{review}/reply', [SellerController::class, 'replyFeedback'])
+            ->whereNumber('review')
+            ->name('support.feedback.reply');
+
         Route::get('/settings/account', [SellerController::class, 'account'])
             ->name('settings.account');
 
@@ -741,6 +882,45 @@ Route::prefix('logistics')->name('logistics.')->group(function () {
 
         Route::get('/riders', [LogisticsController::class, 'riders'])
             ->name('riders.index');
+
+        Route::get('/cash', [LogisticsCashController::class, 'index'])
+            ->name('cash.index');
+
+        Route::post('/cash/cod/{collection}/receive', [LogisticsCashController::class, 'receiveCod'])
+            ->whereNumber('collection')
+            ->name('cash.cod.receive');
+
+        Route::post('/cash/cod/{collection}/remit', [LogisticsCashController::class, 'remitCod'])
+            ->whereNumber('collection')
+            ->name('cash.cod.remit');
+
+        Route::post('/cash/refunds/{payout}/receive', [LogisticsCashController::class, 'receiveRefundCash'])
+            ->whereNumber('payout')
+            ->name('cash.refunds.receive');
+
+        Route::post('/cash/refunds/{payout}/assign', [LogisticsCashController::class, 'assignRefundCash'])
+            ->whereNumber('payout')
+            ->name('cash.refunds.assign');
+
+        Route::post('/cash/refunds/{payout}/acknowledgment-slip/prepare', [LogisticsCashController::class, 'prepareRefundAcknowledgmentSlip'])
+            ->whereNumber('payout')
+            ->name('cash.refunds.acknowledgment-slip.prepare');
+
+        Route::get('/cash/refunds/{payout}/acknowledgment-slip', [LogisticsCashController::class, 'refundAcknowledgmentSlip'])
+            ->whereNumber('payout')
+            ->name('cash.refunds.acknowledgment-slip');
+
+        Route::post('/cash/refunds/{payout}/confirm-return', [LogisticsCashController::class, 'confirmReturnedRefundCash'])
+            ->whereNumber('payout')
+            ->name('cash.refunds.confirm-return');
+
+        Route::post('/cash/refunds/{payout}/verify-receipt', [LogisticsCashController::class, 'verifyRefundReceipt'])
+            ->whereNumber('payout')
+            ->name('cash.refunds.verify-receipt');
+
+        Route::get('/cash/refunds/{payout}/acknowledgment', [LogisticsCashController::class, 'downloadRefundAcknowledgment'])
+            ->whereNumber('payout')
+            ->name('cash.refunds.acknowledgment');
 
         Route::get('/riders/{id}', [LogisticsController::class, 'showRider'])
             ->name('riders.show');
@@ -881,8 +1061,34 @@ Route::prefix('rider')->name('rider.')->group(function () {
         Route::get('/dashboard/pickups', [RiderController::class, 'pickupsDashboard'])
             ->name('dashboard.pickups');
 
+        Route::patch('/account/availability', [RiderController::class, 'updateAvailability'])
+            ->name('availability.update');
+
         Route::get('/dashboard/deliveries', [RiderController::class, 'deliveriesDashboard'])
             ->name('dashboard.deliveries');
+
+        Route::get('/refund-cash', [RiderCashController::class, 'index'])
+            ->name('refund-cash.index');
+
+        Route::post('/refund-cash/{payout}/receive', [RiderCashController::class, 'receive'])
+            ->whereNumber('payout')
+            ->name('refund-cash.receive');
+
+        Route::post('/refund-cash/{payout}/start', [RiderCashController::class, 'start'])
+            ->whereNumber('payout')
+            ->name('refund-cash.start');
+
+        Route::post('/refund-cash/{payout}/deliver', [RiderCashController::class, 'deliver'])
+            ->whereNumber('payout')
+            ->name('refund-cash.deliver');
+
+        Route::post('/refund-cash/{payout}/fail', [RiderCashController::class, 'fail'])
+            ->whereNumber('payout')
+            ->name('refund-cash.fail');
+
+        Route::post('/refund-cash/{payout}/return-cash', [RiderCashController::class, 'returnCash'])
+            ->whereNumber('payout')
+            ->name('refund-cash.return-cash');
 
         Route::get('/pickup/{id}', [RiderController::class, 'pickup'])
             ->name('orders.pickup');

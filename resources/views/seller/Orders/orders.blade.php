@@ -19,11 +19,11 @@
     <p class="orders-success-note" role="status">{{ session('success') }}</p>
 @endif
 
-<p class="orders-workflow-note" role="note">Seller actions end at Ready for Pickup. Waybills, pickup scheduling, and logistics handoff are not connected to this workflow yet.</p>
+<p class="orders-workflow-note" role="note">After an order is ready, open <a href="{{ route('seller.fulfillment.pickups') }}">Pickup Requests</a> to schedule collection. Logistics verifies the request and assigns a Rider.</p>
 
 <section class="order-queue" aria-label="Orders requiring action">
     @foreach ($orderQueue as $queue)
-        <article class="order-queue-item queue-{{ $queue['tone'] }}">
+        <article class="order-queue-item queue-{{ $queue['tone'] }}" data-order-queue-card="{{ $queue['key'] }}">
             <span class="order-queue-icon"><i data-lucide="{{ $queue['icon'] }}"></i></span>
             <div>
                 <span>{{ $queue['label'] }}</span>
@@ -102,6 +102,7 @@
                 @foreach ($orders as $order)
                     <tr
                         data-order-row
+                        data-order-tracking-url="{{ $order['tracking_url'] }}"
                         data-status="{{ $order['status_key'] }}"
                         data-date="{{ $order['date_key'] }}"
                         data-payment="{{ $order['payment_key'] }}"
@@ -125,8 +126,8 @@
                         data-order-address="{{ $order['address'] ?? $order['shipping_address'] ?? '' }}"
                         data-order-sku="{{ $order['sku'] ?? '' }}"
                         data-order-product-image="{{ $order['product_image'] ?? $order['image'] ?? '' }}"
-                        data-order-items-json="{{ e(json_encode($order['item_rows'] ?? $order['order_items'] ?? [])) }}"
-                        data-order-status-history="{{ e(json_encode($order['status_history'] ?? [])) }}"
+                        data-order-items-json="{{ json_encode($order['item_rows'] ?? $order['order_items'] ?? []) }}"
+                        data-order-status-history="{{ json_encode($order['status_history'] ?? []) }}"
                     >
                         <td>
                             <button
@@ -171,8 +172,14 @@
                             </span>
                         </td>
                         <td>
-                            <span class="order-status-badge order-status-{{ $order['tone'] }}">
-                                {{ $order['status'] }}
+                            <span
+                                class="order-status-badge order-status-{{ $order['tone'] }}"
+                                data-order-status-badge
+                            >
+                                <span data-order-status-label>{{ $order['status'] }}</span>
+                                @if ($order['status_detail'])
+                                    <small data-order-status-detail>{{ $order['status_detail'] }}</small>
+                                @endif
                             </span>
                         </td>
                         <td>

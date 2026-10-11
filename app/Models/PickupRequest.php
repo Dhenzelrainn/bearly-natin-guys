@@ -18,6 +18,8 @@ class PickupRequest extends Model
             'verified_at' => 'datetime',
             'cancelled_at' => 'datetime',
             'completed_at' => 'datetime',
+            'pickup_address_snapshot' => 'array',
+            'return_pickup_date' => 'date',
         ];
     }
 
@@ -39,6 +41,11 @@ class PickupRequest extends Model
     public function verifier()
     {
         return $this->belongsTo(User::class, 'verified_by');
+    }
+
+    public function returnRequest()
+    {
+        return $this->belongsTo(ReturnRequest::class);
     }
 
     public function parcels()

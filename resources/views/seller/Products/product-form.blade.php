@@ -99,7 +99,7 @@
             </section>
 
             <section class="seller-panel product-form-section">
-                <div class="product-form-section-heading"><span class="product-section-icon"><i data-lucide="images"></i></span><div><h3>Product Media</h3><p>Add a primary photo and gallery images.</p></div></div>
+                <div class="product-form-section-heading"><span class="product-section-icon"><i data-lucide="images"></i></span><div><h3>Product Media</h3><p>Add primary and gallery images, and preview all product media.</p></div></div>
                 <div class="product-media-grid">
                     <section class="product-media-gallery-preview" data-product-media-gallery aria-labelledby="product-media-gallery-title">
                         <div class="product-media-gallery-heading">
@@ -132,6 +132,7 @@
                                         data-variant-id="{{ $media['variant_id'] ?? '' }}"
                                         data-variant-label="{{ $media['variant_label'] ?? '' }}"
                                         data-legacy-color="{{ !empty($media['legacy_color']) ? 'true' : 'false' }}"
+                                        data-color-shared="{{ !empty($media['color_shared']) ? 'true' : 'false' }}"
                                         aria-label="Show {{ $media['label'] }}"
                                         aria-pressed="{{ $index === 0 ? 'true' : 'false' }}"
                                     >
@@ -172,6 +173,27 @@
                             @error('gallery_images')<small class="field-error">{{ $message }}</small>@enderror
                             @error('gallery_images.*')<small class="field-error">{{ $message }}</small>@enderror
                         </label>
+                        <section class="product-variant-images" data-variant-color-images aria-labelledby="variant-images-title">
+                            <div class="product-variant-images-heading">
+                                <strong id="variant-images-title">Variant Images</strong>
+                                <small>Upload one image per color. Assign each photo to a color; it will be shared by matching size/SKU variants.</small>
+                            </div>
+                            <label class="seller-field product-variant-images-field">
+                                <span>Choose Variant Images</span>
+                                <input type="file" name="variant_color_images[]" accept="image/png,image/jpeg,image/webp" multiple data-variant-color-image-input>
+                                <small>Choose images before or after generating variants. Add a Color option above to assign them. Up to 5MB per image.</small>
+                                @error('variant_color_images')<small class="field-error">{{ $message }}</small>@enderror
+                                @error('variant_color_images.*')<small class="field-error">{{ $message }}</small>@enderror
+                                @error('variant_image_colors.*')<small class="field-error">{{ $message }}</small>@enderror
+                            </label>
+                            <p class="product-variant-images-empty" data-variant-color-image-empty>Add a Color option and its values above. You can upload images here before generating variants.</p>
+                            <div class="product-variant-image-uploads" data-variant-color-image-uploads></div>
+                            @foreach ($errors->getMessages() as $key => $messages)
+                                @if ($key === 'variant_image_colors' || str_starts_with($key, 'variant_image_colors.'))
+                                    @foreach ($messages as $message)<small class="field-error" role="alert">{{ $message }}</small>@endforeach
+                                @endif
+                            @endforeach
+                        </section>
                     </div>
                 </div>
             </section>

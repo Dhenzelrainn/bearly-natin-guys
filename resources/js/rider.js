@@ -1,3 +1,5 @@
+import { isValidPhilippineMobile } from './registration-phone.js';
+
 const RIDER_STATE_KEY = 'bearlyRiderStateV1';
 const readState = () => { try { return JSON.parse(localStorage.getItem(RIDER_STATE_KEY)) || {}; } catch { return {}; } };
 const writeState = (state) => localStorage.setItem(RIDER_STATE_KEY, JSON.stringify(state));
@@ -1044,6 +1046,18 @@ function setupRegistration() {
         for (const field of fields) {
             field.setCustomValidity('');
             passwordUx.prepareField(field);
+
+            if (['first_name', 'last_name'].includes(field.name) && field.value.trim()) {
+                const name = field.value.trim();
+
+                if (name.length < 2 || name.length > 50 || !/^[\p{L}\s'-]+$/u.test(name)) {
+                    field.setCustomValidity('Use 2 to 50 letters. Spaces, apostrophes, and hyphens are allowed.');
+                }
+            }
+
+            if (field.name === 'contact_number' && field.value.trim() && !isValidPhilippineMobile(field.value)) {
+                field.setCustomValidity('Enter a valid Philippine mobile number.');
+            }
 
             if (!field.checkValidity()) {
                 const widget =

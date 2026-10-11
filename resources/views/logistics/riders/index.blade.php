@@ -114,6 +114,7 @@
                         <th>Completed jobs</th>
                         <th>Rating</th>
                         <th>Account</th>
+                        <th>Availability</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
@@ -125,6 +126,7 @@
                         data-record-type="riderAccounts"
                         data-record-id="{{ $rider['id'] }}"
                         data-status="{{ $rider['status'] }}"
+                        data-availability="{{ $rider['availability_status'] }}"
                     >
                         <td><strong>{{ $rider['name'] }}</strong></td>
                         <td>{{ $rider['vehicle'] }}</td>
@@ -137,6 +139,14 @@
                             </span>
                         </td>
                         <td>
+                            <span
+                                class="status-badge rider-availability-badge"
+                                data-availability="{{ $rider['availability_status'] }}"
+                            >
+                                {{ $rider['availability'] }}
+                            </span>
+                        </td>
+                        <td>
                             <a class="button button-small" href="{{ route('logistics.riders.show', $rider['id']) }}">
                                 View
                             </a>
@@ -144,10 +154,10 @@
                     </tr>
                 @empty
                     <tr>
-                        <td class="empty-row" colspan="7">No approved Rider accounts are assigned yet.</td>
+                        <td class="empty-row" colspan="8">No approved Rider accounts are assigned yet.</td>
                     </tr>
                 @endforelse
-                <tr><td class="empty-row" colspan="7" data-empty-row>No rider accounts match these filters.</td></tr>
+                <tr><td class="empty-row" colspan="8" data-empty-row>No rider accounts match these filters.</td></tr>
                 </tbody>
             </table>
         </div>

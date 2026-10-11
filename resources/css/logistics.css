@@ -263,6 +263,367 @@
     }
 }
 
+/* Bearly cash refund acknowledgment: one clean, Logistics-issued print page. */
+body[data-module="logistics"] .refund-slip-workspace {
+    display: grid;
+    gap: 18px;
+    width: min(100%, 1060px);
+    margin-inline: auto;
+}
+
+body[data-module="logistics"] .refund-slip-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 22px;
+    padding: 18px 20px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: #fff;
+}
+
+body[data-module="logistics"] .refund-slip-toolbar h2 {
+    margin: 4px 0 0;
+    color: var(--brown-950);
+    font-size: 16px;
+    line-height: 1.4;
+}
+
+body[data-module="logistics"] .refund-slip-toolbar p {
+    max-width: 660px;
+    margin: 5px 0 0;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+body[data-module="logistics"] .refund-slip-toolbar-actions {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 9px;
+}
+
+body[data-module="logistics"] .refund-slip-toolbar-actions .button {
+    min-height: 42px;
+    white-space: nowrap;
+}
+
+body[data-module="logistics"] .refund-ack-document {
+    display: flex;
+    width: min(100%, 820px);
+    min-height: 1040px;
+    flex-direction: column;
+    gap: 25px;
+    margin: 0 auto;
+    padding: 48px 54px 36px;
+    border: 1px solid #e7dfd6;
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: 0 8px 28px rgba(43, 29, 22, .06);
+    color: #2b211c;
+    page: refund-acknowledgment;
+}
+
+body[data-module="logistics"] .refund-ack-document-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 28px;
+}
+
+body[data-module="logistics"] .refund-ack-brand {
+    display: flex;
+    align-items: center;
+    gap: 17px;
+    min-width: 0;
+}
+
+body[data-module="logistics"] .refund-ack-brand img {
+    display: block;
+    width: 164px;
+    height: auto;
+    object-fit: contain;
+}
+
+body[data-module="logistics"] .refund-ack-brand > div {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+    padding-left: 17px;
+    border-left: 1px solid #e7dfd6;
+}
+
+body[data-module="logistics"] .refund-ack-brand span,
+body[data-module="logistics"] .refund-ack-reference > span {
+    color: #796d65;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: .12em;
+}
+
+body[data-module="logistics"] .refund-ack-brand strong {
+    color: #35251e;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+body[data-module="logistics"] .refund-ack-reference {
+    display: grid;
+    justify-items: end;
+    gap: 4px;
+    min-width: 0;
+    text-align: right;
+}
+
+body[data-module="logistics"] .refund-ack-reference strong {
+    color: #35251e;
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 15px;
+    overflow-wrap: anywhere;
+}
+
+body[data-module="logistics"] .refund-ack-reference small {
+    color: #796d65;
+    font-size: 10px;
+}
+
+body[data-module="logistics"] .refund-ack-accent {
+    height: 4px;
+    border-radius: 4px;
+    background: linear-gradient(90deg, #35251e 0 78%, #e9a72f 78% 100%);
+}
+
+body[data-module="logistics"] .refund-ack-intro {
+    margin: 0;
+    color: #5e514a;
+    font-size: 12px;
+    line-height: 1.65;
+}
+
+body[data-module="logistics"] .refund-ack-details {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0 28px;
+    margin: 0;
+    border-top: 1px solid #e7dfd6;
+}
+
+body[data-module="logistics"] .refund-ack-details > div {
+    display: grid;
+    align-content: center;
+    gap: 5px;
+    min-width: 0;
+    min-height: 76px;
+    padding: 13px 0;
+    border-bottom: 1px solid #e7dfd6;
+}
+
+body[data-module="logistics"] .refund-ack-details dt {
+    color: #796d65;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1.4;
+}
+
+body[data-module="logistics"] .refund-ack-details dd {
+    margin: 0;
+    color: #35251e;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+
+body[data-module="logistics"] .refund-ack-details .refund-ack-detail-amount {
+    grid-column: 1 / -1;
+    min-height: 104px;
+    padding: 17px 20px;
+    border: 1px solid #ead9b5;
+    border-radius: 8px;
+    background: #fffaf0;
+}
+
+body[data-module="logistics"] .refund-ack-detail-amount dd {
+    color: #2b1d16;
+    font-size: 25px;
+    letter-spacing: -.02em;
+    font-variant-numeric: tabular-nums;
+}
+
+body[data-module="logistics"] .refund-ack-confirmation {
+    padding: 17px 19px;
+    border-left: 3px solid #e9a72f;
+    background: #faf7f3;
+}
+
+body[data-module="logistics"] .refund-ack-section-label {
+    color: #35251e;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+
+body[data-module="logistics"] .refund-ack-confirmation p {
+    margin: 7px 0 0;
+    color: #35251e;
+    font-size: 12px;
+    line-height: 1.65;
+}
+
+body[data-module="logistics"] .refund-ack-signatures {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, .8fr);
+    gap: 30px;
+    margin-top: 3px;
+}
+
+body[data-module="logistics"] .refund-ack-signature-block {
+    display: grid;
+    align-content: start;
+    gap: 23px;
+    min-width: 0;
+}
+
+body[data-module="logistics"] .refund-ack-signature-block h3 {
+    margin: 0;
+    color: #35251e;
+    font-size: 12px;
+}
+
+body[data-module="logistics"] .refund-ack-signature-line {
+    min-height: 42px;
+    padding-top: 23px;
+    border-bottom: 1px solid #8e8178;
+}
+
+body[data-module="logistics"] .refund-ack-signature-line span {
+    color: #796d65;
+    font-size: 9px;
+}
+
+body[data-module="logistics"] .refund-ack-document-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: auto;
+    padding-top: 14px;
+    border-top: 1px solid #e7dfd6;
+    color: #796d65;
+    font-size: 9px;
+}
+
+body[data-module="logistics"] .refund-ack-document-footer span:last-child {
+    color: #35251e;
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+    text-align: right;
+}
+
+@media (max-width: 760px) {
+    body[data-module="logistics"] .refund-slip-toolbar {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    body[data-module="logistics"] .refund-slip-toolbar-actions {
+        flex-wrap: wrap;
+    }
+
+    body[data-module="logistics"] .refund-ack-document {
+        min-height: 0;
+        padding: 28px 24px;
+    }
+
+    body[data-module="logistics"] .refund-ack-document-header {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    body[data-module="logistics"] .refund-ack-reference {
+        justify-items: start;
+        text-align: left;
+    }
+}
+
+@page refund-acknowledgment {
+    size: A4 portrait;
+    margin: 14mm;
+}
+
+@media print {
+    body[data-module="logistics"] .ops-sidebar,
+    body[data-module="logistics"] .ops-overlay,
+    body[data-module="logistics"] .ops-topbar,
+    body[data-module="logistics"] .ops-footer,
+    body[data-module="logistics"] .modal-backdrop,
+    body[data-module="logistics"] .toast-stack,
+    body[data-module="logistics"] .flash-banner,
+    body[data-module="logistics"] .refund-slip-toolbar {
+        display: none !important;
+    }
+
+    body[data-module="logistics"],
+    body[data-module="logistics"] .ops-shell,
+    body[data-module="logistics"] .ops-main,
+    body[data-module="logistics"] .ops-content,
+    body[data-module="logistics"] .refund-slip-workspace {
+        display: block !important;
+        width: 100% !important;
+        max-width: none !important;
+        min-height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: visible !important;
+        position: static !important;
+        background: #fff !important;
+        box-shadow: none !important;
+    }
+
+    body[data-module="logistics"] .ops-main {
+        margin-left: 0 !important;
+    }
+
+    body[data-module="logistics"] .refund-ack-document {
+        width: 100% !important;
+        min-height: 0 !important;
+        gap: 8mm !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border: 0 !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        color: #241d19 !important;
+        font-family: Arial, sans-serif !important;
+        font-size: 10pt !important;
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+    }
+
+    body[data-module="logistics"] .refund-ack-brand img {
+        width: 145px !important;
+    }
+
+    body[data-module="logistics"] .refund-ack-details > div {
+        min-height: 18mm;
+    }
+
+    body[data-module="logistics"] .refund-ack-details .refund-ack-detail-amount {
+        min-height: 25mm;
+    }
+
+    body[data-module="logistics"] .refund-ack-signatures {
+        break-inside: avoid;
+    }
+
+    body[data-module="logistics"] .refund-ack-document-footer {
+        margin-top: 4mm;
+    }
+}
+
 /* =========================================================
    REGISTRATION ADDRESS — IN-DROPDOWN SEARCH
    Mirrors Buyer/Seller searchable PSGC dropdown behavior.
@@ -518,4 +879,790 @@
 
 .message-bubble.is-mine .message-attachment {
     color: #fff;
+}
+
+/* Logistics pickup request details and focused rejection flow. */
+.pickup-request-modal {
+    display: flex;
+    width: min(880px, calc(100vw - 28px));
+    max-height: 90vh;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.pickup-request-modal [hidden] {
+    display: none !important;
+}
+
+.pickup-request-modal-header {
+    flex: 0 0 auto;
+    align-items: flex-start;
+    gap: 18px;
+    padding: 18px 22px;
+}
+
+.pickup-request-title-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.pickup-request-title-row h3 {
+    margin: 0;
+    color: var(--brown-950);
+    font-size: 18px;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
+.pickup-request-title-row .status-badge[data-status="requested"] {
+    color: var(--amber);
+    background: var(--amber-soft);
+}
+
+.pickup-request-title-row .status-badge[data-status="verified"],
+.pickup-request-title-row .status-badge[data-status="scheduled"] {
+    color: var(--blue);
+    background: var(--blue-soft);
+}
+
+.pickup-request-title-row .status-badge[data-status="completed"] {
+    color: var(--green);
+    background: var(--green-soft);
+}
+
+.pickup-request-title-row .status-badge[data-status="cancelled"],
+.pickup-request-title-row .status-badge[data-status="failed"] {
+    color: var(--red);
+    background: var(--red-soft);
+}
+
+.pickup-request-modal-header > div > p {
+    margin: 5px 0 0;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.pickup-request-meta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 5px 14px;
+}
+
+.pickup-request-meta span {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.pickup-request-meta svg {
+    width: 14px;
+    height: 14px;
+}
+
+.pickup-request-modal-body {
+    display: grid;
+    align-content: start;
+    gap: 14px;
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 20px 22px 22px;
+}
+
+.pickup-info-card {
+    min-width: 0;
+    padding: 15px 16px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: #fff;
+}
+
+.pickup-card-heading,
+.pickup-section-heading {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.pickup-card-icon {
+    display: grid;
+    width: 42px;
+    height: 42px;
+    flex: 0 0 42px;
+    place-items: center;
+    border-radius: 50%;
+    background: #f5eee8;
+    color: var(--brown-700);
+}
+
+.pickup-card-icon svg {
+    width: 21px;
+    height: 21px;
+    stroke-width: 2;
+}
+
+.pickup-card-heading h4,
+.pickup-section-heading h4 {
+    margin: 0;
+    color: var(--brown-900);
+    font-size: 16px;
+    line-height: 1.35;
+}
+
+.pickup-section-heading {
+    align-items: flex-start;
+    margin-bottom: 12px;
+}
+
+.pickup-section-heading > div {
+    min-width: 0;
+    padding-top: 2px;
+}
+
+.pickup-section-heading p {
+    margin: 3px 0 0;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.pickup-location-columns {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0;
+}
+
+.pickup-location-list {
+    min-width: 0;
+    margin: 0;
+}
+
+.pickup-location-primary {
+    padding-right: 20px;
+}
+
+.pickup-location-secondary {
+    padding-left: 20px;
+    border-left: 1px solid var(--line);
+}
+
+.pickup-location-row {
+    display: grid;
+    grid-template-columns: minmax(150px, 40%) minmax(0, 1fr);
+    gap: 8px;
+    align-items: start;
+    min-width: 0;
+    padding: 10px 0;
+    border-bottom: 1px solid #f0ebe6;
+}
+
+.pickup-location-row:last-child {
+    border-bottom: 0;
+}
+
+.pickup-location-row dt {
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr);
+    gap: 8px;
+    align-items: center;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.pickup-location-row dt svg {
+    width: 18px;
+    height: 18px;
+    color: var(--brown-700);
+    stroke-width: 2;
+}
+
+.pickup-location-row dd {
+    min-width: 0;
+    margin: 0;
+    color: var(--ink);
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+
+.pickup-location-row dd a {
+    color: var(--brown-700);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.pickup-location-row dd a:focus-visible {
+    outline: 3px solid rgba(223, 152, 37, .55);
+    outline-offset: 2px;
+}
+
+.pickup-manifest-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: #fff;
+}
+
+.pickup-manifest-table {
+    width: 100%;
+    min-width: 650px;
+    border-collapse: collapse;
+    table-layout: fixed;
+    text-align: left;
+}
+
+.pickup-manifest-table thead th {
+    padding: 10px 12px;
+    color: var(--muted);
+    background: #faf8f6;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.pickup-manifest-table th:first-child,
+.pickup-manifest-table td:first-child {
+    width: 43%;
+}
+
+.pickup-manifest-table th:nth-child(2),
+.pickup-manifest-table td:nth-child(2) {
+    width: 13%;
+}
+
+.pickup-manifest-table th:nth-child(3),
+.pickup-manifest-table td:nth-child(3) {
+    width: 24%;
+}
+
+.pickup-manifest-table th:last-child,
+.pickup-manifest-table td:last-child {
+    width: 20%;
+    text-align: right;
+}
+
+.pickup-manifest-table tbody + tbody {
+    border-top: 1px solid var(--line);
+}
+
+.pickup-manifest-table td {
+    padding: 11px 12px;
+    border-top: 1px solid #f0ebe6;
+    color: var(--ink);
+    font-size: 12px;
+    vertical-align: middle;
+}
+
+.pickup-manifest-reference-cell strong,
+.pickup-manifest-reference-cell small {
+    display: block;
+}
+
+.pickup-manifest-reference-cell strong {
+    color: var(--brown-900);
+    font-size: 12px;
+    overflow-wrap: anywhere;
+}
+
+.pickup-manifest-reference-cell small {
+    margin-top: 2px;
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+
+.pickup-parcel-status {
+    display: inline-flex;
+    max-width: 100%;
+    padding: 3px 7px;
+    border-radius: 5px;
+    background: #f2efec;
+    color: #5e554f;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.35;
+}
+
+.pickup-manifest-cod {
+    display: block;
+    margin-top: 6px;
+    color: var(--ink);
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.pickup-inline-empty {
+    margin: 0;
+    padding: 12px;
+    border: 1px dashed #d9cec5;
+    border-radius: 8px;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.pickup-rejection-note {
+    padding: 12px 14px;
+    border: 1px solid #efd0ce;
+    border-radius: 8px;
+    background: var(--red-soft);
+    color: #772d2a;
+}
+
+.pickup-rejection-note strong {
+    font-size: 12px;
+}
+
+.pickup-rejection-note p {
+    margin: 4px 0 0;
+    font-size: 13px;
+    overflow-wrap: anywhere;
+}
+
+.pickup-activity-list {
+    display: grid;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.pickup-activity-list li {
+    display: grid;
+    grid-template-columns: 12px minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: center;
+    min-width: 0;
+    padding: 11px 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fff;
+}
+
+.pickup-activity-marker {
+    width: 11px;
+    height: 11px;
+    margin-left: 1px;
+    border: 2px solid #bda994;
+    border-radius: 50%;
+    background: #fff;
+}
+
+.pickup-activity-list li:first-child .pickup-activity-marker {
+    border-color: var(--gold-dark);
+    background: var(--gold-soft);
+}
+
+.pickup-activity-copy {
+    min-width: 0;
+}
+
+.pickup-activity-copy > strong {
+    color: var(--ink);
+    font-size: 12px;
+}
+
+.pickup-activity-copy p {
+    margin: 2px 0 0;
+    color: var(--muted);
+    font-size: 11px;
+    overflow-wrap: anywhere;
+}
+
+.pickup-activity-list time {
+    color: var(--muted);
+    font-size: 11px;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.pickup-rejection-form {
+    margin-top: 18px;
+    padding: 14px;
+    border: 1px solid #efd0ce;
+    border-radius: 9px;
+    background: #fffaf9;
+}
+
+.pickup-rejection-form > label,
+.pickup-rider-select,
+.pickup-assignment-note {
+    display: grid;
+    gap: 6px;
+    color: var(--ink);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.pickup-rejection-form > p {
+    margin: 4px 0 9px;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.pickup-rejection-form textarea,
+.pickup-modal-main-actions select,
+.pickup-modal-main-actions textarea {
+    width: 100%;
+    min-height: 40px;
+    padding: 9px 10px;
+    border: 1px solid #d9cec5;
+    border-radius: 7px;
+    background: #fff;
+    color: var(--ink);
+    font-size: 12px;
+}
+
+.pickup-rejection-form textarea,
+.pickup-modal-main-actions textarea {
+    min-height: 74px;
+    resize: vertical;
+}
+
+.pickup-modal-main-actions {
+    min-width: 0;
+}
+
+.pickup-modal-main-actions form[action*="/assign"] {
+    display: grid;
+    grid-template-columns: minmax(155px, .8fr) minmax(190px, 1.2fr) auto;
+    align-items: end;
+    gap: 10px;
+}
+
+.pickup-rider-select select {
+    min-height: 40px;
+}
+
+.pickup-assignment-note small {
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 400;
+}
+
+.pickup-assignment-note textarea {
+    min-height: 40px;
+}
+
+.pickup-modal-main-actions form:not([action*="/assign"]) {
+    display: inline-flex;
+}
+
+.pickup-request-modal-footer {
+    flex: 0 0 auto;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 14px 22px;
+}
+
+.pickup-reject-actions {
+    display: flex;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.pickup-request-modal button:focus-visible,
+.pickup-request-modal a:focus-visible,
+.pickup-request-modal input:focus-visible,
+.pickup-request-modal select:focus-visible,
+.pickup-request-modal textarea:focus-visible,
+.pickup-manifest-wrap:focus-visible {
+    outline: 3px solid rgba(223, 152, 37, .55);
+    outline-offset: 2px;
+}
+
+@media (max-width: 760px) {
+    .pickup-request-modal {
+        width: calc(100vw - 20px);
+        max-height: 94vh;
+    }
+
+    .pickup-request-modal-header,
+    .pickup-request-modal-body {
+        padding-right: 16px;
+        padding-left: 16px;
+    }
+
+    .pickup-location-columns {
+        grid-template-columns: 1fr;
+    }
+
+    .pickup-location-primary {
+        padding-right: 0;
+    }
+
+    .pickup-location-secondary {
+        margin-top: 8px;
+        padding: 8px 0 0;
+        border-top: 1px solid var(--line);
+        border-left: 0;
+    }
+
+    .pickup-location-row {
+        grid-template-columns: minmax(126px, 180px) minmax(0, 1fr);
+    }
+
+    .pickup-modal-main-actions form[action*="/assign"] {
+        grid-template-columns: 1fr;
+    }
+
+    .pickup-request-modal-footer {
+        align-items: stretch;
+        flex-direction: column;
+        padding: 12px 16px;
+    }
+
+    .pickup-modal-main-actions,
+    .pickup-modal-main-actions form,
+    .pickup-reject-actions {
+        width: 100%;
+    }
+
+    .pickup-modal-main-actions form[action*="/assign"] > button,
+    .pickup-modal-main-actions form:not([action*="/assign"]) > button,
+    .pickup-reject-actions > button {
+        flex: 1;
+        justify-content: center;
+    }
+}
+
+@media (max-width: 520px) {
+    .pickup-request-title-row {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .pickup-request-title-row h3 {
+        font-size: 16px;
+    }
+
+    .pickup-location-row {
+        grid-template-columns: minmax(120px, 135px) minmax(0, 1fr);
+        gap: 8px;
+    }
+
+    .pickup-activity-list li {
+        grid-template-columns: 12px minmax(0, 1fr);
+        gap: 8px 10px;
+    }
+
+    .pickup-activity-list time {
+        grid-column: 2;
+        text-align: left;
+        white-space: normal;
+    }
+}
+
+.rider-availability-badge {
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.35;
+}
+
+.rider-availability-badge[data-availability="available"] {
+    color: var(--green);
+    background: var(--green-soft);
+}
+
+.rider-availability-badge[data-availability="offline"] {
+    color: var(--muted);
+    background: #f0ece8;
+}
+
+body[data-module="logistics"] .cash-action-form {
+    display: grid;
+    min-width: 220px;
+    gap: 0.55rem;
+}
+
+body[data-module="logistics"] .cash-action-form label {
+    display: grid;
+    gap: 0.25rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+body[data-module="logistics"] .cash-action-form input,
+body[data-module="logistics"] .cash-action-form select,
+body[data-module="logistics"] .cash-action-form textarea {
+    width: 100%;
+    min-height: 2.4rem;
+    padding: 0.45rem 0.6rem;
+    border: 1px solid var(--border, #ddd);
+    border-radius: 0.55rem;
+    background: #fff;
+    color: inherit;
+}
+
+body[data-module="logistics"] .cash-action-form textarea {
+    min-height: 4rem;
+}
+
+body[data-module="logistics"] .cash-action-form .button {
+    justify-self: start;
+}
+
+body[data-module="logistics"] .cash-action-form .table-subline {
+    display: block;
+    margin-top: 0.2rem;
+}
+
+body[data-module="logistics"] .cash-custody-table-wrap {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--paper);
+    -webkit-overflow-scrolling: touch;
+}
+
+body[data-module="logistics"] .cash-custody-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    color: var(--ink);
+    font-size: 13px;
+}
+
+body[data-module="logistics"] .cash-custody-table--cod {
+    min-width: 900px;
+}
+
+body[data-module="logistics"] .cash-custody-table--refund {
+    min-width: 1020px;
+}
+
+body[data-module="logistics"] .cash-custody-table th {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--line);
+    background: #fbf7f1;
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    line-height: 1.4;
+    text-align: left;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+body[data-module="logistics"] .cash-custody-table td {
+    min-width: 0;
+    padding: 14px;
+    border-bottom: 1px solid #f0e9e2;
+    color: var(--ink);
+    line-height: 1.5;
+    vertical-align: middle;
+    overflow-wrap: anywhere;
+}
+
+body[data-module="logistics"] .cash-custody-table tbody tr:hover {
+    background: #fffbf7;
+}
+
+body[data-module="logistics"] .cash-custody-table tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+body[data-module="logistics"] .cash-custody-table td > strong {
+    display: block;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+}
+
+body[data-module="logistics"] .cash-custody-table .table-subline {
+    display: block;
+    margin-top: 4px;
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+
+body[data-module="logistics"] .cash-reference-list {
+    display: grid;
+    gap: 7px;
+    min-width: 0;
+    margin: 0;
+}
+
+body[data-module="logistics"] .cash-reference-list > div {
+    display: grid;
+    gap: 1px;
+    min-width: 0;
+}
+
+body[data-module="logistics"] .cash-reference-list dt {
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1.35;
+}
+
+body[data-module="logistics"] .cash-reference-list dd {
+    min-width: 0;
+    margin: 0;
+    color: var(--ink);
+    font-size: 12px;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+}
+
+body[data-module="logistics"] .cash-reference-list code {
+    display: inline;
+    padding: 1px 4px;
+    border-radius: 4px;
+    background: #f7f4f0;
+    color: var(--brown-800);
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 10px;
+    overflow-wrap: anywhere;
+    white-space: normal;
+}
+
+body[data-module="logistics"] .cash-custody-table--cod th:nth-child(1) { width: 23%; }
+body[data-module="logistics"] .cash-custody-table--cod th:nth-child(2) { width: 13%; }
+body[data-module="logistics"] .cash-custody-table--cod th:nth-child(3),
+body[data-module="logistics"] .cash-custody-table--cod th:nth-child(4) { width: 10%; }
+body[data-module="logistics"] .cash-custody-table--cod th:nth-child(5) { width: 13%; }
+body[data-module="logistics"] .cash-custody-table--cod th:nth-child(6) { width: 31%; }
+
+body[data-module="logistics"] .cash-custody-table--refund th:nth-child(1) { width: 29%; }
+body[data-module="logistics"] .cash-custody-table--refund th:nth-child(2) { width: 10%; }
+body[data-module="logistics"] .cash-custody-table--refund th:nth-child(3) { width: 18%; }
+body[data-module="logistics"] .cash-custody-table--refund th:nth-child(4) { width: 43%; }
+
+body[data-module="logistics"] .cash-custody-table .cash-action-form {
+    width: 100%;
+    max-width: 340px;
+    min-width: 0;
+}
+
+@media (max-width: 760px) {
+    body[data-module="logistics"] .cash-action-form {
+        min-width: 190px;
+    }
+
+    body[data-module="logistics"] .cash-custody-table th,
+    body[data-module="logistics"] .cash-custody-table td {
+        padding: 11px 12px;
+    }
+
+    body[data-module="logistics"] .cash-custody-table .cash-action-form {
+        min-width: 190px;
+    }
 }

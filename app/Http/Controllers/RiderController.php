@@ -3,22 +3,29 @@
 namespace App\Http\Controllers;
 
 use App\Enums\AccountStatus;
-use App\Enums\UserRole;
 use App\Enums\ParcelStatus;
+use App\Enums\UserRole;
 use App\Models\PickupAssignment;
 use App\Models\User;
-use App\Services\RiderPickupService;
-use App\Services\RiderDeliveryService;
+use App\Services\CodCashCollectionService;
 use App\Services\EmailVerificationService;
 use App\Services\InternationalPhone;
+use App\Services\PostalCodeLookup;
 use App\Services\RegistrationLifecycleService;
-use Illuminate\Http\Request;
+use App\Services\ReturnRefundService;
+use App\Services\RiderDeliveryService;
+use App\Services\RiderPickupService;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Carbon;
+use Illuminate\Validation\Rule;
+use Throwable;
 use Illuminate\View\View;
 
 class RiderController extends Controller
@@ -36,10 +43,9 @@ class RiderController extends Controller
             ->filter()
             ->take(2)
             ->map(
-                fn (string $part) =>
-                    strtoupper(
-                        mb_substr($part, 0, 1)
-                    )
+                fn (string $part) => strtoupper(
+                    mb_substr($part, 0, 1)
+                )
             )
             ->implode('');
 
@@ -92,23 +98,17 @@ class RiderController extends Controller
             'rider' => [
                 'name' => $name,
 
-                'initials' =>
-                    $initials ?: 'BR',
+                'initials' => $initials ?: 'BR',
 
-                'email' =>
-                    $user?->email ?: '',
+                'email' => $user?->email ?: '',
 
-                'role' =>
-                    'Rider',
+                'role' => 'Rider',
 
-                'vehicle' =>
-                    $vehicle,
+                'vehicle' => $vehicle,
 
-                'plate' =>
-                    $plate,
+                'plate' => $plate,
 
-                'status' =>
-                    $user?->status
+                'status' => $user?->status
                         ? ucwords(
                             str_replace(
                                 '_',
@@ -120,14 +120,19 @@ class RiderController extends Controller
             ],
 
             'logistics' => [
-                'name' =>
-                    $logisticsUser
+                'name' => $logisticsUser
                         ? (
                             $logisticsUser->business_name
                             ?: $logisticsUser->name
                         )
                         : 'Not assigned',
             ],
+
+            'riderAvailabilityStatus' => $riderProfile?->availability_status
+                ?: 'offline',
+
+            'riderVerificationStatus' => $riderProfile?->verification_status
+                ?: 'pending',
 
             'topNotifications' => [],
         ];
@@ -162,6 +167,8 @@ class RiderController extends Controller
                 'parcels.shipment.waybill',
 
                 'parcels.shipment.sellerOrder.order',
+                'parcels.shipment.sellerOrder.store',
+                'parcels.shipment.destinationAddress',
             ])
             ->orderByDesc('dispatched_at')
             ->orderByDesc('id')
@@ -198,15 +205,24 @@ class RiderController extends Controller
                                     return null;
                                 }
 
-                                $address = collect([
-                                    $order->address_line,
-                                    $order->barangay,
-                                    $order->city_municipality,
-                                    $order->province,
-                                    $order->postal_code,
-                                ])
-                                    ->filter()
-                                    ->implode(', ');
+                                $isReturn = $shipment->purpose === 'return';
+                                $destination = $shipment->destinationAddress;
+                                $address = $isReturn
+                                    ? collect([
+                                        $destination?->house_number,
+                                        $destination?->street,
+                                        $destination?->barangay,
+                                        $destination?->city_municipality,
+                                        $destination?->province,
+                                        $destination?->postal_code,
+                                    ])->filter()->implode(', ')
+                                    : collect([
+                                        $order->address_line,
+                                        $order->barangay,
+                                        $order->city_municipality,
+                                        $order->province,
+                                        $order->postal_code,
+                                    ])->filter()->implode(', ');
 
                                 $codMinor =
                                     (int) (
@@ -216,86 +232,71 @@ class RiderController extends Controller
                                     );
 
                                 return [
-                                    'shipment_id' =>
-                                        $shipment->id,
+                                    'shipment_id' => $shipment->id,
 
-                                    'id' =>
-                                        $shipment
-                                            ->shipment_no,
+                                    'id' => $shipment
+                                        ->shipment_no,
 
-                                    'waybill' =>
-                                        $shipment
-                                            ->waybill
-                                            ?->waybill_no
+                                    'waybill' => $shipment
+                                        ->waybill
+                                        ?->waybill_no
                                         ?? 'No waybill',
 
-                                    'customer' =>
-                                        $order
-                                            ->recipient_name
-                                        ?: 'Recipient',
+                                    'customer' => $isReturn
+                                        ? 'Return to Seller · '.($shipment->sellerOrder?->store?->name ?: 'Seller')
+                                        : ($order->recipient_name ?: 'Recipient'),
 
-                                    'contact' =>
-                                        $order
-                                            ->recipient_phone
-                                        ?: '',
+                                    'contact' => $isReturn
+                                        ? (string) ($destination?->phone ?: $shipment->sellerOrder?->store?->contact_phone ?: '')
+                                        : (string) ($order->recipient_phone ?: ''),
 
-                                    'address' =>
-                                        $address
+                                    'address' => $address
                                         ?: 'Address unavailable',
 
-                                    'payment_status' =>
-                                        $order
-                                            ->payment_status
+                                    'payment_status' => $order
+                                        ->payment_status
                                         ?: 'unknown',
 
-                                    'cod_minor' =>
-                                        $codMinor,
+                                    'purpose' => $shipment->purpose,
+                                    'purpose_label' => $isReturn ? 'Return to Seller' : 'Buyer delivery',
 
-                                    'zone' =>
-                                        $batch
-                                            ->sortingZone
-                                            ?->code
+                                    'cod_minor' => $codMinor,
+
+                                    'zone' => $batch
+                                        ->sortingZone
+                                        ?->code
                                         ?? 'Unassigned',
 
-                                    'zone_name' =>
-                                        $batch
-                                            ->sortingZone
-                                            ?->name
+                                    'zone_name' => $batch
+                                        ->sortingZone
+                                        ?->name
                                         ?? '',
 
-                                    'batch_no' =>
-                                        $batch->batch_no,
+                                    'batch_no' => $batch->batch_no,
 
-                                    'dispatched_at' =>
-                                        $batch
-                                            ->dispatched_at,
+                                    'dispatched_at' => $batch
+                                        ->dispatched_at,
 
-                                    'parcels' =>
-                                        $parcels
-                                            ->map(
-                                                fn ($parcel) => [
-                                                    'id' =>
-                                                        $parcel
-                                                            ->id,
+                                    'parcels' => $parcels
+                                        ->map(
+                                            fn ($parcel) => [
+                                                'id' => $parcel
+                                                    ->id,
 
-                                                    'parcel_no' =>
-                                                        $parcel
-                                                            ->parcel_no,
+                                                'parcel_no' => $parcel
+                                                    ->parcel_no,
 
-                                                    'status' =>
-                                                        $parcel
-                                                            ->status,
+                                                'status' => $parcel
+                                                    ->status,
 
-                                                    'size_class' =>
-                                                        $parcel
-                                                            ->size_class,
+                                                'size_class' => $parcel
+                                                    ->size_class,
 
-                                                    'weight_kg' =>
-                                                        $parcel
-                                                            ->weight_kg,
-                                                ]
-                                            )
-                                            ->values(),
+                                                'weight_kg' => $parcel
+                                                    ->weight_kg,
+                                            ]
+                                        )
+                                        ->values(),
                                 ];
                             }
                         );
@@ -342,37 +343,30 @@ class RiderController extends Controller
                     return array_merge(
                         $first,
                         [
-                            'parcels' =>
-                                $parcels,
+                            'parcels' => $parcels,
 
-                            'parcel_count' =>
-                                $parcels->count(),
+                            'parcel_count' => $parcels->count(),
 
-                            'status' =>
-                                $this
-                                    ->deliveryAssignmentStatus(
-                                        $parcels
-                                    ),
+                            'status' => $this
+                                ->deliveryAssignmentStatus(
+                                    $parcels
+                                ),
 
-                            'zone' =>
-                                $zones->implode(', '),
+                            'zone' => $zones->implode(', '),
 
-                            'zone_name' =>
-                                $zoneNames
-                                    ->implode(', '),
+                            'zone_name' => $zoneNames
+                                ->implode(', '),
 
-                            'batch_no' =>
-                                $batchNumbers
-                                    ->implode(', '),
+                            'batch_no' => $batchNumbers
+                                ->implode(', '),
 
-                            'dispatched_at' =>
-                                $rows
-                                    ->pluck(
-                                        'dispatched_at'
-                                    )
-                                    ->filter()
-                                    ->sort()
-                                    ->first(),
+                            'dispatched_at' => $rows
+                                ->pluck(
+                                    'dispatched_at'
+                                )
+                                ->filter()
+                                ->sort()
+                                ->first(),
                         ]
                     );
                 }
@@ -414,10 +408,9 @@ class RiderController extends Controller
             ->orderByDesc('id')
             ->get()
             ->map(
-                fn (PickupAssignment $assignment): array =>
-                    $this->pickupAssignmentRow(
-                        $assignment
-                    )
+                fn (PickupAssignment $assignment): array => $this->pickupAssignmentRow(
+                    $assignment
+                )
             )
             ->filter()
             ->values();
@@ -434,6 +427,8 @@ class RiderController extends Controller
 
         $store = $pickup->store;
         $address = $pickup->pickupAddress;
+        $addressSnapshot = (array) ($pickup->pickup_address_snapshot ?? []);
+        $isReturnPickup = $pickup->return_request_id !== null && $addressSnapshot !== [];
 
         $sellerName =
             $store?->name
@@ -441,12 +436,20 @@ class RiderController extends Controller
             ?: 'Unknown Seller';
 
         $contact =
-            $address?->phone
+            ($isReturnPickup ? ($addressSnapshot['phone'] ?? null) : $address?->phone)
+            ?: $address?->phone
             ?: $store?->contact_phone
             ?: $store?->sellerProfile?->user?->contact_number
             ?: 'Not provided';
 
-        $addressText = collect([
+        $addressText = collect($isReturnPickup ? [
+            $addressSnapshot['house_number'] ?? null,
+            $addressSnapshot['street'] ?? null,
+            isset($addressSnapshot['barangay']) ? 'Brgy. '.$addressSnapshot['barangay'] : null,
+            $addressSnapshot['city_municipality'] ?? null,
+            $addressSnapshot['province'] ?? null,
+            $addressSnapshot['postal_code'] ?? null,
+        ] : [
             $address?->house_number,
             $address?->street,
             $address?->barangay
@@ -457,8 +460,7 @@ class RiderController extends Controller
             $address?->postal_code,
         ])
             ->filter(
-                fn ($value) =>
-                    filled($value)
+                fn ($value) => filled($value)
             )
             ->implode(', ');
 
@@ -476,15 +478,12 @@ class RiderController extends Controller
             ->parcels
             ->map(
                 fn ($parcel): array => [
-                    'parcel_no' =>
-                        $parcel->parcel_no,
+                    'parcel_no' => $parcel->parcel_no,
 
-                    'waybill' =>
-                        $parcel->waybill?->waybill_no
+                    'waybill' => $parcel->waybill?->waybill_no
                         ?: 'Not generated',
 
-                    'size' =>
-                        $parcel->size_class
+                    'size' => $parcel->size_class
                             ? ucwords(
                                 str_replace(
                                     '_',
@@ -496,76 +495,67 @@ class RiderController extends Controller
 
                     'qty' => 1,
 
-                    'status' =>
-                        ucwords(
-                            str_replace(
-                                '_',
-                                ' ',
-                                $parcel->status
-                            )
-                        ),
+                    'status' => ucwords(
+                        str_replace(
+                            '_',
+                            ' ',
+                            $parcel->status
+                        )
+                    ),
                 ]
             )
             ->values()
             ->all();
 
         return [
-            'id' =>
-                $pickup->pickup_no,
+            'id' => $pickup->pickup_no,
 
-            'assignment_id' =>
-                $assignment->id,
+            'assignment_id' => $assignment->id,
 
-            'seller' =>
-                $sellerName,
+            'seller' => $isReturnPickup ? 'Buyer return pickup' : $sellerName,
 
-            'contact' =>
-                $contact,
+            'location_label' => $isReturnPickup ? 'Buyer pickup location' : 'Seller pickup location',
 
-            'address' =>
-                $addressText
+            'contact_name' => $isReturnPickup
+                ? (string) ($addressSnapshot['recipient_name'] ?? 'Buyer')
+                : (string) ($address?->recipient_name ?: $sellerName),
+
+            'contact' => $contact,
+
+            'address' => $addressText
                     ?: 'Pickup address unavailable',
 
-            'parcels' =>
-                count($manifest),
+            'parcels' => count($manifest),
 
-            'window' =>
-                $window,
+            'window' => $window,
 
-            'status' =>
-                ucwords(
-                    str_replace(
-                        '_',
-                        ' ',
-                        $assignment->status
-                    )
-                ),
+            'status' => ucwords(
+                str_replace(
+                    '_',
+                    ' ',
+                    $assignment->status
+                )
+            ),
 
-            'status_raw' =>
-                $assignment->status,
+            'status_raw' => $assignment->status,
 
-            'assigned_at' =>
-                $assignment->assigned_at
-                    ?->format(
-                        'M j, Y · g:i A'
-                    )
+            'assigned_at' => $assignment->assigned_at
+                ?->format(
+                    'M j, Y · g:i A'
+                )
                 ?: 'Not recorded',
 
-            'is_due_today' =>
-                $pickup
-                    ->requested_date
-                    ?->isToday()
+            'is_due_today' => $pickup
+                ->requested_date
+                ?->isToday()
                 ?? false,
 
-            'instructions' =>
-                $pickup->seller_instructions
+            'instructions' => $pickup->seller_instructions
                 ?: 'No special seller instructions.',
 
-            'assignment_notes' =>
-                $assignment->notes,
+            'assignment_notes' => $assignment->notes,
 
-            'manifest' =>
-                $manifest,
+            'manifest' => $manifest,
         ];
     }
 
@@ -595,8 +585,7 @@ class RiderController extends Controller
         if (
             $statuses->isNotEmpty()
             && $statuses->every(
-                fn ($status) =>
-                    $status
+                fn ($status) => $status
                     === ParcelStatus::Delivered->value
             )
         ) {
@@ -648,24 +637,66 @@ class RiderController extends Controller
     {
         $request->merge([
             'email' => strtolower(trim((string) $request->input('email'))),
+            'plate_number' => strtoupper(trim((string) $request->input('plate_number'))),
         ]);
+
+        $contactNumber = trim((string) $request->input('contact_number'));
+
+        if ($contactNumber !== '') {
+            $request->merge([
+                'contact_number' => app(InternationalPhone::class)
+                    ->normalize($contactNumber, 'PH'),
+            ]);
+        }
+
+        foreach (['first_name', 'last_name'] as $nameField) {
+            $name = $request->input($nameField);
+
+            if (is_string($name)) {
+                $request->merge([$nameField => trim($name)]);
+            }
+        }
 
         $validated = $request->validate([
             'logistics_partner' => ['required', 'integer', 'exists:users,id'],
-            'first_name' => ['required', 'string', 'max:80'],
+            'first_name' => ['required', 'string', 'min:2', 'max:50', 'regex:/^[\pL\s\'\-]+$/u'],
             'middle_initial' => ['nullable', 'string', 'max:2', 'regex:/^[A-Za-z][.]?$/D'],
-            'last_name' => ['required', 'string', 'max:80'],
+            'last_name' => ['required', 'string', 'min:2', 'max:50', 'regex:/^[\pL\s\'\-]+$/u'],
             'sex' => ['required', 'in:Male,Female,Prefer not to say'],
             'email' => ['required', 'email', 'unique:users,email'],
-            'contact_number' => ['required', 'string', 'max:20'],
-            'birthday' => ['required', 'date', 'before:today'],
+            'contact_number' => [
+                'required',
+                'string',
+                'max:17',
+                Rule::unique('users', 'contact_number'),
+            ],
+            'birthday' => [
+                'required',
+                'bail',
+                'date',
+                'before:today',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    if (Carbon::parse((string) $value)->gt(today()->subYears(18))) {
+                        $fail('Riders must be at least 18 years old.');
+                    }
+                },
+            ],
             'province' => ['required', 'string', 'max:120'],
             'municipality' => ['required', 'string', 'max:120'],
             'barangay' => ['required', 'string', 'max:120'],
             'street' => ['required', 'string', 'max:180'],
             'house_number' => ['required', 'string', 'max:40'],
+            'postal_code' => ['required', 'digits:4'],
+            'city_code' => ['nullable', 'regex:/^[0-9]{6,10}$/D'],
+            'postal_manual' => ['nullable', 'boolean'],
             'vehicle_type' => ['required', 'string', 'max:80'],
-            'plate_number' => ['required', 'string', 'max:30'],
+            'plate_number' => [
+                'required',
+                'string',
+                'max:30',
+                Rule::unique('users', 'plate_number')
+                    ->where(fn ($query) => $query->where('role', UserRole::Rider->value)),
+            ],
             'or_cr' => [
                 'required',
                 'file',
@@ -682,17 +713,20 @@ class RiderController extends Controller
             'password' => ['required', 'confirmed', 'min:8', 'regex:/[a-z]/', 'regex:/[A-Z]/', 'regex:/[0-9]/'],
         ]);
 
+        app(PostalCodeLookup::class)->validate([
+            'province' => $validated['province'],
+            'city' => $validated['municipality'],
+            'city_code' => $validated['city_code'] ?? null,
+            'postal_code' => $validated['postal_code'],
+            'postal_manual' => $validated['postal_manual'] ?? false,
+        ]);
+
         $logistics = User::query()
             ->whereKey($validated['logistics_partner'])
             ->where('role', UserRole::Logistics->value)
             ->where('status', AccountStatus::Active->value)
             ->firstOrFail();
 
-        $validated['contact_number'] =
-            app(InternationalPhone::class)->normalize(
-                $validated['contact_number'],
-                'PH'
-            );
         $verification = app(EmailVerificationService::class);
         $verifiedAt = $verification->verifiedAt(
             $request,
@@ -703,70 +737,92 @@ class RiderController extends Controller
             ? null
             : strtoupper(substr($validated['middle_initial'], 0, 1)).'.';
 
-        $user = User::create([
-            'name' => trim($validated['first_name'].' '.($middleInitial ?? '').' '.$validated['last_name']),
-            'first_name' => $validated['first_name'],
-            'middle_initial' => $middleInitial,
-            'last_name' => $validated['last_name'],
-            'sex' => match ($validated['sex']) {
-                'Male' => 'male',
-                'Female' => 'female',
-                default => 'prefer_not_to_say',
-            },
-            'birthday' => $validated['birthday'],
-            'email' => $validated['email'],
-            'email_verified_at' => $verifiedAt,
-            'contact_number' => $validated['contact_number'],
-            'phone_country' => 'PH',
-            'terms_accepted_at' => now(),
-            'terms_version' => config('bearly-policies.version'),
-            'privacy_version' => config('bearly-policies.version'),
-            'role' => UserRole::Rider->value,
-            'status' => AccountStatus::Pending->value,
-            'logistics_id' => $logistics->id,
-            'province' => $validated['province'],
-            'city' => $validated['municipality'],
-            'barangay' => $validated['barangay'],
-            'street_address' => trim($validated['house_number'].' '.$validated['street']),
-            'vehicle_type' => $validated['vehicle_type'],
-            'plate_number' => strtoupper($validated['plate_number']),
-            'or_cr_path' => $request->file('or_cr')->store('registration-documents/riders/or-cr', 'local'),
-            'driver_license_path' => $request->file('driver_license')->store('registration-documents/riders/licenses', 'local'),
-            'password' => Hash::make($validated['password']),
-        ]);
+        $orCrPath = $request->file('or_cr')
+            ->store('registration-documents/riders/or-cr', 'local');
+        $driverLicensePath = $request->file('driver_license')
+            ->store('registration-documents/riders/licenses', 'local');
 
-        app(RegistrationLifecycleService::class)
-            ->recordPendingApplication(
-                $user,
-                UserRole::Rider->value,
-                [
-                    'house_number' => $validated['house_number'],
-                    'street' => $validated['street'],
-                    'barangay' => $validated['barangay'],
-                    'municipality' => $validated['municipality'],
+        try {
+            $user = DB::transaction(function () use (
+                $validated,
+                $middleInitial,
+                $request,
+                $verifiedAt,
+                $logistics,
+                $orCrPath,
+                $driverLicensePath
+            ): User {
+                $user = User::create([
+                    'name' => trim($validated['first_name'].' '.($middleInitial ?? '').' '.$validated['last_name']),
+                    'first_name' => $validated['first_name'],
+                    'middle_initial' => $middleInitial,
+                    'last_name' => $validated['last_name'],
+                    'sex' => match ($validated['sex']) {
+                        'Male' => 'male',
+                        'Female' => 'female',
+                        default => 'prefer_not_to_say',
+                    },
+                    'birthday' => $validated['birthday'],
+                    'email' => $validated['email'],
+                    'email_verified_at' => $verifiedAt,
+                    'contact_number' => $validated['contact_number'],
+                    'phone_country' => 'PH',
+                    'terms_accepted_at' => now(),
+                    'terms_version' => config('bearly-policies.version'),
+                    'privacy_version' => config('bearly-policies.version'),
+                    'role' => UserRole::Rider->value,
+                    'status' => AccountStatus::Pending->value,
+                    'logistics_id' => $logistics->id,
                     'province' => $validated['province'],
-                    'postal_code' =>
-                        $validated['postal_code'] ?? null,
-                    'city_code' =>
-                        $validated['city_code'] ?? null,
-                ],
-                [],
-                [
-                    [
-                        'type' => 'or_cr',
-                        'path' => $user->or_cr_path,
-                        'file' => $request->file('or_cr'),
-                    ],
-                    [
-                        'type' => 'driver_license',
-                        'path' => $user->driver_license_path,
-                        'file' => $request->file(
-                            'driver_license'
-                        ),
-                    ],
-                ],
-                $logistics->id
+                    'city' => $validated['municipality'],
+                    'barangay' => $validated['barangay'],
+                    'street_address' => trim($validated['house_number'].' '.$validated['street']),
+                    'vehicle_type' => $validated['vehicle_type'],
+                    'plate_number' => $validated['plate_number'],
+                    'or_cr_path' => $orCrPath,
+                    'driver_license_path' => $driverLicensePath,
+                    'password' => Hash::make($validated['password']),
+                ]);
+
+                app(RegistrationLifecycleService::class)
+                    ->recordPendingApplication(
+                        $user,
+                        UserRole::Rider->value,
+                        [
+                            'house_number' => $validated['house_number'],
+                            'street' => $validated['street'],
+                            'barangay' => $validated['barangay'],
+                            'municipality' => $validated['municipality'],
+                            'province' => $validated['province'],
+                            'postal_code' => $validated['postal_code'] ?? null,
+                            'city_code' => $validated['city_code'] ?? null,
+                        ],
+                        [],
+                        [
+                            [
+                                'type' => 'or_cr',
+                                'path' => $orCrPath,
+                                'file' => $request->file('or_cr'),
+                            ],
+                            [
+                                'type' => 'driver_license',
+                                'path' => $driverLicensePath,
+                                'file' => $request->file('driver_license'),
+                            ],
+                        ],
+                        $logistics->id
+                    );
+
+                return $user;
+            });
+        } catch (Throwable $exception) {
+            Storage::disk('local')->delete(
+                array_filter([$orCrPath, $driverLicensePath])
             );
+
+            throw $exception;
+        }
+
         $verification->forget($request);
 
         session([
@@ -796,44 +852,80 @@ class RiderController extends Controller
         return view(
             'rider.dashboard.pickups',
             $this->shared() + [
-                'pickups' =>
-                    $pickups,
+                'pickups' => $pickups,
 
                 'pickupMetrics' => [
-                    'assigned' =>
-                        $pickups
-                            ->where(
-                                'status_raw',
-                                'assigned'
-                            )
-                            ->count(),
+                    'assigned' => $pickups
+                        ->where(
+                            'status_raw',
+                            'assigned'
+                        )
+                        ->count(),
 
-                    'in_progress' =>
-                        $pickups
-                            ->whereIn(
-                                'status_raw',
-                                [
-                                    'accepted',
-                                    'arrived',
-                                    'picked_up',
-                                ]
-                            )
-                            ->count(),
+                    'in_progress' => $pickups
+                        ->whereIn(
+                            'status_raw',
+                            [
+                                'accepted',
+                                'arrived',
+                                'picked_up',
+                            ]
+                        )
+                        ->count(),
 
-                    'parcels' =>
-                        $pickups
-                            ->sum('parcels'),
+                    'parcels' => $pickups
+                        ->sum('parcels'),
 
-                    'due_today' =>
-                        $pickups
-                            ->where(
-                                'is_due_today',
-                                true
-                            )
-                            ->count(),
+                    'due_today' => $pickups
+                        ->where(
+                            'is_due_today',
+                            true
+                        )
+                        ->count(),
                 ],
             ]
         );
+    }
+
+    public function updateAvailability(
+        Request $request
+    ): RedirectResponse {
+        /** @var User|null $user */
+        $user = $request->user();
+
+        abort_unless(
+            $user instanceof User
+            && $user->status === AccountStatus::Active->value
+            && $user->hasRole(UserRole::Rider->value),
+            403
+        );
+
+        $validated = $request->validate([
+            'availability_status' => [
+                'required',
+                'in:available,offline',
+            ],
+        ]);
+
+        $riderProfile = $user
+            ->riderProfile()
+            ->firstOrFail();
+
+        abort_unless(
+            $riderProfile->verification_status === 'approved',
+            403
+        );
+
+        $riderProfile->update([
+            'availability_status' => $validated['availability_status'],
+        ]);
+
+        $message =
+            $validated['availability_status'] === 'available'
+                ? 'You are now available for new pickup assignments.'
+                : 'You are now offline and hidden from new pickup assignments.';
+
+        return back()->with('success', $message);
     }
 
     public function deliveriesDashboard(): View
@@ -848,16 +940,15 @@ class RiderController extends Controller
 
         $deliveries = $assignments
             ->filter(
-                fn (array $delivery) =>
-                    in_array(
-                        $delivery['status'],
-                        [
-                            'Assigned',
-                            'Out for Delivery',
-                            'Delivery Failed',
-                        ],
-                        true
-                    )
+                fn (array $delivery) => in_array(
+                    $delivery['status'],
+                    [
+                        'Assigned',
+                        'Out for Delivery',
+                        'Delivery Failed',
+                    ],
+                    true
+                )
             )
             ->values();
 
@@ -883,28 +974,22 @@ class RiderController extends Controller
 
         $codMinor = $deliveries
             ->sum(
-                fn (array $delivery) =>
-                    (int) $delivery['cod_minor']
+                fn (array $delivery) => (int) $delivery['cod_minor']
             );
 
         return view(
             'rider.dashboard.deliveries',
             $this->shared() + [
-                'deliveries' =>
-                    $deliveries,
+                'deliveries' => $deliveries,
 
                 'metrics' => [
-                    'assigned_parcels' =>
-                        $assignedParcels,
+                    'assigned_parcels' => $assignedParcels,
 
-                    'out_for_delivery' =>
-                        $outForDelivery,
+                    'out_for_delivery' => $outForDelivery,
 
-                    'active_stops' =>
-                        $deliveries->count(),
+                    'active_stops' => $deliveries->count(),
 
-                    'cod_minor' =>
-                        $codMinor,
+                    'cod_minor' => $codMinor,
                 ],
             ]
         );
@@ -927,20 +1012,22 @@ class RiderController extends Controller
 
         $assignment = $profile
             ->pickupAssignments()
-            ->whereNotIn(
+            ->whereIn(
                 'status',
                 [
+                    'assigned',
+                    'accepted',
+                    'arrived',
+                    'picked_up',
                     'completed',
-                    'cancelled',
                 ]
             )
             ->whereHas(
                 'pickupRequest',
-                fn ($query) =>
-                    $query->where(
-                        'pickup_no',
-                        $id
-                    )
+                fn ($query) => $query->where(
+                    'pickup_no',
+                    $id
+                )
             )
             ->with([
                 'pickupRequest.store.sellerProfile.user',
@@ -953,10 +1040,9 @@ class RiderController extends Controller
         return view(
             'rider.orders.pickup',
             $this->shared() + [
-                'job' =>
-                    $this->pickupAssignmentRow(
-                        $assignment
-                    ),
+                'job' => $this->pickupAssignmentRow(
+                    $assignment
+                ),
             ]
         );
     }
@@ -986,14 +1072,16 @@ class RiderController extends Controller
 
     public function confirmPickup(
         string $id,
-        RiderPickupService $pickupService
+        RiderPickupService $pickupService,
+        ReturnRefundService $returns,
     ): RedirectResponse {
         /** @var User $user */
         $user = Auth::user();
 
         $pickupService->confirmPickup(
             $id,
-            $user
+            $user,
+            $returns,
         );
 
         return redirect()
@@ -1061,7 +1149,9 @@ class RiderController extends Controller
     public function confirmDelivery(
         Request $request,
         string $id,
-        RiderDeliveryService $deliveryService
+        RiderDeliveryService $deliveryService,
+        ReturnRefundService $returns,
+        CodCashCollectionService $codCash,
     ): RedirectResponse {
         $validated = $request->validate([
             'recipient_name' => [
@@ -1075,6 +1165,12 @@ class RiderController extends Controller
                 'image',
                 'mimes:jpg,jpeg,png,webp',
                 'max:5120',
+            ],
+
+            'cod_collected_amount' => [
+                'nullable',
+                'string',
+                'regex:/^\\d{1,8}(?:\\.\\d{1,2})?$/',
             ],
 
             'notes' => [
@@ -1099,7 +1195,7 @@ class RiderController extends Controller
         /** @var User $user */
         $user = Auth::user();
 
-        $deliveryService->completeDelivery(
+        $shipment = $deliveryService->completeDelivery(
             $id,
             $user,
             $request->file('proof_photo'),
@@ -1110,8 +1206,17 @@ class RiderController extends Controller
                 : null,
             isset($validated['longitude'])
                 ? (float) $validated['longitude']
-                : null
+                : null,
+            $returns,
+            isset($validated['cod_collected_amount'])
+                ? $this->amountToMinor($validated['cod_collected_amount'])
+                : null,
+            $codCash,
         );
+
+        $message = $shipment->codCashCollection?->status === 'disputed'
+            ? 'Delivery completed. The COD cash difference was recorded for Logistics and Finance review.'
+            : 'Delivery completed successfully.';
 
         return redirect()
             ->route(
@@ -1120,8 +1225,15 @@ class RiderController extends Controller
             )
             ->with(
                 'job_status',
-                'Delivery completed successfully.'
+                $message
             );
+    }
+
+    private function amountToMinor(string $amount): int
+    {
+        [$whole, $fraction] = array_pad(explode('.', trim($amount), 2), 2, '');
+
+        return ((int) $whole * 100) + (int) str_pad($fraction, 2, '0');
     }
 
     public function failDelivery(
@@ -1386,29 +1498,24 @@ class RiderController extends Controller
         ]);
 
         $user->update([
-            'name' =>
-                trim($validated['name']),
+            'name' => trim($validated['name']),
 
-            'sex' =>
-                match ($validated['sex']) {
-                    'Male' => 'male',
-                    'Female' => 'female',
-                    default => 'prefer_not_to_say',
-                },
+            'sex' => match ($validated['sex']) {
+                'Male' => 'male',
+                'Female' => 'female',
+                default => 'prefer_not_to_say',
+            },
 
-            'contact_number' =>
-                trim($validated['contact']),
+            'contact_number' => trim($validated['contact']),
 
-            'birthday' =>
-                $validated['birthday'] ?? null,
+            'birthday' => $validated['birthday'] ?? null,
         ]);
 
         $riderProfile->update([
-            'emergency_contact_name' =>
-                filled(
-                    $validated['emergency_contact_name']
-                        ?? null
-                )
+            'emergency_contact_name' => filled(
+                $validated['emergency_contact_name']
+                    ?? null
+            )
                     ? trim(
                         $validated[
                             'emergency_contact_name'
@@ -1416,11 +1523,10 @@ class RiderController extends Controller
                     )
                     : null,
 
-            'emergency_contact_phone' =>
-                filled(
-                    $validated['emergency_contact_phone']
-                        ?? null
-                )
+            'emergency_contact_phone' => filled(
+                $validated['emergency_contact_phone']
+                    ?? null
+            )
                     ? trim(
                         $validated[
                             'emergency_contact_phone'
@@ -1431,7 +1537,7 @@ class RiderController extends Controller
 
         return redirect(
             route('rider.profile.index')
-            . '#profile'
+            .'#profile'
         )->with(
             'success',
             'Rider profile updated successfully.'
@@ -1464,10 +1570,9 @@ class RiderController extends Controller
         )) {
             return redirect(
                 route('rider.profile.index')
-                . '#security'
+                .'#security'
             )->withErrors([
-                'current_password' =>
-                    'The current password is incorrect.',
+                'current_password' => 'The current password is incorrect.',
             ]);
         }
 
@@ -1479,7 +1584,7 @@ class RiderController extends Controller
 
         return redirect(
             route('rider.profile.index')
-            . '#security'
+            .'#security'
         )->with(
             'success',
             'Password updated successfully.'
@@ -1552,36 +1657,28 @@ class RiderController extends Controller
         }
 
         $address->fill([
-            'recipient_name' =>
-                $user->name
+            'recipient_name' => $user->name
                 ?: trim(
                     ($user->first_name ?? '')
                     .' '
                     .($user->last_name ?? '')
                 ),
 
-            'phone' =>
-                $user->contact_number ?: null,
+            'phone' => $user->contact_number ?: null,
 
-            'house_number' =>
-                filled($validated['house_number'] ?? null)
+            'house_number' => filled($validated['house_number'] ?? null)
                     ? trim($validated['house_number'])
                     : null,
 
-            'street' =>
-                trim($validated['street']),
+            'street' => trim($validated['street']),
 
-            'barangay' =>
-                trim($validated['barangay']),
+            'barangay' => trim($validated['barangay']),
 
-            'city_municipality' =>
-                trim($validated['city']),
+            'city_municipality' => trim($validated['city']),
 
-            'province' =>
-                trim($validated['province']),
+            'province' => trim($validated['province']),
 
-            'postal_code' =>
-                filled($validated['postal_code'] ?? null)
+            'postal_code' => filled($validated['postal_code'] ?? null)
                     ? trim($validated['postal_code'])
                     : null,
         ]);
@@ -1590,7 +1687,7 @@ class RiderController extends Controller
 
         return redirect(
             route('rider.profile.index')
-            . '#addresses'
+            .'#addresses'
         )->with(
             'success',
             'Home address updated successfully.'
@@ -1662,52 +1759,41 @@ class RiderController extends Controller
         $user
             ->addresses()
             ->create([
-                'label' =>
-                    trim($validated['label']),
+                'label' => trim($validated['label']),
 
-                'recipient_name' =>
-                    $user->name
+                'recipient_name' => $user->name
                     ?: trim(
                         ($user->first_name ?? '')
                         .' '
                         .($user->last_name ?? '')
                     ),
 
-                'phone' =>
-                    $user->contact_number ?: null,
+                'phone' => $user->contact_number ?: null,
 
-                'house_number' =>
-                    filled($validated['house_number'] ?? null)
+                'house_number' => filled($validated['house_number'] ?? null)
                         ? trim($validated['house_number'])
                         : null,
 
-                'street' =>
-                    trim($validated['street']),
+                'street' => trim($validated['street']),
 
-                'barangay' =>
-                    trim($validated['barangay']),
+                'barangay' => trim($validated['barangay']),
 
-                'city_municipality' =>
-                    trim($validated['city']),
+                'city_municipality' => trim($validated['city']),
 
-                'province' =>
-                    trim($validated['province']),
+                'province' => trim($validated['province']),
 
-                'postal_code' =>
-                    filled($validated['postal_code'] ?? null)
+                'postal_code' => filled($validated['postal_code'] ?? null)
                         ? trim($validated['postal_code'])
                         : null,
 
-                'is_default_shipping' =>
-                    false,
+                'is_default_shipping' => false,
 
-                'is_default_pickup' =>
-                    false,
+                'is_default_pickup' => false,
             ]);
 
         return redirect(
             route('rider.profile.index')
-            . '#addresses'
+            .'#addresses'
         )->with(
             'success',
             'Rider address added successfully.'
@@ -1770,24 +1856,20 @@ class RiderController extends Controller
                 * RiderProfile is authoritative.
                 */
                 $riderProfile->update([
-                    'vehicle_type' =>
-                        $vehicleType,
+                    'vehicle_type' => $vehicleType,
 
-                    'plate_number' =>
-                        $plateNumber,
+                    'plate_number' => $plateNumber,
 
-                    'vehicle_model' =>
-                        filled(
-                            $validated['vehicle_model']
-                            ?? null
-                        )
+                    'vehicle_model' => filled(
+                        $validated['vehicle_model']
+                        ?? null
+                    )
                             ? trim(
                                 $validated['vehicle_model']
                             )
                             : null,
 
-                    'parcel_capacity' =>
-                        $validated[
+                    'parcel_capacity' => $validated[
                             'parcel_capacity'
                         ] ?? null,
                 ]);
@@ -1798,18 +1880,16 @@ class RiderController extends Controller
                 * may still read these during migration.
                 */
                 $user->update([
-                    'vehicle_type' =>
-                        $vehicleType,
+                    'vehicle_type' => $vehicleType,
 
-                    'plate_number' =>
-                        $plateNumber,
+                    'plate_number' => $plateNumber,
                 ]);
             }
         );
 
         return redirect(
             route('rider.profile.index')
-            . '#vehicle'
+            .'#vehicle'
         )->with(
             'success',
             'Vehicle details updated successfully.'
@@ -1865,8 +1945,7 @@ class RiderController extends Controller
                 $item->postal_code,
             ])
                 ->filter(
-                    fn ($value) =>
-                        filled($value)
+                    fn ($value) => filled($value)
                 )
                 ->implode(', ');
         };
@@ -1880,36 +1959,28 @@ class RiderController extends Controller
 
         $additionalAddresses = $addressModels
             ->reject(
-                fn ($item) =>
-                    $item->label === 'Home'
+                fn ($item) => $item->label === 'Home'
             )
             ->map(
                 fn ($item): array => [
-                    'id' =>
-                        $item->id,
+                    'id' => $item->id,
 
-                    'label' =>
-                        $item->label,
+                    'label' => $item->label,
 
-                    'address' =>
-                        $formatAddress($item),
+                    'address' => $formatAddress($item),
                 ]
             )
             ->values()
             ->all();
 
         $sex = match ($user->sex) {
-            'male' =>
-                'Male',
+            'male' => 'Male',
 
-            'female' =>
-                'Female',
+            'female' => 'Female',
 
-            'prefer_not_to_say' =>
-                'Prefer not to say',
+            'prefer_not_to_say' => 'Prefer not to say',
 
-            default =>
-                'Prefer not to say',
+            default => 'Prefer not to say',
         };
 
         $emergencyContact = collect([
@@ -1917,8 +1988,7 @@ class RiderController extends Controller
             $riderProfile?->emergency_contact_phone,
         ])
             ->filter(
-                fn ($value) =>
-                    filled($value)
+                fn ($value) => filled($value)
             )
             ->implode(' · ');
 
@@ -1949,97 +2019,74 @@ class RiderController extends Controller
             'rider.profile.index',
             $this->shared() + [
                 'profile' => [
-                    'contact' =>
-                        $user->contact_number ?: '',
+                    'contact' => $user->contact_number ?: '',
 
-                    'birthday' =>
-                        $user->birthday
-                            ?->format('Y-m-d')
+                    'birthday' => $user->birthday
+                        ?->format('Y-m-d')
                         ?? '',
 
-                    'sex' =>
-                        $sex,
+                    'sex' => $sex,
 
-                    'address' =>
-                        $addressText,
+                    'address' => $addressText,
 
-                    'emergency_contact' =>
-                        $emergencyContact,
+                    'emergency_contact' => $emergencyContact,
 
-                    'emergency_contact_name' =>
-                        $riderProfile
-                            ?->emergency_contact_name
+                    'emergency_contact_name' => $riderProfile
+                        ?->emergency_contact_name
                         ?: '',
 
-                    'emergency_contact_phone' =>
-                        $riderProfile
-                            ?->emergency_contact_phone
+                    'emergency_contact_phone' => $riderProfile
+                        ?->emergency_contact_phone
                         ?: '',
 
-                    'preferred_area' =>
-                        $preferredArea,
+                    'preferred_area' => $preferredArea,
 
-                    'vehicle_type' =>
-                        $riderProfile?->vehicle_type
+                    'vehicle_type' => $riderProfile?->vehicle_type
                         ?: 'Not specified',
 
-                    'plate_number' =>
-                        $riderProfile?->plate_number
+                    'plate_number' => $riderProfile?->plate_number
                         ?: '',
 
-                    'vehicle_model' =>
-                        $riderProfile?->vehicle_model
+                    'vehicle_model' => $riderProfile?->vehicle_model
                         ?: '',
 
-                    'parcel_capacity' =>
-                        $riderProfile?->parcel_capacity
+                    'parcel_capacity' => $riderProfile?->parcel_capacity
                         ?? '',
 
-                    'verification_status' =>
-                        $verificationStatus,
+                    'verification_status' => $verificationStatus,
 
-                    'verification_label' =>
-                        ucwords(
-                            str_replace(
-                                '_',
-                                ' ',
-                                $verificationStatus
-                            )
-                        ),
+                    'verification_label' => ucwords(
+                        str_replace(
+                            '_',
+                            ' ',
+                            $verificationStatus
+                        )
+                    ),
 
-                    'home_sorting_center' =>
-                        $riderProfile
-                            ?->homeSortingCenter
-                            ?->name
+                    'home_sorting_center' => $riderProfile
+                        ?->homeSortingCenter
+                        ?->name
                         ?: 'Not assigned',
 
-                    'current_zone' =>
-                        $currentZone?->name
+                    'current_zone' => $currentZone?->name
                         ?: 'Not assigned',
                 ],
 
                 'homeAddress' => [
-                    'house_number' =>
-                        $homeAddress?->house_number ?: '',
+                    'house_number' => $homeAddress?->house_number ?: '',
 
-                    'street' =>
-                        $homeAddress?->street ?: '',
+                    'street' => $homeAddress?->street ?: '',
 
-                    'barangay' =>
-                        $homeAddress?->barangay ?: '',
+                    'barangay' => $homeAddress?->barangay ?: '',
 
-                    'city' =>
-                        $homeAddress?->city_municipality ?: '',
+                    'city' => $homeAddress?->city_municipality ?: '',
 
-                    'province' =>
-                        $homeAddress?->province ?: '',
+                    'province' => $homeAddress?->province ?: '',
 
-                    'postal_code' =>
-                        $homeAddress?->postal_code ?: '',
+                    'postal_code' => $homeAddress?->postal_code ?: '',
                 ],
 
-                'additionalAddresses' =>
-                    $additionalAddresses,
+                'additionalAddresses' => $additionalAddresses,
             ]
         );
     }

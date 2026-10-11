@@ -16,7 +16,9 @@ export default defineConfig({
 
                 // Buyer
                 'resources/css/buyer.css',
+                'resources/css/product-detail.css',
                 'resources/js/buyer.js',
+                'resources/js/product-detail.js',
                 'resources/js/buyer-notifications.js',
                 // Buyer promo slider
                 'resources/css/bearly-promo-slider.css',

@@ -8,12 +8,13 @@
 <div class="returns-utility">
     <details class="returns-guide">
         <summary>How returns work</summary>
-        <dl>
-            <div><dt>Buyer</dt><dd>Submits the request and evidence.</dd></div>
-            <div><dt>Seller</dt><dd>Reviews the request and submits a response and evidence.</dd></div>
-            <div><dt>Platform / Admin</dt><dd>Reviews disputes and determines the resolution.</dd></div>
-            <div><dt>Logistics</dt><dd>Handles the physical return when required.</dd></div>
-        </dl>
+        <ol class="returns-guide-steps">
+            <li><strong>The Buyer asks for help.</strong> Within 7 days after Bearly marks the order complete, they can ask for <em>Return &amp; Refund</em> or <em>Refund Only</em>. They can add photos or files.</li>
+            <li><strong>You reply.</strong> Open the case, explain what happened, and attach at least one helpful file before the deadline shown.</li>
+            <li><strong>Admin checks the case.</strong> Admin reads both sides and may ask the Buyer, you, or both for more proof. Then Admin approves or declines the request.</li>
+            <li><strong>If an item must come back,</strong> Logistics picks it up and brings it to you. When it arrives, check each item and record its condition. Only items that are okay to sell and marked <em>Restock</em> go back into stock.</li>
+            <li><strong>Admin handles the refund.</strong> For Refund Only, Admin may send the refund after approval. For Return &amp; Refund, Admin waits until you finish checking the returned item. Admin sends the money outside Bearly, then records it here. If Admin says the Seller must pay some money back, you will see the amount here. It will not be taken from your payout automatically.</li>
+        </ol>
     </details>
     <a class="seller-secondary-button" href="{{ route('seller.orders') }}"><i data-lucide="arrow-left" aria-hidden="true"></i>Manage Orders</a>
 </div>
@@ -47,27 +48,62 @@
     </div>
     <div class="returns-table-wrap">
         <table class="returns-table returns-table-polished">
-            <thead><tr><th>Case / Order</th><th>Customer / Product</th><th>Request</th><th>Reason</th><th>Amount</th><th>Financial Effect</th><th>Response Deadline</th><th>Status</th><th>Action</th></tr></thead>
+            <thead><tr><th>Case / Order</th><th>Customer / Product</th><th>Request &amp; Reason</th><th>Amount</th><th>Financial Effect</th><th>Response Deadline</th><th>Status</th><th>Action</th></tr></thead>
             <tbody>
                 @foreach ($returns as $case)
-                    @php($typeKey = $case['request'] === 'Refund Only' ? 'refund-only' : 'return-refund')
-                    <tr data-return-row data-status="{{ $case['status_key'] }}" data-type="{{ $typeKey }}" data-search="{{ strtolower(implode(' ', $case)) }}">
-                        <td><strong>{{ $case['id'] }}</strong><small>{{ $case['order'] }} · {{ $case['submitted'] }}</small></td>
-                        <td><strong>{{ $case['customer'] }}</strong><small>{{ $case['product'] }}</small></td>
-                        <td>{{ $case['request'] }}</td><td>{{ $case['reason'] }}</td><td><strong>{{ $case['amount'] }}</strong></td>
-                        <td><span class="return-finance-effect">{{ $case['commission_effect'] }}</span>@if (trim($case['earnings_effect'] ?? '') !== '' && strcasecmp(trim($case['earnings_effect']), trim($case['commission_effect'] ?? '')) !== 0)
-                            <small>{{ $case['earnings_effect'] }}</small>
-                        @endif</td>
-                        <td><span class="return-deadline {{ $case['status_key'] === 'action-required' ? 'is-urgent' : '' }}">{{ $case['deadline'] }}</span></td>
+                    @php
+                        $typeKey = $case['request'] === 'Refund Only' ? 'refund-only' : 'return-refund';
+                        $deadlineParts = explode(' · ', $case['deadline'], 2);
+                        $caseIdBreakAt = (int) ceil(strlen($case['id']) / 2);
+                    @endphp
+                    <tr data-return-row data-status="{{ $case['status_key'] }}" data-type="{{ $typeKey }}" data-search="{{ strtolower(implode(' ', [$case['id'], $case['order'], $case['customer'], $case['product'], $case['reason'], $case['request'], $case['status']])) }}">
+                        <td>
+                            <div class="returns-table-primary">
+                                <span class="returns-table-icon"><i data-lucide="file-text" aria-hidden="true"></i></span>
+                                <div class="returns-table-primary-copy">
+                                    <strong class="return-case-id">{{ substr($case['id'], 0, $caseIdBreakAt) }}<wbr>{{ substr($case['id'], $caseIdBreakAt) }}</strong>
+                                    <small>{{ $case['order'] }}</small>
+                                    <small class="return-case-submitted">{{ $case['submitted'] }}</small>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="returns-table-primary">
+                                <span class="returns-table-icon"><i data-lucide="user-round" aria-hidden="true"></i></span>
+                                <div class="returns-table-primary-copy">
+                                    <strong>{{ $case['customer'] }}</strong>
+                                    <small class="returns-table-product">{{ str_replace(' · ', "\n", $case['product']) }}</small>
+                                </div>
+                            </div>
+                        </td>
+                        <td><span class="return-request-label">{{ $case['request'] }}</span><small class="return-reason">{{ $case['reason'] }}</small></td>
+                        <td><strong class="return-amount">{{ $case['amount'] }}</strong></td>
+                        <td>
+                            <div class="return-finance-copy">
+                                <span class="return-finance-effect">{{ $case['commission_effect'] }}</span>
+                                @if (trim($case['earnings_effect'] ?? '') !== '' && strcasecmp(trim($case['earnings_effect']), trim($case['commission_effect'] ?? '')) !== 0)
+                                    <small>{{ $case['earnings_effect'] }}</small>
+                                @endif
+                            </div>
+                        </td>
+                        <td>
+                            <div class="return-deadline-layout">
+                                <span class="returns-table-icon"><i data-lucide="calendar-days" aria-hidden="true"></i></span>
+                                <span class="return-deadline {{ $case['status_key'] === 'action-required' ? 'is-urgent' : '' }}">
+                                    <strong>{{ $deadlineParts[0] }}</strong>
+                                    @if(isset($deadlineParts[1]))<small>{{ $deadlineParts[1] }}</small>@endif
+                                </span>
+                            </div>
+                        </td>
                         <td><span class="return-status status-{{ $case['tone'] }}">{{ $case['status'] }}</span></td>
-                        <td><a class="return-action" href="{{ route('seller.orders.returns.show', ['caseId' => $case['id']]) }}">{{ $case['action'] }}</a></td>
+                        <td><a class="return-action" href="{{ route('seller.orders.returns.show', ['caseId' => $case['id']]) }}"><span>{{ $case['action'] }}</span><i data-lucide="chevron-right" aria-hidden="true"></i></a></td>
                     </tr>
                 @endforeach
             </tbody>
         </table>
         <div class="returns-empty" data-returns-empty hidden><i data-lucide="search-x"></i><strong>No matching cases</strong><span>Try changing the status, type, or search term.</span></div>
     </div>
-    <footer class="returns-footer"><span>Showing <strong data-return-count>{{ count($returns) }}</strong> of {{ count($returns) }} cases</span><span>A finalized full refund reverses the related platform commission.</span></footer>
+    <footer class="returns-footer"><span class="returns-footer-count">Showing <strong data-return-count>{{ count($returns) }}</strong> of {{ count($returns) }} cases</span><span class="returns-footer-note"><i data-lucide="info" aria-hidden="true"></i><span>Seller-liable refunds may create a recoverable balance; no settlement is automatically deducted.</span></span></footer>
 </section>
 </div>
 @endsection

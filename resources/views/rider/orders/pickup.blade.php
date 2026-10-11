@@ -36,7 +36,7 @@
         class="workflow-step
             {{ in_array(
                 $job['status_raw'],
-                ['assigned', 'accepted', 'arrived', 'picked_up'],
+                ['assigned', 'accepted', 'arrived', 'picked_up', 'completed'],
                 true
             ) ? 'is-complete' : '' }}"
     >
@@ -53,7 +53,7 @@
         class="workflow-step
             {{ in_array(
                 $job['status_raw'],
-                ['accepted', 'arrived', 'picked_up'],
+                ['accepted', 'arrived', 'picked_up', 'completed'],
                 true
             ) ? 'is-complete' : '' }}"
     >
@@ -66,7 +66,11 @@
 
     <div
         class="workflow-step
-            {{ $job['status_raw'] === 'picked_up'
+            {{ in_array(
+                $job['status_raw'],
+                ['picked_up', 'completed'],
+                true
+            )
                 ? 'is-complete'
                 : '' }}"
     >
@@ -84,7 +88,7 @@
             <div class="panel-header">
                 <div>
                     <h3>
-                        Seller location
+                        {{ $job['location_label'] ?? 'Seller location' }}
                     </h3>
 
                     <p>
@@ -110,7 +114,7 @@
                     <div class="map-meta">
                         <span>
                             <strong>
-                                {{ $job['seller'] }}
+                                 {{ $job['contact_name'] ?? $job['seller'] }}
                             </strong>
 
                             <br>
@@ -125,7 +129,7 @@
 
                             <br>
 
-                            Seller contact
+                             {{ str_contains(strtolower($job['seller']), 'return pickup') ? 'Buyer contact' : 'Seller contact' }}
                         </span>
                     </div>
                 </div>
@@ -322,6 +326,22 @@
                             Parcels collected from the seller.
                             Return them to your assigned Sorting Center
                             for intake.
+                        </span>
+                    </div>
+                </div>
+            @elseif($job['status_raw'] === 'completed')
+                <div class="panel-footer">
+                    <div
+                        class="flash-banner is-success"
+                        role="status"
+                        style="width:100%;"
+                    >
+                        <i data-lucide="circle-check"></i>
+
+                        <span>
+                            Pickup complete. Logistics received all parcels
+                            at the Sorting Center; this assignment is now
+                            read-only.
                         </span>
                     </div>
                 </div>

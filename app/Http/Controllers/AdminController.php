@@ -7,6 +7,7 @@ use App\Enums\UserRole;
 use App\Models\AccountApplication;
 use App\Models\Conversation;
 use App\Models\Dispute;
+use App\Models\SellerPayout;
 use App\Models\ReturnRequest;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -1023,18 +1024,37 @@ class AdminController extends Controller
                 'order',
                 'buyer',
                 'store',
+                'store.sellerProfile',
                 'sellerOrder',
                 'items.orderItem',
                 'evidence',
                 'reviewer',
                 'refunds',
+                'refunds.sellerRecovery.events.sellerPayout',
+                'refunds.sellerRecovery.events.recorder',
+                'events.actor',
+                'returnShipment.waybill',
+                'returnShipment.events',
             ])
             ->orderByDesc('submitted_at')
             ->orderByDesc('id')
             ->get();
 
+        $sellerProfileIds = $returnRequests
+            ->pluck('store.seller_profile_id')
+            ->filter()
+            ->unique()
+            ->values();
+        $paidSellerPayouts = SellerPayout::query()
+            ->whereIn('seller_profile_id', $sellerProfileIds)
+            ->whereIn('status', ['paid', 'completed'])
+            ->whereNotNull('paid_at')
+            ->latest('paid_at')
+            ->get()
+            ->groupBy('seller_profile_id');
+
         $cases = $returnRequests
-            ->map(function (ReturnRequest $returnRequest): array {
+            ->map(function (ReturnRequest $returnRequest) use ($paidSellerPayouts): array {
                 $requestType = match ($returnRequest->request_type) {
                     'return_refund',
                     'return_and_refund',
@@ -1053,25 +1073,31 @@ class AdminController extends Controller
                 };
 
                 $status = match ($returnRequest->status) {
-                    'submitted' => 'Awaiting Seller',
                     'awaiting_seller' => 'Awaiting Seller',
                     'under_review' => 'Under Review',
-                    'escalated' => 'Escalated',
                     'awaiting_evidence' => 'Awaiting Evidence',
-                    'approved' => 'Approved',
-                    'rejected' => 'Rejected',
+                    'return_pickup_requested' => 'Return Pickup Requested',
+                    'return_in_transit' => 'Return In Transit',
+                    'awaiting_inspection' => 'Awaiting Seller Inspection',
+                    'refund_pending' => 'Refund Payout Pending',
                     'resolved' => 'Resolved',
-
-                    default => Str::of($returnRequest->status)
-                        ->replace(['_', '-'], ' ')
-                        ->title()
-                        ->toString(),
+                    'rejected' => 'Rejected',
+                    default => Str::of($returnRequest->status)->replace(['_', '-'], ' ')->title()->toString(),
                 };
 
                 $reason = Str::of($returnRequest->reason_code)
                     ->replace(['_', '-'], ' ')
                     ->title()
                     ->toString();
+
+                $refund = $returnRequest->refunds->sortByDesc('id')->first();
+                $items = $returnRequest->items->map(fn ($item): array => [
+                    'name' => $item->orderItem?->product_name ?? 'Purchased item',
+                    'variant' => $item->orderItem?->variant_name ?? 'Standard',
+                    'sku' => $item->orderItem?->sku ?? '—',
+                    'quantity' => (int) $item->quantity,
+                    'amount' => '₱'.number_format((int) $item->refund_amount_minor / 100, 2),
+                ])->all();
 
                 return [
                     'database_id' => $returnRequest->id,
@@ -1101,12 +1127,89 @@ class AdminController extends Controller
                     'type' => $requestType,
 
                     'status' => $status,
+                    'status_key' => $returnRequest->status,
 
                     'seller_response' => $returnRequest->seller_response
                         ?: 'No seller response submitted yet.',
 
                     'buyer_request' => $returnRequest->buyer_note
                         ?: 'No additional buyer note was provided.',
+                    'submitted_at' => $returnRequest->submitted_at?->format('M j, Y · g:i A') ?? '—',
+                    'items' => $items,
+                    'seller_order' => $returnRequest->sellerOrder?->seller_order_no ?? '—',
+                    'resolution' => $returnRequest->resolution,
+                    'refund_id' => $refund?->id,
+                    'refund_no' => $refund?->refund_no,
+                    'refund_status' => $refund?->status,
+                    'refund_amount' => $refund ? '₱'.number_format((int) $refund->amount_minor / 100, 2) : null,
+                    'payout_amount' => $refund?->payout_amount_minor !== null
+                        ? '₱'.number_format((int) $refund->payout_amount_minor / 100, 2)
+                        : null,
+                    'financially_responsible_party' => $refund?->financially_responsible_party,
+                    'financial_responsibility_reason' => $refund?->financial_responsibility_reason,
+                    'can_decide' => $returnRequest->status === 'under_review',
+                    'can_record_responsibility' => $returnRequest->status === 'refund_pending'
+                        && $refund?->status === 'pending'
+                        && blank($refund?->financially_responsible_party),
+                    'can_record_payout' => $returnRequest->status === 'refund_pending'
+                        && $refund?->status === 'pending'
+                        && in_array($refund?->financially_responsible_party, ['seller', 'platform'], true),
+                    'seller_recovery' => $refund?->sellerRecovery ? [
+                        'amount_minor' => (int) $refund->sellerRecovery->amount_minor,
+                        'recovered_amount_minor' => (int) $refund->sellerRecovery->recovered_amount_minor,
+                        'outstanding_minor' => max(0, (int) $refund->sellerRecovery->amount_minor - (int) $refund->sellerRecovery->recovered_amount_minor),
+                        'status' => $refund->sellerRecovery->status,
+                        'events' => $refund->sellerRecovery->events->map(fn ($event): array => [
+                            'method' => $event->method,
+                            'amount_minor' => (int) $event->amount_minor,
+                            'reference' => $event->external_reference,
+                            'recovered_on' => $event->recovered_on?->format('M j, Y') ?? '—',
+                            'note' => $event->note,
+                            'payout_no' => $event->sellerPayout?->payout_no,
+                            'actor' => $event->recorder?->name ?? 'Admin',
+                        ])->all(),
+                    ] : null,
+                    'eligible_recovery_payouts' => $refund && $returnRequest->store?->seller_profile_id
+                        ? ($paidSellerPayouts->get($returnRequest->store->seller_profile_id, collect())->map(fn (SellerPayout $payout): array => [
+                            'id' => (int) $payout->id,
+                            'number' => $payout->payout_no,
+                            'paid_at' => $payout->paid_at?->format('M j, Y') ?? '—',
+                            'reference' => $payout->reference,
+                        ])->values()->all())
+                        : [],
+                    'payout_method' => $refund?->method,
+                    'payout_reference' => $refund?->provider_reference,
+                    'payout_date' => $refund?->external_paid_on?->format('M j, Y'),
+                    'payout_receipt_url' => $refund?->status === 'completed' && filled($refund?->payout_receipt_path)
+                        ? route('admin.compliance.returns-refunds.payout-receipt', $refund->id)
+                        : null,
+                    'evidence_files' => $returnRequest->evidence->map(function ($evidence): array {
+                        $isImage = in_array(strtolower((string) $evidence->mime_type), [
+                            'image/jpeg',
+                            'image/png',
+                            'image/webp',
+                        ], true);
+
+                        return [
+                            'id' => $evidence->id,
+                            'name' => $evidence->original_name,
+                            'type' => $evidence->type,
+                            'size' => (int) ($evidence->size_bytes ?? 0),
+                            'is_image' => $isImage,
+                            'preview_url' => $isImage
+                                ? route('admin.compliance.returns-refunds.evidence.preview', $evidence->id)
+                                : null,
+                            'url' => route('admin.compliance.returns-refunds.evidence.download', $evidence->id),
+                        ];
+                    })->all(),
+                    'return_waybill' => $returnRequest->returnShipment?->waybill?->waybill_no,
+                    'return_shipment_status' => $returnRequest->returnShipment?->status,
+                    'events' => $returnRequest->events->map(fn ($event): array => [
+                        'type' => $event->event_type,
+                        'actor' => $event->actor?->name ?? 'Bearly',
+                        'note' => $event->note,
+                        'at' => $event->created_at?->format('M j, Y · g:i A') ?? '—',
+                    ])->all(),
                 ];
             })
             ->values()

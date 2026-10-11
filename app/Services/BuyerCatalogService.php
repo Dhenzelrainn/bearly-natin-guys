@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Category;
+use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\ProductImage;
 use App\Models\ProductVariant;
@@ -201,12 +202,32 @@ class BuyerCatalogService
     {
         $images = $this->productImages($product);
         $images->loadMissing('variant');
-        $variantImage = $this->exactSkuImage($images, $variant)
+        $variantImage = $this->variantColorImage($images, $variant)
+            ?: $this->exactSkuImage($images, $variant)
             ?: $this->legacyColorImage($images, $variant);
 
         return $variantImage
             ?: $images->first(fn (ProductImage $image): bool => $image->variant_id === null && $image->is_primary)
             ?: $images->first(fn (ProductImage $image): bool => $image->variant_id === null);
+    }
+
+    /**
+     * Resolve the display image for an immutable order-item snapshot,
+     * preferring the snapshot path recorded at checkout before falling back
+     * to the live product/variant image resolution.
+     */
+    public function orderItemImageUrl(OrderItem $item): string
+    {
+        $imagePath = trim((string) ($item->product_image_path ?? ''));
+        $imageDisk = (string) ($item->product_image_disk ?: 'public');
+
+        if ($imagePath === '' && $item->product && $item->variant) {
+            $image = $this->orderImageRecord($item->product, $item->variant);
+            $imagePath = trim((string) ($image?->path ?? ''));
+            $imageDisk = (string) ($image?->disk ?: 'public');
+        }
+
+        return $this->imageUrl($imagePath === '' ? null : $imagePath, $imageDisk);
     }
 
     private function variantImageRecord(Product $product, ProductVariant $variant): ?ProductImage
@@ -218,8 +239,12 @@ class BuyerCatalogService
     {
         $images->loadMissing('variant');
 
-        $exactImage = $this->exactSkuImage($images, $variant);
+        $colorImage = $this->variantColorImage($images, $variant);
+        if ($colorImage) {
+            return $colorImage;
+        }
 
+        $exactImage = $this->exactSkuImage($images, $variant);
         if ($exactImage) {
             return $exactImage;
         }
@@ -262,6 +287,27 @@ class BuyerCatalogService
         });
     }
 
+    private function variantColorImage(Collection $images, ProductVariant $variant): ?ProductImage
+    {
+        $color = Str::lower(trim($this->option((array) ($variant->options ?: []), ['color', 'colour'])));
+        if ($color === '') {
+            return null;
+        }
+
+        return $images->first(function (ProductImage $image) use ($color): bool {
+            if ($image->variant_id === null || ! $image->variant || (string) $image->purpose !== 'variant_color') {
+                return false;
+            }
+
+            $imageColor = Str::lower(trim($this->option(
+                (array) ($image->variant->options ?: []),
+                ['color', 'colour'],
+            )));
+
+            return $imageColor !== '' && $imageColor === $color;
+        });
+    }
+
     private function productImages(Product $product): Collection
     {
         return $product->relationLoaded('images')
@@ -275,29 +321,35 @@ class BuyerCatalogService
         $imageRecords = $product->relationLoaded('images')
             ? $product->images
             : $product->images()->whereNotNull('variant_id')->with('variant')->orderBy('position')->get();
+        $imageRecords->loadMissing('variant');
         $exactImages = [];
+        $sharedColorImages = [];
         $legacyColorImages = [];
 
         foreach ($imageRecords as $image) {
             $variant = $image->relationLoaded('variant')
                 ? $image->variant
                 : $variantsById->get($image->variant_id);
-            if (! $variant || ! $variantsById->has($variant->id)) {
+            if (! $variant) {
                 continue;
             }
 
             $variantId = (int) $variant->id;
             $imageUrl = $this->imageUrl($image->path, $image->disk ?: 'public');
-            $exactImages[$variantId] ??= $imageUrl;
+            $isActiveVariant = $variantsById->has($variant->id);
 
-            if ((string) $image->purpose === 'variant_sku') {
+            if ($isActiveVariant && (string) $image->purpose === 'variant_sku') {
                 $exactImages[$variantId] = $imageUrl;
             }
 
-            if ((string) $image->purpose === 'variant') {
+            if (in_array((string) $image->purpose, ['variant_color', 'variant'], true)) {
                 $color = Str::lower($this->option((array) ($variant->options ?: []), ['color', 'colour']));
                 if ($color !== '') {
-                    $legacyColorImages[$color] ??= $this->imageUrl($image->path, $image->disk ?: 'public');
+                    if ((string) $image->purpose === 'variant_color') {
+                        $sharedColorImages[$color] ??= $imageUrl;
+                    } else {
+                        $legacyColorImages[$color] ??= $imageUrl;
+                    }
                 }
             }
         }
@@ -306,7 +358,8 @@ class BuyerCatalogService
         foreach ($variants as $variant) {
             $variantId = (int) $variant->id;
             $color = Str::lower($this->option((array) ($variant->options ?: []), ['color', 'colour']));
-            $variantImages[$variantId] = $exactImages[$variantId]
+            $variantImages[$variantId] = ($color !== '' ? ($sharedColorImages[$color] ?? null) : null)
+                ?? ($exactImages[$variantId] ?? null)
                 ?? ($color !== '' ? ($legacyColorImages[$color] ?? null) : null);
         }
 

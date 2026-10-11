@@ -7,18 +7,19 @@ use App\Enums\DeliveryAttemptOutcome;
 use App\Enums\ParcelStatus;
 use App\Enums\ShipmentStatus;
 use App\Enums\UserRole;
+use App\Models\DeliveryAttempt;
+use App\Models\DeliveryProof;
 use App\Models\DispatchBatch;
 use App\Models\Parcel;
 use App\Models\Shipment;
 use App\Models\ShipmentEvent;
-use App\Models\DeliveryAttempt;
-use App\Models\DeliveryProof;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Http\UploadedFile;
+use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 use Throwable;
@@ -89,19 +90,16 @@ class RiderDeliveryService
                     )
                     ->whereHas(
                         'parcels',
-                        fn ($query) =>
-                            $query->where(
-                                'parcels.shipment_id',
-                                $shipment->id
-                            )
+                        fn ($query) => $query->where(
+                            'parcels.shipment_id',
+                            $shipment->id
+                        )
                     )
                     ->with([
-                        'parcels' =>
-                            fn ($query) =>
-                                $query->where(
-                                    'parcels.shipment_id',
-                                    $shipment->id
-                                ),
+                        'parcels' => fn ($query) => $query->where(
+                            'parcels.shipment_id',
+                            $shipment->id
+                        ),
                     ])
                     ->lockForUpdate()
                     ->get();
@@ -118,8 +116,7 @@ class RiderDeliveryService
                     $batches as $batch
                 ) {
                     foreach (
-                        $batch->parcels
-                        as $parcel
+                        $batch->parcels as $parcel
                     ) {
                         $parcelBatchIds[
                             $parcel->id
@@ -153,8 +150,7 @@ class RiderDeliveryService
 
                 if (
                     $parcels->contains(
-                        fn (Parcel $parcel) =>
-                            $parcel->status
+                        fn (Parcel $parcel) => $parcel->status
                             !== ParcelStatus::Dispatched
                                 ->value
                     )
@@ -183,56 +179,43 @@ class RiderDeliveryService
                         $parcel->status;
 
                     $parcel->update([
-                        'status' =>
-                            ParcelStatus::OutForDelivery
-                                ->value,
+                        'status' => ParcelStatus::OutForDelivery
+                            ->value,
 
-                        'last_event_at' =>
-                            $now,
+                        'last_event_at' => $now,
                     ]);
 
                     $shipment
                         ->events()
                         ->create([
-                            'parcel_id' =>
-                                $parcel->id,
+                            'parcel_id' => $parcel->id,
 
-                            'event_type' =>
-                                'parcel_out_for_delivery',
+                            'event_type' => 'parcel_out_for_delivery',
 
-                            'from_status' =>
-                                $fromStatus,
+                            'from_status' => $fromStatus,
 
-                            'to_status' =>
-                                ParcelStatus::OutForDelivery
-                                    ->value,
+                            'to_status' => ParcelStatus::OutForDelivery
+                                ->value,
 
-                            'sorting_center_id' =>
-                                $parcel
-                                    ->current_sorting_center_id,
+                            'sorting_center_id' => $parcel
+                                ->current_sorting_center_id,
 
-                            'sorting_zone_id' =>
-                                $parcel
-                                    ->current_zone_id,
+                            'sorting_zone_id' => $parcel
+                                ->current_zone_id,
 
-                            'actor_user_id' =>
-                                $actor->id,
+                            'actor_user_id' => $actor->id,
 
-                            'source' =>
-                                'rider',
+                            'source' => 'rider',
 
                             'metadata' => [
-                                'dispatch_batch_id' =>
-                                    $parcelBatchIds[
+                                'dispatch_batch_id' => $parcelBatchIds[
                                         $parcel->id
                                     ],
 
-                                'rider_profile_id' =>
-                                    $rider->id,
+                                'rider_profile_id' => $rider->id,
                             ],
 
-                            'occurred_at' =>
-                                $now,
+                            'occurred_at' => $now,
                         ]);
                 }
 
@@ -260,9 +243,8 @@ class RiderDeliveryService
                         $shipment->status;
 
                     $shipment->update([
-                        'status' =>
-                            ShipmentStatus::OutForDelivery
-                                ->value,
+                        'status' => ShipmentStatus::OutForDelivery
+                            ->value,
                     ]);
 
                     $centerIds = $parcels
@@ -284,46 +266,36 @@ class RiderDeliveryService
                     $shipment
                         ->events()
                         ->create([
-                            'event_type' =>
-                                'shipment_out_for_delivery',
+                            'event_type' => 'shipment_out_for_delivery',
 
-                            'from_status' =>
-                                $fromStatus,
+                            'from_status' => $fromStatus,
 
-                            'to_status' =>
-                                ShipmentStatus::OutForDelivery
-                                    ->value,
+                            'to_status' => ShipmentStatus::OutForDelivery
+                                ->value,
 
-                            'sorting_center_id' =>
-                                $centerIds->count() === 1
+                            'sorting_center_id' => $centerIds->count() === 1
                                     ? $centerIds->first()
                                     : null,
 
-                            'sorting_zone_id' =>
-                                $zoneIds->count() === 1
+                            'sorting_zone_id' => $zoneIds->count() === 1
                                     ? $zoneIds->first()
                                     : null,
 
-                            'actor_user_id' =>
-                                $actor->id,
+                            'actor_user_id' => $actor->id,
 
-                            'source' =>
-                                'rider',
+                            'source' => 'rider',
 
                             'metadata' => [
-                                'dispatch_batch_ids' =>
-                                    $batches
-                                        ->pluck('id')
-                                        ->unique()
-                                        ->values()
-                                        ->all(),
+                                'dispatch_batch_ids' => $batches
+                                    ->pluck('id')
+                                    ->unique()
+                                    ->values()
+                                    ->all(),
 
-                                'rider_profile_id' =>
-                                    $rider->id,
+                                'rider_profile_id' => $rider->id,
                             ],
 
-                            'occurred_at' =>
-                                $now,
+                            'occurred_at' => $now,
                         ]);
                 }
 
@@ -336,7 +308,7 @@ class RiderDeliveryService
         );
     }
 
-        /**
+    /**
      * @return Collection<int, DeliveryAttempt>
      */
     public function recordAttempt(
@@ -434,19 +406,16 @@ class RiderDeliveryService
                     )
                     ->whereHas(
                         'parcels',
-                        fn ($query) =>
-                            $query->where(
-                                'parcels.shipment_id',
-                                $shipment->id
-                            )
+                        fn ($query) => $query->where(
+                            'parcels.shipment_id',
+                            $shipment->id
+                        )
                     )
                     ->with([
-                        'parcels' =>
-                            fn ($query) =>
-                                $query->where(
-                                    'parcels.shipment_id',
-                                    $shipment->id
-                                ),
+                        'parcels' => fn ($query) => $query->where(
+                            'parcels.shipment_id',
+                            $shipment->id
+                        ),
                     ])
                     ->lockForUpdate()
                     ->get();
@@ -501,8 +470,7 @@ class RiderDeliveryService
 
                 if (
                     $parcels->contains(
-                        fn (Parcel $parcel) =>
-                            $parcel->status
+                        fn (Parcel $parcel) => $parcel->status
                             !== ParcelStatus::OutForDelivery
                                 ->value
                     )
@@ -530,43 +498,32 @@ class RiderDeliveryService
                     $attempts->push(
                         DeliveryAttempt::query()
                             ->create([
-                                'parcel_id' =>
-                                    $parcel->id,
+                                'parcel_id' => $parcel->id,
 
-                                'dispatch_batch_id' =>
-                                    $parcelBatchIds[
+                                'dispatch_batch_id' => $parcelBatchIds[
                                         $parcel->id
                                     ],
 
-                                'rider_profile_id' =>
-                                    $rider->id,
+                                'rider_profile_id' => $rider->id,
 
-                                'attempt_no' =>
-                                    $latestAttemptNo + 1,
+                                'attempt_no' => $latestAttemptNo + 1,
 
-                                'outcome' =>
-                                    $outcome->value,
+                                'outcome' => $outcome->value,
 
-                                'failure_reason' =>
-                                    $outcome
+                                'failure_reason' => $outcome
                                         === DeliveryAttemptOutcome::Failed
                                         ? $failureReason
                                         : null,
 
-                                'notes' =>
-                                    $notes,
+                                'notes' => $notes,
 
-                                'latitude' =>
-                                    $latitude,
+                                'latitude' => $latitude,
 
-                                'longitude' =>
-                                    $longitude,
+                                'longitude' => $longitude,
 
-                                'attempted_at' =>
-                                    $now,
+                                'attempted_at' => $now,
 
-                                'next_attempt_at' =>
-                                    $outcome
+                                'next_attempt_at' => $outcome
                                         === DeliveryAttemptOutcome::Failed
                                         ? $nextAttemptAt
                                         : null,
@@ -661,11 +618,10 @@ class RiderDeliveryService
                             )
                     )
                     ->with([
-                        'parcels' => fn ($query) =>
-                            $query->where(
-                                'parcels.shipment_id',
-                                $shipment->id
-                            ),
+                        'parcels' => fn ($query) => $query->where(
+                            'parcels.shipment_id',
+                            $shipment->id
+                        ),
                     ])
                     ->lockForUpdate()
                     ->get();
@@ -730,96 +686,70 @@ class RiderDeliveryService
 
                     $attempt =
                         DeliveryAttempt::query()->create([
-                            'parcel_id' =>
-                                $parcel->id,
+                            'parcel_id' => $parcel->id,
 
-                            'dispatch_batch_id' =>
-                                $parcelBatchIds->get(
-                                    $parcel->id
-                                ),
+                            'dispatch_batch_id' => $parcelBatchIds->get(
+                                $parcel->id
+                            ),
 
-                            'rider_profile_id' =>
-                                $rider->id,
+                            'rider_profile_id' => $rider->id,
 
-                            'attempt_no' =>
-                                $attemptNo,
+                            'attempt_no' => $attemptNo,
 
-                            'outcome' =>
-                                DeliveryAttemptOutcome::Failed
-                                    ->value,
+                            'outcome' => DeliveryAttemptOutcome::Failed
+                                ->value,
 
-                            'failure_reason' =>
-                                $failureReason,
+                            'failure_reason' => $failureReason,
 
-                            'notes' =>
-                                $notes,
+                            'notes' => $notes,
 
-                            'latitude' =>
-                                $latitude,
+                            'latitude' => $latitude,
 
-                            'longitude' =>
-                                $longitude,
+                            'longitude' => $longitude,
 
-                            'attempted_at' =>
-                                $now,
+                            'attempted_at' => $now,
 
-                            'next_attempt_at' =>
-                                $nextAttemptAt,
+                            'next_attempt_at' => $nextAttemptAt,
                         ]);
 
                     $parcel->forceFill([
-                        'status' =>
-                            ParcelStatus::Failed->value,
+                        'status' => ParcelStatus::Failed->value,
 
-                        'last_event_at' =>
-                            $now,
+                        'last_event_at' => $now,
                     ])->save();
 
                     ShipmentEvent::query()->create([
-                        'shipment_id' =>
-                            $shipment->id,
+                        'shipment_id' => $shipment->id,
 
-                        'parcel_id' =>
-                            $parcel->id,
+                        'parcel_id' => $parcel->id,
 
-                        'event_type' =>
-                            'parcel_delivery_failed',
+                        'event_type' => 'parcel_delivery_failed',
 
-                        'from_status' =>
-                            ParcelStatus::OutForDelivery
-                                ->value,
+                        'from_status' => ParcelStatus::OutForDelivery
+                            ->value,
 
-                        'to_status' =>
-                            ParcelStatus::Failed
-                                ->value,
+                        'to_status' => ParcelStatus::Failed
+                            ->value,
 
-                        'sorting_center_id' =>
-                            $parcel
-                                ->current_sorting_center_id,
+                        'sorting_center_id' => $parcel
+                            ->current_sorting_center_id,
 
-                        'sorting_zone_id' =>
-                            $parcel->current_zone_id,
+                        'sorting_zone_id' => $parcel->current_zone_id,
 
-                        'actor_user_id' =>
-                            $actor->id,
+                        'actor_user_id' => $actor->id,
 
-                        'source' =>
-                            'rider',
+                        'source' => 'rider',
 
-                        'occurred_at' =>
-                            $now,
+                        'occurred_at' => $now,
 
                         'metadata' => [
-                            'dispatch_batch_id' =>
-                                $parcelBatchIds->get(
-                                    $parcel->id
-                                ),
+                            'dispatch_batch_id' => $parcelBatchIds->get(
+                                $parcel->id
+                            ),
 
-                            'rider_profile_id' =>
-                                $rider->id,
+                            'rider_profile_id' => $rider->id,
 
-                            'delivery_attempt_id' =>
-                                $attempt->id,
+                            'delivery_attempt_id' => $attempt->id,
                         ],
                     ]);
                 }
@@ -845,22 +775,20 @@ class RiderDeliveryService
                 $allTerminal =
                     $shipmentParcels->isNotEmpty()
                     && $shipmentParcels->every(
-                        fn (Parcel $parcel) =>
-                            in_array(
-                                $parcel->status,
-                                $terminalStatuses,
-                                true
-                            )
+                        fn (Parcel $parcel) => in_array(
+                            $parcel->status,
+                            $terminalStatuses,
+                            true
+                        )
                     );
 
                 $hasFailure =
                     $shipmentParcels->contains(
-                        fn (Parcel $parcel) =>
-                            in_array(
-                                $parcel->status,
-                                $failureStatuses,
-                                true
-                            )
+                        fn (Parcel $parcel) => in_array(
+                            $parcel->status,
+                            $failureStatuses,
+                            true
+                        )
                     );
 
                 if (
@@ -873,47 +801,36 @@ class RiderDeliveryService
                         $shipment->status;
 
                     $shipment->forceFill([
-                        'status' =>
-                            ShipmentStatus::DeliveryFailed
-                                ->value,
+                        'status' => ShipmentStatus::DeliveryFailed
+                            ->value,
                     ])->save();
 
                     ShipmentEvent::query()->create([
-                        'shipment_id' =>
-                            $shipment->id,
+                        'shipment_id' => $shipment->id,
 
-                        'parcel_id' =>
-                            null,
+                        'parcel_id' => null,
 
-                        'event_type' =>
-                            'shipment_delivery_failed',
+                        'event_type' => 'shipment_delivery_failed',
 
-                        'from_status' =>
-                            $fromStatus,
+                        'from_status' => $fromStatus,
 
-                        'to_status' =>
-                            ShipmentStatus::DeliveryFailed
-                                ->value,
+                        'to_status' => ShipmentStatus::DeliveryFailed
+                            ->value,
 
-                        'actor_user_id' =>
-                            $actor->id,
+                        'actor_user_id' => $actor->id,
 
-                        'source' =>
-                            'rider',
+                        'source' => 'rider',
 
-                        'occurred_at' =>
-                            $now,
+                        'occurred_at' => $now,
 
                         'metadata' => [
-                            'rider_profile_id' =>
-                                $rider->id,
+                            'rider_profile_id' => $rider->id,
 
-                            'dispatch_batch_ids' =>
-                                $parcelBatchIds
-                                    ->values()
-                                    ->unique()
-                                    ->values()
-                                    ->all(),
+                            'dispatch_batch_ids' => $parcelBatchIds
+                                ->values()
+                                ->unique()
+                                ->values()
+                                ->all(),
                         ],
                     ]);
                 }
@@ -994,11 +911,10 @@ class RiderDeliveryService
                             )
                     )
                     ->with([
-                        'parcels' => fn ($query) =>
-                            $query->where(
-                                'parcels.shipment_id',
-                                $shipment->id
-                            ),
+                        'parcels' => fn ($query) => $query->where(
+                            'parcels.shipment_id',
+                            $shipment->id
+                        ),
                     ])
                     ->lockForUpdate()
                     ->get();
@@ -1053,53 +969,39 @@ class RiderDeliveryService
 
                 foreach ($parcels as $parcel) {
                     $parcel->forceFill([
-                        'status' =>
-                            ParcelStatus::OutForDelivery->value,
+                        'status' => ParcelStatus::OutForDelivery->value,
 
-                        'last_event_at' =>
-                            $now,
+                        'last_event_at' => $now,
                     ])->save();
 
                     ShipmentEvent::query()->create([
-                        'shipment_id' =>
-                            $shipment->id,
+                        'shipment_id' => $shipment->id,
 
-                        'parcel_id' =>
-                            $parcel->id,
+                        'parcel_id' => $parcel->id,
 
-                        'event_type' =>
-                            'parcel_delivery_retried',
+                        'event_type' => 'parcel_delivery_retried',
 
-                        'from_status' =>
-                            ParcelStatus::Failed->value,
+                        'from_status' => ParcelStatus::Failed->value,
 
-                        'to_status' =>
-                            ParcelStatus::OutForDelivery->value,
+                        'to_status' => ParcelStatus::OutForDelivery->value,
 
-                        'sorting_center_id' =>
-                            $parcel
-                                ->current_sorting_center_id,
+                        'sorting_center_id' => $parcel
+                            ->current_sorting_center_id,
 
-                        'sorting_zone_id' =>
-                            $parcel->current_zone_id,
+                        'sorting_zone_id' => $parcel->current_zone_id,
 
-                        'actor_user_id' =>
-                            $actor->id,
+                        'actor_user_id' => $actor->id,
 
-                        'source' =>
-                            'rider',
+                        'source' => 'rider',
 
-                        'occurred_at' =>
-                            $now,
+                        'occurred_at' => $now,
 
                         'metadata' => [
-                            'dispatch_batch_id' =>
-                                $parcelBatchIds->get(
-                                    $parcel->id
-                                ),
+                            'dispatch_batch_id' => $parcelBatchIds->get(
+                                $parcel->id
+                            ),
 
-                            'rider_profile_id' =>
-                                $rider->id,
+                            'rider_profile_id' => $rider->id,
                         ],
                     ]);
                 }
@@ -1112,45 +1014,34 @@ class RiderDeliveryService
                         $shipment->status;
 
                     $shipment->forceFill([
-                        'status' =>
-                            ShipmentStatus::OutForDelivery->value,
+                        'status' => ShipmentStatus::OutForDelivery->value,
                     ])->save();
 
                     ShipmentEvent::query()->create([
-                        'shipment_id' =>
-                            $shipment->id,
+                        'shipment_id' => $shipment->id,
 
-                        'parcel_id' =>
-                            null,
+                        'parcel_id' => null,
 
-                        'event_type' =>
-                            'shipment_delivery_retried',
+                        'event_type' => 'shipment_delivery_retried',
 
-                        'from_status' =>
-                            $fromStatus,
+                        'from_status' => $fromStatus,
 
-                        'to_status' =>
-                            ShipmentStatus::OutForDelivery->value,
+                        'to_status' => ShipmentStatus::OutForDelivery->value,
 
-                        'actor_user_id' =>
-                            $actor->id,
+                        'actor_user_id' => $actor->id,
 
-                        'source' =>
-                            'rider',
+                        'source' => 'rider',
 
-                        'occurred_at' =>
-                            $now,
+                        'occurred_at' => $now,
 
                         'metadata' => [
-                            'rider_profile_id' =>
-                                $rider->id,
+                            'rider_profile_id' => $rider->id,
 
-                            'dispatch_batch_ids' =>
-                                $parcelBatchIds
-                                    ->values()
-                                    ->unique()
-                                    ->values()
-                                    ->all(),
+                            'dispatch_batch_ids' => $parcelBatchIds
+                                ->values()
+                                ->unique()
+                                ->values()
+                                ->all(),
                         ],
                     ]);
                 }
@@ -1172,7 +1063,10 @@ class RiderDeliveryService
         string $recipientName,
         ?string $notes = null,
         ?float $latitude = null,
-        ?float $longitude = null
+        ?float $longitude = null,
+        ?ReturnRefundService $returns = null,
+        ?int $codCollectedAmountMinor = null,
+        ?CodCashCollectionService $codCash = null,
     ): Shipment {
         $proofPath = null;
 
@@ -1196,7 +1090,10 @@ class RiderDeliveryService
                     $recipientName,
                     $notes,
                     $latitude,
-                    $longitude
+                    $longitude,
+                    $returns,
+                    $codCollectedAmountMinor,
+                    $codCash,
                 ) {
                     if (
                         $actor->role
@@ -1251,19 +1148,16 @@ class RiderDeliveryService
                         )
                         ->whereHas(
                             'parcels',
-                            fn ($query) =>
-                                $query->where(
-                                    'parcels.shipment_id',
-                                    $shipment->id
-                                )
+                            fn ($query) => $query->where(
+                                'parcels.shipment_id',
+                                $shipment->id
+                            )
                         )
                         ->with([
-                            'parcels' =>
-                                fn ($query) =>
-                                    $query->where(
-                                        'parcels.shipment_id',
-                                        $shipment->id
-                                    ),
+                            'parcels' => fn ($query) => $query->where(
+                                'parcels.shipment_id',
+                                $shipment->id
+                            ),
                         ])
                         ->lockForUpdate()
                         ->get();
@@ -1310,8 +1204,7 @@ class RiderDeliveryService
 
                     if (
                         $parcels->contains(
-                            fn (Parcel $parcel) =>
-                                $parcel->status
+                            fn (Parcel $parcel) => $parcel->status
                                 !== ParcelStatus::OutForDelivery->value
                         )
                     ) {
@@ -1346,128 +1239,94 @@ class RiderDeliveryService
                         $attempt =
                             DeliveryAttempt::query()
                                 ->create([
-                                    'parcel_id' =>
-                                        $parcel->id,
+                                    'parcel_id' => $parcel->id,
 
-                                    'dispatch_batch_id' =>
-                                        $parcelBatchIds[
+                                    'dispatch_batch_id' => $parcelBatchIds[
                                             $parcel->id
                                         ],
 
-                                    'rider_profile_id' =>
-                                        $rider->id,
+                                    'rider_profile_id' => $rider->id,
 
-                                    'attempt_no' =>
-                                        $latestAttemptNo + 1,
+                                    'attempt_no' => $latestAttemptNo + 1,
 
-                                    'outcome' =>
-                                        DeliveryAttemptOutcome::Delivered
-                                            ->value,
+                                    'outcome' => DeliveryAttemptOutcome::Delivered
+                                        ->value,
 
-                                    'failure_reason' =>
-                                        null,
+                                    'failure_reason' => null,
 
-                                    'notes' =>
-                                        $notes,
+                                    'notes' => $notes,
 
-                                    'latitude' =>
-                                        $latitude,
+                                    'latitude' => $latitude,
 
-                                    'longitude' =>
-                                        $longitude,
+                                    'longitude' => $longitude,
 
-                                    'attempted_at' =>
-                                        $now,
+                                    'attempted_at' => $now,
 
-                                    'next_attempt_at' =>
-                                        null,
+                                    'next_attempt_at' => null,
                                 ]);
 
                         DeliveryProof::query()
                             ->create([
-                                'delivery_attempt_id' =>
-                                    $attempt->id,
+                                'delivery_attempt_id' => $attempt->id,
 
-                                'type' =>
-                                    'photo',
+                                'type' => 'photo',
 
-                                'file_path' =>
-                                    $proofPath,
+                                'file_path' => $proofPath,
 
-                                'recipient_name' =>
-                                    $recipientName,
+                                'recipient_name' => $recipientName,
 
-                                'recipient_signature_path' =>
-                                    null,
+                                'recipient_signature_path' => null,
 
-                                'otp_verified_at' =>
-                                    null,
+                                'otp_verified_at' => null,
 
-                                'captured_at' =>
-                                    $now,
+                                'captured_at' => $now,
 
-                                'uploaded_by' =>
-                                    $actor->id,
+                                'uploaded_by' => $actor->id,
                             ]);
 
                         $fromStatus =
                             $parcel->status;
 
                         $parcel->update([
-                            'status' =>
-                                ParcelStatus::Delivered->value,
+                            'status' => ParcelStatus::Delivered->value,
 
-                            'last_event_at' =>
-                                $now,
+                            'last_event_at' => $now,
                         ]);
 
                         $shipment
                             ->events()
                             ->create([
-                                'parcel_id' =>
-                                    $parcel->id,
+                                'parcel_id' => $parcel->id,
 
-                                'event_type' =>
-                                    'parcel_delivered',
+                                'event_type' => 'parcel_delivered',
 
-                                'from_status' =>
-                                    $fromStatus,
+                                'from_status' => $fromStatus,
 
-                                'to_status' =>
-                                    ParcelStatus::Delivered->value,
+                                'to_status' => ParcelStatus::Delivered->value,
 
-                                'sorting_center_id' =>
-                                    $parcel
-                                        ->current_sorting_center_id,
+                                'sorting_center_id' => $parcel
+                                    ->current_sorting_center_id,
 
-                                'sorting_zone_id' =>
-                                    $parcel
-                                        ->current_zone_id,
+                                'sorting_zone_id' => $parcel
+                                    ->current_zone_id,
 
-                                'actor_user_id' =>
-                                    $actor->id,
+                                'actor_user_id' => $actor->id,
 
-                                'source' =>
-                                    'rider',
+                                'source' => 'rider',
 
                                 'metadata' => [
-                                    'dispatch_batch_id' =>
-                                        $parcelBatchIds[
+                                    'dispatch_batch_id' => $parcelBatchIds[
                                             $parcel->id
                                         ],
 
-                                    'rider_profile_id' =>
-                                        $rider->id,
+                                    'rider_profile_id' => $rider->id,
 
-                                    'delivery_attempt_id' =>
-                                        $attempt->id,
+                                    'delivery_attempt_id' => $attempt->id,
 
-                                    'proof_type' =>
-                                        'photo',
+                                    'proof_type' => 'photo',
                                 ],
 
-                                'occurred_at' =>
-                                    $now,
+                                'occurred_at' => $now,
                             ]);
                     }
 
@@ -1482,29 +1341,26 @@ class RiderDeliveryService
                     $allDelivered =
                         $shipmentParcels->isNotEmpty()
                         && $shipmentParcels->every(
-                            fn (Parcel $parcel) =>
-                                $parcel->status
+                            fn (Parcel $parcel) => $parcel->status
                                     === ParcelStatus::Delivered->value
                         );
 
                     $allDeliveryAttemptsResolved =
                         $shipmentParcels->isNotEmpty()
                         && $shipmentParcels->every(
-                            fn (Parcel $parcel) =>
-                                in_array(
-                                    $parcel->status,
-                                    [
-                                        ParcelStatus::Delivered->value,
-                                        ParcelStatus::Failed->value,
-                                    ],
-                                    true
-                                )
+                            fn (Parcel $parcel) => in_array(
+                                $parcel->status,
+                                [
+                                    ParcelStatus::Delivered->value,
+                                    ParcelStatus::Failed->value,
+                                ],
+                                true
+                            )
                         );
 
                     $hasFailedParcel =
                         $shipmentParcels->contains(
-                            fn (Parcel $parcel) =>
-                                $parcel->status
+                            fn (Parcel $parcel) => $parcel->status
                                     === ParcelStatus::Failed->value
                         );
 
@@ -1536,8 +1392,10 @@ class RiderDeliveryService
                             $shipment->status;
 
                         $shipment->update([
-                            'status' =>
-                                $aggregateStatus,
+                            'status' => $aggregateStatus,
+                            'delivered_at' => $aggregateStatus === ShipmentStatus::Delivered->value
+                                ? $now
+                                : $shipment->delivered_at,
                         ]);
 
                         $centerIds = $parcels
@@ -1559,51 +1417,68 @@ class RiderDeliveryService
                         $shipment
                             ->events()
                             ->create([
-                                'event_type' =>
-                                    $aggregateEventType,
+                                'event_type' => $aggregateEventType,
 
-                                'from_status' =>
-                                    $fromStatus,
+                                'from_status' => $fromStatus,
 
-                                'to_status' =>
-                                    $aggregateStatus,
+                                'to_status' => $aggregateStatus,
 
-                                'sorting_center_id' =>
-                                    $centerIds->count() === 1
+                                'sorting_center_id' => $centerIds->count() === 1
                                         ? $centerIds->first()
                                         : null,
 
-                                'sorting_zone_id' =>
-                                    $zoneIds->count() === 1
+                                'sorting_zone_id' => $zoneIds->count() === 1
                                         ? $zoneIds->first()
                                         : null,
 
-                                'actor_user_id' =>
-                                    $actor->id,
+                                'actor_user_id' => $actor->id,
 
-                                'source' =>
-                                    'rider',
+                                'source' => 'rider',
 
                                 'metadata' => [
-                                    'dispatch_batch_ids' =>
-                                        $batches
-                                            ->pluck('id')
-                                            ->unique()
-                                            ->values()
-                                            ->all(),
+                                    'dispatch_batch_ids' => $batches
+                                        ->pluck('id')
+                                        ->unique()
+                                        ->values()
+                                        ->all(),
 
-                                    'rider_profile_id' =>
-                                        $rider->id,
+                                    'rider_profile_id' => $rider->id,
                                 ],
 
-                                'occurred_at' =>
-                                    $now,
+                                'occurred_at' => $now,
                             ]);
+
+                        if (
+                            $aggregateStatus === ShipmentStatus::Delivered->value
+                            && $shipment->purpose === 'return'
+                            && $returns
+                        ) {
+                            $returns->recordReturnDelivered((int) $shipment->id, $actor);
+                        }
+
+                        if (
+                            $aggregateStatus === ShipmentStatus::Delivered->value
+                            && $shipment->purpose === 'outbound'
+                            && (int) $shipment->cod_amount_minor > 0
+                        ) {
+                            if ($codCollectedAmountMinor === null || ! $codCash) {
+                                throw ValidationException::withMessages([
+                                    'cod_collected_amount' => 'Record the exact COD cash collected before completing this delivery.',
+                                ]);
+                            }
+
+                            $codCash->recordRiderCollection(
+                                $shipment,
+                                $actor,
+                                $codCollectedAmountMinor,
+                            );
+                        }
                     }
 
                     return $shipment->fresh([
                         'parcels',
                         'events',
+                        'codCashCollection',
                     ]);
                 },
                 3
@@ -1621,5 +1496,4 @@ class RiderDeliveryService
             throw $exception;
         }
     }
-
 }

@@ -265,11 +265,13 @@ class SellerProductService
         ?Product $product = null,
         array $variantImages = [],
         array $removeProductImageIds = [],
+        array $variantColorImages = [],
+        array $variantImageColors = [],
     ): Product {
         $newImagePaths = [];
 
         try {
-            return DB::transaction(function () use ($user, $data, $primaryImage, $galleryImages, $product, $variantImages, $removeProductImageIds, &$newImagePaths): Product {
+            return DB::transaction(function () use ($user, $data, $primaryImage, $galleryImages, $product, $variantImages, $removeProductImageIds, $variantColorImages, $variantImageColors, &$newImagePaths): Product {
                 $store = $this->storeFor($user);
                 $category = $this->categoryFor($user);
                 $subcategory = $this->resolveSubcategory($store, $category, $data);
@@ -351,6 +353,7 @@ class SellerProductService
                 $this->removeProductImages($product, $removeProductImageIds);
                 $this->syncImages($product, $primaryImage, $galleryImages, $newImagePaths);
                 $this->syncVariantImages($product, $variantImages, $newImagePaths);
+                $this->syncVariantColorImages($product, $variantColorImages, $variantImageColors, $newImagePaths);
 
                 $product->load('store.sellerProfile');
                 $check = app(ComplianceScanner::class)->scan($product, $isUpdate ? 'update' : 'create');
@@ -546,8 +549,9 @@ class SellerProductService
         $images = $product->relationLoaded('images')
             ? $product->images
             : $product->images()->get();
+        $images->loadMissing('variant');
         $variantImagePayload = $this->variantImagePayload($images, $variants);
-        $legacyColorImagePayload = $this->legacyColorImagePayload($images, $variants);
+        $colorImagePayload = $this->colorImagePayload($images, $variants);
         $primary = $images->whereNull('variant_id')->firstWhere('is_primary', true)
             ?: $images->whereNull('variant_id')->first();
         $galleryImages = $images
@@ -599,26 +603,28 @@ class SellerProductService
                 'variant_label' => $image['variant_label'],
                 'color' => $image['color'],
                 'legacy_color' => $image['legacy_color'],
+                'color_shared' => false,
                 'label' => $image['variant_label'].' image',
                 'url' => $image['url'],
             ];
             $includedVariantImageIds[(int) $image['image_id']] = true;
         }
 
-        foreach ($legacyColorImagePayload as $color => $image) {
+        foreach ($colorImagePayload as $color => $image) {
             if (isset($includedVariantImageIds[(int) $image['image_id']])) {
                 continue;
             }
 
             $mediaPreview[] = [
-                'id' => 'legacy-color:'.$color,
+                'id' => 'variant-color:'.$color,
                 'kind' => 'variant',
                 'image_id' => (int) $image['image_id'],
                 'variant_id' => (int) $image['variant_id'],
                 'variant_label' => $image['variant_label'],
                 'color' => $image['color'],
-                'legacy_color' => true,
-                'label' => Str::title($image['color']).' shared fallback',
+                'legacy_color' => $image['legacy_color'],
+                'color_shared' => true,
+                'label' => Str::title($image['color']).' variant image',
                 'url' => $image['url'],
             ];
         }
@@ -1130,13 +1136,98 @@ class SellerProductService
         }
     }
 
-    /** @return array<int, array{image_id: int, path: string, url: string, variant_id: int, variant_label: string, color: string, legacy_color: bool, purpose: string}> */
+    /**
+     * Store one shared image against a representative SKU for each color.
+     * Buyer catalog resolution applies it to every matching color variant.
+     *
+     * @param  array<int, UploadedFile>  $variantColorImages
+     * @param  array<int, string>  $variantImageColors
+     * @param  array<string, array{disk: string, path: string}>  $newImagePaths
+     */
+    private function syncVariantColorImages(
+        Product $product,
+        array $variantColorImages,
+        array $variantImageColors,
+        array &$newImagePaths,
+    ): void {
+        if ($variantColorImages === []) {
+            return;
+        }
+
+        $activeVariants = $product->variants()
+            ->where('is_active', true)
+            ->orderBy('position')
+            ->orderBy('id')
+            ->get();
+        $existingColorImages = $product->images()
+            ->whereNotNull('variant_id')
+            ->where('purpose', 'variant_color')
+            ->with('variant')
+            ->get();
+        $uploadedColors = [];
+
+        foreach ($variantColorImages as $index => $uploaded) {
+            if (! $uploaded instanceof UploadedFile) {
+                continue;
+            }
+
+            $color = trim((string) ($variantImageColors[$index] ?? ''));
+            $colorKey = Str::lower($color);
+            if ($colorKey === '') {
+                throw ValidationException::withMessages([
+                    "variant_image_colors.{$index}" => 'Choose a color for each variant image.',
+                ]);
+            }
+
+            if (isset($uploadedColors[$colorKey])) {
+                throw ValidationException::withMessages([
+                    "variant_image_colors.{$index}" => 'Upload only one image for each color.',
+                ]);
+            }
+            $uploadedColors[$colorKey] = true;
+
+            $matchingVariants = $activeVariants->filter(fn (ProductVariant $variant): bool => Str::lower($this->variantColor($variant)) === $colorKey
+            )->values();
+
+            if ($matchingVariants->isEmpty()) {
+                throw ValidationException::withMessages([
+                    "variant_image_colors.{$index}" => 'Choose a color that is used by a generated variant.',
+                ]);
+            }
+
+            $existingColorImages
+                ->filter(fn (ProductImage $image): bool => $image->variant
+                    && Str::lower($this->variantColor($image->variant)) === $colorKey)
+                ->each(fn (ProductImage $image) => $this->deleteProductImage($image));
+
+            $storedImage = $this->storeProductImage(
+                $uploaded,
+                'seller-products/variants',
+                'variant_color',
+                $newImagePaths,
+            );
+            $representativeVariant = $matchingVariants->first();
+
+            $product->images()->create(array_merge($storedImage, [
+                'variant_id' => $representativeVariant->id,
+                'alt_text' => $product->name.' - '.$color,
+                'position' => $representativeVariant->position,
+                'is_primary' => false,
+            ]));
+        }
+    }
+
+    /** @return array<int, array{image_id: int, path: string, url: string, variant_id: int, variant_label: string, color: string, legacy_color: bool, color_shared: bool, purpose: string}> */
     private function variantImagePayload(Collection|EloquentCollection $images, Collection|EloquentCollection $variants): array
     {
         $variantsById = $variants->keyBy('id');
         $payload = [];
 
         foreach ($images->whereNotNull('variant_id') as $image) {
+            if ((string) $image->purpose !== 'variant_sku') {
+                continue;
+            }
+
             $variant = $variantsById->get($image->variant_id);
 
             if (! $variant) {
@@ -1144,11 +1235,6 @@ class SellerProductService
             }
 
             $variantId = (int) $variant->id;
-            $isSkuImage = (string) $image->purpose === 'variant_sku';
-            $currentIsSkuImage = (string) ($payload[$variantId]['purpose'] ?? '') === 'variant_sku';
-            if ($currentIsSkuImage || (isset($payload[$variantId]) && ! $isSkuImage)) {
-                continue;
-            }
 
             $payload[$variantId] = [
                 'image_id' => (int) $image->id,
@@ -1157,7 +1243,7 @@ class SellerProductService
                 'variant_id' => (int) $variant->id,
                 'variant_label' => (string) $variant->name,
                 'color' => $this->variantColor($variant),
-                'legacy_color' => (string) $image->purpose === 'variant',
+                'legacy_color' => false,
                 'purpose' => (string) $image->purpose,
             ];
         }
@@ -1166,21 +1252,27 @@ class SellerProductService
     }
 
     /** @return array<string, array{image_id: int, path: string, url: string, variant_id: int, variant_label: string, color: string, legacy_color: bool}> */
-    private function legacyColorImagePayload(Collection|EloquentCollection $images, Collection|EloquentCollection $variants): array
+    private function colorImagePayload(Collection|EloquentCollection $images, Collection|EloquentCollection $variants): array
     {
         $variantsById = $variants->keyBy('id');
         $payload = [];
 
         foreach ($images->whereNotNull('variant_id') as $image) {
-            if ((string) $image->purpose !== 'variant') {
+            $purpose = (string) $image->purpose;
+            if (! in_array($purpose, ['variant_color', 'variant'], true)) {
                 continue;
             }
 
-            $variant = $variantsById->get($image->variant_id);
+            $variant = $image->variant ?: $variantsById->get($image->variant_id);
             $color = $variant ? $this->variantColor($variant) : '';
             $colorKey = Str::lower($color);
 
-            if (! $variant || $colorKey === '' || isset($payload[$colorKey])) {
+            if (! $variant || $colorKey === '') {
+                continue;
+            }
+
+            if (isset($payload[$colorKey])
+                && ((string) ($payload[$colorKey]['purpose'] ?? '') === 'variant_color' || $purpose !== 'variant_color')) {
                 continue;
             }
 
@@ -1191,7 +1283,8 @@ class SellerProductService
                 'variant_id' => (int) $variant->id,
                 'variant_label' => (string) $variant->name,
                 'color' => $color,
-                'legacy_color' => true,
+                'legacy_color' => $purpose === 'variant',
+                'purpose' => $purpose,
             ];
         }
 

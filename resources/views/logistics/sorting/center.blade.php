@@ -28,7 +28,7 @@
                 @foreach($parcels as $parcel)
                     <tr data-row data-record-row data-record-type="sorting" data-record-id="{{ $parcel['parcel_no'] }}" data-status="{{ $parcel['status'] }}" data-zone="{{ $parcel['zone'] }}">
                         <td><span class="cell-title"><strong>{{ $parcel['waybill'] }}</strong><small>{{ $parcel['parcel_no'] }}</small></span></td>
-                        <td>{{ $parcel['seller'] }}</td><td>{{ $parcel['destination'] }}</td><td>{{ $parcel['size'] }}</td>
+                        <td><span class="cell-title"><strong>{{ $parcel['seller'] }}</strong><small>{{ $parcel['purpose_label'] }}</small></span></td><td>{{ $parcel['destination'] }}</td><td>{{ $parcel['size'] }}</td>
                         <td>
                             @if($parcel['can_sort'])
                                 <form id="sort-parcel-{{ $parcel['id'] }}" method="POST" action="{{ route('logistics.sorting.parcels.update', $parcel['id']) }}">

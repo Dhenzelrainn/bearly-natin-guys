@@ -310,23 +310,25 @@
             <div><h1>Reviews &amp; Ratings</h1><p>Share your experience with products you've purchased.</p></div>
         </div>
         <div class="review-tabs" role="tablist" aria-label="Review status">
-            <button class="review-tab active" type="button" data-review-filter="to-review" aria-selected="true">To Review <span id="reviews-to-review-count">(2)</span></button>
-            <button class="review-tab" type="button" data-review-filter="reviewed" aria-selected="false">Reviewed <span id="reviews-reviewed-count">(3)</span></button>
+            <button class="review-tab active" id="review-tab-to-review" type="button" role="tab" tabindex="0" aria-controls="review-section-to-review" data-review-filter="to-review" aria-selected="true">To Review <span id="reviews-to-review-count">(0)</span></button>
+            <button class="review-tab" id="review-tab-reviewed" type="button" role="tab" tabindex="-1" aria-controls="review-section-reviewed" data-review-filter="reviewed" aria-selected="false">Reviewed <span id="reviews-reviewed-count">(0)</span></button>
         </div>
         <div class="review-sections">
-            <section class="review-section" data-review-section="to-review" aria-labelledby="products-to-review-title">
+            <section class="review-section" id="review-section-to-review" role="tabpanel" tabindex="0" aria-labelledby="review-tab-to-review" data-review-section="to-review">
                 <div class="review-section-heading">
                     <h2 id="products-to-review-title">Products to Review</h2>
                     <p>Write a review for the products you've received.</p>
                 </div>
                 <div id="review-list" class="review-list"></div>
+                <p class="review-section-empty" data-review-section-empty="to-review" hidden>No completed purchases are waiting for a review.</p>
             </section>
-            <section class="review-section" data-review-section="reviewed" aria-labelledby="your-reviews-title">
+            <section class="review-section" id="review-section-reviewed" role="tabpanel" tabindex="0" aria-labelledby="review-tab-reviewed" data-review-section="reviewed" hidden>
                 <div class="review-section-heading">
                     <h2 id="your-reviews-title">Your Reviews</h2>
                     <p>Products you've already reviewed.</p>
                 </div>
                 <div id="reviewed-list" class="review-list"></div>
+                <p class="review-section-empty" data-review-section-empty="reviewed" hidden>You haven't reviewed any completed purchases yet.</p>
             </section>
         </div>
         <div id="reviews-empty" class="reviews-empty" hidden>
@@ -342,7 +344,7 @@
  <div class="review-dialog">
   <div class="review-dialog-head"><div><h2 id="review-modal-title">Rate Product</h2><p id="review-product-name"></p></div><button id="close-review-modal" type="button" aria-label="Close">×</button></div>
   <form id="review-form">
-   <input id="review-order-id" type="hidden"><input id="review-item-index" type="hidden">
+   <input id="review-order-id" type="hidden"><input id="review-item-index" type="hidden"><input id="review-order-item-id" type="hidden">
    <div class="rating-picker"><span>Your Rating</span><div id="review-stars" class="review-stars" aria-label="Choose rating">
     <button type="button" data-rating="1">★</button><button type="button" data-rating="2">★</button><button type="button" data-rating="3">★</button><button type="button" data-rating="4">★</button><button type="button" data-rating="5">★</button>
    </div><strong id="rating-label">Select a rating</strong></div>

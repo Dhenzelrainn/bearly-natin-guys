@@ -1,3 +1,5 @@
+import { isValidPhilippineMobile } from './registration-phone.js';
+
 const normalize = (value) => String(value || '').trim().toLowerCase().replaceAll('_', ' ');
 const escapeHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, (character) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' })[character]);
 const refreshIcons = () => window.lucide?.createIcons();
@@ -44,23 +46,80 @@ function setupShell() {
 
 function setupModals() {
     const backdrop = document.querySelector('[data-modal-backdrop]');
+    let lastModalTrigger = null;
     const closeAll = () => {
-        document.querySelectorAll('.modal').forEach((modal) => { modal.hidden = true; });
+        document.querySelectorAll('.modal').forEach((modal) => {
+            modal.hidden = true;
+            resetPickupRejection(modal);
+        });
         if (backdrop) backdrop.hidden = true;
         document.body.style.overflow = '';
+        lastModalTrigger?.focus();
+        lastModalTrigger = null;
     };
     document.querySelectorAll('[data-modal-open]').forEach((button) => button.addEventListener('click', () => {
         const modal = document.querySelector(`[data-modal="${button.dataset.modalOpen}"]`);
         if (!modal) return;
+        lastModalTrigger = button;
         modal.hidden = false;
         if (backdrop) backdrop.hidden = false;
         document.body.style.overflow = 'hidden';
-        modal.querySelector('input, select, textarea')?.focus();
+        const initialFocus = modal.querySelector('[data-modal-initial-focus]');
+        const visibleControl = [...modal.querySelectorAll('button:not(:disabled), input:not([type="hidden"]):not(:disabled), select:not(:disabled), textarea:not(:disabled)')]
+            .find((control) => !control.closest('[hidden]'));
+        (initialFocus || visibleControl)?.focus();
     }));
     document.querySelectorAll('[data-modal-close]').forEach((button) => button.addEventListener('click', closeAll));
     backdrop?.addEventListener('click', closeAll);
     document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeAll(); });
     window.closeLogisticsModals = closeAll;
+}
+
+function setupPickupRejection() {
+    document.querySelectorAll('[data-pickup-reject-toggle]').forEach((toggle) => {
+        const modal = toggle.closest('.modal');
+        const form = modal?.querySelector('[data-pickup-rejection-form]');
+        const cancel = modal?.querySelector('[data-pickup-reject-cancel]');
+        const confirm = modal?.querySelector('[data-pickup-reject-confirm]');
+        const mainActions = modal?.querySelector('[data-pickup-main-actions]');
+        const reason = form?.querySelector('textarea[name="cancellation_reason"]');
+
+        if (!modal || !form || !cancel || !confirm || !reason) return;
+
+        toggle.addEventListener('click', () => {
+            form.hidden = false;
+            toggle.hidden = true;
+            cancel.hidden = false;
+            confirm.hidden = false;
+            if (mainActions) mainActions.hidden = true;
+            toggle.setAttribute('aria-expanded', 'true');
+            reason.focus();
+        });
+
+        cancel.addEventListener('click', () => {
+            resetPickupRejection(modal);
+            toggle.focus();
+        });
+    });
+}
+
+function resetPickupRejection(modal) {
+    const form = modal.querySelector('[data-pickup-rejection-form]');
+    const toggle = modal.querySelector('[data-pickup-reject-toggle]');
+    const cancel = modal.querySelector('[data-pickup-reject-cancel]');
+    const confirm = modal.querySelector('[data-pickup-reject-confirm]');
+    const mainActions = modal.querySelector('[data-pickup-main-actions]');
+
+    if (!form || !toggle || !cancel || !confirm) return;
+
+    form.hidden = true;
+    const reason = form.querySelector('textarea[name="cancellation_reason"]');
+    if (reason) reason.value = '';
+    toggle.hidden = false;
+    cancel.hidden = true;
+    confirm.hidden = true;
+    if (mainActions) mainActions.hidden = false;
+    toggle.setAttribute('aria-expanded', 'false');
 }
 
 function setupTabs() {
@@ -1905,6 +1964,18 @@ function setupRegistration() {
             field.setCustomValidity('');
             passwordUx.prepareField(field);
 
+            if (['first_name', 'last_name'].includes(field.name) && field.value.trim()) {
+                const name = field.value.trim();
+
+                if (name.length < 2 || name.length > 50 || !/^[\p{L}\s'-]+$/u.test(name)) {
+                    field.setCustomValidity('Use 2 to 50 letters. Spaces, apostrophes, and hyphens are allowed.');
+                }
+            }
+
+            if (field.name === 'contact_number' && field.value.trim() && !isValidPhilippineMobile(field.value)) {
+                field.setCustomValidity('Enter a valid Philippine mobile number.');
+            }
+
             if (!field.checkValidity()) {
                 const widget =
                     searchableSelects.get(field);
@@ -2497,14 +2568,20 @@ function setupRegistration() {
     show(1);
 }
 
+function setupRefundAcknowledgmentPrinting() {
+    document.querySelector('[data-print-refund-slip]')?.addEventListener('click', () => window.print());
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     setupShell();
     setupModals();
+    setupPickupRejection();
     setupTabs();
     setupTables();
     setupReports();
     setupChat();
     setupNewConversation();
     setupRegistration();
+    setupRefundAcknowledgmentPrinting();
     refreshIcons();
 });

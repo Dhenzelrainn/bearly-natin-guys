@@ -153,6 +153,10 @@ class SellerProductController extends Controller
             'gallery_images.*' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
             'variant_images' => ['exclude_if:product_mode,single', 'nullable', 'array', 'max:100'],
             'variant_images.*' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+            'variant_color_images' => ['exclude_if:product_mode,single', 'nullable', 'array', 'max:100'],
+            'variant_color_images.*' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+            'variant_image_colors' => ['exclude_if:product_mode,single', 'nullable', 'array', 'max:100'],
+            'variant_image_colors.*' => ['required', 'string', 'max:120', 'distinct:ignore_case'],
             'remove_product_images' => ['nullable', 'array', 'max:25'],
             'remove_product_images.*' => [
                 'required',
@@ -207,6 +211,8 @@ class SellerProductController extends Controller
             null,
             $request->file('variant_images', []),
             $validated['remove_product_images'] ?? [],
+            $request->file('variant_color_images', []),
+            $validated['variant_image_colors'] ?? [],
         );
 
         return redirect()->route('seller.products')->with(
@@ -246,6 +252,8 @@ class SellerProductController extends Controller
             $existing,
             $request->file('variant_images', []),
             $validated['remove_product_images'] ?? [],
+            $request->file('variant_color_images', []),
+            $validated['variant_image_colors'] ?? [],
         );
 
         return redirect()->route('seller.products')->with(

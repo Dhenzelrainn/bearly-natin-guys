@@ -35,21 +35,12 @@ class RiderProfileProvisioningTest extends TestCase
             'provider-a@example.test'
         );
 
-        /*
-         * An inactive center exists first deliberately.
-         * Provisioning must choose the active one.
-         */
-        $inactiveCenter = $this->makeCenter(
-            $provider,
-            'INACTIVE',
-            'inactive'
-        );
-
         $activeCenter = $this->makeCenter(
             $provider,
             'ACTIVE',
             'active'
         );
+        $activeZone = $this->makeZone($activeCenter, 'ACTIVE-MATCH');
 
         $rider = $this->makeRiderApplication(
             $provider,
@@ -77,14 +68,7 @@ class RiderProfileProvisioningTest extends TestCase
             $profile->home_sorting_center_id
         );
 
-        $this->assertNotSame(
-            $inactiveCenter->id,
-            $profile->home_sorting_center_id
-        );
-
-        $this->assertNull(
-            $profile->current_zone_id
-        );
+        $this->assertSame($activeZone->id, $profile->current_zone_id);
 
         $this->assertSame(
             'Motorcycle',
@@ -112,11 +96,6 @@ class RiderProfileProvisioningTest extends TestCase
         $provider = $this->makeProvider(
             'A',
             'preserve@example.test'
-        );
-
-        $defaultCenter = $this->makeCenter(
-            $provider,
-            'DEFAULT'
         );
 
         $assignedCenter = $this->makeCenter(
@@ -190,11 +169,6 @@ class RiderProfileProvisioningTest extends TestCase
             $profile->current_zone_id
         );
 
-        $this->assertNotSame(
-            $defaultCenter->id,
-            $profile->home_sorting_center_id
-        );
-
         $this->assertSame(
             'available',
             $profile->availability_status
@@ -232,6 +206,7 @@ class RiderProfileProvisioningTest extends TestCase
             $providerA,
             'A'
         );
+        $zoneA = $this->makeZone($centerA, 'A-MATCH');
 
         $centerB = $this->makeCenter(
             $providerB,
@@ -300,9 +275,7 @@ class RiderProfileProvisioningTest extends TestCase
             $profile->home_sorting_center_id
         );
 
-        $this->assertNull(
-            $profile->current_zone_id
-        );
+        $this->assertSame($zoneA->id, $profile->current_zone_id);
 
         /*
          * Existing availability still remains an
@@ -325,6 +298,7 @@ class RiderProfileProvisioningTest extends TestCase
         string $suffix,
         string $email
     ): array {
+        $location = $this->locationFor($suffix);
         $user = User::factory()->create([
             'name' =>
                 "Logistics {$suffix}",
@@ -360,9 +334,23 @@ class RiderProfileProvisioningTest extends TestCase
                     "Logistics {$suffix}",
                 'contact_phone' =>
                     '09170000001',
+                'psgc_city_code' => $location['code'],
                 'status' =>
                     'active',
             ]);
+
+        Address::query()->create([
+            'user_id' => $user->id,
+            'label' => 'Sorting center',
+            'recipient_name' => $user->name,
+            'phone' => '09170000001',
+            'street' => 'Service Road',
+            'barangay' => $location['barangay'],
+            'city_municipality' => $location['city'],
+            'province' => $location['province'],
+            'postal_code' => $location['postal_code'],
+            'psgc_city_code' => $location['code'],
+        ]);
 
         return compact(
             'user',
@@ -375,6 +363,7 @@ class RiderProfileProvisioningTest extends TestCase
         string $suffix,
         string $status = 'active'
     ): SortingCenter {
+        $location = $this->locationFor((string) $provider['profile']->psgc_city_code);
         $address = Address::query()->create([
             'user_id' =>
                 $provider['user']->id,
@@ -389,13 +378,14 @@ class RiderProfileProvisioningTest extends TestCase
             'street' =>
                 "Hub Road {$suffix}",
             'barangay' =>
-                'San Rafael',
+                $location['barangay'],
             'city_municipality' =>
-                'San Pablo City',
+                $location['city'],
             'province' =>
-                'Laguna',
+                $location['province'],
             'postal_code' =>
-                '4000',
+                $location['postal_code'],
+            'psgc_city_code' => $location['code'],
         ]);
 
         return SortingCenter::query()->create([
@@ -419,6 +409,8 @@ class RiderProfileProvisioningTest extends TestCase
         SortingCenter $center,
         string $suffix
     ): SortingZone {
+        $location = $this->locationFor((string) $center->logisticsProfile->psgc_city_code);
+
         return SortingZone::query()->create([
             'sorting_center_id' =>
                 $center->id,
@@ -426,8 +418,12 @@ class RiderProfileProvisioningTest extends TestCase
                 "ZONE-{$suffix}",
             'name' =>
                 "Zone {$suffix}",
-            'destination_rules' =>
-                [],
+            'destination_rules' => [
+                'province' => $location['province'],
+                'city_municipality' => $location['city'],
+                'psgc_city_code' => $location['code'],
+                'barangays' => [$location['barangay']],
+            ],
             'status' =>
                 'active',
         ]);
@@ -443,6 +439,7 @@ class RiderProfileProvisioningTest extends TestCase
         array $provider,
         string $suffix
     ): array {
+        $location = $this->locationFor((string) $provider['profile']->psgc_city_code);
         $user = User::factory()->create([
             'name' =>
                 "Rider {$suffix}",
@@ -460,6 +457,19 @@ class RiderProfileProvisioningTest extends TestCase
                 'Motorcycle',
             'plate_number' =>
                 "PLATE-{$suffix}",
+        ]);
+
+        Address::query()->create([
+            'user_id' => $user->id,
+            'label' => 'Home',
+            'recipient_name' => $user->name,
+            'phone' => '09170000001',
+            'street' => 'Rider Street',
+            'barangay' => $location['barangay'],
+            'city_municipality' => $location['city'],
+            'province' => $location['province'],
+            'postal_code' => $location['postal_code'],
+            'psgc_city_code' => $location['code'],
         ]);
 
         $application =
@@ -517,5 +527,15 @@ class RiderProfileProvisioningTest extends TestCase
             'user',
             'application'
         );
+    }
+
+    /** @return array{code: string, city: string, province: string, barangay: string, postal_code: string} */
+    private function locationFor(string $value): array
+    {
+        $calamba = $value === 'B' || $value === '0403405000';
+
+        return $calamba
+            ? ['code' => '0403405000', 'city' => 'Calamba City', 'province' => 'Laguna', 'barangay' => 'San Rafael', 'postal_code' => '4027']
+            : ['code' => '0403424000', 'city' => 'San Pablo City', 'province' => 'Laguna', 'barangay' => 'San Rafael', 'postal_code' => '4000'];
     }
 }

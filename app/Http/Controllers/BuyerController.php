@@ -15,6 +15,7 @@ use App\Models\Wishlist;
 use App\Services\BuyerCatalogService;
 use App\Services\BuyerOrderConfirmationService;
 use App\Services\InternationalPhone;
+use App\Services\PostalCodeLookup;
 use App\Services\ProductReviewService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -24,6 +25,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
@@ -46,16 +48,45 @@ class BuyerController extends Controller
 
     public function updateProfile(Request $request): JsonResponse
     {
+        $user = $request->user();
+        $phoneInput = trim((string) $request->input('phone'));
+
+        try {
+            $phone = $this->normalizePhone($phoneInput);
+        } catch (ValidationException $exception) {
+            throw ValidationException::withMessages([
+                'phone' => $exception->errors()['contact_number']
+                    ?? ['Enter a valid mobile number.'],
+            ]);
+        }
+
+        $request->merge(['phone' => $phone]);
+
         $validated = $request->validate([
             'full_name' => ['required', 'string', 'max:160'],
-            'phone' => ['nullable', 'string', 'max:30'],
+            'phone' => [
+                'nullable',
+                'string',
+                'max:17',
+                Rule::unique('users', 'contact_number')->ignore($user->id),
+                Rule::unique('users', 'phone')->ignore($user->id),
+            ],
             'gender' => ['nullable', 'string', 'in:Male,Female,Other,male,female,prefer_not_to_say'],
-            'birthday' => ['nullable', 'date', 'before:today'],
+            'birthday' => [
+                'nullable',
+                'bail',
+                'date',
+                'before:today',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    if (Carbon::parse((string) $value)->gt(today()->subYears(18))) {
+                        $fail('You must be at least 18 years old.');
+                    }
+                },
+            ],
             'photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
             'remove_photo' => ['nullable', 'boolean'],
         ]);
 
-        $user = $request->user();
         $parts = preg_split('/\s+/', trim($validated['full_name'])) ?: [];
         $firstName = trim((string) array_shift($parts));
         $lastName = trim(implode(' ', $parts));
@@ -71,7 +102,7 @@ class BuyerController extends Controller
             default => null,
         };
 
-        $phone = $this->normalizePhone($validated['phone'] ?? null);
+        $phone = $validated['phone'] ?? null;
 
         $oldPhoto = $user->profile_photo_path;
 
@@ -499,7 +530,7 @@ class BuyerController extends Controller
 
     private function validateAddress(Request $request): array
     {
-        return $request->validate([
+        $data = $request->validate([
             'name' => ['required', 'string', 'max:160'],
             'phone' => ['required', 'string', 'max:30', 'regex:/^\+?[0-9\s\-()]{7,30}$/'],
             'province' => ['required', 'string', 'max:120'],
@@ -511,6 +542,14 @@ class BuyerController extends Controller
             'is_default' => ['nullable', 'boolean'],
             'city_code' => ['nullable', 'regex:/^[0-9]{6,10}$/D'],
         ]);
+
+        $data['city_code'] = app(PostalCodeLookup::class)->canonicalCityCode(
+            $data['city_code'] ?? null,
+            $data['province'],
+            $data['city'],
+        );
+
+        return $data;
     }
 
     private function normalizePhone(?string $phone): ?string

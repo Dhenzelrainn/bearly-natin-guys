@@ -8,6 +8,7 @@ use App\Models\AuditLog;
 use App\Models\User;
 use App\Services\UserAccountStatusService;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -73,14 +74,30 @@ class AdminUserController extends Controller
         Request $request,
         User $user,
         UserAccountStatusService $statusService,
-    ): RedirectResponse {
+    ): JsonResponse|RedirectResponse {
         $allowedTargets = collect($statusService->transitions())->flatten()->unique()->all();
         $validated = $request->validate([
             'status' => ['required', Rule::in($allowedTargets)],
             'reason' => ['required', 'string', 'max:1000'],
         ]);
 
-        $statusService->change($user, $request->user(), $validated['status'], $validated['reason']);
+        $updatedUser = $statusService->change(
+            $user,
+            $request->user(),
+            $validated['status'],
+            $validated['reason']
+        );
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'data' => [
+                    'user_id' => $updatedUser->id,
+                    'status' => $updatedUser->status,
+                    'allowed_statuses' => $statusService->transitions()[$updatedUser->status] ?? [],
+                ],
+                'message' => 'Account status was updated.',
+            ]);
+        }
 
         return back()->with('success', 'Account status was updated.');
     }

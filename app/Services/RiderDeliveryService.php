@@ -1067,7 +1067,7 @@ class RiderDeliveryService
         ?ReturnRefundService $returns = null,
         ?int $codCollectedAmountMinor = null,
         ?CodCashCollectionService $codCash = null,
-    ): Shipment {
+    ): DeliveryCompletionResult {
         $proofPath = null;
 
         try {
@@ -1082,7 +1082,7 @@ class RiderDeliveryService
                 );
             }
 
-            return DB::transaction(
+            $result = DB::transaction(
                 function () use (
                     $shipmentNo,
                     $actor,
@@ -1202,6 +1202,31 @@ class RiderDeliveryService
                         ->lockForUpdate()
                         ->get();
 
+                    $recipientName = trim($recipientName);
+
+                    if ($recipientName === '') {
+                        throw new InvalidArgumentException(
+                            'The recipient name is required.'
+                        );
+                    }
+
+                    if (
+                        $parcels->isNotEmpty()
+                        && $parcels->every(
+                            fn (Parcel $parcel) => $parcel->status
+                                === ParcelStatus::Delivered->value
+                        )
+                    ) {
+                        return new DeliveryCompletionResult(
+                            $shipment->fresh([
+                                'parcels',
+                                'events',
+                                'codCashCollection',
+                            ]),
+                            true,
+                        );
+                    }
+
                     if (
                         $parcels->contains(
                             fn (Parcel $parcel) => $parcel->status
@@ -1210,16 +1235,6 @@ class RiderDeliveryService
                     ) {
                         throw new ConflictHttpException(
                             'Only out-for-delivery parcels can be completed.'
-                        );
-                    }
-
-                    $recipientName = trim(
-                        $recipientName
-                    );
-
-                    if ($recipientName === '') {
-                        throw new InvalidArgumentException(
-                            'The recipient name is required.'
                         );
                     }
 
@@ -1475,14 +1490,23 @@ class RiderDeliveryService
                         }
                     }
 
-                    return $shipment->fresh([
-                        'parcels',
-                        'events',
-                        'codCashCollection',
-                    ]);
+                    return new DeliveryCompletionResult(
+                        $shipment->fresh([
+                            'parcels',
+                            'events',
+                            'codCashCollection',
+                        ]),
+                        false,
+                    );
                 },
                 3
             );
+
+            if ($result->alreadyCompleted) {
+                Storage::disk('local')->delete($proofPath);
+            }
+
+            return $result;
         } catch (Throwable $exception) {
             if (
                 $proofPath

@@ -54,6 +54,8 @@ class Phase8AdminFinanceTest extends TestCase
         $this->actingAs($this->admin)->get(route('admin.payments'))
             ->assertOk()
             ->assertSee('0/0')
+            ->assertSee('finance-payout-steps', false)
+            ->assertSee('Verify &amp; complete', false)
             ->assertDontSee('PAY-2608-041');
 
         $this->actingAs($this->admin)->get(route('admin.reports'))
@@ -65,6 +67,17 @@ class Phase8AdminFinanceTest extends TestCase
     public function test_completed_money_movements_drive_ledgers_reports_and_payouts(): void
     {
         [$profile, $store, $order, $sellerOrder, $payment] = $this->commerceFixture();
+        $sellerOrder->items()->create([
+            'product_name' => 'Commission Ledger Product',
+            'variant_name' => 'Green / Large',
+            'sku' => 'FINANCE-COMMISSION-001',
+            'unit_price_minor' => 100000,
+            'quantity' => 1,
+            'discount_minor' => 0,
+            'subtotal_minor' => 100000,
+            'product_image_disk' => 'public',
+            'product_image_path' => 'seller-products/commission-ledger.png',
+        ]);
 
         $saleCommission = PlatformCommission::create([
             'seller_order_id' => $sellerOrder->id,
@@ -175,6 +188,9 @@ class Phase8AdminFinanceTest extends TestCase
         $this->actingAs($this->admin)->get(route('admin.commissions'))
             ->assertOk()
             ->assertSee('Phase 8 Store')
+            ->assertSee('finance-commission-products-cell', false)
+            ->assertSee('Commission Ledger Product')
+            ->assertSee('seller-products/commission-ledger.png', false)
             ->assertSee('₱900.00')
             ->assertSee('₱90.00');
 

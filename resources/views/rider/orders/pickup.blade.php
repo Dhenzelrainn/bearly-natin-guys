@@ -150,30 +150,29 @@
             </div>
 
             <div class="panel-body manifest-list">
-                @forelse($job['manifest'] as $item)
-                    <div class="manifest-item">
-                        <span>
-                            <strong>
-                                {{ $item['waybill'] }}
-                            </strong>
+                @forelse($job['manifest'] as $group)
+                    <section class="manifest-shipment-group">
+                        <div class="manifest-shipment-heading">
+                            <strong>Waybill {{ $group['waybill'] }}</strong>
+                            <small>Products in shipment</small>
+                        </div>
 
-                            <small>
-                                {{ $item['parcel_no'] }}
-                                ·
-                                {{ $item['size'] }}
-                            </small>
-                        </span>
+                        @include('partials.order-item-preview-list', ['items' => $group['products']])
 
-                        <span
-                            class="status-badge"
-                            data-status="{{ Str::slug(
-                                $item['status'],
-                                '_'
-                            ) }}"
-                        >
-                            {{ $item['status'] }}
-                        </span>
-                    </div>
+                        <div class="manifest-shipment-parcels">
+                            @foreach($group['parcels'] as $item)
+                                <div class="manifest-item">
+                                    <span>
+                                        <strong>{{ $item['parcel_no'] }}</strong>
+                                        <small>{{ $item['size'] }}</small>
+                                    </span>
+                                    <span class="status-badge" data-status="{{ Str::slug($item['status'], '_') }}">
+                                        {{ $item['status'] }}
+                                    </span>
+                                </div>
+                            @endforeach
+                        </div>
+                    </section>
                 @empty
                     <p class="empty-copy">
                         No parcels are attached to this
@@ -318,14 +317,16 @@
                 <div class="panel-footer">
                     <div
                         class="flash-banner"
+                        role="status"
                         style="width:100%;"
                     >
                         <i data-lucide="circle-check"></i>
 
                         <span>
-                            Parcels collected from the seller.
-                            Return them to your assigned Sorting Center
-                            for intake.
+                            Parcels collected. Next, bring them to your
+                            assigned Sorting Center. Logistics will scan and
+                            record each parcel in Incoming Parcels after
+                            receiving the handoff.
                         </span>
                     </div>
                 </div>

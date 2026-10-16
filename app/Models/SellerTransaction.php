@@ -45,4 +45,9 @@ class SellerTransaction extends Model
     {
         return $this->hasOne(SellerPayoutItem::class);
     }
+
+    public function walletTransactions()
+    {
+        return $this->hasMany(SellerWalletTransaction::class);
+    }
 }

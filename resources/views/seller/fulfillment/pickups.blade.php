@@ -74,9 +74,15 @@
                         $schedule = explode(' · ', $item['schedule'], 2);
                         $address = explode(',', $item['address'], 2);
                     @endphp
-                    <tr data-pickup-row data-status="{{ $item['status_key'] }}" data-date="{{ $item['date_key'] }}" data-search="{{ strtolower(implode(' ', $item)) }}">
+                    <tr data-pickup-row data-status="{{ $item['status_key'] }}" data-date="{{ $item['date_key'] }}" data-search="{{ strtolower($item['id'].' '.$item['orders'].' '.$item['order_numbers'].' '.$item['provider'].' '.$item['schedule'].' '.$item['address'].' '.$item['rider'].' '.$item['status']) }}">
                         <td><strong>{{ $item['id'] }}</strong></td>
-                        <td><strong>{{ $item['orders'] }} · {{ $item['packages'] }} {{ $item['packages'] === 1 ? 'parcel' : 'parcels' }}</strong><small>{{ $item['order_numbers'] }}</small></td>
+                        <td>
+                            <strong>{{ $item['orders'] }} · {{ $item['packages'] }} {{ $item['packages'] === 1 ? 'parcel' : 'parcels' }}</strong>
+                            <small>{{ $item['order_numbers'] }}</small>
+                            @if(count($item['products']))
+                                @include('partials.order-item-preview-list', ['items' => $item['products']])
+                            @endif
+                        </td>
                         <td><span>{{ $schedule[0] }}</span>@if (isset($schedule[1]))<small>{{ $schedule[1] }}</small>@endif</td>
                         <td><span>{{ $address[0] }}</span>@if (isset($address[1]))<small>{{ trim($address[1]) }}</small>@endif</td>
                         <td><span>{{ $item['rider'] }}</span></td>

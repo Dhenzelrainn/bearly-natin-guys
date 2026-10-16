@@ -33,11 +33,64 @@ class PostalCodeLookup
         return ['province' => $province, 'city' => $city, 'options' => []];
     }
 
+    public function canonicalCityCode(
+        ?string $code,
+        string $province,
+        string $city
+    ): ?string {
+        $cities = $this->data()['cities'];
+
+        if (filled($code)) {
+            $code = trim($code);
+            $place = $cities[$code] ?? null;
+
+            if (
+                ! $place
+                || $this->normalize($place['province']) !== $this->normalize($province)
+                || $this->normalizeCity($place['city']) !== $this->normalizeCity($city)
+            ) {
+                throw ValidationException::withMessages([
+                    'city' => 'Please select your city again; the PSGC city code does not match the address.',
+                ]);
+            }
+
+            return $code;
+        }
+
+        $matches = [];
+
+        foreach ($cities as $cityCode => $place) {
+            if (
+                $this->normalize($place['province']) === $this->normalize($province)
+                && $this->normalizeCity($place['city']) === $this->normalizeCity($city)
+            ) {
+                $matches[] = (string) $cityCode;
+            }
+        }
+
+        return count($matches) === 1 ? $matches[0] : null;
+    }
+
+    private function normalizeCity(string $value): string
+    {
+        $normalized = $this->normalize($value);
+
+        if (str_starts_with($normalized, 'cityof')) {
+            $normalized = substr($normalized, strlen('cityof'));
+        }
+
+        if (str_ends_with($normalized, 'city')) {
+            $normalized = substr($normalized, 0, -strlen('city'));
+        }
+
+        return $normalized;
+    }
+
     public function validate(array $data): void
     {
         $place = $this->find($data['city_code'] ?? null, $data['province'], $data['city']);
         if ($this->normalize($place['province']) !== $this->normalize($data['province']) ||
-            $this->normalize($place['city']) !== $this->normalize($data['city'])) {
+            $this->normalizeCity($place['city']) !== $this->normalizeCity($data['city'])) {
             throw ValidationException::withMessages(['city' => 'Please select your city again; the address does not match.']);
         }
         if ($place['options'] && ! in_array($data['postal_code'], array_column($place['options'], 'code'), true)) {

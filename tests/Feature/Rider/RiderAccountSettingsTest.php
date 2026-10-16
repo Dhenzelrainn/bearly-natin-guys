@@ -11,6 +11,7 @@ use App\Models\SortingCenter;
 use App\Models\SortingZone;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
@@ -251,8 +252,13 @@ class RiderAccountSettingsTest extends TestCase
         );
 
         $this->assertSame(
-            '09179999999',
+            '+639179999999',
             $rider->contact_number
+        );
+
+        $this->assertSame(
+            '+639179999999',
+            $rider->phone
         );
 
         $this->assertSame(
@@ -266,9 +272,64 @@ class RiderAccountSettingsTest extends TestCase
         );
 
         $this->assertSame(
-            '09178888888',
+            '+639178888888',
             $riderProfile->emergency_contact_phone
         );
+    }
+
+    public function test_rider_profile_rejects_duplicate_phone_and_underage_birthday(): void
+    {
+        ['rider' => $rider] = $this->makeRiderAccount();
+
+        User::factory()->create([
+            'email' => 'other-phone-owner@example.test',
+            'contact_number' => '+639177777777',
+        ]);
+
+        Carbon::setTestNow('2026-10-08 12:00:00');
+
+        try {
+            $this->actingAs($rider)
+                ->from(route('rider.profile.index'))
+                ->patch(route('rider.profile.update'), [
+                    'name' => 'Updated Rider',
+                    'sex' => 'Male',
+                    'contact' => '0917 777 7777',
+                    'birthday' => '2008-10-09',
+                ])
+                ->assertSessionHasErrors(['contact', 'birthday']);
+
+            $this->assertSame('09181234567', $rider->fresh()->contact_number);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_vehicle_update_rejects_case_insensitive_existing_rider_plate(): void
+    {
+        ['rider' => $rider, 'riderProfile' => $riderProfile] = $this->makeRiderAccount();
+
+        $otherRider = User::factory()->create([
+            'email' => 'other-rider@example.test',
+            'role' => UserRole::Rider->value,
+            'status' => AccountStatus::Active->value,
+            'plate_number' => 'dup-2026',
+        ]);
+
+        RiderProfile::query()->create([
+            'user_id' => $otherRider->id,
+            'logistics_profile_id' => $riderProfile->logistics_profile_id,
+            'vehicle_type' => 'Motorcycle',
+            'plate_number' => 'dup-2026',
+        ]);
+
+        $this->actingAs($rider)
+            ->from(route('rider.profile.index'))
+            ->patch(route('rider.profile.vehicle.update'), [
+                'vehicle_type' => 'Motorcycle',
+                'plate_number' => 'DUP-2026',
+            ])
+            ->assertSessionHasErrors('plate_number');
     }
 
     public function test_profile_update_cannot_change_email_role_or_status(): void
@@ -473,9 +534,9 @@ class RiderAccountSettingsTest extends TestCase
                     'house_number' => '88',
                     'street' => 'Updated Rider Street',
                     'barangay' => 'San Roque',
-                    'city' => 'Calamba City',
+                    'city' => 'San Pablo City',
                     'province' => 'Laguna',
-                    'postal_code' => '4027',
+                    'postal_code' => '4000',
                 ]
             )
             ->assertRedirect(
@@ -511,7 +572,7 @@ class RiderAccountSettingsTest extends TestCase
         );
 
         $this->assertSame(
-            'Calamba City',
+            'San Pablo City',
             $riderAddress->city_municipality
         );
 
@@ -521,7 +582,7 @@ class RiderAccountSettingsTest extends TestCase
         );
 
         $this->assertSame(
-            '4027',
+            '4000',
             $riderAddress->postal_code
         );
 
@@ -587,6 +648,25 @@ class RiderAccountSettingsTest extends TestCase
                 'street' => 'Rizal Street',
             ]
         );
+    }
+
+    public function test_rider_cannot_move_home_address_outside_sponsoring_city(): void
+    {
+        ['rider' => $rider, 'riderAddress' => $riderAddress] = $this->makeRiderAccount();
+
+        $this->from(route('rider.profile.index').'#addresses')
+            ->actingAs($rider)
+            ->patch(route('rider.profile.address.home.update'), [
+                'street' => 'New Street',
+                'barangay' => 'Poblacion',
+                'city' => 'Calamba City',
+                'province' => 'Laguna',
+                'postal_code' => '4027',
+            ])
+            ->assertRedirect(route('rider.profile.index').'#addresses')
+            ->assertSessionHasErrors('city');
+
+        $this->assertSame('San Pablo City', $riderAddress->fresh()->city_municipality);
     }
 
     public function test_rider_can_add_additional_owned_address(): void
@@ -806,6 +886,8 @@ class RiderAccountSettingsTest extends TestCase
                 'contact_phone' =>
                     '09170000000',
 
+                'psgc_city_code' => '0403424000',
+
                 'status' =>
                     'active',
             ]);
@@ -841,6 +923,8 @@ class RiderAccountSettingsTest extends TestCase
 
                 'postal_code' =>
                     '4000',
+
+                'psgc_city_code' => '0403424000',
             ]);
 
         $center =
@@ -874,6 +958,13 @@ class RiderAccountSettingsTest extends TestCase
 
                 'name' =>
                     'San Pablo North',
+
+                'destination_rules' => [
+                    'province' => 'Laguna',
+                    'city_municipality' => 'San Pablo City',
+                    'psgc_city_code' => '0403424000',
+                    'barangays' => ['Del Remedio', 'San Roque', 'Santo Angel'],
+                ],
 
                 'status' =>
                     'active',
@@ -966,6 +1057,8 @@ class RiderAccountSettingsTest extends TestCase
 
                 'postal_code' =>
                     '4000',
+
+                'psgc_city_code' => '0403424000',
             ]);
 
         $riderProfile =

@@ -25,7 +25,8 @@ class AdminComplianceController extends Controller
                 'id'=>'CHK-'.str_pad((string)$check->id, 6, '0', STR_PAD_LEFT), 'product'=>$check->product->name,
                 'seller'=>$check->product->store->name, 'registered'=>$check->product->store->sellerProfile?->approvedCategory?->name ?? '—',
                 'listed'=>$check->product->category?->name ?? '—', 'risk'=>str($check->matches->max('severity') ?? 'low')->title(),
-                'status'=>match($check->result){'clear'=>'Compliant','blocked'=>'Flagged',default=>'Review'},
+                'status'=>match($check->result){'clear'=>'Clear · no open violation','blocked'=>'Blocked · hidden from Buyers',default=>'Held for review · hidden from Buyers'},
+                'status_class'=>match($check->result){'clear'=>'badge-neutral','blocked'=>'badge-danger',default=>'badge-warning'},
             ])->all(),
             'flagged' => $violations->map(fn ($violation) => [
                 'id'=>$violation->violation_no,'product'=>$violation->product->name,'seller'=>$violation->product->store->name,

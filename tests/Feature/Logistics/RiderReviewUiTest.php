@@ -293,7 +293,7 @@ class RiderReviewUiTest extends TestCase
             ->assertDontSee('Save assignment');
     }
 
-    public function test_approved_rider_shows_only_active_owned_assignment_options_and_keeps_documents_panel(): void
+    public function test_approved_rider_shows_the_automatic_home_area_match_and_keeps_documents_panel(): void
     {
         $provider = $this->makeLogisticsProvider();
         $otherProvider = $this->makeLogisticsProvider(
@@ -306,12 +306,6 @@ class RiderReviewUiTest extends TestCase
             'Active UI Center',
             'UI-ACTIVE'
         );
-        $inactiveCenter = $this->makeSortingCenter(
-            $provider,
-            'Inactive UI Center',
-            'UI-INACTIVE',
-            'inactive'
-        );
         $foreignCenter = $this->makeSortingCenter(
             $otherProvider,
             'Foreign UI Center',
@@ -322,7 +316,12 @@ class RiderReviewUiTest extends TestCase
             'sorting_center_id' => $activeCenter->id,
             'code' => 'UI-ZONE-ACTIVE',
             'name' => 'Active UI Zone',
-            'destination_rules' => [],
+            'destination_rules' => [
+                'province' => 'Laguna',
+                'city_municipality' => 'San Pablo City',
+                'psgc_city_code' => '0403424000',
+                'barangays' => ['San Rafael'],
+            ],
             'status' => 'active',
         ]);
         SortingZone::query()->create([
@@ -366,6 +365,19 @@ class RiderReviewUiTest extends TestCase
             'verification_status' => 'verified',
         ]);
 
+        Address::query()->create([
+            'user_id' => $rider->id,
+            'label' => 'Home',
+            'recipient_name' => $rider->name,
+            'phone' => '09170000001',
+            'street' => 'Rider Street',
+            'barangay' => 'San Rafael',
+            'city_municipality' => 'San Pablo City',
+            'province' => 'Laguna',
+            'postal_code' => '4000',
+            'psgc_city_code' => '0403424000',
+        ]);
+
         RiderProfile::query()->create([
             'user_id' => $rider->id,
             'logistics_profile_id' => $provider['profile']->id,
@@ -383,26 +395,18 @@ class RiderReviewUiTest extends TestCase
 
         $response
             ->assertOk()
-            ->assertSee('name="home_sorting_center_id"', false)
-            ->assertSee('name="current_zone_id"', false)
+            ->assertSee('Current assignment')
+            ->assertSee('Refresh home-area match')
             ->assertSee('Active UI Center')
             ->assertSee('Active UI Zone')
-            ->assertSee('Save assignment')
+            ->assertDontSee('Save assignment')
+            ->assertDontSee('name="home_sorting_center_id"', false)
+            ->assertDontSee('name="current_zone_id"', false)
             ->assertSee('Submitted documents')
             ->assertSee('approved-license.pdf')
-            ->assertDontSee('Inactive UI Center')
             ->assertDontSee('Inactive UI Zone')
             ->assertDontSee('Foreign UI Center');
 
-        $this->assertStringContainsString(
-            'selected',
-            $response->getContent()
-        );
-
-        $this->assertNotSame(
-            $inactiveCenter->id,
-            $activeCenter->id
-        );
         $this->assertNotSame(
             $foreignCenter->id,
             $activeCenter->id
@@ -420,6 +424,9 @@ class RiderReviewUiTest extends TestCase
         string $email = 'ui-logistics@example.test'
     ): array
     {
+        $location = str_contains(strtolower($name), 'other')
+            ? ['code' => '0403405000', 'city' => 'Calamba City', 'postal_code' => '4027']
+            : ['code' => '0403424000', 'city' => 'San Pablo City', 'postal_code' => '4000'];
         $user = User::factory()->create([
             'name' => $name,
             'role' => UserRole::Logistics->value,
@@ -443,8 +450,22 @@ class RiderReviewUiTest extends TestCase
                 'legal_name' => $name.' Incorporated',
                 'display_name' => $name,
                 'contact_phone' => '09170000001',
+                'psgc_city_code' => $location['code'],
                 'status' => 'active',
             ]);
+
+        Address::query()->create([
+            'user_id' => $user->id,
+            'label' => 'Sorting center',
+            'recipient_name' => $name,
+            'phone' => '09170000001',
+            'street' => 'Service Road',
+            'barangay' => 'San Rafael',
+            'city_municipality' => $location['city'],
+            'province' => 'Laguna',
+            'postal_code' => $location['postal_code'],
+            'psgc_city_code' => $location['code'],
+        ]);
 
         return compact(
             'user',
@@ -458,6 +479,9 @@ class RiderReviewUiTest extends TestCase
         string $code,
         string $status = 'active'
     ): SortingCenter {
+        $location = $provider['profile']->psgc_city_code === '0403405000'
+            ? ['code' => '0403405000', 'city' => 'Calamba City', 'postal_code' => '4027']
+            : ['code' => '0403424000', 'city' => 'San Pablo City', 'postal_code' => '4000'];
         $address = Address::query()->create([
             'user_id' => $provider['user']->id,
             'label' => $name,
@@ -465,9 +489,10 @@ class RiderReviewUiTest extends TestCase
             'phone' => '09170000001',
             'street' => 'UI Hub Road',
             'barangay' => 'San Rafael',
-            'city_municipality' => 'San Pablo City',
+            'city_municipality' => $location['city'],
             'province' => 'Laguna',
-            'postal_code' => '4000',
+            'postal_code' => $location['postal_code'],
+            'psgc_city_code' => $location['code'],
         ]);
 
         return SortingCenter::query()->create([

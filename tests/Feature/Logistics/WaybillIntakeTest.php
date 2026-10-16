@@ -11,6 +11,7 @@ use App\Models\Parcel;
 use App\Models\SellerOrder;
 use App\Models\SellerProfile;
 use App\Models\Shipment;
+use App\Models\ShipmentTransfer;
 use App\Models\SortingCenter;
 use App\Models\SortingZone;
 use App\Models\PickupAssignment;
@@ -20,8 +21,10 @@ use App\Models\Store;
 use App\Models\User;
 use App\Models\Waybill;
 use App\Services\ParcelIntakeService;
+use App\Services\ShipmentHandoffService;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 use Tests\TestCase;
 
 class WaybillIntakeTest extends TestCase
@@ -536,6 +539,17 @@ class WaybillIntakeTest extends TestCase
     {
         $own = $this->makeShipmentFor($this->profileA, 'LEDGER-OWN');
         $foreign = $this->makeShipmentFor($this->profileB, 'LEDGER-FOREIGN');
+        $own['shipment']->sellerOrder()->firstOrFail()->items()->create([
+            'product_name' => 'Ledger Preview Product',
+            'variant_name' => 'Navy / Medium',
+            'sku' => 'LEDGER-PREVIEW-001',
+            'unit_price_minor' => 12500,
+            'quantity' => 2,
+            'discount_minor' => 0,
+            'subtotal_minor' => 25000,
+            'product_image_disk' => 'public',
+            'product_image_path' => 'seller-products/ledger-preview.png',
+        ]);
 
         app(ParcelIntakeService::class)->receive(
             $own['waybill'],
@@ -554,6 +568,9 @@ class WaybillIntakeTest extends TestCase
             ->get(route('logistics.sorting.incoming'))
             ->assertOk()
             ->assertSee($own['waybill']->waybill_no)
+            ->assertSee('Products in shipment')
+            ->assertSee('Ledger Preview Product')
+            ->assertSee('seller-products/ledger-preview.png', false)
             ->assertSee('Store LEDGER-OWN')
             ->assertDontSee($foreign['waybill']->waybill_no)
             ->assertDontSee('Store LEDGER-FOREIGN')
@@ -633,6 +650,42 @@ class WaybillIntakeTest extends TestCase
             'sorting_zone_id' => $zone->id,
             'actor_user_id' => $this->logisticsA->id,
             'source' => 'logistics',
+        ]);
+    }
+
+    public function test_logistics_cannot_sort_a_parcel_into_a_zone_that_does_not_cover_its_barangay(): void
+    {
+        $record = $this->makeShipmentFor($this->profileA, 'ZONE-MISMATCH');
+        $zone = $this->makeZone($this->centerA, 'PILA-MISMATCH');
+        $zone->update([
+            'destination_rules' => [
+                'province' => 'Laguna',
+                'city_municipality' => 'Pila',
+                'barangays' => ['Pinagbayanan'],
+            ],
+        ]);
+
+        app(ParcelIntakeService::class)->receive(
+            $record['waybill'],
+            $this->centerA,
+            $this->logisticsA,
+            'manual'
+        );
+
+        $this->actingAs($this->logisticsA)
+            ->patch(
+                route('logistics.sorting.parcels.update', $record['parcel']),
+                ['sorting_zone_id' => $zone->id]
+            )
+            ->assertStatus(409);
+
+        $this->assertSame(
+            ParcelStatus::Received->value,
+            $record['parcel']->fresh()->status
+        );
+        $this->assertDatabaseMissing('shipment_events', [
+            'shipment_id' => $record['shipment']->id,
+            'event_type' => 'parcel_sorted',
         ]);
     }
 
@@ -729,13 +782,156 @@ class WaybillIntakeTest extends TestCase
         );
     }
 
-    /**
-     * @return array{
-     *     User,
-     *     LogisticsProfile,
-     *     SortingCenter
-     * }
-     */
+    public function test_cross_city_handoff_changes_custody_only_after_destination_acceptance(): void
+    {
+        $record = $this->makeShipmentFor($this->profileA, 'CITY-HANDOFF');
+        $record['shipment']->update([
+            'status' => ShipmentStatus::AtSortingCenter->value,
+            'origin_logistics_profile_id' => $this->profileA->id,
+            'destination_city_code' => $this->profileB->psgc_city_code,
+        ]);
+        $record['shipment']->sellerOrder->order->update([
+            'city_municipality' => 'Pila',
+            'psgc_city_code' => $this->profileB->psgc_city_code,
+        ]);
+        $record['parcel']->update([
+            'status' => ParcelStatus::Received->value,
+            'current_sorting_center_id' => $this->centerA->id,
+        ]);
+
+        $this->actingAs($this->logisticsA)
+            ->post(route('logistics.transfers.send', $record['shipment']))
+            ->assertRedirect(route('logistics.transfers.index'))
+            ->assertSessionHasNoErrors();
+
+        $transfer = ShipmentTransfer::query()
+            ->where('shipment_id', $record['shipment']->id)
+            ->firstOrFail();
+
+        $this->assertSame('sent', $transfer->status);
+        $this->assertSame($this->profileA->id, $record['shipment']->fresh()->logistics_profile_id);
+        $this->assertSame(ShipmentStatus::HandoffPending->value, $record['shipment']->fresh()->status);
+        $this->assertSame(ParcelStatus::InTransit->value, $record['parcel']->fresh()->status);
+        $this->assertDatabaseHas('shipment_events', [
+            'shipment_id' => $record['shipment']->id,
+            'parcel_id' => $record['parcel']->id,
+            'event_type' => 'logistics_handoff_sent',
+        ]);
+
+        $this->actingAs($this->logisticsB)
+            ->get(route('logistics.transfers.index'))
+            ->assertOk()
+            ->assertSee($record['waybill']->waybill_no)
+            ->assertSee('Accept an incoming handoff')
+            ->assertSee('Sorting Center B')
+            ->assertDontSee('name="sorting_center_id"', false);
+
+        $this->actingAs($this->logisticsB)
+            ->from(route('logistics.transfers.index'))
+            ->post(route('logistics.transfers.accept'), [
+                'identifier' => $record['waybill']->waybill_no,
+                'sorting_center_id' => $this->centerA->id,
+                'scan_method' => 'barcode',
+            ])
+            ->assertRedirect(route('logistics.transfers.index'))
+            ->assertSessionHasErrors('sorting_center_id');
+
+        $this->assertSame('sent', $transfer->fresh()->status);
+
+        $this->actingAs($this->logisticsB)
+            ->post(route('logistics.transfers.accept'), [
+                'identifier' => $record['waybill']->waybill_no,
+                'scan_method' => 'barcode',
+            ])
+            ->assertRedirect(route('logistics.transfers.index'))
+            ->assertSessionHasNoErrors();
+
+        $accepted = ShipmentTransfer::query()
+            ->where('shipment_id', $record['shipment']->id)
+            ->firstOrFail();
+
+        $this->assertSame('accepted', $accepted->status);
+        $this->assertSame($this->centerB->id, $accepted->to_sorting_center_id);
+        $this->assertSame($this->profileB->id, $record['shipment']->fresh()->logistics_profile_id);
+        $this->assertSame($this->profileA->id, $record['shipment']->fresh()->origin_logistics_profile_id);
+        $this->assertSame(ShipmentStatus::AtSortingCenter->value, $record['shipment']->fresh()->status);
+        $this->assertSame(ParcelStatus::Received->value, $record['parcel']->fresh()->status);
+        $this->assertSame($this->centerB->id, $record['parcel']->fresh()->current_sorting_center_id);
+        $this->assertNull($record['parcel']->fresh()->current_zone_id);
+        $this->assertDatabaseHas('shipment_events', [
+            'shipment_id' => $record['shipment']->id,
+            'parcel_id' => $record['parcel']->id,
+            'event_type' => 'logistics_handoff_accepted',
+            'scan_method' => 'barcode',
+        ]);
+        $this->assertSame(2, $record['shipment']->events()->count());
+    }
+
+    public function test_reverse_shipment_handoff_uses_its_immutable_seller_destination_city(): void
+    {
+        $record = $this->makeShipmentFor($this->profileA, 'RETURN-CITY-HANDOFF');
+        $record['shipment']->update([
+            'purpose' => 'return',
+            'status' => ShipmentStatus::AtSortingCenter->value,
+            'origin_logistics_profile_id' => $this->profileA->id,
+            'destination_city_code' => $this->profileB->psgc_city_code,
+            'destination_address_snapshot' => [
+                'recipient_name' => 'Seller',
+                'phone' => '09170000003',
+                'street' => 'Seller Road',
+                'barangay' => 'Pinagbayanan',
+                'city_municipality' => 'Pila',
+                'province' => 'Laguna',
+                'postal_code' => '4010',
+                'psgc_city_code' => $this->profileB->psgc_city_code,
+            ],
+        ]);
+        $record['parcel']->update([
+            'status' => ParcelStatus::Received->value,
+            'current_sorting_center_id' => $this->centerA->id,
+        ]);
+
+        $transfer = app(ShipmentHandoffService::class)
+            ->send($record['shipment'], $this->logisticsA);
+
+        $this->assertSame($this->profileB->id, $transfer->to_logistics_profile_id);
+        $this->assertSame($this->profileB->psgc_city_code, $transfer->shipment->destination_city_code);
+    }
+
+    public function test_only_destination_logistics_can_accept_a_pending_handoff_and_acceptance_is_single_use(): void
+    {
+        $record = $this->makeShipmentFor($this->profileA, 'CITY-HANDOFF-OWNERSHIP');
+        $record['shipment']->update([
+            'status' => ShipmentStatus::AtSortingCenter->value,
+            'origin_logistics_profile_id' => $this->profileA->id,
+            'destination_city_code' => $this->profileB->psgc_city_code,
+        ]);
+        $record['shipment']->sellerOrder->order->update([
+            'city_municipality' => 'Pila',
+            'psgc_city_code' => $this->profileB->psgc_city_code,
+        ]);
+        $record['parcel']->update([
+            'status' => ParcelStatus::Received->value,
+            'current_sorting_center_id' => $this->centerA->id,
+        ]);
+
+        $service = app(ShipmentHandoffService::class);
+        $service->send($record['shipment'], $this->logisticsA);
+
+        try {
+            $service->accept($record['waybill']->waybill_no, $this->logisticsA);
+            $this->fail('Origin Logistics must not accept its outgoing handoff.');
+        } catch (AuthorizationException) {
+            $this->assertSame(ShipmentStatus::HandoffPending->value, $record['shipment']->fresh()->status);
+        }
+
+        $service->accept($record['waybill']->waybill_no, $this->logisticsB);
+
+        $this->expectException(ConflictHttpException::class);
+        $service->accept($record['waybill']->waybill_no, $this->logisticsB);
+    }
+
+    /** @return array{0: User, 1: LogisticsProfile, 2: SortingCenter} */
     private function makeLogisticsProvider(
         string $suffix
     ): array {
@@ -748,25 +944,31 @@ class WaybillIntakeTest extends TestCase
             'status' => 'active',
         ]);
 
+        $cityCode = $suffix === 'A' ? '0403424000' : '0403422000';
+        $cityName = $suffix === 'A' ? 'City of San Pablo' : 'Pila';
+        $postalCode = $suffix === 'A' ? '4000' : '4010';
+
         $profile = LogisticsProfile::query()->create([
             'user_id' => $user->id,
             'legal_name' => "Logistics {$suffix} Incorporated",
             'display_name' => "Logistics {$suffix}",
             'contact_phone' => '0917000000'
                 . ($suffix === 'A' ? '1' : '2'),
+            'psgc_city_code' => $cityCode,
             'status' => 'active',
         ]);
 
         $address = Address::query()->create([
             'user_id' => $user->id,
-            'label' => 'Sorting Center',
+            'label' => 'Sorting center',
             'recipient_name' => $user->name,
             'phone' => $profile->contact_phone,
             'street' => "{$suffix} Logistics Road",
             'barangay' => 'San Rafael',
-            'city_municipality' => 'San Pablo City',
+            'city_municipality' => $cityName,
             'province' => 'Laguna',
-            'postal_code' => '4000',
+            'postal_code' => $postalCode,
+            'psgc_city_code' => $cityCode,
         ]);
 
         $center = SortingCenter::query()->create([
@@ -789,6 +991,12 @@ class WaybillIntakeTest extends TestCase
             'sorting_center_id' => $center->id,
             'name' => str_replace('-', ' ', $code),
             'code' => $code,
+            'destination_rules' => [
+                'province' => 'Laguna',
+                'city_municipality' => 'San Pablo City',
+                'psgc_city_code' => '0403424000',
+                'barangays' => ['San Rafael'],
+            ],
             'status' => 'active',
         ]);
     }
@@ -993,6 +1201,7 @@ class WaybillIntakeTest extends TestCase
             'city_municipality' => 'San Pablo City',
             'province' => 'Laguna',
             'postal_code' => '4000',
+            'psgc_city_code' => '0403424000',
             'subtotal_minor' => 10000,
             'total_minor' => 10000,
             'status' => 'processing',
@@ -1012,6 +1221,8 @@ class WaybillIntakeTest extends TestCase
             'shipment_no' => "SHIP-{$suffix}",
             'seller_order_id' => $sellerOrder->id,
             'logistics_profile_id' => $profile->id,
+            'origin_logistics_profile_id' => $profile->id,
+            'destination_city_code' => $order->psgc_city_code,
             'status' => ShipmentStatus::PickedUp->value,
             'shipping_fee_minor' => 0,
             'cod_amount_minor' => 0,

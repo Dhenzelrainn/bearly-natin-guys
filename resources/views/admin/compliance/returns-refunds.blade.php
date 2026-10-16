@@ -334,7 +334,18 @@
                             <tbody>
                                 @foreach ($case['items'] as $item)
                                     <tr>
-                                        <td><strong>{{ $item['name'] }}</strong><small>{{ $item['variant'] }} · SKU {{ $item['sku'] }}</small></td>
+                                        <td>
+                                            <div class="admin-return-item-product">
+                                                <span class="admin-return-item-image">
+                                                    @if(filled($item['image_url']))
+                                                        <img src="{{ $item['image_url'] }}" alt="" loading="lazy" decoding="async">
+                                                    @else
+                                                        <i data-lucide="package" aria-hidden="true"></i>
+                                                    @endif
+                                                </span>
+                                                <span><strong>{{ $item['name'] }}</strong><small>{{ $item['variant'] }} · SKU {{ $item['sku'] }}</small></span>
+                                            </div>
+                                        </td>
                                         <td>{{ $item['quantity'] }}</td>
                                         <td><strong>{{ $item['amount'] }}</strong></td>
                                     </tr>

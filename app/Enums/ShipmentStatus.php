@@ -9,6 +9,7 @@ enum ShipmentStatus: string
     case PickupAssigned = 'pickup_assigned';
     case PickedUp = 'picked_up';
     case AtSortingCenter = 'at_sorting_center';
+    case HandoffPending = 'handoff_pending';
     case Sorted = 'sorted';
     case Dispatched = 'dispatched';
     case OutForDelivery = 'out_for_delivery';

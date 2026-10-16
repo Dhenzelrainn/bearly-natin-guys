@@ -1,14 +1,14 @@
 @extends('layouts.admin')
 
-@section('title', 'Shipping Rates')
-@section('page-title', 'Shipping Rates')
+@section('title', 'Shipping Fees')
+@section('page-title', 'Shipping Fees')
 
 @section('content')
 <section class="page-hero">
     <div>
         <span class="eyebrow">Bearly Logistics</span>
-        <h1>Shipping rate management</h1>
-        <p>Configure Bearly's initial estimated shipping fees by route. These are Bearly rates, not official Shopee tariffs.</p>
+        <h1>Shipping fee settings</h1>
+        <p>Set one standard Bearly shipping fee for each Seller Order, regardless of destination route or billable weight.</p>
     </div>
 </section>
 
@@ -26,9 +26,25 @@
     <section class="panel">
         <div class="panel-heading">
             <div>
-                <span class="eyebrow">Internal Delivery Provider</span>
-                <h2>Bearly Logistics</h2>
-                <p>Shipping is priced once per Seller Order. One Seller's products are combined into an estimated parcel.</p>
+                <span class="eyebrow">Buyer shipping fee</span>
+                <h2>Standard fee per Seller Order</h2>
+                <p>A checkout with multiple Sellers pays this fee once for each Seller Order/parcel. The default fee is ₱50.</p>
+            </div>
+        </div>
+        <div class="form-field">
+            <label for="seller-order-fee">Standard fee (₱)</label>
+            <input id="seller-order-fee" name="seller_order_fee" type="number" min="0" max="9999999.99" step="0.01" value="{{ old('seller_order_fee', $sellerOrderFee) }}" required>
+            <small>Distance and billable weight do not change this fee. Existing orders keep their saved shipping totals.</small>
+            @error('seller_order_fee')<small class="field-error">{{ $message }}</small>@enderror
+        </div>
+    </section>
+
+    <section class="panel">
+        <div class="panel-heading">
+            <div>
+                <span class="eyebrow">Package estimate</span>
+                <h2>Volumetric divisor</h2>
+                <p>This affects the billable-weight estimate shown with the quote, not the standard Buyer shipping fee.</p>
             </div>
         </div>
         <div class="form-field">
@@ -40,45 +56,13 @@
     </section>
 
     <section class="panel">
-        <div class="panel-heading">
-            <div>
-                <span class="eyebrow">Route Tariffs</span>
-                <h2>First kilogram and additional kilograms</h2>
-                <p>Leave an additional-kilogram surcharge blank to prevent checkout for parcels over 1 billable kg on that route.</p>
-            </div>
-        </div>
-        <div class="shipping-rate-table-wrap">
-            <table class="admin-table">
-                <thead><tr><th>Route tier</th><th>First billable kg (₱)</th><th>Each additional kg (₱)</th></tr></thead>
-                <tbody>
-                @foreach ($tiers as $tier)
-                    <tr>
-                        <td><strong>{{ $tier['label'] }}</strong><small>{{ $tier['description'] }}</small></td>
-                        <td>
-                            <label class="sr-only" for="base-{{ $tier['key'] }}">{{ $tier['label'] }} first kilogram fee</label>
-                            <input id="base-{{ $tier['key'] }}" name="rates[{{ $tier['key'] }}][first_kg_fee]" type="number" min="0" max="9999999.99" step="0.01" value="{{ old("rates.{$tier['key']}.first_kg_fee", $tier['base_fee']) }}" required>
-                            @error("rates.{$tier['key']}.first_kg_fee")<small class="field-error">{{ $message }}</small>@enderror
-                        </td>
-                        <td>
-                            <label class="sr-only" for="extra-{{ $tier['key'] }}">{{ $tier['label'] }} additional kilogram surcharge</label>
-                            <input id="extra-{{ $tier['key'] }}" name="rates[{{ $tier['key'] }}][additional_kg_surcharge]" type="number" min="0" max="9999999.99" step="0.01" value="{{ old("rates.{$tier['key']}.additional_kg_surcharge", $tier['additional_fee']) }}" placeholder="Not configured">
-                            @error("rates.{$tier['key']}.additional_kg_surcharge")<small class="field-error">{{ $message }}</small>@enderror
-                        </td>
-                    </tr>
-                @endforeach
-                </tbody>
-            </table>
-        </div>
-        <p class="settings-note">Each quote snapshots the provider, route, rates, divisor, package estimate, and calculated fee. Later rate edits do not change existing orders.</p>
-    </section>
-    <section class="panel">
         <div class="form-field">
             <label for="shipping-change-reason">Change reason</label>
             <textarea id="shipping-change-reason" name="reason" rows="3" maxlength="255" required>{{ old('reason') }}</textarea>
-            <small>This reason and the before/after rates are recorded in the Admin audit log.</small>
+            <small>The actor, reason, and before/after settings are recorded in the Admin audit log.</small>
             @error('reason')<small class="field-error">{{ $message }}</small>@enderror
         </div>
-        <button class="button button-primary" type="submit">Save shipping rates</button>
+        <button class="button button-primary" type="submit">Save shipping settings</button>
     </section>
 </form>
 @endsection

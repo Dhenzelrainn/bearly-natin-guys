@@ -17,6 +17,7 @@ use App\Http\Controllers\AdminFinanceController;
 use App\Http\Controllers\AdminFulfillmentController;
 use App\Http\Controllers\AdminMessageController;
 use App\Http\Controllers\AdminReturnRefundController;
+use App\Http\Controllers\AdminSellerPayoutController;
 use App\Http\Controllers\AdminUserController;
 use App\Http\Controllers\ApplicationDocumentController;
 use App\Http\Controllers\BuyerController;
@@ -31,7 +32,9 @@ use App\Http\Controllers\RiderController;
 use App\Http\Controllers\RiderCashController;
 use App\Http\Controllers\SellerController;
 use App\Http\Controllers\SellerProductController;
+use App\Http\Controllers\SellerWalletController;
 use App\Http\Controllers\SellerWorkflowController;
+use App\Http\Controllers\SellerWaybillController;
 use App\Http\Controllers\ShippingRateController;
 use App\Http\Controllers\WaybillScanController;
 use Illuminate\Support\Facades\Route;
@@ -509,12 +512,55 @@ Route::prefix('admin')
         Route::get('/payments', [AdminFinanceController::class, 'payments'])
             ->name('payments');
 
+        Route::get('/seller-payouts', [AdminSellerPayoutController::class, 'index'])
+            ->name('seller-payouts.index');
+
+        Route::get('/seller-payouts/{withdrawal}', [AdminSellerPayoutController::class, 'show'])
+            ->whereNumber('withdrawal')
+            ->name('seller-payouts.show');
+
+        Route::post('/seller-payouts/{withdrawal}/approve', [AdminSellerPayoutController::class, 'approve'])
+            ->whereNumber('withdrawal')
+            ->name('seller-payouts.approve');
+
+        Route::post('/seller-payouts/{withdrawal}/reject', [AdminSellerPayoutController::class, 'reject'])
+            ->whereNumber('withdrawal')
+            ->name('seller-payouts.reject');
+
+        Route::post('/seller-payouts/{withdrawal}/processing', [AdminSellerPayoutController::class, 'startProcessing'])
+            ->whereNumber('withdrawal')
+            ->name('seller-payouts.processing');
+
+        Route::post('/seller-payouts/{withdrawal}/transfer', [AdminSellerPayoutController::class, 'recordTransfer'])
+            ->whereNumber('withdrawal')
+            ->name('seller-payouts.transfer');
+
+        Route::post('/seller-payouts/{withdrawal}/fail-transfer', [AdminSellerPayoutController::class, 'failTransfer'])
+            ->whereNumber('withdrawal')
+            ->name('seller-payouts.fail-transfer');
+
+        Route::post('/seller-payouts/{withdrawal}/complete', [AdminSellerPayoutController::class, 'complete'])
+            ->whereNumber('withdrawal')
+            ->name('seller-payouts.complete');
+
+        Route::get('/seller-payouts/{withdrawal}/proof', [AdminSellerPayoutController::class, 'downloadProof'])
+            ->whereNumber('withdrawal')
+            ->name('seller-payouts.proof');
+
         Route::post('/payments/cod/{collection}/reconcile', [AdminFinanceController::class, 'reconcileCodCash'])
             ->whereNumber('collection')
             ->name('payments.cod.reconcile');
 
+        Route::get('/payments/cod/{collection}/receipt', [AdminFinanceController::class, 'printCodCashReceipt'])
+            ->whereNumber('collection')
+            ->name('payments.cod.receipt');
+
         Route::post('/payments/seller-settlements', [AdminFinanceController::class, 'generateSellerPayout'])
             ->name('payments.seller-settlements.store');
+
+        Route::get('/payments/seller-settlements/{payout}/cash-acknowledgment', [AdminFinanceController::class, 'printSellerCashAcknowledgment'])
+            ->whereNumber('payout')
+            ->name('payments.seller-settlements.cash-acknowledgment');
 
         Route::post('/payments/seller-settlements/{payout}/record-paid', [AdminFinanceController::class, 'recordSellerPayout'])
             ->whereNumber('payout')
@@ -740,8 +786,15 @@ Route::prefix('seller')
         Route::redirect('/orders/history', '/seller/orders?status=completed')
             ->name('orders.history');
 
-        Route::get('/fulfillment/waybills', [SellerWorkflowController::class, 'waybills'])
+        Route::get('/fulfillment/waybills', [SellerWaybillController::class, 'index'])
             ->name('fulfillment.waybills');
+
+        Route::post('/fulfillment/waybills/pdf', [SellerWaybillController::class, 'downloadPdf'])
+            ->name('fulfillment.waybills.pdf');
+
+        Route::post('/fulfillment/waybills/{waybill}/printed', [SellerWaybillController::class, 'confirmPrinted'])
+            ->whereNumber('waybill')
+            ->name('fulfillment.waybills.printed');
 
         Route::get('/fulfillment/pickups', [SellerWorkflowController::class, 'pickupRequests'])
             ->name('fulfillment.pickups');
@@ -755,8 +808,32 @@ Route::prefix('seller')
         Route::get('/finance/earnings', [SellerWorkflowController::class, 'financeEarnings'])
             ->name('finance.earnings');
 
+        Route::get('/finance/wallet', [SellerWalletController::class, 'index'])
+            ->name('finance.wallet');
+
+        Route::get('/finance/bank-accounts', [SellerWalletController::class, 'bankAccounts'])
+            ->name('finance.bank-accounts');
+
+        Route::post('/finance/bank-accounts', [SellerWalletController::class, 'storeBankAccount'])
+            ->name('finance.bank-accounts.store');
+
+        Route::patch('/finance/bank-accounts/{account}/deactivate', [SellerWalletController::class, 'deactivateBankAccount'])
+            ->whereNumber('account')
+            ->name('finance.bank-accounts.deactivate');
+
+        Route::post('/finance/withdrawals', [SellerWalletController::class, 'requestWithdrawal'])
+            ->name('finance.withdrawals.store');
+
+        Route::get('/finance/withdrawals/{withdrawal}/proof', [SellerWalletController::class, 'downloadTransferProof'])
+            ->whereNumber('withdrawal')
+            ->name('finance.withdrawals.proof');
+
         Route::get('/finance/transactions', [SellerWorkflowController::class, 'financeTransactions'])
             ->name('finance.transactions');
+
+        Route::get('/finance/settlements/{payout}/receipt', [SellerWorkflowController::class, 'downloadSellerPayoutReceipt'])
+            ->whereNumber('payout')
+            ->name('finance.settlements.receipt');
 
         Route::get('/store', [SellerController::class, 'store'])
             ->name('store');
@@ -825,11 +902,20 @@ Route::prefix('seller')
         Route::get('/reports', [SellerWorkflowController::class, 'reportsOverview'])
             ->name('reports');
 
+        Route::get('/reports/export', [SellerWorkflowController::class, 'exportReportsOverview'])
+            ->name('reports.export');
+
         Route::get('/reports/sales', [SellerController::class, 'salesReport'])
             ->name('reports.sales');
 
+        Route::get('/reports/sales/export', [SellerWorkflowController::class, 'exportSalesReport'])
+            ->name('reports.sales.export');
+
         Route::get('/reports/financial', [SellerWorkflowController::class, 'financialReport'])
             ->name('reports.financial');
+
+        Route::get('/reports/financial/export', [SellerWorkflowController::class, 'exportFinancialReport'])
+            ->name('reports.financial.export');
 
         Route::get('/support/messages', [SellerController::class, 'messages'])
             ->name('support.messages');
@@ -946,8 +1032,39 @@ Route::prefix('logistics')->name('logistics.')->group(function () {
         Route::post('/incoming/receive', [WaybillScanController::class, 'receiveForm'])
             ->name('sorting.incoming.receive');
 
+        Route::get('/transfers', [LogisticsController::class, 'transfers'])
+            ->name('transfers.index');
+
+        Route::post('/transfers/{shipment}/send', [LogisticsController::class, 'sendTransfer'])
+            ->whereNumber('shipment')
+            ->name('transfers.send');
+
+        Route::post('/transfers/accept', [LogisticsController::class, 'acceptTransfer'])
+            ->name('transfers.accept');
+
         Route::get('/sorting', [LogisticsController::class, 'sorting'])
             ->name('sorting.center');
+
+        Route::post('/sorting/zones', [LogisticsController::class, 'storeSortingZone'])
+            ->name('sorting.zones.store');
+
+        Route::patch('/sorting/zones/{sortingZone}', [LogisticsController::class, 'updateSortingZone'])
+            ->name('sorting.zones.update');
+
+        Route::patch('/sorting/zones/{sortingZone}/status', [LogisticsController::class, 'updateSortingZoneStatus'])
+            ->name('sorting.zones.status');
+
+        Route::patch('/sorting/zones/{sortingZone}/archive', [LogisticsController::class, 'archiveSortingZone'])
+            ->whereNumber('sortingZone')
+            ->name('sorting.zones.archive');
+
+        Route::patch('/sorting/zones/{sortingZone}/restore', [LogisticsController::class, 'restoreSortingZone'])
+            ->whereNumber('sortingZone')
+            ->name('sorting.zones.restore');
+
+        Route::delete('/sorting/zones/{sortingZone}', [LogisticsController::class, 'forceDeleteSortingZone'])
+            ->whereNumber('sortingZone')
+            ->name('sorting.zones.destroy');
 
         Route::patch('/sorting/parcels/{parcel}', [LogisticsController::class, 'sortParcel'])
             ->name('sorting.parcels.update');
@@ -1116,6 +1233,9 @@ Route::prefix('rider')->name('rider.')->group(function () {
 
         Route::get('/earnings', [RiderController::class, 'earnings'])
             ->name('earnings.index');
+
+        Route::get('/history/export', [RiderController::class, 'exportHistory'])
+            ->name('history.export');
 
         Route::get('/history', [RiderController::class, 'history'])
             ->name('history.index');

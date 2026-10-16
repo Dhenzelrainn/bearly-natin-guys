@@ -8,15 +8,27 @@
     <div>
         <span class="eyebrow">Provider cash register</span>
         <h1>Cash custody and handoffs</h1>
-        <p>Acknowledge the exact cash physically received, record every handoff reference, and keep refund cash assigned only to an approved Rider in this provider.</p>
+        <p>Count and confirm the cash from the Rider. When you hand it to Finance, record the amount here; Bearly creates a handoff reference for Finance to reconcile. Give refund cash only to an approved Rider from your provider.</p>
     </div>
 </section>
 
+<div class="cash-custody-layout">
+    <div class="cash-custody-lists">
 <section class="panel">
-    <div class="panel-heading"><div><span class="eyebrow">Cash on delivery</span><h2>Rider collections</h2><p>{{ $codCollections->count() }} COD cash record(s) require custody tracking.</p></div></div>
+    <div class="panel-heading">
+        <div>
+            <span class="eyebrow">Cash on delivery</span>
+            <h2>Rider collections</h2>
+            @if($codCollections->count() === 1)
+                <p>1 COD cash handoff needs your attention.</p>
+            @else
+                <p>{{ $codCollections->count() }} COD cash handoffs need your attention.</p>
+            @endif
+        </div>
+    </div>
     <div class="cash-custody-table-wrap" role="region" aria-label="COD cash collections" tabindex="0">
         <table class="cash-custody-table cash-custody-table--cod">
-            <thead><tr><th>Collection / order</th><th>Rider</th><th>Due</th><th>Collected</th><th>Difference</th><th>Custody action</th></tr></thead>
+            <thead><tr><th>Collection / order</th><th>Rider</th><th>Expected amount</th><th>Collected amount</th><th>Difference</th><th>Custody action</th></tr></thead>
             <tbody>
             @forelse($codCollections as $collection)
                 @php
@@ -25,7 +37,15 @@
                     $difference = (int) $collection->discrepancy_minor;
                 @endphp
                 <tr>
-                    <td><strong>{{ $collection->collection_no }}</strong><small class="table-subline">{{ $collection->order?->order_no ?? 'Order' }} · {{ $collection->sellerOrder?->store?->name ?? 'Seller' }}</small></td>
+                    <td>
+                        <strong>{{ $collection->collection_no }}</strong>
+                        <small class="table-subline">{{ $collection->order?->order_no ?? 'Order' }} · {{ $collection->sellerOrder?->store?->name ?? 'Seller' }}</small>
+                        @if($collection->logistics_reference)
+                            <small class="table-subline">Rider-to-Logistics reference: <code>{{ $collection->logistics_reference }}</code></small>
+                        @elseif(in_array($collection->status, ['collected', 'disputed'], true))
+                            <small class="table-subline">Bearly creates this number after you confirm the Rider's cash.</small>
+                        @endif
+                    </td>
                     <td>{{ $collection->riderProfile?->user?->name ?? 'Rider' }}</td>
                     <td>₱{{ $due }}</td>
                     <td>₱{{ number_format((int) $collection->amount_collected_minor / 100, 2) }}</td>
@@ -41,20 +61,23 @@
                             <form method="POST" action="{{ route('logistics.cash.cod.receive', $collection) }}" class="cash-action-form">
                                 @csrf
                                 <label>Cash physically received <input type="number" min="0" step="0.01" inputmode="decimal" name="actual_amount" value="{{ $amount }}" required></label>
-                                <label>Handoff reference <input type="text" name="reference" maxlength="150" required></label>
+                                <small class="table-subline">Count the cash. Enter the amount you received. It must match the Rider's record. Then select “Acknowledge receipt.”</small>
                                 <button class="button button-primary button-small" type="submit">Acknowledge receipt</button>
                             </form>
                         @elseif($collection->status === 'received_by_logistics')
-                            <form method="POST" action="{{ route('logistics.cash.cod.remit', $collection) }}" class="cash-action-form">
-                                @csrf
-                                <label>Cash remitted <input type="number" min="0" step="0.01" inputmode="decimal" name="actual_amount" value="{{ $amount }}" required></label>
-                                <label>Finance handoff reference <input type="text" name="reference" maxlength="150" required></label>
-                                <button class="button button-primary button-small" type="submit">Record Finance remittance</button>
-                            </form>
+                            @if($selectedCodCollection && (int) $selectedCodCollection->id === (int) $collection->id)
+                                <span class="status-badge badge-info" aria-current="true">Selected</span>
+                            @else
+                                <a
+                                    class="button button-secondary button-small cash-remittance-select"
+                                    href="{{ route('logistics.cash.index', ['cod_remittance' => $collection->id]) }}#finance-remittance"
+                                    aria-label="Select COD collection {{ $collection->collection_no }} for remittance"
+                                >Select</a>
+                            @endif
                         @else
                             <span class="status-badge badge-info">{{ str($collection->status)->replace('_', ' ')->title() }}</span>
-                            @if($collection->logistics_reference)<small class="table-subline">Logistics: {{ $collection->logistics_reference }}</small>@endif
-                            @if($collection->finance_remittance_reference)<small class="table-subline">Finance: {{ $collection->finance_remittance_reference }}</small>@endif
+                            @if($collection->logistics_reference)<small class="table-subline">Rider-to-Logistics: {{ $collection->logistics_reference }}</small>@endif
+                            @if($collection->finance_remittance_reference)<small class="table-subline">Logistics-to-Finance: {{ $collection->finance_remittance_reference }}</small>@endif
                         @endif
                     </td>
                 </tr>
@@ -67,7 +90,7 @@
 </section>
 
 <section class="panel">
-    <div class="panel-heading"><div><span class="eyebrow">Buyer refunds</span><h2>Assigned cash deliveries</h2><p>Refunds stay pending until Logistics verifies the signed Buyer acknowledgment and Finance completes the record.</p></div></div>
+    <div class="panel-heading"><div><span class="eyebrow">Buyer refunds</span><h2>Assigned cash deliveries</h2><p>After the Rider gives the refund to the Buyer, check the signed receipt here. Finance can finish the record after you confirm it.</p></div></div>
     <div class="cash-custody-table-wrap" role="region" aria-label="Refund cash assignments" tabindex="0">
         <table class="cash-custody-table cash-custody-table--refund">
             <thead><tr><th>Cash payout details</th><th>Amount</th><th>Status</th><th>Custody action</th></tr></thead>
@@ -108,11 +131,11 @@
                                     <button class="button button-primary button-small" type="submit">Assign refund cash</button>
                                 </form>
                             @else
-                                <span class="empty-copy">No approved, available Riders for this provider.</span>
+                                <span class="empty-copy">No approved Rider is available for this cash delivery.</span>
                             @endif
                         @elseif(in_array($payout->status, ['assigned_to_rider', 'cash_with_rider', 'out_for_delivery'], true))
                             @if($payout->acknowledgment_reference)
-                                <small class="table-subline">Print this numbered form and hand it to the assigned Rider before dispatch.</small>
+                                <small class="table-subline">Print this form. Give it to the assigned Rider with the cash before they leave.</small>
                                 <a class="button button-secondary button-small" href="{{ route('logistics.cash.refunds.acknowledgment-slip', $payout) }}" target="_blank" rel="noopener">
                                     <i data-lucide="printer" aria-hidden="true"></i>
                                     Print / Save as PDF
@@ -120,7 +143,7 @@
                             @else
                                 <form method="POST" action="{{ route('logistics.cash.refunds.acknowledgment-slip.prepare', $payout) }}" class="cash-action-form">
                                     @csrf
-                                    <small class="table-subline">Prepare the numbered paper acknowledgment before the Rider leaves.</small>
+                                    <small class="table-subline">Create the paper form before the Rider leaves.</small>
                                     <button class="button button-primary button-small" type="submit">Prepare acknowledgment slip</button>
                                 </form>
                             @endif
@@ -132,7 +155,7 @@
                                 <button class="button button-primary button-small" type="submit">Confirm cash return</button>
                             </form>
                         @elseif($payout->status === 'delivered_pending_verification')
-                            <small class="table-subline">Match the Buyer acknowledgment reference above to the signed document before verifying.</small>
+                            <small class="table-subline">Check that the number above matches the number on the Buyer's signed receipt.</small>
                             <a class="button button-secondary button-small" href="{{ route('logistics.cash.refunds.acknowledgment', $payout) }}">Review signed acknowledgment</a>
                             <form method="POST" action="{{ route('logistics.cash.refunds.verify-receipt', $payout) }}" class="cash-action-form">
                                 @csrf
@@ -154,5 +177,95 @@
         </table>
     </div>
 </section>
+    </div>
+
+    <aside class="panel cash-remittance-panel" id="finance-remittance" aria-labelledby="cash-remittance-title">
+        @if($selectedCodCollection)
+            @php
+                $selectedAmount = number_format((int) $selectedCodCollection->amount_collected_minor / 100, 2, '.', ',');
+                $selectedDue = number_format((int) $selectedCodCollection->amount_due_minor / 100, 2);
+                $selectedDifference = (int) $selectedCodCollection->discrepancy_minor;
+            @endphp
+
+            <div class="cash-remittance-heading">
+                <span class="cash-remittance-icon"><i data-lucide="coins" aria-hidden="true"></i></span>
+                <div>
+                    <span class="eyebrow">Next step</span>
+                    <h2 id="cash-remittance-title">Finance handoff</h2>
+                    <p>Use this after you give the COD cash to Finance.</p>
+                </div>
+            </div>
+
+            <section class="cash-remittance-details" aria-labelledby="cash-remittance-details-title">
+                <div class="cash-remittance-details-heading">
+                    <h3 id="cash-remittance-details-title">Collection details</h3>
+                    @if($selectedDifference === 0)
+                        <span class="status-badge badge-success">Matched</span>
+                    @else
+                        <span class="status-badge badge-danger">{{ $selectedDifference < 0 ? 'Short' : 'Over' }} ₱{{ number_format(abs($selectedDifference) / 100, 2) }}</span>
+                    @endif
+                </div>
+                <dl class="cash-remittance-grid">
+                    <div>
+                        <dt>COD collection</dt>
+                        <dd><code>{{ $selectedCodCollection->collection_no }}</code></dd>
+                    </div>
+                    <div>
+                        <dt>Order / Seller</dt>
+                        <dd>{{ $selectedCodCollection->order?->order_no ?? 'Order' }} · {{ $selectedCodCollection->sellerOrder?->store?->name ?? 'Seller' }}</dd>
+                    </div>
+                    <div>
+                        <dt>Rider</dt>
+                        <dd>{{ $selectedCodCollection->riderProfile?->user?->name ?? 'Rider' }}</dd>
+                    </div>
+                    <div>
+                        <dt>Expected amount</dt>
+                        <dd>₱{{ $selectedDue }}</dd>
+                    </div>
+                    <div>
+                        <dt>Collected amount</dt>
+                        <dd>₱{{ number_format((int) $selectedCodCollection->amount_collected_minor / 100, 2) }}</dd>
+                    </div>
+                    <div>
+                        <dt>Difference</dt>
+                        <dd>₱{{ number_format(abs($selectedDifference) / 100, 2) }}</dd>
+                    </div>
+                    <div class="cash-remittance-grid-wide">
+                        <dt>Rider-to-Logistics reference</dt>
+                        <dd><code>{{ $selectedCodCollection->logistics_reference ?: 'Not recorded' }}</code></dd>
+                    </div>
+                </dl>
+            </section>
+
+            <form method="POST" action="{{ route('logistics.cash.cod.remit', $selectedCodCollection) }}" class="cash-action-form cash-remittance-form">
+                @csrf
+                <label for="cash-remitted-amount">Cash given to Finance</label>
+                <input id="cash-remitted-amount" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" name="actual_amount" value="{{ old('actual_amount', $selectedAmount) }}" pattern="(?:[0-9]{1,8}|[0-9]{1,3},[0-9]{3}|[0-9]{1,2}(?:,[0-9]{3}){2})(?:\.[0-9]{1,2})?" title="Enter an amount with up to eight digits and two decimal places." data-cash-amount required>
+                <small class="table-subline">After you hand the cash to Finance, enter the amount they accepted. It must match the amount the Rider gave you.</small>
+                @error('actual_amount')<small class="cash-remittance-error">{{ $message }}</small>@enderror
+
+                <div class="cash-remittance-instructions" aria-label="Steps to record the Finance handoff">
+                    <i data-lucide="info" aria-hidden="true"></i>
+                    <div>
+                        <strong>Do these steps:</strong>
+                        <ol>
+                            <li>Give the cash to Finance.</li>
+                            <li>Enter the amount Finance accepted, then record the handoff.</li>
+                            <li>Bearly creates a unique L2F (Logistics-to-Finance) reference. Finance adds its receipt reference when reconciling.</li>
+                        </ol>
+                    </div>
+                </div>
+
+                <button class="button button-primary button-small" type="submit">Record remittance</button>
+            </form>
+        @else
+            <div class="cash-remittance-empty">
+                <span class="cash-remittance-icon"><i data-lucide="coins" aria-hidden="true"></i></span>
+                <h2 id="cash-remittance-title">Finance handoff</h2>
+                <p>First, confirm the cash from the Rider. When the row says “Received by Logistics,” select that COD record to continue here.</p>
+            </div>
+        @endif
+    </aside>
+</div>
 
 @endsection

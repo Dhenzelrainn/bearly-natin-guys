@@ -281,8 +281,10 @@
             <form
                 method="POST"
                 action="{{ route('admin.applications.reject', $application['database_id']) }}"
+                data-registration-decision
             >
                 @csrf
+                <input type="hidden" name="review_application_id" value="{{ $application['application_id'] }}">
 
                 <label class="form-field">
                     <span>Reason for disapproval</span>
@@ -303,8 +305,10 @@
             <form
                 method="POST"
                 action="{{ route('admin.applications.approve', $application['database_id']) }}"
+                data-registration-decision
             >
                 @csrf
+                <input type="hidden" name="review_application_id" value="{{ $application['application_id'] }}">
 
                 <button type="submit" class="button button-primary">
                     <i data-lucide="circle-check"></i>

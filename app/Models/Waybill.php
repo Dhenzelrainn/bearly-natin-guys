@@ -11,6 +11,15 @@ class Waybill extends Model
 
     protected $hidden = ['scan_token'];
 
+    protected function casts(): array
+    {
+        return [
+            'generated_at' => 'datetime',
+            'printed_at' => 'datetime',
+            'voided_at' => 'datetime',
+        ];
+    }
+
     public function shipment()
     {
         return $this->belongsTo(Shipment::class);

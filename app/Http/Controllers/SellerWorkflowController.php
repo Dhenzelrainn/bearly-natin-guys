@@ -8,26 +8,32 @@ use App\Models\Refund;
 use App\Models\ReturnEvidence;
 use App\Models\ReturnRequest;
 use App\Models\SellerOrder;
+use App\Models\SellerPayout;
 use App\Models\SellerProfile;
+use App\Services\AuditService;
 use App\Services\BuyerCatalogService;
+use App\Services\ReturnRefundService;
+use App\Services\SellerEarningsService;
 use App\Services\SellerIdentityService;
+use App\Services\SellerInventoryService;
+use App\Services\SellerNotificationService;
 use App\Services\SellerOrderTrackingService;
 use App\Services\SellerOrderWorkflowService;
 use App\Services\SellerPickupRequestService;
-use App\Services\ReturnRefundService;
+use App\Services\SellerWalletService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class SellerWorkflowController extends Controller
 {
-    private const COMMISSION_RATE = 0.10;
-
     private function seller(): array
     {
         return app(
@@ -37,11 +43,7 @@ class SellerWorkflowController extends Controller
 
     private function notifications(): array
     {
-        return [
-            ['title' => '2 new orders need confirmation', 'time' => '5 minutes ago', 'type' => 'warning'],
-            ['title' => 'Classic Linen Shirt is low in stock', 'time' => '42 minutes ago', 'type' => 'danger'],
-            ['title' => '2 parcels are ready for pickup request', 'time' => '1 hour ago', 'type' => 'success'],
-        ];
+        return app(SellerNotificationService::class)->recentFor(auth()->user());
     }
 
     private function money(float $amount): string
@@ -49,39 +51,208 @@ class SellerWorkflowController extends Controller
         return '₱'.number_format($amount, 2);
     }
 
-    private function financeSnapshot(): array
-    {
-        $grossSales = 128450.00;
-        $sellerDiscounts = 4430.00;
-        $refunds = 1299.00;
-        $commissionBaseBeforeReversal = $grossSales - $sellerDiscounts;
-        $commissionEarnedBeforeReversal = $commissionBaseBeforeReversal * self::COMMISSION_RATE;
-        $commissionReversal = $refunds * self::COMMISSION_RATE;
-        $netCommission = $commissionEarnedBeforeReversal - $commissionReversal;
-        $netCommissionableSales = $grossSales - $sellerDiscounts - $refunds;
-        $netEarnings = $grossSales - $sellerDiscounts - $refunds - $netCommission;
-        $totalDeductions = $sellerDiscounts + $refunds + $netCommission;
+    /* -----------------------------------------------------------------
+     * Shared report presentation helpers
+     * ----------------------------------------------------------------- */
 
-        return compact(
-            'grossSales',
-            'sellerDiscounts',
-            'refunds',
-            'commissionBaseBeforeReversal',
-            'commissionEarnedBeforeReversal',
-            'commissionReversal',
-            'netCommission',
-            'netCommissionableSales',
-            'netEarnings',
-            'totalDeductions'
-        );
+    private function changeLabel(?float $percent): string
+    {
+        if ($percent === null) {
+            return 'No prior-period data';
+        }
+
+        if ($percent > 0.05) {
+            return '↑ '.number_format($percent, 1).'%';
+        }
+
+        if ($percent < -0.05) {
+            return '↓ '.number_format(abs($percent), 1).'%';
+        }
+
+        return '0.0%';
+    }
+
+    /**
+     * @return array{change: string, context: string, icon: string}
+     */
+    private function metricChange(?float $percent, string $previousLabel): array
+    {
+        if ($percent === null) {
+            return ['change' => '—', 'context' => 'no prior-period data', 'icon' => 'minus'];
+        }
+
+        return [
+            'change' => ($percent > 0.05 ? '+' : ($percent < -0.05 ? '−' : '')).number_format(abs($percent), 1).'%',
+            'context' => 'vs '.$previousLabel,
+            'icon' => $percent > 0.05 ? 'arrow-up-right' : ($percent < -0.05 ? 'arrow-down-right' : 'minus'),
+        ];
+    }
+
+    /**
+     * Chart geometry for money series in viewBox coordinates.
+     * Money stays in minor units; only pixel coordinates are derived.
+     *
+     * @param  array<int, array{label: string, value_minor: int}>  $series
+     * @return array{points: array<int, array{0: int, 1: int}>, polyline: string, area: string, has_data: bool, labels: array<int, string>, y_axis: array<int, string>}
+     */
+    private function chartGeometry(
+        array $series,
+        int $xStart,
+        int $xEnd,
+        int $yTop,
+        int $yBottom,
+        int $yLabelCount,
+        int $labelLimit,
+    ): array {
+        $values = array_map(fn (array $point): int => max(0, (int) ($point['value_minor'] ?? 0)), $series);
+        $count = count($values);
+        $maxValue = $count > 0 ? max($values) : 0;
+        $intervals = max(1, $yLabelCount - 1);
+        $axisMax = max(1, $this->niceChartStep($maxValue, $intervals) * $intervals);
+
+        $points = [];
+
+        if ($count === 1) {
+            $y = $this->chartY($values[0], $axisMax, $yTop, $yBottom);
+            $points = [[$xStart, $y], [$xEnd, $y]];
+        } elseif ($count > 1) {
+            $span = $xEnd - $xStart;
+
+            foreach ($values as $index => $value) {
+                $points[] = [
+                    $xStart + (int) round($index * $span / ($count - 1)),
+                    $this->chartY($value, $axisMax, $yTop, $yBottom),
+                ];
+            }
+        }
+
+        $yAxis = [];
+
+        for ($index = 0; $index < $yLabelCount; $index++) {
+            $value = (int) round($axisMax * ($yLabelCount - 1 - $index) / $intervals);
+            $yAxis[] = number_format(intdiv($value, 100));
+        }
+
+        return [
+            'points' => $points,
+            'polyline' => implode(' ', array_map(fn (array $point): string => $point[0].','.$point[1], $points)),
+            'area' => $points === []
+                ? ''
+                : 'M'.implode(' L', array_map(fn (array $point): string => $point[0].' '.$point[1], $points))
+                    .' L'.$xEnd.' '.$yBottom.' L'.$xStart.' '.$yBottom.' Z',
+            'has_data' => $maxValue > 0,
+            'labels' => $this->chartLabels(array_map(fn (array $point): string => (string) ($point['label'] ?? ''), $series), $labelLimit),
+            'y_axis' => $yAxis,
+        ];
+    }
+
+    private function chartY(int $valueMinor, int $axisMaxMinor, int $yTop, int $yBottom): int
+    {
+        $ratio = $axisMaxMinor > 0 ? min(1, $valueMinor / $axisMaxMinor) : 0;
+
+        return (int) round($yBottom - ($ratio * ($yBottom - $yTop)));
+    }
+
+    private function niceChartStep(int $maxValueMinor, int $intervals): int
+    {
+        if ($maxValueMinor <= 0) {
+            return 100;
+        }
+
+        $raw = $maxValueMinor / max(1, $intervals);
+        $magnitude = 10 ** (int) floor(log10(max(1, $raw)));
+
+        foreach ([1, 2, 2.5, 5, 10] as $factor) {
+            $candidate = (int) round($magnitude * $factor);
+
+            if ($candidate >= $raw) {
+                return $candidate;
+            }
+        }
+
+        return (int) round($magnitude * 10);
+    }
+
+    /**
+     * @param  array<int, string>  $labels
+     * @return array<int, string>
+     */
+    private function chartLabels(array $labels, int $limit): array
+    {
+        $count = count($labels);
+
+        if ($count <= $limit) {
+            return array_values($labels);
+        }
+
+        $picked = [];
+
+        for ($index = 0; $index < $limit; $index++) {
+            $label = $labels[(int) round($index * ($count - 1) / ($limit - 1))] ?? '';
+
+            if ($picked === [] || end($picked) !== $label) {
+                $picked[] = $label;
+            }
+        }
+
+        return array_values($picked);
+    }
+
+    private function dashboardChart(array $series): array
+    {
+        return $this->chartGeometry($series, xStart: 10, xEnd: 752, yTop: 60, yBottom: 214, yLabelCount: 5, labelLimit: 7);
+    }
+
+    private function reportChart(array $series): array
+    {
+        return $this->chartGeometry($series, xStart: 24, xEnd: 676, yTop: 60, yBottom: 190, yLabelCount: 4, labelLimit: 7);
+    }
+
+    private function commissionRateLabel(float|int $commissionRate): string
+    {
+        return rtrim(rtrim(number_format((float) $commissionRate, 2, '.', ''), '0'), '.');
+    }
+
+    private function decimalMinor(int $amountMinor): string
+    {
+        $sign = $amountMinor < 0 ? '-' : '';
+        $absolute = abs($amountMinor);
+
+        return $sign.intdiv($absolute, 100).'.'.str_pad((string) ($absolute % 100), 2, '0', STR_PAD_LEFT);
+    }
+
+    private function csvChange(?float $percent): string
+    {
+        if ($percent === null) {
+            return '—';
+        }
+
+        return ($percent > 0.05 ? '+' : ($percent < -0.05 ? '−' : '')).number_format(abs($percent), 1).'%';
+    }
+
+    private function csvDownload(string $filename, callable $writer): StreamedResponse
+    {
+        return response()->streamDownload(function () use ($writer): void {
+            $stream = fopen('php://output', 'wb');
+
+            if ($stream === false) {
+                return;
+            }
+
+            fwrite($stream, "\xEF\xBB\xBF");
+            $writer($stream);
+            fclose($stream);
+        }, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Cache-Control' => 'private, no-store',
+        ]);
     }
 
     private function persistedOrdersData(
         Request $request,
         BuyerCatalogService $catalog,
         SellerOrderTrackingService $tracking,
-    ): array
-    {
+    ): array {
         $storeId = $request->user()->sellerProfile?->store?->id;
         if (! $storeId) {
             return [];
@@ -214,74 +385,180 @@ class SellerWorkflowController extends Controller
         Request $request,
         BuyerCatalogService $catalog,
         SellerOrderTrackingService $tracking,
-    ): View
-    {
-        $finance = $this->financeSnapshot();
-        $orders = collect($this->persistedOrdersData($request, $catalog, $tracking));
+        SellerEarningsService $earnings,
+        SellerInventoryService $inventory,
+    ): View {
+        $period = $earnings->dashboardPeriodRange($request->query('period'));
+        $profile = $request->user()->sellerProfile;
+        $storeId = $profile?->store?->id;
 
+        $orders = collect($this->persistedOrdersData($request, $catalog, $tracking));
         $newOrders = $orders->where('status_key', 'new')->count();
         $toPrepare = $orders->where('status_key', 'to-prepare')->count();
         $readyPickup = $orders->where('status_key', 'ready-pickup')->count();
-        $waybillToPrint = 0;
+
+        $awaitingReturns = $storeId
+            ? ReturnRequest::query()->where('store_id', $storeId)->where('status', 'awaiting_seller')->count()
+            : 0;
+        $openCases = $storeId
+            ? ReturnRequest::query()
+                ->where('store_id', $storeId)
+                ->whereNotIn('status', ['resolved', 'rejected'])
+                ->count()
+            : 0;
+
+        $inventoryAttention = $inventory->inventoryFor($request->user())['inventoryAttention'];
+
+        $finance = $earnings->dashboardFinanceFor(
+            $profile,
+            $period['from'],
+            $period['to'],
+            (string) $request->query('interval', 'daily'),
+        );
+        $fulfillment = $earnings->fulfillmentRateFor($profile, $period['from'], $period['to']);
+        $commissionRateLabel = $this->commissionRateLabel($earnings->commissionRate());
+        $salesChange = $finance['change']['sales'];
+        $netChange = $finance['change']['net_earnings'];
 
         return view('seller.Dashboard.dashboard', [
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
-            'dashboard' => [
-                'updated_at' => '5:42 PM',
-                'action_count' => $newOrders + $toPrepare + $readyPickup + $waybillToPrint,
-                'pickup_time' => '3:00 PM',
-                'actions' => [
-                    ['count' => $newOrders, 'label' => 'new orders', 'detail' => 'Review and confirm stock', 'action' => 'Review', 'icon' => 'clipboard-list', 'tone' => 'amber', 'target' => route('seller.orders.new')],
-                    ['count' => $toPrepare, 'label' => 'orders to prepare', 'detail' => 'Confirmed / preparing', 'action' => 'Prepare', 'icon' => 'package', 'tone' => 'olive', 'target' => route('seller.orders.prepare')],
-                    ['count' => $waybillToPrint, 'label' => 'waybill to print', 'detail' => 'Required before ready for pickup', 'action' => 'Print', 'icon' => 'printer', 'tone' => 'brown', 'target' => route('seller.fulfillment.waybills')],
-                    ['count' => $readyPickup, 'label' => 'parcels ready for pickup', 'detail' => 'Submit to logistics', 'action' => 'Arrange pickup', 'icon' => 'truck', 'tone' => 'green', 'target' => route('seller.fulfillment.pickups')],
-                ],
+            'periodKey' => $period['key'],
+            'periodLabel' => $earnings->rangeLabel($period['from'], $period['to']),
+            'dashboardActions' => [
+                ['count' => $newOrders, 'label' => 'Orders to Confirm', 'detail' => 'Review and confirm stock', 'icon' => 'shopping-cart', 'route' => route('seller.orders.new')],
+                ['count' => $inventoryAttention['low'] + $inventoryAttention['out'], 'label' => 'Low-Stock Products', 'detail' => 'At or below stock threshold', 'icon' => 'package', 'route' => route('seller.inventory')],
+                ['count' => $awaitingReturns, 'label' => 'Return Requests', 'detail' => 'Awaiting your response', 'icon' => 'rotate-ccw', 'route' => route('seller.orders.returns')],
+                ['count' => $readyPickup, 'label' => 'Orders Ready for Pickup', 'detail' => 'Ready for courier collection', 'icon' => 'truck', 'route' => route('seller.fulfillment.pickups')],
             ],
-            'stats' => [
-                ['label' => 'Gross Sales', 'value' => $this->money($finance['grossSales']), 'change' => '+12.5% this month', 'icon' => 'philippine-peso', 'tone' => 'gold'],
-                ['label' => 'Net Earnings', 'value' => $this->money($finance['netEarnings']), 'change' => 'After discounts, refunds & commission', 'icon' => 'package-check', 'tone' => 'olive'],
-                ['label' => 'Platform Commission', 'value' => $this->money($finance['netCommission']), 'change' => '10% after refund reversal', 'icon' => 'badge-percent', 'tone' => 'brown'],
-                ['label' => 'Fulfillment Rate', 'value' => '96.8%', 'change' => '+1.4% vs last month', 'icon' => 'circle-check-big', 'tone' => 'olive'],
+            'performanceCards' => [
+                ['label' => 'Total Sales', 'value' => $this->moneyFromMinor($finance['sales']['gross_minor']), 'change' => $this->changeLabel($salesChange)],
+                ['label' => 'Total Orders', 'value' => number_format($finance['sales']['orders']), 'change' => $this->changeLabel($finance['change']['orders'])],
+                ['label' => 'Net Earnings', 'value' => $this->moneyFromMinor($finance['ledger']['net_earnings_minor']), 'change' => $this->changeLabel($netChange)],
+                ['label' => 'Platform Commission', 'value' => $this->moneyFromMinor($finance['ledger']['net_commission_minor']), 'change' => $this->changeLabel($finance['change']['commission'])],
             ],
-            'sales' => [9800, 13400, 13800, 18100, 22800, 15700, 24100],
-            'topProducts' => [
-                ['name' => 'Classic Linen Shirt', 'sku' => 'CLS-LINEN-SHIRT', 'sold' => 42, 'revenue' => '₱54,600', 'percent' => 100, 'icon' => 'shirt'],
-                ['name' => 'Canvas Tote Bag', 'sku' => 'CNV-TOTE-BAG', 'sold' => 31, 'revenue' => '₱27,869', 'percent' => 74, 'icon' => 'shopping-bag'],
-                ['name' => 'Everyday Sneakers', 'sku' => 'EV-SNKRS-WHT', 'sold' => 18, 'revenue' => '₱23,382', 'percent' => 43, 'icon' => 'footprints'],
+            'salesChart' => $this->dashboardChart($finance['series']),
+            'salesTotal' => $this->moneyFromMinor($finance['sales']['gross_minor']),
+            'salesChange' => $this->changeLabel($salesChange),
+            'salesChangeNote' => $salesChange === null ? 'no prior-period sales to compare' : 'from previous period',
+            'chartInterval' => $finance['interval'],
+            'dashboardProducts' => collect($finance['products'])->map(fn (array $product): array => [
+                'name' => $product['name'],
+                'variant' => $product['variant'],
+                'sold' => $product['units'],
+                'revenue' => $this->moneyFromMinor($product['gross_minor']),
+                'image_url' => $product['image_url'],
+                'icon' => 'package',
+            ])->values(),
+            'earningsTotal' => $this->moneyFromMinor($finance['ledger']['net_earnings_minor']),
+            'earningsChange' => $this->changeLabel($netChange),
+            'earningsBreakdown' => [
+                ['label' => 'Total Sales', 'value' => $this->moneyFromMinor($finance['ledger']['gross_sales_minor'])],
+                ['label' => 'Platform Commission ('.$commissionRateLabel.'%)', 'value' => $this->deductionMoney($finance['ledger']['net_commission_minor'])],
+                ['label' => 'Discounts & Refunds', 'value' => $this->deductionMoney($finance['ledger']['seller_discounts_minor'] + $finance['ledger']['refunds_minor'])],
             ],
-            'payoutSummary' => [
-                ['label' => 'Gross completed sales', 'value' => $this->money($finance['grossSales'])],
-                ['label' => 'Seller discounts + refunds', 'value' => '−'.$this->money($finance['sellerDiscounts'] + $finance['refunds'])],
-                ['label' => 'Platform commission (10%)', 'value' => '−'.$this->money($finance['netCommission'])],
-                ['label' => 'Net earnings', 'value' => $this->money($finance['netEarnings'])],
-            ],
-            'pickupSummary' => [
-                'time' => '3:00 PM',
-                'date' => 'Today · Laguna route',
-                'ready' => $readyPickup,
-                'not_ready' => $toPrepare + $newOrders,
-            ],
-            'sellerHealth' => [
-                'status' => 'Good standing',
-                'score' => '96 / 100',
-                'summary' => 'No category violations or account warnings. One customer case is still open.',
-                'items' => [
-                    ['label' => 'Product compliance', 'value' => '0 violations', 'note' => 'All active products match the registered business category.', 'tone' => 'success', 'icon' => 'shield-check'],
-                    ['label' => 'Open disputes', 'value' => '1 case', 'note' => 'Respond before the case deadline to protect your seller record.', 'tone' => 'warning', 'icon' => 'messages-square'],
-                    ['label' => 'Response rate', 'value' => '91%', 'note' => 'Buyer messages answered within the expected response window.', 'tone' => 'info', 'icon' => 'message-circle-reply'],
-                    ['label' => 'Fulfillment reliability', 'value' => '96.8%', 'note' => 'Orders prepared and handed over within seller deadlines.', 'tone' => 'success', 'icon' => 'package-check'],
-                ],
-            ],
+            'earningsNet' => $this->moneyFromMinor($finance['ledger']['net_earnings_minor']),
+            'pickupSummary' => $this->dashboardPickupSummary($storeId, $readyPickup),
+            'healthRows' => $this->dashboardHealthRows($profile, $fulfillment, $inventoryAttention, $openCases),
         ]);
+    }
+
+    /**
+     * Fulfillment-rate labels follow the documented formula:
+     * completed ÷ (completed + cancelled) Seller Orders created in the period;
+     * open orders are excluded and "—" is shown until an order is finalized.
+     */
+    private function dashboardHealthRows(
+        ?SellerProfile $profile,
+        array $fulfillment,
+        array $inventoryAttention,
+        int $openCases,
+    ): array {
+        $standing = (string) ($profile?->standing_status ?? 'good_standing');
+        $lowStockCount = (int) $inventoryAttention['low'] + (int) $inventoryAttention['out'];
+
+        $rate = $fulfillment['rate'];
+        $cancellationRate = ($fulfillment['completed'] + $fulfillment['cancelled']) > 0
+            ? round($fulfillment['cancelled'] / ($fulfillment['completed'] + $fulfillment['cancelled']) * 100, 1)
+            : null;
+
+        return [
+            [
+                'label' => 'Account Status',
+                'value' => Str::headline($standing),
+                'tone' => $standing === 'good_standing' ? 'success' : 'warning',
+            ],
+            [
+                'label' => 'Order Fulfillment Rate',
+                'value' => $rate === null ? '—' : number_format($rate, 1).'%',
+                'tone' => $rate === null ? 'neutral' : ($rate >= 90 ? 'success' : 'warning'),
+            ],
+            [
+                'label' => 'Cancellation Rate',
+                'value' => $cancellationRate === null ? '—' : number_format($cancellationRate, 1).'%',
+                'tone' => $cancellationRate === null ? 'neutral' : ($cancellationRate <= 10 ? 'success' : 'warning'),
+            ],
+            [
+                'label' => 'Product Stock Level',
+                'value' => $lowStockCount > 0
+                    ? $lowStockCount.' low-stock '.($lowStockCount === 1 ? 'item' : 'items')
+                    : 'All products above threshold',
+                'tone' => $lowStockCount > 0 ? 'warning' : 'success',
+            ],
+            [
+                'label' => 'Open Cases',
+                'value' => $openCases > 0 ? $openCases.' open '.($openCases === 1 ? 'case' : 'cases') : 'No open cases',
+                'tone' => $openCases > 0 ? 'warning' : 'success',
+            ],
+        ];
+    }
+
+    /**
+     * @return array{count: int, has_schedule: bool, date_label: ?string, time_label: ?string}
+     */
+    private function dashboardPickupSummary(?int $storeId, int $readyCount): array
+    {
+        $next = $storeId
+            ? PickupRequest::query()
+                ->where('store_id', $storeId)
+                ->whereIn('status', ['requested', 'verified', 'scheduled'])
+                ->whereDate('requested_date', '>=', now()->toDateString())
+                ->orderBy('requested_date')
+                ->orderBy('window_start')
+                ->with('logisticsProfile')
+                ->first()
+            : null;
+
+        if (! $next) {
+            return [
+                'count' => $readyCount,
+                'has_schedule' => false,
+                'date_label' => null,
+                'time_label' => null,
+            ];
+        }
+
+        $date = $next->requested_date;
+        $start = $next->window_start;
+        $end = $next->window_end;
+
+        return [
+            'count' => $readyCount,
+            'has_schedule' => true,
+            'date_label' => $date?->isToday()
+                ? 'Today'
+                : ($date?->isTomorrow() ? 'Tomorrow' : ($date?->format('M j, Y') ?? 'Scheduled')),
+            'time_label' => $start && $end
+                ? $start->format('g:i A').'–'.$end->format('g:i A').' · '.($next->logisticsProfile?->display_name ?? 'Logistics provider')
+                : 'Window to be confirmed',
+        ];
     }
 
     public function orders(
         Request $request,
         BuyerCatalogService $catalog,
         SellerOrderTrackingService $tracking,
-    ): View
-    {
+    ): View {
         $orders = $this->persistedOrdersData($request, $catalog, $tracking);
         $allowed = ['all', 'new', 'to-prepare', 'ready-pickup', 'shipped', 'completed', 'cancelled-returned'];
         $requestedStatus = (string) $request->query('status', 'all');
@@ -381,31 +658,11 @@ class SellerWorkflowController extends Controller
         ])->header('Cache-Control', 'private, no-store');
     }
 
-    public function waybills(): View
-    {
-        return view('seller.fulfillment.waybills', [
-            'seller' => $this->seller(),
-            'notifications' => $this->notifications(),
-            'summary' => [
-                ['label' => 'Ready to Print', 'value' => '1', 'note' => 'Preparing order is packed', 'icon' => 'printer', 'tone' => 'gold'],
-                ['label' => 'Printed Today', 'value' => '2', 'note' => 'Ready for pickup', 'icon' => 'file-check-2', 'tone' => 'olive'],
-                ['label' => 'Reprint Required', 'value' => '0', 'note' => 'No damaged labels', 'icon' => 'refresh-cw', 'tone' => 'brown'],
-                ['label' => 'Pickup Cutoff', 'value' => '2:30 PM', 'note' => 'For today’s collection', 'icon' => 'clock-3', 'tone' => 'warning'],
-            ],
-            'waybills' => [
-                ['order' => '#BR-1057', 'tracking' => 'Pending generation', 'customer' => 'Carlo Reyes', 'destination' => 'Calamba, Laguna', 'courier' => 'Bearly Logistics', 'packages' => 1, 'weight' => '1.0 kg', 'size' => '34 × 24 × 13 cm', 'pickup' => 'Today · 3:00 PM', 'status' => 'Ready to Print', 'status_key' => 'ready', 'action' => 'Print Waybill'],
-                ['order' => '#BR-1056', 'tracking' => 'BRLY-784231', 'customer' => 'Ana Cruz', 'destination' => 'Los Baños, Laguna', 'courier' => 'Bearly Logistics', 'packages' => 1, 'weight' => '0.9 kg', 'size' => '30 × 22 × 10 cm', 'pickup' => 'Today · 3:00 PM', 'status' => 'Printed', 'status_key' => 'printed', 'action' => 'View Label'],
-                ['order' => '#BR-1055', 'tracking' => 'BRLY-784230', 'customer' => 'Sofia Mendoza', 'destination' => 'Cabuyao, Laguna', 'courier' => 'Bearly Logistics', 'packages' => 1, 'weight' => '0.5 kg', 'size' => '24 × 18 × 7 cm', 'pickup' => 'Today · 3:00 PM', 'status' => 'Printed', 'status_key' => 'printed', 'action' => 'View Label'],
-            ],
-            'history' => [
-                ['time' => 'Today · 1:08 PM', 'order' => '#BR-1056', 'tracking' => 'BRLY-784231', 'action' => 'Waybill printed', 'actor' => 'Bea Rivera'],
-                ['time' => 'Today · 12:52 PM', 'order' => '#BR-1055', 'tracking' => 'BRLY-784230', 'action' => 'Waybill printed', 'actor' => 'Bea Rivera'],
-            ],
-        ]);
-    }
-
-    public function pickupRequests(Request $request, SellerPickupRequestService $pickupService): View
-    {
+    public function pickupRequests(
+        Request $request,
+        SellerPickupRequestService $pickupService,
+        BuyerCatalogService $catalog,
+    ): View {
         $user = $request->user();
         $sellerProfile = SellerProfile::query()
             ->where('user_id', $user->id)
@@ -452,13 +709,14 @@ class SellerWorkflowController extends Controller
                 'pickupAddress',
                 'latestAssignment.riderProfile.user',
                 'parcels.waybill',
-                'parcels.shipment.sellerOrder',
+                'parcels.shipment.sellerOrder.items.product.images.variant',
+                'parcels.shipment.sellerOrder.items.variant',
             ])
             ->latest('created_at')
             ->get();
 
         $requests = $pickupRequests
-            ->map(function (PickupRequest $pickupRequest): array {
+            ->map(function (PickupRequest $pickupRequest) use ($catalog): array {
                 $parcels = $pickupRequest->parcels
                     ->filter(fn ($parcel): bool => (int) $parcel->shipment?->logistics_profile_id === (int) $pickupRequest->logistics_profile_id
                         && (int) $parcel->shipment?->sellerOrder?->store_id === (int) $pickupRequest->store_id)
@@ -480,6 +738,15 @@ class SellerWorkflowController extends Controller
                     'id' => $pickupRequest->pickup_no,
                     'orders' => $sellerOrders->count().' '.($sellerOrders->count() === 1 ? 'order' : 'orders'),
                     'order_numbers' => $sellerOrders->pluck('seller_order_no')->implode(', '),
+                    'products' => $sellerOrders
+                        ->flatMap(fn (SellerOrder $sellerOrder) => $sellerOrder->items->map(fn ($item): array => [
+                            'name' => $item->product_name ?: 'Unnamed product',
+                            'variant' => trim((string) $item->variant_name),
+                            'quantity' => (int) $item->quantity,
+                            'image_url' => $catalog->orderItemImageUrl($item),
+                        ]))
+                        ->values()
+                        ->all(),
                     'packages' => $parcels->count(),
                     'provider' => $pickupRequest->logisticsProfile?->display_name ?? 'Provider unavailable',
                     'schedule' => ($date?->format('M j, Y') ?? 'Date unavailable').' · '.($start?->format('g:i A') ?? '—').'–'.($end?->format('g:i A') ?? '—'),
@@ -587,18 +854,18 @@ class SellerWorkflowController extends Controller
         ]);
     }
 
-    public function returns(Request $request): View
+    public function returns(Request $request, BuyerCatalogService $catalog): View
     {
         $store = $request->user()->sellerProfile?->store;
         abort_unless($store, 404);
 
         $returnRequests = ReturnRequest::query()
             ->where('store_id', $store->id)
-            ->with(['order', 'buyer', 'sellerOrder', 'items.orderItem', 'evidence', 'events.actor', 'refunds.commissions', 'refunds.sellerTransactions', 'refunds.sellerRecovery.events.sellerPayout', 'returnShipment.waybill', 'returnShipment.events'])
+            ->with(['order', 'buyer', 'sellerOrder', 'items.orderItem.product.images.variant', 'items.orderItem.variant', 'evidence', 'events.actor', 'refunds.commissions', 'refunds.sellerTransactions', 'refunds.sellerRecovery.events.sellerPayout', 'returnShipment.waybill', 'returnShipment.events'])
             ->latest('submitted_at')
             ->latest('id')
             ->get();
-        $cases = $returnRequests->map(fn (ReturnRequest $case): array => $this->returnCaseData($case))->all();
+        $cases = $returnRequests->map(fn (ReturnRequest $case): array => $this->returnCaseData($case, $catalog))->all();
         $completedThisMonthMinor = Refund::query()
             ->whereHas('returnRequest', fn ($query) => $query->where('store_id', $store->id))
             ->where('status', 'completed')
@@ -689,7 +956,7 @@ class SellerWorkflowController extends Controller
         ]);
         $files = array_values($request->file('evidence', []));
         if ($files === [] && ! filled($data['note'] ?? null)) {
-            throw \Illuminate\Validation\ValidationException::withMessages(['evidence' => 'Add a note or at least one evidence file.']);
+            throw ValidationException::withMessages(['evidence' => 'Add a note or at least one evidence file.']);
         }
 
         $case = $returns->addSellerEvidence($request->user(), $returnRequest, $data['note'] ?? null, $files);
@@ -812,6 +1079,9 @@ class SellerWorkflowController extends Controller
                 'image' => $catalog && $item->orderItem
                     ? $catalog->orderItemImageUrl($item->orderItem)
                     : null,
+                'image_url' => $catalog && $item->orderItem
+                    ? $catalog->orderItemImageUrl($item->orderItem)
+                    : '',
                 'quantity' => (int) $item->quantity,
                 'amount' => $this->money((int) $item->refund_amount_minor / 100),
                 'condition_code' => $item->condition_code,
@@ -890,145 +1160,469 @@ class SellerWorkflowController extends Controller
         ];
     }
 
-    private function returnCases(): array
-    {
-        return [
-            ['id' => 'RR-2041', 'order' => '#BR-1046', 'customer' => 'Maria Santos', 'product' => 'Classic Linen Shirt · Olive / M', 'sku' => 'CLS-OLV-M', 'request' => 'Return & Refund', 'reason' => 'Wrong size received', 'amount' => '₱1,299', 'submitted' => 'Today · 9:20 AM', 'deadline' => '1h 42m left', 'status' => 'Action Required', 'status_key' => 'action-required', 'tone' => 'warning', 'evidence' => '3 photos', 'buyer_note' => 'The tag says Medium, but the actual fit and measurements are smaller than the listed size.', 'seller_response' => 'No response submitted yet.', 'resolution' => 'Awaiting seller response', 'action' => 'Review Case', 'tracking' => 'Not yet created', 'commission_effect' => 'No adjustment yet', 'earnings_effect' => 'No adjustment yet'],
-            ['id' => 'RR-2040', 'order' => '#BR-1045', 'customer' => 'Paolo Ramos', 'product' => 'Canvas Tote Bag · Natural', 'sku' => 'CTB-NAT-OS', 'request' => 'Refund Only', 'reason' => 'Missing item', 'amount' => '₱899', 'submitted' => 'Today · 8:05 AM', 'deadline' => '3h 10m left', 'status' => 'Action Required', 'status_key' => 'action-required', 'tone' => 'warning', 'evidence' => '1 unboxing video', 'buyer_note' => 'The parcel arrived sealed, but the tote bag was not inside the package.', 'seller_response' => 'No response submitted yet.', 'resolution' => 'Awaiting seller response', 'action' => 'Review Case', 'tracking' => 'Not yet created', 'commission_effect' => 'No adjustment yet', 'earnings_effect' => 'No adjustment yet'],
-            ['id' => 'RR-2038', 'order' => '#BR-1044', 'customer' => 'Carlo Reyes', 'product' => 'Everyday Sneakers · White / 39', 'sku' => 'ES-WHT-39', 'request' => 'Return & Refund', 'reason' => 'Item not as described', 'amount' => '₱1,780', 'submitted' => 'Yesterday · 4:10 PM', 'deadline' => 'Responded', 'status' => 'Under Review', 'status_key' => 'under-review', 'tone' => 'review', 'evidence' => '4 photos', 'buyer_note' => 'The color and sole pattern do not match the product listing.', 'seller_response' => 'Requested platform review; warehouse packing photo was attached.', 'resolution' => 'Platform reviewing both parties’ evidence', 'action' => 'View Case', 'tracking' => 'Not yet created', 'commission_effect' => 'Pending platform decision', 'earnings_effect' => 'Pending platform decision'],
-            ['id' => 'RR-2035', 'order' => '#BR-1041', 'customer' => 'Sofia Mendoza', 'product' => 'Classic Linen Shirt · Cream / L', 'sku' => 'CLS-CRM-L', 'request' => 'Refund Only', 'reason' => 'Damaged item', 'amount' => '₱1,299', 'submitted' => 'Aug 30, 2026', 'deadline' => 'Responded', 'status' => 'Under Review', 'status_key' => 'under-review', 'tone' => 'review', 'evidence' => '2 photos', 'buyer_note' => 'There is a visible tear near the left sleeve seam.', 'seller_response' => 'Accepted buyer evidence and approved refund without return.', 'resolution' => 'Refund approval being processed', 'action' => 'View Case', 'tracking' => 'Not required', 'commission_effect' => 'Will reverse if refund is finalized', 'earnings_effect' => 'Will reverse if refund is finalized'],
-            ['id' => 'RR-2031', 'order' => '#BR-1036', 'customer' => 'Jamie Lim', 'product' => 'Everyday Sneakers · Black / 40', 'sku' => 'ES-BLK-40', 'request' => 'Return & Refund', 'reason' => 'Damaged during delivery', 'amount' => '₱1,780', 'submitted' => 'Aug 29, 2026', 'deadline' => 'Return by Sep 16', 'status' => 'Return Shipping', 'status_key' => 'return-shipping', 'tone' => 'shipping', 'evidence' => '3 photos', 'buyer_note' => 'The shoe box and right shoe were crushed when delivered.', 'seller_response' => 'Return approved after reviewing courier damage evidence.', 'resolution' => 'Return parcel is in transit to seller', 'action' => 'Track Return', 'tracking' => 'BRLY-RET-20431', 'commission_effect' => 'Pending return completion', 'earnings_effect' => 'Pending return completion'],
-            ['id' => 'RR-2025', 'order' => '#BR-1047', 'customer' => 'Anne Cruz', 'product' => 'Classic Linen Shirt · Olive / M', 'sku' => 'CLS-OLV-M', 'request' => 'Refund Only', 'reason' => 'Seller approved refund', 'amount' => '₱1,299', 'submitted' => 'Sep 7, 2026', 'deadline' => 'Closed Sep 8', 'status' => 'Refunded', 'status_key' => 'resolved', 'tone' => 'resolved', 'evidence' => '2 photos', 'buyer_note' => 'The item arrived with a manufacturing defect.', 'seller_response' => 'Refund approved. No item return required.', 'resolution' => '₱1,299 returned to buyer via GCash', 'action' => 'View Details', 'tracking' => 'Not required', 'commission_effect' => '+₱129.90 commission reversal', 'earnings_effect' => '−₱1,169.10 seller earnings reversal'],
-        ];
-    }
+    public function financeEarnings(
+        Request $request,
+        SellerEarningsService $earnings,
+        SellerWalletService $wallets,
+    ): View {
+        $sellerProfile = $request->user()->sellerProfile;
 
-    private function financeTransactionRows(): array
-    {
-        return [
-            ['date' => 'Sep 10, 2026', 'order' => '#BR-1050', 'gross' => '₱1,299.00', 'discount' => '₱0.00', 'refund' => '₱0.00', 'commissionable' => '₱1,299.00', 'commission' => '−₱129.90', 'commission_reversal' => '—', 'net' => '₱1,169.10', 'status' => 'Available', 'status_key' => 'available', 'note' => 'Order completed; 10% commission finalized.'],
-            ['date' => 'Sep 11, 2026', 'order' => '#BR-1051', 'gross' => '₱1,780.00', 'discount' => '₱0.00', 'refund' => '₱0.00', 'commissionable' => '₱1,780.00', 'commission' => 'Estimated −₱178.00', 'commission_reversal' => '—', 'net' => 'Estimated ₱1,602.00', 'status' => 'Pending confirmation', 'status_key' => 'pending', 'note' => 'Delivered; waits for buyer confirmation before settlement.'],
-            ['date' => 'Sep 11, 2026', 'order' => '#BR-1052', 'gross' => '₱899.00', 'discount' => '₱90.00', 'refund' => '₱0.00', 'commissionable' => '₱809.00', 'commission' => 'Estimated −₱80.90', 'commission_reversal' => '—', 'net' => 'Estimated ₱728.10', 'status' => 'Pending', 'status_key' => 'pending', 'note' => 'Out for delivery; commission is not final yet.'],
-            ['date' => 'Sep 8, 2026', 'order' => '#BR-1047', 'gross' => '₱1,299.00', 'discount' => '₱0.00', 'refund' => '−₱1,299.00', 'commissionable' => '₱0.00', 'commission' => '₱0.00', 'commission_reversal' => '+₱129.90', 'net' => '₱0.00', 'status' => 'Reversed', 'status_key' => 'reversed', 'note' => 'Full refund reversed the seller earnings and platform commission.'],
-            ['date' => 'Sep 8, 2026', 'order' => '#BR-1048', 'gross' => '₱1,299.00', 'discount' => '₱0.00', 'refund' => 'Cancelled', 'commissionable' => '₱0.00', 'commission' => '₱0.00', 'commission_reversal' => '—', 'net' => '₱0.00', 'status' => 'Cancelled', 'status_key' => 'cancelled', 'note' => 'Cancelled before completion; no commission is charged.'],
-        ];
-    }
+        if ($sellerProfile) {
+            // Idempotent: only releases eligible sale_earning_available rows
+            // into the wallet and never changes wallet eligibility itself.
+            $wallets->refreshForSeller($sellerProfile);
+        }
 
-    public function financeEarnings(): View
-    {
-        $finance = $this->financeSnapshot();
+        $snapshot = $earnings->dashboardFor($sellerProfile);
+        $finance = $snapshot['finance'];
+        $commissionRate = $snapshot['commission_rate'];
 
         return view('seller.Finance.earnings', [
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
-            'commissionRate' => self::COMMISSION_RATE * 100,
+            'commissionRate' => $commissionRate,
             'summary' => [
-                ['label' => 'Gross Sales', 'value' => $this->money($finance['grossSales']), 'note' => 'Completed sales before deductions'],
-                ['label' => 'Seller Discounts + Refunds', 'value' => '−'.$this->money($finance['sellerDiscounts'] + $finance['refunds']), 'note' => 'Seller-funded discounts and finalized refunds'],
-                ['label' => 'Platform Commission', 'value' => '−'.$this->money($finance['netCommission']), 'note' => '10% after refund commission reversal'],
-                ['label' => 'Net Earnings', 'value' => $this->money($finance['netEarnings']), 'note' => 'Amount attributable to the seller'],
+                ['label' => 'Gross Sales', 'value' => $this->moneyFromMinor($finance['gross_sales_minor']), 'note' => 'Finalized seller-order sales before discounts'],
+                ['label' => 'Seller Discounts + Refunds', 'value' => $this->moneyFromMinor(-$finance['seller_discounts_minor'] - $finance['refunds_minor']), 'note' => 'Posted seller-funded discounts and completed refunds'],
+                ['label' => 'Platform Commission', 'value' => $this->moneyFromMinor(-$finance['net_commission_minor']), 'note' => 'Finalized commission less completed refund reversals'],
+                ['label' => 'Net Earnings', 'value' => $this->moneyFromMinor($finance['net_earnings_minor']), 'note' => 'Posted seller ledger balance before payout batches'],
             ],
             'finance' => $finance,
-            'recentTransactions' => array_slice($this->financeTransactionRows(), 0, 4),
+            'recentTransactions' => $snapshot['recent_transactions'],
+            'settlements' => $snapshot['settlements'],
         ]);
     }
 
-    public function financeTransactions(): View
+    public function financeTransactions(Request $request, SellerEarningsService $earnings): View
     {
         return view('seller.Finance.transactions', [
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
-            'transactions' => $this->financeTransactionRows(),
-            'commissionRate' => self::COMMISSION_RATE * 100,
+            'transactions' => $earnings->transactionsFor($request->user()->sellerProfile),
+            'commissionRate' => $earnings->commissionRate(),
         ]);
     }
 
-    public function reportsOverview(): View
+    public function downloadSellerPayoutReceipt(
+        Request $request,
+        SellerPayout $payout,
+        AuditService $audit,
+    ): BinaryFileResponse {
+        $sellerProfileId = (int) ($request->user()->sellerProfile?->id ?? 0);
+        abort_unless($sellerProfileId > 0 && (int) $payout->seller_profile_id === $sellerProfileId, 404);
+        abort_unless(in_array(strtolower($payout->status), ['paid', 'completed'], true)
+            && $payout->paid_at !== null
+            && $payout->receipt_disk === 'local'
+            && filled($payout->receipt_path)
+            && Storage::disk('local')->exists($payout->receipt_path), 404);
+
+        $audit->record(
+            action: 'seller_payout.receipt_downloaded_by_seller',
+            module: 'Finance',
+            subject: $payout,
+            description: "Seller downloaded the verified payout proof for {$payout->payout_no}.",
+            newValues: ['payout_no' => $payout->payout_no],
+            severity: 'info',
+            request: $request,
+        );
+
+        $originalName = basename(str_replace('\\', '/', (string) $payout->receipt_original_name));
+        $downloadName = preg_replace('/[^A-Za-z0-9._ -]/', '_', $originalName) ?: 'seller-payout-receipt';
+
+        $response = response()->download(
+            Storage::disk('local')->path($payout->receipt_path),
+            Str::limit($downloadName, 200, ''),
+        );
+        $response->setPrivate();
+        $response->headers->set('Cache-Control', 'private, no-store');
+        $response->headers->set('X-Content-Type-Options', 'nosniff');
+
+        return $response;
+    }
+
+    private function moneyFromMinor(int $amountMinor): string
     {
-        $finance = $this->financeSnapshot();
+        $sign = $amountMinor < 0 ? '−' : '';
+
+        return $sign.'₱'.number_format(abs($amountMinor) / 100, 2);
+    }
+
+    /**
+     * Deduction amount for HTML: a leading minus for deductions, or a
+     * leading plus when the amount is a credit (e.g. finalized commission
+     * reversals exceeding the period's commission). The formatter is never
+     * double-prefixed with another sign.
+     */
+    private function deductionMoney(int $amountMinor): string
+    {
+        return $amountMinor < 0
+            ? '+'.$this->moneyFromMinor(abs($amountMinor))
+            : '−'.$this->moneyFromMinor($amountMinor);
+    }
+
+    /**
+     * Sign-safe deduction amount for CSV cells. decimalMinor() already
+     * emits '-' for negative values, so credits are written with a leading
+     * '+100.00' instead of double-signing the amount.
+     */
+    private function decimalDeduction(int $amountMinor): string
+    {
+        return $amountMinor < 0
+            ? '+'.$this->decimalMinor(abs($amountMinor))
+            : '-'.$this->decimalMinor($amountMinor);
+    }
+
+    public function reportsOverview(Request $request, SellerEarningsService $earnings): View
+    {
+        $range = $earnings->reportRange($request->query('from'), $request->query('to'));
+        $data = $earnings->overviewFor($request->user()->sellerProfile, $range['from'], $range['to']);
+        $periodLabel = $earnings->rangeLabel($range['from'], $range['to']);
+        $previousLabel = $earnings->rangeLabel($data['previous_period']['from'], $data['previous_period']['to']);
+        $commissionRateLabel = $this->commissionRateLabel($earnings->commissionRate());
+        $fullMonth = $range['from']->isStartOfMonth() && $range['to']->isEndOfMonth() && $range['from']->isSameMonth($range['to']);
+        $grossChange = $data['change']['gross'];
 
         return view('seller.Reports.overview', [
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
-            'period' => 'Aug 1 – Aug 31, 2026',
+            'period' => $periodLabel,
+            'periodTitle' => $periodLabel,
+            'previousLabel' => $previousLabel,
+            'dateRange' => ['from' => $range['from']->toDateString(), 'to' => $range['to']->toDateString()],
             'metrics' => [
-                ['label' => 'Net Earnings', 'value' => $this->money($finance['netEarnings']), 'change' => '+10.8%', 'context' => 'after deductions', 'primary' => true],
-                ['label' => 'Gross Sales', 'value' => $this->money($finance['grossSales']), 'change' => '+12.5%', 'context' => 'vs July'],
-                ['label' => 'Orders', 'value' => '91', 'change' => '+8.3%', 'context' => 'vs July'],
-                ['label' => 'Average Order', 'value' => '₱1,411', 'change' => '+3.9%', 'context' => 'vs July'],
+                array_merge(
+                    ['label' => 'Net Earnings', 'value' => $this->moneyFromMinor($data['ledger']['net_earnings_minor']), 'primary' => true],
+                    $this->metricChange($data['change']['net_earnings'], $previousLabel),
+                ),
+                array_merge(
+                    ['label' => 'Gross Sales', 'value' => $this->moneyFromMinor($data['totals']['gross_minor'])],
+                    $this->metricChange($grossChange, $previousLabel),
+                ),
+                array_merge(
+                    ['label' => 'Orders', 'value' => number_format($data['totals']['orders'])],
+                    $this->metricChange($data['change']['orders'], $previousLabel),
+                ),
+                array_merge(
+                    ['label' => 'Average Order', 'value' => $this->moneyFromMinor($data['totals']['average_order_minor'])],
+                    $this->metricChange($data['change']['average_order'], $previousLabel),
+                ),
             ],
-            'salesTrend' => [14200, 17850, 19600, 18100, 16900, 20700, 21100],
-            'salesLabels' => ['Aug 1–4', 'Aug 5–9', 'Aug 10–14', 'Aug 15–19', 'Aug 20–24', 'Aug 25–28', 'Aug 29–31'],
+            // The overview trend carries `gross_minor` from the shared sales
+            // buckets; the chart geometry expects `value_minor`. Map them
+            // explicitly so the graph plots real bucket gross, never zeros.
+            'salesChart' => $this->reportChart(array_map(
+                fn (array $bucket): array => [
+                    'label' => $bucket['label'],
+                    'value_minor' => (int) $bucket['gross_minor'],
+                ],
+                $data['trend'],
+            )),
+            'trendTitle' => $fullMonth ? $range['from']->format('F') : 'the period',
+            'trendSummary' => $grossChange === null
+                ? 'No prior-period sales for comparison.'
+                : 'Sales closed '.number_format(abs($grossChange), 1).'% '.($grossChange >= 0 ? 'above ' : 'below ').$previousLabel.'.',
             'financialBridge' => [
-                ['label' => 'Gross Sales', 'value' => $this->money($finance['grossSales']), 'negative' => false],
-                ['label' => 'Seller-funded Discounts', 'value' => '−'.$this->money($finance['sellerDiscounts']), 'negative' => true],
-                ['label' => 'Refunds', 'value' => '−'.$this->money($finance['refunds']), 'negative' => true],
-                ['label' => 'Platform Commission (10%)', 'value' => '−'.$this->money($finance['netCommission']), 'negative' => true],
+                ['label' => 'Gross Sales', 'value' => $this->moneyFromMinor($data['ledger']['gross_sales_minor']), 'negative' => false],
+                ['label' => 'Seller-funded Discounts', 'value' => $this->deductionMoney($data['ledger']['seller_discounts_minor']), 'negative' => true],
+                ['label' => 'Refunds', 'value' => $this->deductionMoney($data['ledger']['refunds_minor']), 'negative' => true],
+                ['label' => 'Platform Commission ('.$commissionRateLabel.'%)', 'value' => $this->deductionMoney($data['ledger']['net_commission_minor']), 'negative' => $data['ledger']['net_commission_minor'] >= 0],
             ],
-            'insights' => [
-                ['title' => 'Best seller', 'value' => 'Classic Linen Shirt · 38 sold', 'detail' => 'Your top product by unit volume this month.', 'icon' => 'shirt'],
-                ['title' => 'Strongest period', 'value' => 'Aug 25–31 · ₱41,800', 'detail' => 'This period captured the highest sales.', 'icon' => 'trending-up'],
-                ['title' => 'Refund rate', 'value' => '1.0% · Stable', 'detail' => 'Full refunds reverse the related platform commission.', 'icon' => 'rotate-ccw'],
-            ],
-            'products' => [
-                ['name' => 'Classic Linen Shirt', 'units' => 38, 'revenue' => '₱52,440.00', 'share' => 40.8, 'icon' => 'shirt'],
-                ['name' => 'Canvas Tote Bag', 'units' => 29, 'revenue' => '₱34,018.00', 'share' => 26.5, 'icon' => 'shopping-bag'],
-                ['name' => 'Everyday Sneakers', 'units' => 24, 'revenue' => '₱25,320.00', 'share' => 19.7, 'icon' => 'footprints'],
-            ],
+            'netRevenue' => $this->moneyFromMinor($data['ledger']['net_earnings_minor']),
+            'insights' => $this->overviewInsights($data, $previousLabel),
+            'products' => collect(array_slice($data['products'], 0, 3))->map(fn (array $product): array => [
+                'name' => $product['name'],
+                'subcategory' => $product['subcategory'],
+                'units' => $product['units'],
+                'revenue' => $this->moneyFromMinor($product['gross_minor']),
+                'share' => number_format($product['share'], 1),
+                'icon' => 'package',
+            ])->values(),
+            'exportUrl' => route('seller.reports.export', [
+                'from' => $range['from']->toDateString(),
+                'to' => $range['to']->toDateString(),
+            ]),
         ]);
     }
 
-    public function financialReport(Request $request): View
+    /**
+     * Insight cards built only from the selected period's data.
+     */
+    private function overviewInsights(array $data, string $previousLabel): array
     {
-        $finance = $this->financeSnapshot();
+        $bestSeller = $data['products'][0] ?? null;
+        $strongest = collect($data['trend'])->sortByDesc('gross_minor')->first();
+        $refundRate = $data['refund_rate'];
+        $previousRefundRate = $data['previous_refund_rate'];
+        $hasStrongest = $strongest !== null && (int) $strongest['gross_minor'] > 0;
 
-        $from = (string) $request->query('from', '2026-08-01');
-        $to = (string) $request->query('to', '2026-08-31');
+        $insights = [
+            [
+                'title' => 'Best seller',
+                'value' => $bestSeller ? $bestSeller['name'].' · '.$bestSeller['units'].' sold' : 'No completed sales yet',
+                'detail' => $bestSeller
+                    ? 'Your top product by net sales for the selected period.'
+                    : 'Product rankings appear once orders complete.',
+                'icon' => 'package-check',
+            ],
+            [
+                'title' => 'Strongest period',
+                'value' => $hasStrongest
+                    ? $strongest['label'].' · '.$this->moneyFromMinor((int) $strongest['gross_minor'])
+                    : 'No sales recorded',
+                'detail' => $hasStrongest
+                    ? 'This window captured the highest gross sales of the selected period.'
+                    : 'Gross sales will be bucketed here once orders complete.',
+                'icon' => 'calendar-check-2',
+            ],
+        ];
 
-        if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $from)) {
-            $from = '2026-08-01';
+        if ($refundRate === null) {
+            $insights[] = [
+                'title' => 'Refund rate',
+                'value' => '—',
+                'detail' => 'Refunds are measured against completed gross sales.',
+                'icon' => 'rotate-ccw',
+            ];
+        } else {
+            $status = $previousRefundRate === null
+                ? null
+                : (abs($refundRate - $previousRefundRate) <= 0.5
+                    ? 'Stable'
+                    : ($refundRate < $previousRefundRate ? 'Improving' : 'Watch'));
+
+            $insights[] = [
+                'title' => 'Refund rate',
+                'value' => number_format($refundRate, 1).'%'.($status ? ' · '.$status : ''),
+                'detail' => $previousRefundRate === null
+                    ? 'Full refunds reverse the related platform commission.'
+                    : 'Compared with '.number_format($previousRefundRate, 1).'% in '.$previousLabel.'.',
+                'icon' => 'rotate-ccw',
+            ];
         }
 
-        if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $to)) {
-            $to = '2026-08-31';
-        }
+        return $insights;
+    }
 
-        if ($from > $to) {
-            [$from, $to] = [$to, $from];
-        }
-
-        $commissionPercent = $finance['totalDeductions'] > 0 ? ($finance['netCommission'] / $finance['totalDeductions']) * 100 : 0;
-        $discountPercent = $finance['totalDeductions'] > 0 ? ($finance['sellerDiscounts'] / $finance['totalDeductions']) * 100 : 0;
-        $refundPercent = $finance['totalDeductions'] > 0 ? ($finance['refunds'] / $finance['totalDeductions']) * 100 : 0;
+    public function financialReport(Request $request, SellerEarningsService $earnings): View
+    {
+        $range = $earnings->reportRange($request->query('from'), $request->query('to'));
+        $data = $earnings->financialReportFor($request->user()->sellerProfile, $range['from'], $range['to']);
+        $summary = $data['summary'];
+        $commissionRateLabel = $this->commissionRateLabel($data['commission_rate']);
+        $commissionIsCredit = $summary['net_commission_minor'] < 0;
 
         return view('seller.Reports.financial', [
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
-            'dateRange' => ['from' => $from, 'to' => $to],
+            'dateRange' => ['from' => $range['from']->toDateString(), 'to' => $range['to']->toDateString()],
             'summary' => [
-                ['label' => 'Gross Sales', 'value' => $this->money($finance['grossSales']), 'note' => 'Before deductions'],
-                ['label' => 'Commissionable Sales', 'value' => $this->money($finance['netCommissionableSales']), 'note' => 'After seller discounts and finalized refunds'],
-                ['label' => 'Platform Commission', 'value' => $this->money($finance['netCommission']), 'note' => '10% after reversal'],
-                ['label' => 'Net Earnings', 'value' => $this->money($finance['netEarnings']), 'note' => 'Seller earnings after deductions'],
+                ['label' => 'Gross Sales', 'value' => $this->moneyFromMinor($summary['gross_sales_minor']), 'note' => 'Before deductions'],
+                ['label' => 'Commissionable Sales', 'value' => $this->moneyFromMinor($summary['commissionable_sales_minor']), 'note' => 'After seller discounts and finalized refunds'],
+                ['label' => 'Platform Commission', 'value' => $this->moneyFromMinor($summary['net_commission_minor']), 'note' => $commissionRateLabel.'% after reversal'],
+                ['label' => 'Net Earnings', 'value' => $this->moneyFromMinor($summary['net_earnings_minor']), 'note' => 'Seller earnings after deductions'],
             ],
+            // Explicit per-row kind so the view never infers credit/deduction
+            // styling from row position; a net-commission reversal is a credit.
             'currentStatement' => [
-                ['label' => 'Gross Sales', 'value' => $this->money($finance['grossSales'])],
-                ['label' => 'Seller-funded Discounts', 'value' => '−'.$this->money($finance['sellerDiscounts'])],
-                ['label' => 'Refunds', 'value' => '−'.$this->money($finance['refunds'])],
-                ['label' => 'Platform Commission (10%)', 'value' => '−'.$this->money($finance['netCommission'])],
+                ['label' => 'Gross Sales', 'value' => $this->moneyFromMinor($summary['gross_sales_minor']), 'kind' => 'base'],
+                ['label' => 'Seller-funded Discounts', 'value' => $this->deductionMoney($summary['seller_discounts_minor']), 'kind' => 'deduction'],
+                ['label' => 'Refunds', 'value' => $this->deductionMoney($summary['refunds_minor']), 'kind' => 'deduction'],
+                ['label' => 'Platform Commission ('.$commissionRateLabel.'%)'.($commissionIsCredit ? ' · credit' : ''), 'value' => $this->deductionMoney($summary['net_commission_minor']), 'kind' => $commissionIsCredit ? 'credit' : 'deduction'],
             ],
-            'statementNetEarnings' => $this->money($finance['netEarnings']),
-            'statementTotalDeductions' => $this->money($finance['totalDeductions']),
-            'deductionRate' => number_format(($finance['totalDeductions'] / $finance['grossSales']) * 100, 1).'%',
-            'deductions' => [
-                ['label' => 'Platform Commission', 'value' => $this->money($finance['netCommission']), 'percent' => round($commissionPercent, 1), 'tone' => 'brown'],
-                ['label' => 'Seller Discounts', 'value' => $this->money($finance['sellerDiscounts']), 'percent' => round($discountPercent, 1), 'tone' => 'gold'],
-                ['label' => 'Refunds', 'value' => $this->money($finance['refunds']), 'percent' => round($refundPercent, 1), 'tone' => 'olive'],
-            ],
-            'rows' => [
-                ['period' => 'August 2026', 'gross' => '₱128,450.00', 'discounts' => '₱4,430.00', 'refunds' => '₱1,299.00', 'commission' => '₱12,272.10', 'net' => '₱110,448.90', 'status' => 'Processing'],
-                ['period' => 'July 2026', 'gross' => '₱112,800.00', 'discounts' => '₱3,820.00', 'refunds' => '₱0', 'commission' => '₱10,898.00', 'net' => '₱98,082.00', 'status' => 'Paid'],
-                ['period' => 'June 2026', 'gross' => '₱106,240.00', 'discounts' => '₱3,140.00', 'refunds' => '₱899.00', 'commission' => '₱10,220.10', 'net' => '₱91,980.90', 'status' => 'Paid'],
-            ],
+            'statementNetEarnings' => $this->moneyFromMinor($summary['net_earnings_minor']),
+            'statementTotalDeductions' => $this->moneyFromMinor($summary['total_deductions_minor']),
+            'statementStatus' => $data['statement_status'],
+            'deductionRate' => $data['deduction_rate'] === null ? '—' : number_format($data['deduction_rate'], 1).'%',
+            'deductionRateNote' => $data['deduction_rate'] === null ? 'no gross sales to measure against' : 'of gross sales',
+            'deductions' => collect($data['deductions'])->map(fn (array $deduction): array => [
+                'label' => $deduction['label'],
+                'value' => $deduction['is_credit']
+                    ? '+'.$this->moneyFromMinor(abs($deduction['minor']))
+                    : $this->moneyFromMinor($deduction['minor']),
+                'percent' => number_format($deduction['percent'], 1),
+                'tone' => match ($deduction['key']) {
+                    'commission' => 'brown',
+                    'discounts' => 'gold',
+                    default => 'olive',
+                },
+                'is_credit' => $deduction['is_credit'],
+            ])->values(),
+            'rows' => collect($data['archive'])->map(fn (array $row): array => [
+                'period' => $row['label'],
+                'gross' => $this->moneyFromMinor($row['gross_minor']),
+                'discounts' => $row['discounts_minor'] > 0 ? $this->deductionMoney($row['discounts_minor']) : '—',
+                'refunds' => $row['refunds_minor'] > 0 ? $this->deductionMoney($row['refunds_minor']) : '—',
+                'commission' => $this->deductionMoney($row['commission_minor']),
+                'net' => $this->moneyFromMinor($row['net_minor']),
+                'status' => $row['status'],
+            ])->values(),
+            'commissionRateLabel' => $commissionRateLabel,
+            'exportUrl' => route('seller.reports.financial.export', [
+                'from' => $range['from']->toDateString(),
+                'to' => $range['to']->toDateString(),
+            ]),
         ]);
+    }
+
+    public function exportSalesReport(Request $request, SellerEarningsService $earnings): StreamedResponse
+    {
+        $range = $earnings->reportRange($request->query('from'), $request->query('to'));
+        $sort = (string) $request->query('sort', 'net');
+        $data = $earnings->salesReportFor($request->user()->sellerProfile, $range['from'], $range['to'], $sort);
+        $periodLabel = $earnings->rangeLabel($range['from'], $range['to']);
+        $previousLabel = $earnings->rangeLabel($data['previous_period']['from'], $data['previous_period']['to']);
+        $filename = 'bearly-sales-performance-'.$range['from']->toDateString().'-to-'.$range['to']->toDateString().'.csv';
+
+        return $this->csvDownload($filename, function ($stream) use ($periodLabel, $previousLabel, $data): void {
+            $row = fn (...$cells) => fputcsv($stream, $cells, ',', '"', '\\');
+
+            $row('Bearly Sales & Performance');
+            $row('Report period', $periodLabel);
+            $row('Compared with', $previousLabel);
+            $row();
+            $row('Sales summary', 'Value', 'Change vs previous period');
+            $row('Gross Sales', $this->decimalMinor($data['totals']['gross_minor']), $this->csvChange($data['change']['gross']));
+            $row('Completed Orders', $data['totals']['orders'], $this->csvChange($data['change']['orders']));
+            $row('Units Sold', $data['totals']['units'], $this->csvChange($data['change']['units']));
+            $row('Average Order Value', $this->decimalMinor($data['totals']['average_order_minor']), $this->csvChange($data['change']['average_order']));
+            $row('Refunds', $this->decimalMinor($data['totals']['refunds_minor']));
+            $row();
+            $row('Sales by period');
+            $row('Period', 'Orders', 'Units Sold', 'Gross Sales', 'Discounts', 'Refunds', 'Net Sales');
+            foreach ($data['momentum'] as $bucket) {
+                $row(
+                    $bucket['start'].' to '.$bucket['end'],
+                    $bucket['orders'],
+                    $bucket['units'],
+                    $this->decimalMinor($bucket['gross_minor']),
+                    $this->decimalDeduction($bucket['discounts_minor']),
+                    $this->decimalDeduction($bucket['refunds_minor']),
+                    $this->decimalMinor($bucket['net_minor']),
+                );
+            }
+            $row();
+            $row('Product ranking', 'Sorted by '.($data['sort'] === 'units' ? 'units sold' : 'net sales'));
+            $row('Rank', 'Product', 'Variant', 'SKU', 'Subcategory', 'Units Sold', 'Gross Sales', 'Discounts', 'Refunds', 'Net Sales', 'Share of Gross Sales (%)');
+            foreach ($data['products'] as $product) {
+                $row(
+                    $product['rank'],
+                    $product['name'],
+                    $product['variant'],
+                    $product['sku'],
+                    $product['subcategory'],
+                    $product['units'],
+                    $this->decimalMinor($product['gross_minor']),
+                    $this->decimalDeduction($product['discounts_minor']),
+                    $this->decimalDeduction($product['refunds_minor']),
+                    $this->decimalMinor($product['net_minor']),
+                    $product['share'],
+                );
+            }
+            $row();
+            $row('Basis', 'Completed seller orders by completion date; refunds by refund completion date; item amounts exclude shipping; Gross Sales uses the product subtotal and can differ from the Finance ledger Gross Sales on the Financial Report; share uses the product subtotal total.');
+        });
+    }
+
+    public function exportReportsOverview(Request $request, SellerEarningsService $earnings): StreamedResponse
+    {
+        $range = $earnings->reportRange($request->query('from'), $request->query('to'));
+        $data = $earnings->overviewFor($request->user()->sellerProfile, $range['from'], $range['to']);
+        $periodLabel = $earnings->rangeLabel($range['from'], $range['to']);
+        $previousLabel = $earnings->rangeLabel($data['previous_period']['from'], $data['previous_period']['to']);
+        $commissionRateLabel = $this->commissionRateLabel($earnings->commissionRate());
+        $filename = 'bearly-reports-overview-'.$range['from']->toDateString().'-to-'.$range['to']->toDateString().'.csv';
+
+        return $this->csvDownload($filename, function ($stream) use ($periodLabel, $previousLabel, $commissionRateLabel, $data): void {
+            $row = fn (...$cells) => fputcsv($stream, $cells, ',', '"', '\\');
+
+            $row('Bearly Reports Overview');
+            $row('Report period', $periodLabel);
+            $row('Compared with', $previousLabel);
+            $row();
+            $row('Key metrics', 'Value', 'Change vs previous period');
+            $row('Net Earnings', $this->decimalMinor($data['ledger']['net_earnings_minor']), $this->csvChange($data['change']['net_earnings']));
+            $row('Gross Sales', $this->decimalMinor($data['totals']['gross_minor']), $this->csvChange($data['change']['gross']));
+            $row('Orders', $data['totals']['orders'], $this->csvChange($data['change']['orders']));
+            $row('Average Order', $this->decimalMinor($data['totals']['average_order_minor']), $this->csvChange($data['change']['average_order']));
+            $row();
+            $row('From sales to earnings (Finance ledger)');
+            $row('Item', 'Amount');
+            $row('Gross Sales', $this->decimalMinor($data['ledger']['gross_sales_minor']));
+            $row('Seller-funded Discounts', $this->decimalDeduction($data['ledger']['seller_discounts_minor']));
+            $row('Refunds', $this->decimalDeduction($data['ledger']['refunds_minor']));
+            $row('Platform Commission ('.$commissionRateLabel.'%)', $this->decimalDeduction($data['ledger']['net_commission_minor']));
+            $row('Net Revenue', $this->decimalMinor($data['ledger']['net_earnings_minor']));
+            $row();
+            $row('Gross sales by period');
+            $row('Period start', 'Period end', 'Gross Sales');
+            foreach ($data['trend'] as $bucket) {
+                $row($bucket['start'], $bucket['end'], $this->decimalMinor($bucket['gross_minor']));
+            }
+            $row();
+            $row('Top products');
+            $row('Rank', 'Product', 'Subcategory', 'Units Sold', 'Gross Sales', 'Share of Gross Sales (%)');
+            foreach (array_slice($data['products'], 0, 5) as $product) {
+                $row($product['rank'], $product['name'], $product['subcategory'], $product['units'], $this->decimalMinor($product['gross_minor']), $product['share']);
+            }
+            $row();
+            $row('Basis', 'Gross Sales uses the seller-order product subtotal (shipping excluded); the sales-to-earnings bridge, Net Revenue, and Net Earnings follow the Finance ledger posted basis and can differ from Gross Sales.');
+        });
+    }
+
+    public function exportFinancialReport(Request $request, SellerEarningsService $earnings): StreamedResponse
+    {
+        $range = $earnings->reportRange($request->query('from'), $request->query('to'));
+        $data = $earnings->financialReportFor($request->user()->sellerProfile, $range['from'], $range['to']);
+        $periodLabel = $earnings->rangeLabel($range['from'], $range['to']);
+        $summary = $data['summary'];
+        $filename = 'bearly-financial-report-'.$range['from']->toDateString().'-to-'.$range['to']->toDateString().'.csv';
+
+        return $this->csvDownload($filename, function ($stream) use ($periodLabel, $data, $summary): void {
+            $row = fn (...$cells) => fputcsv($stream, $cells, ',', '"', '\\');
+
+            $row('Bearly Financial Report');
+            $row('Statement period', $periodLabel);
+            $row('Statement status', $data['statement_status']['label']);
+            $row();
+            $row('Summary', 'Amount');
+            $row('Gross Sales', $this->decimalMinor($summary['gross_sales_minor']));
+            $row('Commissionable Sales', $this->decimalMinor($summary['commissionable_sales_minor']));
+            $row('Platform Commission', $this->decimalMinor($summary['net_commission_minor']));
+            $row('Net Earnings', $this->decimalMinor($summary['net_earnings_minor']));
+            $row();
+            $row('Current statement');
+            $row('Item', 'Amount');
+            $row('Gross Sales', $this->decimalMinor($summary['gross_sales_minor']));
+            $row('Seller-funded Discounts', $this->decimalDeduction($summary['seller_discounts_minor']));
+            $row('Refunds', $this->decimalDeduction($summary['refunds_minor']));
+            $row('Platform Commission', $this->decimalDeduction($summary['net_commission_minor']));
+            $row('Net Earnings', $this->decimalMinor($summary['net_earnings_minor']));
+            $row();
+            $row('Deductions');
+            $row('Item', 'Amount', 'Share of deductions (%)');
+            foreach ($data['deductions'] as $deduction) {
+                $row(
+                    $deduction['is_credit'] ? $deduction['label'].' (credit)' : $deduction['label'],
+                    $this->decimalMinor(abs($deduction['minor'])),
+                    number_format($deduction['percent'], 1),
+                );
+            }
+            $row();
+            $row('Monthly financial history');
+            $row('Statement Period', 'Gross Sales', 'Discounts', 'Refunds', 'Platform Commission', 'Net Earnings', 'Status');
+            foreach ($data['archive'] as $archiveRow) {
+                $row(
+                    $archiveRow['label'],
+                    $this->decimalMinor($archiveRow['gross_minor']),
+                    $this->decimalDeduction($archiveRow['discounts_minor']),
+                    $this->decimalDeduction($archiveRow['refunds_minor']),
+                    $this->decimalDeduction($archiveRow['commission_minor']),
+                    $this->decimalMinor($archiveRow['net_minor']),
+                    $archiveRow['status']['label'],
+                );
+            }
+            $row();
+            $row('Basis', 'Finance ledger rows posted in the statement period; amounts are net of completed refunds and finalized commission reversals; Gross Sales uses the Finance ledger basis (finalized commission base plus seller-funded discounts) and can differ from Sales & Performance gross sales, which excludes shipping.');
+        });
     }
 }

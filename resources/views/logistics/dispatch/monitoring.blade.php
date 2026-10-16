@@ -161,6 +161,7 @@
                         Dispatch
                     </th>
 
+                    <th>Products</th>
                     <th>Rider</th>
                     <th>Zone</th>
                     <th>Parcels</th>
@@ -181,6 +182,10 @@
                             <strong>
                                 {{ $delivery['id'] }}
                             </strong>
+                        </td>
+
+                        <td class="dispatch-products-cell">
+                            @include('partials.order-item-preview-list', ['items' => $delivery['products']])
                         </td>
 
                         <td>
@@ -251,7 +256,7 @@
                     <tr>
                         <td
                             class="empty-row"
-                            colspan="8"
+                            colspan="9"
                         >
                             No dispatch batches are
                             available for monitoring.
@@ -263,7 +268,7 @@
                     <tr>
                         <td
                             class="empty-row"
-                            colspan="8"
+                            colspan="9"
                             data-empty-row
                         >
                             No delivery runs match

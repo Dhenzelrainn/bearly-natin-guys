@@ -13,6 +13,10 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 class ParcelSortingService
 {
+    public function __construct(
+        private readonly SortingZoneMatcher $zoneMatcher
+    ) {}
+
     public function sort(
         Parcel $parcel,
         SortingZone $zone,
@@ -36,6 +40,8 @@ class ParcelSortingService
             $parcel = Parcel::query()
                 ->with([
                     'shipment.parcels',
+                    'shipment.destinationAddress',
+                    'shipment.sellerOrder.order',
                     'currentSortingCenter',
                 ])
                 ->lockForUpdate()
@@ -90,6 +96,12 @@ class ParcelSortingService
             )) {
                 throw new ConflictHttpException(
                     "Parcel {$parcel->parcel_no} cannot be sorted from its current status."
+                );
+            }
+
+            if (! $this->zoneMatcher->matches($zone, $parcel)) {
+                throw new ConflictHttpException(
+                    'This parcel destination is not covered by the selected Sorting Zone. Choose a zone covering its barangay.'
                 );
             }
 

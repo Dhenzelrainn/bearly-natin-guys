@@ -10,7 +10,7 @@ php artisan migrate --seed
 
 Use `migrate:fresh --seed` only when the developer explicitly intends to erase that local database. Never use it as a normal production deployment command. Existing environments use `php artisan migrate --force` after a backup and migration review.
 
-The schema has been validated against a clean MySQL database. The current local `bearly_ecommerce` database experienced an interrupted first run and must not be used as evidence that the full migration batch is complete until reconciled.
+The schema has been validated against a clean MySQL database for the migration set covered by that validation. The current local `bearly_ecommerce` database experienced an interrupted first run and must not be used as evidence that the full migration batch is complete until reconciled. The new Seller Wallet migration has only been exercised by SQLite feature tests; it has not been run against the application database or verified on MySQL.
 
 ## Dependency order
 
@@ -26,9 +26,13 @@ The schema has been validated against a clean MySQL database. The current local 
 10. Pickup, sorting, dispatch, delivery, and shipment events
 11. Compliance checks, reports, violations, actions, and warnings
 12. Returns, refunds, and disputes
-13. Commissions, seller transactions/payouts, and rider earnings
+13. Commissions, seller transactions/payouts, Seller Wallet/withdrawals, and rider earnings
 14. Conversations, messages, and notifications
 15. Announcements, policies, audits, settings, and support
+
+The additive migration `2026_10_15_000001_create_seller_wallet_and_withdrawal_tables` adds the Seller Wallet ledger, encrypted bank-account storage, withdrawal/status-history/transfer records, and lifetime-withdrawn backfill from already-paid legacy Seller payouts. Its `down()` refuses to drop the tables once any wallet/account/withdrawal data exists; rollback after activation requires an explicit data-preservation plan.
+
+The additive migration `2026_10_15_000002_add_receiving_bank_name_to_seller_payouts` adds the optional `seller_payouts.receiving_bank_name` field used when Finance records a verified legacy bank transfer. Its rollback refuses to drop the column while any bank names have been recorded.
 
 ## Delivery priorities
 
@@ -37,7 +41,7 @@ The schema has been validated against a clean MySQL database. The current local 
 | P0 | Users, roles, addresses, applications, profiles, stores, categories | Required now |
 | P1 | Products, variants, inventory, carts, orders, seller orders, items, payments | Required now |
 | P2 | Shipments, waybills, parcels, pickup, sorting, dispatch, delivery events/proof | Required now for logistics demo |
-| P3 | Compliance review, returns/refunds, disputes, commissions, transactions, earnings, audit logs | Required where visible in current UI; deeper automation may follow |
+| P3 | Compliance review, returns/refunds, disputes, commissions, transactions, earnings, Seller Wallet/withdrawals, audit logs | Required where visible in current UI; deeper automation may follow |
 | P4 | Advanced messaging attachments, notification preferences, policy version publishing, support workflow, AI/image screening | Later enhancement |
 
 ## Team ownership
@@ -67,4 +71,3 @@ Shared files such as migrations, status enums, models, routes, and service contr
 - `BEARLY_ERD.mmd`: Mermaid source for repository previews.
 - `BACKEND_INTEGRATION_CONTRACT.md`: naming, statuses, ownership, and service boundaries.
 - `scripts/generate_database_docs.php`: regenerates schema/ERD outputs from the configured MySQL database.
-

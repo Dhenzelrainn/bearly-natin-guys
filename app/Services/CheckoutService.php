@@ -30,6 +30,7 @@ class CheckoutService
         private readonly ShippingQuoteService $shipping,
         private readonly BuyerCatalogService $catalog,
         private readonly InventoryReservationService $reservations,
+        private readonly PostalCodeLookup $postalCodes,
     ) {}
 
     public function quote(User $buyer, array $cartItemIds, int $addressId): array
@@ -121,6 +122,7 @@ class CheckoutService
                     'city_municipality' => $destination->city_municipality,
                     'province' => $destination->province,
                     'postal_code' => $destination->postal_code,
+                    'psgc_city_code' => $destination->psgc_city_code,
                     'currency' => 'PHP',
                     'subtotal_minor' => $totals['subtotal_minor'],
                     'shipping_fee_minor' => $totals['shipping_fee_minor'],
@@ -397,6 +399,20 @@ class CheckoutService
             throw ValidationException::withMessages(['address_id' => 'Choose one of your saved delivery addresses.']);
         }
 
+        $destinationCityCode = $this->postalCodes->canonicalCityCode(
+            $destination->psgc_city_code,
+            (string) $destination->province,
+            (string) $destination->city_municipality,
+        );
+
+        if (! $destinationCityCode) {
+            throw ValidationException::withMessages([
+                'address_id' => 'Update this delivery address with a valid municipality/city before checkout.',
+            ]);
+        }
+
+        $destination->setAttribute('psgc_city_code', $destinationCityCode);
+
         $groups = [];
         foreach ($cartItems as $cartItem) {
             /** @var ProductVariant|null $variant */
@@ -472,13 +488,13 @@ class CheckoutService
         return [$destination, $groups, $cartItems];
     }
 
-    private function totals(Address $destination, array $groups, bool $lockRates = false): array
+    private function totals(Address $destination, array $groups, bool $lockConfiguration = false): array
     {
         $subtotal = 0;
         $shippingFee = 0;
 
-        if ($lockRates && $groups !== []) {
-            $this->shipping->lockQuoteConfiguration($destination, $groups);
+        if ($lockConfiguration && $groups !== []) {
+            $this->shipping->lockQuoteConfiguration();
         }
 
         foreach ($groups as &$group) {
@@ -492,7 +508,7 @@ class CheckoutService
                 $group['store'],
                 $destination,
                 new Collection($group['items']),
-                $lockRates,
+                $lockConfiguration,
             );
             $sellerShipping = (int) $group['quote']['shipping_fee_minor'];
             if ($shippingFee > PHP_INT_MAX - $sellerShipping) {

@@ -36,12 +36,12 @@
             </button>
         </div>
     </div>
-    <div class="table-wrap"><table class="admin-table" data-finance-table="commissions"><thead><tr><th>Date</th><th>Order</th><th>Seller</th><th class="align-right">Gross</th><th class="align-right">{{ $rate }}% Commission</th><th class="align-right">Seller Net</th></tr></thead><tbody>
+    <div class="table-wrap"><table class="admin-table" data-finance-table="commissions"><thead><tr><th>Date</th><th>Order</th><th>Products</th><th>Seller</th><th class="align-right">Gross</th><th class="align-right">{{ $rate }}% Commission</th><th class="align-right">Seller Net</th></tr></thead><tbody>
         @foreach ($ledger as $row)
-            <tr data-commission-ledger-row data-commission-date="{{ \Carbon\Carbon::parse($row['date'])->format('Y-m-d') }}"><td>{{ $row['date'] }}</td><td><strong>{{ $row['order'] }}</strong></td><td>{{ $row['seller'] }}</td><td class="align-right">₱{{ number_format($row['gross'], 2) }}</td><td class="align-right commission-value">₱{{ number_format($row['commission'], 2) }}</td><td class="align-right">₱{{ number_format($row['sellerNet'], 2) }}</td></tr>
+            <tr data-commission-ledger-row data-commission-date="{{ \Carbon\Carbon::parse($row['date'])->format('Y-m-d') }}"><td>{{ $row['date'] }}</td><td><strong>{{ $row['order'] }}</strong></td><td class="finance-commission-products-cell">@include('partials.order-item-preview-list', ['items' => $row['items']])</td><td>{{ $row['seller'] }}</td><td class="align-right">₱{{ number_format($row['gross'], 2) }}</td><td class="align-right commission-value">₱{{ number_format($row['commission'], 2) }}</td><td class="align-right">₱{{ number_format($row['sellerNet'], 2) }}</td></tr>
         @endforeach
         <tr data-commission-empty hidden>
-            <td colspan="6" style="text-align:center; padding: 28px 16px;">
+            <td colspan="7" style="text-align:center; padding: 28px 16px;">
                 No commission transactions found for the selected date range.
             </td>
         </tr>

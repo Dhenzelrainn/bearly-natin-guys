@@ -5,7 +5,7 @@
 
     @section('content')
     <section class="page-hero">
-        <div><span class="eyebrow">Compliance & Disputes</span><h1>Monitor seller compliance</h1><p>Verify whether products belong to registered seller categories, review flagged listings, and simulate warnings or suspensions.</p></div>
+        <div><span class="eyebrow">Compliance &amp; Disputes</span><h1>Monitor seller compliance</h1><p>Review configured category and prohibited-item checks. Matching products are held from Buyer discovery while Admin reviews the violation.</p></div>
         <div class="hero-context-stat">
             <span class="hero-context-icon">
                 <i data-lucide="shield-alert"></i>
@@ -62,14 +62,7 @@
 
                             <td>
                                 <span
-                                    class="status-badge js-compliance-status
-                                    {{
-                                        $audit['status'] === 'Compliant'
-                                            ? 'badge-success'
-                                            : ($audit['status'] === 'Flagged'
-                                                ? 'badge-danger'
-                                                : 'badge-warning')
-                                    }}"
+                                    class="status-badge js-compliance-status {{ $audit['status_class'] }}"
                                 >
                                     {{ $audit['status'] }}
                                 </span>

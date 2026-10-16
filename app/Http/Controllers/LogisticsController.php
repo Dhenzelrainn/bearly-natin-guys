@@ -14,20 +14,26 @@ use App\Models\SortingCenter;
 use App\Models\SortingZone;
 use App\Models\AccountApplication;
 use App\Models\LogisticsProfile;
+use App\Models\OrderItem;
 use App\Models\RiderProfile;
 use App\Models\Shipment;
 use App\Models\ShipmentEvent;
+use App\Models\ShipmentTransfer;
 use App\Models\DispatchBatch;
 use App\Models\User;
 use App\Models\Conversation;
 use App\Models\MessageAttachment;
 use App\Models\Waybill;
 use App\Services\DispatchService;
+use App\Services\BuyerCatalogService;
 use App\Services\EmailVerificationService;
 use App\Services\InternationalPhone;
 use App\Services\ParcelSortingService;
 use App\Services\PostalCodeLookup;
 use App\Services\RegistrationLifecycleService;
+use App\Services\RiderZoneAssignmentService;
+use App\Services\ShipmentHandoffService;
+use App\Services\SortingZoneMatcher;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
@@ -37,6 +43,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -339,6 +346,7 @@ class LogisticsController extends Controller
                 'string',
                 'max:17',
                 Rule::unique('users', 'contact_number'),
+                Rule::unique('users', 'phone'),
             ],
             'birthday' => ['required', 'date', 'before:today'],
             'province' => ['required', 'string', 'max:120'],
@@ -347,7 +355,7 @@ class LogisticsController extends Controller
             'street' => ['required', 'string', 'max:180'],
             'house_number' => ['required', 'string', 'max:40'],
             'postal_code' => ['required', 'digits:4'],
-            'city_code' => ['nullable', 'regex:/^[0-9]{6,10}$/D'],
+            'city_code' => ['required', 'regex:/^[0-9]{6,10}$/D'],
             'postal_manual' => ['nullable', 'boolean'],
             'valid_id' => [
                 'required',
@@ -372,6 +380,14 @@ class LogisticsController extends Controller
             'postal_code' => $validated['postal_code'],
             'postal_manual' => $validated['postal_manual'] ?? false,
         ]);
+
+        if (LogisticsProfile::withTrashed()
+            ->where('psgc_city_code', $validated['city_code'])
+            ->exists()) {
+            throw ValidationException::withMessages([
+                'municipality' => 'A Logistics account already owns this municipality/city.',
+            ]);
+        }
 
         $verification = app(EmailVerificationService::class);
         $verifiedAt = $verification->verifiedAt(
@@ -410,6 +426,7 @@ class LogisticsController extends Controller
                     'birthday' => $validated['birthday'],
                     'email' => $validated['email'],
                     'email_verified_at' => $verifiedAt,
+                    'phone' => $validated['contact_number'],
                     'contact_number' => $validated['contact_number'],
                     'phone_country' => 'PH',
                     'terms_accepted_at' => now(),
@@ -1157,7 +1174,8 @@ class LogisticsController extends Controller
     }
 
     public function showRider(
-        string $id
+        string $id,
+        SortingZoneMatcher $zoneMatcher
     ): View {
         abort_unless(
             ctype_digit($id),
@@ -1302,7 +1320,7 @@ class LogisticsController extends Controller
                 ->get()
                 ->map(function (
                     SortingCenter $center
-                ): array {
+                ) use ($zoneMatcher): array {
                     return [
                         'id' =>
                             $center->id,
@@ -1327,6 +1345,11 @@ class LogisticsController extends Controller
 
                                         'code' =>
                                             $zone->code,
+
+                                        'coverage' =>
+                                            $zoneMatcher->coverageLabel(
+                                                $zone->destination_rules
+                                            ),
                                     ]
                                 )
                                 ->values()
@@ -1444,7 +1467,8 @@ class LogisticsController extends Controller
 
     public function updateRiderAssignment(
         Request $request,
-        User $user
+        User $user,
+        RiderZoneAssignmentService $assignmentService,
     ): RedirectResponse {
         /** @var User $operator */
         $operator = Auth::user();
@@ -1471,76 +1495,17 @@ class LogisticsController extends Controller
                 )
                 ->firstOrFail();
 
-        $validated = $request->validate([
-            'home_sorting_center_id' => [
-                'required',
-                'integer',
-            ],
-
-            'current_zone_id' => [
-                'nullable',
-                'integer',
-            ],
-        ]);
-
-        $sortingCenter =
-            SortingCenter::query()
-                ->whereKey(
-                    $validated[
-                        'home_sorting_center_id'
-                    ]
-                )
-                ->where(
-                    'logistics_profile_id',
-                    $logisticsProfile->id
-                )
-                ->where(
-                    'status',
-                    'active'
-                )
-                ->firstOrFail();
-
-        $zoneId = null;
-
-        if (
-            ! empty(
-                $validated['current_zone_id']
-            )
-        ) {
-            $zone = SortingZone::query()
-                ->whereKey(
-                    $validated[
-                        'current_zone_id'
-                    ]
-                )
-                ->where(
-                    'sorting_center_id',
-                    $sortingCenter->id
-                )
-                ->where(
-                    'status',
-                    'active'
-                )
-                ->firstOrFail();
-
-            $zoneId = $zone->id;
-        }
-
-        $riderProfile->forceFill([
-            'home_sorting_center_id' =>
-                $sortingCenter->id,
-
-            'current_zone_id' =>
-                $zoneId,
-        ])->save();
+        $riderProfile = $assignmentService->sync($riderProfile);
 
         return back()->with(
             'success',
-            'Rider assignment was updated.'
+            $riderProfile->current_zone_id
+                ? 'Rider assignment was refreshed from the registered home barangay.'
+                : 'No active zone currently covers this Rider’s registered home barangay.'
         );
     }
 
-    public function pickups(): View
+    public function pickups(BuyerCatalogService $catalog): View
     {
         /** @var User $operator */
         $operator = Auth::user();
@@ -1573,6 +1538,8 @@ class LogisticsController extends Controller
                     ->with([
                         'waybill',
                         'shipment.sellerOrder',
+                        'shipment.sellerOrder.items.product.images.variant',
+                        'shipment.sellerOrder.items.variant',
                         'events.sortingCenter',
                     ]),
             ])
@@ -1582,7 +1549,7 @@ class LogisticsController extends Controller
 
         $pickups = $pickupRequests
             ->map(fn (PickupRequest $pickupRequest): array =>
-                $this->pickupRequestViewData($pickupRequest)
+                $this->pickupRequestViewData($pickupRequest, $catalog)
             )
             ->values();
 
@@ -1621,6 +1588,10 @@ class LogisticsController extends Controller
                     'awaiting_review' =>
                         $pickupRequests
                             ->where('status', 'requested')
+                            ->count(),
+                    'awaiting_assignment' =>
+                        $pickupRequests
+                            ->where('status', 'verified')
                             ->count(),
                     'scheduled_today' =>
                         $pickupRequests
@@ -1687,7 +1658,8 @@ class LogisticsController extends Controller
      * @return array<string, mixed>
      */
     private function pickupRequestViewData(
-        PickupRequest $pickupRequest
+        PickupRequest $pickupRequest,
+        BuyerCatalogService $catalog,
     ): array {
         $eligibleParcels = $pickupRequest->parcels
             ->filter(fn (Parcel $parcel) =>
@@ -1730,7 +1702,8 @@ class LogisticsController extends Controller
 
         $fulfillmentGroups = $shipments
             ->map(function (Shipment $shipment) use (
-                $eligibleParcels
+                $eligibleParcels,
+                $catalog,
             ): array {
                 $shipmentParcels = $eligibleParcels
                     ->where('shipment_id', $shipment->id)
@@ -1750,6 +1723,10 @@ class LogisticsController extends Controller
                             (int) $shipment->cod_amount_minor
                         )
                         : 'No COD',
+                    'products' => $this->orderItemPreviewData(
+                        $shipment->sellerOrder?->items ?? collect(),
+                        $catalog,
+                    ),
                     'parcels' => $shipmentParcels
                         ->map(function (Parcel $parcel): array {
                             $dimensions = [
@@ -1792,6 +1769,11 @@ class LogisticsController extends Controller
             })
             ->all();
 
+        $orderItems = $shipments
+            ->flatMap(fn (Shipment $shipment) => $shipment->sellerOrder?->items ?? collect())
+            ->unique('id')
+            ->values();
+
         $totalWeight = $eligibleParcels->sum(
             fn (Parcel $parcel) => (float) $parcel->weight_kg
         );
@@ -1817,6 +1799,12 @@ class LogisticsController extends Controller
             'operating_hours' =>
                 $seller?->operating_hours
                 ?: 'Not provided',
+            'requested_date' => $pickupRequest->requested_date?->format('M j, Y')
+                ?: 'Not scheduled',
+            'window_start_time' => $pickupRequest->window_start?->format('g:i A')
+                ?: '—',
+            'window_end_time' => $pickupRequest->window_end?->format('g:i A')
+                ?: '—',
             'parcels' => $eligibleParcels->count(),
             'total_weight' => $eligibleParcels->isNotEmpty()
                 ? number_format((float) $totalWeight, 3).' kg'
@@ -1839,6 +1827,7 @@ class LogisticsController extends Controller
             'cancellation_reason' =>
                 $pickupRequest->cancellation_reason,
             'fulfillment_groups' => $fulfillmentGroups,
+            'products' => $this->orderItemPreviewData($orderItems, $catalog),
             'activity' => $this->pickupRequestActivity(
                 $pickupRequest,
                 $eligibleParcels,
@@ -1848,6 +1837,25 @@ class LogisticsController extends Controller
                 $assignments
             ),
         ];
+    }
+
+    /**
+     * @param  Collection<int, OrderItem>  $items
+     * @return list<array{name: string, variant: string, quantity: int, image_url: string}>
+     */
+    private function orderItemPreviewData(
+        Collection $items,
+        BuyerCatalogService $catalog,
+    ): array {
+        return $items
+            ->map(fn (OrderItem $item): array => [
+                'name' => $item->product_name ?: 'Unnamed product',
+                'variant' => trim((string) $item->variant_name),
+                'quantity' => (int) $item->quantity,
+                'image_url' => $catalog->orderItemImageUrl($item),
+            ])
+            ->values()
+            ->all();
     }
 
     /**
@@ -2248,7 +2256,7 @@ class LogisticsController extends Controller
         };
     }
 
-    public function incoming(): View
+    public function incoming(BuyerCatalogService $catalog): View
     {
         $profile = request()->user()->logisticsProfile;
 
@@ -2262,15 +2270,19 @@ class LogisticsController extends Controller
 
         $waybills = Waybill::query()
             ->forLogisticsProfile($profile->id)
+            ->whereHas('shipment', fn ($query) => $query
+                ->where('status', '!=', ShipmentStatus::HandoffPending->value))
             ->whereHas(
                 'parcels',
                 fn ($query) => $query->whereIn(
                     'current_sorting_center_id',
                     $centerIds
-                )
+                )->where('status', '!=', ParcelStatus::InTransit->value)
             )
             ->with([
                 'shipment.sellerOrder.order',
+                'shipment.sellerOrder.items.product.images.variant',
+                'shipment.sellerOrder.items.variant',
                 'shipment.sellerOrder.store',
                 'shipment.destinationAddress',
                 'parcels' => fn ($query) => $query
@@ -2287,11 +2299,15 @@ class LogisticsController extends Controller
             $this->sortingExceptionStatuses();
 
         $incomingParcels = $waybills->map(function (Waybill $waybill) use (
-            $exceptionStatuses
+            $exceptionStatuses,
+            $catalog,
         ): array {
             $parcels = $waybill->parcels;
             $shipment = $waybill->shipment;
             $order = $shipment?->sellerOrder?->order;
+            $destinationSnapshot = $shipment?->purpose === 'return'
+                ? $shipment->destination_address_snapshot
+                : null;
             $destinationAddress = $shipment?->purpose === 'return'
                 ? $shipment->destinationAddress
                 : null;
@@ -2328,6 +2344,10 @@ class LogisticsController extends Controller
                 'order' => $waybill->shipment
                     ?->sellerOrder
                     ?->seller_order_no ?: '—',
+                'products' => $this->orderItemPreviewData(
+                    $shipment?->sellerOrder?->items ?? collect(),
+                    $catalog,
+                ),
                 'seller' => $waybill->shipment
                     ?->sellerOrder
                     ?->store
@@ -2344,7 +2364,16 @@ class LogisticsController extends Controller
                     (float) $parcels->sum('weight_kg'),
                     2
                 ).' kg',
-                'destination' => $destinationAddress
+                'destination' => $destinationSnapshot
+                    ? collect([
+                        $destinationSnapshot['house_number'] ?? null,
+                        $destinationSnapshot['street'] ?? null,
+                        $destinationSnapshot['barangay'] ?? null,
+                        $destinationSnapshot['city_municipality'] ?? null,
+                        $destinationSnapshot['province'] ?? null,
+                        $destinationSnapshot['postal_code'] ?? null,
+                    ])->filter()->implode(', ')
+                    : ($destinationAddress
                     ? collect([
                         $destinationAddress->house_number,
                         $destinationAddress->street,
@@ -2356,7 +2385,7 @@ class LogisticsController extends Controller
                     : (collect([
                         $order?->city_municipality,
                         $order?->province,
-                    ])->filter()->implode(', ') ?: 'Not provided'),
+                    ])->filter()->implode(', ') ?: 'Not provided')),
                 'status' => $status,
             ];
         })->values();
@@ -2419,34 +2448,843 @@ class LogisticsController extends Controller
         ]);
     }
 
-    public function sorting(): View
+    public function storeSortingZone(
+        Request $request,
+        SortingZoneMatcher $zoneMatcher,
+        RiderZoneAssignmentService $riderAssignment,
+    ): RedirectResponse {
+        $profile = $request->user()->logisticsProfile;
+
+        abort_unless($profile, 404);
+
+        $validated = $this->validateSortingZoneCoverage(
+            $request,
+            $profile
+        );
+
+        $zones = DB::transaction(function () use (
+            $profile,
+            $validated,
+            $zoneMatcher,
+            $riderAssignment,
+        ): array {
+            LogisticsProfile::query()
+                ->whereKey($profile->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $center = $this->singleActiveSortingCenter($profile);
+
+            $coverage = $this->normalizeSortingZoneCoverage(
+                $validated,
+                $profile,
+                $zoneMatcher
+            );
+
+            $prefix = Str::upper(substr(
+                preg_replace('/[^A-Za-z0-9]/', '', Str::ascii($coverage['city_municipality'])) ?: 'ZONE',
+                0,
+                4
+            ));
+            $sequence = 1;
+            $zones = [];
+
+            foreach ($coverage['barangays'] as $barangay) {
+                $zoneCoverage = $coverage;
+                $zoneCoverage['barangays'] = [$barangay];
+
+                $this->assertNoOverlappingSortingZoneCoverage(
+                    $center,
+                    $zoneCoverage,
+                    $zoneMatcher
+                );
+
+                do {
+                    $code = sprintf('%s-%02d', $prefix, $sequence++);
+                } while (SortingZone::withTrashed()
+                    ->where('sorting_center_id', $center->id)
+                    ->where('code', $code)
+                    ->exists());
+
+                $zones[] = $center->zones()->create([
+                    'code' => $code,
+                    'name' => $this->sortingZoneName($zoneCoverage),
+                    'destination_rules' => $zoneCoverage,
+                    'status' => 'active',
+                ]);
+            }
+
+            $riderAssignment->syncForProfile($profile);
+
+            return $zones;
+        }, 3);
+
+        $zoneCodes = collect($zones)->pluck('code');
+        $successMessage = $zoneCodes->count() === 1
+            ? "Zone {$zoneCodes->first()} was created."
+            : "{$zoneCodes->count()} zones were created: {$zoneCodes->implode(', ')}.";
+
+        return redirect()
+            ->route('logistics.sorting.center')
+            ->with('success', $successMessage);
+    }
+
+    public function updateSortingZone(
+        Request $request,
+        SortingZone $sortingZone,
+        SortingZoneMatcher $zoneMatcher,
+        RiderZoneAssignmentService $riderAssignment,
+    ): RedirectResponse {
+        $profile = $request->user()->logisticsProfile;
+
+        abort_unless($profile, 404);
+
+        $validated = $this->validateSortingZoneCoverage(
+            $request,
+            $profile
+        );
+
+        $zone = DB::transaction(function () use (
+            $profile,
+            $sortingZone,
+            $validated,
+            $zoneMatcher,
+            $riderAssignment,
+        ): SortingZone {
+            LogisticsProfile::query()
+                ->whereKey($profile->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $center = SortingCenter::query()
+                ->whereKey($sortingZone->sorting_center_id)
+                ->where('logistics_profile_id', $profile->id)
+                ->where('status', 'active')
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $zone = $center->zones()
+                ->lockForUpdate()
+                ->findOrFail($sortingZone->id);
+            $coverage = $this->normalizeSortingZoneCoverage(
+                $validated,
+                $profile,
+                $zoneMatcher
+            );
+
+            $coverageChanged = $this->sortingZoneCoverageFingerprint(
+                $zone->destination_rules,
+                $zoneMatcher
+            ) !== $this->sortingZoneCoverageFingerprint(
+                $coverage,
+                $zoneMatcher
+            );
+
+            if ($coverageChanged && $this->sortingZoneIsInUse($zone)) {
+                throw ValidationException::withMessages([
+                    'barangays' => 'Coverage cannot be edited while non-final parcels or active dispatch batches use this zone. Clear those operational assignments first; Rider home-area matches refresh automatically.',
+                ]);
+            }
+
+            $this->assertNoOverlappingSortingZoneCoverage(
+                $center,
+                $coverage,
+                $zoneMatcher,
+                $zone->id
+            );
+
+            $zone->update([
+                'name' => $coverageChanged
+                    ? $this->sortingZoneName($coverage)
+                    : $zone->name,
+                'destination_rules' => $coverage,
+            ]);
+
+            $riderAssignment->syncForProfile($profile);
+
+            return $zone;
+        }, 3);
+
+        return redirect()
+            ->route('logistics.sorting.center')
+            ->with('success', "Zone {$zone->code} coverage was updated.");
+    }
+
+    public function updateSortingZoneStatus(
+        Request $request,
+        SortingZone $sortingZone,
+        SortingZoneMatcher $zoneMatcher,
+        RiderZoneAssignmentService $riderAssignment,
+    ): RedirectResponse {
+        $validated = $request->validate([
+            'status' => ['required', Rule::in(['active', 'inactive'])],
+        ]);
+        $profile = $request->user()->logisticsProfile;
+
+        abort_unless($profile, 404);
+
+        $zone = DB::transaction(function () use (
+            $profile,
+            $sortingZone,
+            $validated,
+            $zoneMatcher,
+            $riderAssignment,
+        ): SortingZone {
+            LogisticsProfile::query()
+                ->whereKey($profile->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $center = SortingCenter::query()
+                ->whereKey($sortingZone->sorting_center_id)
+                ->where('logistics_profile_id', $profile->id)
+                ->where('status', 'active')
+                ->lockForUpdate()
+                ->firstOrFail();
+            $zone = $center->zones()
+                ->lockForUpdate()
+                ->findOrFail($sortingZone->id);
+
+            if ($validated['status'] === 'inactive') {
+                if ($this->sortingZoneIsInUse($zone)) {
+                    throw ValidationException::withMessages([
+                        'status' => 'This zone cannot be deactivated while non-final parcels or active dispatch batches use it. Clear those operational assignments first; Rider home-area matches refresh automatically.',
+                    ]);
+                }
+            } elseif ($zone->status !== 'active') {
+                $coverage = $zone->destination_rules ?? [];
+
+                if (
+                    $zoneMatcher->normalizeLabel(
+                        (string) ($coverage['province'] ?? '')
+                    ) === ''
+                    || $zoneMatcher->normalizeLabel(
+                        (string) ($coverage['city_municipality'] ?? '')
+                    ) === ''
+                    || empty($coverage['barangays'])
+                ) {
+                    throw ValidationException::withMessages([
+                        'status' => 'Configure valid province, municipality, and barangay coverage before activating this zone.',
+                    ]);
+                }
+
+                $this->assertNoOverlappingSortingZoneCoverage(
+                    $center,
+                    $coverage,
+                    $zoneMatcher,
+                    $zone->id,
+                    'status'
+                );
+            }
+
+            $zone->update(['status' => $validated['status']]);
+
+            $riderAssignment->syncForProfile($profile);
+
+            return $zone;
+        }, 3);
+
+        $action = $zone->status === 'active'
+            ? 'activated'
+            : 'deactivated';
+
+        return redirect()
+            ->route('logistics.sorting.center')
+            ->with('success', "Zone {$zone->code} was {$action}.");
+    }
+
+    public function archiveSortingZone(
+        Request $request,
+        int $sortingZone,
+        RiderZoneAssignmentService $riderAssignment,
+    ): RedirectResponse {
+        $profile = $request->user()->logisticsProfile;
+
+        abort_unless($profile, 404);
+
+        $zone = DB::transaction(function () use (
+            $profile,
+            $sortingZone,
+            $riderAssignment,
+        ): SortingZone {
+            LogisticsProfile::query()
+                ->whereKey($profile->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $zone = SortingZone::query()
+                ->whereKey($sortingZone)
+                ->whereHas('sortingCenter', fn ($query) =>
+                    $query->where('logistics_profile_id', $profile->id)
+                )
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($this->sortingZoneIsInUse($zone)) {
+                throw ValidationException::withMessages([
+                    'status' => 'This zone cannot be archived while non-final parcels or active dispatch batches use it. Clear those operational assignments first.',
+                ]);
+            }
+
+            $zone->update(['status' => 'inactive']);
+            $zone->delete();
+            $riderAssignment->syncForProfile($profile);
+
+            return $zone;
+        }, 3);
+
+        return redirect()
+            ->route('logistics.sorting.center')
+            ->with('success', "Zone {$zone->code} was archived. You can restore or permanently delete it from Archived zones.");
+    }
+
+    public function restoreSortingZone(
+        Request $request,
+        int $sortingZone,
+        SortingZoneMatcher $zoneMatcher,
+        RiderZoneAssignmentService $riderAssignment,
+    ): RedirectResponse {
+        $profile = $request->user()->logisticsProfile;
+
+        abort_unless($profile, 404);
+
+        $zone = DB::transaction(function () use (
+            $profile,
+            $sortingZone,
+            $zoneMatcher,
+            $riderAssignment,
+        ): SortingZone {
+            LogisticsProfile::query()
+                ->whereKey($profile->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $zone = SortingZone::withTrashed()
+                ->whereKey($sortingZone)
+                ->whereHas('sortingCenter', fn ($query) =>
+                    $query->where('logistics_profile_id', $profile->id)
+                )
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            abort_unless($zone->trashed(), 404);
+
+            $center = SortingCenter::query()
+                ->whereKey($zone->sorting_center_id)
+                ->where('logistics_profile_id', $profile->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $coverage = $zone->destination_rules ?? [];
+
+            if (
+                $zoneMatcher->normalizeLabel((string) ($coverage['province'] ?? '')) === ''
+                || $zoneMatcher->normalizeLabel((string) ($coverage['city_municipality'] ?? '')) === ''
+                || empty($coverage['barangays'])
+            ) {
+                throw ValidationException::withMessages([
+                    'status' => 'This archived zone has invalid coverage and cannot be restored. Create a replacement zone with valid coverage.',
+                ]);
+            }
+
+            $this->assertNoOverlappingSortingZoneCoverage(
+                $center,
+                $coverage,
+                $zoneMatcher,
+                errorKey: 'status'
+            );
+
+            $zone->restore();
+            $zone->update(['status' => 'active']);
+            $riderAssignment->syncForProfile($profile);
+
+            return $zone;
+        }, 3);
+
+        return redirect()
+            ->route('logistics.sorting.center', ['zone_view' => 'archived'])
+            ->with('success', "Zone {$zone->code} was restored and activated.");
+    }
+
+    public function forceDeleteSortingZone(
+        Request $request,
+        int $sortingZone,
+    ): RedirectResponse {
+        $profile = $request->user()->logisticsProfile;
+
+        abort_unless($profile, 404);
+
+        $zoneCode = DB::transaction(function () use (
+            $profile,
+            $sortingZone,
+        ): string {
+            LogisticsProfile::query()
+                ->whereKey($profile->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $zone = SortingZone::withTrashed()
+                ->whereKey($sortingZone)
+                ->whereHas('sortingCenter', fn ($query) =>
+                    $query->where('logistics_profile_id', $profile->id)
+                )
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            abort_unless($zone->trashed(), 404);
+
+            if ($this->sortingZoneIsInUse($zone)) {
+                throw ValidationException::withMessages([
+                    'status' => 'This zone cannot be permanently deleted while non-final parcels or active dispatch batches use it.',
+                ]);
+            }
+
+            $code = $zone->code;
+            $zone->forceDelete();
+
+            return $code;
+        }, 3);
+
+        return redirect()
+            ->route('logistics.sorting.center', ['zone_view' => 'archived'])
+            ->with('success', "Zone {$zoneCode} was permanently deleted. Historical records remain, with their zone references cleared.");
+    }
+
+    public function transfers(
+        Request $request,
+        ShipmentHandoffService $handoffs
+    ): View {
+        $profile = $request->user()->logisticsProfile;
+
+        abort_unless($profile, 404);
+
+        $accountCenters = $profile->sortingCenters()
+            ->orderBy('id')
+            ->limit(2)
+            ->get();
+        $sortingCenter = $accountCenters->count() === 1
+            && $accountCenters->first()->status === 'active'
+            ? $accountCenters->first()
+            : null;
+        $centerIds = $sortingCenter ? collect([$sortingCenter->id]) : collect();
+
+        $eligibleShipments = Shipment::query()
+            ->where('logistics_profile_id', $profile->id)
+            ->where('status', ShipmentStatus::AtSortingCenter->value)
+            ->whereDoesntHave('transfer')
+            ->whereHas('parcels', fn ($query) => $query
+                ->where('status', ParcelStatus::Received->value)
+                ->whereIn('current_sorting_center_id', $centerIds))
+            ->with([
+                'waybill',
+                'parcels.currentSortingCenter',
+                'sellerOrder.order',
+                'sellerOrder.store',
+                'destinationAddress',
+            ])
+            ->orderByDesc('id')
+            ->get()
+            ->filter(function (Shipment $shipment) use ($profile, $handoffs): bool {
+                if (
+                    $shipment->parcels->isEmpty()
+                    || $shipment->parcels->contains(fn (Parcel $parcel): bool =>
+                        $parcel->status !== ParcelStatus::Received->value
+                        || ! $parcel->currentSortingCenter
+                        || (int) $parcel->currentSortingCenter->logistics_profile_id !== (int) $profile->id
+                    )
+                ) {
+                    return false;
+                }
+
+                $target = $handoffs->destinationProviderFor($shipment);
+
+                return $target
+                    && (int) $target->id !== (int) $profile->id
+                    && $handoffs->hasSingleActiveSortingCenter($target);
+            })
+            ->map(function (Shipment $shipment) use ($handoffs): array {
+                $target = $handoffs->destinationProviderFor($shipment);
+                $order = $shipment->sellerOrder?->order;
+                $destinationSnapshot = $shipment->purpose === 'return'
+                    ? $shipment->destination_address_snapshot
+                    : null;
+                $destinationAddress = $shipment->purpose === 'return'
+                    ? $shipment->destinationAddress
+                    : null;
+
+                return [
+                    'id' => $shipment->id,
+                    'waybill' => $shipment->waybill?->waybill_no ?? $shipment->shipment_no,
+                    'seller_order' => $shipment->sellerOrder?->seller_order_no ?? '—',
+                    'seller' => $shipment->sellerOrder?->store?->name ?? 'Unknown Seller',
+                    'purpose' => $shipment->purpose === 'return' ? 'Return to Seller' : 'Buyer delivery',
+                    'destination' => ($destinationSnapshot['city_municipality'] ?? null)
+                        ?: $destinationAddress?->city_municipality
+                        ?: $order?->city_municipality
+                        ?: 'Destination city unavailable',
+                    'province' => ($destinationSnapshot['province'] ?? null)
+                        ?: $destinationAddress?->province
+                        ?: $order?->province
+                        ?: '',
+                    'target' => $target?->display_name ?? 'Destination Logistics',
+                    'pieces' => $shipment->parcels->count(),
+                ];
+            })
+            ->values();
+
+        $outgoing = ShipmentTransfer::query()
+            ->where('from_logistics_profile_id', $profile->id)
+            ->where('status', 'sent')
+            ->with([
+                'shipment.waybill',
+                'shipment.sellerOrder.store',
+                'toLogisticsProfile',
+            ])
+            ->latest('sent_at')
+            ->get();
+
+        $incoming = ShipmentTransfer::query()
+            ->where('to_logistics_profile_id', $profile->id)
+            ->where('status', 'sent')
+            ->with([
+                'shipment.waybill',
+                'shipment.sellerOrder.store',
+                'fromLogisticsProfile',
+            ])
+            ->latest('sent_at')
+            ->get();
+
+        $recent = ShipmentTransfer::query()
+            ->where(function ($query) use ($profile): void {
+                $query->where('from_logistics_profile_id', $profile->id)
+                    ->orWhere('to_logistics_profile_id', $profile->id);
+            })
+            ->where('status', 'accepted')
+            ->with([
+                'shipment.waybill',
+                'shipment.sellerOrder.store',
+                'fromLogisticsProfile',
+                'toLogisticsProfile',
+            ])
+            ->latest('accepted_at')
+            ->limit(20)
+            ->get();
+
+        return view('logistics.transfers.index', $this->shared() + [
+            'eligibleShipments' => $eligibleShipments,
+            'outgoingTransfers' => $outgoing,
+            'incomingTransfers' => $incoming,
+            'recentTransfers' => $recent,
+            'sortingCenter' => $sortingCenter,
+        ]);
+    }
+
+    public function sendTransfer(
+        Request $request,
+        Shipment $shipment,
+        ShipmentHandoffService $handoffs
+    ): RedirectResponse {
+        $transfer = $handoffs->send($shipment, $request->user());
+
+        return redirect()
+            ->route('logistics.transfers.index')
+            ->with('success', "{$transfer->shipment?->waybill?->waybill_no} was sent to {$transfer->toLogisticsProfile?->display_name} for destination-city handling.");
+    }
+
+    public function acceptTransfer(
+        Request $request,
+        ShipmentHandoffService $handoffs
+    ): RedirectResponse {
+        $data = $request->validate([
+            'identifier' => ['required', 'string', 'max:120'],
+            'sorting_center_id' => ['prohibited'],
+            'scan_method' => ['nullable', Rule::in(['camera', 'barcode', 'manual', 'image'])],
+        ]);
+
+        $profile = $request->user()->logisticsProfile;
+
+        abort_unless($profile, 403);
+
+        $transfer = $handoffs->accept(
+            $data['identifier'],
+            $request->user(),
+            $data['scan_method'] ?? 'manual'
+        );
+
+        return redirect()
+            ->route('logistics.transfers.index')
+            ->with('success', "{$transfer->shipment?->waybill?->waybill_no} was accepted into your Sorting Center.");
+    }
+
+    private function validateSortingZoneCoverage(
+        Request $request,
+        LogisticsProfile $profile
+    ): array {
+        $serviceAddress = $profile->serviceAddress;
+
+        if (
+            ! $serviceAddress
+            || ! preg_match('/^[0-9]{6,10}$/D', (string) $profile->psgc_city_code)
+            || (string) $serviceAddress->psgc_city_code !== (string) $profile->psgc_city_code
+        ) {
+            throw ValidationException::withMessages([
+                'city_code' => 'The Logistics service address needs a verified municipality/city before zones can be managed.',
+            ]);
+        }
+
+        $rules = [
+            'city_code' => ['required', Rule::in([(string) $profile->psgc_city_code])],
+            'sorting_center_id' => ['prohibited'],
+            'barangays' => ['required', 'array', 'min:1', 'max:100'],
+            'barangays.*' => [
+                'required',
+                'string',
+                'max:120',
+                'distinct:ignore_case',
+            ],
+        ];
+
+        return $request->validate($rules) + [
+            'province' => (string) $serviceAddress->province,
+            'city_municipality' => (string) $serviceAddress->city_municipality,
+            'psgc_city_code' => (string) $profile->psgc_city_code,
+        ];
+    }
+
+    private function singleActiveSortingCenter(LogisticsProfile $profile): SortingCenter
+    {
+        $centers = $profile->sortingCenters()
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->limit(2)
+            ->get();
+
+        if ($centers->count() !== 1 || $centers->first()->status !== 'active') {
+            throw ValidationException::withMessages([
+                'city_code' => 'Your Logistics account must have exactly one active Sorting Center to manage delivery zones.',
+            ]);
+        }
+
+        return $centers->first();
+    }
+
+    private function normalizeSortingZoneCoverage(
+        array $validated,
+        LogisticsProfile $profile,
+        SortingZoneMatcher $zoneMatcher
+    ): array {
+        $serviceAddress = $profile->serviceAddress;
+        $province = trim((string) $serviceAddress?->province);
+        $city = trim((string) $serviceAddress?->city_municipality);
+        $barangays = collect($validated['barangays'])
+            ->map(fn (string $barangay): string => trim($barangay))
+            ->filter()
+            ->unique(fn (string $barangay): string =>
+                $zoneMatcher->normalizeLabel($barangay)
+            )
+            ->values();
+
+        if ($zoneMatcher->normalizeLabel($province) === '') {
+            throw ValidationException::withMessages([
+                'province' => 'Choose a valid province.',
+            ]);
+        }
+
+        if ($zoneMatcher->normalizeLabel($city) === '') {
+            throw ValidationException::withMessages([
+                'city_municipality' => 'Choose a valid municipality or city.',
+            ]);
+        }
+
+        if ($barangays->isEmpty() || $barangays->contains(
+            fn (string $barangay): bool =>
+                $zoneMatcher->normalizeLabel($barangay) === ''
+        )) {
+            throw ValidationException::withMessages([
+                'barangays' => 'Select valid barangay names from the location list.',
+            ]);
+        }
+
+        return [
+            'province' => $province,
+            'city_municipality' => $city,
+            'psgc_city_code' => (string) $profile->psgc_city_code,
+            'barangays' => $barangays->all(),
+        ];
+    }
+
+    private function assertNoOverlappingSortingZoneCoverage(
+        SortingCenter $center,
+        array $coverage,
+        SortingZoneMatcher $zoneMatcher,
+        ?int $exceptZoneId = null,
+        string $errorKey = 'barangays'
+    ): void {
+        $profile = $center->logisticsProfile;
+        $centerIds = $profile
+            ? $profile->sortingCenters()->select('id')
+            : [$center->id];
+        $zones = SortingZone::query()
+            ->whereIn('sorting_center_id', $centerIds)
+            ->where('status', 'active')
+            ->when($exceptZoneId, fn ($query) =>
+                $query->whereKeyNot($exceptZoneId)
+            )
+            ->get();
+
+        foreach ($zones as $existingZone) {
+            foreach ($coverage['barangays'] ?? [] as $barangay) {
+                if ($zoneMatcher->coversDestination(
+                    $existingZone->destination_rules,
+                    [
+                        'province' => $coverage['province'] ?? '',
+                        'city_municipality' => $coverage['city_municipality'] ?? '',
+                        'psgc_city_code' => $coverage['psgc_city_code'] ?? '',
+                        'barangay' => $barangay,
+                    ]
+                )) {
+                    throw ValidationException::withMessages([
+                        $errorKey => "{$barangay} is already covered by {$existingZone->code} for this Logistics account.",
+                    ]);
+                }
+            }
+        }
+    }
+
+    private function sortingZoneIsInUse(SortingZone $zone): bool
+    {
+        $finalStatuses = [
+            ParcelStatus::Delivered->value,
+            ParcelStatus::Returned->value,
+            ParcelStatus::Lost->value,
+            ParcelStatus::Damaged->value,
+        ];
+
+        return $zone->parcels()
+                ->whereNotIn('status', $finalStatuses)
+                ->exists()
+            || $zone->dispatchBatches()
+                ->whereNotIn('status', ['completed', 'cancelled'])
+                ->exists();
+    }
+
+    private function sortingZoneCoverageFingerprint(
+        ?array $coverage,
+        SortingZoneMatcher $zoneMatcher
+    ): string {
+        $barangays = collect($coverage['barangays'] ?? [])
+            ->map(fn (mixed $barangay): string => is_array($barangay)
+                ? (string) ($barangay['name'] ?? '')
+                : (string) $barangay)
+            ->map(fn (string $barangay): string =>
+                $zoneMatcher->normalizeLabel($barangay)
+            )
+            ->filter()
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
+
+        return json_encode([
+            $zoneMatcher->normalizeLabel((string) ($coverage['province'] ?? '')),
+            $zoneMatcher->normalizeLabel((string) ($coverage['city_municipality'] ?? '')),
+            trim((string) ($coverage['psgc_city_code'] ?? '')),
+            $barangays,
+        ], JSON_THROW_ON_ERROR);
+    }
+
+    private function sortingZoneName(array $coverage): string
+    {
+        return mb_substr(
+            $coverage['city_municipality'].' / '.($coverage['barangays'][0] ?? ''),
+            0,
+            120
+        );
+    }
+
+    public function sorting(
+        Request $request,
+        SortingZoneMatcher $zoneMatcher
+    ): View
     {
         $profile = request()->user()->logisticsProfile;
 
         abort_unless($profile, 404);
 
+        $zoneFilters = $request->validate([
+            'zone_view' => ['nullable', Rule::in(['current', 'archived'])],
+            'zone_search' => ['nullable', 'string', 'max:100'],
+            'zone_status' => ['nullable', Rule::in(['active', 'inactive'])],
+            'zone_page' => ['nullable', 'integer', 'min:1'],
+        ]);
+        $zoneView = $zoneFilters['zone_view'] ?? 'current';
+        $zoneSearch = trim($zoneFilters['zone_search'] ?? '');
+        $zoneStatus = $zoneView === 'current'
+            ? ($zoneFilters['zone_status'] ?? '')
+            : '';
+
         $sortingCenters = $profile->sortingCenters()
             ->where('status', 'active')
             ->with([
                 'zones' => fn ($query) => $query
-                    ->where('status', 'active')
                     ->orderBy('code'),
             ])
             ->orderBy('name')
             ->get();
+        $serviceAddress = $profile->serviceAddress;
         $centerIds = $sortingCenters->pluck('id');
         $zonesByCenter = $sortingCenters->mapWithKeys(
             fn (SortingCenter $center): array => [
                 $center->id => $center->zones
-                    ->map(fn (SortingZone $zone): array => [
-                        'id' => $zone->id,
-                        'code' => $zone->code,
-                        'name' => $zone->name,
-                    ])
-                    ->values()
-                    ->all(),
+                    ->where('status', 'active')
+                    ->values(),
             ]
         );
+        $editingZone = null;
+
+        if ($request->filled('edit_zone')) {
+            $editingZone = SortingZone::query()
+                ->whereKey($request->integer('edit_zone'))
+                ->whereIn('sorting_center_id', $centerIds)
+                ->firstOrFail();
+        }
+
+        $finalParcelStatuses = [
+            ParcelStatus::Delivered->value,
+            ParcelStatus::Returned->value,
+            ParcelStatus::Lost->value,
+            ParcelStatus::Damaged->value,
+        ];
+        $zoneQuery = SortingZone::query()
+            ->whereIn('sorting_center_id', $centerIds)
+            ->withCount([
+                'parcels as non_final_parcels_count' => fn ($query) =>
+                    $query->whereNotIn('status', $finalParcelStatuses),
+                'dispatchBatches as active_dispatch_batches_count' => fn ($query) =>
+                    $query->whereNotIn('status', ['completed', 'cancelled']),
+            ]);
+
+        if ($zoneView === 'archived') {
+            $zoneQuery->onlyTrashed();
+        } elseif ($zoneStatus !== '') {
+            $zoneQuery->where('status', $zoneStatus);
+        }
+
+        if ($zoneSearch !== '') {
+            $searchPattern = '%'.$zoneSearch.'%';
+            $zoneQuery->where(function ($query) use ($searchPattern): void {
+                $query->where('code', 'like', $searchPattern)
+                    ->orWhere('name', 'like', $searchPattern)
+                    ->orWhereRaw(
+                        'CAST(destination_rules AS CHAR) LIKE ?',
+                        [$searchPattern]
+                    );
+            });
+        }
+
+        $zonePaginator = $zoneQuery
+            ->orderBy('code')
+            ->paginate(12, ['*'], 'zone_page')
+            ->withQueryString();
 
         $exceptionStatuses =
             $this->sortingExceptionStatuses();
@@ -2477,17 +3315,28 @@ class LogisticsController extends Controller
 
         $parcels = $parcelRecords->map(function (Parcel $parcel) use (
             $exceptionStatuses,
-            $zonesByCenter
+            $zonesByCenter,
+            $zoneMatcher
         ): array {
-            $order = $parcel->shipment?->sellerOrder?->order;
             $destinationAddress = $parcel->shipment?->purpose === 'return'
                 ? $parcel->shipment->destinationAddress
                 : null;
+            $destination = $zoneMatcher->destinationFor($parcel);
+            $centerZones = $zonesByCenter->get(
+                (int) $parcel->current_sorting_center_id,
+                collect()
+            );
+            $matchingZones = $centerZones
+                ->filter(fn (SortingZone $zone): bool =>
+                    $zoneMatcher->matches($zone, $parcel)
+                )
+                ->values();
             $isException = in_array(
                 $parcel->status,
                 $exceptionStatuses,
                 true
             );
+            $isUnmatched = $matchingZones->isEmpty();
 
             return [
                 'id' => $parcel->id,
@@ -2503,34 +3352,90 @@ class LogisticsController extends Controller
                     ? collect([
                         $destinationAddress->house_number,
                         $destinationAddress->street,
-                        $destinationAddress->barangay,
-                        $destinationAddress->city_municipality,
-                        $destinationAddress->province,
                         $destinationAddress->postal_code,
                     ])->filter()->implode(', ')
-                    : (collect([
-                        $order?->city_municipality,
-                        $order?->province,
-                    ])->filter()->implode(', ') ?: 'Not provided'),
+                    : '',
+                'destination_area' => collect([
+                    $destination['barangay'],
+                    $destination['city_municipality'],
+                    $destination['province'],
+                ])->filter()->implode(', ') ?: 'Not provided',
                 'zone_id' => $parcel->current_zone_id,
                 'zone' => $parcel->currentZone?->code ?: '',
-                'zones' => $zonesByCenter
-                    ->get($parcel->current_sorting_center_id, []),
+                'zones' => $matchingZones
+                    ->map(fn (SortingZone $zone): array => [
+                        'id' => $zone->id,
+                        'code' => $zone->code,
+                        'name' => $zone->name,
+                        'coverage' => $zoneMatcher->coverageLabel(
+                            $zone->destination_rules
+                        ),
+                    ])
+                    ->all(),
                 'size' => $parcel->size_class
                     ? ucwords($parcel->size_class)
                     : 'Not classified',
                 'status' => $isException
                     ? 'Exception'
                     : ucfirst($parcel->status),
-                'can_sort' => ! $isException,
+                'status_label' => $isException
+                    ? 'Inspection required'
+                    : ($isUnmatched ? 'No matching zone' : ucfirst($parcel->status)),
+                'has_matching_zone' => ! $isUnmatched,
+                'can_sort' => ! $isException && ! $isUnmatched,
             ];
         })->values();
 
+        $zoneManagementCenters = $sortingCenters
+            ->map(function (SortingCenter $center) use ($zoneMatcher, $zonePaginator): array {
+                return [
+                    'id' => $center->id,
+                    'name' => $center->name,
+                    'code' => $center->code,
+                    'zones' => $zonePaginator->getCollection()
+                        ->where('sorting_center_id', $center->id)
+                        ->map(fn (SortingZone $zone): array => [
+                            'id' => $zone->id,
+                            'code' => $zone->code,
+                            'name' => $zone->name,
+                            'status' => $zone->status,
+                            'can_permanently_delete' => (int) $zone->non_final_parcels_count === 0
+                                && (int) $zone->active_dispatch_batches_count === 0,
+                            'coverage' => $zoneMatcher->coverageLabel(
+                                $zone->destination_rules
+                            ),
+                        ])
+                        ->values()
+                        ->all(),
+                ];
+            })
+            ->values();
+
+        $sortingZones = $zoneManagementCenters
+            ->flatMap(fn (array $center): array => $center['zones'])
+            ->where('status', 'active')
+            ->values();
+        $zoneCounts = [
+            'current' => SortingZone::query()
+                ->whereIn('sorting_center_id', $centerIds)
+                ->count(),
+            'archived' => SortingZone::onlyTrashed()
+                ->whereIn('sorting_center_id', $centerIds)
+                ->count(),
+        ];
+
         return view('logistics.sorting.center', $this->shared() + [
+            'profile' => $profile,
+            'serviceAddress' => $serviceAddress,
             'parcels' => $parcels,
-            'sortingZones' => $sortingCenters
-                ->flatMap->zones
-                ->values(),
+            'zoneManagementCenters' => $zoneManagementCenters,
+            'zonePaginator' => $zonePaginator,
+            'zoneView' => $zoneView,
+            'zoneSearch' => $zoneSearch,
+            'zoneStatus' => $zoneStatus,
+            'zoneCounts' => $zoneCounts,
+            'editingZone' => $editingZone?->toArray(),
+            'sortingZones' => $sortingZones,
             'sortingMetrics' => [
                 'unsorted' => $parcelRecords
                     ->where('status', ParcelStatus::Received->value)
@@ -2552,10 +3457,16 @@ class LogisticsController extends Controller
                     ->count(),
                 'active_zones' => $sortingCenters
                     ->sum(fn (SortingCenter $center) =>
-                        $center->zones->count()
+                        $center->zones
+                            ->where('status', 'active')
+                            ->count()
                     ),
                 'exceptions' => $parcelRecords
                     ->whereIn('status', $exceptionStatuses)
+                    ->count(),
+                'unmatched' => $parcels
+                    ->where('has_matching_zone', false)
+                    ->where('status', '!=', 'Exception')
                     ->count(),
             ],
         ]);
@@ -2613,7 +3524,7 @@ class LogisticsController extends Controller
         );
     }
 
-    public function dispatch(): View
+    public function dispatch(SortingZoneMatcher $zoneMatcher): View
     {
         /** @var User $operator */
         $operator = Auth::user();
@@ -2750,9 +3661,14 @@ class LogisticsController extends Controller
             ) use (
                 $center,
                 $profile,
-                $ridersByZone
+                $ridersByZone,
+                $zoneMatcher
             ): array {
-                $ready = Parcel::query()
+                $readyParcels = Parcel::query()
+                    ->with([
+                        'shipment.destinationAddress',
+                        'shipment.sellerOrder.order',
+                    ])
                     ->where(
                         'current_sorting_center_id',
                         $center->id
@@ -2788,7 +3704,16 @@ class LogisticsController extends Controller
                                 ]
                             )
                     )
-                    ->count();
+                    ->get();
+
+                $matchingParcels = $readyParcels
+                    ->filter(fn (Parcel $parcel): bool =>
+                        $zoneMatcher->matches($zone, $parcel)
+                    )
+                    ->values();
+                $routingIssues = $readyParcels->count()
+                    - $matchingParcels->count();
+                $ready = $matchingParcels->count();
 
                 /*
                 * DispatchService releases the whole ready zone
@@ -2812,7 +3737,11 @@ class LogisticsController extends Controller
                     'id' => $zone->id,
                     'zone' => $zone->code,
                     'area' => $zone->name,
+                    'coverage' => $zoneMatcher->coverageLabel(
+                        $zone->destination_rules
+                    ),
                     'ready' => $ready,
+                    'routing_issues' => $routingIssues,
                     'riders' => $eligibleRiders,
                 ];
             })
@@ -2944,7 +3873,7 @@ class LogisticsController extends Controller
             );
     }
 
-    public function monitoring(): View
+    public function monitoring(BuyerCatalogService $catalog): View
     {
         /** @var User $operator */
         $operator = Auth::user();
@@ -2978,6 +3907,8 @@ class LogisticsController extends Controller
                 'sortingZone:id,code,name',
                 'riderProfile.user:id,name',
                 'parcels',
+                'parcels.shipment.sellerOrder.items.product.images.variant',
+                'parcels.shipment.sellerOrder.items.variant',
                 'deliveryAttempts' => fn ($query) =>
                     $query->orderBy('attempted_at'),
             ])
@@ -2986,8 +3917,12 @@ class LogisticsController extends Controller
             ->get();
 
         $deliveries = $batches
-            ->map(function (DispatchBatch $batch): array {
+            ->map(function (DispatchBatch $batch) use ($catalog): array {
                 $parcels = $batch->parcels;
+                $items = $parcels
+                    ->flatMap(fn (Parcel $parcel) => $parcel->shipment?->sellerOrder?->items ?? collect())
+                    ->unique('id')
+                    ->values();
 
                 $stage = $this->deliveryMonitoringStage(
                     $parcels
@@ -3033,6 +3968,8 @@ class LogisticsController extends Controller
 
                     'parcels' =>
                         $parcels->count(),
+
+                    'products' => $this->orderItemPreviewData($items, $catalog),
 
                     'progress' =>
                         $progress,
@@ -5162,6 +6099,22 @@ class LogisticsController extends Controller
         /** @var User $operator */
         $operator = $request->user();
 
+        $contact = trim((string) $request->input('contact'));
+
+        if ($contact !== '') {
+            try {
+                $contact = app(InternationalPhone::class)
+                    ->normalize($contact, 'PH');
+            } catch (ValidationException $exception) {
+                throw ValidationException::withMessages([
+                    'contact' => $exception->errors()['contact_number']
+                        ?? ['Enter a valid Philippine mobile number.'],
+                ]);
+            }
+        }
+
+        $request->merge(['contact' => $contact]);
+
         $validated = $request->validate([
             'name' => [
                 'required',
@@ -5171,12 +6124,15 @@ class LogisticsController extends Controller
             'contact' => [
                 'required',
                 'string',
-                'max:30',
+                'max:17',
+                Rule::unique('users', 'contact_number')->ignore($operator->id),
+                Rule::unique('users', 'phone')->ignore($operator->id),
             ],
         ]);
 
         $operator->update([
             'name' => trim($validated['name']),
+            'phone' => trim($validated['contact']),
             'contact_number' => trim($validated['contact']),
         ]);
 

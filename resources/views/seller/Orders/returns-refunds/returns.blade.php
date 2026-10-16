@@ -72,7 +72,9 @@
                                 <span class="returns-table-icon"><i data-lucide="user-round" aria-hidden="true"></i></span>
                                 <div class="returns-table-primary-copy">
                                     <strong>{{ $case['customer'] }}</strong>
-                                    <small class="returns-table-product">{{ str_replace(' · ', "\n", $case['product']) }}</small>
+                                    <div class="returns-table-product">
+                                        @include('partials.order-item-preview-list', ['items' => $case['items']])
+                                    </div>
                                 </div>
                             </div>
                         </td>

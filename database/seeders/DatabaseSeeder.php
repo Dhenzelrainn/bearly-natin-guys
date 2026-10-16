@@ -22,9 +22,47 @@ class DatabaseSeeder extends Seeder
         }
         $rules = [
             ['code' => 'PROHIBITED_FIREARMS', 'name' => 'Firearms and ammunition', 'rule_type' => 'keyword', 'target_field' => 'name_description', 'pattern' => 'firearm|handgun|pistol|rifle|shotgun|ammunition|live rounds', 'severity' => 'critical', 'default_action' => 'block'],
+            [
+                'code' => 'PROHIBITED_FIREARM_GUN_ALIAS',
+                'name' => 'Prohibited firearm listing (gun)',
+                'rule_type' => 'keyword',
+                'target_field' => 'name_description',
+                'pattern' => 'gun|guns',
+                'severity' => 'critical',
+                'default_action' => 'block',
+                'configuration' => [
+                    'match_mode' => 'whole_word',
+                    'managed_by_migration' => '2026_10_11_000003_add_product_compliance_detection_rules',
+                ],
+                'is_active' => true,
+                'version' => 1,
+            ],
             ['code' => 'PROHIBITED_ILLEGAL_DRUGS', 'name' => 'Illegal drugs', 'rule_type' => 'keyword', 'target_field' => 'name_description', 'pattern' => 'cocaine|methamphetamine|shabu|heroin|ecstasy', 'severity' => 'critical', 'default_action' => 'block'],
             ['code' => 'SUSPICIOUS_HEALTH_CLAIMS', 'name' => 'Unverified health claims', 'rule_type' => 'phrase', 'target_field' => 'name_description', 'pattern' => 'guaranteed cure|instant cure|fda approved|no side effects', 'severity' => 'high', 'default_action' => 'hold'],
             ['code' => 'CATEGORY_MISMATCH', 'name' => 'Product category does not match seller approval', 'rule_type' => 'category_mismatch', 'target_field' => 'category', 'pattern' => null, 'severity' => 'high', 'default_action' => 'hold'],
+            [
+                'code' => 'CATEGORY_MISMATCH_ELECTRONICS_APPAREL',
+                'name' => 'Apparel product listed under Electronics and Gadgets',
+                'rule_type' => 'category_mismatch',
+                'target_field' => 'name_description',
+                'pattern' => null,
+                'category_id' => null,
+                'severity' => 'high',
+                'default_action' => 'hold',
+                'configuration' => [
+                    'managed_by_migration' => '2026_10_11_000003_add_product_compliance_detection_rules',
+                    'mismatched_terms_by_category_slug' => [
+                        'electronics-and-gadgets' => [
+                            'shirt', 'shirts', 't-shirt', 't-shirts', 'tshirt', 'tshirts',
+                            'polo shirt', 'polo shirts', 'shorts', 'short pants', 'bermuda shorts',
+                            'dress', 'dresses', 'skirt', 'skirts', 'blouse', 'blouses',
+                            'jeans', 'trousers',
+                        ],
+                    ],
+                ],
+                'is_active' => true,
+                'version' => 1,
+            ],
         ];
         foreach ($rules as $rule) {
             ComplianceRule::updateOrCreate(['code' => $rule['code']], $rule);

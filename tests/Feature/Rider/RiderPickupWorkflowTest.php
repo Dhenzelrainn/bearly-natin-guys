@@ -170,6 +170,21 @@ class RiderPickupWorkflowTest extends TestCase
                     'rider',
             ]
         );
+
+        $this
+            ->actingAs($rider->user)
+            ->get(
+                route(
+                    'rider.orders.pickup',
+                    $record['pickup']->pickup_no
+                )
+            )
+            ->assertOk()
+            ->assertSeeText('Parcels collected.')
+            ->assertSeeText('assigned Sorting Center.')
+            ->assertSeeText('Logistics will scan and')
+            ->assertSeeText('record each parcel in Incoming Parcels')
+            ->assertSeeText('receiving the handoff.');
     }
 
     public function test_rider_pickup_moves_return_case_into_transit(): void
@@ -747,6 +762,17 @@ class RiderPickupWorkflowTest extends TestCase
                 $rider,
                 'DETAIL'
             );
+        $record['sellerOrder']->items()->create([
+            'product_name' => 'Rider Pickup Preview Product',
+            'variant_name' => 'Green / One Size',
+            'sku' => 'RIDER-PICKUP-PREVIEW-001',
+            'unit_price_minor' => 9900,
+            'quantity' => 1,
+            'discount_minor' => 0,
+            'subtotal_minor' => 9900,
+            'product_image_disk' => 'public',
+            'product_image_path' => 'seller-products/rider-pickup-preview.png',
+        ]);
 
         $this
             ->actingAs($rider->user)
@@ -773,6 +799,8 @@ class RiderPickupWorkflowTest extends TestCase
                 $record['waybill']
                     ->waybill_no
             )
+            ->assertSee('Rider Pickup Preview Product')
+            ->assertSee('seller-products/rider-pickup-preview.png', false)
             ->assertSee(
                 'Use the loading bay.'
             );

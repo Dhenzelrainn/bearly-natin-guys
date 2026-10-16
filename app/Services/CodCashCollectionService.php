@@ -113,9 +113,9 @@ class CodCashCollectionService
         }, attempts: 3);
     }
 
-    public function receiveAtLogistics(User $logisticsUser, int $collectionId, int $receivedAmountMinor, string $reference): CodCashCollection
+    public function receiveAtLogistics(User $logisticsUser, int $collectionId, int $receivedAmountMinor): CodCashCollection
     {
-        return DB::transaction(function () use ($logisticsUser, $collectionId, $receivedAmountMinor, $reference): CodCashCollection {
+        return DB::transaction(function () use ($logisticsUser, $collectionId, $receivedAmountMinor): CodCashCollection {
             $profile = $logisticsUser->logisticsProfile()->first();
             if ($logisticsUser->role !== UserRole::Logistics->value
                 || $logisticsUser->status !== AccountStatus::Active->value
@@ -126,13 +126,12 @@ class CodCashCollectionService
             $collection = CodCashCollection::query()->whereKey($collectionId)->lockForUpdate()->firstOrFail();
             $this->assertProvider($collection, $profile->id);
             $this->assertActualAmount($collection, $receivedAmountMinor, 'received_amount');
-            $reference = trim($reference);
-            if ($reference === '') {
-                throw ValidationException::withMessages(['reference' => 'Enter the Logistics cash handoff reference.']);
-            }
 
-            if ($collection->status === 'received_by_logistics') {
-                if ($collection->logistics_reference === $reference
+            if ($collection->logistics_reference !== null
+                || $collection->logistics_received_at !== null
+                || $collection->logistics_received_by !== null) {
+                if ($collection->logistics_reference !== null
+                    && (int) $collection->amount_received_by_logistics_minor === $receivedAmountMinor
                     && (int) $collection->logistics_received_by === (int) $logisticsUser->id) {
                     return $collection;
                 }
@@ -143,6 +142,8 @@ class CodCashCollectionService
             }
 
             $now = now();
+            // Derive the handoff reference from the collection's unique number so it is unique without another schema constraint.
+            $reference = 'CODH-'.Str::upper(Str::replaceFirst('COD-', '', $collection->collection_no));
             $collection->update([
                 'amount_received_by_logistics_minor' => $receivedAmountMinor,
                 'status' => 'received_by_logistics',
@@ -168,9 +169,9 @@ class CodCashCollectionService
         }, attempts: 3);
     }
 
-    public function remitToFinance(User $logisticsUser, int $collectionId, int $amountMinor, string $reference): CodCashCollection
+    public function remitToFinance(User $logisticsUser, int $collectionId, int $amountMinor): CodCashCollection
     {
-        return DB::transaction(function () use ($logisticsUser, $collectionId, $amountMinor, $reference): CodCashCollection {
+        return DB::transaction(function () use ($logisticsUser, $collectionId, $amountMinor): CodCashCollection {
             $profile = $logisticsUser->logisticsProfile()->first();
             if ($logisticsUser->role !== UserRole::Logistics->value
                 || $logisticsUser->status !== AccountStatus::Active->value
@@ -181,13 +182,8 @@ class CodCashCollectionService
             $collection = CodCashCollection::query()->whereKey($collectionId)->lockForUpdate()->firstOrFail();
             $this->assertProvider($collection, $profile->id);
             $this->assertActualAmount($collection, $amountMinor, 'amount');
-            $reference = trim($reference);
-            if ($reference === '') {
-                throw ValidationException::withMessages(['reference' => 'Enter the Finance remittance reference.']);
-            }
-
             if ($collection->status === 'remitted_to_finance') {
-                if ($collection->finance_remittance_reference === $reference
+                if ((int) $collection->amount_remitted_to_finance_minor === $amountMinor
                     && (int) $collection->remitted_to_finance_by === (int) $logisticsUser->id) {
                     return $collection;
                 }
@@ -198,6 +194,8 @@ class CodCashCollectionService
             }
 
             $now = now();
+            // Derive a separate handoff reference from the unique collection number.
+            $reference = 'L2F-'.Str::upper(Str::replaceFirst('COD-', '', $collection->collection_no));
             $collection->update([
                 'amount_remitted_to_finance_minor' => $amountMinor,
                 'status' => 'remitted_to_finance',
@@ -211,24 +209,20 @@ class CodCashCollectionService
         }, attempts: 3);
     }
 
-    public function reconcileAtFinance(User $admin, int $collectionId, int $receivedAmountMinor, string $reference): CodCashCollection
+    public function reconcileAtFinance(User $admin, int $collectionId, int $receivedAmountMinor): CodCashCollection
     {
-        return DB::transaction(function () use ($admin, $collectionId, $receivedAmountMinor, $reference): CodCashCollection {
+        return DB::transaction(function () use ($admin, $collectionId, $receivedAmountMinor): CodCashCollection {
             if ($admin->role !== UserRole::Admin->value || $admin->status !== AccountStatus::Active->value) {
                 throw new AuthorizationException('An active Admin/Finance user is required to reconcile COD cash.');
             }
 
             $collection = CodCashCollection::query()->whereKey($collectionId)->lockForUpdate()->firstOrFail();
             $this->assertActualAmount($collection, $receivedAmountMinor, 'received_amount');
-            $reference = trim($reference);
-            if ($reference === '') {
-                throw ValidationException::withMessages(['reference' => 'Enter the Finance receipt/reconciliation reference.']);
-            }
 
             if ($collection->status === 'reconciled') {
-                if ($collection->finance_reference === $reference
+                if ((int) $collection->amount_reconciled_minor === $receivedAmountMinor
                     && (int) $collection->reconciled_by === (int) $admin->id) {
-                    return $collection;
+                    return $collection->fresh(['events']);
                 }
                 throw new ConflictHttpException('This COD collection has already been reconciled by Finance.');
             }
@@ -237,6 +231,8 @@ class CodCashCollectionService
             }
 
             $now = now();
+            // The collection primary key keeps Bearly-issued receipt numbers unique without another table or migration.
+            $reference = 'BFR-'.$now->format('Y').'-'.str_pad((string) $collection->id, 8, '0', STR_PAD_LEFT);
             $collection->update([
                 'amount_reconciled_minor' => $receivedAmountMinor,
                 'status' => 'reconciled',
@@ -283,7 +279,14 @@ class CodCashCollectionService
     public function codCollectionsForFinance()
     {
         return CodCashCollection::query()
-            ->with(['order', 'sellerOrder.store', 'logisticsProfile', 'riderProfile.user'])
+            ->with([
+                'order',
+                'sellerOrder.store',
+                'sellerOrder.items.product.images.variant',
+                'sellerOrder.items.variant',
+                'logisticsProfile',
+                'riderProfile.user',
+            ])
             ->whereIn('status', ['collected', 'disputed', 'received_by_logistics', 'remitted_to_finance', 'reconciled'])
             ->orderByDesc('collected_at')
             ->get();

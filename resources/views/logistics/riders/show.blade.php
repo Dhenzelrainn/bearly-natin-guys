@@ -161,7 +161,7 @@
                 <div>
                     <h3>Vehicle and assignment</h3>
                     <p>
-                        Rider vehicle and operational assignment.
+                        The sorting center and delivery zone are matched from the Rider’s registered home municipality and barangay.
                     </p>
                 </div>
             </div>
@@ -189,66 +189,6 @@
                         </div>
 
                         <div class="detail-item">
-                            <label for="rider-home-sorting-center">
-                                <small>Home sorting center</small>
-                            </label>
-
-                            <select
-                                id="rider-home-sorting-center"
-                                name="home_sorting_center_id"
-                                required
-                            >
-                                <option value="">Select sorting center</option>
-
-                                @foreach($assignmentCenters as $center)
-                                    <option
-                                        value="{{ $center['id'] }}"
-                                        @selected(
-                                            (int) ($application['home_sorting_center_id'] ?? 0)
-                                            === (int) $center['id']
-                                        )
-                                    >
-                                        {{ $center['name'] }}
-                                        @if(! empty($center['code']))
-                                            ({{ $center['code'] }})
-                                        @endif
-                                    </option>
-                                @endforeach
-                            </select>
-                        </div>
-
-                        <div class="detail-item">
-                            <label for="rider-current-zone">
-                                <small>Current zone</small>
-                            </label>
-
-                            <select
-                                id="rider-current-zone"
-                                name="current_zone_id"
-                            >
-                                <option value="">No current zone</option>
-
-                                @foreach($assignmentCenters as $center)
-                                    @foreach($center['zones'] as $zone)
-                                        <option
-                                            value="{{ $zone['id'] }}"
-                                            data-center-id="{{ $center['id'] }}"
-                                            @selected(
-                                                (int) ($application['current_zone_id'] ?? 0)
-                                                === (int) $zone['id']
-                                            )
-                                        >
-                                            {{ $zone['name'] }}
-                                            @if(! empty($zone['code']))
-                                                ({{ $zone['code'] }})
-                                            @endif
-                                        </option>
-                                    @endforeach
-                                @endforeach
-                            </select>
-                        </div>
-
-                        <div class="detail-item">
                             <small>Current assignment</small>
                             <strong>{{ $application['home_sorting_center'] }}</strong>
                             <span>{{ $application['current_zone'] }}</span>
@@ -264,8 +204,8 @@
                                 class="button button-primary"
                                 type="submit"
                             >
-                                <i data-lucide="save"></i>
-                                Save assignment
+                                <i data-lucide="refresh-cw"></i>
+                                Refresh home-area match
                             </button>
                         </div>
                     </div>
@@ -283,8 +223,8 @@
                     </div>
 
                     <div class="detail-item">
-                        <small>Area</small>
-                        <strong>{{ $application['area'] }}</strong>
+                        <small>Automatic assignment</small>
+                        <strong>{{ $application['home_sorting_center'] }} / {{ $application['current_zone'] }}</strong>
                     </div>
 
                     <div class="detail-item">

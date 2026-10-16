@@ -58,8 +58,139 @@ function downloadCsv(filename, rows) { const csv = rows.map((row) => row.map((va
 function setupReports() {
     document.querySelector('[data-apply-earnings]')?.addEventListener('click', () => toast('Earnings preview refreshed for the selected date range.'));
     document.querySelector('[data-export-earnings]')?.addEventListener('click', () => { const rows = [['Date','Job','Type','Amount','Status']]; document.querySelectorAll('[data-earnings-row]').forEach((row) => rows.push([...row.children].map((cell) => cell.innerText.trim()))); downloadCsv('bearly-rider-earnings.csv', rows); toast('Earnings CSV exported.'); });
-    document.querySelector('[data-export-history]')?.addEventListener('click', () => { const rows = [['Date','Delivery','Customer','Area','Outcome','Earning']]; document.querySelectorAll('tbody tr[data-row]').forEach((row) => rows.push([...row.children].slice(0,6).map((cell) => cell.innerText.trim()))); downloadCsv('bearly-rider-history.csv', rows); toast('Delivery history CSV exported.'); });
-    document.querySelectorAll('[data-history-detail]').forEach((button) => button.addEventListener('click', () => { const title = document.querySelector('[data-history-title]'); if (title) title.textContent = `${button.dataset.historyDetail} timeline`; window.openRiderModal?.('history-detail'); }));
+}
+
+function renderHistoryProducts(container, products) {
+    container.replaceChildren();
+
+    if (!Array.isArray(products) || products.length === 0) {
+        const empty = document.createElement('p');
+        empty.className = 'empty-copy';
+        empty.textContent = 'No product details recorded.';
+        container.append(empty);
+        return;
+    }
+
+    products.forEach((product) => {
+        const row = document.createElement('div');
+        row.className = 'order-item-preview';
+        row.setAttribute('role', 'listitem');
+
+        const thumbnail = document.createElement('span');
+        thumbnail.className = 'order-item-preview-image';
+
+        let imageUrl = '';
+
+        try {
+            const candidate = new URL(String(product.image_url || ''), window.location.origin);
+            if (candidate.protocol === 'http:' || candidate.protocol === 'https:') {
+                imageUrl = candidate.href;
+            }
+        } catch {
+            imageUrl = '';
+        }
+
+        if (imageUrl) {
+            const image = document.createElement('img');
+            image.src = imageUrl;
+            image.alt = '';
+            image.loading = 'lazy';
+            image.decoding = 'async';
+            thumbnail.append(image);
+        } else {
+            const placeholder = document.createElement('span');
+            placeholder.className = 'order-item-preview-placeholder';
+            placeholder.setAttribute('role', 'img');
+            placeholder.setAttribute('aria-label', 'No product image available');
+
+            const label = document.createElement('small');
+            label.textContent = 'No image';
+            placeholder.append(label);
+            thumbnail.append(placeholder);
+        }
+
+        const copy = document.createElement('span');
+        copy.className = 'order-item-preview-copy';
+
+        const name = document.createElement('strong');
+        name.textContent = String(product.name || 'Unnamed product');
+
+        const details = document.createElement('small');
+        details.textContent = `${String(product.variant || 'Variant not specified')} · Qty ${Number(product.quantity) || 0}`;
+
+        copy.append(name, details);
+        row.append(thumbnail, copy);
+        container.append(row);
+    });
+}
+
+function setupHistoryDetails() {
+    document.querySelectorAll('[data-history-detail]').forEach((button) => {
+        button.addEventListener('click', () => {
+            const modal = document.querySelector('[data-modal="history-detail"]');
+
+            if (!modal) return;
+
+            const shipment = button.dataset.historyId || 'Delivery';
+            const parcel = button.dataset.historyParcel || '';
+            const title = modal.querySelector('[data-history-title]');
+            const subtitle = modal.querySelector('[data-history-subtitle]');
+
+            if (title) title.textContent = `${shipment} details`;
+            if (subtitle) subtitle.textContent = parcel ? `Parcel ${parcel}` : 'Recorded shipment activity.';
+
+            const fields = {
+                customer: button.dataset.historyCustomer,
+                area: button.dataset.historyArea,
+                status: button.dataset.historyStatus,
+                earning: button.dataset.historyEarning,
+                parcel,
+                batch: button.dataset.historyBatch,
+                attempt: button.dataset.historyAttempt,
+                'proof-recipient': button.dataset.historyProofRecipient,
+                'failure-reason': button.dataset.historyFailureReason,
+            };
+
+            Object.entries(fields).forEach(([name, value]) => {
+                const field = modal.querySelector(`[data-history-field="${name}"]`);
+                if (field) field.textContent = value || '—';
+            });
+
+            let products = [];
+
+            try {
+                products = JSON.parse(button.dataset.historyProducts || '[]');
+            } catch {
+                products = [];
+            }
+
+            const productList = modal.querySelector('[data-history-products-list]');
+
+            if (productList) {
+                renderHistoryProducts(productList, products);
+            }
+
+            let events = [];
+
+            try {
+                events = JSON.parse(button.dataset.historyEvents || '[]');
+            } catch {
+                events = [];
+            }
+
+            const timeline = modal.querySelector('[data-history-timeline]');
+
+            if (timeline) {
+                timeline.innerHTML = events.length
+                    ? events.map((event) => `<div class="activity-item"><span class="activity-time">${escapeHtml(event.time)}</span><span class="activity-dot"></span><span class="activity-copy"><strong>${escapeHtml(event.title)}</strong><small>${escapeHtml(event.detail || event.source || '')}</small></span></div>`).join('')
+                    : '<p class="empty-copy">No parcel activity was recorded for this history item.</p>';
+            }
+
+            window.openRiderModal?.('history-detail');
+            refreshIcons();
+            modal.querySelector('[data-modal-close]')?.focus();
+        });
+    });
 }
 
 function setupChat() {
@@ -101,6 +232,27 @@ function setupForms() {
                 }
             )
         );
+}
+
+function setupDeliveryConfirmation() {
+    document.querySelectorAll('form.delivery-form:not(.delivery-failure-form)').forEach((form) => {
+        const submitButton = form.querySelector('button[type="submit"]');
+        const submitLabel = submitButton?.querySelector('[data-delivery-submit-label]');
+
+        if (!submitButton || !submitLabel) return;
+
+        form.addEventListener('submit', (event) => {
+            if (form.dataset.submitting === 'true') {
+                event.preventDefault();
+                return;
+            }
+
+            form.dataset.submitting = 'true';
+            submitButton.disabled = true;
+            submitButton.setAttribute('aria-busy', 'true');
+            submitLabel.textContent = 'Saving delivery…';
+        });
+    });
 }
 
 function setupRegistrationEmail(form) {
@@ -575,6 +727,50 @@ function setupRegistration() {
     const postalHelp = form.querySelector('[data-postal-help]');
     const cityCodeField = form.elements.city_code;
     const postalManualField = form.elements.postal_manual;
+    const logisticsPartner = form.elements.logistics_partner;
+    const logisticsPartnerHelp = form.querySelector('[data-logistics-partner-help]');
+
+    const syncLogisticsPartner = () => {
+        if (!logisticsPartner) return;
+
+        const cityCode = cityCodeField?.value || '';
+        let eligibleCount = 0;
+
+        [...logisticsPartner.options].forEach((option) => {
+            if (!option.value) return;
+
+            const eligible = Boolean(cityCode)
+                && option.dataset.cityCode === cityCode;
+            option.disabled = !eligible;
+            option.hidden = !eligible;
+
+            if (eligible) eligibleCount += 1;
+        });
+
+        const selectedPartner = logisticsPartner.selectedOptions[0];
+
+        // Keep the selection while the address change temporarily clears the
+        // city code; once a new city is resolved, discard only a mismatching partner.
+        if (
+            cityCode
+            && selectedPartner?.value
+            && selectedPartner.dataset.cityCode !== cityCode
+        ) {
+            logisticsPartner.value = '';
+        }
+
+        logisticsPartner.disabled = !cityCode || eligibleCount === 0;
+
+        if (logisticsPartnerHelp) {
+            logisticsPartnerHelp.textContent = !cityCode
+                ? 'Select your home municipality to find its approved Logistics partner.'
+                : !eligibleCount
+                    ? 'No active Logistics partner serves this municipality yet.'
+                    : logisticsPartner.value
+                        ? 'Selected Logistics partner serves your selected municipality.'
+                        : 'Select an approved Logistics partner serving your selected municipality.';
+        }
+    };
 
     /*
      * Searchable address dropdowns
@@ -1363,6 +1559,8 @@ function setupRegistration() {
             cityCodeField.value = '';
         }
 
+        syncLogisticsPartner();
+
         if (postalManualField) {
             postalManualField.value = '0';
         }
@@ -1424,6 +1622,8 @@ function setupRegistration() {
         if (cityCodeField) {
             cityCodeField.value = cityCode;
         }
+
+        syncLogisticsPartner();
 
         try {
             const params =
@@ -1648,6 +1848,8 @@ function setupRegistration() {
         );
     }
 
+    syncLogisticsPartner();
+
     show(1);
 }
 
@@ -1658,8 +1860,10 @@ document.addEventListener('DOMContentLoaded', () => {
     setupTables();
     setupWorkflow();
     setupReports();
+    setupHistoryDetails();
     setupChat();
     setupForms();
+    setupDeliveryConfirmation();
     setupRegistration();
     refreshIcons();
 });

@@ -1,6 +1,6 @@
 # Bearly Database Schema Dictionary
 
-> Generated from a clean MySQL migration. Laravel migrations remain the executable source of truth. Sections tagged as added by `2026_10_11_000001_create_cod_cash_and_refund_cash_workflows` describe the current additive migration and still require MySQL migration/rollback verification before release.
+> Laravel migrations remain the executable source of truth. This dictionary includes additive Logistics/shipment-transfer and Seller Wallet/withdrawal schemas. Migration behavior has been exercised on SQLite tests only; MySQL migration/locking behavior remains unverified. The Seller Wallet migration intentionally refuses rollback once wallet/account/withdrawal data exists. Sections tagged as added by `2026_10_11_000001_create_cod_cash_and_refund_cash_workflows` also require MySQL migration/rollback verification before release.
 
 Conventions: money integers are centavos; timestamps are UTC at storage boundaries; workflow statuses use application strings rather than MySQL enums; nullable foreign keys represent optional actors or later assignments.
 
@@ -423,7 +423,7 @@ Conventions: money integers are centavos; timestamps are UTC at storage boundari
 - `prepared_by` → `users.id`; update NO ACTION, delete SET NULL.
 - `rider_profile_id` → `rider_profiles.id`; update NO ACTION, delete RESTRICT.
 - `sorting_center_id` → `sorting_centers.id`; update NO ACTION, delete RESTRICT.
-- `sorting_zone_id` → `sorting_zones.id`; update NO ACTION, delete RESTRICT.
+- `sorting_zone_id` → `sorting_zones.id`; update NO ACTION, delete SET NULL.
 
 **Indexes**
 
@@ -580,6 +580,7 @@ Conventions: money integers are centavos; timestamps are UTC at storage boundari
 | `legal_name` | `varchar(160)` | NO | — |  |
 | `display_name` | `varchar(160)` | NO | — |  |
 | `contact_phone` | `varchar(30)` | NO | — |  |
+| `psgc_city_code` | `varchar(20)` | YES | — | UNI |
 | `status` | `varchar(30)` | NO | active |  |
 | `created_at` | `timestamp` | YES | — |  |
 | `updated_at` | `timestamp` | YES | — |  |
@@ -594,6 +595,7 @@ Conventions: money integers are centavos; timestamps are UTC at storage boundari
 
 - `logistics_profiles_application_id_foreign` (application_id) — index.
 - `logistics_profiles_user_id_unique` (user_id) — unique.
+- `logistics_profiles_psgc_city_code_unique` (psgc_city_code) — unique.
 
 ## `message_attachments`
 
@@ -706,6 +708,7 @@ Conventions: money integers are centavos; timestamps are UTC at storage boundari
 | `city_municipality` | `varchar(120)` | NO | — |  |
 | `province` | `varchar(120)` | NO | — |  |
 | `postal_code` | `varchar(10)` | YES | — |  |
+| `psgc_city_code` | `varchar(20)` | YES | — |  |
 | `currency` | `char(3)` | NO | PHP |  |
 | `subtotal_minor` | `bigint unsigned` | NO | — |  |
 | `shipping_fee_minor` | `bigint unsigned` | NO | 0 |  |
@@ -805,7 +808,7 @@ Conventions: money integers are centavos; timestamps are UTC at storage boundari
 
 ## `cod_cash_collections` (added by `2026_10_11_000001_create_cod_cash_and_refund_cash_workflows`)
 
-Each outbound COD shipment has at most one Rider collection record. `amount_due_minor`, `amount_collected_minor`, and signed `discrepancy_minor` are integer centavos. A disputed amount never captures the marketplace payment or makes proceeds settlement-eligible.
+Each outbound COD shipment has at most one Rider collection record. `amount_due_minor`, `amount_collected_minor`, and signed `discrepancy_minor` are integer centavos. A disputed amount never captures the marketplace payment or makes proceeds settlement-eligible. `logistics_reference` stores the `CODH-` Rider-to-Logistics reference; new `finance_remittance_reference` values are Bearly-generated `L2F-` Logistics-to-Finance references (existing values are preserved); and new `finance_reference` values are Bearly-generated `BFR-<year>-<collection-id>` internal Finance receipt numbers (existing references are preserved). A printed Bearly receipt documents the Finance/Admin user's reconciliation confirmation; it is not a tax invoice or bank deposit receipt.
 
 | Column | MySQL type | Null | Default | Key |
 |---|---|---:|---|---|
@@ -1543,6 +1546,7 @@ Append-only refund custody history with payout ID, event type, from/to statuses,
 - `rider_profiles_current_zone_id_foreign` (current_zone_id) — index.
 - `rider_profiles_home_sorting_center_id_foreign` (home_sorting_center_id) — index.
 - `rider_profiles_logistics_profile_id_availability_status_index` (logistics_profile_id,availability_status) — index.
+- `rider_profiles_plate_number_unique` (plate_number) — unique.
 - `rider_profiles_user_id_unique` (user_id) — unique.
 
 ## `role_user`
@@ -1658,6 +1662,7 @@ Append-only refund custody history with payout ID, event type, from/to statuses,
 | `due_at` | `timestamp` | YES | — |  |
 | `paid_at` | `timestamp` | YES | — |  |
 | `reference` | `varchar(150)` | YES | — |  |
+| `receiving_bank_name` | `varchar(120)` | YES | — |  |
 | `external_method` | `varchar(40)` | YES | — |  |
 | `receipt_disk` | `varchar(32)` | YES | — |  |
 | `receipt_path` | `varchar(500)` | YES | — |  |
@@ -1702,6 +1707,182 @@ Links each posted Seller sale transaction to at most one pending/external-paid s
 
 - `seller_payout_items_seller_transaction_id_unique` (seller_transaction_id) — unique.
 - `seller_payout_items_batch_idx` (seller_payout_id,seller_transaction_id) — index.
+
+## Seller Wallet and withdrawals (added by `2026_10_15_000001_create_seller_wallet_and_withdrawal_tables`)
+
+Money columns are integer centavos. `seller_bank_accounts.account_number` is encrypted by the Eloquent encrypted cast; `account_number_last4` is the display snapshot. Wallet ledger rows are immutable and store signed bucket deltas plus post-movement balance snapshots. The migration backfills paid legacy payouts into `total_withdrawn_minor` and the ledger only; it does not credit their sale transactions again.
+
+### `seller_wallets`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `seller_profile_id` | `bigint unsigned` | NO | — | UNI |
+| `available_balance_minor` | `bigint unsigned` | NO | 0 |  |
+| `pending_balance_minor` | `bigint unsigned` | NO | 0 |  |
+| `reserved_balance_minor` | `bigint unsigned` | NO | 0 |  |
+| `total_withdrawn_minor` | `bigint unsigned` | NO | 0 |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys and indexes**
+
+- `seller_profile_id` → `seller_profiles.id`; update NO ACTION, delete RESTRICT.
+- `seller_wallets_seller_profile_id_unique` (seller_profile_id) — unique.
+
+### `seller_bank_accounts`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `seller_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `bank_name` | `varchar(120)` | NO | — |  |
+| `account_name` | `varchar(160)` | NO | — |  |
+| `account_number` | `text` | NO | — |  |
+| `account_number_last4` | `char(4)` | NO | — |  |
+| `status` | `varchar(20)` | NO | active |  |
+| `is_default` | `tinyint(1)` | NO | 0 |  |
+| `created_by` | `bigint unsigned` | YES | — | MUL |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys and indexes**
+
+- `seller_profile_id` → `seller_profiles.id`; update NO ACTION, delete RESTRICT.
+- `created_by` → `users.id`; update NO ACTION, delete SET NULL.
+- `seller_bank_accounts_seller_profile_id_foreign` (seller_profile_id) — index.
+- `seller_bank_accounts_owner_status_idx` (seller_profile_id,status) — index.
+
+### `seller_withdrawals`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `withdrawal_no` | `varchar(40)` | NO | — | UNI |
+| `seller_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `seller_wallet_id` | `bigint unsigned` | NO | — | MUL |
+| `seller_bank_account_id` | `bigint unsigned` | NO | — | MUL |
+| `amount_minor` | `bigint unsigned` | NO | — |  |
+| `bank_name_snapshot` | `varchar(120)` | NO | — |  |
+| `account_name_snapshot` | `varchar(160)` | NO | — |  |
+| `account_number_last4` | `char(4)` | NO | — |  |
+| `status` | `varchar(30)` | NO | pending_review |  |
+| `idempotency_key` | `varchar(80)` | NO | — |  |
+| `requested_at` | `timestamp` | NO | — |  |
+| `reviewed_by` | `bigint unsigned` | YES | — | MUL |
+| `reviewed_at` | `timestamp` | YES | — |  |
+| `rejection_reason` | `text` | YES | — |  |
+| `processing_started_by` | `bigint unsigned` | YES | — | MUL |
+| `processing_started_at` | `timestamp` | YES | — |  |
+| `completed_at` | `timestamp` | YES | — |  |
+| `failed_at` | `timestamp` | YES | — |  |
+| `failure_reason` | `text` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys and indexes**
+
+- `seller_profile_id` → `seller_profiles.id`; `seller_wallet_id` → `seller_wallets.id`; `seller_bank_account_id` → `seller_bank_accounts.id`; delete RESTRICT.
+- `reviewed_by` / `processing_started_by` → `users.id`; delete SET NULL.
+- `seller_withdrawals_seller_idempotency_unique` (seller_profile_id,idempotency_key) — unique.
+- `seller_withdrawals_status_requested_idx` (status,requested_at) — index.
+- `seller_withdrawals_seller_created_idx` (seller_profile_id,created_at) — index.
+
+### `seller_wallet_transactions`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `transaction_no` | `varchar(40)` | NO | — | UNI |
+| `seller_wallet_id` | `bigint unsigned` | NO | — | MUL |
+| `seller_transaction_id` | `bigint unsigned` | YES | — | MUL |
+| `seller_withdrawal_id` | `bigint unsigned` | YES | — | MUL |
+| `seller_payout_id` | `bigint unsigned` | YES | — | MUL |
+| `type` | `varchar(40)` | NO | — |  |
+| `amount_minor` | `bigint unsigned` | NO | — |  |
+| `available_delta_minor` | `bigint` | NO | 0 |  |
+| `pending_delta_minor` | `bigint` | NO | 0 |  |
+| `reserved_delta_minor` | `bigint` | NO | 0 |  |
+| `withdrawn_delta_minor` | `bigint` | NO | 0 |  |
+| `available_balance_after_minor` | `bigint unsigned` | NO | — |  |
+| `pending_balance_after_minor` | `bigint unsigned` | NO | — |  |
+| `reserved_balance_after_minor` | `bigint unsigned` | NO | — |  |
+| `total_withdrawn_after_minor` | `bigint unsigned` | NO | — |  |
+| `reference` | `varchar(150)` | YES | — |  |
+| `description` | `varchar(255)` | YES | — |  |
+| `idempotency_key` | `varchar(120)` | YES | — | UNI |
+| `actor_user_id` | `bigint unsigned` | YES | — | MUL |
+| `metadata` | `json` | YES | — |  |
+| `created_at` | `timestamp` | NO | CURRENT_TIMESTAMP |  |
+
+**Foreign keys and indexes**
+
+- `seller_wallet_id` → `seller_wallets.id`; delete RESTRICT.
+- `seller_transaction_id` → `seller_transactions.id`; `seller_withdrawal_id` → `seller_withdrawals.id`; `seller_payout_id` → `seller_payouts.id`; delete RESTRICT.
+- `actor_user_id` → `users.id`; delete SET NULL.
+- `seller_wallet_tx_source_type_unique` (seller_transaction_id,type) — unique.
+- `seller_wallet_tx_withdrawal_type_unique` (seller_withdrawal_id,type) — unique.
+- `seller_wallet_tx_legacy_payout_unique` (seller_payout_id) — unique.
+- `seller_wallet_transactions_idempotency_key_unique` (idempotency_key) — unique.
+- `seller_wallet_tx_wallet_time_idx` (seller_wallet_id,created_at) and `seller_wallet_tx_wallet_type_idx` (seller_wallet_id,type) — indexes.
+
+### `seller_withdrawal_status_histories`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `seller_withdrawal_id` | `bigint unsigned` | NO | — | MUL |
+| `from_status` | `varchar(30)` | YES | — |  |
+| `to_status` | `varchar(30)` | NO | — |  |
+| `actor_user_id` | `bigint unsigned` | YES | — | MUL |
+| `reason` | `text` | YES | — |  |
+| `metadata` | `json` | YES | — |  |
+| `occurred_at` | `timestamp` | NO | — |  |
+| `created_at` | `timestamp` | NO | CURRENT_TIMESTAMP |  |
+
+**Foreign keys and indexes**
+
+- `seller_withdrawal_id` → `seller_withdrawals.id`; delete RESTRICT.
+- `actor_user_id` → `users.id`; delete SET NULL.
+- `seller_withdrawal_history_target_unique` (seller_withdrawal_id,to_status) — unique.
+- `seller_withdrawal_history_time_idx` (seller_withdrawal_id,occurred_at) — index.
+
+### `seller_withdrawal_transfers`
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `transfer_no` | `varchar(40)` | NO | — | UNI |
+| `seller_withdrawal_id` | `bigint unsigned` | NO | — | UNI |
+| `amount_minor` | `bigint unsigned` | NO | — |  |
+| `bank_name` | `varchar(120)` | NO | — |  |
+| `account_number_last4` | `char(4)` | NO | — |  |
+| `bank_reference` | `varchar(150)` | YES | — |  |
+| `transfer_date` | `date` | NO | — |  |
+| `status` | `varchar(30)` | NO | pending_verification |  |
+| `proof_disk` | `varchar(32)` | YES | — |  |
+| `proof_path` | `varchar(500)` | YES | — |  |
+| `proof_mime_type` | `varchar(100)` | YES | — |  |
+| `proof_original_name` | `varchar(255)` | YES | — |  |
+| `proof_size_bytes` | `bigint unsigned` | YES | — |  |
+| `recorded_by` | `bigint unsigned` | NO | — | MUL |
+| `recorded_at` | `timestamp` | NO | — |  |
+| `verified_by` | `bigint unsigned` | YES | — | MUL |
+| `verified_at` | `timestamp` | YES | — |  |
+| `verification_note` | `text` | YES | — |  |
+| `failure_confirmed_by` | `bigint unsigned` | YES | — | MUL |
+| `failure_confirmed_at` | `timestamp` | YES | — |  |
+| `failure_reason` | `text` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys and indexes**
+
+- `seller_withdrawal_id` → `seller_withdrawals.id`; delete RESTRICT.
+- `recorded_by` → `users.id`; delete RESTRICT.
+- `verified_by` / `failure_confirmed_by` → `users.id`; delete SET NULL.
+- `seller_withdrawal_transfers_transfer_no_unique` (transfer_no) and `seller_withdrawal_transfers_seller_withdrawal_id_unique` (seller_withdrawal_id) — unique.
+- `bank_reference` is not globally unique; external bank references may collide across institutions and are not proof of payment.
 
 ## `seller_profiles`
 
@@ -1902,6 +2083,9 @@ Links each posted Seller sale transaction to at most one pending/external-paid s
 | `logistics_profile_id` | `bigint unsigned` | NO | — | MUL |
 | `origin_address_id` | `bigint unsigned` | YES | — | MUL |
 | `destination_address_id` | `bigint unsigned` | YES | — | MUL |
+| `origin_logistics_profile_id` | `bigint unsigned` | YES | — | MUL |
+| `destination_city_code` | `varchar(20)` | YES | — |  |
+| `destination_address_snapshot` | `json` | YES | — |  |
 | `purpose` | `varchar(20)` | NO | outbound |  |
 | `status` | `varchar(40)` | NO | pending_waybill |  |
 | `shipping_fee_minor` | `bigint unsigned` | NO | 0 |  |
@@ -1917,6 +2101,7 @@ Links each posted Seller sale transaction to at most one pending/external-paid s
 
 - `destination_address_id` → `addresses.id`; update NO ACTION, delete SET NULL.
 - `logistics_profile_id` → `logistics_profiles.id`; update NO ACTION, delete RESTRICT.
+- `origin_logistics_profile_id` → `logistics_profiles.id`; update NO ACTION, delete RESTRICT.
 - `origin_address_id` → `addresses.id`; update NO ACTION, delete SET NULL.
 - `seller_order_id` → `seller_orders.id`; update NO ACTION, delete RESTRICT.
 
@@ -1924,16 +2109,50 @@ Links each posted Seller sale transaction to at most one pending/external-paid s
 
 - `shipments_destination_address_id_foreign` (destination_address_id) — index.
 - `shipments_logistics_profile_id_status_index` (logistics_profile_id,status) — index.
+- `shipments_origin_logistics_profile_id_foreign` (origin_logistics_profile_id) — index.
 - `shipments_origin_address_id_foreign` (origin_address_id) — index.
 - `shipments_seller_order_id_status_index` (seller_order_id,status) — index.
 - `shipments_shipment_no_unique` (shipment_no) — unique.
 
-## `sorting_centers`
+## `shipment_transfers`
 
 | Column | MySQL type | Null | Default | Key |
 |---|---|---:|---|---|
 | `id` | `bigint unsigned` | NO | — | PRI |
-| `logistics_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `shipment_id` | `bigint unsigned` | NO | — | UNI |
+| `from_logistics_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `to_logistics_profile_id` | `bigint unsigned` | NO | — | MUL |
+| `from_sorting_center_id` | `bigint unsigned` | NO | — | MUL |
+| `to_sorting_center_id` | `bigint unsigned` | YES | — | MUL |
+| `status` | `varchar(20)` | NO | sent |  |
+| `sent_by` | `bigint unsigned` | YES | — | MUL |
+| `sent_at` | `timestamp` | NO | — |  |
+| `accepted_by` | `bigint unsigned` | YES | — | MUL |
+| `accepted_at` | `timestamp` | YES | — |  |
+| `created_at` | `timestamp` | YES | — |  |
+| `updated_at` | `timestamp` | YES | — |  |
+
+**Foreign keys**
+
+- `shipment_id` → `shipments.id`; update NO ACTION, delete RESTRICT.
+- `from_logistics_profile_id` / `to_logistics_profile_id` → `logistics_profiles.id`; update NO ACTION, delete RESTRICT.
+- `from_sorting_center_id` / `to_sorting_center_id` → `sorting_centers.id`; update NO ACTION, delete RESTRICT.
+- `sent_by` / `accepted_by` → `users.id`; update NO ACTION, delete SET NULL.
+
+**Indexes**
+
+- `shipment_transfers_shipment_id_unique` (shipment_id) — unique.
+- `shipment_transfers_from_status_sent_index` (from_logistics_profile_id,status,sent_at) — index.
+- `shipment_transfers_to_status_sent_index` (to_logistics_profile_id,status,sent_at) — index.
+
+## `sorting_centers`
+
+Each Logistics profile has exactly one non-deleted Sorting Center. A dedicated migration preflights profiles with zero or multiple usable center records and adds a unique index on `logistics_profile_id`; it stops without changing center data when the preflight fails.
+
+| Column | MySQL type | Null | Default | Key |
+|---|---|---:|---|---|
+| `id` | `bigint unsigned` | NO | — | PRI |
+| `logistics_profile_id` | `bigint unsigned` | NO | — | UNI |
 | `address_id` | `bigint unsigned` | NO | — | MUL |
 | `name` | `varchar(160)` | NO | — |  |
 | `code` | `varchar(30)` | NO | — | UNI |
@@ -1954,7 +2173,7 @@ Links each posted Seller sale transaction to at most one pending/external-paid s
 
 - `sorting_centers_address_id_foreign` (address_id) — index.
 - `sorting_centers_code_unique` (code) — unique.
-- `sorting_centers_logistics_profile_id_foreign` (logistics_profile_id) — index.
+- `sorting_centers_logistics_profile_id_unique` (logistics_profile_id) — unique.
 
 ## `sorting_zones`
 
@@ -1968,6 +2187,7 @@ Links each posted Seller sale transaction to at most one pending/external-paid s
 | `status` | `varchar(20)` | NO | active |  |
 | `created_at` | `timestamp` | YES | — |  |
 | `updated_at` | `timestamp` | YES | — |  |
+| `deleted_at` | `timestamp` | YES | — |  |
 
 **Foreign keys**
 
@@ -1976,6 +2196,10 @@ Links each posted Seller sale transaction to at most one pending/external-paid s
 **Indexes**
 
 - `sorting_zones_sorting_center_id_code_unique` (sorting_center_id,code) — unique.
+
+`destination_rules` is an application-managed JSON object with `province`, `city_municipality`, `psgc_city_code`, and a `barangays` string list. See the backend integration contract for matching and dispatch behavior.
+
+Zones use `deleted_at` for the archive/restore lifecycle. Permanent deletion is limited to archived zones without non-final parcel or active dispatch-batch use. Historical records remain; their nullable zone references are cleared.
 
 ## `stores`
 
@@ -2127,12 +2351,14 @@ Links each posted Seller sale transaction to at most one pending/external-paid s
 
 - `shipping_rates_provider_key_route_tier_unique` (provider_key,route_tier) — unique.
 
-The initial `bearly_logistics` rows use first-kilogram fees of 3400, 4000,
-6000, and 10000 centavos for the four configured route tiers. Additional-
-kilogram surcharges intentionally remain `NULL` until an Admin configures
-them. The volumetric divisor is stored in `system_settings` under
-`shipping.volumetric_divisor`, with the configuration default of 5000 when no
-setting row exists.
+These route-tier rows describe the former pricing configuration and are retained
+for compatibility/history; new checkout quotes do not read them. The current
+standard fee is one flat amount per Seller Order, stored in
+`system_settings.shipping.seller_order_fee_minor` when an Admin saves it, with a
+configuration default of 5000 centavos when no setting row exists. The
+volumetric divisor remains stored in `system_settings` under
+`shipping.volumetric_divisor`, with a configuration default of 5000 when no
+setting row exists; it affects package estimates, not the fee.
 
 ## `system_settings`
 
@@ -2232,8 +2458,10 @@ setting row exists.
 - `users_approved_by_foreign` (approved_by) — index.
 - `users_email_unique` (email) — unique.
 - `users_logistics_id_foreign` (logistics_id) — index.
-- `users_phone_index` (phone) — index.
+- `users_contact_number_unique` (contact_number) — unique.
+- `users_phone_unique` (phone) — unique.
 - `users_role_index` (role) — index.
+- `users_role_plate_number_unique` (role,plate_number) — unique.
 - `users_status_index` (status) — index.
 
 ## `violation_actions`

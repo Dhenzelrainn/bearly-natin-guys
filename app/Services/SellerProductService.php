@@ -14,6 +14,7 @@ use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -356,7 +357,7 @@ class SellerProductService
                 $this->syncVariantColorImages($product, $variantColorImages, $variantImageColors, $newImagePaths);
 
                 $product->load('store.sellerProfile');
-                $check = app(ComplianceScanner::class)->scan($product, $isUpdate ? 'update' : 'create');
+                $check = app(ComplianceScanner::class)->scan($product, $isUpdate ? 'update' : 'create', $user);
                 $result = (string) $check->result;
 
                 if ($result === 'clear') {
@@ -403,7 +404,14 @@ class SellerProductService
 
         return Product::query()
             ->where('store_id', $store->id)
-            ->with(['category', 'subcategory', 'variants', 'images', 'store'])
+            ->with([
+                'category',
+                'subcategory',
+                'variants',
+                'images',
+                'store',
+                'violations' => fn ($violations) => $this->withActiveSellerWarnings($violations),
+            ])
             ->findOrFail($id);
     }
 
@@ -412,7 +420,13 @@ class SellerProductService
         $store = $this->storeFor($user);
 
         return $store->products()
-            ->with(['category', 'subcategory', 'variants', 'images'])
+            ->with([
+                'category',
+                'subcategory',
+                'variants',
+                'images',
+                'violations' => fn ($violations) => $this->withActiveSellerWarnings($violations),
+            ])
             ->latest('id')
             ->get()
             ->map(fn (Product $product): array => $this->formPayload($product));
@@ -475,6 +489,7 @@ class SellerProductService
                 'images' => fn ($images) => $images
                     ->whereNull('variant_id')
                     ->orderBy('position'),
+                'violations' => fn ($violations) => $this->withActiveSellerWarnings($violations),
             ])
             ->orderByDesc('id');
 
@@ -543,6 +558,7 @@ class SellerProductService
 
     public function formPayload(Product $product): array
     {
+        $complianceWarnings = $this->complianceWarningPayload($product);
         $variants = $product->relationLoaded('variants')
             ? $product->variants->where('is_active', true)->sortBy('position')->values()
             : $product->variants()->where('is_active', true)->orderBy('position')->orderBy('id')->get();
@@ -680,6 +696,7 @@ class SellerProductService
             })->values()->all(),
             'status' => $this->displayStatus((string) $product->product_status),
             'previous_status' => $this->displayStatus((string) $product->product_status),
+            'compliance_warnings' => $complianceWarnings,
             'image' => $primary?->path,
             'image_url' => $primary ? $this->productImageUrl($primary) : null,
             'gallery_images' => $galleryImages
@@ -692,6 +709,33 @@ class SellerProductService
                 ->all(),
             'media_preview' => $mediaPreview,
         ];
+    }
+
+    private function withActiveSellerWarnings(HasMany $violations): HasMany
+    {
+        return $violations
+            ->whereHas('warnings', fn ($warnings) => $warnings->where('status', 'active'))
+            ->with(['warnings' => fn ($warnings) => $warnings
+                ->where('status', 'active')
+                ->orderByDesc('issued_at')]);
+    }
+
+    /** @return array<int, array{reason: string, level: string, violation_no: string, detected_excerpt: ?string}> */
+    private function complianceWarningPayload(Product $product): array
+    {
+        $violations = $product->relationLoaded('violations')
+            ? $product->violations
+            : $this->withActiveSellerWarnings($product->violations())->get();
+
+        return $violations
+            ->flatMap(fn ($violation) => $violation->warnings->map(fn ($warning): array => [
+                'reason' => $warning->reason,
+                'level' => Str::title((string) $warning->level),
+                'violation_no' => $violation->violation_no,
+                'detected_excerpt' => $violation->detected_excerpt,
+            ]))
+            ->values()
+            ->all();
     }
 
     public function productMode(Product $product): string

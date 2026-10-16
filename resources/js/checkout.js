@@ -126,7 +126,7 @@
       $('checkout-quote-token').value = String(quote.quote_token || '');
       renderItems();
       renderQuote();
-      $('checkout-status').textContent = 'Shipping is estimated per Seller Order. The order will use the rates and measurements shown here.';
+      $('checkout-status').textContent = 'A flat shipping fee applies to each Seller Order. Package measurements are shown for delivery planning.';
       button.disabled = false;
     } catch (error) {
       if (requestNumber !== quoteRequest) return;

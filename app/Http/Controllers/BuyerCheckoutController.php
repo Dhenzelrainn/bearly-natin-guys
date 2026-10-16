@@ -26,7 +26,7 @@ class BuyerCheckoutController extends Controller
 
         return view('buyer.checkout', [
             'buyerName' => $name ?: 'Buyer',
-            'buyerPhone' => (string) ($buyer->phone ?? ''),
+            'buyerPhone' => (string) ($buyer->phone ?: $buyer->contact_number ?: ''),
             'checkoutRequestKey' => (string) Str::uuid(),
         ]);
     }

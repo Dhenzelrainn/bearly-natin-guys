@@ -7,12 +7,15 @@ use App\Enums\UserRole;
 use App\Models\AccountApplication;
 use App\Models\Conversation;
 use App\Models\Dispute;
-use App\Models\SellerPayout;
+use App\Models\ProductViolation;
 use App\Models\ReturnRequest;
+use App\Models\SellerPayout;
 use App\Models\User;
+use App\Services\BuyerCatalogService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class AdminController extends Controller
@@ -953,71 +956,126 @@ class AdminController extends Controller
         );
     }
 
-    public function productViolations(): View
+    public function productViolations(Request $request): View
     {
+        $openStatuses = ['flagged', 'under_review', 'correction_requested'];
+        $filters = $request->validate([
+            'search' => ['nullable', 'string', 'max:120'],
+            'risk' => ['nullable', Rule::in(['critical', 'high', 'medium', 'low'])],
+            'status' => ['nullable', Rule::in([
+                'flagged',
+                'under_review',
+                'correction_requested',
+                'confirmed',
+                'corrective_action',
+                'dismissed',
+                'resolved',
+            ])],
+        ]);
+
+        $query = ProductViolation::query()
+            ->with([
+                'product' => fn ($query) => $query->withTrashed(),
+                'product.store' => fn ($query) => $query->withTrashed(),
+                'product.category',
+                'check',
+                'rule',
+                'sellerProfile.approvedCategory',
+                'sellerProfile.warnings' => fn ($query) => $query->where('status', 'active'),
+                'actions.actor',
+            ]);
+
+        if (filled($filters['search'] ?? null)) {
+            $search = trim($filters['search']);
+            $like = '%'.$search.'%';
+
+            $query->where(function ($violations) use ($like): void {
+                $violations
+                    ->where('violation_no', 'like', $like)
+                    ->orWhere('violation_type', 'like', $like)
+                    ->orWhere('reason', 'like', $like)
+                    ->orWhere('detected_excerpt', 'like', $like)
+                    ->orWhereHas('product', fn ($products) => $products
+                        ->withTrashed()
+                        ->where('name', 'like', $like))
+                    ->orWhereHas('product.store', fn ($stores) => $stores
+                        ->withTrashed()
+                        ->where('name', 'like', $like));
+            });
+        }
+
+        $query
+            ->when(isset($filters['risk']) && $filters['risk'] !== '', fn ($violations) => $violations->where('severity', $filters['risk']))
+            ->when(isset($filters['status']) && $filters['status'] !== '', fn ($violations) => $violations->where('status', $filters['status']));
+
+        $violations = $query
+            ->latest('created_at')
+            ->latest('id')
+            ->paginate(25)
+            ->withQueryString()
+            ->through(function (ProductViolation $violation) use ($openStatuses): array {
+                $status = $violation->status;
+                $statusLabel = match ($status) {
+                    'flagged' => 'Pending Review',
+                    'under_review' => 'Under Review',
+                    'correction_requested' => 'Correction Requested',
+                    'confirmed' => 'Confirmed',
+                    'dismissed' => 'Dismissed',
+                    'corrective_action' => 'Corrective Action',
+                    'resolved' => 'Resolved',
+                    default => Str::of($status)->replace(['_', '-'], ' ')->title()->toString(),
+                };
+
+                $statusClass = match ($status) {
+                    'flagged' => 'badge-warning',
+                    'under_review', 'correction_requested' => 'badge-info',
+                    'confirmed', 'corrective_action' => 'badge-danger',
+                    'dismissed', 'resolved' => 'badge-success',
+                    default => 'badge-neutral',
+                };
+                $product = $violation->product;
+                $sellerProfile = $violation->sellerProfile;
+
+                return [
+                    'database_id' => $violation->id,
+                    'id' => $violation->violation_no,
+                    'product_id' => 'PRD-'.str_pad((string) $violation->product_id, 6, '0', STR_PAD_LEFT),
+                    'product' => $product?->name ?? $violation->check?->name_snapshot ?? 'Product record unavailable',
+                    'product_status' => $product?->product_status ?? 'unavailable',
+                    'compliance_status' => $product?->compliance_status ?? 'unavailable',
+                    'seller' => $product?->store?->name ?? $sellerProfile?->legal_business_name ?? 'Seller record unavailable',
+                    'registered_category' => $sellerProfile?->approvedCategory?->name ?? '—',
+                    'listed_category' => $product?->category?->name ?? '—',
+                    'violation' => $violation->rule?->name
+                        ?? Str::of($violation->violation_type)->replace(['_', '-'], ' ')->title()->toString(),
+                    'source' => Str::of($violation->source)->replace(['_', '-'], ' ')->title()->toString(),
+                    'reason' => $violation->reason,
+                    'detected_excerpt' => $violation->detected_excerpt,
+                    'reported' => $violation->created_at?->format('M j, Y') ?? '—',
+                    'risk' => Str::title($violation->severity),
+                    'warnings' => $sellerProfile?->warnings?->count() ?? 0,
+                    'status' => $statusLabel,
+                    'status_value' => $status,
+                    'status_class' => $statusClass,
+                    'actionable' => in_array($status, $openStatuses, true),
+                    'actions' => $violation->actions->map(fn ($action): array => [
+                        'label' => Str::of($action->action_type)->replace(['_', '-'], ' ')->title()->toString(),
+                        'actor' => $action->actor?->name ?? 'Admin account unavailable',
+                        'reason' => $action->reason ?: 'No reason recorded.',
+                        'created_at' => $action->created_at?->format('M j, Y g:i A') ?? '—',
+                    ])->all(),
+                ];
+            });
+
         return view('admin.compliance.violations', $this->base([
-            'violations' => [
-                [
-                    'id' => 'VIO-4108',
-                    'product_id' => 'PRD-9936',
-                    'product' => 'Unverified Herbal Capsules',
-                    'seller' => 'Daily Wellness Hub',
-                    'registered_category' => 'Food & Gourmet',
-                    'listed_category' => 'Health Products',
-                    'violation' => 'Category mismatch',
-                    'reason' => 'The listing does not match the seller\'s registered business category and requires policy review.',
-                    'reported' => 'Aug 26, 2026',
-                    'risk' => 'High',
-                    'warnings' => 1,
-                    'status' => 'Under Review',
-                ],
-                [
-                    'id' => 'VIO-4109',
-                    'product_id' => 'PRD-9941',
-                    'product' => 'Replica Luxury Watch',
-                    'seller' => 'Prime Finds MNL',
-                    'registered_category' => 'Jewelry & Watches',
-                    'listed_category' => 'Jewelry & Watches',
-                    'violation' => 'Authenticity concern',
-                    'reason' => 'The listing contains authenticity claims that require manual verification before it can remain active.',
-                    'reported' => 'Aug 26, 2026',
-                    'risk' => 'High',
-                    'warnings' => 2,
-                    'status' => 'Escalated',
-                ],
-                [
-                    'id' => 'VIO-4110',
-                    'product_id' => 'PRD-9947',
-                    'product' => 'High-output Laser Pointer',
-                    'seller' => 'Gizmo Stop',
-                    'registered_category' => 'Electronics & Gadgets',
-                    'listed_category' => 'Electronics & Gadgets',
-                    'violation' => 'Restricted product review',
-                    'reason' => 'The product has been flagged for manual review under marketplace product restrictions.',
-                    'reported' => 'Aug 25, 2026',
-                    'risk' => 'Medium',
-                    'warnings' => 0,
-                    'status' => 'Pending Review',
-                ],
-                [
-                    'id' => 'VIO-4111',
-                    'product_id' => 'PRD-9952',
-                    'product' => 'Misleading 2TB Flash Drive',
-                    'seller' => 'Digital Corner PH',
-                    'registered_category' => 'Electronics & Gadgets',
-                    'listed_category' => 'Electronics & Gadgets',
-                    'violation' => 'Misleading product information',
-                    'reason' => 'Multiple reports indicate that the advertised storage capacity may not match the actual product specification.',
-                    'reported' => 'Aug 24, 2026',
-                    'risk' => 'Medium',
-                    'warnings' => 1,
-                    'status' => 'Under Review',
-                ],
-            ],
+            'violations' => $violations,
+            'openViolationCount' => ProductViolation::query()
+                ->whereIn('status', $openStatuses)
+                ->count(),
         ]));
     }
 
-    public function returnsRefunds(): View
+    public function returnsRefunds(BuyerCatalogService $catalog): View
     {
         $returnRequests = ReturnRequest::query()
             ->with([
@@ -1026,7 +1084,8 @@ class AdminController extends Controller
                 'store',
                 'store.sellerProfile',
                 'sellerOrder',
-                'items.orderItem',
+                'items.orderItem.product.images.variant',
+                'items.orderItem.variant',
                 'evidence',
                 'reviewer',
                 'refunds',
@@ -1054,7 +1113,7 @@ class AdminController extends Controller
             ->groupBy('seller_profile_id');
 
         $cases = $returnRequests
-            ->map(function (ReturnRequest $returnRequest) use ($paidSellerPayouts): array {
+            ->map(function (ReturnRequest $returnRequest) use ($paidSellerPayouts, $catalog): array {
                 $requestType = match ($returnRequest->request_type) {
                     'return_refund',
                     'return_and_refund',
@@ -1097,6 +1156,9 @@ class AdminController extends Controller
                     'sku' => $item->orderItem?->sku ?? '—',
                     'quantity' => (int) $item->quantity,
                     'amount' => '₱'.number_format((int) $item->refund_amount_minor / 100, 2),
+                    'image_url' => $item->orderItem
+                        ? $catalog->orderItemImageUrl($item->orderItem)
+                        : '',
                 ])->all();
 
                 return [

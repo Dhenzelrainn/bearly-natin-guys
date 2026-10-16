@@ -5,16 +5,21 @@ namespace App\Http\Controllers;
 use App\Enums\AccountStatus;
 use App\Enums\ParcelStatus;
 use App\Enums\UserRole;
+use App\Models\OrderItem;
 use App\Models\PickupAssignment;
+use App\Models\RiderProfile;
 use App\Models\User;
 use App\Services\CodCashCollectionService;
+use App\Services\BuyerCatalogService;
 use App\Services\EmailVerificationService;
 use App\Services\InternationalPhone;
 use App\Services\PostalCodeLookup;
 use App\Services\RegistrationLifecycleService;
 use App\Services\ReturnRefundService;
+use App\Services\RiderDeliveryHistoryService;
 use App\Services\RiderDeliveryService;
 use App\Services\RiderPickupService;
+use App\Services\RiderZoneAssignmentService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -25,8 +30,10 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Carbon;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Throwable;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class RiderController extends Controller
 {
@@ -139,7 +146,8 @@ class RiderController extends Controller
     }
 
     private function deliveryAssignmentsFor(
-        ?User $user
+        ?User $user,
+        ?BuyerCatalogService $catalog = null,
     ): Collection {
         if (! $user) {
             return collect();
@@ -153,23 +161,30 @@ class RiderController extends Controller
             return collect();
         }
 
-        $batches = $profile
+        $batchQuery = $profile
             ->dispatchBatches()
             ->whereNotIn(
                 'status',
                 [
                     'cancelled',
                 ]
-            )
-            ->with([
-                'sortingZone:id,code,name',
+            );
 
-                'parcels.shipment.waybill',
+        $relations = [
+            'sortingZone:id,code,name',
+            'parcels.shipment.waybill',
+            'parcels.shipment.sellerOrder.order',
+            'parcels.shipment.sellerOrder.store',
+            'parcels.shipment.destinationAddress',
+        ];
 
-                'parcels.shipment.sellerOrder.order',
-                'parcels.shipment.sellerOrder.store',
-                'parcels.shipment.destinationAddress',
-            ])
+        if ($catalog) {
+            $relations[] = 'parcels.shipment.sellerOrder.items.product.images.variant';
+            $relations[] = 'parcels.shipment.sellerOrder.items.variant';
+        }
+
+        $batches = $batchQuery
+            ->with($relations)
             ->orderByDesc('dispatched_at')
             ->orderByDesc('id')
             ->get();
@@ -180,14 +195,14 @@ class RiderController extends Controller
         */
         $rows = $batches
             ->flatMap(
-                function ($batch) {
+                function ($batch) use ($catalog) {
                     return $batch
                         ->parcels
                         ->groupBy('shipment_id')
                         ->map(
                             function (
                                 Collection $parcels
-                            ) use ($batch) {
+                            ) use ($batch, $catalog) {
                                 $shipment =
                                     $parcels
                                         ->first()
@@ -261,6 +276,13 @@ class RiderController extends Controller
                                     'purpose_label' => $isReturn ? 'Return to Seller' : 'Buyer delivery',
 
                                     'cod_minor' => $codMinor,
+
+                                    'products' => $catalog
+                                        ? $this->orderItemPreviewData(
+                                            $shipment->sellerOrder?->items ?? collect(),
+                                            $catalog,
+                                        )
+                                        : [],
 
                                     'zone' => $batch
                                         ->sortingZone
@@ -417,7 +439,8 @@ class RiderController extends Controller
     }
 
     private function pickupAssignmentRow(
-        PickupAssignment $assignment
+        PickupAssignment $assignment,
+        ?BuyerCatalogService $catalog = null,
     ): array {
         $pickup = $assignment->pickupRequest;
 
@@ -476,34 +499,34 @@ class RiderController extends Controller
 
         $manifest = $pickup
             ->parcels
-            ->map(
-                fn ($parcel): array => [
-                    'parcel_no' => $parcel->parcel_no,
+            ->groupBy('shipment_id')
+            ->map(function (Collection $parcels) use ($catalog): array {
+                $firstParcel = $parcels->first();
+                $shipment = $catalog ? $firstParcel?->shipment : null;
 
-                    'waybill' => $parcel->waybill?->waybill_no
+                return [
+                    'waybill' => $firstParcel?->waybill?->waybill_no
                         ?: 'Not generated',
-
-                    'size' => $parcel->size_class
-                            ? ucwords(
-                                str_replace(
-                                    '_',
-                                    ' ',
-                                    $parcel->size_class
-                                )
-                            )
-                            : 'Not specified',
-
-                    'qty' => 1,
-
-                    'status' => ucwords(
-                        str_replace(
-                            '_',
-                            ' ',
-                            $parcel->status
+                    'products' => $catalog
+                        ? $this->orderItemPreviewData(
+                            $shipment?->sellerOrder?->items ?? collect(),
+                            $catalog,
                         )
-                    ),
-                ]
-            )
+                        : [],
+                    'parcels' => $parcels
+                        ->map(fn ($parcel): array => [
+                            'parcel_no' => $parcel->parcel_no,
+                            'waybill' => $parcel->waybill?->waybill_no ?: 'Not generated',
+                            'size' => $parcel->size_class
+                                ? ucwords(str_replace('_', ' ', $parcel->size_class))
+                                : 'Not specified',
+                            'qty' => 1,
+                            'status' => ucwords(str_replace('_', ' ', $parcel->status)),
+                        ])
+                        ->values()
+                        ->all(),
+                ];
+            })
             ->values()
             ->all();
 
@@ -525,7 +548,7 @@ class RiderController extends Controller
             'address' => $addressText
                     ?: 'Pickup address unavailable',
 
-            'parcels' => count($manifest),
+            'parcels' => $pickup->parcels->count(),
 
             'window' => $window,
 
@@ -557,6 +580,25 @@ class RiderController extends Controller
 
             'manifest' => $manifest,
         ];
+    }
+
+    /**
+     * @param  Collection<int, OrderItem>  $items
+     * @return list<array{name: string, variant: string, quantity: int, image_url: string}>
+     */
+    private function orderItemPreviewData(
+        Collection $items,
+        BuyerCatalogService $catalog,
+    ): array {
+        return $items
+            ->map(fn (OrderItem $item): array => [
+                'name' => $item->product_name ?: 'Unnamed product',
+                'variant' => trim((string) $item->variant_name),
+                'quantity' => (int) $item->quantity,
+                'image_url' => $catalog->orderItemImageUrl($item),
+            ])
+            ->values()
+            ->all();
     }
 
     private function deliveryAssignmentStatus(
@@ -621,16 +663,53 @@ class RiderController extends Controller
             ? User::query()
                 ->where('role', UserRole::Logistics->value)
                 ->where('status', AccountStatus::Active->value)
+                ->whereHas('logisticsProfile', fn ($query) => $query
+                    ->where('status', AccountStatus::Active->value)
+                    ->whereNotNull('psgc_city_code'))
+                ->with('logisticsProfile.serviceAddress')
                 ->orderBy('business_name')
                 ->get()
                 ->map(fn (User $user) => [
                     'id' => (string) $user->id,
                     'name' => $user->business_name ?: $user->name,
+                    'city_code' => (string) ($user->logisticsProfile?->psgc_city_code ?? ''),
+                    'city' => (string) ($user->logisticsProfile?->serviceAddress?->city_municipality ?? ''),
                 ])
                 ->all()
             : [];
 
         return view('rider.applications.create', compact('logisticsPartners'));
+    }
+
+    private function uniqueRiderPlateRule(
+        ?int $ignoreUserId = null,
+        ?int $ignoreProfileId = null
+    ): \Closure {
+        return function (string $attribute, mixed $value, \Closure $fail) use (
+            $ignoreUserId,
+            $ignoreProfileId
+        ): void {
+            $plateNumber = strtoupper(trim((string) $value));
+
+            $userQuery = User::withTrashed()
+                ->where('role', UserRole::Rider->value)
+                ->whereRaw('UPPER(TRIM(plate_number)) = ?', [$plateNumber]);
+
+            if ($ignoreUserId !== null) {
+                $userQuery->where('id', '<>', $ignoreUserId);
+            }
+
+            $profileQuery = RiderProfile::withTrashed()
+                ->whereRaw('UPPER(TRIM(plate_number)) = ?', [$plateNumber]);
+
+            if ($ignoreProfileId !== null) {
+                $profileQuery->where('id', '<>', $ignoreProfileId);
+            }
+
+            if ($userQuery->exists() || $profileQuery->exists()) {
+                $fail('This plate number is already registered to a Rider.');
+            }
+        };
     }
 
     public function submitRegistration(Request $request)
@@ -669,6 +748,7 @@ class RiderController extends Controller
                 'string',
                 'max:17',
                 Rule::unique('users', 'contact_number'),
+                Rule::unique('users', 'phone'),
             ],
             'birthday' => [
                 'required',
@@ -687,15 +767,14 @@ class RiderController extends Controller
             'street' => ['required', 'string', 'max:180'],
             'house_number' => ['required', 'string', 'max:40'],
             'postal_code' => ['required', 'digits:4'],
-            'city_code' => ['nullable', 'regex:/^[0-9]{6,10}$/D'],
+            'city_code' => ['required', 'regex:/^[0-9]{6,10}$/D'],
             'postal_manual' => ['nullable', 'boolean'],
             'vehicle_type' => ['required', 'string', 'max:80'],
             'plate_number' => [
                 'required',
                 'string',
                 'max:30',
-                Rule::unique('users', 'plate_number')
-                    ->where(fn ($query) => $query->where('role', UserRole::Rider->value)),
+                $this->uniqueRiderPlateRule(),
             ],
             'or_cr' => [
                 'required',
@@ -726,6 +805,18 @@ class RiderController extends Controller
             ->where('role', UserRole::Logistics->value)
             ->where('status', AccountStatus::Active->value)
             ->firstOrFail();
+
+        $logisticsProfile = $logistics->logisticsProfile;
+
+        if (
+            ! $logisticsProfile
+            || $logisticsProfile->status !== AccountStatus::Active->value
+            || (string) $logisticsProfile->psgc_city_code !== (string) $validated['city_code']
+        ) {
+            throw ValidationException::withMessages([
+                'logistics_partner' => 'Choose the approved Logistics account serving your home municipality/city.',
+            ]);
+        }
 
         $verification = app(EmailVerificationService::class);
         $verifiedAt = $verification->verifiedAt(
@@ -765,6 +856,7 @@ class RiderController extends Controller
                     'birthday' => $validated['birthday'],
                     'email' => $validated['email'],
                     'email_verified_at' => $verifiedAt,
+                    'phone' => $validated['contact_number'],
                     'contact_number' => $validated['contact_number'],
                     'phone_country' => 'PH',
                     'terms_accepted_at' => now(),
@@ -996,7 +1088,8 @@ class RiderController extends Controller
     }
 
     public function pickup(
-        string $id
+        string $id,
+        BuyerCatalogService $catalog,
     ): View {
         /** @var User|null $user */
         $user = Auth::user();
@@ -1033,6 +1126,8 @@ class RiderController extends Controller
                 'pickupRequest.store.sellerProfile.user',
                 'pickupRequest.pickupAddress',
                 'pickupRequest.parcels.waybill',
+                'pickupRequest.parcels.shipment.sellerOrder.items.product.images.variant',
+                'pickupRequest.parcels.shipment.sellerOrder.items.variant',
             ])
             ->orderByDesc('id')
             ->firstOrFail();
@@ -1041,7 +1136,8 @@ class RiderController extends Controller
             'rider.orders.pickup',
             $this->shared() + [
                 'job' => $this->pickupAssignmentRow(
-                    $assignment
+                    $assignment,
+                    $catalog,
                 ),
             ]
         );
@@ -1096,14 +1192,16 @@ class RiderController extends Controller
     }
 
     public function deliver(
-        string $id
+        string $id,
+        BuyerCatalogService $catalog,
     ): View {
         /** @var User|null $user */
         $user = Auth::user();
 
         $job = $this
             ->deliveryAssignmentsFor(
-                $user
+                $user,
+                $catalog,
             )
             ->firstWhere(
                 'id',
@@ -1195,7 +1293,7 @@ class RiderController extends Controller
         /** @var User $user */
         $user = Auth::user();
 
-        $shipment = $deliveryService->completeDelivery(
+        $completion = $deliveryService->completeDelivery(
             $id,
             $user,
             $request->file('proof_photo'),
@@ -1214,9 +1312,11 @@ class RiderController extends Controller
             $codCash,
         );
 
-        $message = $shipment->codCashCollection?->status === 'disputed'
-            ? 'Delivery completed. The COD cash difference was recorded for Logistics and Finance review.'
-            : 'Delivery completed successfully.';
+        $message = $completion->alreadyCompleted
+            ? 'This delivery was already completed. No extra proof, delivery attempt, COD collection, or tracking event was added.'
+            : ($completion->shipment->codCashCollection?->status === 'disputed'
+                ? 'Delivery completed. The COD cash difference was recorded for Logistics and Finance review.'
+                : 'Delivery completed successfully.');
 
         return redirect()
             ->route(
@@ -1370,52 +1470,99 @@ class RiderController extends Controller
         ]);
     }
 
-    public function history()
-    {
+    public function history(
+        Request $request,
+        RiderDeliveryHistoryService $historyService,
+        BuyerCatalogService $catalog,
+    ): View {
+        $riderProfile = $this->historyRiderProfile($request);
+        $filters = $this->historyFilters($request);
+
         return view('rider.history.index', $this->shared() + [
-            'history' => [
-                [
-                    'date' => 'Sep 6, 2026',
-                    'id' => 'DL-8411',
-                    'customer' => 'Jessa Cruz',
-                    'area' => 'San Pablo South',
-                    'status' => 'Delivered',
-                    'earning' => '₱70',
-                ],
-                [
-                    'date' => 'Sep 5, 2026',
-                    'id' => 'DL-8399',
-                    'customer' => 'Carlo Tan',
-                    'area' => 'San Pablo North',
-                    'status' => 'Delivered',
-                    'earning' => '₱70',
-                ],
-                [
-                    'date' => 'Sep 5, 2026',
-                    'id' => 'DL-8392',
-                    'customer' => 'Nina Reyes',
-                    'area' => 'San Pablo North',
-                    'status' => 'Returned',
-                    'earning' => '₱35',
-                ],
-                [
-                    'date' => 'Sep 4, 2026',
-                    'id' => 'DL-8384',
-                    'customer' => 'Mark Lim',
-                    'area' => 'San Pablo North',
-                    'status' => 'Delivered',
-                    'earning' => '₱70',
-                ],
-                [
-                    'date' => 'Sep 4, 2026',
-                    'id' => 'DL-8378',
-                    'customer' => 'Elena Sy',
-                    'area' => 'Calauan / Bay',
-                    'status' => 'Canceled',
-                    'earning' => '₱0',
-                ],
+            'metrics' => $historyService->summary($riderProfile),
+            'history' => $historyService->paginate($riderProfile, $filters, $catalog),
+            'filters' => $filters,
+        ]);
+    }
+
+    public function exportHistory(
+        Request $request,
+        RiderDeliveryHistoryService $historyService
+    ): StreamedResponse {
+        $riderProfile = $this->historyRiderProfile($request);
+        $filters = $this->historyFilters($request);
+
+        return response()->streamDownload(function () use (
+            $historyService,
+            $riderProfile,
+            $filters
+        ): void {
+            $stream = fopen('php://output', 'wb');
+
+            if ($stream === false) {
+                return;
+            }
+
+            fwrite($stream, "\xEF\xBB\xBF");
+            fputcsv($stream, [
+                'Date and time',
+                'Shipment',
+                'Parcel',
+                'Recipient',
+                'Service area',
+                'Outcome',
+                'Recorded earning',
+                'Dispatch batch',
+                'Attempt',
+            ], ',', '"', '\\');
+
+            foreach ($historyService->exportQuery($riderProfile, $filters)->cursor() as $record) {
+                fputcsv($stream, $historyService->csvRow($record), ',', '"', '\\');
+            }
+
+            fclose($stream);
+        }, 'bearly-rider-delivery-history-'.now()->format('Ymd-His').'.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    private function historyRiderProfile(Request $request): RiderProfile
+    {
+        $user = $request->user();
+
+        abort_unless($user instanceof User, 403);
+
+        return $user->riderProfile()->firstOrFail();
+    }
+
+    /**
+     * @return array{search: string|null, outcome: string|null, date_from: string|null, date_to: string|null}
+     */
+    private function historyFilters(Request $request): array
+    {
+        $validated = $request->validate([
+            'search' => ['nullable', 'string', 'max:120'],
+            'outcome' => ['nullable', 'in:delivered,returned,failed,cancelled'],
+            'date_from' => ['nullable', 'date_format:Y-m-d'],
+            'date_to' => [
+                'nullable',
+                'date_format:Y-m-d',
+                function (string $attribute, mixed $value, \Closure $fail) use ($request): void {
+                    $dateFrom = $request->input('date_from');
+
+                    if (filled($value) && filled($dateFrom) && $value < $dateFrom) {
+                        $fail('The end date must be on or after the start date.');
+                    }
+                },
             ],
         ]);
+
+        return [
+            'search' => $validated['search'] ?? null,
+            'outcome' => $validated['outcome'] ?? null,
+            'date_from' => $validated['date_from'] ?? null,
+            'date_to' => $validated['date_to'] ?? null,
+        ];
     }
 
     public function messages()
@@ -1460,6 +1607,41 @@ class RiderController extends Controller
             ->riderProfile()
             ->firstOrFail();
 
+        $contact = trim((string) $request->input('contact'));
+
+        if ($contact !== '') {
+            try {
+                $contact = app(InternationalPhone::class)
+                    ->normalize($contact, 'PH');
+            } catch (ValidationException $exception) {
+                throw ValidationException::withMessages([
+                    'contact' => $exception->errors()['contact_number']
+                        ?? ['Enter a valid Philippine mobile number.'],
+                ]);
+            }
+        }
+
+        $emergencyContactPhone = trim(
+            (string) $request->input('emergency_contact_phone')
+        );
+
+        if ($emergencyContactPhone !== '') {
+            try {
+                $emergencyContactPhone = app(InternationalPhone::class)
+                    ->normalize($emergencyContactPhone, 'PH');
+            } catch (ValidationException $exception) {
+                throw ValidationException::withMessages([
+                    'emergency_contact_phone' => $exception->errors()['contact_number']
+                        ?? ['Enter a valid Philippine mobile number.'],
+                ]);
+            }
+        }
+
+        $request->merge([
+            'contact' => $contact,
+            'emergency_contact_phone' => $emergencyContactPhone,
+        ]);
+
         $validated = $request->validate([
             'name' => [
                 'required',
@@ -1475,13 +1657,21 @@ class RiderController extends Controller
             'contact' => [
                 'required',
                 'string',
-                'max:30',
+                'max:17',
+                Rule::unique('users', 'contact_number')->ignore($user->id),
+                Rule::unique('users', 'phone')->ignore($user->id),
             ],
 
             'birthday' => [
                 'nullable',
+                'bail',
                 'date',
                 'before:today',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    if (Carbon::parse((string) $value)->gt(today()->subYears(18))) {
+                        $fail('Riders must be at least 18 years old.');
+                    }
+                },
             ],
 
             'emergency_contact_name' => [
@@ -1493,7 +1683,7 @@ class RiderController extends Controller
             'emergency_contact_phone' => [
                 'nullable',
                 'string',
-                'max:30',
+                'max:17',
             ],
         ]);
 
@@ -1507,6 +1697,8 @@ class RiderController extends Controller
             },
 
             'contact_number' => trim($validated['contact']),
+
+            'phone' => trim($validated['contact']),
 
             'birthday' => $validated['birthday'] ?? null,
         ]);
@@ -1592,7 +1784,8 @@ class RiderController extends Controller
     }
 
     public function updateHomeAddress(
-        Request $request
+        Request $request,
+        RiderZoneAssignmentService $assignmentService,
     ): RedirectResponse {
         /** @var User $user */
         $user = $request->user();
@@ -1633,7 +1826,27 @@ class RiderController extends Controller
                 'string',
                 'max:10',
             ],
+            'city_code' => ['nullable', 'regex:/^[0-9]{6,10}$/D'],
         ]);
+
+        $cityCode = app(PostalCodeLookup::class)->canonicalCityCode(
+            $validated['city_code'] ?? null,
+            $validated['province'],
+            $validated['city'],
+        );
+
+        $riderProfile = $user->riderProfile()->firstOrFail();
+        $logisticsProfile = $riderProfile->logisticsProfile;
+
+        if (
+            ! $cityCode
+            || ! $logisticsProfile
+            || (string) $cityCode !== (string) $logisticsProfile->psgc_city_code
+        ) {
+            throw ValidationException::withMessages([
+                'city' => 'Your home municipality/city must remain within your sponsoring Logistics account’s service area.',
+            ]);
+        }
 
         /*
         * Rider registration uses the normalized "Home"
@@ -1676,6 +1889,8 @@ class RiderController extends Controller
 
             'city_municipality' => trim($validated['city']),
 
+            'psgc_city_code' => $cityCode,
+
             'province' => trim($validated['province']),
 
             'postal_code' => filled($validated['postal_code'] ?? null)
@@ -1684,6 +1899,8 @@ class RiderController extends Controller
         ]);
 
         $address->save();
+
+        $assignmentService->sync($riderProfile);
 
         return redirect(
             route('rider.profile.index')
@@ -1810,6 +2027,12 @@ class RiderController extends Controller
             ->riderProfile()
             ->firstOrFail();
 
+        $request->merge([
+            'plate_number' => strtoupper(
+                trim((string) $request->input('plate_number'))
+            ),
+        ]);
+
         $validated = $request->validate([
             'vehicle_type' => [
                 'required',
@@ -1821,6 +2044,7 @@ class RiderController extends Controller
                 'required',
                 'string',
                 'max:30',
+                $this->uniqueRiderPlateRule($user->id, $riderProfile->id),
             ],
 
             'vehicle_model' => [
@@ -1840,9 +2064,7 @@ class RiderController extends Controller
             $validated['vehicle_type']
         );
 
-        $plateNumber = strtoupper(
-            trim($validated['plate_number'])
-        );
+        $plateNumber = trim($validated['plate_number']);
 
         DB::transaction(
             function () use (

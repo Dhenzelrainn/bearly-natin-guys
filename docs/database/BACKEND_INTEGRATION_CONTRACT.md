@@ -27,13 +27,22 @@ This file is the shared contract for backend, UI, and database work. The executa
 | Buyer purchase | `orders`; one marketplace checkout may contain multiple `seller_orders` |
 | Seller fulfillment | `seller_orders`, `order_items` |
 | Payment attempt/result | `payments` |
-| Physical delivery journey | `shipments` |
+| Physical delivery journey / current Logistics custodian | `shipments.logistics_profile_id` |
+| Shipment's first Logistics custodian | `shipments.origin_logistics_profile_id` |
+| Inter-city custody changes | `shipment_transfers` plus immutable `shipment_events` |
 | Scannable shipping label | `waybills` |
 | Physical package/piece | `parcels` |
 | Immutable tracking history | `shipment_events` |
 | Product moderation | `product_compliance_checks`, matches, `product_violations`, `violation_actions` |
 | Return/refund | `return_requests`, `return_items`, `return_evidence`, `refunds` |
 | Case management | `disputes`, participants, evidence, events |
+
+## Registration identity integrity
+
+- Valid account phone numbers are normalized to E.164 and dual-written to the transitional `users.phone` and `users.contact_number` columns. Both columns have unique database indexes; application validation checks both and provides the user-facing validation message. Null values remain allowed for accounts that do not have a phone on file. Unparseable legacy strings are preserved unchanged rather than silently rewriting account data; they are constrained only by their stored value and must not be treated as verified phone numbers.
+- Rider plates are stored uppercase with surrounding whitespace removed and kept in sync between `users.plate_number` and `rider_profiles.plate_number`. Database unique indexes cover each storage location, including soft-deleted rows. Plate punctuation is retained; values that differ only by punctuation are not treated as equal.
+- These unique indexes apply across roles for phone numbers and among Rider users/profiles for plates. Soft deletion does not release a phone number or plate for reuse.
+- Additive identity migrations preflight existing values. They stop with affected user IDs if aliases disagree or valid phone/plate identities collide after normalization; they do not delete accounts or silently choose a winning record. Unparseable legacy phone values remain unchanged.
 
 ### Product variant images
 
@@ -74,8 +83,8 @@ Use constants or PHP backed enums in application code, while columns remain stri
 | Order | `pending_payment`, `paid`, `processing`, `partially_fulfilled`, `fulfilled`, `cancelled`, `closed` |
 | Seller order | `pending`, `accepted`, `packing`, `ready_for_pickup`, `handed_to_logistics`, `completed`, `cancelled` |
 | Payment | `pending`, `authorized`, `paid`, `failed`, `cancelled`, `partially_refunded`, `refunded` |
-| Shipment | `pending`, `ready_for_pickup`, `pickup_assigned`, `picked_up`, `at_sorting_center`, `sorted`, `dispatched`, `out_for_delivery`, `delivered`, `delivery_failed`, `return_to_sender`, `cancelled` |
-| Parcel | `created`, `picked_up`, `received`, `sorted`, `dispatched`, `out_for_delivery`, `delivered`, `failed`, `returned`, `lost`, `damaged` |
+| Shipment | `pending`, `ready_for_pickup`, `pickup_assigned`, `picked_up`, `at_sorting_center`, `handoff_pending`, `sorted`, `dispatched`, `out_for_delivery`, `delivered`, `delivery_failed`, `return_to_sender`, `cancelled` |
+| Parcel | `created`, `picked_up`, `received`, `in_transit`, `sorted`, `dispatched`, `out_for_delivery`, `delivered`, `failed`, `returned`, `lost`, `damaged` |
 | Pickup | `requested`, `scheduled`, `assigned`, `in_progress`, `completed`, `cancelled`, `failed` |
 | Assignment | `assigned`, `accepted`, `en_route`, `completed`, `declined`, `cancelled` |
 | Dispatch | `draft`, `loading`, `dispatched`, `completed`, `cancelled` |
@@ -86,6 +95,9 @@ Use constants or PHP backed enums in application code, while columns remain stri
 | Dispute | `open`, `under_review`, `awaiting_response`, `escalated`, `resolved`, `closed` |
 | Commission/transaction/earning | `pending`, `available`, `held`, `processing`, `paid`, `reversed`, `cancelled` |
 | Seller refund recovery | `pending`, `partially_recovered`, `recovered` |
+| Seller bank account | `active`, `inactive` |
+| Seller withdrawal | `pending_review`, `approved`, `processing`, `completed`, `rejected`, `failed` |
+| Seller withdrawal transfer | `pending_verification`, `verified`, `failed` |
 
 Do not add synonymous values (for example both `shipped` and `dispatched`) without updating this contract and every consumer.
 
@@ -93,9 +105,9 @@ Do not add synonymous values (for example both `shipped` and `dispatched`) witho
 
 ### Product compliance
 
-Input: persisted `Product`, actor `User`, scan trigger (`create`, `update`, `manual`, `report`).
+Input: persisted `Product`, scan trigger (`create`, `update`, `manual`, `report`), and an optional authenticated actor for recheck audit history.
 
-Output: `ProductComplianceCheck` with zero or more matches and violations. Critical prohibited rules block/hide the product; high-severity rules hold it for review. Admin decisions append `violation_actions`; dismissal records false positives instead of deleting history.
+Output: `ProductComplianceCheck` with zero or more matches and violations. Active rules scan product names/descriptions; category matching uses configured term rules, not image recognition or an inferred category model. Critical prohibited rules block/hide the product; high-severity rules hold it for review. Actionable automated violations and active in-app `seller_warnings` are deduplicated per product/rule. A later clean scan resolves automated violations/warnings and records a `violation_actions` history entry; an unchanged Admin-dismissed false positive is not reopened. Flagged/blocked products are not buyer-visible. Admin decisions require a reason and append `violation_actions` transactionally. Supported decisions are `dismiss`, `confirm`, `request_correction`, `remove_product`, and `warn_seller`; removal blocks the listing without deleting its product record, and dismissal preserves false-positive history. A final decision cannot be applied twice to the same violation. Seller account suspension/escalation is a separate workflow and is not implied by product moderation.
 
 ### Checkout
 
@@ -109,12 +121,17 @@ Input: buyer, Buyer-owned persisted cart items, selected address, COD payment me
 - Lock the marketplace `Order` and its `SellerOrder` rows during transitions; lock affected variants when releasing reservations. Waybills, pickup scheduling, and logistics handoff are separate workflows and must not be implied by `ready_for_pickup`.
 - Buyer receipt confirmation moves every non-cancelled Seller Order of a fully delivered marketplace Order to `completed` with a buyer-attributed history record and marks the marketplace Order `fulfilled`. Buyer confirmation is not COD collection evidence and must not mark a COD payment paid. A COD payment becomes `paid` only when every active outbound COD shipment has a Rider-recorded collection exactly equal to its COD amount due and the collection totals equal the marketplace payment. Admin payment confirmation must not bypass this rule. Confirmation is idempotent and never completes a cancelled order. `delivered` without Buyer confirmation must not be presented as `completed`.
 
-### COD cash custody and Seller settlement
+### COD cash custody, Seller Wallet, and legacy settlements
 
 - Record Rider-reported cash for each outbound COD shipment in `cod_cash_collections`, including the amount due, actual amount, signed difference, assigned Rider, owning Logistics provider, and collection time. A mismatch is preserved as `disputed`; it must not capture the marketplace payment or qualify Seller proceeds for settlement.
-- The cash custody sequence is Rider collection → the same Logistics provider acknowledges the exact Rider-recorded amount → Logistics records remittance to Finance → Admin/Finance reconciles the exact remitted amount. Every transition appends a `cod_cash_collection_events` row with actor, amount, reference, and occurrence time.
-- Seller settlement eligibility requires a completed Seller Order, a paid COD marketplace payment, and Finance-reconciled cash for every associated outbound COD shipment. Settlement generation links the exact posted Seller transactions through `seller_payout_items` and creates only a pending accounting record.
-- Recording a Seller settlement as paid requires an exact amount, actual external-payment confirmation, method/reference/date, private receipt or Seller acknowledgment, and an audit record. Bearly does not initiate the transfer. Seller refund recovery remains a separate receivable and is never automatically deducted from pending Seller payouts.
+- The cash custody sequence is Rider collection → the same Logistics provider acknowledges the exact Rider-recorded amount → Logistics physically hands off and records the exact cash amount → Admin/Finance physically counts and confirms the exact remitted amount. On acknowledgment, Bearly derives a unique `CODH-` Rider-to-Logistics reference from the collection number. On new Logistics remittances, Bearly derives a distinct `L2F-` Logistics-to-Finance reference from that same unique collection number; existing remittance-reference values are preserved. On new Finance reconciliation, Bearly generates a `BFR-<year>-<collection-id>` internal Finance cash receipt number, stores it in `finance_reference`, and offers a print/save-as-PDF view on Admin Seller Payments. Retrying the same reconciliation is idempotent and must not create a second event or receipt number. Existing Finance references are preserved. The printed Bearly record is not a BIR/tax invoice or bank deposit receipt. Store the three custody references separately (`logistics_reference`, `finance_remittance_reference`, and `finance_reference`). Every state transition appends a `cod_cash_collection_events` row with actor, amount, reference, and occurrence time; receipt views are Admin-only and audited.
+- Each positive posted Seller sale transaction not already linked to a legacy `seller_payout_items` row receives one immutable `sale_earning_pending` wallet-ledger entry. Wallet counters are integer centavos and must reconcile to append-only movement deltas and balance-after snapshots; lock the Seller wallet for every movement. Duplicate posting/release must not create a second credit.
+- Pending sale earnings become Available only after the Seller Order is completed, the original payment has `paid_at` and status `paid`, `partially_refunded`, or `refunded`, the seven-calendar-day return window has ended, and no return/refund case or refund payout remains open or processing. The release transaction locks the marketplace Order and Seller Order before current reads of case/refund state so a return request cannot race the eligibility check. For COD, every associated outbound shipment with a positive COD amount must have a Finance-reconciled collection whose `amount_reconciled_minor` exactly matches that shipment's COD amount. Finance reconciliation alone never releases earnings. `CODH-`, `L2F-`, and `BFR-` remain distinct cash-custody references and are never used as Seller bank-transfer references.
+- Seller refund recoveries remain separate receivables. A closed refund case does not create an automatic wallet offset; recovery is recorded and collected through its separate recovery workflow. Existing `seller_payouts` and `seller_payout_items` remain auditable legacy records; wallet crediting excludes linked transactions. Historical paid payouts are represented in lifetime-withdrawn wallet history without crediting their sale transactions again. Legacy pending batches may only be completed after Finance verifies the external bank transfer; no new Seller payout batches are generated for wallet-ledger earnings.
+- Completing a legacy bank-transfer payout requires Finance to record the Seller's `receiving_bank_name` alongside the transfer reference and proof. Store that destination bank name on the payout and in its audit values; never use the field for an account number or COD custody reference.
+- Bank account numbers are encrypted at rest and masked to their last four digits in Seller lists. The owning active Seller and authorized Admin/Finance review may access the full number; access is restricted, and full account numbers are never copied into audit values. A withdrawal request stores bank/account snapshots, a Seller-scoped idempotency key, and an atomic reservation of Available funds. It creates status history, audit records, and a Seller notification.
+- Finance manually approves/rejects requests, starts processing, records the exact external bank transfer amount/date/reference and optional private proof, then independently verifies success with a note before completion. A reference alone is not proof. Only one transfer record is allowed per withdrawal. Rejection or a Finance-confirmed unsuccessful transfer releases the reservation exactly once; a verified transfer moves it to lifetime-withdrawn exactly once. Bearly does not initiate bank or GCash payouts, hand cash directly, or route Seller payouts through Riders. Proof is stored on a private Laravel disk; Finance may access it during review, while the owning Seller may access it only after verified completion. Every proof access is audited.
+- Seller My Earnings and Transaction History are read models of the authenticated Seller's `seller_transactions`, `platform_commissions`, `seller_payouts`, and wallet ledger; all queries are scoped through the authenticated `seller_profile_id`. A legacy payout proof is visible/downloadable by that Seller only after the payout is paid and the private receipt exists; access is audited. Order-item images use the immutable checkout image snapshot where present, with product image fallback; subcategory is display metadata and never changes ledger amounts.
 
 ### COD cash refunds
 
@@ -132,10 +149,11 @@ Input: buyer, Buyer-owned persisted cart items, selected address, COD payment me
 ### Bearly shipping estimate
 
 - New or edited SKUs require packaged weight and L×W×H; legacy SKUs with null package data cannot be quoted.
-- Quote one combined parcel per `SellerOrder` using the deterministic `greedy_minimum_bounding_box_v1` estimate. Billable weight is `ceil(max(actual_weight, parcel_volume / divisor))`, with a one-kilogram minimum.
-- `shipping_rates` stores internal `bearly_logistics` rates in integer centavos. Initial first-kilogram fees are ₱34/₱40/₱60/₱100 for nearby delivery, same province, nearby provinces, and inter-island. Additional-kilogram surcharges remain unset until configured; do not invent a fee.
-- The divisor defaults to 5000 and can be changed through `system_settings.shipping.volumetric_divisor`. Admin rate changes require an audit actor and reason.
-- The Buyer quote is integrity-protected and expires after ten minutes. At placement, revalidate the cart, address, item snapshots, parcel estimate, and rates against that accepted quote; changed terms require a refreshed quote. Persist the applied provider, quote inputs, and fee on each `SellerOrder`.
+- Quote one combined parcel per `SellerOrder` using the deterministic `greedy_minimum_bounding_box_v1` estimate. Billable weight is `ceil(max(actual_weight, parcel_volume / divisor))`, with a one-kilogram minimum; package measurements remain in the quote for delivery planning.
+- New checkout quotes charge one flat standard fee per `SellerOrder`, independent of destination route and billable weight. The default is 5000 integer centavos; an Admin may revise the shared amount through `system_settings.shipping.seller_order_fee_minor` with an audit actor and reason. Marketplace shipping is the sum of the per-`SellerOrder` fees.
+- The divisor defaults to 5000 and can be changed through `system_settings.shipping.volumetric_divisor`. It changes the informational billable-weight estimate, not the Buyer fee.
+- Former route-tier `shipping_rates` rows are retained as legacy configuration/history and are not used to price new quotes. Existing `SellerOrder` fee snapshots are immutable and are not rewritten when the standard fee changes.
+- The Buyer quote is integrity-protected and expires after ten minutes. At placement, revalidate the cart, address, item snapshots, package estimate, and current flat fee against that accepted quote; changed terms require a refreshed quote. Persist the applied provider, pricing rule, quote inputs, and fee on each `SellerOrder`.
 - The applied fee is fixed after checkout. No remeasurement surcharge, waybill, dispatch, or extra Buyer charge is part of this phase.
 
 ### Shipment and waybill creation
@@ -146,11 +164,35 @@ Input: fulfillable `SellerOrder`, logistics provider, origin/destination snapsho
 
 Input: authenticated logistics user, scan token or waybill number, sorting center, scan method. Output: updated parcel/shipment and an appended event. The operation locks the waybill and rejects duplicate/foreign-provider scans. Manual lookup uses the same endpoint and service.
 
+### Barangay delivery zones
+
+- `sorting_zones.destination_rules` stores `province`, `city_municipality`, `psgc_city_code`, and a `barangays` string list. PSGC city code is authoritative for city identity when present; barangays continue to match by normalized name. Each Logistics profile has exactly one Sorting Center, and each active zone belongs to that Center; active barangay coverage must not overlap across zones in the Center.
+- Logistics creates zones from the official province → municipality/city → barangay selector. The account's single Sorting Center is assigned automatically; clients cannot choose a center. Zone codes are generated from the municipality and a per-center sequence; zone names use the municipality and first covered barangay.
+- Logistics may edit coverage or archive an owned zone in the Sorting Center UI. Archiving sets `status=inactive` and `deleted_at`; restore clears `deleted_at`, activates the zone, and rechecks for overlapping active coverage. Coverage changes and archiving are rejected while the zone has non-final parcels or an active dispatch batch. Rider center/zone assignments are automatically recalculated after a coverage change, archive, or restore. Archived zone codes remain reserved and are not reused.
+- Permanent deletion is available only for archived zones and is blocked while non-final parcels or active dispatch batches still use the zone. It permanently removes the zone row while retaining parcel, dispatch, and shipment-event records; their nullable zone foreign keys are set to `NULL`. In particular, `dispatch_batches.sorting_zone_id` uses `ON DELETE SET NULL` so historical batches survive.
+- Parcel sorting matches province, municipality/city, and barangay against the zone coverage (case-, punctuation-, and accent-insensitive). Outbound parcels use the immutable marketplace Order destination snapshot; return parcels use their reverse Shipment destination address. A parcel with no matching active zone cannot be sorted into a zone.
+- Dispatch includes only ready parcels whose destination matches the zone. A parcel assigned to a different or uncovered zone remains undispatched until corrected. The selected Rider must belong to the Logistics provider and Sorting Center and be assigned to that exact zone.
+
+### City-scoped Logistics and Rider assignment
+
+- `logistics_profiles.psgc_city_code` is the authoritative municipality/city for a Logistics account, sourced from its registered Sorting Center/application address and uniquely owned by one profile (including inactive/soft-deleted profiles). Registration and approval must preserve the city; a profile cannot silently move to a different city. Each city has at most one Logistics profile, and each profile has exactly one Sorting Center.
+- Sorting Zones are limited to the owning Logistics city and belong to its single Sorting Center. Zone creation uses that center automatically; no center selector or client-supplied `sorting_center_id` is accepted.
+- Rider registration must select a Logistics sponsor serving the Rider's registered PSGC city. Approval and later refresh derive `home_sorting_center_id` and `current_zone_id` from the Rider's Home address and matching active barangay coverage. Unmatched Riders remain unassigned and cannot receive dispatch; Logistics cannot manually override the city/barangay match.
+- New checkout snapshots the validated delivery `psgc_city_code` onto `orders`; outbound shipment snapshots it to `shipments.destination_city_code`. Return shipments snapshot the Seller pickup address city code. Text address fields remain immutable/display context but do not decide which Logistics profile owns last-mile delivery.
+
+### Inter-Logistics shipment handoff
+
+- `shipments.logistics_profile_id` is the current custodian; `origin_logistics_profile_id` preserves the first provider for audit and historical workflows. Each outbound or reverse shipment can have at most one direct city handoff in `shipment_transfers`.
+- The current Logistics custodian may send a shipment only after every parcel is received at one of its active Sorting Centers and before sorting/dispatch. The target is resolved server-side from the immutable destination city code; clients cannot submit a destination provider.
+- Sending creates one `shipment_transfers` row in `sent`, changes shipment state to `handoff_pending` and parcels to `in_transit`, and appends one `logistics_handoff_sent` shipment event per parcel. The origin remains current custodian until acceptance and cannot sort or dispatch in-transit parcels.
+- The destination Logistics account scans the waybill; its one active Sorting Center is resolved automatically from the authenticated account. Acceptance locks and revalidates the pending transfer, destination city, custodian, parcel states, and center ownership; it atomically changes current custody, records the accepting actor/center/time, returns parcels to `received`, clears prior zone assignment, and appends `logistics_handoff_accepted` events. Repeated, foreign, wrong-city, and invalid-state operations must not duplicate events or custody changes.
+- Cross-city physical returns are collected by the Logistics account serving the Buyer/order city, then use the same handoff workflow to reach the Seller pickup-address city account before local sorting and delivery. COD collection remains owned by the Rider and current Logistics custodian who completed outbound delivery; the immutable origin provider is retained separately.
+
 ## Authorization invariants
 
 - Buyers access only their carts, orders, payments, returns, disputes, and conversations.
 - Sellers access records through their `seller_profile`/`store`; never trust a submitted seller ID.
-- Logistics users access shipments whose `logistics_profile_id` belongs to them.
+- Logistics users access shipments whose current `logistics_profile_id` belongs to them; only the recorded destination account may accept a pending handoff. Historical origin-provider data does not grant current custody access.
 - Riders access only active assignments tied to their `rider_profile`.
 - Admin actions record the acting user and reason in action/event/audit tables.
 
@@ -158,7 +200,7 @@ Input: authenticated logistics user, scan token or waybill number, sorting cente
 
 - A Buyer may request a return/refund within seven calendar days after the Seller Order's recorded completion time. Requests select immutable order-item quantities; the requested value is calculated from saved item and Seller discount snapshots and cannot exceed the remaining paid order value.
 - A case moves `awaiting_seller → under_review` only after the Seller submits a response and supporting evidence. Admin may then reject, request Buyer/Seller evidence, or approve; only Admin decides the claim.
-- A physical return is authorized with a zero-fee reverse shipment and pickup request assigned to the active Logistics provider recorded on the original fulfilled outbound shipment. Do not select an arbitrary provider or fall back to another provider if the original is inactive; block approval until that provider is active or an explicit reassignment workflow is completed. Return parcel scans use the existing provider-scoped pickup, intake, sorting, dispatch, and Rider delivery lifecycle; outbound Buyer tracking excludes return-purpose shipments.
+- A physical return is authorized with a zero-fee reverse shipment and pickup request assigned to the active Logistics provider serving the immutable Buyer/order city. Do not select an arbitrary provider or fall back to another provider if it is inactive; block approval until that provider is active. The return destination is the Seller pickup-address city; if different, the Buyer-city provider accepts the pickup and sends the received parcel through the audited inter-Logistics handoff to the Seller-city provider, which completes local sorting/delivery. Return parcel scans use the provider-scoped pickup, intake, sorting, dispatch, and Rider lifecycle; outbound Buyer tracking excludes return-purpose shipments.
 - Physical-return refunds remain pending until the Seller records inspection for every returned item. Only items marked sellable and restock are added to stock, with an `inventory_movements` record. Other inspected units are quarantined or disposed, not added to stock.
 - Admin approval records a required financial-responsibility party (`seller` or `platform`) and evidence-based reason; this is separate from who sends the money. Admin is always responsible for sending the Buyer refund externally.
 - One approved refund is one exact, full payout. Completion requires an explicit Admin confirmation that the external payout was already made, persists the actual payout amount (equal to the approved amount), method/reference/date, and a private receipt or Buyer acknowledgment. Bearly does not initiate a transfer. Completion is transaction-safe, idempotent, and bounded by captured payment.

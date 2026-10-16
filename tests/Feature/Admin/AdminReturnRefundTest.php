@@ -97,6 +97,7 @@ class AdminReturnRefundTest extends TestCase
             'city_municipality' => 'Calamba',
             'province' => 'Laguna',
             'postal_code' => '4027',
+            'psgc_city_code' => '0403405000',
             'currency' => 'PHP',
             'subtotal_minor' => 129900,
             'shipping_fee_minor' => 0,
@@ -236,8 +237,8 @@ class AdminReturnRefundTest extends TestCase
 
     public function test_admin_approval_creates_a_zero_fee_reverse_shipment(): void
     {
-        // Put another active provider first so approval must honor the source
-        // shipment's assignment instead of selecting an arbitrary provider.
+        // The Buyer-city provider handles pickup; the Seller-city provider is
+        // resolved later as the reverse shipment's destination custodian.
         $this->createLogisticsProvider('Alternate Sorting Center');
         $logistics = $this->createLogisticsProvider('PB Sorting Center');
         ['seller_address' => $sellerAddress, 'outbound' => $outbound] = $this->preparePhysicalReturn($logistics);
@@ -257,6 +258,9 @@ class AdminReturnRefundTest extends TestCase
             ->where('purpose', 'return')
             ->firstOrFail();
         $this->assertSame((int) $outbound->logistics_profile_id, (int) $returnShipment->logistics_profile_id);
+        $this->assertSame('0403422000', $returnShipment->destination_city_code);
+        $this->assertSame('Pila', $returnShipment->destination_address_snapshot['city_municipality']);
+        $this->assertSame('0403422000', $returnShipment->destination_address_snapshot['psgc_city_code']);
         $this->assertSame(0, (int) $returnShipment->shipping_fee_minor);
         $this->assertSame($sellerAddress->id, (int) $returnShipment->destination_address_id);
         $this->assertDatabaseHas('shipment_events', [
@@ -267,7 +271,7 @@ class AdminReturnRefundTest extends TestCase
         ]);
     }
 
-    public function test_physical_return_approval_is_blocked_if_original_logistics_provider_is_inactive(): void
+    public function test_physical_return_approval_is_blocked_if_buyer_city_logistics_provider_is_inactive(): void
     {
         $provider = $this->createLogisticsProvider('PB Sorting Center', 'inactive');
         $this->preparePhysicalReturn($provider);
@@ -1211,6 +1215,9 @@ class AdminReturnRefundTest extends TestCase
             'legal_name' => $displayName,
             'display_name' => $displayName,
             'contact_phone' => fake()->unique()->numerify('09#########'),
+            'psgc_city_code' => str_contains($displayName, 'Alternate')
+                ? '0403422000'
+                : '0403405000',
             'status' => $profileStatus,
         ]);
     }
@@ -1228,9 +1235,10 @@ class AdminReturnRefundTest extends TestCase
             'house_number' => '14',
             'street' => 'Store Road',
             'barangay' => 'Real',
-            'city_municipality' => 'Calamba',
+            'city_municipality' => 'Pila',
             'province' => 'Laguna',
-            'postal_code' => '4027',
+            'postal_code' => '4010',
+            'psgc_city_code' => '0403422000',
         ]);
         $sellerProfile->update(['pickup_address_id' => $sellerAddress->id]);
 
@@ -1238,6 +1246,8 @@ class AdminReturnRefundTest extends TestCase
             'shipment_no' => 'SHP-RETURN-OUTBOUND-001',
             'seller_order_id' => $this->returnRequest->seller_order_id,
             'logistics_profile_id' => $provider->id,
+            'origin_logistics_profile_id' => $provider->id,
+            'destination_city_code' => '0403405000',
             'purpose' => 'outbound',
             'status' => 'delivered',
             'shipping_fee_minor' => 0,

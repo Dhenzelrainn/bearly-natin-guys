@@ -66,7 +66,7 @@ class RiderAssignmentTest extends TestCase
             ->assertSessionHasNoErrors()
             ->assertSessionHas(
                 'success',
-                'Rider assignment was updated.'
+                'Rider assignment was refreshed from the registered home barangay.'
             );
 
         $rider['profile']->refresh();
@@ -84,33 +84,26 @@ class RiderAssignmentTest extends TestCase
         );
     }
 
-    public function test_logistics_can_assign_center_without_current_zone(): void
+    public function test_rider_assignment_refresh_uses_home_area_not_submitted_center(): void
     {
         $provider = $this->makeProvider(
             'A',
             'provider-a@example.test'
         );
 
-        $oldCenter = $this->makeCenter(
-            $provider,
-            'OLD'
+        $center = $this->makeCenter($provider, 'MAIN');
+        $zone = $this->makeZone($center, 'MAIN');
+        $otherProvider = $this->makeProvider(
+            'B',
+            'provider-b@example.test'
         );
-
-        $oldZone = $this->makeZone(
-            $oldCenter,
-            'OLD'
-        );
-
-        $newCenter = $this->makeCenter(
-            $provider,
-            'NEW'
-        );
+        $foreignCenter = $this->makeCenter($otherProvider, 'FOREIGN');
 
         $rider = $this->makeRider(
             $provider,
             'NOZONE',
-            $oldCenter,
-            $oldZone
+            $center,
+            $zone
         );
 
         $this
@@ -122,7 +115,7 @@ class RiderAssignmentTest extends TestCase
                 ),
                 [
                     'home_sorting_center_id' =>
-                        $newCenter->id,
+                        $foreignCenter->id,
 
                     'current_zone_id' =>
                         null,
@@ -132,16 +125,9 @@ class RiderAssignmentTest extends TestCase
 
         $rider['profile']->refresh();
 
-        $this->assertSame(
-            $newCenter->id,
-            $rider['profile']
-                ->home_sorting_center_id
-        );
-
-        $this->assertNull(
-            $rider['profile']
-                ->current_zone_id
-        );
+        $this->assertSame($center->id, $rider['profile']->home_sorting_center_id);
+        $this->assertSame($zone->id, $rider['profile']->current_zone_id);
+        $this->assertNotSame($foreignCenter->id, $rider['profile']->home_sorting_center_id);
     }
 
     public function test_logistics_cannot_assign_another_providers_rider(): void
@@ -160,7 +146,6 @@ class RiderAssignmentTest extends TestCase
             $providerA,
             'A'
         );
-
         $riderB = $this->makeRider(
             $providerB,
             'FOREIGN'
@@ -208,6 +193,7 @@ class RiderAssignmentTest extends TestCase
             $providerA,
             'A'
         );
+        $zoneA = $this->makeZone($centerA, 'A');
 
         $centerB = $this->makeCenter(
             $providerB,
@@ -217,7 +203,8 @@ class RiderAssignmentTest extends TestCase
         $rider = $this->makeRider(
             $providerA,
             'CENTER',
-            $centerA
+            $centerA,
+            $zoneA
         );
 
         $this
@@ -235,7 +222,7 @@ class RiderAssignmentTest extends TestCase
                         null,
                 ]
             )
-            ->assertNotFound();
+            ->assertSessionHasNoErrors();
 
         $rider['profile']->refresh();
 
@@ -244,9 +231,10 @@ class RiderAssignmentTest extends TestCase
             $rider['profile']
                 ->home_sorting_center_id
         );
+        $this->assertSame($zoneA->id, $rider['profile']->current_zone_id);
     }
 
-    public function test_zone_must_belong_to_selected_sorting_center(): void
+    public function test_submitted_zone_cannot_override_home_area_match(): void
     {
         $provider = $this->makeProvider(
             'A',
@@ -258,15 +246,16 @@ class RiderAssignmentTest extends TestCase
             'A'
         );
 
-        $centerB = $this->makeCenter(
-            $provider,
-            'B'
-        );
-
-        $zoneB = $this->makeZone(
-            $centerB,
-            'B'
-        );
+        $zoneB = $this->makeZone($centerA, 'B');
+        $zoneB->update([
+            'destination_rules' => [
+                'province' => 'Laguna',
+                'city_municipality' => 'San Pablo City',
+                'psgc_city_code' => $provider['profile']->psgc_city_code,
+                'barangays' => ['Different Barangay'],
+            ],
+        ]);
+        $zoneA = $this->makeZone($centerA, 'A');
 
         $rider = $this->makeRider(
             $provider,
@@ -292,7 +281,7 @@ class RiderAssignmentTest extends TestCase
                         $zoneB->id,
                 ]
             )
-            ->assertNotFound();
+            ->assertSessionHasNoErrors();
 
         $rider['profile']->refresh();
 
@@ -302,10 +291,8 @@ class RiderAssignmentTest extends TestCase
                 ->home_sorting_center_id
         );
 
-        $this->assertNull(
-            $rider['profile']
-                ->current_zone_id
-        );
+        $this->assertSame($zoneA->id, $rider['profile']->current_zone_id);
+        $this->assertNotSame($zoneB->id, $rider['profile']->current_zone_id);
     }
 
     public function test_inactive_sorting_center_cannot_be_assigned(): void
@@ -315,21 +302,18 @@ class RiderAssignmentTest extends TestCase
             'provider@example.test'
         );
 
-        $activeCenter = $this->makeCenter(
-            $provider,
-            'ACTIVE'
-        );
-
         $inactiveCenter = $this->makeCenter(
             $provider,
             'INACTIVE',
             'inactive'
         );
+        $inactiveZone = $this->makeZone($inactiveCenter, 'INACTIVE-ZONE');
 
         $rider = $this->makeRider(
             $provider,
             'INACTIVE-CENTER',
-            $activeCenter
+            $inactiveCenter,
+            $inactiveZone
         );
 
         $this
@@ -347,15 +331,12 @@ class RiderAssignmentTest extends TestCase
                         null,
                 ]
             )
-            ->assertNotFound();
+            ->assertSessionHasNoErrors();
 
         $rider['profile']->refresh();
 
-        $this->assertSame(
-            $activeCenter->id,
-            $rider['profile']
-                ->home_sorting_center_id
-        );
+        $this->assertNull($rider['profile']->home_sorting_center_id);
+        $this->assertNull($rider['profile']->current_zone_id);
     }
 
     public function test_inactive_zone_cannot_be_assigned(): void
@@ -397,20 +378,12 @@ class RiderAssignmentTest extends TestCase
                         $inactiveZone->id,
                 ]
             )
-            ->assertNotFound();
+            ->assertSessionHasNoErrors();
 
         $rider['profile']->refresh();
 
-        $this->assertSame(
-            $center->id,
-            $rider['profile']
-                ->home_sorting_center_id
-        );
-
-        $this->assertNull(
-            $rider['profile']
-                ->current_zone_id
-        );
+        $this->assertNull($rider['profile']->home_sorting_center_id);
+        $this->assertNull($rider['profile']->current_zone_id);
     }
 
     /**
@@ -453,6 +426,8 @@ class RiderAssignmentTest extends TestCase
                 $roleId,
             ]);
 
+        $location = $this->locationFor($suffix);
+
         $profile =
             LogisticsProfile::query()
                 ->create([
@@ -468,9 +443,24 @@ class RiderAssignmentTest extends TestCase
                     'contact_phone' =>
                         '09170000001',
 
+                    'psgc_city_code' => $location['code'],
+
                     'status' =>
                         'active',
                 ]);
+
+        Address::query()->create([
+            'user_id' => $user->id,
+            'label' => 'Sorting center',
+            'recipient_name' => $user->name,
+            'phone' => '09170000001',
+            'street' => 'Service Road',
+            'barangay' => $location['barangay'],
+            'city_municipality' => $location['city'],
+            'province' => $location['province'],
+            'postal_code' => $location['postal_code'],
+            'psgc_city_code' => $location['code'],
+        ]);
 
         return compact(
             'user',
@@ -483,6 +473,7 @@ class RiderAssignmentTest extends TestCase
         string $suffix,
         string $status = 'active'
     ): SortingCenter {
+        $location = $this->locationFor((string) $provider['profile']->psgc_city_code);
         $address = Address::query()
             ->create([
                 'user_id' =>
@@ -503,17 +494,18 @@ class RiderAssignmentTest extends TestCase
                 'street' =>
                     "Hub Road {$suffix}",
 
-                'barangay' =>
-                    'San Rafael',
+                'barangay' => $location['barangay'],
 
                 'city_municipality' =>
-                    'San Pablo City',
+                    $location['city'],
 
                 'province' =>
-                    'Laguna',
+                    $location['province'],
 
                 'postal_code' =>
-                    '4000',
+                    $location['postal_code'],
+
+                'psgc_city_code' => $location['code'],
             ]);
 
         return SortingCenter::query()
@@ -544,6 +536,8 @@ class RiderAssignmentTest extends TestCase
         string $suffix,
         string $status = 'active'
     ): SortingZone {
+        $location = $this->locationFor((string) $center->logisticsProfile->psgc_city_code);
+
         return SortingZone::query()
             ->create([
                 'sorting_center_id' =>
@@ -556,7 +550,12 @@ class RiderAssignmentTest extends TestCase
                     "Zone {$suffix}",
 
                 'destination_rules' =>
-                    [],
+                    [
+                        'province' => $location['province'],
+                        'city_municipality' => $location['city'],
+                        'psgc_city_code' => $location['code'],
+                        'barangays' => [$location['barangay']],
+                    ],
 
                 'status' =>
                     $status,
@@ -575,6 +574,7 @@ class RiderAssignmentTest extends TestCase
         ?SortingCenter $center = null,
         ?SortingZone $zone = null
     ): array {
+        $location = $this->locationFor((string) $provider['profile']->psgc_city_code);
         $user = User::factory()->create([
             'name' =>
                 "Rider {$suffix}",
@@ -598,6 +598,19 @@ class RiderAssignmentTest extends TestCase
 
             'plate_number' =>
                 "PLATE-{$suffix}",
+        ]);
+
+        Address::query()->create([
+            'user_id' => $user->id,
+            'label' => 'Home',
+            'recipient_name' => $user->name,
+            'phone' => '09170000001',
+            'street' => 'Rider Street',
+            'barangay' => $location['barangay'],
+            'city_municipality' => $location['city'],
+            'province' => $location['province'],
+            'postal_code' => $location['postal_code'],
+            'psgc_city_code' => $location['code'],
         ]);
 
         $profile = RiderProfile::query()
@@ -631,5 +644,15 @@ class RiderAssignmentTest extends TestCase
             'user',
             'profile'
         );
+    }
+
+    /** @return array{code: string, city: string, province: string, barangay: string, postal_code: string} */
+    private function locationFor(string $value): array
+    {
+        $calamba = $value === 'B' || $value === '0403405000';
+
+        return $calamba
+            ? ['code' => '0403405000', 'city' => 'Calamba City', 'province' => 'Laguna', 'barangay' => 'San Rafael', 'postal_code' => '4027']
+            : ['code' => '0403424000', 'city' => 'San Pablo City', 'province' => 'Laguna', 'barangay' => 'San Rafael', 'postal_code' => '4000'];
     }
 }

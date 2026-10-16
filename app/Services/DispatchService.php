@@ -17,9 +17,13 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 class DispatchService
 {
+    public function __construct(
+        private readonly SortingZoneMatcher $zoneMatcher
+    ) {}
+
     /**
-     * Assign and immediately dispatch every ready parcel in a zone
-     * to one eligible rider.
+     * Assign and immediately dispatch every coverage-matched ready parcel
+     * in a zone to one eligible rider.
      */
     public function dispatchZone(
         SortingZone $zone,
@@ -168,8 +172,11 @@ class DispatchService
              * - parcels belonging to shipments still in sorted state
              * - parcels not already attached to an active dispatch batch
              */
-            $parcels = Parcel::query()
-                ->with('shipment')
+            $readyParcels = Parcel::query()
+                ->with([
+                    'shipment.destinationAddress',
+                    'shipment.sellerOrder.order',
+                ])
                 ->where(
                     'current_sorting_center_id',
                     $center->id
@@ -208,9 +215,15 @@ class DispatchService
                 ->lockForUpdate()
                 ->get();
 
+            $parcels = $readyParcels
+                ->filter(fn (Parcel $parcel): bool =>
+                    $this->zoneMatcher->matches($zone, $parcel)
+                )
+                ->values();
+
             if ($parcels->isEmpty()) {
                 throw new ConflictHttpException(
-                    'There are no ready parcels available for dispatch in this zone.'
+                    'There are no ready parcels whose destination matches this zone\'s barangay coverage.'
                 );
             }
 

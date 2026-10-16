@@ -8,8 +8,10 @@ use App\Models\StorePromotion;
 use App\Models\StorePromotionalBanner;
 use App\Services\InternationalPhone;
 use App\Services\ProductReviewService;
+use App\Services\SellerEarningsService;
 use App\Services\SellerIdentityService;
 use App\Services\SellerInventoryService;
+use App\Services\SellerNotificationService;
 use App\Services\SellerPricingService;
 use App\Services\SellerProductService;
 use App\Services\SellerPromotionService;
@@ -34,11 +36,34 @@ class SellerController extends Controller
 
     private function notifications(): array
     {
-        return [
-            ['title' => '8 new orders need review', 'time' => '5 minutes ago', 'type' => 'warning'],
-            ['title' => 'Classic Linen Shirt is low in stock', 'time' => '42 minutes ago', 'type' => 'danger'],
-            ['title' => 'Order #BR-1047 is ready for pickup', 'time' => '1 hour ago', 'type' => 'success'],
-        ];
+        return app(SellerNotificationService::class)->recentFor(auth()->user());
+    }
+
+    private function moneyFromMinor(int $amountMinor): string
+    {
+        $sign = $amountMinor < 0 ? '−' : '';
+
+        return $sign.'₱'.number_format(abs($amountMinor) / 100, 2);
+    }
+
+    private function changeNote(?float $percent, string $previousLabel): string
+    {
+        if ($percent === null) {
+            return 'No prior-period data';
+        }
+
+        $sign = $percent > 0.05 ? '+' : ($percent < -0.05 ? '−' : '');
+
+        return $sign.number_format(abs($percent), 1).'% vs '.$previousLabel;
+    }
+
+    private function changeIcon(?float $percent): string
+    {
+        if ($percent === null) {
+            return 'minus';
+        }
+
+        return $percent > 0.05 ? 'trending-up' : ($percent < -0.05 ? 'trending-down' : 'minus');
     }
 
     public function dashboard(): View
@@ -97,97 +122,84 @@ class SellerController extends Controller
         ]);
     }
 
-    public function reports(): View
+    public function salesReport(Request $request, SellerEarningsService $earnings): View
     {
-        return view('seller.Reports.overview', [
-            'seller' => $this->seller(),
-            'notifications' => $this->notifications(),
-            'period' => 'Aug 1 – Aug 31, 2026',
-            'metrics' => [
-                ['label' => 'Net Revenue', 'value' => '₱109,876', 'change' => '+10.8%', 'context' => 'vs July (₱99,210)', 'primary' => true],
-                ['label' => 'Gross Sales', 'value' => '₱128,450', 'change' => '+12.5%', 'context' => 'vs July'],
-                ['label' => 'Orders', 'value' => '91', 'change' => '+8.3%', 'context' => 'vs July'],
-                ['label' => 'Average Order', 'value' => '₱1,411', 'change' => '+3.9%', 'context' => 'vs July'],
-            ],
-            'salesTrend' => [14200, 17850, 19600, 18100, 16900, 20700, 21100],
-            'salesLabels' => ['Aug 1–4', 'Aug 5–9', 'Aug 10–14', 'Aug 15–19', 'Aug 20–24', 'Aug 25–28', 'Aug 29–31'],
-            'financialBridge' => [
-                ['label' => 'Gross Sales', 'value' => '₱128,450.00', 'negative' => false],
-                ['label' => 'Discounts', 'value' => '−₱4,430.00', 'negative' => true],
-                ['label' => 'Refunds', 'value' => '−₱1,299.00', 'negative' => true],
-                ['label' => 'Platform Commission (10%)', 'value' => '−₱12,845.00', 'negative' => true],
-            ],
-            'insights' => [
-                ['title' => 'Best seller', 'value' => 'Classic Linen Shirt · 38 sold', 'detail' => 'Your top product by unit volume this month.', 'icon' => 'shirt'],
-                ['title' => 'Strongest period', 'value' => 'Aug 25–31 · ₱41,800', 'detail' => 'This period captured the highest sales.', 'icon' => 'trending-up'],
-                ['title' => 'Refund rate', 'value' => '1.4% · Stable', 'detail' => 'Below your previous month’s 1.8%.', 'icon' => 'rotate-ccw'],
-            ],
-            'products' => [
-                ['name' => 'Classic Linen Shirt', 'units' => 38, 'revenue' => '₱52,440.00', 'share' => 40.8, 'icon' => 'shirt'],
-                ['name' => 'Canvas Tote Bag', 'units' => 29, 'revenue' => '₱34,018.00', 'share' => 26.5, 'icon' => 'shopping-bag'],
-                ['name' => 'Everyday Sneakers', 'units' => 24, 'revenue' => '₱25,320.00', 'share' => 19.7, 'icon' => 'footprints'],
-            ],
-        ]);
-    }
+        $range = $earnings->reportRange($request->query('from'), $request->query('to'));
+        $sort = $request->query('sort') === 'units' ? 'units' : 'net';
+        $data = $earnings->salesReportFor($request->user()->sellerProfile, $range['from'], $range['to'], $sort);
+        $periodLabel = $earnings->rangeLabel($range['from'], $range['to']);
+        $previousLabel = $earnings->rangeLabel($data['previous_period']['from'], $data['previous_period']['to']);
+        $totals = $data['totals'];
+        $grossChange = $data['change']['gross'];
+        $fullMonth = $range['from']->isStartOfMonth() && $range['to']->isEndOfMonth() && $range['from']->isSameMonth($range['to']);
 
-    public function salesReport(): View
-    {
         return view('seller.Reports.sales', [
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
+            'dateRange' => ['from' => $range['from']->toDateString(), 'to' => $range['to']->toDateString()],
+            'periodLabel' => $periodLabel,
+            'previousLabel' => $previousLabel,
             'summary' => [
-                ['label' => 'Gross Sales', 'value' => '₱128,450', 'note' => '+12.5% vs July'],
-                ['label' => 'Completed Orders', 'value' => '91', 'note' => '+7 orders'],
-                ['label' => 'Units Sold', 'value' => '146', 'note' => '+18 units'],
-                ['label' => 'Average Order', 'value' => '₱1,411', 'note' => '+3.9% vs July'],
+                ['label' => 'Gross Sales', 'value' => $this->moneyFromMinor($totals['gross_minor']), 'note' => $this->changeNote($grossChange, $previousLabel), 'icon' => $this->changeIcon($grossChange)],
+                ['label' => 'Completed Orders', 'value' => number_format($totals['orders']), 'note' => $this->changeNote($data['change']['orders'], $previousLabel), 'icon' => $this->changeIcon($data['change']['orders'])],
+                ['label' => 'Units Sold', 'value' => number_format($totals['units']), 'note' => $this->changeNote($data['change']['units'], $previousLabel), 'icon' => $this->changeIcon($data['change']['units'])],
+                ['label' => 'Average Order', 'value' => $this->moneyFromMinor($totals['average_order_minor']), 'note' => $this->changeNote($data['change']['average_order'], $previousLabel), 'icon' => $this->changeIcon($data['change']['average_order'])],
             ],
-            'momentum' => [
-                ['label' => 'Aug 1–7', 'value' => 17600, 'height' => 42],
-                ['label' => 'Aug 8–14', 'value' => 28350, 'height' => 68],
-                ['label' => 'Aug 15–21', 'value' => 40700, 'height' => 97],
-                ['label' => 'Aug 22–31', 'value' => 41800, 'height' => 100],
+            'momentumHeading' => 'Momentum through '.($fullMonth ? $range['from']->format('F') : 'the period'),
+            'momentumSummary' => $grossChange === null
+                ? 'No prior-period sales recorded for comparison.'
+                : 'Gross sales closed '.number_format(abs($grossChange), 1).'% '.($grossChange >= 0 ? 'above ' : 'below ').$previousLabel.'.',
+            'momentumChange' => [
+                'label' => $grossChange === null
+                    ? '—'
+                    : (($grossChange > 0.05 ? '+' : ($grossChange < -0.05 ? '−' : '')).number_format(abs($grossChange), 1).'%'),
+                'context' => $grossChange === null ? 'no prior-period data' : 'vs '.$previousLabel,
             ],
-            'productPerformance' => [
-                ['rank' => 1, 'name' => 'Classic Linen Shirt', 'sku' => 'CLS-LINEN-SHIRT', 'units' => 38, 'revenue' => '₱52,440', 'share' => 40.8, 'icon' => 'shirt'],
-                ['rank' => 2, 'name' => 'Canvas Tote Bag', 'sku' => 'CNV-TOTE-BAG', 'units' => 29, 'revenue' => '₱34,018', 'share' => 26.5, 'icon' => 'shopping-bag'],
-                ['rank' => 3, 'name' => 'Everyday Sneakers', 'sku' => 'EV-SNKRS-WHT', 'units' => 24, 'revenue' => '₱25,320', 'share' => 19.7, 'icon' => 'footprints'],
+            'momentum' => collect($data['momentum'])->map(fn (array $bucket): array => [
+                'label' => $bucket['label'],
+                'value' => intdiv($bucket['gross_minor'], 100),
+                'height' => $bucket['height'],
+            ])->values(),
+            'productPerformance' => collect($data['products'])->map(fn (array $product): array => [
+                'rank' => $product['rank'],
+                'name' => $product['name'],
+                'sku' => $product['sku'],
+                'subcategory' => $product['subcategory'],
+                'units' => $product['units'],
+                'gross' => $this->moneyFromMinor($product['gross_minor']),
+                'discounts' => $product['discounts_minor'] > 0 ? '−'.$this->moneyFromMinor($product['discounts_minor']) : '—',
+                'refunds' => $product['refunds_minor'] > 0 ? '−'.$this->moneyFromMinor($product['refunds_minor']) : '—',
+                'net' => $this->moneyFromMinor($product['net_minor']),
+                'revenue' => $this->moneyFromMinor($product['net_minor']),
+                'share' => number_format($product['share'], 1),
+                'icon' => 'package',
+            ])->values(),
+            'rows' => collect($data['momentum'])->map(fn (array $bucket): array => [
+                'period' => $bucket['start'].' to '.$bucket['end'],
+                'orders' => $bucket['orders'],
+                'units' => $bucket['units'],
+                'gross' => $this->moneyFromMinor($bucket['gross_minor']),
+                'discounts' => $bucket['discounts_minor'] > 0 ? '−'.$this->moneyFromMinor($bucket['discounts_minor']) : '—',
+                'refunds' => $bucket['refunds_minor'] > 0 ? '−'.$this->moneyFromMinor($bucket['refunds_minor']) : '—',
+                'netSales' => $this->moneyFromMinor($bucket['net_minor']),
+            ])->reverse()->values(),
+            'sort' => $sort,
+            'sortUrls' => [
+                'net' => route('seller.reports.sales', [
+                    'from' => $range['from']->toDateString(),
+                    'to' => $range['to']->toDateString(),
+                    'sort' => 'net',
+                ]),
+                'units' => route('seller.reports.sales', [
+                    'from' => $range['from']->toDateString(),
+                    'to' => $range['to']->toDateString(),
+                    'sort' => 'units',
+                ]),
             ],
-            'rows' => [
-                ['period' => 'Aug 25–31', 'orders' => 24, 'units' => 39, 'gross' => '₱41,800', 'discounts' => '₱1,520', 'refunds' => '₱0', 'netSales' => '₱40,280'],
-                ['period' => 'Aug 18–24', 'orders' => 21, 'units' => 34, 'gross' => '₱37,600', 'discounts' => '₱1,310', 'refunds' => '₱1,299', 'netSales' => '₱34,991'],
-                ['period' => 'Aug 11–17', 'orders' => 25, 'units' => 41, 'gross' => '₱31,450', 'discounts' => '₱980', 'refunds' => '₱0', 'netSales' => '₱30,470'],
-                ['period' => 'Aug 1–10', 'orders' => 21, 'units' => 32, 'gross' => '₱17,600', 'discounts' => '₱620', 'refunds' => '₱0', 'netSales' => '₱16,980'],
-            ],
-        ]);
-    }
-
-    public function financialReport(): View
-    {
-        return view('seller.Reports.financial', [
-            'seller' => $this->seller(),
-            'notifications' => $this->notifications(),
-            'summary' => [
-                ['label' => 'Gross Sales', 'value' => '₱128,450', 'note' => 'Before deductions'],
-                ['label' => 'Total Deductions', 'value' => '₱18,574', 'note' => 'Discounts, refunds, commission'],
-                ['label' => 'Net Revenue', 'value' => '₱109,876', 'note' => '+10.8% vs July'],
-                ['label' => 'Commission Rate', 'value' => '10%', 'note' => 'Platform rate'],
-            ],
-            'currentStatement' => [
-                ['label' => 'Gross Sales', 'value' => '₱128,450.00'],
-                ['label' => 'Seller-funded Discounts', 'value' => '−₱4,430.00'],
-                ['label' => 'Refunds', 'value' => '−₱1,299.00'],
-                ['label' => 'Platform Commission', 'value' => '−₱12,845.00'],
-            ],
-            'deductions' => [
-                ['label' => 'Platform Commission', 'value' => '₱12,845', 'percent' => 69.2, 'tone' => 'brown'],
-                ['label' => 'Seller Discounts', 'value' => '₱4,430', 'percent' => 23.9, 'tone' => 'gold'],
-                ['label' => 'Refunds', 'value' => '₱1,299', 'percent' => 6.9, 'tone' => 'olive'],
-            ],
-            'rows' => [
-                ['period' => 'August 2026', 'gross' => '₱128,450', 'discounts' => '₱4,430', 'refunds' => '₱1,299', 'commission' => '₱12,845', 'net' => '₱109,876', 'status' => 'Processing'],
-                ['period' => 'July 2026', 'gross' => '₱112,800', 'discounts' => '₱3,820', 'refunds' => '₱0', 'commission' => '₱11,280', 'net' => '₱97,700', 'status' => 'Paid'],
-                ['period' => 'June 2026', 'gross' => '₱106,240', 'discounts' => '₱3,140', 'refunds' => '₱899', 'commission' => '₱10,624', 'net' => '₱91,577', 'status' => 'Paid'],
-            ],
+            'exportUrl' => route('seller.reports.sales.export', [
+                'from' => $range['from']->toDateString(),
+                'to' => $range['to']->toDateString(),
+            ]),
         ]);
     }
 
@@ -244,32 +256,6 @@ class SellerController extends Controller
                 'response_at' => $model->seller_response_at?->format('M j, Y g:i A'),
             ],
             'message' => 'Reply posted.',
-        ]);
-    }
-
-    public function waybills(): View
-    {
-        return view('seller.fulfillment.waybills', [
-            'seller' => $this->seller(),
-            'notifications' => $this->notifications(),
-            'summary' => [
-                ['label' => 'Ready to Print', 'value' => '3', 'note' => 'Packed and verified', 'icon' => 'printer', 'tone' => 'gold'],
-                ['label' => 'Printed Today', 'value' => '12', 'note' => 'Labels generated', 'icon' => 'file-check-2', 'tone' => 'olive'],
-                ['label' => 'Reprint Required', 'value' => '1', 'note' => 'Damaged label reported', 'icon' => 'refresh-cw', 'tone' => 'brown'],
-                ['label' => 'Pickup Cutoff', 'value' => '2:30 PM', 'note' => 'For today’s collection', 'icon' => 'clock-3', 'tone' => 'warning'],
-            ],
-            'waybills' => [
-                ['order' => '#BR-1058', 'tracking' => 'Pending generation', 'customer' => 'Maria Santos', 'destination' => 'Santa Rosa, Laguna', 'courier' => 'Bearly Logistics', 'packages' => 1, 'weight' => '0.6 kg', 'size' => '25 × 20 × 8 cm', 'pickup' => 'Today · 3:00 PM', 'status' => 'Ready to Print', 'status_key' => 'ready', 'action' => 'Print Waybill'],
-                ['order' => '#BR-1057', 'tracking' => 'Pending generation', 'customer' => 'Carlo Reyes', 'destination' => 'Calamba, Laguna', 'courier' => 'Bearly Logistics', 'packages' => 2, 'weight' => '1.4 kg', 'size' => '35 × 25 × 15 cm', 'pickup' => 'Today · 3:00 PM', 'status' => 'Ready to Print', 'status_key' => 'ready', 'action' => 'Print Waybill'],
-                ['order' => '#BR-1056', 'tracking' => 'Pending generation', 'customer' => 'Jamie Lim', 'destination' => 'Biñan, Laguna', 'courier' => 'Bearly Logistics', 'packages' => 1, 'weight' => '0.8 kg', 'size' => '30 × 22 × 10 cm', 'pickup' => 'Tomorrow · 10:00 AM', 'status' => 'Ready to Print', 'status_key' => 'ready', 'action' => 'Print Waybill'],
-                ['order' => '#BR-1055', 'tracking' => 'BRLY-784220', 'customer' => 'Sofia Mendoza', 'destination' => 'Cabuyao, Laguna', 'courier' => 'Bearly Logistics', 'packages' => 1, 'weight' => '0.5 kg', 'size' => '24 × 18 × 7 cm', 'pickup' => 'Today · 3:00 PM', 'status' => 'Printed', 'status_key' => 'printed', 'action' => 'View Label'],
-                ['order' => '#BR-1052', 'tracking' => 'BRLY-784188', 'customer' => 'Ana Cruz', 'destination' => 'Los Baños, Laguna', 'courier' => 'Bearly Logistics', 'packages' => 1, 'weight' => '0.7 kg', 'size' => '28 × 20 × 9 cm', 'pickup' => 'Today · 3:00 PM', 'status' => 'Reprint Required', 'status_key' => 'reprint', 'action' => 'Reprint'],
-            ],
-            'history' => [
-                ['time' => 'Today · 11:24 AM', 'order' => '#BR-1055', 'tracking' => 'BRLY-784220', 'action' => 'Waybill printed', 'actor' => 'Bea Rivera'],
-                ['time' => 'Today · 10:46 AM', 'order' => '#BR-1052', 'tracking' => 'BRLY-784188', 'action' => 'Reprint requested', 'actor' => 'Bea Rivera'],
-                ['time' => 'Today · 9:18 AM', 'order' => '#BR-1051', 'tracking' => 'BRLY-784176', 'action' => 'Waybill printed', 'actor' => 'Bea Rivera'],
-            ],
         ]);
     }
 

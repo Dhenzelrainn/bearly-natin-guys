@@ -287,6 +287,11 @@
                 </div>
             </div>
 
+            <div class="delivery-shipment-products">
+                <h4>Products in shipment</h4>
+                @include('partials.order-item-preview-list', ['items' => $job['products']])
+            </div>
+
             <div class="delivery-parcel-list">
                 @foreach($job['parcels'] as $parcel)
                     <div class="delivery-parcel-row">
@@ -501,7 +506,7 @@
                             type="submit"
                         >
                             <i data-lucide="circle-check"></i>
-                            Confirm delivery
+                            <span data-delivery-submit-label>Confirm delivery</span>
                         </button>
                     </form>
 

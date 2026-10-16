@@ -479,7 +479,7 @@ class ReturnRefundService
             if ($returnRequest->request_type === 'return_refund') {
                 $pickupRequest = $this->createReturnShipment($returnRequest, $order, $payment, $admin);
                 $newStatus = ReturnRequestStatus::ReturnPickupRequested->value;
-                $resolution = 'Admin approved the physical return and refund. Pickup was requested from the Logistics provider assigned to the original shipment; refund waits for Seller inspection. '.ucfirst($financiallyResponsibleParty).' is financially responsible for the approved refund.';
+                $resolution = 'Admin approved the physical return and refund. Pickup is handled by the Logistics provider serving the Buyer’s city; a cross-city return is handed to the Seller-address city provider before final delivery. Refund waits for Seller inspection. '.ucfirst($financiallyResponsibleParty).' is financially responsible for the approved refund.';
                 $metadata = [
                     'refund_id' => $refund->id,
                     'pickup_request_id' => $pickupRequest->id,
@@ -1237,24 +1237,46 @@ class ReturnRefundService
             throw ValidationException::withMessages(['return' => 'The original fulfilled shipment has no usable package dimensions for a reverse waybill.']);
         }
 
-        $outboundProviderId = (int) ($outbound->logistics_profile_id ?? 0);
-        $provider = $outboundProviderId > 0
-            ? LogisticsProfile::query()
-                ->whereKey($outboundProviderId)
+        $buyerCityCode = $order->psgc_city_code
+            ?: app(PostalCodeLookup::class)->canonicalCityCode(
+                null,
+                (string) $order->province,
+                (string) $order->city_municipality,
+            );
+
+        if (! $buyerCityCode) {
+            throw ValidationException::withMessages([
+                'return' => 'The Buyer’s order address needs a verified municipality/city before a physical return can be approved.',
+            ]);
+        }
+
+        $provider = LogisticsProfile::query()
+            ->where('psgc_city_code', $buyerCityCode)
+            ->where('status', 'active')
+            ->whereHas('user', fn ($query) => $query
                 ->where('status', 'active')
-                ->whereHas('user', fn ($query) => $query
-                    ->where('status', 'active')
-                    ->where(fn ($roles) => $roles
-                        ->where('role', UserRole::Logistics->value)
-                        ->orWhereHas('roles', fn ($roleQuery) => $roleQuery
-                            ->where('roles.name', UserRole::Logistics->value))))
-                ->lockForUpdate()
-                ->first()
-            : null;
+                ->where(fn ($roles) => $roles
+                    ->where('role', UserRole::Logistics->value)
+                    ->orWhereHas('roles', fn ($roleQuery) => $roleQuery
+                        ->where('roles.name', UserRole::Logistics->value))))
+            ->lockForUpdate()
+            ->first();
 
         if (! $provider) {
             throw ValidationException::withMessages([
-                'return' => 'The Logistics provider assigned to the original shipment must be active to approve a physical return.',
+                'return' => 'The active Logistics provider serving the Buyer’s municipality/city must be available to approve a physical return.',
+            ]);
+        }
+
+        $destinationCityCode = app(PostalCodeLookup::class)->canonicalCityCode(
+            $sellerAddress->psgc_city_code,
+            (string) $sellerAddress->province,
+            (string) $sellerAddress->city_municipality,
+        );
+
+        if (! $destinationCityCode) {
+            throw ValidationException::withMessages([
+                'return' => 'The Seller pickup address needs a verified municipality/city before a cross-city return can be approved.',
             ]);
         }
 
@@ -1283,6 +1305,7 @@ class ReturnRefundService
                 'city_municipality' => (string) $order->city_municipality,
                 'province' => (string) $order->province,
                 'postal_code' => $order->postal_code,
+                'psgc_city_code' => $buyerCityCode,
             ],
             'logistics_profile_id' => $provider->id,
             'status' => 'requested',
@@ -1298,8 +1321,21 @@ class ReturnRefundService
             'shipment_no' => 'SHP-'.Str::upper((string) Str::ulid()),
             'seller_order_id' => $returnRequest->seller_order_id,
             'logistics_profile_id' => $provider->id,
+            'origin_logistics_profile_id' => $provider->id,
             'origin_address_id' => $pickupAddressId,
             'destination_address_id' => $sellerAddress->id,
+            'destination_city_code' => $destinationCityCode,
+            'destination_address_snapshot' => [
+                'recipient_name' => (string) $sellerAddress->recipient_name,
+                'phone' => (string) $sellerAddress->phone,
+                'house_number' => $sellerAddress->house_number,
+                'street' => (string) $sellerAddress->street,
+                'barangay' => (string) $sellerAddress->barangay,
+                'city_municipality' => (string) $sellerAddress->city_municipality,
+                'province' => (string) $sellerAddress->province,
+                'postal_code' => $sellerAddress->postal_code,
+                'psgc_city_code' => $destinationCityCode,
+            ],
             'purpose' => 'return',
             'status' => 'ready_for_pickup',
             'shipping_fee_minor' => 0,

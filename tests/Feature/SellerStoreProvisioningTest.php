@@ -20,6 +20,8 @@ class SellerStoreProvisioningTest extends TestCase
 {
     use RefreshDatabase;
 
+    private int $phoneSequence = 0;
+
     public function test_seller_approval_creates_one_draft_store_and_provisioning_is_idempotent(): void
     {
         $seller = $this->seller('Sundays Market');
@@ -499,13 +501,16 @@ class SellerStoreProvisioningTest extends TestCase
 
     private function seller(string $businessName): User
     {
+        $phone = sprintf('+63917%07d', ++$this->phoneSequence);
+
         return User::create([
             'name' => 'Integration Seller',
             'first_name' => 'Integration',
             'last_name' => 'Seller',
             'business_name' => $businessName,
             'email' => 'seller-'.uniqid().'@example.test',
-            'contact_number' => '+639171234567',
+            'phone' => $phone,
+            'contact_number' => $phone,
             'role' => 'seller',
             'status' => 'pending',
             'password' => Hash::make('Password123'),

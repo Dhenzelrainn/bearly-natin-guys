@@ -5,9 +5,12 @@ namespace Tests\Feature;
 use App\Enums\AccountStatus;
 use App\Enums\UserRole;
 use App\Mail\ApplicationDecisionNotice;
+use App\Models\Address;
 use App\Models\AccountApplication;
 use App\Models\LogisticsProfile;
 use App\Models\Role;
+use App\Models\SortingCenter;
+use App\Models\SortingZone;
 use App\Models\User;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -352,6 +355,53 @@ class AccountApprovalWorkflowTest extends TestCase
         );
     }
 
+    public function test_logistics_registration_rejects_a_city_already_owned_by_an_account(): void
+    {
+        Storage::fake('local');
+        $owner = User::factory()->create([
+            'role' => UserRole::Logistics->value,
+            'status' => AccountStatus::Active->value,
+        ]);
+        LogisticsProfile::query()->create([
+            'user_id' => $owner->id,
+            'legal_name' => 'Existing Pila Logistics',
+            'display_name' => 'Existing Pila Logistics',
+            'contact_phone' => '09170000001',
+            'psgc_city_code' => '0403422000',
+            'status' => 'active',
+        ]);
+
+        $this->from(route('logistics.register'))
+            ->post(route('logistics.register.submit'), [
+            'business_name' => 'Duplicate Pila Logistics',
+            'first_name' => 'Nina',
+            'last_name' => 'Santos',
+            'sex' => 'Female',
+            'email' => 'duplicate-pila@example.test',
+            'contact_number' => '09281234568',
+            'birthday' => '1995-03-20',
+            'province' => 'Laguna',
+            'municipality' => 'Pila',
+            'city_code' => '0403422000',
+            'barangay' => 'Pinagbayanan',
+            'street' => 'Market Road',
+            'house_number' => '8',
+            'postal_code' => '4010',
+            'postal_manual' => '0',
+            'valid_id' => UploadedFile::fake()->create('id.pdf', 100, 'application/pdf'),
+            'business_permit' => UploadedFile::fake()->create('permit.pdf', 100, 'application/pdf'),
+            'password' => 'Password123',
+            'password_confirmation' => 'Password123',
+            'terms' => '1',
+            ])
+            ->assertRedirect(route('logistics.register'))
+            ->assertSessionHasErrors('municipality');
+
+        $this->assertDatabaseMissing('users', [
+            'email' => 'duplicate-pila@example.test',
+        ]);
+    }
+
     public function test_rider_application_belongs_to_the_selected_active_logistics_account(): void
     {
         Storage::fake('local');
@@ -367,6 +417,14 @@ class AccountApprovalWorkflowTest extends TestCase
                 AccountStatus::Active->value,
             'business_name' =>
                 'Approved Logistics',
+        ]);
+        LogisticsProfile::query()->create([
+            'user_id' => $logistics->id,
+            'legal_name' => 'Approved Logistics',
+            'display_name' => 'Approved Logistics',
+            'contact_phone' => '09170000001',
+            'psgc_city_code' => '0403424000',
+            'status' => 'active',
         ]);
 
         $this->post(
@@ -460,6 +518,8 @@ class AccountApprovalWorkflowTest extends TestCase
                 AccountStatus::Active->value,
         ]);
 
+        $queuedDecisions = 0;
+
         foreach (
             UserRole::adminApproved()
             as $role
@@ -468,9 +528,24 @@ class AccountApprovalWorkflowTest extends TestCase
                 User::factory()->create([
                     'role' => $role,
                     'status' =>
-                        AccountStatus::Pending
+                    AccountStatus::Pending
                             ->value,
                 ]);
+
+            if ($role === UserRole::Logistics->value) {
+                Address::query()->create([
+                    'user_id' => $applicant->id,
+                    'label' => 'Sorting center',
+                    'recipient_name' => $applicant->name,
+                    'phone' => '09170000001',
+                    'street' => 'Service Road',
+                    'barangay' => 'Poblacion',
+                    'city_municipality' => 'Santa Cruz',
+                    'province' => 'Laguna',
+                    'postal_code' => '4009',
+                    'psgc_city_code' => '0403426000',
+                ]);
+            }
 
             $application =
                 AccountApplication::query()
@@ -546,9 +621,14 @@ class AccountApprovalWorkflowTest extends TestCase
                     route(
                         'admin.applications.approve',
                         $applicant
-                    )
+                    ),
+                    [
+                        'review_application_id' => $application->id,
+                    ]
                 )
                 ->assertSessionHasNoErrors();
+
+            $queuedDecisions++;
 
             Mail::assertQueued(
                 ApplicationDecisionNotice::class,
@@ -610,7 +690,77 @@ class AccountApprovalWorkflowTest extends TestCase
                         ->logisticsProfile
                 );
             }
+
+            $queueRoute = match ($role) {
+                UserRole::Buyer->value => 'admin.registrations.buyers',
+                UserRole::Seller->value => 'admin.registrations.sellers',
+                UserRole::Logistics->value => 'admin.registrations.logistics',
+            };
+
+            $this->actingAs($admin)
+                ->post(
+                    route('admin.applications.approve', $applicant),
+                    ['review_application_id' => $application->id]
+                )
+                ->assertRedirect(route($queueRoute))
+                ->assertSessionHas('warning');
+
+            Mail::assertQueuedCount($queuedDecisions);
         }
+    }
+
+    public function test_admin_cannot_approve_a_different_applicants_selected_application(): void
+    {
+        $admin = User::factory()->create([
+            'role' => UserRole::Admin->value,
+            'status' => AccountStatus::Active->value,
+        ]);
+
+        $target = User::factory()->create([
+            'role' => UserRole::Logistics->value,
+            'status' => AccountStatus::Pending->value,
+        ]);
+
+        $otherApplicant = User::factory()->create([
+            'role' => UserRole::Logistics->value,
+            'status' => AccountStatus::Pending->value,
+        ]);
+
+        $targetApplication = AccountApplication::query()->create([
+            'application_no' => 'APP-LOGISTICS-TARGET',
+            'user_id' => $target->id,
+            'requested_role_id' => Role::where('name', UserRole::Logistics->value)->value('id'),
+            'status' => 'submitted',
+            'submitted_at' => now(),
+        ]);
+
+        $otherApplication = AccountApplication::query()->create([
+            'application_no' => 'APP-LOGISTICS-OTHER',
+            'user_id' => $otherApplicant->id,
+            'requested_role_id' => Role::where('name', UserRole::Logistics->value)->value('id'),
+            'status' => 'submitted',
+            'submitted_at' => now(),
+        ]);
+
+        $this->actingAs($admin)
+            ->post(
+                route('admin.applications.approve', $target),
+                ['review_application_id' => $otherApplication->id]
+            )
+            ->assertRedirect(route('admin.registrations.logistics'))
+            ->assertSessionHas('warning');
+
+        $this->assertSame('submitted', $targetApplication->fresh()->status);
+        $this->assertSame('submitted', $otherApplication->fresh()->status);
+        $this->assertSame(AccountStatus::Pending->value, $target->fresh()->status);
+        $this->assertSame(AccountStatus::Pending->value, $otherApplicant->fresh()->status);
+        $this->assertFalse($target->roles()->where('name', UserRole::Logistics->value)->exists());
+        $this->assertFalse($otherApplicant->roles()->where('name', UserRole::Logistics->value)->exists());
+        Mail::assertNothingOutgoing();
+
+        $this->get(route('admin.registrations.logistics'))
+            ->assertOk()
+            ->assertSee('no longer matches a current pending application');
     }
 
     public function test_admin_approval_requires_verified_documents(): void
@@ -720,6 +870,7 @@ class AccountApprovalWorkflowTest extends TestCase
                 [
                     'revision_notes' =>
                         'Upload a readable business permit.',
+                    'review_application_id' => $application->id,
                 ]
             )
             ->assertSessionHasNoErrors()
@@ -812,6 +963,7 @@ class AccountApprovalWorkflowTest extends TestCase
                 [
                     'reason' =>
                         'The submitted identity details do not match.',
+                    'review_application_id' => $application->id,
                 ]
             )
             ->assertSessionHasNoErrors()
@@ -880,9 +1032,43 @@ class AccountApprovalWorkflowTest extends TestCase
                         'Primary Logistics',
                     'contact_phone' =>
                         '09170000001',
+                    'psgc_city_code' => '0403424000',
                     'status' =>
                         'active',
                 ]);
+
+        $serviceAddress = Address::query()->create([
+            'user_id' => $logistics->id,
+            'label' => 'Sorting center',
+            'recipient_name' => $logistics->name,
+            'phone' => '09170000001',
+            'street' => 'Service Road',
+            'barangay' => 'San Rafael',
+            'city_municipality' => 'City of San Pablo',
+            'province' => 'Laguna',
+            'postal_code' => '4000',
+            'psgc_city_code' => '0403424000',
+        ]);
+        $sortingCenter = SortingCenter::query()->create([
+            'logistics_profile_id' => $logisticsProfile->id,
+            'address_id' => $serviceAddress->id,
+            'name' => 'San Pablo Center',
+            'code' => 'SAN-PABLO-AUTO-1',
+            'contact_phone' => '09170000001',
+            'status' => 'active',
+        ]);
+        $matchingZone = SortingZone::query()->create([
+            'sorting_center_id' => $sortingCenter->id,
+            'code' => 'SANP-01',
+            'name' => 'San Pablo / San Rafael',
+            'destination_rules' => [
+                'province' => 'Laguna',
+                'city_municipality' => 'San Pablo City',
+                'psgc_city_code' => '0403424000',
+                'barangays' => ['San Rafael'],
+            ],
+            'status' => 'active',
+        ]);
 
         $otherLogistics =
             User::factory()->create([
@@ -907,6 +1093,19 @@ class AccountApprovalWorkflowTest extends TestCase
                 'plate_number' =>
                     'TEST-1234',
             ]);
+
+        Address::query()->create([
+            'user_id' => $rider->id,
+            'label' => 'Home',
+            'recipient_name' => $rider->name,
+            'phone' => '09170000002',
+            'street' => 'Rider Road',
+            'barangay' => 'San Rafael',
+            'city_municipality' => 'City of San Pablo',
+            'province' => 'Laguna',
+            'postal_code' => '4000',
+            'psgc_city_code' => '0403424000',
+        ]);
 
         $riderApplication =
             AccountApplication::query()
@@ -1018,6 +1217,14 @@ class AccountApprovalWorkflowTest extends TestCase
             $rider
                 ->riderProfile
                 ->logistics_profile_id
+        );
+        $this->assertSame(
+            $sortingCenter->id,
+            $rider->riderProfile->home_sorting_center_id
+        );
+        $this->assertSame(
+            $matchingZone->id,
+            $rider->riderProfile->current_zone_id
         );
     }
 

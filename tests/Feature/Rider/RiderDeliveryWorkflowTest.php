@@ -11,9 +11,11 @@ use App\Models\LogisticsProfile;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Parcel;
+use App\Models\Payment;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\RiderProfile;
+use App\Models\RiderEarning;
 use App\Models\ReturnItem;
 use App\Models\ReturnRequest;
 use App\Models\SellerOrder;
@@ -25,6 +27,7 @@ use App\Models\Store;
 use App\Models\User;
 use App\Models\Waybill;
 use App\Enums\DeliveryAttemptOutcome;
+use App\Services\CodCashCollectionService;
 use App\Services\RiderDeliveryService;
 use App\Services\ReturnRefundService;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -743,6 +746,18 @@ class RiderDeliveryWorkflowTest extends TestCase
 
         );
 
+        $own['shipment']->sellerOrder()->firstOrFail()->items()->create([
+            'product_name' => 'Rider Delivery Preview Product',
+            'variant_name' => 'Black / Standard',
+            'sku' => 'RIDER-DELIVERY-PREVIEW-001',
+            'unit_price_minor' => 22500,
+            'quantity' => 1,
+            'discount_minor' => 0,
+            'subtotal_minor' => 22500,
+            'product_image_disk' => 'public',
+            'product_image_path' => 'seller-products/rider-delivery-preview.png',
+        ]);
+
         $foreign = $this->makeDispatchAssignment(
 
             $riderB,
@@ -780,6 +795,12 @@ class RiderDeliveryWorkflowTest extends TestCase
             ->assertOk()
 
             ->assertSee('Start delivery')
+
+            ->assertSee('Products in shipment')
+
+            ->assertSee('Rider Delivery Preview Product')
+
+            ->assertSee('seller-products/rider-delivery-preview.png', false)
 
             ->assertSee(
                 route(
@@ -2277,7 +2298,7 @@ class RiderDeliveryWorkflowTest extends TestCase
             $rider->user
         );
 
-        $shipment = $service->completeDelivery(
+        $completion = $service->completeDelivery(
             $assignment['shipment']->shipment_no,
             $rider->user,
             $this->fakeProofPhoto('proof.png'),
@@ -2286,6 +2307,9 @@ class RiderDeliveryWorkflowTest extends TestCase
             14.0712,
             121.3250
         );
+        $shipment = $completion->shipment;
+
+        $this->assertFalse($completion->alreadyCompleted);
 
         $this->assertSame(
             ShipmentStatus::Delivered->value,
@@ -2438,7 +2462,7 @@ class RiderDeliveryWorkflowTest extends TestCase
 
         $delivery = app(RiderDeliveryService::class);
         $delivery->startDelivery($assignment['shipment']->shipment_no, $rider->user);
-        $shipment = $delivery->completeDelivery(
+        $completion = $delivery->completeDelivery(
             $assignment['shipment']->shipment_no,
             $rider->user,
             $this->fakeProofPhoto('return-delivery.png'),
@@ -2448,6 +2472,9 @@ class RiderDeliveryWorkflowTest extends TestCase
             null,
             app(ReturnRefundService::class),
         );
+        $shipment = $completion->shipment;
+
+        $this->assertFalse($completion->alreadyCompleted);
 
         $this->assertSame(ShipmentStatus::Delivered->value, $shipment->status);
         $this->assertSame('awaiting_inspection', $returnRequest->fresh()->status);
@@ -2567,7 +2594,7 @@ class RiderDeliveryWorkflowTest extends TestCase
         $this->assertDatabaseCount('delivery_proofs', 0);
     }
 
-    public function test_completed_delivery_cannot_be_completed_again(): void
+    public function test_duplicate_delivery_confirmation_is_idempotent_without_duplicate_records(): void
     {
         Storage::fake('local');
 
@@ -2577,49 +2604,73 @@ class RiderDeliveryWorkflowTest extends TestCase
             $rider,
             'COMPLETE-ONCE',
             1,
-            0,
+            100000,
             'Complete Once Recipient'
         );
 
+        Payment::query()->create([
+            'payment_no' => 'PAY-RIDER-COMPLETE-ONCE',
+            'order_id' => $assignment['shipment']->sellerOrder()->value('order_id'),
+            'method' => 'cod',
+            'amount_minor' => 100000,
+            'status' => 'pending',
+            'initiated_at' => now(),
+        ]);
+
         $service = app(RiderDeliveryService::class);
+        $codCash = app(CodCashCollectionService::class);
 
         $service->startDelivery(
             $assignment['shipment']->shipment_no,
             $rider->user
         );
 
-        $service->completeDelivery(
-            $assignment['shipment']->shipment_no,
-            $rider->user,
-            $this->fakeProofPhoto('first-proof.png'),
-            'Complete Once Recipient'
+        $firstCompletion = $service->completeDelivery(
+            shipmentNo: $assignment['shipment']->shipment_no,
+            actor: $rider->user,
+            proofPhoto: $this->fakeProofPhoto('first-proof.png'),
+            recipientName: 'Complete Once Recipient',
+            codCollectedAmountMinor: 100000,
+            codCash: $codCash,
         );
+
+        $this->assertFalse($firstCompletion->alreadyCompleted);
+        $this->assertDatabaseCount('cod_cash_collections', 1);
 
         $this->assertDatabaseCount('delivery_attempts', 1);
         $this->assertDatabaseCount('delivery_proofs', 1);
+
+        $eventsBeforeRepeat = $assignment['shipment']
+            ->events()
+            ->count();
 
         $filesBeforeRepeat = Storage::disk('local')
             ->allFiles('delivery-proofs');
 
         $this->assertCount(1, $filesBeforeRepeat);
 
-        try {
-            $service->completeDelivery(
-                $assignment['shipment']->shipment_no,
-                $rider->user,
-                $this->fakeProofPhoto('duplicate-proof.png'),
-                'Complete Once Recipient'
-            );
+        $duplicateCompletion = $service->completeDelivery(
+            shipmentNo: $assignment['shipment']->shipment_no,
+            actor: $rider->user,
+            proofPhoto: $this->fakeProofPhoto('duplicate-proof.png'),
+            recipientName: 'Complete Once Recipient',
+            codCollectedAmountMinor: 100000,
+            codCash: $codCash,
+        );
 
-            $this->fail(
-                'Expected repeat completion to be rejected.'
-            );
-        } catch (ConflictHttpException) {
-            // Expected.
-        }
+        $this->assertTrue($duplicateCompletion->alreadyCompleted);
+        $this->assertSame(
+            ShipmentStatus::Delivered->value,
+            $duplicateCompletion->shipment->status
+        );
 
         $this->assertDatabaseCount('delivery_attempts', 1);
         $this->assertDatabaseCount('delivery_proofs', 1);
+        $this->assertDatabaseCount('cod_cash_collections', 1);
+        $this->assertSame(
+            $eventsBeforeRepeat,
+            $assignment['shipment']->events()->count()
+        );
 
         $this->assertSame(
             1,
@@ -2638,6 +2689,41 @@ class RiderDeliveryWorkflowTest extends TestCase
         $this->assertSame(
             $filesBeforeRepeat,
             $filesAfterRepeat
+        );
+
+        $this->actingAs($rider->user)
+            ->post(
+                route(
+                    'rider.orders.delivery.confirm',
+                    $assignment['shipment']->shipment_no
+                ),
+                [
+                    'recipient_name' => 'Complete Once Recipient',
+                    'cod_collected_amount' => '1000.00',
+                    'proof_photo' => $this->fakeProofPhoto('duplicate-route-proof.png'),
+                ]
+            )
+            ->assertRedirect(
+                route(
+                    'rider.orders.delivery',
+                    $assignment['shipment']->shipment_no
+                )
+            )
+            ->assertSessionHas(
+                'job_status',
+                'This delivery was already completed. No extra proof, delivery attempt, COD collection, or tracking event was added.'
+            );
+
+        $this->assertDatabaseCount('delivery_attempts', 1);
+        $this->assertDatabaseCount('delivery_proofs', 1);
+        $this->assertDatabaseCount('cod_cash_collections', 1);
+        $this->assertSame(
+            $eventsBeforeRepeat,
+            $assignment['shipment']->events()->count()
+        );
+        $this->assertSame(
+            $filesBeforeRepeat,
+            Storage::disk('local')->allFiles('delivery-proofs')
         );
     }
 
@@ -3445,7 +3531,7 @@ class RiderDeliveryWorkflowTest extends TestCase
         * The second real customer handoff succeeds.
         * This is when attempt #2 should be created.
         */
-        $shipment = $service->completeDelivery(
+        $completion = $service->completeDelivery(
             $assignment['shipment']->shipment_no,
             $rider->user,
             $this->fakeProofPhoto(
@@ -3454,6 +3540,9 @@ class RiderDeliveryWorkflowTest extends TestCase
             'Second Attempt Recipient',
             'Delivered successfully on retry.'
         );
+        $shipment = $completion->shipment;
+
+        $this->assertFalse($completion->alreadyCompleted);
 
         $this->assertSame(
             ShipmentStatus::Delivered->value,
@@ -4234,6 +4323,216 @@ class RiderDeliveryWorkflowTest extends TestCase
 
         ];
 
+    }
+
+    public function test_delivery_history_is_scoped_filtered_and_shows_recorded_earning(): void
+    {
+        Storage::fake('local');
+
+        $rider = $this->makeRider('HISTORY-OWNER');
+        $otherRider = $this->makeRider('HISTORY-OTHER');
+
+        $assignment = $this->makeDispatchAssignment(
+            $rider,
+            'HISTORY-OWNER',
+            1,
+            0,
+            'History Owner Recipient'
+        );
+        $assignment['shipment']->sellerOrder()->firstOrFail()->items()->create([
+            'product_name' => 'History Product Preview',
+            'variant_name' => 'Red / Medium',
+            'sku' => 'HISTORY-PREVIEW-001',
+            'unit_price_minor' => 14500,
+            'quantity' => 2,
+            'discount_minor' => 0,
+            'subtotal_minor' => 29000,
+            'product_image_disk' => 'public',
+            'product_image_path' => 'seller-products/history-preview.png',
+        ]);
+        $otherAssignment = $this->makeDispatchAssignment(
+            $otherRider,
+            'HISTORY-OTHER',
+            1,
+            0,
+            'Other Rider Recipient'
+        );
+
+        $deliveryService = app(RiderDeliveryService::class);
+
+        foreach ([[$rider, $assignment, 'owner'], [$otherRider, $otherAssignment, 'other']] as [$assignedRider, $delivery, $suffix]) {
+            $deliveryService->startDelivery(
+                $delivery['shipment']->shipment_no,
+                $assignedRider->user
+            );
+
+            $deliveryService->completeDelivery(
+                $delivery['shipment']->shipment_no,
+                $assignedRider->user,
+                $this->fakeProofPhoto("history-{$suffix}.png"),
+                $delivery['shipment']->sellerOrder()->firstOrFail()->order()->firstOrFail()->recipient_name
+            );
+        }
+
+        $failedThisMonth = $this->makeDispatchAssignment(
+            $rider,
+            'HISTORY-FAILED-CURRENT',
+            1,
+            0,
+            'Current Failed Recipient'
+        );
+        $deliveryService->startDelivery($failedThisMonth['shipment']->shipment_no, $rider->user);
+        $deliveryService->failDelivery(
+            $failedThisMonth['shipment']->shipment_no,
+            $rider->user,
+            'Recipient unavailable.'
+        );
+
+        $failedLastMonth = $this->makeDispatchAssignment(
+            $rider,
+            'HISTORY-FAILED-PAST',
+            1,
+            0,
+            'Past Failed Recipient'
+        );
+        $deliveryService->startDelivery($failedLastMonth['shipment']->shipment_no, $rider->user);
+        $deliveryService->failDelivery(
+            $failedLastMonth['shipment']->shipment_no,
+            $rider->user,
+            'Recipient unavailable.'
+        );
+        $failedLastMonth['parcels']->first()->deliveryAttempts()->update([
+            'attempted_at' => now()->subMonth()->startOfMonth()->addDay(),
+        ]);
+
+        $otherRiderFailure = $this->makeDispatchAssignment(
+            $otherRider,
+            'HISTORY-FAILED-OTHER',
+            1,
+            0,
+            'Other Rider Failed Recipient'
+        );
+        $deliveryService->startDelivery($otherRiderFailure['shipment']->shipment_no, $otherRider->user);
+        $deliveryService->failDelivery(
+            $otherRiderFailure['shipment']->shipment_no,
+            $otherRider->user,
+            'Recipient unavailable.'
+        );
+
+        $attempt = $assignment['parcels']->first()
+            ->deliveryAttempts()
+            ->firstOrFail();
+
+        RiderEarning::query()->create([
+            'rider_profile_id' => $rider->id,
+            'delivery_attempt_id' => $attempt->id,
+            'type' => 'delivery',
+            'amount_minor' => 7000,
+            'status' => 'posted',
+            'description' => 'Delivery earning',
+            'earned_at' => now(),
+            'posted_at' => now(),
+        ]);
+
+        $today = now()->toDateString();
+
+        $this->actingAs($rider->user)
+            ->get(route('rider.history.index', [
+                'search' => $assignment['shipment']->shipment_no,
+                'outcome' => 'delivered',
+                'date_from' => $today,
+                'date_to' => $today,
+            ]))
+            ->assertOk()
+            ->assertSeeText($assignment['shipment']->shipment_no)
+            ->assertSeeText('HISTORY-OWNER-1')
+            ->assertSeeText('History Owner Recipient')
+            ->assertSeeText('History Product Preview')
+            ->assertSee('seller-products/history-preview.png', false)
+            ->assertSee('data-history-products-list', false)
+            ->assertSeeText('Rider Zone MAIN')
+            ->assertSeeText('₱70.00')
+            ->assertSeeText('Completed this month')
+            ->assertSeeText('Failed attempts this month')
+            ->assertSeeText('Recorded attempts that may need a retry')
+            ->assertSeeText('Start date')
+            ->assertSeeText('End date')
+            ->assertViewHas('metrics', fn (array $metrics): bool => $metrics['failed_attempts_this_month'] === 1)
+            ->assertSee('Parcel Delivered')
+            ->assertDontSeeText($otherAssignment['shipment']->shipment_no)
+            ->assertDontSeeText('Other Rider Recipient');
+
+        $this->actingAs($rider->user)
+            ->get(route('rider.history.index'))
+            ->assertOk()
+            ->assertSeeText($assignment['shipment']->shipment_no)
+            ->assertDontSeeText($otherAssignment['shipment']->shipment_no);
+
+        $export = $this->actingAs($rider->user)
+            ->get(route('rider.history.export', [
+                'search' => $assignment['shipment']->shipment_no,
+            ]));
+
+        $export->assertOk();
+        $this->assertStringContainsString(
+            $assignment['shipment']->shipment_no,
+            $export->streamedContent()
+        );
+        $this->assertStringContainsString('₱70.00', $export->streamedContent());
+    }
+
+    public function test_delivery_history_includes_canceled_batches_and_return_deliveries(): void
+    {
+        Storage::fake('local');
+
+        $rider = $this->makeRider('HISTORY-OUTCOMES');
+        $cancelled = $this->makeDispatchAssignment(
+            $rider,
+            'HISTORY-CANCELLED',
+            1,
+            0,
+            'Canceled History Recipient'
+        );
+        $cancelled['batch']->update([
+            'status' => 'cancelled',
+            'cancelled_at' => now(),
+        ]);
+
+        $returned = $this->makeDispatchAssignment(
+            $rider,
+            'HISTORY-RETURNED',
+            1,
+            0,
+            'Return History Recipient'
+        );
+        $returned['shipment']->update(['purpose' => 'return']);
+
+        $deliveryService = app(RiderDeliveryService::class);
+        $deliveryService->startDelivery(
+            $returned['shipment']->shipment_no,
+            $rider->user
+        );
+        $deliveryService->completeDelivery(
+            $returned['shipment']->shipment_no,
+            $rider->user,
+            $this->fakeProofPhoto('history-return.png'),
+            'Seller Receiver'
+        );
+
+        $this->actingAs($rider->user)
+            ->get(route('rider.history.index', ['outcome' => 'cancelled']))
+            ->assertOk()
+            ->assertSeeText($cancelled['shipment']->shipment_no)
+            ->assertSeeText('Canceled')
+            ->assertDontSeeText($returned['shipment']->shipment_no);
+
+        $this->actingAs($rider->user)
+            ->get(route('rider.history.index', ['outcome' => 'returned']))
+            ->assertOk()
+            ->assertSeeText($returned['shipment']->shipment_no)
+            ->assertSeeText('Returned')
+            ->assertSeeText('Return deliveries')
+            ->assertDontSeeText($cancelled['shipment']->shipment_no);
     }
 
 }

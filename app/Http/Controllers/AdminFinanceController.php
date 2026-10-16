@@ -11,6 +11,7 @@ use App\Models\SellerPayout;
 use App\Models\SellerTransaction;
 use App\Models\SystemSetting;
 use App\Services\AuditService;
+use App\Services\BuyerCatalogService;
 use App\Services\CodCashCollectionService;
 use App\Services\RefundCashPayoutService;
 use App\Services\SellerPayoutService;
@@ -25,18 +26,25 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\Response;
 
 class AdminFinanceController extends Controller
 {
-    public function commissions(Request $request): View
+    public function commissions(Request $request, BuyerCatalogService $catalog): View
     {
         $rows = PlatformCommission::query()
-            ->with(['sellerOrder.order', 'sellerOrder.store', 'refund'])
+            ->with([
+                'sellerOrder.order',
+                'sellerOrder.store',
+                'sellerOrder.items.product.images.variant',
+                'sellerOrder.items.variant',
+                'refund',
+            ])
             ->latest('calculated_at')
             ->get();
 
         $ledger = $rows
-            ->map(function (PlatformCommission $commission): array {
+            ->map(function (PlatformCommission $commission) use ($catalog): array {
                 $grossMinor = $this->recognizedCommissionBaseMinor($commission);
                 $commissionMinor = $this->recognizedCommissionMinor($commission);
 
@@ -44,6 +52,15 @@ class AdminFinanceController extends Controller
                     'date' => ($commission->finalized_at ?? $commission->calculated_at ?? $commission->created_at)->format('M j, Y'),
                     'order' => $commission->sellerOrder?->order?->order_no ?? $commission->sellerOrder?->seller_order_no ?? '—',
                     'seller' => $commission->sellerOrder?->store?->name ?? '—',
+                    'items' => ($commission->sellerOrder?->items ?? collect())
+                        ->map(fn ($item): array => [
+                            'name' => $item->product_name ?: 'Unnamed product',
+                            'variant' => trim((string) $item->variant_name),
+                            'quantity' => (int) $item->quantity,
+                            'image_url' => $catalog->orderItemImageUrl($item),
+                        ])
+                        ->values()
+                        ->all(),
                     'gross' => $grossMinor / 100,
                     'commission' => $commissionMinor / 100,
                     'sellerNet' => ($grossMinor - $commissionMinor) / 100,
@@ -72,13 +89,15 @@ class AdminFinanceController extends Controller
         ));
     }
 
-    public function transactions(Request $request): View
+    public function transactions(Request $request, BuyerCatalogService $catalog): View
     {
         $rows = SellerTransaction::query()
             ->with([
                 'sellerProfile.store',
                 'sellerOrder.order.buyer',
                 'sellerOrder.store',
+                'sellerOrder.items.product.images.variant',
+                'sellerOrder.items.variant',
                 'payment',
                 'refund',
                 'commission.refund',
@@ -86,7 +105,7 @@ class AdminFinanceController extends Controller
             ->latest()
             ->get();
 
-        $transactions = $rows->map(function (SellerTransaction $transaction): array {
+        $transactions = $rows->map(function (SellerTransaction $transaction) use ($catalog): array {
             $isRefund = $transaction->refund_id !== null
                 || str_contains(strtolower($transaction->type), 'refund')
                 || str_contains(strtolower($transaction->type), 'reversal');
@@ -108,6 +127,15 @@ class AdminFinanceController extends Controller
                     ?? $transaction->sellerProfile?->legal_business_name
                     ?? '—',
                 'buyer' => $transaction->sellerOrder?->order?->buyer?->name ?? '—',
+                'items' => $transaction->sellerOrder?->items
+                    ?->map(fn ($item): array => [
+                        'name' => $item->product_name ?: 'Unnamed product',
+                        'variant' => trim((string) $item->variant_name),
+                        'quantity' => (int) $item->quantity,
+                        'image_url' => $catalog->orderItemImageUrl($item),
+                    ])
+                    ->values()
+                    ->all() ?? [],
                 'method' => str($transaction->refund?->method ?? $transaction->payment?->method ?? 'system')->replace('_', ' ')->title()->toString(),
                 'gross' => $grossMinor / 100,
                 'refund' => $status === 'Refunded' ? abs((int) ($transaction->refund?->amount_minor ?? 0)) / 100 : 0,
@@ -133,9 +161,9 @@ class AdminFinanceController extends Controller
 
     public function payments(
         Request $request,
-        SellerPayoutService $sellerPayouts,
         CodCashCollectionService $codCash,
         RefundCashPayoutService $refundCash,
+        BuyerCatalogService $catalog,
     ): View {
         $payments = SellerPayout::query()
             ->with(['sellerProfile.store', 'items'])
@@ -144,14 +172,26 @@ class AdminFinanceController extends Controller
             ->map(fn (SellerPayout $payout): array => $this->mapPayout($payout))
             ->values();
 
-        $eligibleSellers = $sellerPayouts->eligibleBySeller();
-        $codCollections = $codCash->codCollectionsForFinance();
+        $codCollections = $codCash->codCollectionsForFinance()
+            ->each(function (CodCashCollection $collection) use ($catalog): void {
+                $collection->setAttribute(
+                    'order_item_previews',
+                    ($collection->sellerOrder?->items ?? collect())
+                        ->map(fn ($item): array => [
+                            'name' => $item->product_name ?: 'Unnamed product',
+                            'variant' => trim((string) $item->variant_name),
+                            'quantity' => (int) $item->quantity,
+                            'image_url' => $catalog->orderItemImageUrl($item),
+                        ])
+                        ->values()
+                        ->all(),
+                );
+            });
         $refundsReadyForCashDispatch = $refundCash->refundsReadyForCashDispatch();
         $refundCashPayouts = $refundCash->refundPayoutsForFinance();
 
         return view('admin.finance.payments', $this->base($request) + compact(
             'payments',
-            'eligibleSellers',
             'codCollections',
             'refundsReadyForCashDispatch',
             'refundCashPayouts',
@@ -164,12 +204,48 @@ class AdminFinanceController extends Controller
         CodCashCollectionService $codCash,
     ): RedirectResponse {
         $data = $request->validate([
-            'received_amount' => ['required', 'string', 'regex:/^\d{1,8}(?:\.\d{1,2})?$/'],
-            'reference' => ['required', 'string', 'max:150'],
+            'received_amount' => ['required', 'string', 'regex:/^(?:\d{1,8}|\d{1,3},\d{3}|\d{1,2}(?:,\d{3}){2})(?:\.\d{1,2})?$/'],
+            'cash_received_confirmed' => ['required', 'accepted'],
+        ], [
+            'received_amount.regex' => 'Enter an amount with valid thousands separators and up to two decimal places.',
+            'cash_received_confirmed.accepted' => 'Confirm Finance physically received and counted this cash before reconciling.',
         ]);
-        $codCash->reconcileAtFinance($request->user(), (int) $collection->id, $this->amountToMinor($data['received_amount']), trim($data['reference']));
+        $reconciled = $codCash->reconcileAtFinance(
+            $request->user(),
+            (int) $collection->id,
+            $this->amountToMinor(str_replace(',', '', $data['received_amount'])),
+        );
 
-        return back()->with('success', "COD cash {$collection->collection_no} was reconciled to the Finance receipt reference.");
+        return back()->with('success', "COD cash {$reconciled->collection_no} was reconciled. Bearly Finance receipt {$reconciled->finance_reference} is ready to print.");
+    }
+
+    public function printCodCashReceipt(Request $request, CodCashCollection $collection, AuditService $audit): Response
+    {
+        abort_unless($collection->status === 'reconciled'
+            && filled($collection->finance_reference)
+            && $collection->reconciled_at !== null, 404);
+
+        $collection->load([
+            'order',
+            'sellerOrder.store',
+            'logisticsProfile',
+            'riderProfile.user',
+            'financeReconciler',
+        ]);
+        $audit->record(
+            action: 'cod_cash.finance_receipt_viewed',
+            module: 'Finance',
+            subject: $collection,
+            description: "Bearly Finance cash receipt {$collection->finance_reference} viewed for {$collection->collection_no}.",
+            newValues: ['finance_reference' => $collection->finance_reference],
+            severity: 'info',
+            request: $request,
+        );
+
+        return response()
+            ->view('admin.finance.cod-cash-receipt', compact('collection'))
+            ->header('Cache-Control', 'private, no-store')
+            ->header('X-Content-Type-Options', 'nosniff');
     }
 
     public function generateSellerPayout(Request $request, SellerPayoutService $sellerPayouts): RedirectResponse
@@ -186,16 +262,19 @@ class AdminFinanceController extends Controller
     public function recordSellerPayout(Request $request, SellerPayout $payout, SellerPayoutService $sellerPayouts): RedirectResponse
     {
         $data = $request->validate([
-            'external_payout_confirmed' => ['required', 'accepted'],
+            'seller_payout_confirmed' => ['required', 'accepted'],
             'actual_amount' => ['required', 'string', 'regex:/^\d{1,8}(?:\.\d{1,2})?$/'],
-            'method' => ['required', Rule::in(['gcash', 'bank_transfer', 'cash', 'other'])],
+            'method' => ['required', Rule::in(['bank_transfer'])],
+            'receiving_bank_name' => ['required', 'string', 'max:120'],
             'reference' => ['required', 'string', 'max:150'],
             'paid_on' => ['required', 'date_format:Y-m-d', 'before_or_equal:today'],
             'reason' => ['required', 'string', 'min:5', 'max:1000'],
             'receipt' => ['required', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:5120'],
         ], [
-            'external_payout_confirmed.accepted' => 'Confirm that the external Seller payout has already happened.',
-            'receipt.required' => 'Upload the external transfer receipt or Seller acknowledgment.',
+            'seller_payout_confirmed.required' => 'Confirm that the Seller has already received the full payout.',
+            'seller_payout_confirmed.accepted' => 'Confirm that the Seller has already received the full payout.',
+            'reference.required' => 'Enter the actual bank-transfer reference.',
+            'receipt.required' => 'Upload proof of the completed bank transfer.',
         ]);
         /** @var UploadedFile $receipt */
         $receipt = $data['receipt'];
@@ -204,14 +283,20 @@ class AdminFinanceController extends Controller
             (int) $payout->id,
             $this->amountToMinor($data['actual_amount']),
             $data['method'],
-            trim($data['reference']),
+            trim($data['receiving_bank_name']),
+            trim((string) ($data['reference'] ?? '')),
             $data['paid_on'],
             trim($data['reason']),
             $receipt,
             $request,
         );
 
-        return back()->with('success', "{$recorded->payout_no} was recorded as externally paid. Bearly did not initiate a transfer.");
+        return back()->with('success', "{$recorded->payout_no} is recorded as paid after Finance reviewed the bank-transfer proof. Bearly did not send the transfer.");
+    }
+
+    public function printSellerCashAcknowledgment(): Response
+    {
+        abort(404, 'Direct cash acknowledgments are no longer part of Seller Wallet withdrawals.');
     }
 
     public function issueRefundCash(
@@ -428,9 +513,16 @@ class AdminFinanceController extends Controller
             'due' => $payout->due_at?->format('Y-m-d'),
             'paid' => $payout->paid_at?->format('Y-m-d'),
             'reference' => $payout->reference ?: '—',
+            'receiving_bank_name' => $payout->receiving_bank_name,
             'status' => $this->payoutDisplayStatus($payout),
             'item_count' => $payout->items->count(),
-            'method' => $payout->external_method,
+            'method' => match ($payout->external_method) {
+                'gcash' => 'GCash',
+                'bank_transfer' => 'Bank transfer',
+                'cash' => 'Cash',
+                'other' => 'Other',
+                default => null,
+            },
             'has_receipt' => filled($payout->receipt_path),
         ];
     }

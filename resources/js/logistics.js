@@ -2568,8 +2568,273 @@ function setupRegistration() {
     show(1);
 }
 
+function setupSortingZones() {
+    document.querySelectorAll('[data-zone-archive-form]').forEach((archiveForm) => {
+        archiveForm.addEventListener('submit', (event) => {
+            if (!window.confirm('Archive this zone? It will be deactivated and removed from parcel routing. You can restore it later from Archived zones.')) {
+                event.preventDefault();
+            }
+        });
+    });
+
+    document.querySelectorAll('[data-zone-delete-form]').forEach((deleteForm) => {
+        deleteForm.addEventListener('submit', (event) => {
+            if (!window.confirm('Permanently delete this archived zone? This cannot be undone. Parcel, dispatch, and tracking records remain, but their link to this zone will be cleared.')) {
+                event.preventDefault();
+            }
+        });
+    });
+
+    const form = document.querySelector('[data-sorting-zone-form]');
+    if (!form) return;
+
+    const cityCode = form.dataset.cityCode || '';
+    const search = form.querySelector('[data-zone-barangay-search]');
+    const list = form.querySelector('[data-zone-barangays]');
+    const count = form.querySelector('[data-zone-barangay-count]');
+    const status = form.querySelector('[data-zone-location-status]');
+    const submit = form.querySelector('[data-zone-submit]');
+    const editing = form.querySelector('input[name="_method"]')?.value === 'PATCH';
+    let oldBarangays = [];
+    let barangayRequest = 0;
+    let restorePending = false;
+
+    try {
+        const saved = JSON.parse(
+            form.querySelector('[data-zone-old-barangays]')?.textContent || '[]'
+        );
+        oldBarangays = Array.isArray(saved) ? saved : [];
+        restorePending = oldBarangays.length > 0;
+    } catch {
+        oldBarangays = [];
+    }
+
+    const locations = async (url) => {
+        const response = await fetch(url, {
+            headers: { Accept: 'application/json' },
+        });
+
+        if (!response.ok) throw new Error('The location service is unavailable.');
+
+        const payload = await response.json();
+        const items = Array.isArray(payload) ? payload : payload.data;
+
+        if (!Array.isArray(items)) throw new Error('Invalid location response.');
+
+        return items.filter((item) => item && item.name && item.code);
+    };
+
+    const selectedBarangays = () => [
+        ...list.querySelectorAll('input[name="barangays[]"]:checked'),
+    ];
+
+    const updateFormState = () => {
+        const selected = selectedBarangays();
+        count.textContent = selected.length
+            ? editing
+                ? `${selected.length} ${selected.length === 1 ? 'barangay' : 'barangays'} selected`
+                : `${selected.length} ${selected.length === 1 ? 'zone' : 'zones'} will be created`
+            : 'No barangays selected';
+        submit.disabled = !cityCode || selected.length === 0;
+    };
+
+    const resetBarangays = (message = 'Your municipality’s barangays will load shortly.') => {
+        list.replaceChildren();
+        const empty = document.createElement('span');
+        empty.className = 'zone-location-empty';
+        empty.textContent = message;
+        list.append(empty);
+        search.value = '';
+        search.disabled = true;
+        count.textContent = 'No barangays selected';
+        updateFormState();
+    };
+
+    const renderBarangays = (items, selectedNames = []) => {
+        list.replaceChildren();
+
+        if (items.length === 0) {
+            resetBarangays('No barangays were returned for this municipality.');
+            return;
+        }
+
+        items.forEach((item) => {
+            const label = document.createElement('label');
+            label.className = 'zone-barangay-option';
+
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.name = 'barangays[]';
+            checkbox.value = item.name;
+            checkbox.checked = selectedNames.includes(item.name);
+            checkbox.addEventListener('change', updateFormState);
+
+            const name = document.createElement('span');
+            name.textContent = item.name;
+
+            label.append(checkbox, name);
+            label.dataset.search = item.name.toLocaleLowerCase();
+            list.append(label);
+        });
+
+        search.value = '';
+        search.disabled = false;
+        status.textContent = editing
+            ? `${items.length} barangays loaded. Select the coverage for this zone.`
+            : `${items.length} barangays loaded. Each selected barangay will get its own zone.`;
+        updateFormState();
+    };
+
+    const loadBarangays = async (restoreSelection = false) => {
+        const request = ++barangayRequest;
+        resetBarangays();
+
+        if (!cityCode) {
+            status.textContent = 'Your Logistics service city is not configured. Contact support before creating a zone.';
+            return;
+        }
+
+        search.disabled = true;
+        resetBarangays('Loading barangays…');
+        status.textContent = 'Loading barangays…';
+
+        try {
+            const items = await locations(
+                `${form.dataset.barangaysUrl}/${encodeURIComponent(cityCode)}/barangays`
+            );
+            if (request !== barangayRequest) return;
+            renderBarangays(
+                items,
+                restoreSelection
+                    ? oldBarangays.map((item) => typeof item === 'string' ? item : item?.name).filter(Boolean)
+                    : []
+            );
+            if (restoreSelection) restorePending = false;
+        } catch {
+            if (request !== barangayRequest) return;
+            resetBarangays('Barangays could not be loaded.');
+            status.textContent = 'Could not load barangays. Refresh the page and try again.';
+        }
+    };
+
+    search.addEventListener('input', () => {
+        const query = search.value.trim().toLocaleLowerCase();
+
+        list.querySelectorAll('.zone-barangay-option').forEach((label) => {
+            label.hidden = !label.dataset.search.includes(query);
+        });
+    });
+
+    status.textContent = 'Loading the official barangay list for your registered service city…';
+    loadBarangays(restorePending);
+
+    document.querySelectorAll('[data-zone-status-form]').forEach((statusForm) => {
+        statusForm.addEventListener('submit', (event) => {
+            if (statusForm.querySelector('[name="status"]')?.value !== 'inactive') return;
+
+            if (!window.confirm('Deactivate this delivery zone? Active dispatch batches and non-final parcels must be cleared first.')) {
+                event.preventDefault();
+            }
+        });
+    });
+
+    updateFormState();
+}
+
+function setupRiderZoneAssignment() {
+    const center = document.querySelector('#rider-home-sorting-center');
+    const zone = document.querySelector('#rider-current-zone');
+    const coverage = document.querySelector('[data-rider-zone-coverage]');
+
+    if (!center || !zone) return;
+
+    const sync = (clearInvalidSelection = false) => {
+        const centerId = center.value;
+
+        [...zone.options].forEach((option) => {
+            if (!option.value) return;
+
+            const belongsToCenter = option.dataset.centerId === centerId;
+            option.disabled = !belongsToCenter;
+            option.hidden = !belongsToCenter;
+        });
+
+        if (
+            clearInvalidSelection
+            && zone.selectedOptions[0]?.disabled
+        ) {
+            zone.value = '';
+        }
+
+        const selected = zone.selectedOptions[0];
+        if (coverage) {
+            coverage.textContent = selected?.dataset.coverage
+                ? `Assigned zone covers ${selected.dataset.coverage}.`
+                : 'Dispatches are limited to parcels whose destination barangay is covered by the assigned zone.';
+        }
+    };
+
+    center.addEventListener('change', () => sync(true));
+    zone.addEventListener('change', () => sync());
+    sync(true);
+}
+
 function setupRefundAcknowledgmentPrinting() {
     document.querySelector('[data-print-refund-slip]')?.addEventListener('click', () => window.print());
+}
+
+function setupCashAmountFormatting() {
+    document.querySelectorAll('[data-cash-amount]').forEach((input) => {
+        const format = (preserveCaret = true, padDecimals = false) => {
+            const current = input.value;
+            const caret = input.selectionStart ?? current.length;
+            const digitsBeforeCaret = (current.slice(0, caret).match(/\d/g) || []).length;
+            const caretAfterDecimal = current.slice(0, caret).includes('.');
+            const ungrouped = current.replace(/,/g, '').replace(/[^\d.]/g, '');
+            const decimalIndex = ungrouped.indexOf('.');
+            const integer = decimalIndex === -1 ? ungrouped : ungrouped.slice(0, decimalIndex);
+            const decimals = decimalIndex === -1
+                ? ''
+                : ungrouped.slice(decimalIndex + 1).replace(/\./g, '');
+            const groupedInteger = integer.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+            const formattedDecimals = padDecimals ? decimals.padEnd(2, '0') : decimals;
+            const formatted = decimalIndex === -1 && !padDecimals
+                ? groupedInteger
+                : `${groupedInteger || '0'}.${formattedDecimals}`;
+
+            input.value = formatted;
+
+            if (!preserveCaret || document.activeElement !== input) return;
+
+            let position = 0;
+            let digitsFound = 0;
+
+            while (position < formatted.length && digitsFound < digitsBeforeCaret) {
+                if (/\d/.test(formatted[position])) digitsFound += 1;
+                position += 1;
+            }
+
+            if (caretAfterDecimal && formatted.includes('.')) {
+                position = Math.max(position, formatted.indexOf('.') + 1);
+            }
+
+            input.setSelectionRange(position, position);
+        };
+
+        format(false);
+        input.addEventListener('input', () => format());
+        input.addEventListener('blur', () => format(false, true));
+    });
+}
+
+function setupShipmentTransfers() {
+    document.querySelectorAll('[data-transfer-send-form]').forEach((form) => {
+        form.addEventListener('submit', (event) => {
+            if (!window.confirm('Send this shipment to the destination-city Logistics account? It will remain in your custody until that account scans and accepts it.')) {
+                event.preventDefault();
+            }
+        });
+    });
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -2582,6 +2847,10 @@ document.addEventListener('DOMContentLoaded', () => {
     setupChat();
     setupNewConversation();
     setupRegistration();
+    setupSortingZones();
+    setupRiderZoneAssignment();
     setupRefundAcknowledgmentPrinting();
+    setupCashAmountFormatting();
+    setupShipmentTransfers();
     refreshIcons();
 });

@@ -19,6 +19,8 @@ class RiderManagementDataTest extends TestCase
 {
     use RefreshDatabase;
 
+    private int $phoneSequence = 0;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -378,12 +380,16 @@ class RiderManagementDataTest extends TestCase
         string $suffix,
         string $email
     ): array {
+        $phone = $this->nextPhone();
+        $location = $this->locationFor($suffix);
+
         $user = User::factory()->create([
             'name' => "Logistics {$suffix}",
             'first_name' => 'Logistics',
             'last_name' => $suffix,
             'email' => $email,
-            'contact_number' => '09170000001',
+            'phone' => $phone,
+            'contact_number' => $phone,
             'role' => UserRole::Logistics->value,
             'status' => AccountStatus::Active->value,
             'business_name' => "Logistics {$suffix}",
@@ -397,7 +403,8 @@ class RiderManagementDataTest extends TestCase
                 'display_name' =>
                     "Logistics {$suffix}",
                 'contact_phone' =>
-                    '09170000001',
+                    $phone,
+                'psgc_city_code' => $location['code'],
                 'status' => 'active',
             ]);
 
@@ -406,14 +413,14 @@ class RiderManagementDataTest extends TestCase
             'label' => 'Sorting center',
             'recipient_name' =>
                 "Logistics {$suffix}",
-            'phone' => '09170000001',
+            'phone' => $phone,
             'house_number' => '10',
             'street' => "Hub Road {$suffix}",
-            'barangay' => 'San Rafael',
-            'city_municipality' =>
-                'San Pablo City',
-            'province' => 'Laguna',
-            'postal_code' => '4000',
+            'barangay' => $location['barangay'],
+            'city_municipality' => $location['city'],
+            'province' => $location['province'],
+            'postal_code' => $location['postal_code'],
+            'psgc_city_code' => $location['code'],
         ]);
 
         $center = SortingCenter::query()
@@ -426,7 +433,7 @@ class RiderManagementDataTest extends TestCase
                 'code' =>
                     "CENTER-{$suffix}",
                 'contact_phone' =>
-                    '09170000001',
+                    $phone,
                 'status' => 'active',
             ]);
 
@@ -434,7 +441,12 @@ class RiderManagementDataTest extends TestCase
             'sorting_center_id' => $center->id,
             'name' => "Zone {$suffix}",
             'code' => "ZONE-{$suffix}",
-            'destination_rules' => [],
+            'destination_rules' => [
+                'province' => $location['province'],
+                'city_municipality' => $location['city'],
+                'psgc_city_code' => $location['code'],
+                'barangays' => [$location['barangay']],
+            ],
         ]);
 
         return compact(
@@ -457,6 +469,9 @@ class RiderManagementDataTest extends TestCase
         string $suffix,
         string $normalizedCity
     ): array {
+        $phone = $this->nextPhone();
+        $location = $this->locationFor($normalizedCity);
+
         $user = User::factory()->create([
             'name' => "Rider {$suffix}",
             'first_name' => 'Rider',
@@ -465,7 +480,8 @@ class RiderManagementDataTest extends TestCase
                 'rider-'
                 . strtolower($suffix)
                 . '@example.test',
-            'contact_number' => '09181234567',
+            'phone' => $phone,
+            'contact_number' => $phone,
             'role' => UserRole::Rider->value,
             'status' => AccountStatus::Pending->value,
             'logistics_id' => $sponsor->id,
@@ -495,7 +511,8 @@ class RiderManagementDataTest extends TestCase
                         'barangay' => 'San Rafael',
                         'municipality' => $normalizedCity,
                         'province' => 'Laguna',
-                        'postal_code' => '4000',
+                        'postal_code' => $location['postal_code'],
+                        'city_code' => $location['code'],
                     ],
                     [],
                     [],
@@ -530,5 +547,21 @@ class RiderManagementDataTest extends TestCase
             'user',
             'application'
         );
+    }
+
+    /** @return array{code: string, city: string, province: string, barangay: string, postal_code: string} */
+    private function locationFor(string $value): array
+    {
+        $calamba = str_contains(strtolower($value), 'calamba')
+            || preg_match('/(?:^|-)B$/i', $value) === 1;
+
+        return $calamba
+            ? ['code' => '0403405000', 'city' => 'Calamba City', 'province' => 'Laguna', 'barangay' => 'San Rafael', 'postal_code' => '4027']
+            : ['code' => '0403424000', 'city' => 'San Pablo City', 'province' => 'Laguna', 'barangay' => 'San Rafael', 'postal_code' => '4000'];
+    }
+
+    private function nextPhone(): string
+    {
+        return sprintf('+63917%07d', ++$this->phoneSequence);
     }
 }

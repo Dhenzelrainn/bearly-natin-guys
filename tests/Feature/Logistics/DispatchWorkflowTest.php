@@ -714,12 +714,23 @@ class DispatchWorkflowTest extends TestCase
             10
         );
 
-        $this->makeReadyShipmentFor(
+        $own = $this->makeReadyShipmentFor(
             $this->profileA,
             $this->centerA,
             $ownZone,
             'MONITOR-OWN'
         );
+        $own['shipment']->sellerOrder->items()->create([
+            'product_name' => 'Monitoring Order Product',
+            'variant_name' => 'Black / Medium',
+            'sku' => 'MONITOR-PRODUCT-001',
+            'unit_price_minor' => 10000,
+            'quantity' => 1,
+            'discount_minor' => 0,
+            'subtotal_minor' => 10000,
+            'product_image_disk' => 'public',
+            'product_image_path' => 'seller-products/monitor-order.png',
+        ]);
 
         $this->makeReadyShipmentFor(
             $this->profileB,
@@ -748,6 +759,9 @@ class DispatchWorkflowTest extends TestCase
             )
             ->assertOk()
             ->assertSee($ownBatch->batch_no)
+            ->assertSee('dispatch-products-cell', false)
+            ->assertSee('Monitoring Order Product')
+            ->assertSee('seller-products/monitor-order.png', false)
             ->assertSee($ownRider->user->name)
             ->assertSee($ownZone->code)
             ->assertDontSee($foreignBatch->batch_no)
@@ -1368,20 +1382,14 @@ class DispatchWorkflowTest extends TestCase
             'CENTER-A'
         );
 
-        $otherCenter = $this->makeCenter(
-            $this->profileA,
-            $this->logisticsA,
-            'SECOND'
-        );
-
         $otherZone = $this->makeZone(
-            $otherCenter,
+            $this->centerB,
             'CENTER-B'
         );
 
         $rider = $this->makeRider(
             $this->profileA,
-            $otherCenter,
+            $this->centerB,
             $otherZone,
             'WRONG-CENTER',
             10
@@ -2000,6 +2008,12 @@ class DispatchWorkflowTest extends TestCase
             'name' =>
                 "Dispatch Zone {$suffix}",
 
+            'destination_rules' => [
+                'province' => 'Laguna',
+                'city_municipality' => 'San Pablo City',
+                'barangays' => ['San Rafael'],
+            ],
+
             'status' =>
                 'active',
         ]);
@@ -2323,6 +2337,17 @@ class DispatchWorkflowTest extends TestCase
             'UI-OWN'
         );
 
+        $unmatched = $this->makeReadyShipmentFor(
+            $this->profileA,
+            $this->centerA,
+            $ownZone,
+            'UI-UNMATCHED'
+        );
+        $unmatched['shipment']->sellerOrder->order->update([
+            'barangay' => 'Pinagbayanan',
+            'city_municipality' => 'Pila',
+        ]);
+
         $foreign = $this->makeReadyShipmentFor(
             $this->profileB,
             $this->centerB,
@@ -2337,11 +2362,16 @@ class DispatchWorkflowTest extends TestCase
             ->assertOk()
             ->assertSee($ownZone->code)
             ->assertSee($ownRider->user->name)
+            ->assertSee('1 parcel does not match this zone')
             ->assertViewHas(
                 'metrics',
                 fn (array $metrics) =>
                     $metrics['ready'] === 1
                     && $metrics['ready_zones'] === 1
+            )
+            ->assertViewHas(
+                'zones',
+                fn ($zones) => $zones->first()['routing_issues'] === 1
             )
             ->assertDontSee($foreignZone->code)
             ->assertDontSee($foreignRider->user->name)
@@ -2430,6 +2460,84 @@ class DispatchWorkflowTest extends TestCase
             ShipmentStatus::Dispatched->value,
             $record['shipment']->fresh()->status
         );
+    }
+
+    public function test_dispatch_leaves_parcels_outside_the_zone_barangay_coverage_undispatched(): void
+    {
+        $zone = $this->makeZone(
+            $this->centerA,
+            'PARTIAL-COVERAGE'
+        );
+        $rider = $this->makeRider(
+            $this->profileA,
+            $this->centerA,
+            $zone,
+            'PARTIAL-COVERAGE',
+            10
+        );
+        $covered = $this->makeReadyShipmentFor(
+            $this->profileA,
+            $this->centerA,
+            $zone,
+            'COVERED-PARCEL'
+        );
+        $uncovered = $this->makeReadyShipmentFor(
+            $this->profileA,
+            $this->centerA,
+            $zone,
+            'UNCOVERED-PARCEL'
+        );
+        $uncovered['shipment']->sellerOrder->order->update([
+            'barangay' => 'Pinagbayanan',
+            'city_municipality' => 'Pila',
+        ]);
+
+        $batch = app(DispatchService::class)->dispatchZone(
+            $zone,
+            $rider,
+            $this->logisticsA
+        );
+
+        $this->assertDatabaseHas('dispatch_batch_parcels', [
+            'dispatch_batch_id' => $batch->id,
+            'parcel_id' => $covered['parcel']->id,
+        ]);
+        $this->assertDatabaseMissing('dispatch_batch_parcels', [
+            'dispatch_batch_id' => $batch->id,
+            'parcel_id' => $uncovered['parcel']->id,
+        ]);
+        $this->assertSame(
+            ParcelStatus::Dispatched->value,
+            $covered['parcel']->fresh()->status
+        );
+        $this->assertSame(
+            ParcelStatus::Sorted->value,
+            $uncovered['parcel']->fresh()->status
+        );
+    }
+
+    public function test_zone_cannot_be_deactivated_while_a_failed_parcel_can_retry_delivery(): void
+    {
+        $zone = $this->makeZone($this->centerA, 'FAILED-IN-USE');
+        $record = $this->makeReadyShipmentFor(
+            $this->profileA,
+            $this->centerA,
+            $zone,
+            'FAILED-IN-USE'
+        );
+        $record['parcel']->update([
+            'status' => ParcelStatus::Failed->value,
+        ]);
+
+        $this->actingAs($this->logisticsA)
+            ->patch(
+                route('logistics.sorting.zones.status', $zone),
+                ['status' => 'inactive']
+            )
+            ->assertRedirect()
+            ->assertSessionHasErrors('status');
+
+        $this->assertSame('active', $zone->fresh()->status);
     }
 
     public function test_dispatch_post_route_rejects_foreign_rider(): void

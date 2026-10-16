@@ -22,30 +22,57 @@ class LogisticsCashController extends Controller
     public function index(Request $request, RefundCashPayoutService $cash): View
     {
         $user = $request->user();
+        $workspace = $cash->logisticsWorkspace($user);
+        $remittanceCandidates = $workspace['codCollections']
+            ->where('status', 'received_by_logistics');
+        $selectedCodCollection = null;
+        $requestedCollectionId = $request->query('cod_remittance');
 
-        return view('logistics.cash.index', $this->layoutData($request) + $cash->logisticsWorkspace($user));
+        if (is_scalar($requestedCollectionId)
+            && ctype_digit((string) $requestedCollectionId)) {
+            $requestedCollectionId = (int) $requestedCollectionId;
+            $selectedCodCollection = $remittanceCandidates->first(
+                fn (CodCashCollection $collection): bool => (int) $collection->id === $requestedCollectionId,
+            );
+        }
+
+        $selectedCodCollection ??= $remittanceCandidates->first();
+
+        return view('logistics.cash.index', $this->layoutData($request) + $workspace + [
+            'selectedCodCollection' => $selectedCodCollection,
+        ]);
     }
 
     public function receiveCod(Request $request, CodCashCollection $collection, CodCashCollectionService $cash): RedirectResponse
     {
         $data = $request->validate([
             'actual_amount' => ['required', 'string', 'regex:/^\d{1,8}(?:\.\d{1,2})?$/'],
-            'reference' => ['required', 'string', 'max:150'],
         ]);
-        $cash->receiveAtLogistics($request->user(), (int) $collection->id, $this->amountToMinor($data['actual_amount']), trim($data['reference']));
+        $collection = $cash->receiveAtLogistics(
+            $request->user(),
+            (int) $collection->id,
+            $this->amountToMinor($data['actual_amount']),
+        );
 
-        return back()->with('success', "COD cash {$collection->collection_no} was acknowledged by Logistics.");
+        return redirect()
+            ->route('logistics.cash.index', ['cod_remittance' => $collection->id])
+            ->with('success', "Cash received from the Rider. Rider-to-Logistics reference: {$collection->logistics_reference}.");
     }
 
     public function remitCod(Request $request, CodCashCollection $collection, CodCashCollectionService $cash): RedirectResponse
     {
         $data = $request->validate([
-            'actual_amount' => ['required', 'string', 'regex:/^\d{1,8}(?:\.\d{1,2})?$/'],
-            'reference' => ['required', 'string', 'max:150'],
+            'actual_amount' => ['required', 'string', 'regex:/^(?:\d{1,8}|\d{1,3},\d{3}|\d{1,2}(?:,\d{3}){2})(?:\.\d{1,2})?$/'],
         ]);
-        $cash->remitToFinance($request->user(), (int) $collection->id, $this->amountToMinor($data['actual_amount']), trim($data['reference']));
+        $collection = $cash->remitToFinance(
+            $request->user(),
+            (int) $collection->id,
+            $this->amountToMinor(str_replace(',', '', $data['actual_amount'])),
+        );
 
-        return back()->with('success', "COD cash {$collection->collection_no} was recorded as remitted to Finance.");
+        return redirect()
+            ->route('logistics.cash.index')
+            ->with('success', "Cash given to Finance has been recorded. Handoff reference: {$collection->finance_remittance_reference}.");
     }
 
     public function receiveRefundCash(Request $request, RefundCashPayout $payout, RefundCashPayoutService $cash): RedirectResponse

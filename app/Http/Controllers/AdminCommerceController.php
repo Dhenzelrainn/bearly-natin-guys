@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Services\AuditService;
+use App\Services\BuyerCatalogService;
 use App\Services\CommissionLedgerService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -13,9 +14,27 @@ use Illuminate\View\View;
 
 class AdminCommerceController extends Controller
 {
-    public function orders(Request $request): View
+    public function orders(Request $request, BuyerCatalogService $catalog): View
     {
-        $orders = Order::with(['buyer', 'sellerOrders.store', 'sellerOrders.items', 'payments'])->latest()->paginate(15);
+        $orders = Order::with([
+            'buyer',
+            'sellerOrders.store',
+            'sellerOrders.items.product.images.variant',
+            'sellerOrders.items.variant',
+            'payments',
+        ])->latest()->paginate(15);
+
+        $orders->getCollection()->each(function (Order $order) use ($catalog): void {
+            $order->sellerOrders->each(function ($sellerOrder) use ($catalog): void {
+                $sellerOrder->setAttribute('item_previews', $sellerOrder->items->map(fn ($item): array => [
+                    'name' => $item->product_name ?: 'Unnamed product',
+                    'variant' => trim((string) $item->variant_name),
+                    'quantity' => (int) $item->quantity,
+                    'price' => '₱'.number_format((int) $item->subtotal_minor / 100, 2),
+                    'image_url' => $catalog->orderItemImageUrl($item),
+                ])->values()->all());
+            });
+        });
 
         return view('admin.finance.orders', $this->base($request) + compact('orders'));
     }

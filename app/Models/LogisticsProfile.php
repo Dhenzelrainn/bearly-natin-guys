@@ -31,6 +31,29 @@ class LogisticsProfile extends Model
         return $this->hasMany(Shipment::class);
     }
 
+    public function serviceAddress()
+    {
+        return $this->hasOne(Address::class, 'user_id', 'user_id')
+            ->whereRaw('LOWER(label) = ?', ['sorting center'])
+            ->orderByDesc('id');
+    }
+
+    public function outgoingTransfers()
+    {
+        return $this->hasMany(
+            ShipmentTransfer::class,
+            'from_logistics_profile_id'
+        );
+    }
+
+    public function incomingTransfers()
+    {
+        return $this->hasMany(
+            ShipmentTransfer::class,
+            'to_logistics_profile_id'
+        );
+    }
+
     public function pickupRequests()
     {
         return $this->hasMany(PickupRequest::class);

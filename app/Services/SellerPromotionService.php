@@ -32,6 +32,11 @@ class SellerPromotionService
                 'images' => fn ($images) => $images
                     ->whereNull('variant_id')
                     ->orderBy('position'),
+                'violations' => fn ($violations) => $violations
+                    ->whereHas('warnings', fn ($warnings) => $warnings->where('status', 'active'))
+                    ->with(['warnings' => fn ($warnings) => $warnings
+                        ->where('status', 'active')
+                        ->orderByDesc('issued_at')]),
             ])
             ->orderByDesc('id')
             ->get()

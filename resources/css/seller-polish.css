@@ -225,6 +225,7 @@ a.order-row-action { text-decoration: none; }
 
 /* Finance */
 .finance-page-heading { align-items: flex-end; }
+.finance-heading-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 9px; }
 .commission-rule-banner { align-items: flex-start; background: linear-gradient(135deg, #fffaf2, #fff); }
 .commission-rule-banner h3 { margin: 2px 0 0; font-size: 16px; }
 .finance-summary-grid {
@@ -285,6 +286,48 @@ a.order-row-action { text-decoration: none; }
 .finance-status.is-pending { color: #8a5a18; background: #fff0d9; }
 .finance-status.is-reversed { color: #8d4b37; background: #fae9e3; }
 .finance-status.is-cancelled { color: #726964; background: #efedeb; }
+.finance-status.is-processing { color: #3e6785; background: #eaf3f8; }
+.finance-status.is-on-hold { color: #8d4b37; background: #fae9e3; }
+.finance-settlements-card { margin-bottom: 18px; padding: 20px; }
+.finance-settlements-card .seller-panel-heading { align-items: flex-start; }
+.finance-settlements-card .seller-panel-heading p { margin: 4px 0 0; color: var(--seller-muted); font-size: 12px; line-height: 1.5; }
+.finance-settlement-table { min-width: 980px; }
+.finance-settlement-table th { font-size: 12px; }
+.finance-settlement-table td { font-size: 12px; }
+.finance-settlement-table td small { font-size: 11px; line-height: 1.45; }
+.finance-settlement-table .finance-status { font-size: 11px; }
+.finance-settlement-empty { display: grid; min-height: 92px; align-content: center; justify-items: center; gap: 5px; color: var(--seller-muted); text-align: center; white-space: normal; }
+.finance-settlement-empty strong { color: var(--seller-brown-950); font-size: 12px; }
+.finance-settlement-empty span { max-width: 440px; font-size: 11px; line-height: 1.5; }
+.finance-proof-pending { color: var(--seller-muted); font-size: 11px; line-height: 1.45; }
+.finance-receipt-link { display: inline-flex; min-height: 38px; align-items: center; justify-content: center; padding: 0 10px; border: 1px solid #ead7bd; border-radius: 7px; color: #80501c; background: #fffaf2; font-size: 11px; font-weight: 700; text-decoration: none; white-space: nowrap; }
+.finance-receipt-link:hover { border-color: #d99b3d; color: #6f4014; background: #fff2df; }
+.finance-receipt-link:focus-visible { outline: 2px solid var(--seller-gold-dark); outline-offset: 2px; }
+.finance-product-list { display: grid; min-width: 260px; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.finance-product-list > li { display: grid; grid-template-columns: 42px minmax(0, 1fr); align-items: center; gap: 9px; }
+.finance-product-list img,
+.finance-product-placeholder { display: grid; width: 42px; height: 42px; place-items: center; overflow: hidden; border: 1px solid #eee4d8; border-radius: 8px; background: #faf6ef; object-fit: cover; }
+.finance-product-placeholder { color: #947456; }
+.finance-product-placeholder svg { width: 19px; height: 19px; }
+.seller-body .order-item-preview-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; min-width: 0; margin-top: 8px; }
+.seller-body .order-item-preview { display: flex; min-width: 0; align-items: center; gap: 9px; }
+.seller-body .order-item-preview-image { display: grid; width: 44px; height: 44px; flex: 0 0 44px; place-items: center; overflow: hidden; border: 1px solid var(--seller-line); border-radius: 8px; background: #faf6ef; color: var(--seller-muted); }
+.seller-body .order-item-preview-image img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.seller-body .order-item-preview-copy { display: grid; min-width: 0; gap: 2px; }
+.seller-body .order-item-preview-copy strong, .seller-body .order-item-preview-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.seller-body .order-item-preview-copy strong { color: var(--seller-text); font-size: 11px; line-height: 1.35; }
+.seller-body .order-item-preview-copy small, .seller-body .order-item-preview-empty, .seller-body .finance-product-unavailable { color: var(--seller-muted); font-size: 10px; line-height: 1.4; }
+.seller-body .order-item-preview-placeholder { display: grid; width: 100%; height: 100%; place-content: center; justify-items: center; gap: 1px; color: var(--seller-muted); }
+.seller-body .order-item-preview-placeholder svg { width: 16px; height: 16px; }
+.seller-body .order-item-preview-placeholder small { font-size: 8px; line-height: 1.1; }
+
+@media (max-width: 720px) {
+    .seller-body .order-item-preview-list { grid-template-columns: minmax(0, 1fr); }
+}
+.finance-product-copy { display: block; min-width: 0; }
+.finance-table .finance-product-copy strong { overflow: hidden; color: var(--seller-brown-950); text-overflow: ellipsis; white-space: nowrap; }
+.finance-table .finance-product-copy small { overflow-wrap: anywhere; }
+.finance-recent-card .finance-table { min-width: 1040px; }
 .finance-ledger { overflow: hidden; }
 .finance-ledger-toolbar { display: grid; grid-template-columns: minmax(260px, 1fr) 190px auto; gap: 10px; padding: 16px 18px; border-bottom: 1px solid var(--seller-line); background: #fffdf9; }
 .finance-ledger-toolbar label { display: flex; min-height: 42px; align-items: center; gap: 8px; padding: 0 11px; border: 1px solid #ddd4cb; border-radius: 9px; background: #fff; }
@@ -370,6 +413,8 @@ a.order-row-action { text-decoration: none; }
 }
 
 @media (max-width: 600px) {
+    .finance-heading-actions { width: 100%; align-items: stretch; flex-direction: column; }
+    .finance-heading-actions > * { width: 100%; justify-content: center; }
     .finance-summary-grid,
     .return-role-flow,
     .product-commission-preview { grid-template-columns: 1fr; }
@@ -1634,3 +1679,27 @@ a.order-row-action { text-decoration: none; }
     font-size: 12px;
     line-height: 1.55;
 }
+
+/* Reports & Dashboard live data */
+.finance-status.is-posted { color: #3e6785; background: #eaf3f8; }
+.finance-status.is-withdrawn { color: #726964; background: #efedeb; }
+.report-status.is-available { color: #587441; background: #edf5e8; }
+.report-status.is-posted { color: #3e6785; background: #eaf3f8; }
+.report-status.is-withdrawn { color: #6a615b; background: #efece9; }
+.report-status.is-reversed { color: #8d4b37; background: #fae9e3; }
+.report-status.is-none { color: #9a918a; background: #f3f1ef; }
+.seller-notification-empty { margin: 0; padding: 14px 15px; color: var(--seller-muted); font-size: 11px; }
+.dashboard-ref-product-thumb img { width: 100%; height: 100%; border-radius: inherit; object-fit: cover; }
+.dashboard-ref-product-empty { margin: 0; padding: 18px 4px 14px; color: var(--seller-muted); font-size: 10px; line-height: 1.5; }
+.dashboard-ref-chart-note { margin: 8px 16px 13px; color: #978d85; font-size: 8px; }
+.dashboard-ref-health-row.tone-neutral .dashboard-ref-health-icon,
+.dashboard-ref-health-row.tone-neutral strong { color: #7d736c; }
+.dashboard-ref-chart-controls button,
+.seller-date-control button { min-height: 30px; padding: 0 10px; border: 1px solid #ddd6d0; border-radius: 6px; color: #4c443e; background: #fff; font-size: 9px; cursor: pointer; }
+.product-sales-sort { display: inline-flex; align-items: center; gap: 6px; }
+.product-sales-sort > span { color: var(--seller-muted); font-size: 8px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.product-sales-sort a { display: inline-flex; min-height: 28px; align-items: center; padding: 0 10px; border: 1px solid #ddd4cb; border-radius: 999px; color: #6a615b; background: #fff; font-size: 8px; font-weight: 600; text-decoration: none; }
+.product-sales-sort a:hover { border-color: #c99a52; color: #7a4e13; }
+.product-sales-sort a.is-active { border-color: #d99b3d; color: #6f4014; background: #fff2df; }
+.report-product-subcategory { color: var(--seller-muted); font-size: 9px; }
+.sales-leaderboard-empty { padding: 18px 20px; color: var(--seller-muted); font-size: 10px; line-height: 1.5; list-style: none; }

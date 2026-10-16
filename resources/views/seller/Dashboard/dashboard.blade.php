@@ -8,74 +8,20 @@
 @endsection
 
 @section('topbar-controls')
-    <label class="seller-date-control" aria-label="Dashboard date range">
+    <form class="seller-date-control" method="GET" action="{{ route('seller.dashboard') }}" aria-label="Dashboard date range">
         <i data-lucide="calendar-days" aria-hidden="true"></i>
-        <select aria-label="Dashboard date range">
-            <option>Aug 1, 2026 – Aug 31, 2026</option>
-            <option>Last 7 days</option>
-            <option>Last 30 days</option>
-            <option>This month</option>
+        <select name="period" aria-label="Dashboard date range" data-period-nav>
+            <option value="this_month" @selected($periodKey === 'this_month')>This month</option>
+            <option value="last_month" @selected($periodKey === 'last_month')>Last month</option>
+            <option value="last_7" @selected($periodKey === 'last_7')>Last 7 days</option>
+            <option value="last_30" @selected($periodKey === 'last_30')>Last 30 days</option>
         </select>
-    </label>
+        <input type="hidden" name="interval" value="{{ $chartInterval }}">
+        <noscript><button type="submit">Apply</button></noscript>
+    </form>
 @endsection
 
 @section('content')
-@php
-    $dashboardActions = [
-        [
-            'count' => 8,
-            'label' => 'Orders to Confirm',
-            'detail' => 'Confirm within 2 hours',
-            'icon' => 'shopping-cart',
-            'route' => route('seller.orders.new'),
-        ],
-        [
-            'count' => 5,
-            'label' => 'Low-Stock Products',
-            'detail' => 'Restock to avoid stockouts',
-            'icon' => 'package',
-            'route' => route('seller.inventory'),
-        ],
-        [
-            'count' => 3,
-            'label' => 'Return Requests',
-            'detail' => 'Awaiting your response',
-            'icon' => 'rotate-ccw',
-            'route' => route('seller.orders.returns'),
-        ],
-        [
-            'count' => 5,
-            'label' => 'Orders Ready for Pickup',
-            'detail' => 'Ready for courier collection',
-            'icon' => 'truck',
-            'route' => route('seller.fulfillment.pickups'),
-        ],
-    ];
-
-    $performanceCards = [
-        ['label' => 'Total Sales', 'value' => '₱128,450', 'change' => '↑ 12.5%'],
-        ['label' => 'Total Orders', 'value' => '91', 'change' => '↑ 8.3%'],
-        ['label' => 'Net Earnings', 'value' => '₱109,876', 'change' => '↑ 10.8%'],
-        ['label' => 'Platform Commission', 'value' => '₱12,845', 'change' => '↑ 8.1%'],
-    ];
-
-    $dashboardProducts = [
-        ['name' => 'Classic Linen Shirt', 'variant' => 'Natural / Medium', 'sold' => 38, 'revenue' => '₱52,440', 'icon' => 'shirt'],
-        ['name' => 'Canvas Tote Bag', 'variant' => 'Natural Canvas', 'sold' => 29, 'revenue' => '₱34,018', 'icon' => 'shopping-bag'],
-        ['name' => 'Everyday Sneakers', 'variant' => 'White / Size 39', 'sold' => 24, 'revenue' => '₱25,320', 'icon' => 'footprints'],
-        ['name' => 'Classic Brown Tee', 'variant' => 'Brown / Large', 'sold' => 18, 'revenue' => '₱17,820', 'icon' => 'shirt'],
-        ['name' => 'Everyday Cap', 'variant' => 'Embroidered', 'sold' => 12, 'revenue' => '₱7,800', 'icon' => 'circle-dot'],
-    ];
-
-    $healthRows = [
-        ['label' => 'Account Status', 'value' => 'Healthy', 'tone' => 'success'],
-        ['label' => 'Order Fulfillment Rate', 'value' => '98%', 'tone' => 'success'],
-        ['label' => 'Response Rate', 'value' => '100%', 'tone' => 'success'],
-        ['label' => 'Cancellation Rate', 'value' => '< 1%', 'tone' => 'success'],
-        ['label' => 'Product Stock Level', 'value' => '5 low-stock items', 'tone' => 'warning'],
-    ];
-@endphp
-
 <div class="dashboard-ref-page">
 
     <section class="dashboard-ref-reminder" aria-label="Order workflow reminder">
@@ -163,77 +109,71 @@
                 <div>
                     <h2>Sales Overview</h2>
                     <div class="dashboard-ref-sales-total">
-                        <strong>₱128,450</strong>
-                        <span>↑ 12.5%</span>
-                        <small>from previous period</small>
+                        <strong>{{ $salesTotal }}</strong>
+                        <span>{{ $salesChange }}</span>
+                        <small>{{ $salesChangeNote }}</small>
                     </div>
                 </div>
 
-                <div class="dashboard-ref-chart-controls">
-                    <select aria-label="Sales metric">
-                        <option>Total Sales</option>
-                        <option>Net Earnings</option>
+                <form class="dashboard-ref-chart-controls" method="GET" action="{{ route('seller.dashboard') }}" aria-label="Sales chart filters">
+                    <input type="hidden" name="period" value="{{ $periodKey }}">
+                    <select name="interval" aria-label="Sales interval" data-period-nav>
+                        <option value="daily" @selected($chartInterval === 'daily')>Daily</option>
+                        <option value="weekly" @selected($chartInterval === 'weekly')>Weekly</option>
                     </select>
-                    <select aria-label="Sales interval">
-                        <option>Daily</option>
-                        <option>Weekly</option>
-                    </select>
-                </div>
+                    <noscript><button type="submit">Apply</button></noscript>
+                </form>
             </header>
 
-            <div class="dashboard-ref-chart" aria-label="Sales overview for August 2026">
-                <div class="dashboard-ref-chart-y" aria-hidden="true">
-                    <span>20,000</span>
-                    <span>15,000</span>
-                    <span>10,000</span>
-                    <span>5,000</span>
-                    <span>0</span>
-                </div>
-
-                <div class="dashboard-ref-chart-plot">
-                    <span class="dashboard-ref-grid-line line-1"></span>
-                    <span class="dashboard-ref-grid-line line-2"></span>
-                    <span class="dashboard-ref-grid-line line-3"></span>
-                    <span class="dashboard-ref-grid-line line-4"></span>
-                    <span class="dashboard-ref-grid-line line-5"></span>
-
-                    <svg viewBox="0 0 760 230" role="img" aria-label="Daily sales trend" preserveAspectRatio="none">
-                        <defs>
-                            <linearGradient id="dashboardSalesFill" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0" stop-color="#E9A72F" stop-opacity=".20"/>
-                                <stop offset="1" stop-color="#E9A72F" stop-opacity="0"/>
-                            </linearGradient>
-                        </defs>
-
-                        <path
-                            class="dashboard-ref-chart-area"
-                            d="M10 185 L60 162 L105 184 L150 148 L195 171 L240 143 L285 176 L330 134 L375 164 L420 124 L465 151 L510 135 L555 160 L600 118 L645 86 L690 122 L730 95 L752 60 L752 214 L10 214 Z"
-                        />
-                        <polyline
-                            class="dashboard-ref-chart-line"
-                            points="10,185 60,162 105,184 150,148 195,171 240,143 285,176 330,134 375,164 420,124 465,151 510,135 555,160 600,118 645,86 690,122 730,95 752,60"
-                        />
-
-                        @foreach ([
-                            [10,185],[60,162],[105,184],[150,148],[195,171],[240,143],
-                            [285,176],[330,134],[375,164],[420,124],[465,151],[510,135],
-                            [555,160],[600,118],[645,86],[690,122],[730,95],[752,60]
-                        ] as $point)
-                            <circle cx="{{ $point[0] }}" cy="{{ $point[1] }}" r="4.5" />
+            @if ($salesChart['has_data'])
+                <div class="dashboard-ref-chart" aria-label="Sales overview for {{ $periodLabel }}">
+                    <div class="dashboard-ref-chart-y" aria-hidden="true">
+                        @foreach ($salesChart['y_axis'] as $axisLabel)
+                            <span>{{ $axisLabel }}</span>
                         @endforeach
-                    </svg>
+                    </div>
 
-                    <div class="dashboard-ref-chart-days" aria-hidden="true">
-                        <span>Aug 1</span>
-                        <span>Aug 5</span>
-                        <span>Aug 10</span>
-                        <span>Aug 15</span>
-                        <span>Aug 20</span>
-                        <span>Aug 25</span>
-                        <span>Aug 31</span>
+                    <div class="dashboard-ref-chart-plot">
+                        <span class="dashboard-ref-grid-line line-1"></span>
+                        <span class="dashboard-ref-grid-line line-2"></span>
+                        <span class="dashboard-ref-grid-line line-3"></span>
+                        <span class="dashboard-ref-grid-line line-4"></span>
+                        <span class="dashboard-ref-grid-line line-5"></span>
+
+                        <svg viewBox="0 0 760 230" role="img" aria-label="Gross completed sales trend" preserveAspectRatio="none">
+                            <defs>
+                                <linearGradient id="dashboardSalesFill" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0" stop-color="#E9A72F" stop-opacity=".20"/>
+                                    <stop offset="1" stop-color="#E9A72F" stop-opacity="0"/>
+                                </linearGradient>
+                            </defs>
+
+                            <path
+                                class="dashboard-ref-chart-area"
+                                d="{{ $salesChart['area'] }}"
+                            />
+                            <polyline
+                                class="dashboard-ref-chart-line"
+                                points="{{ $salesChart['polyline'] }}"
+                            />
+
+                            @foreach ($salesChart['points'] as $point)
+                                <circle cx="{{ $point[0] }}" cy="{{ $point[1] }}" r="4.5" />
+                            @endforeach
+                        </svg>
+
+                        <div class="dashboard-ref-chart-days" aria-hidden="true" style="grid-template-columns:repeat({{ max(1, count($salesChart['labels'])) }}, 1fr)">
+                            @foreach ($salesChart['labels'] as $dayLabel)
+                                <span>{{ $dayLabel }}</span>
+                            @endforeach
+                        </div>
                     </div>
                 </div>
-            </div>
+            @else
+                <div class="dashboard-ref-chart-empty report-no-results"><i data-lucide="bar-chart-3"></i><strong>No completed sales in this period</strong><span>Gross sales will chart here once orders complete.</span></div>
+            @endif
+
+            <p class="dashboard-ref-chart-note">Gross completed sales by completion date for {{ $periodLabel }}. Cancelled orders are excluded.</p>
         </article>
 
         <article class="dashboard-ref-panel dashboard-ref-products-panel">
@@ -250,12 +190,16 @@
             </div>
 
             <div class="dashboard-ref-product-list">
-                @foreach ($dashboardProducts as $index => $product)
+                @forelse ($dashboardProducts as $index => $product)
                     <article class="dashboard-ref-product-row">
                         <span class="dashboard-ref-product-rank">{{ $index + 1 }}</span>
 
                         <span class="dashboard-ref-product-thumb" aria-hidden="true">
-                            <i data-lucide="{{ $product['icon'] }}"></i>
+                            @if ($product['image_url'] !== '')
+                                <img src="{{ $product['image_url'] }}" alt="" loading="lazy">
+                            @else
+                                <i data-lucide="{{ $product['icon'] }}"></i>
+                            @endif
                         </span>
 
                         <div class="dashboard-ref-product-name">
@@ -266,7 +210,9 @@
                         <strong class="dashboard-ref-product-sold">{{ $product['sold'] }}</strong>
                         <strong class="dashboard-ref-product-revenue">{{ $product['revenue'] }}</strong>
                     </article>
-                @endforeach
+                @empty
+                    <p class="dashboard-ref-product-empty">No completed sales yet. Top products will appear here once orders complete.</p>
+                @endforelse
             </div>
         </article>
     </section>
@@ -280,27 +226,21 @@
 
             <div class="dashboard-ref-earnings-layout">
                 <div class="dashboard-ref-earnings-total">
-                    <strong>₱109,876</strong>
+                    <strong>{{ $earningsTotal }}</strong>
                     <span>Net Earnings</span>
-                    <small>↑ 10.8%</small>
+                    <small>{{ $earningsChange }}</small>
                 </div>
 
                 <dl class="dashboard-ref-earnings-breakdown">
-                    <div>
-                        <dt>Total Sales</dt>
-                        <dd>₱128,450</dd>
-                    </div>
-                    <div>
-                        <dt>Platform Commission</dt>
-                        <dd>− ₱12,845</dd>
-                    </div>
-                    <div>
-                        <dt>Other Fees</dt>
-                        <dd>− ₱5,729</dd>
-                    </div>
+                    @foreach ($earningsBreakdown as $row)
+                        <div>
+                            <dt>{{ $row['label'] }}</dt>
+                            <dd>{{ $row['value'] }}</dd>
+                        </div>
+                    @endforeach
                     <div class="is-total">
                         <dt>Net Earnings</dt>
-                        <dd>₱109,876</dd>
+                        <dd>{{ $earningsNet }}</dd>
                     </div>
                 </dl>
             </div>
@@ -318,9 +258,9 @@
                 </span>
 
                 <div>
-                    <strong>5</strong>
+                    <strong>{{ $pickupSummary['count'] }}</strong>
                     <span>Orders for Pickup</span>
-                    <small>Ready for courier collection</small>
+                    <small>{{ $pickupSummary['count'] > 0 ? 'Ready for courier collection' : 'No parcels ready yet' }}</small>
                 </div>
             </div>
 
@@ -328,8 +268,13 @@
                 <i data-lucide="calendar-days" aria-hidden="true"></i>
                 <div>
                     <span>Next Pickup Schedule</span>
-                    <strong>Today</strong>
-                    <small>{{ $pickupSummary['time'] ?? '3:00 PM' }} · {{ $pickupSummary['date'] ?? 'Laguna route' }}</small>
+                    @if ($pickupSummary['has_schedule'])
+                        <strong>{{ $pickupSummary['date_label'] }}</strong>
+                        <small>{{ $pickupSummary['time_label'] }}</small>
+                    @else
+                        <strong>No pickup scheduled</strong>
+                        <small>Submit a pickup request once parcels are ready.</small>
+                    @endif
                 </div>
             </div>
         </article>
@@ -344,7 +289,7 @@
                 @foreach ($healthRows as $item)
                     <div class="dashboard-ref-health-row tone-{{ $item['tone'] }}">
                         <span class="dashboard-ref-health-icon" aria-hidden="true">
-                            <i data-lucide="{{ $item['tone'] === 'warning' ? 'circle-alert' : 'circle-check-big' }}"></i>
+                            <i data-lucide="{{ $item['tone'] === 'warning' ? 'circle-alert' : ($item['tone'] === 'neutral' ? 'circle-dot' : 'circle-check-big') }}"></i>
                         </span>
                         <span>{{ $item['label'] }}</span>
                         <strong>{{ $item['value'] }}</strong>

@@ -12,6 +12,7 @@ use App\Services\PostalCodeLookup;
 use App\Services\RegistrationLifecycleService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
@@ -105,18 +106,46 @@ class MobileRegistrationController extends Controller
             ),
         ]);
 
+        $phoneCountry = strtoupper(
+            trim((string) $request->input('phone_country'))
+        );
+        $contactNumber = trim(
+            (string) $request->input('contact_number')
+        );
+
+        if ($contactNumber !== '' && $phoneCountry !== '') {
+            $request->merge([
+                'contact_number' => $phone->normalize(
+                    $contactNumber,
+                    $phoneCountry
+                ),
+            ]);
+        }
+
+        foreach (['first_name', 'last_name'] as $nameField) {
+            $name = $request->input($nameField);
+
+            if (is_string($name)) {
+                $request->merge([
+                    $nameField => trim($name),
+                ]);
+            }
+        }
+
         $data = $request->validate([
             'first_name' => [
                 'required',
                 'string',
-                'max:60',
+                'min:2',
+                'max:50',
                 'regex:/^[\pL\s\'\-]+$/u',
             ],
 
             'last_name' => [
                 'required',
                 'string',
-                'max:60',
+                'min:2',
+                'max:50',
                 'regex:/^[\pL\s\'\-]+$/u',
             ],
 
@@ -138,8 +167,14 @@ class MobileRegistrationController extends Controller
 
             'birthday' => [
                 'required',
+                'bail',
                 'date',
                 'before:today',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    if (Carbon::parse((string) $value)->gt(today()->subYears(18))) {
+                        $fail('You must be at least 18 years old to register.');
+                    }
+                },
             ],
 
             'email' => [
@@ -159,6 +194,8 @@ class MobileRegistrationController extends Controller
                 'required',
                 'string',
                 'max:17',
+                Rule::unique('users', 'contact_number'),
+                Rule::unique('users', 'phone'),
             ],
 
             'phone_country' => [
@@ -250,11 +287,6 @@ class MobileRegistrationController extends Controller
         |--------------------------------------------------------------------------
         */
 
-        $data['contact_number'] = $phone->normalize(
-            $data['contact_number'],
-            $data['phone_country']
-        );
-
         $postalCodes->validate($data);
 
         /*
@@ -324,6 +356,8 @@ class MobileRegistrationController extends Controller
                         $data['email'],
 
                     'google_id' => null,
+
+                    'phone' => $data['contact_number'],
 
                     'contact_number' =>
                         $data['contact_number'],

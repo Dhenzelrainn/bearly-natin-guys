@@ -14,6 +14,7 @@ use App\Models\Store;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -101,6 +102,49 @@ class BuyerAccountIntegrationTest extends TestCase
         $this->assertSame('+639171234567', $updatedBuyer->phone);
         $this->assertSame('female', $updatedBuyer->sex);
         $this->assertSame('1995-05-20', $updatedBuyer->birthday->format('Y-m-d'));
+    }
+
+    public function test_checkout_uses_canonical_contact_when_legacy_phone_is_empty(): void
+    {
+        $buyer = $this->makeBuyer('checkout-phone@example.test', 'Ava Buyer');
+        $buyer->forceFill([
+            'phone' => null,
+            'contact_number' => '+639171234567',
+        ])->save();
+
+        $this->actingAs($buyer)
+            ->get(route('checkout'))
+            ->assertOk()
+            ->assertSee('+639171234567')
+            ->assertSee('Shipping is a flat fee for each seller parcel.')
+            ->assertDontSee('using the Store pickup address, route tier, packaged SKU weight');
+    }
+
+    public function test_profile_update_rejects_duplicate_phone_and_underage_birthday(): void
+    {
+        $buyer = $this->makeBuyer('buyer@example.test', 'Ava Buyer');
+
+        User::factory()->create([
+            'email' => 'phone-owner@example.test',
+            'contact_number' => '+639177777777',
+            'phone' => '+639177777777',
+        ]);
+
+        Carbon::setTestNow('2026-10-08 12:00:00');
+
+        try {
+            $this->actingAs($buyer)
+                ->patchJson('/profile', [
+                    'full_name' => 'Ava Buyer',
+                    'phone' => '0917 777 7777',
+                    'gender' => 'Female',
+                    'birthday' => '2008-10-09',
+                ])
+                ->assertUnprocessable()
+                ->assertJsonValidationErrors(['phone', 'birthday']);
+        } finally {
+            Carbon::setTestNow();
+        }
     }
 
     public function test_profile_photo_upload_and_removal_are_server_backed(): void

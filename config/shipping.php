@@ -3,6 +3,7 @@
 return [
     'provider_key' => 'bearly_logistics',
     'provider_label' => 'Bearly Logistics',
+    'default_seller_order_fee_minor' => 5000,
     'default_volumetric_divisor' => 5000,
     'route_tiers' => [
         'nearby_delivery' => [

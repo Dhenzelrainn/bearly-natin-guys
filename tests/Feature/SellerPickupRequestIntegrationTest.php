@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\UserRole;
 use App\Models\Address;
+use App\Models\AuditLog;
 use App\Models\LogisticsProfile;
 use App\Models\Order;
 use App\Models\Payment;
@@ -17,6 +18,7 @@ use App\Models\ShipmentEvent;
 use App\Models\Store;
 use App\Models\User;
 use App\Models\Waybill;
+use App\Services\SellerPickupRequestService;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -106,7 +108,7 @@ class SellerPickupRequestIntegrationTest extends TestCase
             ->assertSee($store->name)
             ->assertSee($sellerOrders[0]->seller_order_no)
             ->assertSee($sellerOrders[1]->seller_order_no)
-            ->assertSee('2 parcels')
+            ->assertSeeHtml('<span><small>Total parcels</small><strong>2</strong></span>')
             ->assertSee('Pending');
 
         $this->actingAs($provider['user'])
@@ -305,6 +307,125 @@ class SellerPickupRequestIntegrationTest extends TestCase
 
         $this->assertSame('ready_for_pickup', $sellerOrder->fresh()->status);
         $this->assertSame('picked_up', $lagging->fresh()->status);
+    }
+
+    public function test_seller_waybills_are_store_scoped_and_pdf_print_actions_are_audited(): void
+    {
+        [$seller, $store] = $this->seller();
+        [$foreignSeller, $foreignStore] = $this->seller();
+        $provider = $this->provider('waybills');
+        $ownedOrder = $this->readySellerOrder($store, 'waybill-owned');
+        $foreignOrder = $this->readySellerOrder($foreignStore, 'waybill-foreign');
+        $pickupRequests = app(SellerPickupRequestService::class);
+        $pickupDate = today()->addDay()->toDateString();
+
+        $pickupRequests->create($seller, $provider['profile']->id, [$ownedOrder->id], $pickupDate, '10:00-12:00');
+        $pickupRequests->create($foreignSeller, $provider['profile']->id, [$foreignOrder->id], $pickupDate, '13:00-15:00');
+
+        $ownedWaybill = Waybill::query()
+            ->whereHas('shipment.sellerOrder', fn ($query) => $query->whereKey($ownedOrder->id))
+            ->sole();
+        $foreignWaybill = Waybill::query()
+            ->whereHas('shipment.sellerOrder', fn ($query) => $query->whereKey($foreignOrder->id))
+            ->sole();
+
+        $this->actingAs($seller)
+            ->get(route('seller.fulfillment.waybills'))
+            ->assertOk()
+            ->assertSee($ownedWaybill->waybill_no)
+            ->assertDontSee($foreignWaybill->waybill_no)
+            ->assertSee($ownedOrder->seller_order_no)
+            ->assertSee('Download PDF');
+
+        $this->actingAs($seller)
+            ->post(route('seller.fulfillment.waybills.printed', $ownedWaybill))
+            ->assertConflict();
+        $this->assertSame(0, (int) $ownedWaybill->fresh()->print_count);
+
+        $pdfResponse = $this->actingAs($seller)
+            ->post(route('seller.fulfillment.waybills.pdf'), [
+                'waybill_ids' => [$ownedWaybill->id],
+            ])
+            ->assertOk()
+            ->assertHeader('Content-Type', 'application/pdf');
+
+        $pdf = $pdfResponse->getContent();
+        $this->assertIsString($pdf);
+        $this->assertStringStartsWith('%PDF-', $pdf);
+        preg_match_all('/\/MediaBox\s*\[([^\]]+)\]/', $pdf, $mediaBoxMatches);
+        $this->assertNotEmpty($mediaBoxMatches[1], 'The PDF must include an explicit page size.');
+        preg_match_all('/\/Type\s*\/Page\b/', $pdf, $pageMatches);
+        $this->assertCount(1, $pageMatches[0], 'One waybill must render on exactly one PDF page.');
+        $mediaBox = preg_split('/\s+/', trim(end($mediaBoxMatches[1])));
+        $this->assertSame([0.0, 0.0, 288.0, 432.0], array_map('floatval', $mediaBox));
+        $this->assertStringContainsString('/DCTDecode', $pdf, 'The official Bearly logo should be embedded as a JPEG without requiring GD.');
+        $pdfContent = $this->decodedPdfStreams($pdf);
+        preg_match_all('/0\.000 0\.000 0\.000 rg\s+[\d.]+\s+[\d.]+\s+[\d.]+\s+[\d.]+\s+re f/', $pdfContent, $barcodeBars);
+        $this->assertGreaterThan(40, count($barcodeBars[0]), 'The PDF must draw the Code 128 bars, not just show its text.');
+        $this->assertStringContainsString("C\0O\0D", $pdfContent, 'The COD section must remain on the single label page.');
+        $this->assertStringNotContainsString($ownedWaybill->scan_token, $pdf);
+        $this->assertDatabaseHas('audit_logs', [
+            'actor_user_id' => $seller->id,
+            'action' => 'seller_waybill.pdf_generated',
+            'auditable_type' => Waybill::class,
+            'auditable_id' => $ownedWaybill->id,
+        ]);
+
+        $this->actingAs($seller)
+            ->post(route('seller.fulfillment.waybills.printed', $ownedWaybill))
+            ->assertRedirect(route('seller.fulfillment.waybills'));
+        $this->assertSame(1, (int) $ownedWaybill->fresh()->print_count);
+        $this->assertNotNull($ownedWaybill->fresh()->printed_at);
+
+        $this->actingAs($seller)
+            ->post(route('seller.fulfillment.waybills.printed', $ownedWaybill))
+            ->assertRedirect(route('seller.fulfillment.waybills'));
+        $this->assertSame(2, (int) $ownedWaybill->fresh()->print_count);
+        $this->assertSame(2, AuditLog::query()
+            ->where('action', 'seller_waybill.print_confirmed')
+            ->where('auditable_id', $ownedWaybill->id)
+            ->count());
+
+        $this->actingAs($seller)
+            ->post(route('seller.fulfillment.waybills.pdf'), [
+                'waybill_ids' => [$foreignWaybill->id],
+            ])
+            ->assertNotFound();
+        $this->actingAs($seller)
+            ->post(route('seller.fulfillment.waybills.printed', $foreignWaybill))
+            ->assertNotFound();
+
+        $ownedWaybill->update(['status' => 'voided', 'voided_at' => now()]);
+        $this->actingAs($seller)
+            ->post(route('seller.fulfillment.waybills.pdf'), [
+                'waybill_ids' => [$ownedWaybill->id],
+            ])
+            ->assertConflict();
+        $this->actingAs($seller)
+            ->post(route('seller.fulfillment.waybills.printed', $ownedWaybill))
+            ->assertConflict();
+    }
+
+    private function decodedPdfStreams(string $pdf): string
+    {
+        preg_match_all('/<<(.*?)>>\s*stream\r?\n(.*?)\r?\nendstream/s', $pdf, $streams, PREG_SET_ORDER);
+        $content = '';
+
+        foreach ($streams as $stream) {
+            $bytes = $stream[2];
+
+            if (str_contains($stream[1], '/FlateDecode')) {
+                $decoded = @gzuncompress($bytes);
+                if ($decoded === false) {
+                    continue;
+                }
+                $bytes = $decoded;
+            }
+
+            $content .= $bytes;
+        }
+
+        return $content;
     }
 
     /** @return array{0: User, 1: Store} */

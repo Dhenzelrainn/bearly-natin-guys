@@ -26,6 +26,7 @@
             <a href="{{ route('logistics.pickups.index') }}" class="ops-nav-link {{ request()->routeIs('logistics.pickups.*') ? 'is-active' : '' }}"><i data-lucide="package-check"></i><span>Pickup Requests</span></a>
             <a href="{{ route('logistics.cash.index') }}" class="ops-nav-link {{ request()->routeIs('logistics.cash.*') ? 'is-active' : '' }}"><i data-lucide="banknote"></i><span>Cash custody</span></a>
             <a href="{{ route('logistics.sorting.incoming') }}" class="ops-nav-link {{ request()->routeIs('logistics.sorting.incoming') ? 'is-active' : '' }}"><i data-lucide="package-open"></i><span>Incoming Parcels</span></a>
+            <a href="{{ route('logistics.transfers.index') }}" class="ops-nav-link {{ request()->routeIs('logistics.transfers.*') ? 'is-active' : '' }}"><i data-lucide="arrow-left-right"></i><span>City Handoffs</span></a>
             <a href="{{ route('logistics.sorting.center') }}" class="ops-nav-link {{ request()->routeIs('logistics.sorting.center') ? 'is-active' : '' }}"><i data-lucide="warehouse"></i><span>Sorting Center</span></a>
             <a href="{{ route('logistics.dispatch.index') }}" class="ops-nav-link {{ request()->routeIs('logistics.dispatch.index') ? 'is-active' : '' }}"><i data-lucide="route"></i><span>Delivery Assignment</span></a>
             <a href="{{ route('logistics.dispatch.monitoring') }}" class="ops-nav-link {{ request()->routeIs('logistics.dispatch.monitoring') ? 'is-active' : '' }}"><i data-lucide="map-pinned"></i><span>Delivery Monitoring</span></a>

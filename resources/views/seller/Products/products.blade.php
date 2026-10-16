@@ -16,6 +16,13 @@
     @endif
 </section>
 
+@if (session('compliance_warning'))
+    <div class="product-compliance-feedback" role="alert">
+        <i data-lucide="triangle-alert" aria-hidden="true"></i>
+        <span>{{ session('compliance_warning') }}</span>
+    </div>
+@endif
+
 @if ($counts['all'] === 0)
     <section class="seller-panel product-onboarding-card" aria-labelledby="empty-products-title">
         <span class="product-empty-icon" aria-hidden="true">
@@ -123,6 +130,12 @@
                                                 {{ $variantLabels->count() }} {{ $variantLabels->count() === 1 ? 'variant' : 'variants' }} · {{ $variantPreview }}@if ($remainingVariants > 0) · +{{ $remainingVariants }} more @endif
                                             </small>
                                         @endif
+                                        @foreach ($product['compliance_warnings'] as $warning)
+                                            <span class="product-compliance-warning">
+                                                <strong>{{ $warning['level'] }} compliance warning</strong>
+                                                <small>{{ $warning['reason'] }}@if ($warning['detected_excerpt']) Detected text: “{{ $warning['detected_excerpt'] }}”.@endif</small>
+                                            </span>
+                                        @endforeach
                                     </span>
                                 </div>
                             </td>

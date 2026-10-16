@@ -13,10 +13,10 @@ use App\Models\ProductImage;
 use App\Models\ProductVariant;
 use App\Models\SellerOrder;
 use App\Models\SellerProfile;
-use App\Models\ShippingRate;
 use App\Models\Store;
 use App\Models\SystemSetting;
 use App\Models\User;
+use App\Services\PostalCodeLookup;
 use App\Services\ShippingQuoteService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
@@ -56,8 +56,12 @@ class OrdersCheckoutIntegrationTest extends TestCase
         $response->assertRedirect(route('checkout.confirmation', $order->order_no));
         $this->assertSame(2, $order->sellerOrders->count());
         $this->assertSame(22502, (int) $order->subtotal_minor);
-        $this->assertSame(6800, (int) $order->shipping_fee_minor);
-        $this->assertSame(29302, (int) $order->total_minor);
+        $this->assertSame(10000, (int) $order->shipping_fee_minor);
+        $this->assertSame(32502, (int) $order->total_minor);
+        $this->assertSame(
+            [5000, 5000],
+            $order->sellerOrders->pluck('shipping_fee_minor')->map(fn ($fee): int => (int) $fee)->all(),
+        );
         $this->assertSame('processing', $order->status);
         $this->assertSame('unpaid', $order->payment_status);
         $this->assertSame('cod', $order->payments->sole()->method);
@@ -83,7 +87,7 @@ class OrdersCheckoutIntegrationTest extends TestCase
         $this->assertSame(2, InventoryMovement::query()->where('type', 'order_reserved')->count());
     }
 
-    public function test_quote_uses_combined_parcel_and_blocks_over_one_kg_until_surcharge_is_configured(): void
+    public function test_quote_uses_combined_parcel_and_flat_fee_for_over_one_kg(): void
     {
         $buyer = $this->user('buyer');
         $destination = $this->address($buyer, 'Santa Rosa');
@@ -92,26 +96,17 @@ class OrdersCheckoutIntegrationTest extends TestCase
         $variant = $this->variant($this->product($store, $category, 'Heavy Parcel Item'), 'HEAVY-001', 799, 10, [10, 10, 10]);
         $cartItem = $this->cartItem($buyer, $variant, 8);
 
-        $this->actingAs($buyer)->postJson(route('checkout.quote'), [
-            'address_id' => $destination->id,
-            'cart_item_ids' => [$cartItem->id],
-        ])->assertUnprocessable()
-            ->assertJsonValidationErrors('shipping');
-
         $this->assertSame(0, Order::query()->count());
         $this->assertSame(0, (int) $variant->fresh()->stock_reserved);
-
-        ShippingRate::query()
-            ->where('provider_key', 'bearly_logistics')
-            ->where('route_tier', 'nearby_delivery')
-            ->update(['additional_kg_surcharge_minor' => 500]);
 
         $response = $this->actingAs($buyer)->postJson(route('checkout.quote'), [
             'address_id' => $destination->id,
             'cart_item_ids' => [$cartItem->id],
         ])->assertOk();
 
-        $response->assertJsonPath('data.shipping_fee_minor', 3900)
+        $response->assertJsonPath('data.shipping_fee_minor', 5000)
+            ->assertJsonPath('data.seller_orders.0.shipping_fee_minor', 5000)
+            ->assertJsonPath('data.seller_orders.0.quote.pricing_rule', 'flat_per_seller_order')
             ->assertJsonPath('data.seller_orders.0.quote.billable_weight_kg', 2)
             ->assertJsonPath('data.seller_orders.0.quote.volumetric_divisor', 5000)
             ->assertJsonPath('data.seller_orders.0.quote.package_estimator', 'greedy_minimum_bounding_box_v1');
@@ -615,10 +610,10 @@ class OrdersCheckoutIntegrationTest extends TestCase
         $cartItem = $this->cartItem($buyer, $variant, 1);
 
         $oldRateQuote = $this->quoteToken($buyer, [$cartItem->id], $destination->id);
-        ShippingRate::query()
-            ->where('provider_key', 'bearly_logistics')
-            ->where('route_tier', 'nearby_delivery')
-            ->update(['first_kg_fee_minor' => 3500]);
+        SystemSetting::query()->updateOrCreate(
+            ['key' => 'shipping.seller_order_fee_minor'],
+            ['value' => 6000, 'value_type' => 'integer', 'is_public' => false],
+        );
 
         $this->actingAs($buyer)->postJson(route('checkout.place'), [
             'checkout_request_key' => (string) Str::uuid(),
@@ -708,7 +703,40 @@ class OrdersCheckoutIntegrationTest extends TestCase
         $this->assertSame('inter_island', $shipping->routeTier($origin, $interIsland));
     }
 
-    public function test_admin_shipping_rate_changes_require_admin_and_create_audit_attribution(): void
+    public function test_flat_seller_order_fee_is_independent_of_route_and_billable_weight(): void
+    {
+        $buyer = $this->user('buyer');
+        $category = $this->category();
+        [, $store] = $this->sellerAndStore($category, 'checkout-flat-route');
+        $variant = $this->variant(
+            $this->product($store, $category, 'Heavy Flat Fee Item'),
+            'FLAT-001',
+            5000,
+            5,
+            [20, 20, 20],
+        );
+        $variant->update(['package_weight_kg' => 2.0]);
+        $cartItem = $this->cartItem($buyer, $variant, 1);
+        $destinations = [
+            ['nearby_delivery', $this->address($buyer, 'Santa Rosa')],
+            ['same_province', $this->address($buyer, 'San Pablo City', 'Laguna', null, '0434')],
+            ['nearby_provinces', $this->address($buyer, 'Batangas City', 'Batangas', null, '0410')],
+            ['inter_island', $this->address($buyer, 'Cebu City', 'Cebu', null, '0722')],
+        ];
+
+        foreach ($destinations as [$routeTier, $destination]) {
+            $this->actingAs($buyer)->postJson(route('checkout.quote'), [
+                'address_id' => $destination->id,
+                'cart_item_ids' => [$cartItem->id],
+            ])->assertOk()
+                ->assertJsonPath('data.shipping_fee_minor', 5000)
+                ->assertJsonPath('data.seller_orders.0.shipping_fee_minor', 5000)
+                ->assertJsonPath('data.seller_orders.0.quote.route_tier', $routeTier)
+                ->assertJsonPath('data.seller_orders.0.quote.billable_weight_kg', 2);
+        }
+    }
+
+    public function test_admin_can_update_flat_seller_order_fee_and_create_audit_attribution(): void
     {
         $buyer = $this->user('buyer');
         $this->actingAs($buyer)->get(route('admin.shipping-rates'))->assertForbidden();
@@ -717,27 +745,23 @@ class OrdersCheckoutIntegrationTest extends TestCase
         $this->actingAs($admin)
             ->get(route('admin.shipping-rates'))
             ->assertOk()
-            ->assertSee('Not configured')
-            ->assertSee('not official Shopee tariffs');
+            ->assertSee('Standard fee per Seller Order')
+            ->assertSee('value="50.00"', false)
+            ->assertDontSee('additional_kg_surcharge', false);
 
         $this->actingAs($admin)->put(route('admin.shipping-rates.update'), [
+            'seller_order_fee' => '50.00',
             'volumetric_divisor' => 4500,
-            'reason' => 'Set the initial intercity surcharge',
-            'rates' => [
-                'nearby_delivery' => ['first_kg_fee' => '34.00', 'additional_kg_surcharge' => '5.50'],
-                'same_province' => ['first_kg_fee' => '40.00', 'additional_kg_surcharge' => '6.00'],
-                'nearby_provinces' => ['first_kg_fee' => '60.00', 'additional_kg_surcharge' => '8.00'],
-                'inter_island' => ['first_kg_fee' => '100.00', 'additional_kg_surcharge' => '12.00'],
-            ],
+            'reason' => 'Set standard Seller Order shipping fee',
         ])->assertRedirect(route('admin.shipping-rates'));
 
-        $this->assertSame(550, (int) ShippingRate::query()->where('route_tier', 'nearby_delivery')->value('additional_kg_surcharge_minor'));
+        $this->assertSame(5000, (int) SystemSetting::query()->where('key', 'shipping.seller_order_fee_minor')->value('value'));
         $this->assertSame(4500, (int) SystemSetting::query()->where('key', 'shipping.volumetric_divisor')->value('value'));
         $this->assertDatabaseHas('audit_logs', [
             'actor_user_id' => $admin->id,
             'action' => 'shipping_rates.updated',
             'module' => 'shipping',
-            'description' => 'Admin updated Bearly shipping configuration: Set the initial intercity surcharge',
+            'description' => 'Admin updated Bearly shipping configuration: Set standard Seller Order shipping fee',
         ]);
     }
 
@@ -803,7 +827,8 @@ class OrdersCheckoutIntegrationTest extends TestCase
             'province' => $province,
             'postal_code' => '4026',
             'psgc_province_code' => $provinceCode ?? '0434',
-            'psgc_city_code' => $cityCode ?? ($city === 'Santa Rosa' ? '043424000' : '043403000'),
+            'psgc_city_code' => $cityCode ?? app(PostalCodeLookup::class)
+                ->canonicalCityCode(null, $province, $city),
             'is_default_shipping' => true,
         ]);
     }

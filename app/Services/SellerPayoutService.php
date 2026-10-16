@@ -19,10 +19,29 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 class SellerPayoutService
 {
-    public function __construct(private readonly AuditService $audit) {}
+    public function __construct(
+        private readonly AuditService $audit,
+        private readonly SellerWalletService $wallets,
+    ) {}
 
     public function eligibleBySeller(): array
     {
+        $sellerIds = SellerTransaction::query()
+            ->where('type', 'sale')
+            ->where('status', 'posted')
+            ->whereNotNull('posted_at')
+            ->where('amount_minor', '>', 0)
+            ->whereDoesntHave('payoutItem')
+            ->distinct()
+            ->pluck('seller_profile_id');
+
+        foreach ($sellerIds as $sellerId) {
+            $sellerProfile = SellerProfile::query()->find($sellerId);
+            if ($sellerProfile) {
+                $this->wallets->refreshForSeller($sellerProfile);
+            }
+        }
+
         return $this->eligibleTransactionsQuery()
             ->with(['sellerProfile.store', 'sellerOrder.store', 'commission'])
             ->get()
@@ -54,6 +73,9 @@ class SellerPayoutService
             throw ValidationException::withMessages(['reason' => 'Provide a short reason for generating this Seller settlement.']);
         }
 
+        $profileForWallet = SellerProfile::query()->findOrFail($sellerProfileId);
+        $this->wallets->refreshForSeller($profileForWallet);
+
         return DB::transaction(function () use ($sellerProfileId, $reason, $request): SellerPayout {
             $seller = SellerProfile::query()->whereKey($sellerProfileId)->lockForUpdate()->firstOrFail();
             $transactions = $this->eligibleTransactionsQuery($seller->id)
@@ -64,7 +86,7 @@ class SellerPayoutService
                 ->get();
 
             if ($transactions->isEmpty()) {
-                throw ValidationException::withMessages(['seller' => 'This Seller has no COD proceeds that are ready for settlement.']);
+                throw ValidationException::withMessages(['seller' => 'New Seller proceeds are recorded in the Seller Wallet. Use Seller Payouts to review withdrawal requests.']);
             }
 
             $grossMinor = 0;
@@ -134,6 +156,7 @@ class SellerPayoutService
         int $payoutId,
         int $actualAmountMinor,
         string $method,
+        string $receivingBankName,
         string $reference,
         string $paidOn,
         string $reason,
@@ -141,27 +164,38 @@ class SellerPayoutService
         Request $request,
     ): SellerPayout {
         $this->assertAdmin($admin);
+        if ($method !== 'bank_transfer') {
+            throw ValidationException::withMessages(['method' => 'Legacy Seller settlements can only be completed by verified bank transfer. New withdrawals must use Seller Wallet.']);
+        }
+        $existing = SellerPayout::query()->whereKey($payoutId)->firstOrFail();
+        $receivingBankName = trim($receivingBankName);
         $reference = trim($reference);
-        if (! in_array($method, ['gcash', 'bank_transfer', 'cash', 'other'], true)) {
-            throw ValidationException::withMessages(['method' => 'Choose a valid external payout method.']);
+
+        if ($receivingBankName === '' || mb_strlen($receivingBankName) > 120) {
+            throw ValidationException::withMessages(['receiving_bank_name' => 'Enter the Seller’s receiving bank name (up to 120 characters).']);
         }
-        if ($reference === '' || mb_strlen(trim($reason)) < 5) {
-            throw ValidationException::withMessages([
-                'reference' => $reference === '' ? 'Enter the completed Seller payout reference.' : 'Enter a reason for recording the completed payout.',
-            ]);
+        if ($reference === '') {
+            throw ValidationException::withMessages(['reference' => 'Enter the bank-transfer reference.']);
         }
-        if (! $request->boolean('external_payout_confirmed')) {
-            throw ValidationException::withMessages(['external_payout_confirmed' => 'Confirm that the Seller payout has already been made outside Bearly.']);
+        if (preg_match('/^(?:CODH|L2F|BFR)-/i', $reference) === 1) {
+            throw ValidationException::withMessages(['reference' => 'Use the Seller bank-transfer reference here. CODH, L2F, and BFR are COD cash-custody references.']);
+        }
+        if (mb_strlen(trim($reason)) < 5) {
+            throw ValidationException::withMessages(['reason' => 'Enter a short reason for recording the completed payout.']);
+        }
+        if (! $request->boolean('seller_payout_confirmed')) {
+            throw ValidationException::withMessages(['seller_payout_confirmed' => 'Confirm that the Seller already received the full payout.']);
         }
         if (! $receipt->isValid()
             || ! in_array($receipt->getMimeType(), ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'], true)) {
-            throw ValidationException::withMessages(['receipt' => 'Upload a valid external payout receipt or Seller acknowledgment.']);
+            throw ValidationException::withMessages(['receipt' => 'Upload valid proof of the completed bank transfer.']);
         }
 
-        $existing = SellerPayout::query()->whereKey($payoutId)->firstOrFail();
         if ($existing->status === 'paid'
             && $existing->paid_at
             && (int) $existing->net_minor === $actualAmountMinor
+            && $existing->external_method === $method
+            && $existing->receiving_bank_name === $receivingBankName
             && hash_equals((string) $existing->reference, $reference)) {
             return $existing->fresh(['sellerProfile.store', 'items.transaction']);
         }
@@ -175,7 +209,7 @@ class SellerPayoutService
         }
 
         try {
-            return DB::transaction(function () use ($admin, $payoutId, $actualAmountMinor, $method, $reference, $paidOn, $reason, $receipt, $receiptPath, $request): SellerPayout {
+            return DB::transaction(function () use ($admin, $payoutId, $actualAmountMinor, $method, $receivingBankName, $reference, $paidOn, $reason, $receipt, $receiptPath, $request): SellerPayout {
                 $payout = SellerPayout::query()->whereKey($payoutId)->lockForUpdate()->firstOrFail();
                 if ($payout->status !== 'pending' || $payout->paid_at !== null) {
                     throw new ConflictHttpException('Only an unpaid Seller settlement can be marked paid.');
@@ -196,11 +230,17 @@ class SellerPayoutService
                     throw ValidationException::withMessages(['paid_on' => 'Enter the actual payout date; future dates are not allowed.']);
                 }
 
-                $oldValues = ['status' => $payout->status, 'paid_at' => null, 'reference' => $payout->reference];
+                $oldValues = [
+                    'status' => $payout->status,
+                    'paid_at' => null,
+                    'reference' => $payout->reference,
+                    'receiving_bank_name' => $payout->receiving_bank_name,
+                ];
                 $payout->update([
                     'status' => 'paid',
                     'paid_at' => $paidDate->startOfDay(),
                     'reference' => $reference,
+                    'receiving_bank_name' => $receivingBankName,
                     'external_method' => $method,
                     'receipt_disk' => 'local',
                     'receipt_path' => $receiptPath,
@@ -214,22 +254,24 @@ class SellerPayoutService
                     action: 'seller_payout.externally_paid',
                     module: 'Finance',
                     subject: $payout,
-                    description: "Seller settlement {$payout->payout_no} was marked paid after external verification.",
+                    description: "Legacy Seller settlement {$payout->payout_no} was marked paid after bank-transfer verification.",
                     oldValues: $oldValues,
                     newValues: [
                         'status' => 'paid',
                         'amount_minor' => (int) $payout->net_minor,
                         'paid_on' => $paidDate->toDateString(),
                         'reference' => $reference,
+                        'receiving_bank_name' => $receivingBankName,
                         'method' => $method,
                         'reason' => trim($reason),
-                        'confirmed_externally' => true,
+                        'confirmation' => 'external_bank_transfer_completed',
                         'receipt_original_name' => $payout->receipt_original_name,
                         'receipt_size_bytes' => $payout->receipt_size_bytes,
                     ],
                     severity: 'warning',
                     request: $request,
                 );
+                $this->wallets->recordLegacyPayoutCompletion($payout, $admin);
 
                 return $payout->fresh(['sellerProfile.store', 'items.transaction']);
             }, attempts: 3);
@@ -237,6 +279,13 @@ class SellerPayoutService
             Storage::disk('local')->delete($receiptPath);
             throw $exception;
         }
+    }
+
+    public function cashAcknowledgmentReference(SellerPayout $payout): string
+    {
+        $year = $payout->created_at?->format('Y') ?? now()->format('Y');
+
+        return 'SPA-'.$year.'-'.str_pad((string) $payout->id, 8, '0', STR_PAD_LEFT);
     }
 
     private function eligibleTransactionsQuery(?int $sellerProfileId = null)
@@ -248,6 +297,7 @@ class SellerPayoutService
             ->where('amount_minor', '>', 0)
             ->when($sellerProfileId, fn ($query) => $query->where('seller_profile_id', $sellerProfileId))
             ->whereDoesntHave('payoutItem')
+            ->whereDoesntHave('walletTransactions')
             ->whereHas('payment', fn ($query) => $query->where('method', 'cod')->where('status', 'paid')->whereNotNull('paid_at'))
             ->whereHas('sellerOrder', function ($query): void {
                 $query->where('status', 'completed')

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Product;
 use App\Services\SellerIdentityService;
+use App\Services\SellerNotificationService;
 use App\Services\SellerProductService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -22,11 +23,7 @@ class SellerProductController extends Controller
 
     private function notifications(): array
     {
-        return [
-            ['title' => '2 new orders need confirmation', 'time' => '5 minutes ago', 'type' => 'warning'],
-            ['title' => 'Classic Linen Shirt is low in stock', 'time' => '42 minutes ago', 'type' => 'danger'],
-            ['title' => '2 parcels are ready for pickup request', 'time' => '1 hour ago', 'type' => 'success'],
-        ];
+        return app(SellerNotificationService::class)->recentFor(auth()->user());
     }
 
     private function registeredCategory(Request $request): string
@@ -203,7 +200,7 @@ class SellerProductController extends Controller
     public function addProduct(Request $request, SellerProductService $products): RedirectResponse
     {
         $validated = $this->validateProduct($request, $products);
-        $products->save(
+        $savedProduct = $products->save(
             $request->user(),
             $validated,
             $request->file('image'),
@@ -214,6 +211,15 @@ class SellerProductController extends Controller
             $request->file('variant_color_images', []),
             $validated['variant_image_colors'] ?? [],
         );
+
+        if (in_array($savedProduct->product_status, ['blocked', 'flagged'], true)) {
+            return redirect()->route('seller.products')->with(
+                'compliance_warning',
+                $savedProduct->product_status === 'blocked'
+                    ? 'Compliance warning: this product is blocked and hidden from Buyers. Review the reason beside the product before making changes.'
+                    : 'Compliance warning: this product is held for Admin review and hidden from Buyers. Review the reason beside the product before making changes.'
+            );
+        }
 
         return redirect()->route('seller.products')->with(
             'success',
@@ -244,7 +250,7 @@ class SellerProductController extends Controller
     {
         $existing = $products->findForSeller($request->user(), $product);
         $validated = $this->validateProduct($request, $products, $products->productMode($existing), $existing);
-        $products->save(
+        $savedProduct = $products->save(
             $request->user(),
             $validated,
             $request->file('image'),
@@ -255,6 +261,15 @@ class SellerProductController extends Controller
             $request->file('variant_color_images', []),
             $validated['variant_image_colors'] ?? [],
         );
+
+        if (in_array($savedProduct->product_status, ['blocked', 'flagged'], true)) {
+            return redirect()->route('seller.products')->with(
+                'compliance_warning',
+                $savedProduct->product_status === 'blocked'
+                    ? 'Compliance warning: this product is blocked and hidden from Buyers. Review the reason beside the product before making changes.'
+                    : 'Compliance warning: this product is held for Admin review and hidden from Buyers. Review the reason beside the product before making changes.'
+            );
+        }
 
         return redirect()->route('seller.products')->with(
             'success',

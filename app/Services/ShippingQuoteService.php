@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Models\Address;
-use App\Models\ShippingRate;
 use App\Models\Store;
 use App\Models\SystemSetting;
 use Illuminate\Support\Collection;
@@ -12,7 +11,7 @@ use Illuminate\Validation\ValidationException;
 
 class ShippingQuoteService
 {
-    public function quote(Store $store, Address $destination, Collection $lines, bool $lockRates = false): array
+    public function quote(Store $store, Address $destination, Collection $lines, bool $lockConfiguration = false): array
     {
         $profile = $store->sellerProfile;
         $origin = $profile?->pickupAddress;
@@ -24,51 +23,20 @@ class ShippingQuoteService
         }
 
         $routeTier = $this->routeTier($origin, $destination);
-        $divisor = $this->volumetricDivisor($lockRates);
-        $rateQuery = ShippingRate::query()
-            ->where('provider_key', (string) config('shipping.provider_key'))
-            ->where('route_tier', $routeTier);
-        if ($lockRates) {
-            $rateQuery->lockForUpdate();
-        }
-        $rate = $rateQuery->first();
-
-        if (! $rate) {
-            throw ValidationException::withMessages([
-                'shipping' => 'A Bearly shipping rate is not configured for this delivery route.',
-            ]);
-        }
+        $divisor = $this->volumetricDivisor($lockConfiguration);
+        $sellerOrderFee = $this->sellerOrderFeeMinor($lockConfiguration);
 
         $package = $this->combinedPackage($lines);
         $volumetricWeight = ($package['length_cm'] * $package['width_cm'] * $package['height_cm']) / $divisor;
         $billableWeight = max(1, (int) ceil(max($package['actual_weight_kg'], $volumetricWeight) - 0.0000001));
 
-        if ($billableWeight > 1 && $rate->additional_kg_surcharge_minor === null) {
-            $label = config("shipping.route_tiers.{$routeTier}.label", $routeTier);
-            throw ValidationException::withMessages([
-                'shipping' => "The additional-kilogram surcharge for {$label} is not set. Ask an administrator to configure it before checking out this parcel.",
-            ]);
-        }
-
-        $baseFee = (int) $rate->first_kg_fee_minor;
-        $extraFee = (int) ($rate->additional_kg_surcharge_minor ?? 0);
-        $additionalKgCount = $billableWeight - 1;
-        if ($additionalKgCount > 0 && $extraFee > intdiv(PHP_INT_MAX - $baseFee, $additionalKgCount)) {
-            throw ValidationException::withMessages([
-                'shipping' => 'The shipping estimate exceeds the supported order total. Contact an administrator to review this route rate.',
-            ]);
-        }
-        $shippingFee = $baseFee + ($additionalKgCount * $extraFee);
-
         return [
-            'provider_key' => (string) $rate->provider_key,
+            'provider_key' => (string) config('shipping.provider_key'),
             'provider_label' => (string) config('shipping.provider_label'),
             'route_tier' => $routeTier,
             'route_label' => (string) config("shipping.route_tiers.{$routeTier}.label", $routeTier),
-            'first_kg_fee_minor' => $baseFee,
-            'additional_kg_surcharge_minor' => $rate->additional_kg_surcharge_minor === null
-                ? null
-                : $extraFee,
+            'pricing_rule' => 'flat_per_seller_order',
+            'seller_order_fee_minor' => $sellerOrderFee,
             'volumetric_divisor' => $divisor,
             'actual_weight_kg' => round($package['actual_weight_kg'], 3),
             'volumetric_weight_kg' => round($volumetricWeight, 3),
@@ -82,7 +50,7 @@ class ShippingQuoteService
             'package_items' => $package['items'],
             'origin' => $this->addressSnapshot($origin),
             'destination' => $this->addressSnapshot($destination),
-            'shipping_fee_minor' => $shippingFee,
+            'shipping_fee_minor' => $sellerOrderFee,
             'currency' => 'PHP',
         ];
     }
@@ -116,35 +84,11 @@ class ShippingQuoteService
         return $originGroup === $destinationGroup ? 'nearby_provinces' : 'inter_island';
     }
 
-    /**
-     * Lock shared quote configuration in the same order used by Admin edits:
-     * divisor setting first, then route rows in configured tier order.
-     *
-     * @param  array<int, array{store: Store, items: array, subtotal_minor: int}>  $groups
-     */
-    public function lockQuoteConfiguration(Address $destination, array $groups): void
+    /** Lock quote configuration in the same order used by Admin edits. */
+    public function lockQuoteConfiguration(): void
     {
         $this->volumetricDivisor(true);
-
-        $requiredTiers = [];
-        foreach ($groups as $group) {
-            $origin = $group['store']->sellerProfile?->pickupAddress;
-            if ($origin) {
-                $requiredTiers[$this->routeTier($origin, $destination)] = true;
-            }
-        }
-
-        foreach (array_keys((array) config('shipping.route_tiers', [])) as $routeTier) {
-            if (! isset($requiredTiers[$routeTier])) {
-                continue;
-            }
-
-            ShippingRate::query()
-                ->where('provider_key', (string) config('shipping.provider_key'))
-                ->where('route_tier', $routeTier)
-                ->lockForUpdate()
-                ->first();
-        }
+        $this->sellerOrderFeeMinor(true);
     }
 
     private function combinedPackage(Collection $lines): array
@@ -285,6 +229,17 @@ class ShippingQuoteService
         $stored = $setting->value('value');
 
         return max(1, (int) ($stored ?? config('shipping.default_volumetric_divisor', 5000)));
+    }
+
+    private function sellerOrderFeeMinor(bool $lock = false): int
+    {
+        $setting = SystemSetting::query()->where('key', 'shipping.seller_order_fee_minor');
+        if ($lock) {
+            $setting->lockForUpdate();
+        }
+        $stored = $setting->value('value');
+
+        return max(0, (int) ($stored ?? config('shipping.default_seller_order_fee_minor', 5000)));
     }
 
     private function sameProvince(Address $origin, Address $destination): bool

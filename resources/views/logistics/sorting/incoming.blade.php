@@ -29,17 +29,18 @@
     </div>
     <div class="table-wrap">
         <table class="data-table">
-            <thead><tr><th data-sort>Waybill / Order</th><th>Seller</th><th>Received from</th><th data-sort>Received at</th><th>Pieces</th><th>Weight</th><th>Destination</th><th>Status</th><th>Action</th></tr></thead>
+            <thead><tr><th data-sort>Waybill / Order</th><th>Products in shipment</th><th>Seller</th><th>Received from</th><th data-sort>Received at</th><th>Pieces</th><th>Weight</th><th>Destination</th><th>Status</th><th>Action</th></tr></thead>
             <tbody data-incoming-body>
                 @foreach($incomingParcels as $parcel)
                     <tr data-row data-record-row data-record-type="incoming" data-record-id="{{ $parcel['waybill'] }}" data-status="{{ $parcel['status'] }}" data-zone="{{ $parcel['destination'] }}">
                         <td><span class="cell-title"><strong>{{ $parcel['waybill'] }}</strong><small>{{ $parcel['order'] }}</small></span></td>
+                        <td class="incoming-products-cell">@include('partials.order-item-preview-list', ['items' => $parcel['products']])</td>
                         <td><span class="cell-title"><strong>{{ $parcel['seller'] }}</strong><small>{{ $parcel['purpose_label'] }}</small></span></td><td>{{ $parcel['rider'] }}</td><td>{{ $parcel['received'] }}</td><td>{{ $parcel['pieces'] }}</td><td>{{ $parcel['weight'] }}</td><td>{{ $parcel['destination'] }}</td>
                         <td><span class="status-badge" data-status-badge data-status="{{ $parcel['status'] }}">{{ $parcel['status'] }}</span></td>
                         <td><a class="button button-small" href="{{ route('logistics.sorting.center', ['search' => $parcel['waybill']]) }}">Open sorting</a></td>
                     </tr>
                 @endforeach
-                <tr><td class="empty-row" colspan="9" data-empty-row>No incoming parcels match these filters.</td></tr>
+                <tr><td class="empty-row" colspan="10" data-empty-row>No incoming parcels match these filters.</td></tr>
             </tbody>
         </table>
     </div>

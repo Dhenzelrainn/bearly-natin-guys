@@ -73,7 +73,7 @@
 
     <div class="table-wrap">
 
-        <table class="admin-table" id="rider-users-table">
+        <table class="admin-table admin-user-directory-table" id="rider-users-table">
 
             <thead>
                 <tr>
@@ -94,7 +94,12 @@
 
                     <tr
                         data-table-row
-                        data-user-id="{{ $user['id'] }}"
+                        data-user-status-context
+                        data-user-id="{{ $user['database_id'] }}"
+                        data-user-name="{{ $user['name'] }}"
+                        data-status-url="{{ route('admin.users.status', $user['database_id']) }}"
+                        data-current-status="{{ strtolower($user['status']) }}"
+                        data-allowed-statuses="{{ implode(',', $user['allowed_statuses']) }}"
                         data-status="{{ $user['status'] }}"
                         data-search="{{
                             strtolower(
@@ -166,13 +171,13 @@
                         <td>
 
                             <span
-                                class="status-badge
+                                class="status-badge js-status-badge
                                 {{
                                     $user['status'] === 'Active'
                                         ? 'badge-success'
                                         : ($user['status'] === 'Suspended'
-                                            ? 'badge-danger'
-                                            : 'badge-neutral')
+                                            ? 'badge-warning'
+                                            : 'badge-danger')
                                 }}"
                             >
                                 {{ $user['status'] }}
@@ -183,14 +188,17 @@
 
                         <td class="align-right">
 
-                            <button
-                                type="button"
-                                class="button button-ghost button-small"
-                                data-open-modal="rider-user-{{ $loop->index }}"
-                            >
-                                <i data-lucide="eye"></i>
-                                View
-                            </button>
+                            <div class="admin-user-list-actions">
+                                @include('admin.users._row-status-actions', ['user' => $user])
+                                <button
+                                    type="button"
+                                    class="button button-ghost button-small"
+                                    data-open-modal="rider-user-{{ $user['database_id'] }}"
+                                    aria-label="View {{ $user['name'] }} profile"
+                                >
+                                    <i data-lucide="eye"></i><span>View</span>
+                                </button>
+                            </div>
 
                         </td>
 
@@ -219,162 +227,36 @@
 
 
 @foreach ($users as $user)
-
-<div
-    class="modal-shell"
-    data-modal="rider-user-{{ $loop->index }}"
-    hidden
->
-
-    <button
-        class="modal-backdrop"
-        type="button"
-        data-close-modal
-    ></button>
-
-
-    <section
-        class="modal-card modal-wide"
-        role="dialog"
-        aria-modal="true"
-    >
-
-        <div class="modal-heading">
-
-            <div>
-                <span class="eyebrow">{{ $user['id'] }}</span>
-                <h2>Rider profile</h2>
-            </div>
-
-
-            <button
-                class="icon-button"
-                type="button"
-                data-close-modal
-            >
-                <i data-lucide="x"></i>
-            </button>
-
-        </div>
-
-
-        <div class="review-grid">
-
-            <div class="review-profile">
-
-                <span class="avatar avatar-large avatar-warm">
-                    {{
-                        collect(explode(' ', $user['name']))
-                            ->map(fn($part) => strtoupper(substr($part, 0, 1)))
-                            ->take(2)
-                            ->implode('')
-                    }}
-                </span>
-
-                <h3>{{ $user['name'] }}</h3>
-
-                <p>{{ $user['email'] }}</p>
-
-                <span class="role-badge">
-                    Rider
-                </span>
-
-            </div>
-
-
-            <div class="review-details">
-
-                <h3 class="section-subtitle">
-                    Rider information
-                </h3>
-
-
-                <div class="detail-grid">
-
-                    <div>
-                        <span>Email</span>
-                        <strong>{{ $user['email'] }}</strong>
-                    </div>
-
-                    <div>
-                        <span>Vehicle</span>
-                        <strong>{{ $user['vehicle'] }}</strong>
-                    </div>
-
-                    <div>
-                        <span>Plate number</span>
-                        <strong>{{ $user['plate'] }}</strong>
-                    </div>
-
-                    <div>
-                        <span>Assigned Logistics Center</span>
-                        <strong>{{ $user['center'] }}</strong>
-                    </div>
-
-                    <div>
-                        <span>Completed deliveries</span>
-                        <strong>{{ $user['deliveries'] }}</strong>
-                    </div>
-
-                    <div>
-                        <span>Date joined</span>
-                        <strong>{{ $user['joined'] }}</strong>
-                    </div>
-
-                    <div>
-                        <span>Current status</span>
-                        <strong>{{ $user['status'] }}</strong>
-                    </div>
-
-                </div>
-
-            </div>
-
-        </div>
-
-
-        <div
-            class="modal-footer decision-footer user-profile-actions"
-            data-user-modal-actions
-            data-user-id="{{ $user['id'] }}"
-        >
-
-            <button
-                type="button"
-                class="button button-primary"
-                data-modal-user-status="Active"
-                data-mock-action="{{ $user['name'] }} account activated."
-            >
-                <i data-lucide="circle-check"></i>
-                Activate
-            </button>
-
-            <button
-                type="button"
-                class="button button-danger-soft"
-                data-modal-user-status="Suspended"
-                data-mock-action="{{ $user['name'] }} account suspended."
-            >
-                <i data-lucide="pause-circle"></i>
-                Suspend
-            </button>
-
-            <button
-                type="button"
-                class="button button-danger"
-                data-modal-user-status="Deactivated"
-                data-mock-action="{{ $user['name'] }} account deactivated."
-            >
-                <i data-lucide="user-x"></i>
-                Deactivate
-            </button>
-
-        </div>
-
-    </section>
-
-</div>
-
+    @include('admin.users._profile-modal', [
+        'modalId' => 'rider-user-'.$user['database_id'],
+        'userId' => $user['database_id'],
+        'profileCode' => $user['id'],
+        'profileName' => $user['name'],
+        'profileEmail' => $user['email'],
+        'profileRole' => 'Rider',
+        'roleClass' => 'role-rider',
+        'roleIcon' => 'bike',
+        'profileTitle' => 'Rider profile',
+        'profileDescription' => 'Review the rider’s account, vehicle, and delivery activity.',
+        'status' => $user['status'],
+        'statusUrl' => route('admin.users.status', $user['database_id']),
+        'allowedStatuses' => $user['allowed_statuses'],
+        'summaryStats' => [
+            ['label' => 'Completed deliveries', 'value' => $user['deliveries'], 'icon' => 'package-check'],
+        ],
+        'details' => [
+            ['label' => 'Email address', 'value' => $user['email'], 'icon' => 'mail'],
+            ['label' => 'Contact number', 'value' => $user['contact'], 'icon' => 'phone'],
+            ['label' => 'Location', 'value' => $user['location'], 'icon' => 'map-pin'],
+            ['label' => 'Vehicle', 'value' => $user['vehicle'], 'icon' => 'bike'],
+            ['label' => 'Plate number', 'value' => $user['plate'], 'icon' => 'hash'],
+            ['label' => 'Assigned Logistics Center', 'value' => $user['center'], 'icon' => 'warehouse'],
+            ['label' => 'Completed deliveries', 'value' => $user['deliveries'], 'icon' => 'package-check'],
+            ['label' => 'Date joined', 'value' => $user['joined'], 'icon' => 'calendar-days'],
+        ],
+    ])
 @endforeach
+
+@include('admin.users._status-change-dialog')
 
 @endsection

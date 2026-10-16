@@ -9,6 +9,7 @@ use App\Models\SortingCenter;
 use App\Models\User;
 use App\Services\RegistrationLifecycleService;
 use Database\Seeders\DatabaseSeeder;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -140,6 +141,20 @@ class SortingCenterProvisioningTest extends TestCase
         $this->assertNull(
             $center->daily_capacity
         );
+
+        try {
+            SortingCenter::query()->create([
+                'logistics_profile_id' => $profile->id,
+                'address_id' => $address->id,
+                'name' => 'Second Logistics Center',
+                'code' => 'SC-DUPLICATE',
+                'status' => 'active',
+            ]);
+
+            $this->fail('A Logistics account must not have a second Sorting Center.');
+        } catch (QueryException) {
+            $this->assertDatabaseCount('sorting_centers', 1);
+        }
     }
 
     public function test_reprovisioning_does_not_duplicate_center_or_erase_facility_settings(): void
@@ -270,7 +285,7 @@ class SortingCenterProvisioningTest extends TestCase
         );
     }
 
-    public function test_legacy_logistics_without_normalized_address_gets_fallback_center(): void
+    public function test_logistics_without_a_verified_service_city_cannot_sponsor_a_rider(): void
     {
         $logistics = User::factory()->create([
             'name' => 'Legacy Logistics',
@@ -287,13 +302,6 @@ class SortingCenterProvisioningTest extends TestCase
             'province' => 'Laguna',
         ]);
 
-        $this->assertDatabaseMissing(
-            'addresses',
-            [
-                'user_id' => $logistics->id,
-            ]
-        );
-
         $rider = User::factory()->create([
             'name' => 'Legacy Rider',
             'first_name' => 'Legacy',
@@ -303,6 +311,9 @@ class SortingCenterProvisioningTest extends TestCase
             'status' => AccountStatus::Pending->value,
             'logistics_id' => $logistics->id,
         ]);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('The selected Logistics partner is not configured for a service city.');
 
         app(RegistrationLifecycleService::class)
             ->recordPendingApplication(
@@ -318,50 +329,5 @@ class SortingCenterProvisioningTest extends TestCase
                 [],
                 $logistics->id
             );
-
-        $logistics->refresh();
-
-        $profile = $logistics->logisticsProfile;
-
-        $this->assertNotNull($profile);
-
-        $address = Address::query()
-            ->where('user_id', $logistics->id)
-            ->where('label', 'Sorting center')
-            ->sole();
-
-        $this->assertSame(
-            'Legacy Street',
-            $address->street
-        );
-
-        $this->assertSame(
-            'Poblacion',
-            $address->barangay
-        );
-
-        $this->assertSame(
-            'Calamba City',
-            $address->city_municipality
-        );
-
-        $this->assertSame(
-            'Laguna',
-            $address->province
-        );
-
-        $center = $profile
-            ->sortingCenters()
-            ->sole();
-
-        $this->assertSame(
-            $address->id,
-            $center->address_id
-        );
-
-        $this->assertSame(
-            'Legacy Logistics',
-            $center->name
-        );
     }
 }

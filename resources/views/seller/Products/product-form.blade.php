@@ -32,9 +32,21 @@
     <span><i data-lucide="shield-check"></i></span>
     <div>
         <strong>Approved business category: {{ $registeredCategory }}</strong>
-        <p>Products published by this seller are restricted to the category approved during registration. A future category change should go through Admin review instead of bypassing seller compliance.</p>
+        <p>Products are checked against active prohibited-item and category rules whenever you save them. A match is recorded, shown here and in Product Management, and held from Buyers until the issue is resolved.</p>
     </div>
 </section>
+
+@foreach ($product['compliance_warnings'] ?? [] as $warning)
+    <div class="product-compliance-feedback" role="alert">
+        <i data-lucide="triangle-alert" aria-hidden="true"></i>
+        <span>
+            <strong>{{ $warning['level'] }} compliance warning:</strong>
+            {{ $warning['reason'] }}
+            @if ($warning['detected_excerpt']) Detected text: “{{ $warning['detected_excerpt'] }}”.@endif
+            This product is unavailable to Buyers until it passes a new compliance scan.
+        </span>
+    </div>
+@endforeach
 
 <form
     class="product-editor-form"

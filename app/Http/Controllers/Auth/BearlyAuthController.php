@@ -357,6 +357,7 @@ class BearlyAuthController extends Controller
                 'string',
                 'max:17',
                 Rule::unique('users', 'contact_number'),
+                Rule::unique('users', 'phone'),
             ],
             'phone_country' => ['required', 'string', 'size:2'],
             'city_code' => ['nullable', 'regex:/^[0-9]{6,10}$/D'],
@@ -438,6 +439,7 @@ class BearlyAuthController extends Controller
                     'google_id' => $isGoogleRegistration
                         ? (string) $googleRegistration['google_id']
                         : null,
+                    'phone' => $data['contact_number'],
                     'contact_number' => $data['contact_number'],
                     'phone_country' => $data['phone_country'],
                     'phone_verified_at' => null,

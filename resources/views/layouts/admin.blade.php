@@ -130,6 +130,11 @@ $adminNavGroups = [
                 'icon' => 'credit-card',
             ],
             [
+                'label' => 'Seller Payouts',
+                'route' => 'admin.seller-payouts.index',
+                'icon' => 'wallet',
+            ],
+            [
                 'label' => 'Financial Reports',
                 'route' => 'admin.reports',
                 'icon' => 'chart-column',
@@ -162,7 +167,7 @@ $adminNavGroups = [
                 'icon' => 'settings',
             ],
             [
-                'label' => 'Shipping Rates',
+                'label' => 'Shipping Fees',
                 'route' => 'admin.shipping-rates',
                 'icon' => 'map-pinned',
             ],
@@ -357,7 +362,7 @@ $adminNavGroups = [
             request()->routeIs('admin.registrations*') => 'Registration Management',
             request()->routeIs('admin.users*') => 'User Management',
             request()->routeIs('admin.compliance*', 'admin.disputes*', 'admin.violations*') => 'Compliance & Disputes',
-            request()->routeIs('admin.commissions', 'admin.transactions', 'admin.payments', 'admin.reports', 'admin.orders', 'admin.fulfillment') => 'Finance & Reports',
+            request()->routeIs('admin.commissions', 'admin.transactions', 'admin.payments', 'admin.seller-payouts.*', 'admin.reports', 'admin.orders', 'admin.fulfillment') => 'Finance & Reports',
             request()->routeIs('admin.messages', 'admin.announcements') => 'Communication',
             request()->routeIs('admin.settings', 'admin.account', 'admin.policies', 'admin.audit-logs') => 'System Management',
             default => trim(View::yieldContent('page-title', 'Admin Center')) ?: 'Admin Center',
@@ -589,6 +594,12 @@ $adminNavGroups = [
 
 
         <main class="admin-content">
+
+            @if (session('warning'))
+                <div class="info-box" role="status">
+                    <strong>Heads up.</strong> {{ session('warning') }}
+                </div>
+            @endif
 
             @yield('content')
 

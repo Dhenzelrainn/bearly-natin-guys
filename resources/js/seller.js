@@ -98,6 +98,42 @@ const bootSeller = () => {
         });
     });
 
+    const walletForm = document.querySelector('[data-wallet-withdrawal-form]');
+    if (walletForm) {
+        const amountInput = walletForm.querySelector('[data-wallet-amount]');
+        const accountSelect = walletForm.querySelector('[data-wallet-bank-account]');
+        const availableMinor = Number(walletForm.dataset.availableMinor || 0);
+        const formatMoney = (minor) => `₱${(minor / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        const parseMinor = (value) => {
+            const match = String(value || '').match(/^(\d{1,8})(?:\.(\d{1,2}))?$/);
+            if (!match) return 0;
+            return (Number(match[1]) * 100) + Number((match[2] || '').padEnd(2, '0'));
+        };
+        const updateAmountSummary = () => {
+            const requested = Math.max(0, Math.min(availableMinor, parseMinor(amountInput?.value)));
+            const amountSummary = walletForm.querySelector('[data-wallet-amount-summary]');
+            const remainingSummary = walletForm.querySelector('[data-wallet-remaining-summary]');
+            if (amountSummary) amountSummary.textContent = formatMoney(requested);
+            if (remainingSummary) remainingSummary.textContent = formatMoney(availableMinor - requested);
+        };
+        const updateAccountSummary = () => {
+            const option = accountSelect?.selectedOptions?.[0];
+            walletForm.querySelector('[data-wallet-account-name]')?.replaceChildren(document.createTextNode(option?.dataset.accountName || 'Choose an account'));
+            walletForm.querySelector('[data-wallet-bank-name]')?.replaceChildren(document.createTextNode(option?.dataset.bankName || '—'));
+            walletForm.querySelector('[data-wallet-account-number]')?.replaceChildren(document.createTextNode(`•••• ${option?.dataset.last4 || '—'}`));
+        };
+        amountInput?.addEventListener('input', updateAmountSummary);
+        accountSelect?.addEventListener('change', updateAccountSummary);
+        walletForm.querySelector('[data-wallet-withdraw-all]')?.addEventListener('click', () => {
+            if (!amountInput) return;
+            amountInput.value = (availableMinor / 100).toFixed(2);
+            amountInput.dispatchEvent(new Event('input', { bubbles: true }));
+            amountInput.focus();
+        });
+        updateAmountSummary();
+        updateAccountSummary();
+    }
+
     const pickupModalWithErrors = document.querySelector('[data-pickup-reopen]');
     if (pickupModalWithErrors) {
         pickupModalWithErrors.hidden = false;
@@ -1217,21 +1253,87 @@ const bootSeller = () => {
 
     const waybillChecks = [...document.querySelectorAll('[data-waybill-check]:not(:disabled)')];
     const waybillBulk = document.querySelector('[data-waybill-bulk]');
+    const waybillPdfForm = document.querySelector('#waybill-pdf-form');
     const updateWaybillBulk = () => {
         const selected = waybillChecks.filter((check) => check.checked).length;
-        if (waybillBulk) { waybillBulk.disabled = selected === 0; waybillBulk.innerHTML = `<i data-lucide="printer"></i>Print Selected${selected ? ` (${selected})` : ''}`; window.lucide?.createIcons(); }
+        if (waybillBulk) { waybillBulk.disabled = selected === 0; waybillBulk.innerHTML = `<i data-lucide="file-down" aria-hidden="true"></i>Download Selected PDFs${selected ? ` (${selected})` : ''}`; window.lucide?.createIcons(); }
     };
     waybillChecks.forEach((check) => check.addEventListener('change', updateWaybillBulk));
     document.querySelector('[data-waybill-check-all]')?.addEventListener('change', (event) => { waybillChecks.forEach((check) => { check.checked = event.currentTarget.checked; }); updateWaybillBulk(); });
-    waybillBulk?.addEventListener('click', () => { if (toast) { toast.textContent = `${waybillChecks.filter((check) => check.checked).length} waybills prepared for printing.`; toast.classList.add('is-visible'); } });
+
+    const downloadWaybillPdfs = async (ids) => {
+        if (!waybillPdfForm || ids.length === 0) return;
+
+        waybillPdfForm.querySelectorAll('input[name="waybill_ids[]"]').forEach((input) => input.remove());
+        ids.forEach((id) => {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'waybill_ids[]';
+            input.value = id;
+            waybillPdfForm.append(input);
+        });
+
+        const submitButton = document.activeElement instanceof HTMLButtonElement ? document.activeElement : null;
+        if (submitButton) submitButton.disabled = true;
+
+        try {
+            const response = await fetch(waybillPdfForm.action, {
+                method: 'POST',
+                body: new FormData(waybillPdfForm),
+                credentials: 'same-origin',
+                headers: { Accept: 'application/pdf' },
+            });
+
+            if (!response.ok || !response.headers.get('content-type')?.includes('application/pdf')) {
+                throw new Error(response.status === 404
+                    ? 'One or more waybills are no longer available for this Store.'
+                    : response.status === 409
+                        ? 'A selected waybill is voided and cannot be downloaded.'
+                        : 'The PDF could not be generated. Please try again.');
+            }
+
+            const blob = await response.blob();
+            const disposition = response.headers.get('content-disposition') ?? '';
+            const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] ?? 'Bearly-Waybills.pdf';
+            const objectUrl = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = objectUrl;
+            link.download = filename;
+            link.hidden = true;
+            document.body.append(link);
+            link.click();
+            link.remove();
+            window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+
+            ids.forEach((id) => {
+                const row = [...document.querySelectorAll('[data-waybill-row]')]
+                    .find((candidate) => candidate.querySelector('[data-waybill-check]')?.value === String(id));
+                const printButton = row?.querySelector('[data-waybill-print-confirm]');
+                if (printButton) {
+                    printButton.disabled = false;
+                    printButton.removeAttribute('title');
+                }
+            });
+
+            if (toast) {
+                toast.textContent = `${ids.length} waybill ${ids.length === 1 ? 'PDF is' : 'PDFs are'} ready to print.`;
+                toast.classList.add('is-visible');
+            }
+        } catch (error) {
+            if (toast) {
+                toast.textContent = error instanceof Error ? error.message : 'The PDF could not be generated. Please try again.';
+                toast.classList.add('is-visible');
+            }
+        } finally {
+            if (submitButton) submitButton.disabled = false;
+            waybillPdfForm.querySelectorAll('input[name="waybill_ids[]"]').forEach((input) => input.remove());
+            updateWaybillBulk();
+        }
+    };
+
+    waybillBulk?.addEventListener('click', () => downloadWaybillPdfs(waybillChecks.filter((check) => check.checked).map((check) => check.value)));
+    document.querySelectorAll('[data-waybill-download]').forEach((button) => button.addEventListener('click', () => downloadWaybillPdfs([button.dataset.waybillDownload])));
     document.querySelector('[data-waybill-history]')?.addEventListener('click', () => { const modal = document.querySelector('[data-modal="waybill-history"]'); if (modal) { modal.hidden = false; document.body.style.overflow = 'hidden'; } });
-    document.querySelectorAll('[data-waybill-action]').forEach((button) => button.addEventListener('click', () => {
-        const item = JSON.parse(button.dataset.waybill); const modal = document.querySelector('[data-modal="waybill-preview"]'); if (!modal) return;
-        const set = (selector, value) => { const node = modal.querySelector(selector); if (node) node.textContent = value; };
-        set('[data-waybill-modal-order]', `${item.action} · ${item.order}`); set('[data-waybill-modal-tracking]', item.tracking); set('[data-waybill-modal-customer]', item.customer); set('[data-waybill-modal-destination]', item.destination); set('[data-waybill-modal-courier]', item.courier); set('[data-waybill-modal-parcel]', `${item.packages} package(s) · ${item.weight} · ${item.size}`);
-        modal.hidden = false; document.body.style.overflow = 'hidden';
-    }));
-    document.querySelector('[data-waybill-print]')?.addEventListener('click', () => { if (toast) { toast.textContent = 'Waybill sent to the print dialog.'; toast.classList.add('is-visible'); } window.print(); });
 
     document.querySelector('[data-pickup-form]')?.addEventListener('submit', (event) => {
         const selectedOrders = event.currentTarget.querySelectorAll('[data-pickup-order]:checked');
@@ -1752,7 +1854,7 @@ const bootSeller = () => {
         applyFeedbackFilter();
     }
 
-    /* Reports — frontend-only filters and export feedback. */
+    /* Reports — client-side search over server-rendered report rows. */
     document.querySelectorAll('[data-report-page]').forEach((page) => {
         const search = page.querySelector('[data-report-search]');
         const rows = [...page.querySelectorAll('[data-report-row]')];
@@ -1772,19 +1874,15 @@ const bootSeller = () => {
         };
 
         search?.addEventListener('input', filterRows);
-        page.querySelector('[data-report-period]')?.addEventListener('change', (event) => {
-            if (!toast) return;
-            toast.textContent = `${event.currentTarget.value} selected. Report data is a frontend preview.`;
-            toast.classList.add('is-visible');
-            window.clearTimeout(window.sellerToastTimer);
-            window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3200);
-        });
-        page.querySelector('[data-report-export]')?.addEventListener('click', () => {
-            if (!toast) return;
-            toast.textContent = 'Report export previewed. File generation will be connected with the backend.';
-            toast.classList.add('is-visible');
-            window.clearTimeout(window.sellerToastTimer);
-            window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3400);
+    });
+
+    /* Period/interval selects submit their report filter form for server-side navigation. */
+    document.querySelectorAll('[data-period-nav]').forEach((control) => {
+        control.addEventListener('change', () => {
+            const form = control.closest('form');
+            if (!form) return;
+            if (typeof form.requestSubmit === 'function') form.requestSubmit();
+            else form.submit();
         });
     });
 

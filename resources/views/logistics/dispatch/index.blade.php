@@ -155,6 +155,9 @@
                                 <small>
                                     {{ $zone['area'] }}
                                 </small>
+                                <small class="dispatch-zone-coverage">
+                                    {{ $zone['coverage'] }}
+                                </small>
                             </span>
                         </td>
 
@@ -163,6 +166,11 @@
                                 {{ $zone['ready'] }}
                             </strong>
                             {{ Str::plural('parcel', $zone['ready']) }}
+                            @if($zone['routing_issues'] > 0)
+                                <small class="dispatch-routing-warning">
+                                    {{ $zone['routing_issues'] }} {{ $zone['routing_issues'] === 1 ? 'parcel does' : 'parcels do' }} not match this zone and will be held for re-sorting.
+                                </small>
+                            @endif
                         </td>
 
                         <td>
@@ -209,18 +217,16 @@
                         </td>
 
                         <td>
-                            @if($zone['ready'] === 0)
-                                <span>
-                                    No ready parcels
-                                </span>
+                            @if($zone['ready'] === 0 && $zone['routing_issues'] > 0)
+                                <span class="dispatch-routing-warning">No matching parcels ready</span>
+                            @elseif($zone['ready'] === 0)
+                                <span>No ready parcels</span>
                             @elseif(count($zone['riders']) === 0)
                                 <span>
                                     Waiting for rider capacity
                                 </span>
                             @else
-                                <span>
-                                    Ready for dispatch
-                                </span>
+                                <span>Ready for dispatch</span>
                             @endif
                         </td>
 

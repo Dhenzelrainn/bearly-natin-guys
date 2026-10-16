@@ -822,6 +822,143 @@ Table seller_payouts {
   due_at timestamp
   paid_at timestamp
   reference varchar(150)
+  receiving_bank_name varchar(120)
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table seller_wallets {
+  id bigint [pk, increment, not null]
+  seller_profile_id bigint [not null, unique]
+  available_balance_minor bigint [not null]
+  pending_balance_minor bigint [not null]
+  reserved_balance_minor bigint [not null]
+  total_withdrawn_minor bigint [not null]
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table seller_bank_accounts {
+  id bigint [pk, increment, not null]
+  seller_profile_id bigint [not null]
+  bank_name varchar(120) [not null]
+  account_name varchar(160) [not null]
+  account_number text [not null]
+  account_number_last4 char(4) [not null]
+  status varchar(20) [not null]
+  is_default boolean [not null]
+  created_by bigint
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (seller_profile_id, status) [name: 'seller_bank_accounts_owner_status_idx']
+  }
+}
+
+Table seller_withdrawals {
+  id bigint [pk, increment, not null]
+  withdrawal_no varchar(40) [not null, unique]
+  seller_profile_id bigint [not null]
+  seller_wallet_id bigint [not null]
+  seller_bank_account_id bigint [not null]
+  amount_minor bigint [not null]
+  bank_name_snapshot varchar(120) [not null]
+  account_name_snapshot varchar(160) [not null]
+  account_number_last4 char(4) [not null]
+  status varchar(30) [not null]
+  idempotency_key varchar(80) [not null]
+  requested_at timestamp [not null]
+  reviewed_by bigint
+  reviewed_at timestamp
+  rejection_reason text
+  processing_started_by bigint
+  processing_started_at timestamp
+  completed_at timestamp
+  failed_at timestamp
+  failure_reason text
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (seller_profile_id, idempotency_key) [unique, name: 'seller_withdrawals_seller_idempotency_unique']
+    (status, requested_at) [name: 'seller_withdrawals_status_requested_idx']
+    (seller_profile_id, created_at) [name: 'seller_withdrawals_seller_created_idx']
+  }
+}
+
+Table seller_wallet_transactions {
+  id bigint [pk, increment, not null]
+  transaction_no varchar(40) [not null, unique]
+  seller_wallet_id bigint [not null]
+  seller_transaction_id bigint
+  seller_withdrawal_id bigint
+  seller_payout_id bigint [unique]
+  type varchar(40) [not null]
+  amount_minor bigint [not null]
+  available_delta_minor bigint [not null]
+  pending_delta_minor bigint [not null]
+  reserved_delta_minor bigint [not null]
+  withdrawn_delta_minor bigint [not null]
+  available_balance_after_minor bigint [not null]
+  pending_balance_after_minor bigint [not null]
+  reserved_balance_after_minor bigint [not null]
+  total_withdrawn_after_minor bigint [not null]
+  reference varchar(150)
+  description varchar(255)
+  idempotency_key varchar(120) [unique]
+  actor_user_id bigint
+  metadata json
+  created_at timestamp [not null]
+
+  indexes {
+    (seller_transaction_id, type) [unique, name: 'seller_wallet_tx_source_type_unique']
+    (seller_withdrawal_id, type) [unique, name: 'seller_wallet_tx_withdrawal_type_unique']
+    (seller_wallet_id, created_at) [name: 'seller_wallet_tx_wallet_time_idx']
+    (seller_wallet_id, type) [name: 'seller_wallet_tx_wallet_type_idx']
+  }
+}
+
+Table seller_withdrawal_status_histories {
+  id bigint [pk, increment, not null]
+  seller_withdrawal_id bigint [not null]
+  from_status varchar(30)
+  to_status varchar(30) [not null]
+  actor_user_id bigint
+  reason text
+  metadata json
+  occurred_at timestamp [not null]
+  created_at timestamp [not null]
+
+  indexes {
+    (seller_withdrawal_id, to_status) [unique, name: 'seller_withdrawal_history_target_unique']
+    (seller_withdrawal_id, occurred_at) [name: 'seller_withdrawal_history_time_idx']
+  }
+}
+
+Table seller_withdrawal_transfers {
+  id bigint [pk, increment, not null]
+  transfer_no varchar(40) [not null, unique]
+  seller_withdrawal_id bigint [not null, unique]
+  amount_minor bigint [not null]
+  bank_name varchar(120) [not null]
+  account_number_last4 char(4) [not null]
+  bank_reference varchar(150)
+  transfer_date date [not null]
+  status varchar(30) [not null]
+  proof_disk varchar(32)
+  proof_path varchar(500)
+  proof_mime_type varchar(100)
+  proof_original_name varchar(255)
+  proof_size_bytes bigint
+  recorded_by bigint [not null]
+  recorded_at timestamp [not null]
+  verified_by bigint
+  verified_at timestamp
+  verification_note text
+  failure_confirmed_by bigint
+  failure_confirmed_at timestamp
+  failure_reason text
   created_at timestamp
   updated_at timestamp
 }
@@ -917,7 +1054,7 @@ Table shipments {
 
 Table sorting_centers {
   id bigint [pk, increment, not null]
-  logistics_profile_id bigint [not null]
+  logistics_profile_id bigint [not null, unique]
   address_id bigint [not null]
   name varchar(160) [not null]
   code varchar(30) [not null, unique]
@@ -939,6 +1076,7 @@ Table sorting_zones {
   status varchar(20) [not null]
   created_at timestamp
   updated_at timestamp
+  deleted_at timestamp
 }
 
 Table stores {
@@ -1259,10 +1397,29 @@ Ref: seller_order_status_histories.seller_order_id > seller_orders.id
 Ref: seller_orders.order_id > orders.id
 Ref: seller_orders.store_id > stores.id
 Ref: seller_payouts.seller_profile_id > seller_profiles.id
+Ref: seller_bank_accounts.created_by > users.id
+Ref: seller_bank_accounts.seller_profile_id > seller_profiles.id
 Ref: seller_profiles.application_id > account_applications.id
 Ref: seller_profiles.approved_category_id > categories.id
 Ref: seller_profiles.pickup_address_id > addresses.id
 Ref: seller_profiles.user_id > users.id
+Ref: seller_wallet_transactions.actor_user_id > users.id
+Ref: seller_wallet_transactions.seller_payout_id > seller_payouts.id
+Ref: seller_wallet_transactions.seller_transaction_id > seller_transactions.id
+Ref: seller_wallet_transactions.seller_wallet_id > seller_wallets.id
+Ref: seller_wallet_transactions.seller_withdrawal_id > seller_withdrawals.id
+Ref: seller_wallets.seller_profile_id > seller_profiles.id
+Ref: seller_withdrawal_status_histories.actor_user_id > users.id
+Ref: seller_withdrawal_status_histories.seller_withdrawal_id > seller_withdrawals.id
+Ref: seller_withdrawal_transfers.failure_confirmed_by > users.id
+Ref: seller_withdrawal_transfers.recorded_by > users.id
+Ref: seller_withdrawal_transfers.seller_withdrawal_id > seller_withdrawals.id
+Ref: seller_withdrawal_transfers.verified_by > users.id
+Ref: seller_withdrawals.reviewed_by > users.id
+Ref: seller_withdrawals.processing_started_by > users.id
+Ref: seller_withdrawals.seller_bank_account_id > seller_bank_accounts.id
+Ref: seller_withdrawals.seller_profile_id > seller_profiles.id
+Ref: seller_withdrawals.seller_wallet_id > seller_wallets.id
 Ref: seller_transactions.commission_id > platform_commissions.id
 Ref: seller_transactions.payment_id > payments.id
 Ref: seller_transactions.refund_id > refunds.id

@@ -18,7 +18,7 @@
 
 <main class="checkout-shell">
 <a class="checkout-back" href="{{ url('/cart') }}"><span class="material-symbols-outlined">arrow_back</span> Back to Cart</a>
-<p class="preview-notice">Shipping is estimated per Seller Order using the Store pickup address, route tier, packaged SKU weight, and combined parcel dimensions. The displayed fee is fixed when you place the order; a parcel needing a different post-pack fee will be held in this release.</p>
+<p class="preview-notice">Shipping is a flat fee for each seller parcel. Multi-seller checkouts are charged once per seller. Package dimensions are for delivery planning and do not change the fee.</p>
 <p id="local-preview-warning" class="checkout-warning" hidden>Browser-only preview items are not saved as Bearly cart products and will not be included in this order.</p>
 
 <form id="checkout-form" method="post" action="{{ route('checkout.place') }}">
@@ -44,7 +44,7 @@
 <div id="checkout-products"></div>
 <div class="seller-options">
 <div class="message-box"><label for="seller-message">Message for Sellers (optional):</label><input id="seller-message" name="seller_note" maxlength="120" placeholder="Add a short note for the Sellers"></div>
-<div class="shipping-box"><div><strong>Shipping Option</strong><span id="shipping-label">Bearly Logistics</span><small id="shipping-method-note">Estimated fee calculated for each Seller Order</small></div><strong id="shipping-price">—</strong></div>
+<div class="shipping-box"><div><strong>Shipping Option</strong><span id="shipping-label">Bearly Logistics</span><small id="shipping-method-note">Flat fee per Seller Order; one fee per seller parcel</small></div><strong id="shipping-price">—</strong></div>
 </div>
 <div class="order-total-line">Order Total (<span id="order-items">0</span> item): <strong id="order-total">₱0.00</strong></div>
 </section>

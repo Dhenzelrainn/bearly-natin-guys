@@ -11,8 +11,8 @@
 @endphp
 
 <section class="page-hero">
-    <div><span class="eyebrow">Seller settlements</span><h1>Track who has been paid</h1><p>Monitor each seller payout after commission and refund adjustments. Payout status is controlled by the server-side settlement record.</p></div>
-    <div class="hero-actions"><button class="button button-secondary" type="button" data-finance-export="payments"><i data-lucide="download"></i> Export payments</button></div>
+    <div><span class="eyebrow">Seller Wallet · Finance</span><h1>Review Seller withdrawals</h1><p>New Seller payouts are requested from Seller Wallet and sent manually by bank transfer. COD custody reconciliation remains separate.</p></div>
+    <div class="hero-actions"><a class="button button-primary" href="{{ route('admin.seller-payouts.index') }}"><i data-lucide="wallet" aria-hidden="true"></i>Open Seller Payouts</a><button class="button button-secondary" type="button" data-finance-export="payments"><i data-lucide="download"></i> Export legacy payments</button></div>
 </section>
 
 <section class="kpi-grid kpi-grid-compact">
@@ -22,74 +22,138 @@
     <article class="mini-stat"><span><i data-lucide="calendar-check"></i></span><div><strong>{{ collect($payments)->where('status', 'Paid')->count() }}/{{ count($payments) }}</strong><small>Settlements released</small></div></article>
 </section>
 
+<section class="panel finance-payout-guide" aria-labelledby="finance-payout-guide-title">
+    <div class="panel-heading"><div><span class="eyebrow">Manual bank payout</span><h2 id="finance-payout-guide-title">What to do next</h2></div></div>
+    <ol class="finance-payout-steps">
+        <li class="finance-payout-step">
+            <div class="finance-payout-step-heading">
+                <span class="finance-payout-step-number" aria-hidden="true">1</span>
+                <span class="finance-payout-step-icon" aria-hidden="true"><i data-lucide="wallet"></i></span>
+                <h3>Open withdrawal</h3>
+            </div>
+            <p>Open a <strong>Pending Review</strong> Seller Wallet withdrawal.</p>
+        </li>
+        <li class="finance-payout-step">
+            <div class="finance-payout-step-heading">
+                <span class="finance-payout-step-number" aria-hidden="true">2</span>
+                <span class="finance-payout-step-icon" aria-hidden="true"><i data-lucide="file-text"></i></span>
+                <h3>Review details</h3>
+            </div>
+            <p>Review the Seller's bank details, approve the exact amount, and start processing.</p>
+        </li>
+        <li class="finance-payout-step">
+            <div class="finance-payout-step-heading">
+                <span class="finance-payout-step-number" aria-hidden="true">3</span>
+                <span class="finance-payout-step-icon" aria-hidden="true"><i data-lucide="send"></i></span>
+                <h3>Make bank transfer</h3>
+            </div>
+            <p>Make the bank transfer outside Bearly, then record the actual date, exact amount, reference, and optional proof.</p>
+        </li>
+        <li class="finance-payout-step">
+            <div class="finance-payout-step-heading">
+                <span class="finance-payout-step-number" aria-hidden="true">4</span>
+                <span class="finance-payout-step-icon" aria-hidden="true"><i data-lucide="shield-check"></i></span>
+                <h3>Verify &amp; complete</h3>
+            </div>
+            <p>Independently verify the successful transfer before completing it. A reference by itself is not proof of success.</p>
+        </li>
+    </ol>
+</section>
+
 <section class="panel">
-    <div class="panel-heading"><div><span class="eyebrow">COD custody</span><h2>Cash awaiting Finance reconciliation</h2><p>Seller proceeds are not settlement-eligible until Finance confirms the Logistics remittance.</p></div></div>
-    <div class="table-wrap"><table class="admin-table">
-        <thead><tr><th>Collection / order</th><th>Provider / Rider</th><th>Due</th><th>Collected</th><th>Difference</th><th>Custody status</th><th>Finance action</th></tr></thead>
+    <div class="panel-heading"><div><span class="eyebrow">COD custody</span><h2>COD custody &amp; Finance receipts</h2><p>Confirm physical cash received from Logistics here. Reconciled receipts can be printed again from their row; Seller proceeds are not settlement-eligible until Finance confirms the remittance.</p></div></div>
+    <div class="table-wrap"><table class="admin-table finance-cod-custody-table">
+        <thead><tr><th>Collection / order</th><th>Products</th><th>Provider / Rider</th><th>Due</th><th>Collected</th><th>Difference</th><th>Custody status</th><th>Finance action</th></tr></thead>
         <tbody>
         @forelse($codCollections as $collection)
-            @php $difference = (int) $collection->discrepancy_minor; @endphp
+            @php
+                $difference = (int) $collection->discrepancy_minor;
+                $isOldReconcile = (int) old('collection_id', 0) === (int) $collection->id;
+            @endphp
             <tr>
                 <td><strong>{{ $collection->collection_no }}</strong><small class="table-subline">{{ $collection->order?->order_no ?? 'Order' }} · {{ $collection->sellerOrder?->store?->name ?? 'Seller' }}</small></td>
+                <td class="finance-cod-products-cell">@include('partials.order-item-preview-list', ['items' => $collection->order_item_previews])</td>
                 <td>{{ $collection->logisticsProfile?->display_name ?? 'Provider' }}<small class="table-subline">{{ $collection->riderProfile?->user?->name ?? 'Rider' }}</small></td>
                 <td>₱{{ number_format((int) $collection->amount_due_minor / 100, 2) }}</td>
                 <td>₱{{ number_format((int) $collection->amount_collected_minor / 100, 2) }}</td>
                 <td>@if($difference === 0)<span class="status-badge badge-success">Matched</span>@else<span class="status-badge badge-danger">{{ $difference < 0 ? 'Short' : 'Over' }} ₱{{ number_format(abs($difference) / 100, 2) }}</span>@endif</td>
-                <td><span class="status-badge {{ $collection->status === 'remitted_to_finance' ? 'badge-info' : ($collection->status === 'reconciled' ? 'badge-success' : 'badge-warning') }}">{{ str($collection->status)->replace('_', ' ')->title() }}</span>
-                    @if($collection->logistics_reference)<small class="table-subline">Logistics: {{ $collection->logistics_reference }}</small>@endif
-                    @if($collection->finance_remittance_reference)<small class="table-subline">Remittance: {{ $collection->finance_remittance_reference }}</small>@endif
+                <td>
+                    <div class="finance-cod-custody-status">
+                        <span class="status-badge {{ $collection->status === 'remitted_to_finance' ? 'badge-info' : ($collection->status === 'reconciled' ? 'badge-success' : 'badge-warning') }}">{{ str($collection->status)->replace('_', ' ')->title() }}</span>
+                        <div class="finance-cod-custody-references">
+                            @if($collection->logistics_reference)
+                                <div class="finance-cod-custody-reference">
+                                    <span>Rider-to-Logistics:</span>
+                                    <code>{{ $collection->logistics_reference }}</code>
+                                </div>
+                            @endif
+                            @if($collection->finance_remittance_reference)
+                                <div class="finance-cod-custody-reference">
+                                    <span>{{ str_starts_with($collection->finance_remittance_reference, 'L2F-') ? 'Logistics-to-Finance:' : 'Existing remittance reference:' }}</span>
+                                    <code>{{ $collection->finance_remittance_reference }}</code>
+                                </div>
+                            @endif
+                        </div>
+                    </div>
                 </td>
                 <td>
                     @if($collection->status === 'remitted_to_finance')
                         <details class="finance-action-details"><summary class="button button-secondary button-small">Reconcile received cash</summary>
                             <form method="POST" action="{{ route('admin.payments.cod.reconcile', $collection) }}" class="finance-action-form">
                                 @csrf
-                                <label>Cash physically received (₱)<input type="number" name="received_amount" min="0" step="0.01" inputmode="decimal" value="{{ number_format((int) $collection->amount_collected_minor / 100, 2, '.', '') }}" required></label>
-                                <label>Finance receipt / reconciliation reference<input type="text" name="reference" maxlength="150" required></label>
-                                <button class="button button-primary button-small" type="submit">Confirm reconciliation</button>
+                                <input type="hidden" name="collection_id" value="{{ $collection->id }}">
+                                <label for="cod-finance-amount-{{ $collection->id }}">Cash physically received (₱)</label>
+                                <input
+                                    id="cod-finance-amount-{{ $collection->id }}"
+                                    type="text"
+                                    name="received_amount"
+                                    inputmode="decimal"
+                                    autocomplete="off"
+                                    spellcheck="false"
+                                    value="{{ $isOldReconcile && old('received_amount') !== null ? old('received_amount') : number_format((int) $collection->amount_remitted_to_finance_minor / 100, 2, '.', ',') }}"
+                                    pattern="(?:[0-9]{1,8}|[0-9]{1,3},[0-9]{3}|[0-9]{1,2}(?:,[0-9]{3}){2})(?:\.[0-9]{1,2})?"
+                                    title="Enter an amount with up to eight digits and two decimal places; commas may separate thousands."
+                                    aria-describedby="cod-finance-amount-help-{{ $collection->id }} @if($isOldReconcile && $errors->has('received_amount'))cod-finance-amount-error-{{ $collection->id }}@endif"
+                                    aria-invalid="{{ $isOldReconcile && $errors->has('received_amount') ? 'true' : 'false' }}"
+                                    data-finance-cash-amount
+                                    required
+                                >
+                                <small id="cod-finance-amount-help-{{ $collection->id }}">Enter the amount Finance physically counted. Commas are accepted; the amount is stored as centavos.</small>
+                                @if($isOldReconcile)
+                                    @error('received_amount')<small id="cod-finance-amount-error-{{ $collection->id }}" class="cash-remittance-error">{{ $message }}</small>@enderror
+                                @endif
+                                <label class="finance-confirm">
+                                    <input type="checkbox" name="cash_received_confirmed" value="1" @checked($isOldReconcile && old('cash_received_confirmed')) required>
+                                    I confirm Finance physically received and counted this cash.
+                                </label>
+                                @if($isOldReconcile)
+                                    @error('cash_received_confirmed')<small class="cash-remittance-error">{{ $message }}</small>@enderror
+                                @endif
+                                <small>Bearly creates an internal Finance receipt number after confirmation. It is not a tax invoice or bank deposit receipt.</small>
+                                <button class="button button-primary button-small" type="submit">Confirm receipt &amp; reconcile</button>
                             </form>
                         </details>
                     @elseif($collection->status === 'reconciled')
-                        <span>Finance: {{ $collection->finance_reference }}</span>
+                        @php $hasBearlyReceipt = str_starts_with((string) $collection->finance_reference, 'BFR-'); @endphp
+                        <div class="finance-cod-receipt-action">
+                            <span>{{ $hasBearlyReceipt ? 'Bearly Finance receipt:' : 'Finance reference:' }} <code>{{ $collection->finance_reference }}</code></span>
+                            <a class="button button-secondary button-small" href="{{ route('admin.payments.cod.receipt', $collection) }}">{{ $hasBearlyReceipt ? 'Print Bearly receipt' : 'Print reconciliation record' }}</a>
+                        </div>
                     @else
                         <span class="empty-copy">Awaiting Logistics remittance</span>
                     @endif
                 </td>
             </tr>
         @empty
-            <tr><td colspan="7"><p class="empty-copy">No COD collections are waiting for Finance.</p></td></tr>
+            <tr><td colspan="8"><p class="empty-copy">No COD collections are waiting for Finance.</p></td></tr>
         @endforelse
         </tbody>
     </table></div>
 </section>
 
-<section class="panel">
-    <div class="panel-heading"><div><span class="eyebrow">Seller settlement eligibility</span><h2>COD proceeds reconciled</h2><p>Only completed Seller Orders whose COD collection has been reconciled are included. Refund recoveries are not automatically deducted.</p></div></div>
-    <div class="table-wrap"><table class="admin-table">
-        <thead><tr><th>Seller</th><th>Eligible orders</th><th class="align-right">Gross</th><th class="align-right">Commission</th><th class="align-right">Net due</th><th>Action</th></tr></thead>
-        <tbody>
-        @forelse($eligibleSellers as $seller)
-            <tr>
-                <td><strong>{{ $seller['seller'] }}</strong><small class="table-subline">Seller profile #{{ $seller['seller_profile_id'] }}</small></td>
-                <td>{{ $seller['orders'] }}</td>
-                <td class="align-right">₱{{ number_format($seller['gross_minor'] / 100, 2) }}</td>
-                <td class="align-right">−₱{{ number_format($seller['commission_minor'] / 100, 2) }}</td>
-                <td class="align-right"><strong>₱{{ number_format($seller['net_minor'] / 100, 2) }}</strong></td>
-                <td><details class="finance-action-details"><summary class="button button-primary button-small">Create pending settlement</summary>
-                    <form method="POST" action="{{ route('admin.payments.seller-settlements.store') }}" class="finance-action-form">
-                        @csrf
-                        <input type="hidden" name="seller_profile_id" value="{{ $seller['seller_profile_id'] }}">
-                        <p>Creates an auditable pending record only; no money is sent.</p>
-                        <label>Reason<textarea name="reason" minlength="5" maxlength="1000" required></textarea></label>
-                        <button class="button button-primary button-small" type="submit">Generate settlement</button>
-                    </form>
-                </details></td>
-            </tr>
-        @empty
-            <tr><td colspan="6"><p class="empty-copy">No COD Seller proceeds are ready. Reconcile all related cash with Finance first.</p></td></tr>
-        @endforelse
-        </tbody>
-    </table></div>
+<section class="panel finance-payout-guide">
+    <div class="panel-heading"><div><span class="eyebrow">Seller Wallet</span><h2>New requests are Seller-owned</h2><p>Finance reviews withdrawal requests instead of generating payout batches from COD proceeds. Eligible earnings move from Pending to Available only after order completion, Finance reconciliation, and return/refund checks.</p></div></div>
+    <a class="button button-primary" href="{{ route('admin.seller-payouts.index') }}">Review withdrawal queue</a>
 </section>
 
 <section class="panel">
@@ -176,31 +240,39 @@
         </div>
     </div>
     <div class="table-wrap"><table class="admin-table" data-finance-table="payments">
-        <thead><tr><th>Payout / Seller</th><th>Coverage</th><th class="align-right">Gross</th><th class="align-right">Commission</th><th class="align-right">Adjustments</th><th class="align-right">Net payout</th><th>Due / Reference</th><th>Status</th><th class="align-right">Action</th></tr></thead>
+            <thead><tr><th>Legacy payout / Seller</th><th>Coverage</th><th class="align-right">Gross</th><th class="align-right">Commission</th><th class="align-right">Adjustments</th><th class="align-right">Net payout</th><th>Due / Payment reference</th><th>Status</th><th class="align-right">Action</th></tr></thead>
         <tbody>
         @foreach ($payments as $payment)
             @php $badge = match($payment['status']) { 'Paid' => 'badge-success', 'On Hold' => 'badge-danger', 'Processing' => 'badge-info', default => 'badge-warning' }; @endphp
-            <tr data-finance-row data-payment-id="{{ $payment['id'] }}" data-status="{{ $payment['status'] }}" data-search="{{ strtolower($payment['id'].' '.$payment['seller'].' '.$payment['period'].' '.$payment['reference']) }}">
+            <tr data-finance-row data-payment-id="{{ $payment['id'] }}" data-status="{{ $payment['status'] }}" data-search="{{ strtolower($payment['id'].' '.$payment['seller'].' '.$payment['period'].' '.$payment['reference'].' '.$payment['receiving_bank_name']) }}">
                 <td><strong>{{ $payment['seller'] }}</strong><small class="table-subline">{{ $payment['id'] }}</small></td><td>{{ $payment['period'] }}</td>
                 <td class="align-right">₱{{ number_format($payment['gross'], 2) }}</td><td class="align-right commission-value">−₱{{ number_format($payment['commission'], 2) }}</td><td class="align-right">{{ $payment['adjustments'] < 0 ? '−' : '' }}₱{{ number_format(abs($payment['adjustments']), 2) }}</td><td class="align-right"><strong>₱{{ number_format($payment['net'], 2) }}</strong></td>
-                <td><strong>{{ $payment['due'] ? date('M d, Y', strtotime($payment['due'])) : '—' }}</strong><small class="table-subline" data-payment-reference>{{ $payment['reference'] }}</small></td><td><span class="status-badge js-payment-status {{ $badge }}">{{ $payment['status'] }}</span></td>
+                <td><strong>{{ $payment['due'] ? date('M d, Y', strtotime($payment['due'])) : '—' }}</strong><small class="table-subline">{{ $payment['method'] ?? 'Not paid yet' }}</small><small class="table-subline" data-payment-reference>{{ $payment['reference'] }}</small>@if($payment['receiving_bank_name'])<small class="table-subline">Receiving bank: {{ $payment['receiving_bank_name'] }}</small>@endif</td><td><span class="status-badge js-payment-status {{ $badge }}">{{ $payment['status'] }}</span></td>
                 <td class="align-right">
                     @if($payment['status'] === 'Pending' && $payment['record_id'] && $payment['item_count'] > 0)
-                        <details class="finance-action-details"><summary class="button button-secondary button-small">Record paid externally</summary>
+                        <details class="finance-action-details finance-payout-details" data-finance-payout-details>
+                            <summary class="button button-secondary button-small">Record payout</summary>
+                            <button class="button button-secondary button-small" type="button" data-finance-payout-close hidden>Close payout form</button>
+                            <p class="finance-payout-form-help">Legacy settlement records may only be closed after Finance confirms the completed bank transfer. New withdrawals must use the Seller Payouts queue.</p>
                             <form method="POST" action="{{ route('admin.payments.seller-settlements.record-paid', $payment['record_id']) }}" class="finance-action-form" enctype="multipart/form-data">
                                 @csrf
-                                <label>Actual amount (₱)<input type="number" min="0.01" step="0.01" inputmode="decimal" name="actual_amount" value="{{ number_format($payment['net'], 2, '.', '') }}" required></label>
-                                <label>External method<select name="method" required><option value="">Select</option><option value="gcash">GCash</option><option value="bank_transfer">Bank transfer</option><option value="cash">Cash</option><option value="other">Other</option></select></label>
-                                <label>Transfer / receipt reference<input type="text" name="reference" maxlength="150" required></label>
-                                <label>Actual paid date<input type="date" name="paid_on" max="{{ now()->toDateString() }}" value="{{ now()->toDateString() }}" required></label>
-                                <label>Receipt or Seller acknowledgment<input type="file" name="receipt" accept="image/jpeg,image/png,image/webp,application/pdf" required><small>Private file, max 5 MB.</small></label>
-                                <label>Reason<textarea name="reason" minlength="5" maxlength="1000" required></textarea></label>
-                                <label class="finance-confirm"><input type="checkbox" name="external_payout_confirmed" value="1" required> I confirm the Seller was actually paid outside Bearly.</label>
-                                <button class="button button-primary button-small" type="submit">Record verified payout</button>
+                                <input type="hidden" name="payout_id" value="{{ $payment['record_id'] }}">
+                                @if((int) old('payout_id', 0) === (int) $payment['record_id'] && $errors->any())
+                                    <div class="finance-payout-errors" role="alert"><strong>Please fix this:</strong><ul>@foreach($errors->all() as $message)<li>{{ $message }}</li>@endforeach</ul></div>
+                                @endif
+                                <label>Actual amount paid (₱)<input type="number" min="0.01" step="0.01" inputmode="decimal" name="actual_amount" value="{{ number_format($payment['net'], 2, '.', '') }}" required></label>
+                                <input type="hidden" name="method" value="bank_transfer">
+                                <label>Receiving bank name<input type="text" name="receiving_bank_name" maxlength="120" autocomplete="organization" value="{{ old('receiving_bank_name') }}" placeholder="e.g. MariBank Philippines, Inc." required><small>Enter the Seller’s bank where the completed transfer was received. Do not enter an account number here.</small></label>
+                                <label>Bank-transfer reference<input type="text" name="reference" maxlength="150" autocomplete="off" required><small>Do not use CODH-, L2F-, or BFR- cash-custody references.</small></label>
+                                <label>Date the transfer completed<input type="date" name="paid_on" max="{{ now()->toDateString() }}" value="{{ now()->toDateString() }}" required></label>
+                                <label>Bank transfer proof<input type="file" name="receipt" accept="image/jpeg,image/png,image/webp,application/pdf" required><small>Upload private proof of the completed bank transfer, max 5 MB.</small></label>
+                                <label>Finance verification note<textarea name="reason" minlength="5" maxlength="1000" required></textarea></label>
+                                <label class="finance-confirm"><input type="checkbox" name="seller_payout_confirmed" value="1" required> I confirm I verified the Seller received the exact bank-transfer amount.</label>
+                                <button class="button button-primary button-small" type="submit">Record paid</button>
                             </form>
                         </details>
                     @elseif($payment['status'] === 'Paid' && $payment['has_receipt'])
-                        <a class="button button-secondary button-small" href="{{ route('admin.payments.seller-settlements.receipt', $payment['record_id']) }}">Private receipt</a>
+                        <a class="button button-secondary button-small" href="{{ route('admin.payments.seller-settlements.receipt', $payment['record_id']) }}">View payout proof</a>
                     @elseif($payment['status'] === 'Pending' && $payment['record_id'])
                         <span class="empty-copy">Legacy payout: review required</span>
                     @else

@@ -60,7 +60,7 @@
     </div>
 
     <div class="table-wrap">
-        <table class="admin-table" id="logistics-users-table">
+        <table class="admin-table admin-user-directory-table" id="logistics-users-table">
             <thead>
                 <tr>
                     <th>Logistics Center</th>
@@ -77,7 +77,12 @@
                 @forelse ($users as $user)
                     <tr
                         data-table-row
+                        data-user-status-context
                         data-user-id="{{ $user['database_id'] }}"
+                        data-user-name="{{ $user['manager'] }}"
+                        data-status-url="{{ route('admin.users.status', $user['database_id']) }}"
+                        data-current-status="{{ strtolower($user['status']) }}"
+                        data-allowed-statuses="{{ implode(',', $user['allowed_statuses']) }}"
                         data-status="{{ $user['status'] }}"
                         data-search="{{ strtolower(
                             $user['name'].' '.
@@ -120,13 +125,13 @@
 
                         <td>
                             <span
-                                class="status-badge
+                                class="status-badge js-status-badge
                                 {{
                                     $user['status'] === 'Active'
                                         ? 'badge-success'
                                         : ($user['status'] === 'Suspended'
-                                            ? 'badge-danger'
-                                            : 'badge-neutral')
+                                            ? 'badge-warning'
+                                            : 'badge-danger')
                                 }}"
                             >
                                 {{ $user['status'] }}
@@ -134,14 +139,17 @@
                         </td>
 
                         <td class="align-right">
-                            <button
-                                type="button"
-                                class="button button-ghost button-small"
-                                data-open-modal="logistics-user-{{ $user['database_id'] }}"
-                            >
-                                <i data-lucide="eye"></i>
-                                View
-                            </button>
+                            <div class="admin-user-list-actions">
+                                @include('admin.users._row-status-actions', ['user' => $user])
+                                <button
+                                    type="button"
+                                    class="button button-ghost button-small"
+                                    data-open-modal="logistics-user-{{ $user['database_id'] }}"
+                                    aria-label="View {{ $user['manager'] }} profile"
+                                >
+                                    <i data-lucide="eye"></i><span>View</span>
+                                </button>
+                            </div>
                         </td>
                     </tr>
                 @empty
@@ -173,112 +181,36 @@
 </section>
 
 @foreach ($users as $user)
-<div
-    class="modal-shell"
-    data-modal="logistics-user-{{ $user['database_id'] }}"
-    hidden
->
-    <button
-        class="modal-backdrop"
-        type="button"
-        data-close-modal
-    ></button>
-
-    <section
-        class="modal-card modal-wide"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Logistics Center profile"
-    >
-        <div class="modal-heading">
-            <div>
-                <span class="eyebrow">{{ $user['id'] }}</span>
-                <h2>Logistics Center profile</h2>
-            </div>
-
-            <button
-                class="icon-button"
-                type="button"
-                data-close-modal
-                aria-label="Close"
-            >
-                <i data-lucide="x"></i>
-            </button>
-        </div>
-
-        <div class="review-grid">
-            <div class="review-profile">
-                <span class="avatar avatar-large avatar-warm">
-                    {{
-                        collect(explode(' ', $user['name']))
-                            ->filter()
-                            ->map(fn($part) => strtoupper(substr($part, 0, 1)))
-                            ->take(2)
-                            ->implode('')
-                    }}
-                </span>
-
-                <h3>{{ $user['name'] }}</h3>
-                <p>{{ $user['email'] }}</p>
-
-                <span class="role-badge">
-                    Logistics Center
-                </span>
-            </div>
-
-            <div class="review-details">
-                <h3 class="section-subtitle">Center information</h3>
-
-                <div class="detail-grid">
-                    <div>
-                        <span>Center name</span>
-                        <strong>{{ $user['name'] }}</strong>
-                    </div>
-
-                    <div>
-                        <span>Manager</span>
-                        <strong>{{ $user['manager'] }}</strong>
-                    </div>
-
-                    <div>
-                        <span>Email</span>
-                        <strong>{{ $user['email'] }}</strong>
-                    </div>
-
-                    <div>
-                        <span>Location</span>
-                        <strong>{{ $user['location'] }}</strong>
-                    </div>
-
-                    <div>
-                        <span>Assigned riders</span>
-                        <strong>{{ $user['riders'] }}</strong>
-                    </div>
-
-                    <div>
-                        <span>Date joined</span>
-                        <strong>{{ $user['joined'] }}</strong>
-                    </div>
-
-                    <div>
-                        <span>Current status</span>
-                        <strong>{{ $user['status'] }}</strong>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="modal-footer">
-            <button
-                type="button"
-                class="button button-primary"
-                data-close-modal
-            >
-                Close
-            </button>
-        </div>
-    </section>
-</div>
+    @include('admin.users._profile-modal', [
+        'modalId' => 'logistics-user-'.$user['database_id'],
+        'userId' => $user['database_id'],
+        'profileCode' => $user['id'],
+        'profileName' => $user['manager'],
+        'profileEmail' => $user['email'],
+        'profileRole' => 'Logistics Center',
+        'roleClass' => 'role-logistics',
+        'roleIcon' => 'warehouse',
+        'profileTitle' => 'Logistics Center profile',
+        'profileDescription' => 'Review the center’s account, assigned riders, and delivery activity.',
+        'status' => $user['status'],
+        'statusUrl' => route('admin.users.status', $user['database_id']),
+        'allowedStatuses' => $user['allowed_statuses'],
+        'summaryStats' => [
+            ['label' => 'Assigned riders', 'value' => $user['riders'], 'icon' => 'bike'],
+            ['label' => 'Delivered shipments', 'value' => $user['deliveries'], 'icon' => 'package-check'],
+        ],
+        'details' => [
+            ['label' => 'Email address', 'value' => $user['email'], 'icon' => 'mail'],
+            ['label' => 'Contact number', 'value' => $user['contact'], 'icon' => 'phone'],
+            ['label' => 'Location', 'value' => $user['location'], 'icon' => 'map-pin'],
+            ['label' => 'Center name', 'value' => $user['name'], 'icon' => 'warehouse'],
+            ['label' => 'Assigned riders', 'value' => $user['riders'], 'icon' => 'bike'],
+            ['label' => 'Delivered shipments', 'value' => $user['deliveries'], 'icon' => 'package-check'],
+            ['label' => 'Date joined', 'value' => $user['joined'], 'icon' => 'calendar-days'],
+        ],
+    ])
 @endforeach
+
+@include('admin.users._status-change-dialog')
 
 @endsection

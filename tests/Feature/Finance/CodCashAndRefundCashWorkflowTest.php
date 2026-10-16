@@ -3,6 +3,7 @@
 namespace Tests\Feature\Finance;
 
 use App\Enums\UserRole;
+use App\Models\AuditLog;
 use App\Models\LogisticsProfile;
 use App\Models\Order;
 use App\Models\Payment;
@@ -14,12 +15,15 @@ use App\Models\RiderProfile;
 use App\Models\Role;
 use App\Models\SellerOrder;
 use App\Models\SellerPayout;
+use App\Models\SellerPayoutItem;
 use App\Models\SellerProfile;
+use App\Models\SellerTransaction;
 use App\Models\Shipment;
 use App\Models\Store;
 use App\Models\User;
 use App\Services\CodCashCollectionService;
 use App\Services\SellerPayoutService;
+use App\Services\SellerWalletService;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -43,9 +47,20 @@ class CodCashAndRefundCashWorkflowTest extends TestCase
         $this->admin = $this->user(UserRole::Admin, 'Finance Admin');
     }
 
-    public function test_cod_collection_requires_exact_due_and_seller_settlement_waits_for_finance_reconciliation(): void
+    public function test_cod_collection_reconciliation_does_not_bypass_wallet_completion_and_return_eligibility(): void
     {
         $scenario = $this->scenario('settlement');
+        $scenario['seller_order']->items()->create([
+            'product_name' => 'COD Finance Product',
+            'variant_name' => 'Natural / One Size',
+            'sku' => 'COD-FINANCE-001',
+            'unit_price_minor' => 18000,
+            'quantity' => 1,
+            'discount_minor' => 0,
+            'subtotal_minor' => 18000,
+            'product_image_disk' => 'public',
+            'product_image_path' => 'seller-products/cod-finance.png',
+        ]);
         $rider = $this->rider($scenario['provider'], 'settlement rider');
         $collection = app(CodCashCollectionService::class)->recordRiderCollection(
             $scenario['shipment'],
@@ -58,73 +73,372 @@ class CodCashAndRefundCashWorkflowTest extends TestCase
         $this->assertSame('paid', $scenario['order']->fresh()->payment_status);
         $this->assertCount(0, app(SellerPayoutService::class)->eligibleBySeller());
         $this->actingAs($this->admin)->get(route('admin.payments'))->assertOk();
-        $this->actingAs($scenario['provider_user'])->get(route('logistics.cash.index'))->assertOk();
-
         $this->actingAs($scenario['provider_user'])
+            ->get(route('logistics.cash.index'))
+            ->assertOk()
+            ->assertSee('Count the cash. Enter the amount you received.')
+            ->assertSee('Bearly creates this number after you confirm the Rider');
+
+        $acknowledgment = $this->actingAs($scenario['provider_user'])
             ->post(route('logistics.cash.cod.receive', $collection), [
                 'actual_amount' => '200.00',
-                'reference' => 'LOG-SETTLEMENT-001',
             ])
-            ->assertRedirect();
+            ->assertRedirect(route('logistics.cash.index', ['cod_remittance' => $collection->id]));
         $collection->refresh();
         $this->assertSame('received_by_logistics', $collection->status);
+        $handoffReference = $collection->logistics_reference;
+        $this->assertSame('CODH-'.Str::upper(Str::replaceFirst('COD-', '', $collection->collection_no)), $handoffReference);
+        $this->assertMatchesRegularExpression('/^CODH-[A-Z0-9-]+$/', $handoffReference);
+        $acknowledgment->assertSessionHas('success', fn (string $message): bool => str_contains($message, $handoffReference));
+        $this->assertDatabaseHas('cod_cash_collection_events', [
+            'cod_cash_collection_id' => $collection->id,
+            'event_type' => 'cash_received_by_logistics',
+            'reference' => $handoffReference,
+        ]);
+        $this->actingAs($scenario['provider_user'])
+            ->get(route('logistics.cash.index'))
+            ->assertOk()
+            ->assertSee('cash-remittance-panel', false)
+            ->assertSee('Finance handoff')
+            ->assertSee('Record remittance')
+            ->assertSee('Selected')
+            ->assertDontSee('Record Finance remittance')
+            ->assertSee('Expected amount')
+            ->assertSee('Collected amount')
+            ->assertSee('Rider-to-Logistics reference:')
+            ->assertSee($handoffReference)
+            ->assertSee('Bearly creates a unique L2F (Logistics-to-Finance) reference.')
+            ->assertDontSee('Finance handoff reference')
+            ->assertSee('Give the cash to Finance.')
+            ->assertSee(route('logistics.cash.cod.remit', $collection), false);
 
         $this->actingAs($scenario['provider_user'])
+            ->post(route('logistics.cash.cod.receive', $collection), ['actual_amount' => '200.00'])
+            ->assertRedirect()
+            ->assertSessionHas('success', fn (string $message): bool => str_contains($message, $handoffReference));
+        $this->assertSame($handoffReference, $collection->fresh()->logistics_reference);
+        $this->assertSame(1, $collection->events()->where('event_type', 'cash_received_by_logistics')->count());
+
+        $remittance = $this->actingAs($scenario['provider_user'])
             ->post(route('logistics.cash.cod.remit', $collection), [
                 'actual_amount' => '200.00',
-                'reference' => 'FIN-HANDOFF-SETTLEMENT-001',
             ])
-            ->assertRedirect();
+            ->assertRedirect()
+            ->assertSessionHas('success');
         $collection->refresh();
         $this->assertSame('remitted_to_finance', $collection->status);
+        $remittanceReference = $collection->finance_remittance_reference;
+        $this->assertSame('L2F-'.Str::upper(Str::replaceFirst('COD-', '', $collection->collection_no)), $remittanceReference);
+        $remittance->assertSessionHas('success', fn (string $message): bool => str_contains($message, $remittanceReference));
+        $this->assertDatabaseHas('cod_cash_collection_events', [
+            'cod_cash_collection_id' => $collection->id,
+            'event_type' => 'cash_remitted_to_finance',
+            'reference' => $remittanceReference,
+        ]);
+        $this->actingAs($this->admin)
+            ->get(route('admin.payments'))
+            ->assertOk()
+            ->assertSee('finance-cod-custody-table', false)
+            ->assertSee('finance-cod-products-cell', false)
+            ->assertSee('COD Finance Product')
+            ->assertSee('seller-products/cod-finance.png', false)
+            ->assertSee('finance-cod-custody-reference', false)
+            ->assertSee('Logistics-to-Finance:')
+            ->assertSee($remittanceReference);
+
+        $this->actingAs($scenario['provider_user'])
+            ->post(route('logistics.cash.cod.remit', $collection), ['actual_amount' => '200.00'])
+            ->assertRedirect()
+            ->assertSessionHas('success', fn (string $message): bool => str_contains($message, $remittanceReference));
+        $this->assertSame($remittanceReference, $collection->fresh()->finance_remittance_reference);
+        $this->assertSame(1, $collection->events()->where('event_type', 'cash_remitted_to_finance')->count());
 
         $this->actingAs($this->admin)
             ->post(route('admin.payments.cod.reconcile', $collection), [
                 'received_amount' => '200.00',
-                'reference' => 'FIN-RECEIPT-SETTLEMENT-001',
+                'cash_received_confirmed' => '1',
             ])
             ->assertRedirect();
         $collection->refresh();
         $this->assertSame('reconciled', $collection->status);
-        $this->assertCount(1, app(SellerPayoutService::class)->eligibleBySeller());
+        $this->assertSame($remittanceReference, $collection->finance_remittance_reference);
+        $financeReceiptReference = $collection->finance_reference;
+        $this->assertMatchesRegularExpression('/^BFR-\d{4}-\d{8,}$/', $financeReceiptReference);
+        $this->assertNotSame($collection->finance_remittance_reference, $collection->finance_reference);
+        $this->assertDatabaseHas('cod_cash_collection_events', [
+            'cod_cash_collection_id' => $collection->id,
+            'event_type' => 'cash_reconciled_by_finance',
+            'reference' => $financeReceiptReference,
+        ]);
+        $this->actingAs($this->admin)
+            ->post(route('admin.payments.cod.reconcile', $collection), [
+                'received_amount' => '200.00',
+                'cash_received_confirmed' => '1',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success', fn (string $message): bool => str_contains($message, $financeReceiptReference));
+        $this->assertSame($financeReceiptReference, $collection->fresh()->finance_reference);
+        $this->assertSame(1, $collection->events()->where('event_type', 'cash_reconciled_by_finance')->count());
+        $this->actingAs($this->admin)
+            ->get(route('admin.payments'))
+            ->assertOk()
+            ->assertSee('Bearly Finance receipt:')
+            ->assertSee($financeReceiptReference)
+            ->assertSee('Print Bearly receipt')
+            ->assertSee(route('admin.payments.cod.receipt', $collection), false);
+        $this->actingAs($this->admin)
+            ->get(route('admin.payments.cod.receipt', $collection))
+            ->assertOk()
+            ->assertSee('COD Cash Receipt')
+            ->assertSee($financeReceiptReference)
+            ->assertSee($handoffReference)
+            ->assertSee($remittanceReference)
+            ->assertSee('not a BIR/tax invoice or a bank deposit receipt');
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'cod_cash.finance_receipt_viewed',
+            'actor_user_id' => $this->admin->id,
+            'auditable_id' => $collection->id,
+        ]);
+        $this->assertCount(0, app(SellerPayoutService::class)->eligibleBySeller());
+        $wallet = $scenario['seller_profile']->wallet()->firstOrFail();
+        $this->assertSame(0, (int) $wallet->available_balance_minor);
+        $this->assertSame(18000, (int) $wallet->pending_balance_minor);
 
         $this->actingAs($this->admin)
             ->post(route('admin.payments.seller-settlements.store'), [
                 'seller_profile_id' => $scenario['seller_profile']->id,
                 'reason' => 'COD receipts reconciled through Finance.',
             ])
+            ->assertRedirect()
+            ->assertSessionHasErrors('seller');
+
+        $this->assertDatabaseCount('seller_payouts', 0);
+        $this->assertDatabaseCount('seller_payout_items', 0);
+    }
+
+    public function test_legacy_direct_cash_seller_payouts_are_disabled_in_favor_of_wallet_withdrawals(): void
+    {
+        $scenario = $this->scenario('seller-cash-payout-disabled');
+        $collection = app(CodCashCollectionService::class)->recordRiderCollection(
+            $scenario['shipment'],
+            $this->rider($scenario['provider'], 'legacy cash payout rider'),
+            20000,
+        );
+
+        $this->actingAs($scenario['provider_user'])
+            ->post(route('logistics.cash.cod.receive', $collection), ['actual_amount' => '200.00'])
+            ->assertRedirect();
+        $this->actingAs($scenario['provider_user'])
+            ->post(route('logistics.cash.cod.remit', $collection), ['actual_amount' => '200.00'])
+            ->assertRedirect();
+        $this->actingAs($this->admin)
+            ->post(route('admin.payments.cod.reconcile', $collection), [
+                'received_amount' => '200.00',
+                'cash_received_confirmed' => '1',
+            ])
             ->assertRedirect();
 
-        $this->assertDatabaseHas('seller_payouts', [
+        $this->assertDatabaseCount('seller_payouts', 0);
+        $wallet = app(SellerWalletService::class)->refreshForSeller($scenario['seller_profile']);
+        $this->assertSame(0, (int) $wallet->available_balance_minor);
+        $this->assertSame(18000, (int) $wallet->pending_balance_minor);
+
+        $legacyPayout = SellerPayout::query()->create([
+            'payout_no' => 'SPY-LEGACY-CASH-001',
             'seller_profile_id' => $scenario['seller_profile']->id,
+            'period_start' => now()->subWeek()->toDateString(),
+            'period_end' => now()->toDateString(),
+            'gross_minor' => 20000,
+            'commission_minor' => 2000,
+            'adjustment_minor' => 0,
             'net_minor' => 18000,
             'status' => 'pending',
-            'paid_at' => null,
+            'due_at' => now(),
         ]);
-        $this->assertDatabaseCount('seller_payout_items', 1);
 
-        $payout = SellerPayout::query()->where('seller_profile_id', $scenario['seller_profile']->id)->sole();
         $this->actingAs($this->admin)
-            ->post(route('admin.payments.seller-settlements.record-paid', $payout), [
-                'external_payout_confirmed' => '1',
+            ->get(route('admin.payments.seller-settlements.cash-acknowledgment', $legacyPayout))
+            ->assertNotFound();
+
+        $this->actingAs($this->admin)
+            ->post(route('admin.payments.seller-settlements.record-paid', $legacyPayout), [
+                'seller_payout_confirmed' => '1',
                 'actual_amount' => '180.00',
-                'method' => 'bank_transfer',
-                'reference' => 'BANK-SELLER-SETTLEMENT-001',
+                'method' => 'cash',
                 'paid_on' => now()->toDateString(),
-                'reason' => 'Bank transfer was completed outside Bearly.',
+                'reason' => 'Cash handed directly to the Seller.',
                 'receipt' => UploadedFile::fake()->createWithContent(
-                    'seller-receipt.pdf',
+                    'signed-seller-acknowledgment.pdf',
                     "%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n",
                 ),
             ])
             ->assertRedirect()
+            ->assertSessionHasErrors('method');
+
+        $this->assertSame('pending', $legacyPayout->fresh()->status);
+        $this->assertDatabaseMissing('audit_logs', [
+            'action' => 'seller_payout.cash_paid',
+            'auditable_id' => $legacyPayout->id,
+        ]);
+    }
+
+    public function test_finance_remittance_amount_displays_and_accepts_thousands_separators(): void
+    {
+        $scenario = $this->scenario('formattedremittance');
+        $scenario['shipment']->update(['cod_amount_minor' => 5_005_000]);
+        $rider = $this->rider($scenario['provider'], 'formatted remittance rider');
+        $collection = app(CodCashCollectionService::class)->recordRiderCollection(
+            $scenario['shipment'],
+            $rider,
+            5_005_000,
+        );
+
+        $this->actingAs($scenario['provider_user'])
+            ->post(route('logistics.cash.cod.receive', $collection), ['actual_amount' => '50050.00'])
+            ->assertRedirect();
+
+        $this->actingAs($scenario['provider_user'])
+            ->get(route('logistics.cash.index', ['cod_remittance' => $collection->id]))
+            ->assertOk()
+            ->assertSee('value="50,050.00"', false);
+
+        $this->actingAs($scenario['provider_user'])
+            ->post(route('logistics.cash.cod.remit', $collection), [
+                'actual_amount' => '50,050.00',
+            ])
+            ->assertRedirect()
             ->assertSessionHasNoErrors();
 
-        $this->assertSame('paid', $payout->fresh()->status);
-        $this->assertSame('bank_transfer', $payout->fresh()->external_method);
+        $this->assertDatabaseHas('cod_cash_collections', [
+            'id' => $collection->id,
+            'amount_remitted_to_finance_minor' => 5_005_000,
+            'status' => 'remitted_to_finance',
+        ]);
+        $this->assertMatchesRegularExpression('/^L2F-[A-Z0-9-]+$/', $collection->fresh()->finance_remittance_reference);
+
         $this->actingAs($this->admin)
-            ->get(route('admin.payments.seller-settlements.receipt', $payout))
-            ->assertOk();
+            ->get(route('admin.payments'))
+            ->assertOk()
+            ->assertSee('value="50,050.00"', false)
+            ->assertSee('data-finance-cash-amount', false)
+            ->assertSee('Bearly creates an internal Finance receipt number after confirmation.');
+        $this->actingAs($this->admin)
+            ->get(route('admin.payments.cod.receipt', $collection))
+            ->assertNotFound();
+
+        $this->actingAs($this->admin)
+            ->post(route('admin.payments.cod.reconcile', $collection), [
+                'received_amount' => '50,050.00',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasErrors('cash_received_confirmed');
+        $this->assertSame('remitted_to_finance', $collection->fresh()->status);
+
+        $this->actingAs($this->admin)
+            ->post(route('admin.payments.cod.reconcile', $collection), [
+                'received_amount' => '50,050.00',
+                'cash_received_confirmed' => '1',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $financeReceiptReference = $collection->fresh()->finance_reference;
+        $this->assertMatchesRegularExpression('/^BFR-\d{4}-\d{8,}$/', $financeReceiptReference);
+        $this->assertDatabaseHas('cod_cash_collections', [
+            'id' => $collection->id,
+            'amount_reconciled_minor' => 5_005_000,
+            'finance_reference' => $financeReceiptReference,
+            'status' => 'reconciled',
+        ]);
+        $this->actingAs($this->admin)
+            ->get(route('admin.payments.cod.receipt', $collection))
+            ->assertOk()
+            ->assertSee('₱50,050.00')
+            ->assertSee($financeReceiptReference);
+    }
+
+    public function test_legacy_seller_payout_saves_receiving_bank_name_and_audits_it(): void
+    {
+        Storage::fake('local');
+        $scenario = $this->scenario('receiving-bank');
+        $payout = SellerPayout::query()->create([
+            'payout_no' => 'SPY-RECEIVING-BANK-001',
+            'seller_profile_id' => $scenario['seller_profile']->id,
+            'period_start' => now()->subWeek()->toDateString(),
+            'period_end' => now()->toDateString(),
+            'gross_minor' => 20000,
+            'commission_minor' => 2000,
+            'adjustment_minor' => 0,
+            'net_minor' => 18000,
+            'status' => 'pending',
+            'due_at' => now(),
+        ]);
+        $transaction = SellerTransaction::query()->create([
+            'transaction_no' => 'STX-RECEIVING-BANK-001',
+            'seller_profile_id' => $scenario['seller_profile']->id,
+            'type' => 'sale',
+            'amount_minor' => 18000,
+            'status' => 'posted',
+            'posted_at' => now(),
+        ]);
+        SellerPayoutItem::query()->create([
+            'seller_payout_id' => $payout->id,
+            'seller_transaction_id' => $transaction->id,
+            'gross_minor' => 20000,
+            'commission_minor' => 2000,
+            'net_minor' => 18000,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.payments'))
+            ->assertOk()
+            ->assertSee('Receiving bank name')
+            ->assertSee('name="receiving_bank_name"', false)
+            ->assertSee('data-finance-payout-details', false)
+            ->assertSee('data-finance-payout-close', false);
+
+        $basePayload = [
+            'seller_payout_confirmed' => '1',
+            'actual_amount' => '180.00',
+            'method' => 'bank_transfer',
+            'reference' => 'BANK-TRANSFER-RECEIVING-001',
+            'paid_on' => now()->toDateString(),
+            'reason' => 'Verified against the completed bank transfer.',
+            'receipt' => UploadedFile::fake()->createWithContent(
+                'seller-transfer-proof.pdf',
+                "%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n",
+            ),
+        ];
+
+        $this->actingAs($this->admin)
+            ->post(route('admin.payments.seller-settlements.record-paid', $payout), $basePayload)
+            ->assertRedirect()
+            ->assertSessionHasErrors('receiving_bank_name');
+        $this->assertSame('pending', $payout->fresh()->status);
+
+        $this->actingAs($this->admin)
+            ->post(route('admin.payments.seller-settlements.record-paid', $payout), $basePayload + [
+                'receiving_bank_name' => 'MariBank Philippines, Inc.',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('seller_payouts', [
+            'id' => $payout->id,
+            'status' => 'paid',
+            'receiving_bank_name' => 'MariBank Philippines, Inc.',
+        ]);
+        $this->actingAs($this->admin)
+            ->get(route('admin.payments'))
+            ->assertOk()
+            ->assertSee('Receiving bank: MariBank Philippines, Inc.');
+
+        $audit = AuditLog::query()
+            ->where('action', 'seller_payout.externally_paid')
+            ->where('auditable_id', $payout->id)
+            ->firstOrFail();
+        $this->assertSame('MariBank Philippines, Inc.', $audit->new_values['receiving_bank_name']);
+        $this->assertArrayNotHasKey('account_number', $audit->new_values);
     }
 
     public function test_multi_seller_cod_payment_is_not_captured_until_each_active_shipment_is_collected(): void
@@ -234,30 +548,29 @@ class CodCashAndRefundCashWorkflowTest extends TestCase
         $this->actingAs($otherProvider['user'])
             ->post(route('logistics.cash.cod.receive', $collection), [
                 'actual_amount' => '175.00',
-                'reference' => 'FOREIGN-HANDOFF',
             ])
             ->assertForbidden();
 
         $this->actingAs($scenario['provider_user'])
             ->post(route('logistics.cash.cod.receive', $collection), [
                 'actual_amount' => '175.00',
-                'reference' => 'LOG-DISCREPANCY-001',
             ])
             ->assertRedirect();
+        $this->assertMatchesRegularExpression('/^CODH-[A-Z0-9-]+$/', $collection->fresh()->logistics_reference);
         $this->actingAs($scenario['provider_user'])
             ->post(route('logistics.cash.cod.remit', $collection), [
                 'actual_amount' => '175.00',
-                'reference' => 'FIN-HANDOFF-DISCREPANCY-001',
             ])
             ->assertRedirect();
         $this->actingAs($this->admin)
             ->post(route('admin.payments.cod.reconcile', $collection), [
                 'received_amount' => '175.00',
-                'reference' => 'FIN-RECEIPT-DISCREPANCY-001',
+                'cash_received_confirmed' => '1',
             ])
             ->assertRedirect();
 
         $this->assertSame('reconciled', $collection->fresh()->status);
+        $this->assertMatchesRegularExpression('/^BFR-\d{4}-\d{8,}$/', $collection->fresh()->finance_reference);
         $this->assertSame(-2500, (int) $collection->fresh()->discrepancy_minor);
         $this->assertSame('pending', $scenario['payment']->fresh()->status);
         $this->assertCount(0, app(SellerPayoutService::class)->eligibleBySeller());
@@ -534,7 +847,7 @@ class CodCashAndRefundCashWorkflowTest extends TestCase
             ->get(route('logistics.cash.index'))
             ->assertOk()
             ->assertSee('Buyer acknowledgment reference')
-            ->assertSee('Match the Buyer acknowledgment reference above')
+            ->assertSee("Check that the number above matches the number on the Buyer's signed receipt.", false)
             ->assertSee($secondReference);
         $this->actingAs($this->admin)
             ->post(route('admin.payments.refund-cash.complete', $payout), [

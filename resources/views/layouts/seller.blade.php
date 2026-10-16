@@ -40,8 +40,10 @@
             ['label' => 'Publication Settings', 'route' => 'seller.store.publication'],
         ]],
         ['key' => 'finance', 'label' => 'Finance', 'icon' => 'wallet-cards', 'active' => request()->routeIs('seller.finance*'), 'children' => [
+            ['label' => 'Wallet', 'route' => 'seller.finance.wallet'],
             ['label' => 'My Earnings', 'route' => 'seller.finance.earnings'],
             ['label' => 'Transaction History', 'route' => 'seller.finance.transactions'],
+            ['label' => 'Bank Accounts', 'route' => 'seller.finance.bank-accounts'],
         ]],
         ['key' => 'reports', 'label' => 'Reports', 'icon' => 'chart-no-axes-combined', 'active' => request()->routeIs('seller.reports*'), 'children' => [
             ['label' => 'Reports Overview', 'route' => 'seller.reports'],
@@ -132,12 +134,14 @@
                     </button>
                     <div class="seller-popover notification-popover" data-seller-popover="notifications" hidden>
                         <div class="seller-popover-heading"><strong>Notifications</strong><small>{{ count($notifications ?? []) }} new</small></div>
-                        @foreach (($notifications ?? []) as $notification)
+                        @forelse (($notifications ?? []) as $notification)
                             <button type="button" class="seller-notification-row">
                                 <span class="notice-dot dot-{{ $notification['type'] }}"></span>
                                 <span><strong>{{ $notification['title'] }}</strong><small>{{ $notification['time'] }}</small></span>
                             </button>
-                        @endforeach
+                        @empty
+                            <p class="seller-notification-empty">No new notifications.</p>
+                        @endforelse
                     </div>
                 </div>
                 <span class="topbar-divider"></span>

@@ -755,6 +755,115 @@ erDiagram
         timestamp due_at
         timestamp paid_at
         varchar reference
+        varchar receiving_bank_name
+        timestamp created_at
+        timestamp updated_at
+    }
+    seller_wallets {
+        bigint id PK
+        bigint seller_profile_id UK
+        bigint available_balance_minor
+        bigint pending_balance_minor
+        bigint reserved_balance_minor
+        bigint total_withdrawn_minor
+        timestamp created_at
+        timestamp updated_at
+    }
+    seller_bank_accounts {
+        bigint id PK
+        bigint seller_profile_id
+        varchar bank_name
+        varchar account_name
+        text account_number
+        char account_number_last4
+        varchar status
+        boolean is_default
+        bigint created_by
+        timestamp created_at
+        timestamp updated_at
+    }
+    seller_withdrawals {
+        bigint id PK
+        varchar withdrawal_no UK
+        bigint seller_profile_id
+        bigint seller_wallet_id
+        bigint seller_bank_account_id
+        bigint amount_minor
+        varchar bank_name_snapshot
+        varchar account_name_snapshot
+        char account_number_last4
+        varchar status
+        varchar idempotency_key
+        timestamp requested_at
+        bigint reviewed_by
+        timestamp reviewed_at
+        text rejection_reason
+        bigint processing_started_by
+        timestamp processing_started_at
+        timestamp completed_at
+        timestamp failed_at
+        text failure_reason
+        timestamp created_at
+        timestamp updated_at
+    }
+    seller_wallet_transactions {
+        bigint id PK
+        varchar transaction_no UK
+        bigint seller_wallet_id
+        bigint seller_transaction_id
+        bigint seller_withdrawal_id
+        bigint seller_payout_id UK
+        varchar type
+        bigint amount_minor
+        bigint available_delta_minor
+        bigint pending_delta_minor
+        bigint reserved_delta_minor
+        bigint withdrawn_delta_minor
+        bigint available_balance_after_minor
+        bigint pending_balance_after_minor
+        bigint reserved_balance_after_minor
+        bigint total_withdrawn_after_minor
+        varchar reference
+        varchar description
+        varchar idempotency_key UK
+        bigint actor_user_id
+        json metadata
+        timestamp created_at
+    }
+    seller_withdrawal_status_histories {
+        bigint id PK
+        bigint seller_withdrawal_id
+        varchar from_status
+        varchar to_status
+        bigint actor_user_id
+        text reason
+        json metadata
+        timestamp occurred_at
+        timestamp created_at
+    }
+    seller_withdrawal_transfers {
+        bigint id PK
+        varchar transfer_no UK
+        bigint seller_withdrawal_id UK
+        bigint amount_minor
+        varchar bank_name
+        char account_number_last4
+        varchar bank_reference
+        date transfer_date
+        varchar status
+        varchar proof_disk
+        varchar proof_path
+        varchar proof_mime_type
+        varchar proof_original_name
+        bigint proof_size_bytes
+        bigint recorded_by
+        timestamp recorded_at
+        bigint verified_by
+        timestamp verified_at
+        text verification_note
+        bigint failure_confirmed_by
+        timestamp failure_confirmed_at
+        text failure_reason
         timestamp created_at
         timestamp updated_at
     }
@@ -865,6 +974,7 @@ erDiagram
         varchar status
         timestamp created_at
         timestamp updated_at
+        timestamp deleted_at
     }
     stores {
         bigint id PK
@@ -1162,6 +1272,25 @@ erDiagram
     users ||--o{ store_promotions : created_by
     stores ||--o{ store_promotions : store_id
     seller_profiles ||--|{ seller_payouts : seller_profile_id
+    users ||--o{ seller_bank_accounts : created_by
+    seller_profiles ||--o{ seller_bank_accounts : seller_profile_id
+    users ||--o{ seller_withdrawals : reviewed_by
+    users ||--o{ seller_withdrawals : processing_started_by
+    seller_profiles ||--o{ seller_withdrawals : seller_profile_id
+    seller_wallets ||--o{ seller_withdrawals : seller_wallet_id
+    seller_bank_accounts ||--o{ seller_withdrawals : seller_bank_account_id
+    seller_profiles ||--o| seller_wallets : seller_profile_id
+    seller_wallets ||--o{ seller_wallet_transactions : seller_wallet_id
+    seller_transactions ||--o{ seller_wallet_transactions : seller_transaction_id
+    seller_withdrawals ||--o{ seller_wallet_transactions : seller_withdrawal_id
+    seller_payouts ||--o| seller_wallet_transactions : seller_payout_id
+    users ||--o{ seller_wallet_transactions : actor_user_id
+    seller_withdrawals ||--o{ seller_withdrawal_status_histories : seller_withdrawal_id
+    users ||--o{ seller_withdrawal_status_histories : actor_user_id
+    seller_withdrawals ||--o| seller_withdrawal_transfers : seller_withdrawal_id
+    users ||--o{ seller_withdrawal_transfers : recorded_by
+    users ||--o{ seller_withdrawal_transfers : verified_by
+    users ||--o{ seller_withdrawal_transfers : failure_confirmed_by
     account_applications ||--o{ seller_profiles : application_id
     categories ||--o{ seller_profiles : approved_category_id
     categories ||--o{ store_subcategories : parent_category_id
@@ -1186,7 +1315,7 @@ erDiagram
     addresses ||--o{ shipments : origin_address_id
     seller_orders ||--|{ shipments : seller_order_id
     addresses ||--|{ sorting_centers : address_id
-    logistics_profiles ||--|{ sorting_centers : logistics_profile_id
+    logistics_profiles ||--|| sorting_centers : logistics_profile_id
     sorting_centers ||--|{ sorting_zones : sorting_center_id
     seller_profiles ||--|{ stores : seller_profile_id
     users ||--o{ support_tickets : assigned_to

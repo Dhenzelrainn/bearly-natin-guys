@@ -26,6 +26,8 @@ class PickupRequestWorkflowTest extends TestCase
 {
     use RefreshDatabase;
 
+    private int $phoneSequence = 0;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -47,6 +49,26 @@ class PickupRequestWorkflowTest extends TestCase
             'requested',
             10000,
         );
+        $own['sellerOrder']->items()->create([
+            'product_name' => 'Pickup Preview Product',
+            'variant_name' => 'Blue / Large',
+            'sku' => 'PICKUP-PREVIEW-001',
+            'unit_price_minor' => 18000,
+            'quantity' => 1,
+            'discount_minor' => 0,
+            'subtotal_minor' => 18000,
+            'product_image_disk' => 'public',
+            'product_image_path' => 'seller-products/pickup-preview.png',
+        ]);
+        $own['sellerOrder']->items()->create([
+            'product_name' => 'Pickup Product Without Image',
+            'variant_name' => 'Standard',
+            'sku' => 'PICKUP-PREVIEW-002',
+            'unit_price_minor' => 5000,
+            'quantity' => 1,
+            'discount_minor' => 0,
+            'subtotal_minor' => 5000,
+        ]);
         $foreign = $this->makePickup(
             $foreignProvider,
             $foreignSeller,
@@ -63,12 +85,29 @@ class PickupRequestWorkflowTest extends TestCase
             ->assertSee($seller['store']->name)
             ->assertSee('Pickup window:')
             ->assertSee('Seller and pickup location')
+            ->assertSee('Pickup details')
+            ->assertSee('Requested pickup date')
+            ->assertSee('Preferred time window')
             ->assertSee('Request activity')
             ->assertSee('Request submitted')
-            ->assertSee('1.250 kg total')
+            ->assertSee('Total weight')
+            ->assertSee('1.250 kg')
             ->assertSee('Pickup contact')
             ->assertSee('Seller operating hours')
             ->assertSee('Parcel and references')
+            ->assertSee('pickup-products-cell', false)
+            ->assertSee('Products in this Seller Order')
+            ->assertSee('Pickup Preview Product')
+            ->assertSee('Pickup Product Without Image')
+            ->assertSee('No image')
+            ->assertSee('seller-products/pickup-preview.png', false)
+            ->assertSee('Seller Order No.')
+            ->assertSee('Shipment ID')
+            ->assertSee('Waybill / Tracking No.')
+            ->assertSee('Parcel ID')
+            ->assertSee('Piece No.')
+            ->assertSee('shipping-label number used for scanning')
+            ->assertSee('View on Map')
             ->assertSee('Status and COD')
             ->assertSee('₱100.00')
             ->assertSee('Monday–Friday, 9:00 AM–5:00 PM')
@@ -409,6 +448,7 @@ class PickupRequestWorkflowTest extends TestCase
             ->assertViewHas(
                 'pickupMetrics',
                 fn (array $metrics) => $metrics['awaiting_review'] === 1
+                    && $metrics['awaiting_assignment'] === 1
             )
             ->assertSee(
                 route('logistics.pickups.verify', $pending),
@@ -423,6 +463,9 @@ class PickupRequestWorkflowTest extends TestCase
                 false
             )
             ->assertSee($availableRider->user->name)
+            ->assertSee('Needs Rider assignment')
+            ->assertSee('Assign Rider')
+            ->assertSee('Assign Rider &amp; schedule pickup', false)
             ->assertDontSee($foreignRider->user->name)
             ->assertSee('Pickup requests are submitted by Sellers.')
             ->assertDontSee('data-preview-form="manualPickup"', false)
@@ -489,19 +532,22 @@ class PickupRequestWorkflowTest extends TestCase
 
     private function makeSeller(string $suffix): array
     {
+        $phone = $this->nextPhone();
+
         $user = User::factory()->create([
             'name' => "Seller {$suffix}",
             'email' => 'seller-'.strtolower($suffix).'@example.test',
             'role' => UserRole::Seller->value,
             'status' => AccountStatus::Active->value,
-            'contact_number' => '09171111111',
+            'phone' => $phone,
+            'contact_number' => $phone,
         ]);
 
         $address = Address::query()->create([
             'user_id' => $user->id,
             'label' => 'Pickup',
             'recipient_name' => $user->name,
-            'phone' => '09171111111',
+            'phone' => $phone,
             'house_number' => '12',
             'street' => "Seller {$suffix} Street",
             'barangay' => 'San Rafael',
@@ -534,6 +580,11 @@ class PickupRequestWorkflowTest extends TestCase
             'profile',
             'store'
         );
+    }
+
+    private function nextPhone(): string
+    {
+        return sprintf('+63917%07d', ++$this->phoneSequence);
     }
 
     private function makeRider(

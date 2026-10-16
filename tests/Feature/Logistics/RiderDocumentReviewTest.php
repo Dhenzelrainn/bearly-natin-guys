@@ -6,6 +6,7 @@ use App\Enums\AccountStatus;
 use App\Enums\UserRole;
 use App\Models\AccountApplication;
 use App\Models\ApplicationDocument;
+use App\Models\Address;
 use App\Models\LogisticsProfile;
 use App\Models\Role;
 use App\Models\User;
@@ -539,6 +540,7 @@ class RiderDocumentReviewTest extends TestCase
         string $suffix,
         string $email
     ): array {
+        $location = $this->locationFor($suffix);
         $user = User::factory()->create([
             'name' =>
                 "Logistics {$suffix}",
@@ -575,9 +577,23 @@ class RiderDocumentReviewTest extends TestCase
                     "Logistics {$suffix}",
                 'contact_phone' =>
                     '09170000001',
+                'psgc_city_code' => $location['code'],
                 'status' =>
                     'active',
             ]);
+
+        Address::query()->create([
+            'user_id' => $user->id,
+            'label' => 'Sorting center',
+            'recipient_name' => $user->name,
+            'phone' => '09170000001',
+            'street' => 'Service Road',
+            'barangay' => $location['barangay'],
+            'city_municipality' => $location['city'],
+            'province' => $location['province'],
+            'postal_code' => $location['postal_code'],
+            'psgc_city_code' => $location['code'],
+        ]);
 
         return compact(
             'user',
@@ -589,6 +605,7 @@ class RiderDocumentReviewTest extends TestCase
         array $provider,
         string $suffix
     ): AccountApplication {
+        $location = $this->locationFor((string) $provider['profile']->psgc_city_code);
         $rider = User::factory()->create([
             'name' =>
                 "Rider {$suffix}",
@@ -605,7 +622,20 @@ class RiderDocumentReviewTest extends TestCase
             'vehicle_type' =>
                 'Motorcycle',
             'plate_number' =>
-                "PLATE-{$suffix}",
+            "PLATE-{$suffix}",
+        ]);
+
+        Address::query()->create([
+            'user_id' => $rider->id,
+            'label' => 'Home',
+            'recipient_name' => $rider->name,
+            'phone' => '09170000001',
+            'street' => 'Rider Street',
+            'barangay' => $location['barangay'],
+            'city_municipality' => $location['city'],
+            'province' => $location['province'],
+            'postal_code' => $location['postal_code'],
+            'psgc_city_code' => $location['code'],
         ]);
 
         return AccountApplication::query()
@@ -626,6 +656,16 @@ class RiderDocumentReviewTest extends TestCase
                 'submitted_at' =>
                     now(),
             ]);
+    }
+
+    /** @return array{code: string, city: string, province: string, barangay: string, postal_code: string} */
+    private function locationFor(string $value): array
+    {
+        $calamba = $value === 'B' || $value === '0403405000';
+
+        return $calamba
+            ? ['code' => '0403405000', 'city' => 'Calamba City', 'province' => 'Laguna', 'barangay' => 'San Rafael', 'postal_code' => '4027']
+            : ['code' => '0403424000', 'city' => 'San Pablo City', 'province' => 'Laguna', 'barangay' => 'San Rafael', 'postal_code' => '4000'];
     }
 
     private function makeDocument(

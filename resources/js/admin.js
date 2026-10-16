@@ -15,6 +15,105 @@
         refreshIcons();
         setTimeout(refreshIcons, 150);
 
+        document.querySelectorAll('[data-transfer-outcome]').forEach((select) => {
+            const form = select.closest('[data-withdrawal-transfer-form]');
+            const failureFields = form?.querySelector('[data-transfer-failure-fields]');
+            const bankReference = form?.querySelector('[name="bank_reference"]');
+            const failureReason = form?.querySelector('[name="failure_reason"]');
+            const noTransferConfirmation = form?.querySelector('[name="no_successful_transfer_confirmed"]');
+            const updateOutcomeFields = () => {
+                const failed = select.value === 'failed';
+                if (failureFields) failureFields.hidden = !failed;
+                if (bankReference) bankReference.required = !failed;
+                if (failureReason) failureReason.required = failed;
+                if (noTransferConfirmation) noTransferConfirmation.required = failed;
+            };
+            select.addEventListener('change', updateOutcomeFields);
+            updateOutcomeFields();
+        });
+
+        document.querySelectorAll('[data-finance-cash-amount]').forEach((input) => {
+            const format = (preserveCaret = true, padDecimals = false) => {
+                const current = input.value;
+                if (!current.trim()) return;
+
+                const caret = input.selectionStart ?? current.length;
+                const digitsBeforeCaret = (current.slice(0, caret).match(/\d/g) || []).length;
+                const caretAfterDecimal = current.slice(0, caret).includes('.');
+                const ungrouped = current.replace(/,/g, '').replace(/[^\d.]/g, '');
+                const decimalIndex = ungrouped.indexOf('.');
+                const integer = decimalIndex === -1 ? ungrouped : ungrouped.slice(0, decimalIndex);
+                const decimals = decimalIndex === -1
+                    ? ''
+                    : ungrouped.slice(decimalIndex + 1).replace(/\./g, '');
+                const groupedInteger = integer.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+                const formattedDecimals = padDecimals ? decimals.padEnd(2, '0') : decimals;
+                const formatted = decimalIndex === -1 && !padDecimals
+                    ? groupedInteger
+                    : `${groupedInteger || '0'}.${formattedDecimals}`;
+
+                input.value = formatted;
+                if (!preserveCaret || document.activeElement !== input) return;
+
+                let position = 0;
+                let digitsFound = 0;
+                while (position < formatted.length && digitsFound < digitsBeforeCaret) {
+                    if (/\d/.test(formatted[position])) digitsFound += 1;
+                    position += 1;
+                }
+                if (caretAfterDecimal && formatted.includes('.')) {
+                    position = Math.max(position, formatted.indexOf('.') + 1);
+                }
+                input.setSelectionRange(position, position);
+            };
+
+            format(false);
+            input.addEventListener('input', () => format());
+            input.addEventListener('blur', () => format(false, true));
+        });
+
+        document.querySelectorAll('[data-finance-payout-details]').forEach((details) => {
+            const summary = details.querySelector(':scope > summary');
+            const closeButton = details.querySelector('[data-finance-payout-close]');
+            const syncDisclosureControls = () => {
+                if (summary) summary.hidden = details.open;
+                if (closeButton) closeButton.hidden = !details.open;
+            };
+
+            details.addEventListener('toggle', () => {
+                syncDisclosureControls();
+
+                if (details.open) {
+                    details.querySelector('input:not([type="hidden"]), select, textarea')?.focus();
+                }
+            });
+
+            closeButton?.addEventListener('click', () => {
+                details.open = false;
+                syncDisclosureControls();
+                summary?.focus();
+            });
+
+            syncDisclosureControls();
+        });
+
+        document.querySelectorAll('[data-registration-decision]').forEach((form) => {
+            let submitting = false;
+
+            form.addEventListener('submit', (event) => {
+                if (submitting) {
+                    event.preventDefault();
+                    return;
+                }
+
+                submitting = true;
+                form.setAttribute('aria-busy', 'true');
+                form.querySelectorAll('button[type="submit"]').forEach((button) => {
+                    button.disabled = true;
+                });
+            });
+        });
+
         // Sidebar state
         const DESKTOP_BREAKPOINT = 820;
         const savedSidebar = localStorage.getItem('bearly-admin-sidebar');
@@ -1642,723 +1741,319 @@
             });
         });
 
-        // User account status persistence
-        const USER_STATUS_STORAGE_KEY = 'bearlyAdminUserStatuses';
-        const userStatuses = (() => {
-            try {
-                return JSON.parse(localStorage.getItem(USER_STATUS_STORAGE_KEY) || '{}');
-            } catch {
-                return {};
-            }
-        })();
+        // Account status changes are server-authoritative and audited.
+        try {
+            localStorage.removeItem('bearlyAdminUserStatuses');
+        } catch {
+            // Status rendering never depends on browser storage.
+        }
 
-        const syncUserProfileModalActions = (userId, status) => {
-            if (!userId) return;
-
-            document
-                .querySelectorAll(
-                    `[data-user-modal-actions][data-user-id="${userId}"]`
-                )
-                .forEach((actions) => {
-
-                    actions
-                        .querySelectorAll('[data-modal-user-status]')
-                        .forEach((button) => {
-
-                            const targetStatus =
-                                button.dataset.modalUserStatus;
-
-                            if (status === 'Active') {
-                                button.hidden =
-                                    targetStatus === 'Active';
-                            }
-
-                            else if (status === 'Suspended') {
-                                button.hidden =
-                                    targetStatus === 'Suspended';
-                            }
-
-                            else if (status === 'Deactivated') {
-                                button.hidden =
-                                    targetStatus !== 'Active';
-                            }
-
-                        });
-
-                });
+        const userStatusLabels = {
+            active: 'Active',
+            suspended: 'Suspended',
+            deactivated: 'Deactivated',
         };
+        const userStatusDialog = document.querySelector('[data-user-status-dialog]');
+        const userStatusForm = userStatusDialog?.querySelector('[data-user-status-form]');
+        const userStatusReason = userStatusForm?.querySelector('[name="reason"]');
+        const userStatusValue = userStatusForm?.querySelector('[data-user-status-value]');
+        const userStatusSubmit = userStatusForm?.querySelector('[data-user-status-submit]');
+        const userStatusError = userStatusForm?.querySelector('[data-user-status-error]');
+        const userStatusDescription = userStatusDialog?.querySelector('[data-user-status-description]');
+        const userStatusCsrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+        let activeUserStatusTrigger = null;
+        let activeUserStatusContext = null;
 
+        const normalizeUserStatus = (status) => String(status || '').trim().toLowerCase();
+        const userStatusLabel = (status) => userStatusLabels[normalizeUserStatus(status)] || 'Unknown';
+        const parseAllowedStatuses = (context) => new Set(
+            (context.dataset.allowedStatuses || '')
+                .split(',')
+                .map(normalizeUserStatus)
+                .filter(Boolean)
+        );
 
-        const syncUserAccountControls = (row, status) => {
-            if (!row) return;
-
-            const primaryButton =
-                row.querySelector('[data-user-primary-action]');
-
-            const primaryIcon =
-                primaryButton?.querySelector('i');
-
-            const primaryLabel =
-                primaryButton?.querySelector('span');
-
+        const syncUserStatusControls = (context, status) => {
+            const currentStatus = normalizeUserStatus(status);
+            const allowedStatuses = parseAllowedStatuses(context);
+            const primaryButton = context.querySelector('[data-user-primary-action]');
+            const primaryTarget = currentStatus === 'active' ? 'suspended' : 'active';
 
             if (primaryButton) {
+                primaryButton.dataset.userStatus = primaryTarget;
+                primaryButton.hidden = !allowedStatuses.has(primaryTarget);
 
-                if (status === 'Active') {
-
-                    primaryButton.dataset.userStatus =
-                        'Suspended';
-
-                    if (primaryIcon) {
-                        primaryIcon.setAttribute(
-                            'data-lucide',
-                            'pause-circle'
-                        );
-                    }
-
-                    if (primaryLabel) {
-                        primaryLabel.textContent =
-                            'Suspend';
-                    }
-
-                }
-
-                else {
-
-                    primaryButton.dataset.userStatus =
-                        'Active';
-
-                    if (primaryIcon) {
-                        primaryIcon.setAttribute(
-                            'data-lucide',
-                            'circle-check-big'
-                        );
-                    }
-
-                    if (primaryLabel) {
-                        primaryLabel.textContent =
-                            'Activate';
-                    }
-
-                }
-
+                const icon = primaryButton.querySelector('i');
+                const label = primaryButton.querySelector('span');
+                const primaryLabel = primaryTarget === 'active' ? 'Activate' : 'Suspend';
+                icon?.setAttribute('data-lucide', primaryTarget === 'active' ? 'circle-check-big' : 'pause-circle');
+                if (label) label.textContent = primaryLabel;
+                primaryButton.setAttribute(
+                    'aria-label',
+                    `${primaryLabel} ${context.dataset.userName || 'user'} account`
+                );
             }
 
+            context.querySelectorAll('[data-user-status]').forEach((button) => {
+                if (button === primaryButton) return;
 
-            row
-                .querySelectorAll('[data-user-menu-action]')
-                .forEach((button) => {
+                const targetStatus = normalizeUserStatus(button.dataset.userStatus);
+                button.hidden = targetStatus === currentStatus
+                    || !allowedStatuses.has(targetStatus)
+                    || (primaryButton && targetStatus === primaryTarget);
+            });
 
-                    const targetStatus =
-                        button.dataset.userMenuAction;
+            context.dataset.currentStatus = currentStatus;
+        };
 
-                    const primaryTarget =
-                        primaryButton?.dataset.userStatus || '';
+        const updateUserStatusCounts = (previousStatus, nextStatus) => {
+            const previousCount = document.querySelector(`[data-user-kpi="${previousStatus}"]`);
+            const nextCount = document.querySelector(`[data-user-kpi="${nextStatus}"]`);
 
-                    button.hidden =
-                        targetStatus === status ||
-                        targetStatus === primaryTarget;
+            if (previousStatus === nextStatus || !previousCount || !nextCount) return;
 
+            previousCount.textContent = String(Math.max(0, Number(previousCount.textContent) - 1));
+            nextCount.textContent = String(Number(nextCount.textContent) + 1);
+        };
+
+        const applyServerUserStatus = (userId, status, allowedStatuses) => {
+            const normalizedStatus = normalizeUserStatus(status);
+            const label = userStatusLabel(normalizedStatus);
+            const contexts = [...document.querySelectorAll('[data-user-status-context]')]
+                .filter((context) => context.dataset.userId === String(userId));
+            const row = contexts.find((context) => context.matches('tr[data-user-id]'));
+            const previousStatus = normalizeUserStatus(row?.dataset.currentStatus || contexts[0]?.dataset.currentStatus);
+
+            updateUserStatusCounts(previousStatus, normalizedStatus);
+
+            contexts.forEach((context) => {
+                context.dataset.currentStatus = normalizedStatus;
+                context.dataset.allowedStatuses = allowedStatuses.join(',');
+                syncUserStatusControls(context, normalizedStatus);
+
+                if (context.matches('tr[data-user-id]')) {
+                    context.dataset.status = label;
+                    const badge = context.querySelector('.js-status-badge, .status-badge');
+
+                    if (badge) {
+                        badge.textContent = label;
+                        badge.className = `status-badge js-status-badge ${normalizedStatus === 'active' ? 'badge-success' : normalizedStatus === 'suspended' ? 'badge-warning' : 'badge-danger'}`;
+                    }
+
+                    const tableId = context.closest('table')?.id;
+                    if (tableId) runTableFilter(tableId);
+                }
+
+                const profileModal = context.closest('[data-modal]');
+
+                profileModal?.querySelectorAll('[data-user-current-status]').forEach((currentStatusValue) => {
+                    currentStatusValue.textContent = label;
                 });
 
+                const statusClass = `is-${normalizedStatus}`;
+                const statusClasses = ['is-active', 'is-suspended', 'is-deactivated', 'is-unknown'];
+
+                profileModal?.querySelectorAll('[data-user-status-indicator], [data-user-status-card], [data-user-status-dot]').forEach((indicator) => {
+                    indicator.classList.remove(...statusClasses);
+                    indicator.classList.add(statusClass);
+                    indicator.dataset.status = normalizedStatus;
+                });
+
+                const statusIndicatorIcon = profileModal?.querySelector('[data-user-status-indicator] i');
+                statusIndicatorIcon?.setAttribute(
+                    'data-lucide',
+                    normalizedStatus === 'active'
+                        ? 'circle-check-big'
+                        : normalizedStatus === 'suspended'
+                            ? 'pause-circle'
+                            : 'user-x'
+                );
+            });
 
             refreshIcons();
         };
 
-
-        const applyUserStatus = (row, status) => {
-            const badge = row?.querySelector('.js-status-badge, .status-badge');
-
-            if (!row || !badge) return;
-
-            row.dataset.status = status;
-
-            badge.textContent = status;
-
-            badge.className =
-                'status-badge js-status-badge ' +
-                (
-                    status === 'Active'
-                        ? 'badge-success'
-                        : status === 'Suspended'
-                            ? 'badge-danger'
-                            : 'badge-neutral'
-                );
-
-            syncUserAccountControls(row, status);
-
-            if (row.dataset.userId) {
-                syncUserProfileModalActions(
-                    row.dataset.userId,
-                    status
-                );
-            }
-        };
-
-        document
-            .querySelectorAll('[data-modal-user-status]')
-            .forEach((button) => {
-
-                button.dataset.functionalAction = 'user-status';
-
-                button.addEventListener('click', () => {
-
-                    const modal = button.closest('[data-modal]');
-                    const userId =
-                        modal
-                            ?.querySelector('.eyebrow')
-                            ?.textContent
-                            .trim();
-
-                    if (!userId) return;
-
-                    const status =
-                        button.dataset.modalUserStatus;
-
-                    const row = document.querySelector(
-                        `tr[data-user-id="${userId}"]`
-                    );
-
-                    if (row) {
-                        applyUserStatus(row, status);
-                    }
-
-                    updateUserProfileModal(
-                        userId,
-                        status
-                    );
-
-                    userStatuses[userId] = status;
-
-                    localStorage.setItem(
-                        USER_STATUS_STORAGE_KEY,
-                        JSON.stringify(userStatuses)
-                    );
-
-                    showToast(
-                        `${userId} changed to ${status}.`,
-                        'Account status saved'
-                    );
-                });
-
-            });
-
-        const updateUserProfileModal = (userId, status) => {
-            document.querySelectorAll('[data-modal]').forEach((modal) => {
-                if (modal.querySelector('.eyebrow')?.textContent.trim() !== userId) return;
-                [...modal.querySelectorAll('.detail-grid > div')].forEach((detail) => {
-                    if (detail.querySelector('span')?.textContent.trim().toLowerCase() !== 'current status') return;
-                    const value = detail.querySelector('strong');
-                    if (value) value.textContent = status;
-                });
-            });
-        };
-
-        document.querySelectorAll('tr[data-user-id]').forEach((row) => {
-            const savedStatus = userStatuses[row.dataset.userId];
-
-            const initialStatus =
-                savedStatus ||
-                row.dataset.status ||
-                row.querySelector('.js-status-badge')?.textContent.trim() ||
-                'Active';
-
-            applyUserStatus(row, initialStatus);
+        document.querySelectorAll('[data-user-status-context]').forEach((context) => {
+            syncUserStatusControls(context, context.dataset.currentStatus || context.dataset.status);
         });
-        Object.entries(userStatuses).forEach(([userId, status]) => {
-            const row = [...document.querySelectorAll('tr[data-table-row]')]
-                .find((item) => (item.dataset.search || '').includes(userId.toLowerCase()));
-            if (row) {
-                row.dataset.userId = userId;
-                applyUserStatus(row, status);
+
+        const closeUserStatusDialog = (restoreFocus = true) => {
+            if (!userStatusDialog) return;
+
+            userStatusDialog.hidden = true;
+            if (userStatusReason) userStatusReason.value = '';
+            if (userStatusError) {
+                userStatusError.textContent = '';
+                userStatusError.hidden = true;
             }
-            updateUserProfileModal(userId, status);
+
+            if (restoreFocus) {
+                const row = activeUserStatusContext?.matches('tr')
+                    ? activeUserStatusContext
+                    : activeUserStatusContext?.closest('tr[data-user-id]');
+                const focusTarget = row?.querySelector('.status-badge')
+                    || activeUserStatusContext?.closest('[data-modal]')?.querySelector('[data-user-current-status]')
+                    || activeUserStatusTrigger;
+
+                if (focusTarget instanceof HTMLElement) {
+                    if (!focusTarget.matches('button, a, input, select, textarea, [tabindex]')) {
+                        focusTarget.tabIndex = -1;
+                    }
+                    focusTarget.focus();
+                }
+            }
+
+            activeUserStatusTrigger = null;
+            activeUserStatusContext = null;
+        };
+
+        userStatusDialog?.querySelectorAll('[data-close-modal]').forEach((button) => {
+            button.addEventListener('click', () => closeUserStatusDialog());
+        });
+
+        userStatusDialog?.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                event.stopPropagation();
+                closeUserStatusDialog();
+                return;
+            }
+
+            if (event.key !== 'Tab') return;
+
+            const focusable = [...userStatusDialog.querySelectorAll(
+                'a[href], button:not([disabled]):not(.modal-backdrop), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+            )].filter((element) => !element.hidden && element.getClientRects().length > 0);
+            const first = focusable[0];
+            const last = focusable.at(-1);
+
+            if (!first || !last) {
+                event.preventDefault();
+                return;
+            }
+
+            if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+            }
         });
 
         document.querySelectorAll('[data-user-status]').forEach((button) => {
             button.addEventListener('click', () => {
-                const row = button.closest('tr[data-user-id]');
+                const context = button.closest('[data-user-status-context]');
+                const targetStatus = normalizeUserStatus(button.dataset.userStatus);
+                const currentStatus = normalizeUserStatus(context?.dataset.currentStatus);
+                const allowedStatuses = context ? parseAllowedStatuses(context) : new Set();
 
-                if (!row) return;
+                if (!context || !userStatusDialog || !userStatusForm || !allowedStatuses.has(targetStatus) || targetStatus === currentStatus) return;
 
-                const status = button.dataset.userStatus;
-
-                if (!status) return;
-
-                applyUserStatus(row, status);
-
-                if (row.dataset.userId) {
-                    userStatuses[row.dataset.userId] = status;
-
-                    localStorage.setItem(
-                        USER_STATUS_STORAGE_KEY,
-                        JSON.stringify(userStatuses)
-                    );
+                activeUserStatusTrigger = button;
+                activeUserStatusContext = context;
+                userStatusForm.dataset.statusUrl = context.dataset.statusUrl || '';
+                if (userStatusValue) userStatusValue.value = targetStatus;
+                if (userStatusDescription) {
+                    userStatusDescription.textContent = `Change ${context.dataset.userName || 'this account'} from ${userStatusLabel(currentStatus)} to ${userStatusLabel(targetStatus)}?`;
                 }
+                if (userStatusError) {
+                    userStatusError.textContent = '';
+                    userStatusError.hidden = true;
+                }
+                if (userStatusReason) userStatusReason.value = '';
 
                 closeRegistrationMenus();
-
-                showToast(
-                    `Account status changed to ${status}.`,
-                    'Account status saved'
-                );
+                userStatusDialog.hidden = false;
+                refreshIcons();
+                userStatusReason?.focus();
             });
         });
 
-        document
-            .querySelectorAll(
-                '[data-mock-action]:not([data-modal-user-status])'
-            )
-            .forEach((button) => {
+        userStatusForm?.addEventListener('submit', async (event) => {
+            event.preventDefault();
 
-                const action =
-                    button.dataset.mockAction.toLowerCase();
+            const endpoint = userStatusForm.dataset.statusUrl;
+            const reason = userStatusReason?.value.trim() || '';
+            const targetStatus = normalizeUserStatus(userStatusValue?.value);
+
+            if (userStatusForm.getAttribute('aria-busy') === 'true') return;
+
+            if (!endpoint || !activeUserStatusContext || !reason || !Object.hasOwn(userStatusLabels, targetStatus)) {
+                    userStatusError.textContent = 'Enter a reason before confirming this account status change.';
+                    userStatusError.hidden = false;
+                    userStatusReason?.focus();
+                    return;
+                }
+
+                const statusContext = activeUserStatusContext;
+                const targetUserId = statusContext.dataset.userId;
+
+            userStatusError.textContent = '';
+            userStatusError.hidden = true;
+            userStatusForm.setAttribute('aria-busy', 'true');
+            if (userStatusSubmit) {
+                userStatusSubmit.disabled = true;
+                userStatusSubmit.textContent = 'Saving…';
+            }
+
+            try {
+                const response = await fetch(endpoint, {
+                    method: 'PATCH',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': userStatusCsrfToken,
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    body: JSON.stringify({ status: targetStatus, reason }),
+                });
+                const payload = await response.json().catch(() => null);
+
+                if (!response.ok) {
+                    const validationMessage = Object.values(payload?.errors || {}).flat()[0];
+                    throw new Error(validationMessage || payload?.message || 'The account status could not be updated. Try again.');
+                }
+
+                const updatedStatus = normalizeUserStatus(payload?.data?.status);
+                const allowedStatuses = payload?.data?.allowed_statuses;
 
                 if (
-                    !action.includes('account activated') &&
-                    !action.includes('account suspended') &&
-                    !action.includes('account deactivated')
-                ) return;
-
-                button.dataset.functionalAction =
-                    'user-status';
-
-                button.addEventListener('click', () => {
-
-                    const userId =
-                        button
-                            .closest('[data-modal]')
-                            ?.querySelector('.eyebrow')
-                            ?.textContent
-                            .trim();
-
-                    if (!userId) return;
-
-                    const status =
-                        action.includes('deactivated')
-                            ? 'Deactivated'
-                            : action.includes('suspended')
-                                ? 'Suspended'
-                                : 'Active';
-
-                    const row = [
-                        ...document.querySelectorAll(
-                            'tr[data-table-row]'
-                        )
-                    ].find((item) =>
-                        (item.dataset.search || '')
-                            .includes(userId.toLowerCase())
-                    );
-
-                    if (row) {
-                        row.dataset.userId = userId;
-                        applyUserStatus(row, status);
-                    }
-
-                    updateUserProfileModal(
-                        userId,
-                        status
-                    );
-
-                    userStatuses[userId] = status;
-
-                    localStorage.setItem(
-                        USER_STATUS_STORAGE_KEY,
-                        JSON.stringify(userStatuses)
-                    );
-
-                    showToast(
-                        `${userId} changed to ${status}.`,
-                        'Account status saved'
-                    );
-
-                });
-
-            });
-        
-        // Product violation enforcement state + persistence
-        const VIOLATION_STATE_STORAGE_KEY = 'bearlyAdminViolationStates';
-
-        const violationStates = (() => {
-            try {
-                return JSON.parse(
-                    localStorage.getItem(VIOLATION_STATE_STORAGE_KEY) || '{}'
-                );
-            } catch {
-                return {};
-            }
-        })();
-
-        const saveViolationStates = () => {
-            localStorage.setItem(
-                VIOLATION_STATE_STORAGE_KEY,
-                JSON.stringify(violationStates)
-            );
-        };
-
-        const violationStatusClass = (status) => {
-            if (status === 'Resolved') {
-                return 'badge-success';
-            }
-
-            if (
-                status === 'Escalated' ||
-                status === 'Removal Required'
-            ) {
-                return 'badge-danger';
-            }
-
-            if (status === 'Pending Review') {
-                return 'badge-warning';
-            }
-
-            return 'badge-info';
-        };
-
-        const syncViolationActions = (modal, status) => {
-            if (!modal) return;
-
-            const warningButton = modal.querySelector(
-                '[data-violation-button="warning"]'
-            );
-
-            const removalButton = modal.querySelector(
-                '[data-violation-button="removal"]'
-            );
-
-            const escalateButton = modal.querySelector(
-                '[data-violation-button="escalate"]'
-            );
-
-            const indicator = modal.querySelector(
-                '[data-violation-state-indicator]'
-            );
-
-            const indicatorLabel = modal.querySelector(
-                '[data-violation-state-label]'
-            );
-
-            /*
-            * Default state:
-            * Pending Review / Under Review
-            *
-            * Show all enforcement actions.
-            */
-            if (
-                status === 'Pending Review' ||
-                status === 'Under Review'
-            ) {
-                if (warningButton) warningButton.hidden = false;
-                if (removalButton) removalButton.hidden = false;
-                if (escalateButton) escalateButton.hidden = false;
-
-                if (indicator) indicator.hidden = true;
-
-                return;
-            }
-
-            /*
-            * Removal Required:
-            *
-            * The removal action has already happened,
-            * so only escalation remains available.
-            */
-            if (status === 'Removal Required') {
-                if (warningButton) warningButton.hidden = true;
-                if (removalButton) removalButton.hidden = true;
-                if (escalateButton) escalateButton.hidden = false;
-
-                if (indicator) indicator.hidden = false;
-
-                if (indicatorLabel) {
-                    indicatorLabel.textContent = 'Removal required';
+                    String(payload?.data?.user_id) !== targetUserId
+                    || !Object.hasOwn(userStatusLabels, updatedStatus)
+                    || !Array.isArray(allowedStatuses)
+                ) {
+                    throw new Error('The server returned an unexpected account status. Reload the page and try again.');
                 }
 
-                return;
-            }
+                applyServerUserStatus(targetUserId, updatedStatus, allowedStatuses);
+                closeUserStatusDialog(false);
+                showToast(`Account status updated to ${userStatusLabel(updatedStatus)}.`, 'Account status updated');
 
-            /*
-            * Escalated:
-            *
-            * No further enforcement actions are shown.
-            */
-            if (status === 'Escalated') {
-                if (warningButton) warningButton.hidden = true;
-                if (removalButton) removalButton.hidden = true;
-                if (escalateButton) escalateButton.hidden = true;
-
-                if (indicator) indicator.hidden = false;
-
-                if (indicatorLabel) {
-                    indicatorLabel.textContent = 'Seller escalated';
+                const row = [...document.querySelectorAll('tr[data-user-id]')]
+                    .find((item) => item.dataset.userId === targetUserId);
+                const focusTarget = row && !row.hidden
+                    ? row.querySelector('.status-badge')
+                    : statusContext.closest('[data-modal]')?.querySelector('[data-user-current-status]');
+                if (focusTarget instanceof HTMLElement) {
+                    if (!focusTarget.matches('button, a, input, select, textarea, [tabindex]')) focusTarget.tabIndex = -1;
+                    focusTarget.focus();
                 }
-
-                return;
-            }
-
-            /*
-            * Resolved:
-            *
-            * Record is already complete.
-            */
-            if (status === 'Resolved') {
-                if (warningButton) warningButton.hidden = true;
-                if (removalButton) removalButton.hidden = true;
-                if (escalateButton) escalateButton.hidden = true;
-
-                if (indicator) indicator.hidden = false;
-
-                if (indicatorLabel) {
-                    indicatorLabel.textContent = 'Violation resolved';
+            } catch (error) {
+                userStatusError.textContent = error instanceof Error
+                    ? error.message
+                    : 'The account status could not be updated. Try again.';
+                userStatusError.hidden = false;
+            } finally {
+                userStatusForm.removeAttribute('aria-busy');
+                if (userStatusSubmit) {
+                    userStatusSubmit.disabled = false;
+                    userStatusSubmit.textContent = 'Confirm change';
                 }
             }
-        };
+        });
 
-        const syncViolationState = (violationId) => {
-            if (!violationId) return;
-
-            const row = document.querySelector(
-                `tr[data-violation-id="${violationId}"]`
-            );
-
-            if (!row) return;
-
-            const saved = violationStates[violationId] || {};
-
-            const status =
-                saved.status ||
-                row.dataset.status ||
-                'Under Review';
-
-            const warnings =
-                saved.warnings !== undefined
-                    ? Number(saved.warnings)
-                    : Number(row.dataset.warnings || 0);
-
-            /*
-            * Keep the row's data attributes updated.
-            * This is important because the reusable filters
-            * read data-status directly.
-            */
-            row.dataset.status = status;
-            row.dataset.warnings = String(warnings);
-
-            /*
-            * Update warning count in the table.
-            */
-            const warningCount = row.querySelector(
-                '[data-violation-warning-count]'
-            );
-
-            if (warningCount) {
-                warningCount.textContent = String(warnings);
-            }
-
-            /*
-            * Update status badge in the table.
-            */
-            const statusBadge = row.querySelector(
-                '.js-violation-status'
-            );
-
-            if (statusBadge) {
-                statusBadge.textContent = status;
-
-                statusBadge.className =
-                    `status-badge js-violation-status ${violationStatusClass(status)}`;
-            }
-
-            /*
-            * Update matching review modal.
-            */
-            const modal = document.querySelector(
-                `[data-violation-modal][data-violation-id="${violationId}"]`
-            );
-
-            if (modal) {
-                const modalWarnings = modal.querySelector(
-                    '[data-modal-violation-warnings]'
-                );
-
-                const modalStatus = modal.querySelector(
-                    '[data-modal-violation-status]'
-                );
-
-                if (modalWarnings) {
-                    modalWarnings.textContent = String(warnings);
-                }
-
-                if (modalStatus) {
-                    modalStatus.textContent = status;
-                }
-
-                syncViolationActions(
-                    modal,
-                    status
-                );
-            }
-
-            /*
-            * Re-run the Product Violations filters after
-            * a status changes.
-            */
-            runTableFilter('violations-table');
-
-            refreshIcons();
-        };
-
-        /*
-        * Initialize Product Violations state.
-        *
-        * If no saved state exists yet, use the values
-        * rendered by Laravel as the starting state.
-        */
-        document
-            .querySelectorAll('tr[data-violation-id]')
-            .forEach((row) => {
-                const violationId = row.dataset.violationId;
-
-                if (!violationId) return;
-
-                if (!violationStates[violationId]) {
-                    violationStates[violationId] = {
-                        status:
-                            row.dataset.status ||
-                            'Under Review',
-
-                        warnings:
-                            Number(row.dataset.warnings || 0),
-                    };
-                }
-
-                syncViolationState(violationId);
-            });
-
-        saveViolationStates();
-
-
-        /*
-        * Product violation enforcement actions
-        */
-        document
-            .querySelectorAll('[data-violation-action]')
-            .forEach((button) => {
-
-                /*
-                * This prevents the generic data-mock-action
-                * handler near the top of admin.js from also
-                * firing for these buttons.
-                */
-                button.dataset.functionalAction =
-                    'product-violation';
-
-                button.addEventListener('click', () => {
-
-                    const modal = button.closest(
-                        '[data-violation-modal]'
-                    );
-
-                    const violationId =
-                        modal?.dataset.violationId;
-
-                    if (!violationId) return;
-
-                    const row = document.querySelector(
-                        `tr[data-violation-id="${violationId}"]`
-                    );
-
-                    if (!row) return;
-
-                    const current =
-                        violationStates[violationId] || {
-                            status:
-                                row.dataset.status ||
-                                'Under Review',
-
-                            warnings:
-                                Number(row.dataset.warnings || 0),
-                        };
-
-                    const action =
-                        button.dataset.violationAction;
-
-
-                    /*
-                    * ISSUE WARNING
-                    *
-                    * Warning count increases.
-                    * Status stays in its current review state.
-                    */
-                    if (action === 'warning') {
-                        current.warnings =
-                            Number(current.warnings || 0) + 1;
-
-                        violationStates[violationId] =
-                            current;
-
-                        saveViolationStates();
-
-                        syncViolationState(
-                            violationId
-                        );
-
-                        showToast(
-                            `${violationId} now has ${current.warnings} warning${current.warnings === 1 ? '' : 's'}.`,
-                            'Warning issued'
-                        );
-
-                        return;
-                    }
-
-
-                    /*
-                    * REQUIRE REMOVAL
-                    */
-                    if (action === 'removal') {
-                        current.status =
-                            'Removal Required';
-
-                        violationStates[violationId] =
-                            current;
-
-                        saveViolationStates();
-
-                        syncViolationState(
-                            violationId
-                        );
-
-                        showToast(
-                            `${violationId} was marked for product removal.`,
-                            'Removal required'
-                        );
-
-                        return;
-                    }
-
-
-                    /*
-                    * ESCALATE SELLER
-                    */
-                    if (action === 'escalate') {
-                        current.status =
-                            'Escalated';
-
-                        violationStates[violationId] =
-                            current;
-
-                        saveViolationStates();
-
-                        syncViolationState(
-                            violationId
-                        );
-
-                        showToast(
-                            `${violationId} was escalated for seller account review.`,
-                            'Seller escalated'
-                        );
-                    }
-                });
-            });
+        // Product Violation decisions are submitted to the audited Admin route.
 
         // Persist table-based Admin workflow decisions
         const WORKFLOW_STATUS_STORAGE_KEY = 'bearlyAdminWorkflowStatuses';

@@ -179,15 +179,17 @@
                                     @foreach ($logisticsPartners as $partner)
                                         <option
                                             value="{{ $partner['id'] }}"
+                                            data-city-code="{{ $partner['city_code'] }}"
                                             @selected(
                                                 old('logistics_partner')
                                                 === $partner['id']
                                             )
                                         >
-                                            {{ $partner['name'] }}
+                                            {{ $partner['name'] }}@if($partner['city']) — {{ $partner['city'] }}@endif
                                         </option>
                                     @endforeach
                                 </select>
+                                <small class="field-hint" data-logistics-partner-help role="status" aria-live="polite">Select your home municipality to find its approved Logistics partner.</small>
                             </div>
 
                             <div class="field">

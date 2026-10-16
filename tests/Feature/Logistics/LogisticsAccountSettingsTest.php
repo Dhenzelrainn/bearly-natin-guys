@@ -42,7 +42,8 @@ class LogisticsAccountSettingsTest extends TestCase
         $this->assertDatabaseHas('users', [
             'id' => $user->id,
             'name' => 'Updated Logistics Operator',
-            'contact_number' => '09179999999',
+            'phone' => '+639179999999',
+            'contact_number' => '+639179999999',
         ]);
     }
 
@@ -87,9 +88,29 @@ class LogisticsAccountSettingsTest extends TestCase
         );
 
         $this->assertSame(
-            '09178888888',
+            '+639178888888',
             $user->contact_number
         );
+    }
+
+    public function test_operator_contact_update_rejects_a_duplicate_normalized_phone(): void
+    {
+        ['user' => $user] = $this->makeLogisticsFacility();
+
+        User::factory()->create([
+            'email' => 'phone-owner@example.test',
+            'contact_number' => '+639177777777',
+        ]);
+
+        $this->actingAs($user)
+            ->from(route('logistics.profile.index'))
+            ->patch(route('logistics.profile.update'), [
+                'name' => 'Operator',
+                'contact' => '0917 777 7777',
+            ])
+            ->assertSessionHasErrors('contact');
+
+        $this->assertNotSame('+639177777777', $user->fresh()->contact_number);
     }
 
     public function test_correct_current_password_allows_password_change(): void
@@ -427,12 +448,20 @@ class LogisticsAccountSettingsTest extends TestCase
         string $suffix = 'A',
         string $email = 'operator@example.test'
     ): array {
+        $contactNumber = match ($suffix) {
+            'A' => '09171111111',
+            'B' => '09172222222',
+            'INACTIVE' => '09173333333',
+            default => '09174444444',
+        };
+
         $user = User::factory()->create([
             'name' => "Logistics Operator {$suffix}",
             'first_name' => 'Logistics',
             'last_name' => "Operator {$suffix}",
             'email' => $email,
-            'contact_number' => '09171111111',
+            'phone' => $contactNumber,
+            'contact_number' => $contactNumber,
             'role' => UserRole::Logistics->value,
             'status' => AccountStatus::Active->value,
             'business_name' => "Legacy Logistics {$suffix}",

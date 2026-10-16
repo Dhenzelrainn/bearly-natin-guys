@@ -34,13 +34,19 @@
         </div>
     </div>
     <div class="table-wrap"><table class="admin-table" data-finance-table="transactions">
-        <thead><tr><th>Date / Transaction</th><th>Order parties</th><th>Method</th><th>Status</th><th class="align-right">Gross</th><th class="align-right">Refund</th><th class="align-right">Commission</th><th class="align-right">Seller net</th></tr></thead>
+        <thead><tr><th>Date / Transaction</th><th>Order parties / products</th><th>Method</th><th>Status</th><th class="align-right">Gross</th><th class="align-right">Refund</th><th class="align-right">Commission</th><th class="align-right">Seller net</th></tr></thead>
         <tbody>
         @foreach ($transactions as $transaction)
             @php $badge = match($transaction['status']) { 'Completed' => 'badge-success', 'Refunded', 'Failed' => 'badge-danger', default => 'badge-warning' }; @endphp
             <tr data-finance-row data-date="{{ $transaction['date'] }}" data-status="{{ $transaction['status'] }}" data-search="{{ strtolower($transaction['id'].' '.$transaction['order'].' '.$transaction['seller'].' '.$transaction['buyer'].' '.$transaction['method']) }}">
                 <td><strong>{{ date('M d, Y', strtotime($transaction['date'])) }}</strong><small class="table-subline">{{ $transaction['id'] }}</small></td>
-                <td><strong>{{ $transaction['order'] }} · {{ $transaction['seller'] }}</strong><small class="table-subline">Buyer: {{ $transaction['buyer'] }}</small></td>
+                <td>
+                    <strong>{{ $transaction['order'] }} · {{ $transaction['seller'] }}</strong>
+                    <small class="table-subline">Buyer: {{ $transaction['buyer'] }}</small>
+                    @if(count($transaction['items']))
+                        @include('partials.order-item-preview-list', ['items' => $transaction['items']])
+                    @endif
+                </td>
                 <td>{{ $transaction['method'] }}</td><td><span class="status-badge {{ $badge }}">{{ $transaction['status'] }}</span></td>
                 <td class="align-right">₱{{ number_format($transaction['gross'], 2) }}</td><td class="align-right">₱{{ number_format($transaction['refund'], 2) }}</td><td class="align-right commission-value">₱{{ number_format($transaction['commission'], 2) }}</td><td class="align-right">₱{{ number_format($transaction['sellerNet'], 2) }}</td>
             </tr>

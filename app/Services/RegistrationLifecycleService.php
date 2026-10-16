@@ -16,16 +16,19 @@ use App\Models\SortingCenter;
 use App\Models\SortingZone;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 class RegistrationLifecycleService
 {
     public function __construct(
         private readonly SellerProductService $sellerProductService,
+        private readonly RiderZoneAssignmentService $riderZoneAssignment,
     ) {
     }
 
@@ -69,6 +72,7 @@ class RegistrationLifecycleService
                 $sponsor = User::query()
                     ->whereKey($sponsorLogisticsUserId)
                     ->where('role', UserRole::Logistics->value)
+                    ->where('status', AccountStatus::Active->value)
                     ->first();
 
                 if (! $sponsor) {
@@ -77,7 +81,23 @@ class RegistrationLifecycleService
                     );
                 }
 
-                $sponsorProfile = $this->ensureLogisticsProfile($sponsor);
+                $sponsorProfile = $sponsor->logisticsProfile;
+
+                if (! $sponsorProfile) {
+                    throw new RuntimeException(
+                        'The selected Logistics partner is not configured for a service city.'
+                    );
+                }
+
+                if (
+                    $sponsorProfile->status !== AccountStatus::Active->value
+                    || (string) $sponsorProfile->psgc_city_code
+                        !== (string) $normalizedAddress->psgc_city_code
+                ) {
+                    throw ValidationException::withMessages([
+                        'logistics_partner' => 'Choose an active Logistics account serving your registered home municipality/city.',
+                    ]);
+                }
             }
 
             $accountApplication = AccountApplication::query()
@@ -162,14 +182,23 @@ class RegistrationLifecycleService
      */
     public function approve(
         User $user,
-        User $approver
+        User $approver,
+        ?int $applicationId = null
     ): AccountApplication {
-        return DB::transaction(function () use ($user, $approver): AccountApplication {
+        try {
+            return DB::transaction(function () use (
+                $user,
+                $approver,
+                $applicationId
+            ): AccountApplication {
             $lockedUser = User::query()
                 ->lockForUpdate()
                 ->findOrFail($user->id);
 
-            $application = $this->lockReviewableApplication($lockedUser);
+            $application = $this->lockReviewableApplication(
+                $lockedUser,
+                $applicationId
+            );
             $role = $application->requestedRole;
 
             $this->ensureRequiredDocumentsAreVerified($application);
@@ -204,29 +233,43 @@ class RegistrationLifecycleService
                 $application
             );
 
-            return $application->fresh([
-                'user',
-                'requestedRole',
-                'documents',
-            ]);
-        });
+                return $application->fresh([
+                    'user',
+                    'requestedRole',
+                    'documents',
+                ]);
+            });
+        } catch (QueryException $exception) {
+            if (str_contains($exception->getMessage(), 'psgc_city_code')) {
+                throw ValidationException::withMessages([
+                    'city' => 'Another Logistics account was approved for this municipality/city. This application was not approved.',
+                ]);
+            }
+
+            throw $exception;
+        }
     }
 
     public function reject(
         User $user,
         User $reviewer,
-        string $reason
+        string $reason,
+        ?int $applicationId = null
     ): AccountApplication {
         return DB::transaction(function () use (
             $user,
             $reviewer,
-            $reason
+            $reason,
+            $applicationId
         ): AccountApplication {
             $lockedUser = User::query()
                 ->lockForUpdate()
                 ->findOrFail($user->id);
 
-            $application = $this->lockReviewableApplication($lockedUser);
+            $application = $this->lockReviewableApplication(
+                $lockedUser,
+                $applicationId
+            );
 
             $application->forceFill([
                 'status' => AccountStatus::Rejected->value,
@@ -256,14 +299,23 @@ class RegistrationLifecycleService
     public function requestRevision(
         User $user,
         User $reviewer,
-        string $notes
+        string $notes,
+        ?int $applicationId = null
     ): AccountApplication {
-        return DB::transaction(function () use ($user, $reviewer, $notes): AccountApplication {
+        return DB::transaction(function () use (
+            $user,
+            $reviewer,
+            $notes,
+            $applicationId
+        ): AccountApplication {
             $lockedUser = User::query()
                 ->lockForUpdate()
                 ->findOrFail($user->id);
 
-            $application = $this->lockReviewableApplication($lockedUser);
+            $application = $this->lockReviewableApplication(
+                $lockedUser,
+                $applicationId
+            );
 
             $application->forceFill([
                 'status' => 'needs_revision',
@@ -289,8 +341,48 @@ class RegistrationLifecycleService
         });
     }
 
-    private function lockReviewableApplication(User $user): AccountApplication
+    private function lockReviewableApplication(
+        User $user,
+        ?int $applicationId = null
+    ): AccountApplication
     {
+        if ($applicationId !== null) {
+            $application = AccountApplication::query()
+                ->with(['requestedRole', 'documents'])
+                ->lockForUpdate()
+                ->find($applicationId);
+
+            $reviewableUserStatuses = [
+                AccountStatus::Pending->value,
+                AccountStatus::NeedsRevision->value,
+            ];
+
+            $reviewableApplicationStatuses = [
+                AccountStatus::Pending->value,
+                'submitted',
+                'under_review',
+                AccountStatus::NeedsRevision->value,
+            ];
+
+            if (
+                ! $application
+                || $application->user_id !== $user->id
+                || $application->requestedRole?->name !== $user->role
+                || ! in_array($user->status, $reviewableUserStatuses, true)
+                || ! in_array($application->status, $reviewableApplicationStatuses, true)
+            ) {
+                throw new ConflictHttpException(
+                    'The selected application is no longer available for review.'
+                );
+            }
+
+            if ($application->status === AccountStatus::Pending->value) {
+                $application->forceFill(['status' => 'submitted'])->save();
+            }
+
+            return $application;
+        }
+
         $application = $this->ensureLegacyApplication($user);
 
         abort_unless($application, 422);
@@ -577,6 +669,14 @@ class RegistrationLifecycleService
             ->where('label', $this->addressLabel($role))
             ->first();
 
+        $city = (string) ($data['city'] ?? $data['municipality'] ?? 'Not provided');
+        $province = (string) ($data['province'] ?? 'Not provided');
+        $cityCode = app(PostalCodeLookup::class)->canonicalCityCode(
+            isset($data['city_code']) ? (string) $data['city_code'] : null,
+            $province,
+            $city,
+        );
+
         $payload = [
             'recipient_name' =>
                 $user->name
@@ -597,15 +697,12 @@ class RegistrationLifecycleService
             'barangay' =>
                 $data['barangay'] ?? 'Not provided',
             'city_municipality' =>
-                $data['city']
-                ?? $data['municipality']
-                ?? 'Not provided',
+                $city,
             'province' =>
-                $data['province'] ?? 'Not provided',
+                $province,
             'postal_code' =>
                 $data['postal_code'] ?? null,
-            'psgc_city_code' =>
-                $data['city_code'] ?? null,
+            'psgc_city_code' => $cityCode,
             'is_default_shipping' =>
                 $role === UserRole::Buyer->value,
             'is_default_pickup' => in_array(
@@ -724,7 +821,11 @@ class RegistrationLifecycleService
                 $application?->sponsorLogisticsProfile;
 
             if (! $sponsorProfile && $user->logistics_id) {
-                $sponsor = User::find($user->logistics_id);
+                $sponsor = User::query()
+                    ->whereKey($user->logistics_id)
+                    ->where('role', UserRole::Logistics->value)
+                    ->where('status', AccountStatus::Active->value)
+                    ->first();
 
                 if ($sponsor) {
                     $sponsorProfile =
@@ -738,6 +839,23 @@ class RegistrationLifecycleService
                 );
             }
 
+            $homeAddress = Address::query()
+                ->where('user_id', $user->id)
+                ->where('label', $this->addressLabel(UserRole::Rider->value))
+                ->latest('id')
+                ->first();
+
+            if (
+                $sponsorProfile->status !== AccountStatus::Active->value
+                || ! $homeAddress
+                || ! filled($homeAddress->psgc_city_code)
+                || (string) $homeAddress->psgc_city_code !== (string) $sponsorProfile->psgc_city_code
+            ) {
+                throw ValidationException::withMessages([
+                    'logistics_partner' => 'The Rider and sponsoring Logistics account must serve the same verified municipality/city.',
+                ]);
+            }
+
             $this->ensureRiderProfile(
                 $user,
                 $sponsorProfile
@@ -745,6 +863,7 @@ class RegistrationLifecycleService
 
             return;
         }
+
     }
 
     private function ensureRiderProfile(
@@ -764,72 +883,6 @@ class RegistrationLifecycleService
             $profile = new RiderProfile([
                 'user_id' => $user->id,
             ]);
-        }
-
-        $validHomeCenter = null;
-
-        if ($profile->home_sorting_center_id) {
-            $validHomeCenter =
-                SortingCenter::query()
-                    ->whereKey(
-                        $profile
-                            ->home_sorting_center_id
-                    )
-                    ->where(
-                        'logistics_profile_id',
-                        $sponsorProfile->id
-                    )
-                    ->where(
-                        'status',
-                        'active'
-                    )
-                    ->first();
-        }
-
-        if (! $validHomeCenter) {
-            $validHomeCenter =
-                SortingCenter::query()
-                    ->where(
-                        'logistics_profile_id',
-                        $sponsorProfile->id
-                    )
-                    ->where(
-                        'status',
-                        'active'
-                    )
-                    ->oldest('id')
-                    ->first();
-
-            $profile->home_sorting_center_id =
-                $validHomeCenter?->id;
-
-            $profile->current_zone_id = null;
-        }
-
-        if (
-            $profile->current_zone_id
-            && $profile->home_sorting_center_id
-        ) {
-            $currentZoneIsValid =
-                SortingZone::query()
-                    ->whereKey(
-                        $profile->current_zone_id
-                    )
-                    ->where(
-                        'sorting_center_id',
-                        $profile
-                            ->home_sorting_center_id
-                    )
-                    ->where(
-                        'status',
-                        'active'
-                    )
-                    ->exists();
-
-            if (! $currentZoneIsValid) {
-                $profile->current_zone_id =
-                    null;
-            }
         }
 
         $profile->logistics_profile_id =
@@ -852,7 +905,7 @@ class RegistrationLifecycleService
 
         $profile->save();
 
-        return $profile->refresh();
+        return $this->riderZoneAssignment->sync($profile->refresh());
     }
 
     private function ensureLogisticsProfile(
@@ -863,6 +916,46 @@ class RegistrationLifecycleService
             ->where('user_id', $user->id)
             ->latest('id')
             ->first();
+
+        $serviceAddress = Address::query()
+            ->where('user_id', $user->id)
+            ->whereRaw('LOWER(label) = ?', [strtolower($this->addressLabel(UserRole::Logistics->value))])
+            ->latest('id')
+            ->first();
+
+        $cityCode = $serviceAddress?->psgc_city_code;
+
+        if (! filled($cityCode) || ! preg_match('/^[0-9]{6,10}$/D', (string) $cityCode)) {
+            throw ValidationException::withMessages([
+                'city' => 'The Logistics application must have a valid PSGC municipality/city code before approval.',
+            ]);
+        }
+
+        $existingCityOwner = LogisticsProfile::withTrashed()
+            ->where('psgc_city_code', $cityCode)
+            ->where('user_id', '<>', $user->id)
+            ->lockForUpdate()
+            ->first();
+
+        if ($existingCityOwner) {
+            throw ValidationException::withMessages([
+                'city' => 'Another Logistics account already owns this municipality/city.',
+            ]);
+        }
+
+        $existingProfile = LogisticsProfile::withTrashed()
+            ->where('user_id', $user->id)
+            ->first();
+
+        if (
+            $existingProfile
+            && filled($existingProfile->psgc_city_code)
+            && (string) $existingProfile->psgc_city_code !== (string) $cityCode
+        ) {
+            throw ValidationException::withMessages([
+                'city' => 'A Logistics account cannot change its registered service municipality/city.',
+            ]);
+        }
 
         $profile = LogisticsProfile::updateOrCreate(
             ['user_id' => $user->id],
@@ -880,6 +973,7 @@ class RegistrationLifecycleService
                     $user->contact_number
                     ?: $user->phone
                     ?: 'Not provided',
+                'psgc_city_code' => (string) $cityCode,
                 'status' => 'active',
             ]
         );
@@ -898,12 +992,7 @@ class RegistrationLifecycleService
     ): SortingCenter {
         $address = Address::query()
             ->where('user_id', $user->id)
-            ->where(
-                'label',
-                $this->addressLabel(
-                    UserRole::Logistics->value
-                )
-            )
+            ->whereRaw('LOWER(label) = ?', [strtolower($this->addressLabel(UserRole::Logistics->value))])
             ->latest('id')
             ->first();
 
@@ -938,13 +1027,29 @@ class RegistrationLifecycleService
             );
         }
 
-        $center = SortingCenter::query()
+        $centers = SortingCenter::withTrashed()
             ->where(
                 'logistics_profile_id',
                 $profile->id
             )
-            ->oldest('id')
-            ->first();
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->limit(2)
+            ->get();
+
+        if ($centers->count() > 1) {
+            throw ValidationException::withMessages([
+                'city' => 'This Logistics account has multiple Sorting Center records. Resolve the existing center records before provisioning can continue; no centers were changed.',
+            ]);
+        }
+
+        $center = $centers->first();
+
+        if ($center?->trashed()) {
+            throw ValidationException::withMessages([
+                'city' => 'This Logistics account’s Sorting Center is archived. Review and restore it before provisioning can continue.',
+            ]);
+        }
 
         if ($center) {
             $center->forceFill([

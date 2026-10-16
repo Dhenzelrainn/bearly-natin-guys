@@ -8,6 +8,11 @@ class Shipment extends Model
 {
     protected $guarded = [];
 
+    protected function casts(): array
+    {
+        return ['destination_address_snapshot' => 'array'];
+    }
+
     public function sellerOrder()
     {
         return $this->belongsTo(SellerOrder::class);
@@ -16,6 +21,19 @@ class Shipment extends Model
     public function logisticsProfile()
     {
         return $this->belongsTo(LogisticsProfile::class);
+    }
+
+    public function originLogisticsProfile()
+    {
+        return $this->belongsTo(
+            LogisticsProfile::class,
+            'origin_logistics_profile_id'
+        );
+    }
+
+    public function transfer()
+    {
+        return $this->hasOne(ShipmentTransfer::class);
     }
 
     public function originAddress()

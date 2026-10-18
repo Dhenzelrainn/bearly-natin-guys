@@ -2,19 +2,22 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Category;
 use App\Models\CodCashCollection;
-use App\Models\Order;
 use App\Models\PlatformCommission;
 use App\Models\Refund;
 use App\Models\RefundCashPayout;
 use App\Models\SellerPayout;
 use App\Models\SellerTransaction;
+use App\Models\Store;
 use App\Models\SystemSetting;
 use App\Services\AuditService;
 use App\Services\BuyerCatalogService;
 use App\Services\CodCashCollectionService;
 use App\Services\RefundCashPayoutService;
+use App\Services\SellerEarningsService;
 use App\Services\SellerPayoutService;
+use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -27,6 +30,7 @@ use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AdminFinanceController extends Controller
 {
@@ -377,71 +381,461 @@ class AdminFinanceController extends Controller
         );
     }
 
-    public function reports(Request $request): View
+    /** Report types selectable from the Admin Reports page. */
+    private const REPORT_TYPES = [
+        'sales_summary' => 'Sales Summary',
+        'sales_seller' => 'Sales by Seller',
+        'sales_category' => 'Sales by Category',
+        'commission' => 'Commission Report',
+        'settlement' => 'Seller Settlement Report',
+        'refund' => 'Refund Report',
+    ];
+
+    public function reports(Request $request, SellerEarningsService $earnings): View
     {
-        $paidOrders = Order::query()
-            ->with(['payments' => fn ($query) => $query->where('status', 'paid')->whereNotNull('paid_at')])
-            ->whereHas('payments', fn ($query) => $query->where('status', 'paid')->whereNotNull('paid_at'))
-            ->get();
-        $completedRefunds = Refund::query()->completed()->with('returnRequest.store')->get();
-        $commissions = PlatformCommission::query()
-            ->with(['sellerOrder.store', 'refund'])
-            ->get();
-        $payouts = SellerPayout::query()->with('sellerProfile.store')->latest('period_end')->get();
-        $refunds = Refund::query()->with(['order', 'returnRequest.store', 'sellerRecovery'])->latest()->get();
+        return view('admin.finance.reports', $this->base($request) + $this->reportData($request, $earnings));
+    }
 
-        $grossSalesMinor = (int) $paidOrders->sum('total_minor');
-        $refundMinor = (int) $completedRefunds->sum('amount_minor');
-        $netSalesMinor = max(0, $grossSalesMinor - $refundMinor);
-        $commissionMinor = (int) $commissions->sum(fn (PlatformCommission $row) => $this->recognizedCommissionMinor($row));
-        $paidOrderCount = $paidOrders->count();
-        $averageOrderMinor = $paidOrderCount > 0 ? (int) round($netSalesMinor / $paidOrderCount) : 0;
+    /**
+     * CSV download for the currently selected report type and filters. Uses
+     * the exact dataset the page renders; nothing is re-derived from the DOM.
+     */
+    public function exportReports(Request $request, SellerEarningsService $earnings): StreamedResponse
+    {
+        $report = $this->reportData($request, $earnings);
+        $filename = 'bearly-'.$report['reportKey'].'-'.$report['dateRange']['from'].'-to-'.$report['dateRange']['to'].'.csv';
 
-        $reportKpis = [
-            ['label' => 'Net Sales', 'value' => $this->money($netSalesMinor), 'note' => 'Paid orders less completed refunds'],
-            ['label' => 'Orders', 'value' => number_format($paidOrderCount), 'note' => 'Orders with a captured payment'],
-            ['label' => 'Platform Commission', 'value' => $this->money($commissionMinor), 'note' => $this->commissionRate().'% configured rate'],
-            ['label' => 'Avg. Order Value', 'value' => $this->money($averageOrderMinor), 'note' => 'Net sales per paid order'],
+        return $this->csvDownload($filename, function ($stream) use ($report): void {
+            $write = function (array $cells) use ($stream): void {
+                fputcsv($stream, $cells, ',', '"', '\\');
+            };
+
+            $write(['Bearly Admin Financial Report']);
+            $write(['Report type', $report['reportLabel']]);
+            $write(['Report period', $report['dateRange']['label']]);
+            $write(['Basis', $report['basisNote']]);
+
+            if ($report['filterLabel'] !== null) {
+                $write(['Filter', $report['filterLabel']]);
+            }
+
+            $write([]);
+            $write(['Summary metrics']);
+            $write(['Metric', 'Value', 'Note']);
+            foreach ($report['reportKpis'] as $metric) {
+                $write([$metric['label'], $metric['value'], $metric['note']]);
+            }
+
+            $write([]);
+            $write(['Report details']);
+            $write($report['exportColumns']);
+            foreach ($report['exportRows'] as $cells) {
+                $write($cells);
+            }
+        });
+    }
+
+    /**
+     * Build the validated report payload shared by the page and the export.
+     *
+     * @return array<string, mixed>
+     */
+    private function reportData(Request $request, SellerEarningsService $earnings): array
+    {
+        $reportType = (string) $request->query('type', 'sales_summary');
+
+        if (! array_key_exists($reportType, self::REPORT_TYPES)) {
+            throw ValidationException::withMessages(['type' => 'Choose a valid report type.']);
+        }
+
+        $validated = $request->validate([
+            'from' => ['nullable', 'date_format:Y-m-d'],
+            'to' => ['nullable', 'date_format:Y-m-d'],
+            'seller' => ['nullable', 'integer', Rule::exists('seller_profiles', 'id')],
+            'category' => ['nullable', 'integer', Rule::exists('categories', 'id')],
+        ]);
+
+        $fromInput = $validated['from'] ?? now()->startOfYear()->format('Y-m-d');
+        $toInput = $validated['to'] ?? now()->format('Y-m-d');
+
+        if ($fromInput > $toInput) {
+            throw ValidationException::withMessages([
+                'to' => 'The end date must be on or after the start date.',
+            ]);
+        }
+
+        $range = $earnings->reportRange($fromInput, $toInput);
+        $selectedSeller = $reportType === 'sales_seller' && isset($validated['seller']) ? (int) $validated['seller'] : null;
+        $selectedCategory = $reportType === 'sales_category' && isset($validated['category']) ? (int) $validated['category'] : null;
+
+        $report = [
+            'reportKey' => $reportType,
+            'reportLabel' => self::REPORT_TYPES[$reportType],
+            'reportTypes' => self::REPORT_TYPES,
+            'dateRange' => [
+                'from' => $range['from']->toDateString(),
+                'to' => $range['to']->toDateString(),
+                'label' => $earnings->rangeLabel($range['from'], $range['to']),
+            ],
+            'selectedSeller' => $selectedSeller,
+            'selectedCategory' => $selectedCategory,
+            'filterLabel' => null,
+            'sellerOptions' => $reportType === 'sales_seller'
+                ? Store::query()
+                    ->with('sellerProfile:id,legal_business_name')
+                    ->orderBy('name')
+                    ->get()
+                    ->map(fn (Store $store): array => [
+                        'id' => (int) $store->seller_profile_id,
+                        'label' => $store->name,
+                    ])
+                    ->unique('id')
+                    ->values()
+                    ->all()
+                : [],
+            'categoryOptions' => $reportType === 'sales_category'
+                ? Category::query()
+                    ->orderBy('name')
+                    ->get(['id', 'name'])
+                    ->map(fn (Category $category): array => [
+                        'id' => (int) $category->id,
+                        'label' => $category->name,
+                    ])
+                    ->all()
+                : [],
         ];
 
-        $salesSeries = $this->monthlyNetSales($paidOrders, $completedRefunds);
-        $topSellers = $this->topSellers($commissions);
-        $settlementRows = $payouts->map(fn (SellerPayout $payout): array => [
-            'seller' => $this->payoutSellerName($payout),
-            'period' => $this->period($payout->period_start, $payout->period_end),
-            'net' => $this->money((int) $payout->net_minor),
-            'status' => $this->payoutDisplayStatus($payout),
-        ])->values();
-        $refundRows = $refunds->map(fn (Refund $refund): array => [
-            'case' => $refund->refund_no,
-            'order' => $refund->order?->order_no ?? '—',
-            'seller' => $refund->returnRequest?->store?->name ?? '—',
-            'amount' => $this->money((int) ($refund->payout_amount_minor ?? $refund->amount_minor)),
-            'status' => str($refund->status)->replace('_', ' ')->title()->toString(),
-            'responsible_party' => $refund->financially_responsible_party
-                ? str($refund->financially_responsible_party)->title()->toString()
-                : 'Not recorded',
-            'seller_recovery' => $refund->sellerRecovery
-                ? $this->money(max(0, (int) $refund->sellerRecovery->amount_minor - (int) $refund->sellerRecovery->recovered_amount_minor)).' outstanding'
-                : 'None',
-        ])->values();
-        $orderMix = $this->orderMix($paidOrders);
-        $reportStart = now()->startOfYear()->format('Y-m-d');
-        $reportEnd = now()->format('Y-m-d');
-        $salesTrendLabel = $paidOrderCount > 0 ? 'Live data' : 'No data';
+        if ($selectedSeller !== null) {
+            $sellerName = Store::query()->where('seller_profile_id', $selectedSeller)->value('name');
+            $report['filterLabel'] = 'Seller: '.($sellerName ?? '#'.$selectedSeller);
+        }
 
-        return view('admin.finance.reports', $this->base($request) + compact(
-            'reportKpis',
-            'salesSeries',
-            'topSellers',
-            'settlementRows',
-            'refundRows',
-            'orderMix',
-            'paidOrderCount',
-            'reportStart',
-            'reportEnd',
-            'salesTrendLabel',
-        ));
+        if ($selectedCategory !== null) {
+            $categoryName = Category::query()->whereKey($selectedCategory)->value('name');
+            $report['filterLabel'] = 'Category: '.($categoryName ?? '#'.$selectedCategory);
+        }
+
+        $report += match ($reportType) {
+            'sales_summary' => $this->salesSummaryData($earnings, $range['from'], $range['to']),
+            'sales_seller' => $this->salesSellerData($earnings, $range['from'], $range['to'], $selectedSeller),
+            'sales_category' => $this->salesCategoryData($earnings, $range['from'], $range['to'], $selectedCategory),
+            'commission' => $this->commissionReportData($range['from'], $range['to']),
+            'settlement' => $this->settlementReportData($range['from'], $range['to']),
+            'refund' => $this->refundReportData($range['from'], $range['to']),
+        };
+
+        $report['exportUrl'] = route('admin.reports.export', array_filter([
+            'type' => $reportType,
+            'from' => $report['dateRange']['from'],
+            'to' => $report['dateRange']['to'],
+            'seller' => $selectedSeller,
+            'category' => $selectedCategory,
+        ], fn ($value): bool => $value !== null && $value !== ''));
+
+        return $report;
+    }
+
+    /**
+     * Sales Summary: marketplace KPIs, period trend, top categories, and the
+     * supporting per-period table.
+     *
+     * @return array<string, mixed>
+     */
+    private function salesSummaryData(SellerEarningsService $earnings, CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $summary = $earnings->marketplaceSalesSummaryFor($from, $to);
+        $totals = $summary['totals'];
+
+        return [
+            'basisNote' => 'Sales basis: completed seller orders by completion date. Product values use each order item’s checkout snapshot (shipping fees excluded) and refunds use their completion date — not the Finance commission ledger.',
+            'reportKpis' => [
+                ['label' => 'Gross Product Sales', 'value' => $this->money((int) $totals['gross_minor']), 'note' => 'Completed seller orders, shipping excluded'],
+                ['label' => 'Net Sales', 'value' => $this->money((int) $totals['net_minor']), 'note' => 'After item discounts and completed refunds'],
+                ['label' => 'Completed Seller Orders', 'value' => number_format((int) $totals['seller_orders']), 'note' => 'One checkout may split across sellers'],
+                ['label' => 'Units Sold', 'value' => number_format((int) $totals['units']), 'note' => 'Items in completed seller orders'],
+            ],
+            'chartHasData' => (int) $totals['gross_minor'] > 0,
+            'salesChart' => collect($summary['trend'])->map(fn (array $bucket): array => [
+                'label' => $bucket['label'],
+                'axis' => CarbonImmutable::parse($bucket['start'])->format('M j'),
+                'net_minor' => (int) $bucket['net_minor'],
+            ])->values()->all(),
+            'topCategories' => collect($summary['top_categories'])->map(fn (array $row): array => [
+                'label' => $row['label'],
+                'gross' => $this->money((int) $row['gross_minor']),
+                'share' => (float) $row['share'],
+            ])->values()->all(),
+            'summaryRows' => collect($summary['trend'])->map(fn (array $bucket): array => [
+                'label' => $bucket['label'],
+                'orders' => number_format((int) $bucket['seller_orders']),
+                'gross' => $this->money((int) $bucket['gross_minor']),
+                'discounts' => $this->money((int) $bucket['discounts_minor']),
+                'refunds' => $this->money((int) $bucket['refunds_minor']),
+                'net' => $this->money((int) $bucket['net_minor']),
+                'units' => number_format((int) $bucket['units']),
+            ])->all(),
+            'exportColumns' => ['Period', 'Seller orders', 'Gross product sales', 'Discounts', 'Completed refunds', 'Net sales', 'Units'],
+            'exportRows' => collect($summary['trend'])->map(fn (array $bucket): array => [
+                $bucket['start'].' to '.$bucket['end'],
+                (string) $bucket['seller_orders'],
+                $this->decimal((int) $bucket['gross_minor']),
+                $this->decimal((int) $bucket['discounts_minor']),
+                $this->decimal((int) $bucket['refunds_minor']),
+                $this->decimal((int) $bucket['net_minor']),
+                (string) $bucket['units'],
+            ])->all(),
+        ];
+    }
+
+    /**
+     * Sales by Seller: one row per Store (one Store per Seller profile).
+     *
+     * @return array<string, mixed>
+     */
+    private function salesSellerData(
+        SellerEarningsService $earnings,
+        CarbonImmutable $from,
+        CarbonImmutable $to,
+        ?int $sellerProfileId,
+    ): array {
+        $data = $earnings->marketplaceSalesBySellerFor($from, $to, $sellerProfileId);
+        $totals = $data['totals'];
+
+        return [
+            'basisNote' => 'Sales basis: completed seller orders by completion date, grouped by Store (one Store per Seller). Refunds are attributed to the Store on their completed return case.',
+            'reportKpis' => [
+                ['label' => 'Gross Product Sales', 'value' => $this->money((int) $totals['gross_minor']), 'note' => 'Completed seller orders, shipping excluded'],
+                ['label' => 'Net Sales', 'value' => $this->money((int) $totals['net_minor']), 'note' => 'After item discounts and completed refunds'],
+                ['label' => 'Completed Seller Orders', 'value' => number_format((int) $totals['seller_orders']), 'note' => 'One checkout may split across sellers'],
+                ['label' => 'Units Sold', 'value' => number_format((int) $totals['units']), 'note' => 'Items in completed seller orders'],
+            ],
+            'sellerRows' => collect($data['rows'])->map(function (array $row): array {
+                $legal = $row['legal'];
+
+                return [
+                    'name' => $row['seller'],
+                    'meta' => $legal !== null && $legal !== '' && $legal !== $row['seller'] ? $legal : 'Seller store',
+                    'gross' => $this->money((int) $row['gross_minor']),
+                    'discounts' => $this->money((int) $row['discounts_minor']),
+                    'refunds' => $this->money((int) $row['refunds_minor']),
+                    'net' => $this->money((int) $row['net_minor']),
+                    'orders' => number_format((int) $row['orders']),
+                    'units' => number_format((int) $row['units']),
+                    'share' => (float) $row['share'],
+                ];
+            })->all(),
+            'exportColumns' => ['Seller', 'Gross product sales', 'Discounts', 'Completed refunds', 'Net sales', 'Seller orders', 'Units', 'Share of gross %'],
+            'exportRows' => collect($data['rows'])->map(fn (array $row): array => [
+                $row['seller'],
+                $this->decimal((int) $row['gross_minor']),
+                $this->decimal((int) $row['discounts_minor']),
+                $this->decimal((int) $row['refunds_minor']),
+                $this->decimal((int) $row['net_minor']),
+                (string) $row['orders'],
+                (string) $row['units'],
+                number_format((float) $row['share'], 1),
+            ])->all(),
+        ];
+    }
+
+    /**
+     * Sales by Category: one row per purchase-time category snapshot.
+     *
+     * @return array<string, mixed>
+     */
+    private function salesCategoryData(
+        SellerEarningsService $earnings,
+        CarbonImmutable $from,
+        CarbonImmutable $to,
+        ?int $categoryId,
+    ): array {
+        $data = $earnings->marketplaceSalesByCategoryFor($from, $to, $categoryId);
+        $totals = $data['totals'];
+
+        return [
+            'basisNote' => 'Sales basis: completed seller orders by completion date. Categories come from the marketplace category captured on each order item at checkout; older items without a snapshot are reported as “Category not recorded”, never from the product’s current category.',
+            'reportKpis' => [
+                ['label' => 'Gross Product Sales', 'value' => $this->money((int) $totals['gross_minor']), 'note' => 'Completed seller orders, shipping excluded'],
+                ['label' => 'Net Sales', 'value' => $this->money((int) $totals['net_minor']), 'note' => 'After item discounts and completed refunds'],
+                ['label' => 'Orders', 'value' => number_format((int) $totals['orders']), 'note' => 'Distinct marketplace orders in this dataset'],
+                ['label' => 'Units Sold', 'value' => number_format((int) $totals['units']), 'note' => 'Items in completed seller orders'],
+            ],
+            'categoryRows' => collect($data['rows'])->map(fn (array $row): array => [
+                'label' => $row['label'],
+                'recorded' => $row['category_id'] !== null,
+                'gross' => $this->money((int) $row['gross_minor']),
+                'discounts' => $this->money((int) $row['discounts_minor']),
+                'refunds' => $this->money((int) $row['refunds_minor']),
+                'net' => $this->money((int) $row['net_minor']),
+                'orders' => number_format((int) $row['orders']),
+                'units' => number_format((int) $row['units']),
+                'share' => (float) $row['share'],
+            ])->all(),
+            'exportColumns' => ['Category', 'Gross product sales', 'Discounts', 'Completed refunds (item-attributed)', 'Net sales', 'Orders', 'Units', 'Share of gross %'],
+            'exportRows' => collect($data['rows'])->map(fn (array $row): array => [
+                $row['label'],
+                $this->decimal((int) $row['gross_minor']),
+                $this->decimal((int) $row['discounts_minor']),
+                $this->decimal((int) $row['refunds_minor']),
+                $this->decimal((int) $row['net_minor']),
+                (string) $row['orders'],
+                (string) $row['units'],
+                number_format((float) $row['share'], 1),
+            ])->all(),
+        ];
+    }
+
+    /**
+     * Commission Report: Finance commission ledger rows finalized in the
+     * selected period (recognized sales and completed reversals).
+     *
+     * @return array<string, mixed>
+     */
+    private function commissionReportData(CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $commissions = PlatformCommission::query()
+            ->with(['sellerOrder.store', 'refund'])
+            ->whereNotNull('finalized_at')
+            ->whereBetween('finalized_at', [$from->startOfDay(), $to->endOfDay()])
+            ->get();
+
+        $commissionableMinor = (int) $commissions->sum(fn (PlatformCommission $row): int => $this->recognizedCommissionBaseMinor($row));
+        $commissionMinor = (int) $commissions->sum(fn (PlatformCommission $row): int => $this->recognizedCommissionMinor($row));
+        $topSellers = $this->topSellers($commissions);
+
+        return [
+            'basisNote' => 'Basis: commission ledger rows finalized in the selected period, including refund reversals once the refund is completed. Commissionable totals come from the Finance ledger — this is not the Sales by Seller report.',
+            'reportKpis' => [
+                ['label' => 'Commissionable Sales', 'value' => $this->money($commissionableMinor), 'note' => 'Recognized commission bases'],
+                ['label' => 'Platform Commission', 'value' => $this->money($commissionMinor), 'note' => $this->commissionRate().'% configured rate after reversal'],
+                ['label' => 'Sellers', 'value' => number_format($topSellers->count()), 'note' => 'Stores with recognized entries'],
+                ['label' => 'Finalized Entries', 'value' => number_format($commissions->count()), 'note' => 'Commission and reversal rows'],
+            ],
+            'topSellers' => $topSellers,
+            'exportColumns' => ['Seller', 'Commissionable sales', 'Platform commission', 'Share of commissionable %'],
+            'exportRows' => $topSellers->map(fn (array $row): array => [
+                $row['seller'],
+                $this->decimal((int) $row['sales_minor']),
+                $this->decimal((int) $row['commission_minor']),
+                number_format((float) $row['share'], 1),
+            ])->values()->all(),
+        ];
+    }
+
+    /**
+     * Seller Settlement Report: payouts whose settlement period overlaps the
+     * selected dates.
+     *
+     * @return array<string, mixed>
+     */
+    private function settlementReportData(CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $payouts = SellerPayout::query()
+            ->with('sellerProfile.store')
+            ->whereDate('period_start', '<=', $to->toDateString())
+            ->whereDate('period_end', '>=', $from->toDateString())
+            ->orderBy('period_end')
+            ->orderBy('id')
+            ->get();
+
+        $paidCount = $payouts->filter(fn (SellerPayout $payout): bool => $this->payoutDisplayStatus($payout) === 'Paid')->count();
+
+        return [
+            'basisNote' => 'Basis: seller payout periods overlapping the selected dates. Net payouts are the recorded settlement totals for those periods.',
+            'reportKpis' => [
+                ['label' => 'Payouts', 'value' => number_format($payouts->count()), 'note' => 'Settlement periods in range'],
+                ['label' => 'Net Payout', 'value' => $this->money((int) $payouts->sum('net_minor')), 'note' => 'Recorded net settlement total'],
+                ['label' => 'Paid', 'value' => number_format($paidCount), 'note' => 'Payments already recorded'],
+                ['label' => 'Not Yet Paid', 'value' => number_format($payouts->count() - $paidCount), 'note' => 'Pending, processing, or on hold'],
+            ],
+            'settlementRows' => $payouts->map(fn (SellerPayout $payout): array => [
+                'seller' => $this->payoutSellerName($payout),
+                'period' => $this->period($payout->period_start, $payout->period_end),
+                'net' => $this->money((int) $payout->net_minor),
+                'status' => $this->payoutDisplayStatus($payout),
+            ])->values()->all(),
+            'exportColumns' => ['Seller', 'Period', 'Net payout', 'Status'],
+            'exportRows' => $payouts->map(fn (SellerPayout $payout): array => [
+                $this->payoutSellerName($payout),
+                $this->period($payout->period_start, $payout->period_end),
+                $this->decimal((int) $payout->net_minor),
+                $this->payoutDisplayStatus($payout),
+            ])->values()->all(),
+        ];
+    }
+
+    /**
+     * Refund Report: refund cases created in the selected period.
+     *
+     * @return array<string, mixed>
+     */
+    private function refundReportData(CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $refunds = Refund::query()
+            ->with(['order', 'returnRequest.store', 'sellerRecovery'])
+            ->whereBetween('created_at', [$from->startOfDay(), $to->endOfDay()])
+            ->latest('id')
+            ->get();
+
+        $completedCount = $refunds->filter(fn (Refund $refund): bool => $refund->isCompleted())->count();
+
+        return [
+            'basisNote' => 'Basis: refund cases created in the selected period. A case’s completion date may fall outside the selected dates.',
+            'reportKpis' => [
+                ['label' => 'Refund Cases', 'value' => number_format($refunds->count()), 'note' => 'Cases created in the period'],
+                ['label' => 'Refund Amount', 'value' => $this->money((int) $refunds->sum(fn (Refund $refund): int => (int) ($refund->payout_amount_minor ?? $refund->amount_minor))), 'note' => 'Recorded payout amount per case'],
+                ['label' => 'Completed', 'value' => number_format($completedCount), 'note' => 'Refunds completed'],
+                ['label' => 'In Progress', 'value' => number_format($refunds->count() - $completedCount), 'note' => 'Awaiting approval, processing, or failed'],
+            ],
+            'refundRows' => $refunds->map(fn (Refund $refund): array => [
+                'case' => $refund->refund_no,
+                'order' => $refund->order?->order_no ?? '—',
+                'seller' => $refund->returnRequest?->store?->name ?? '—',
+                'amount' => $this->money((int) ($refund->payout_amount_minor ?? $refund->amount_minor)),
+                'status' => str($refund->status)->replace('_', ' ')->title()->toString(),
+                'responsible_party' => $refund->financially_responsible_party
+                    ? str($refund->financially_responsible_party)->title()->toString()
+                    : 'Not recorded',
+                'seller_recovery' => $refund->sellerRecovery
+                    ? $this->money(max(0, (int) $refund->sellerRecovery->amount_minor - (int) $refund->sellerRecovery->recovered_amount_minor)).' outstanding'
+                    : 'None',
+            ])->values()->all(),
+            'exportColumns' => ['Case', 'Order', 'Seller', 'Amount', 'Status', 'Financially responsible', 'Seller recovery'],
+            'exportRows' => $refunds->map(fn (Refund $refund): array => [
+                $refund->refund_no,
+                $refund->order?->order_no ?? '—',
+                $refund->returnRequest?->store?->name ?? '—',
+                $this->decimal((int) ($refund->payout_amount_minor ?? $refund->amount_minor)),
+                str($refund->status)->replace('_', ' ')->title()->toString(),
+                $refund->financially_responsible_party
+                    ? str($refund->financially_responsible_party)->title()->toString()
+                    : 'Not recorded',
+                $refund->sellerRecovery
+                    ? $this->decimal(max(0, (int) $refund->sellerRecovery->amount_minor - (int) $refund->sellerRecovery->recovered_amount_minor)).' outstanding'
+                    : 'None',
+            ])->values()->all(),
+        ];
+    }
+
+    /**
+     * @param  callable(resource): void  $writer
+     */
+    private function csvDownload(string $filename, callable $writer): StreamedResponse
+    {
+        return response()->streamDownload(function () use ($writer): void {
+            $stream = fopen('php://output', 'wb');
+
+            if ($stream === false) {
+                return;
+            }
+
+            fwrite($stream, "\xEF\xBB\xBF");
+            $writer($stream);
+            fclose($stream);
+        }, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Cache-Control' => 'private, no-store',
+        ]);
     }
 
     private function recognizedCommissionBaseMinor(PlatformCommission $commission): int
@@ -493,7 +887,7 @@ class AdminFinanceController extends Controller
         }
 
         return $posted
-            && $transaction->payment?->status === 'paid'
+            && in_array($transaction->payment?->status, ['paid', 'partially_refunded', 'refunded'], true)
             && $transaction->payment?->paid_at !== null
                 ? 'Completed'
                 : 'Pending';
@@ -544,30 +938,9 @@ class AdminFinanceController extends Controller
         };
     }
 
-    private function monthlyNetSales(Collection $paidOrders, Collection $completedRefunds): array
-    {
-        $year = now()->year;
-        $series = array_fill(1, 12, 0);
-
-        foreach ($paidOrders as $order) {
-            $paidAt = $order->payments->sortBy('paid_at')->first()?->paid_at;
-            if ($paidAt?->year === $year) {
-                $series[$paidAt->month] += (int) $order->total_minor;
-            }
-        }
-
-        foreach ($completedRefunds as $refund) {
-            if ($refund->completed_at?->year === $year) {
-                $series[$refund->completed_at->month] -= (int) $refund->amount_minor;
-            }
-        }
-
-        return array_map(fn (int $minor): float => max(0, $minor) / 100, array_values($series));
-    }
-
     private function topSellers(Collection $commissions): Collection
     {
-        return $commissions
+        $rows = $commissions
             ->groupBy(fn (PlatformCommission $row) => $row->sellerOrder?->store?->name ?? '—')
             ->map(function (Collection $rows, string $seller): array {
                 $salesMinor = (int) $rows->sum(fn (PlatformCommission $row) => $this->recognizedCommissionBaseMinor($row));
@@ -579,37 +952,21 @@ class AdminFinanceController extends Controller
                     'commission' => $this->money($commissionMinor),
                     'sales_minor' => $salesMinor,
                     'commission_minor' => $commissionMinor,
+                    'share' => 0.0,
                 ];
             })
             ->filter(fn (array $row): bool => $row['sales_minor'] !== 0 || $row['commission_minor'] !== 0)
             ->sortByDesc('sales_minor')
             ->take(10)
             ->values();
-    }
 
-    private function orderMix(Collection $paidOrders): array
-    {
-        $total = $paidOrders->count();
-        if ($total === 0) {
-            return ['marketplace' => 0, 'repeat' => 0, 'promo' => 0];
-        }
+        $positiveBase = (int) $rows->sum(fn (array $row): int => max(0, $row['sales_minor']));
 
-        $buyerCounts = $paidOrders->countBy('buyer_id');
-        $counts = ['marketplace' => 0, 'repeat' => 0, 'promo' => 0];
-        foreach ($paidOrders as $order) {
-            if ((int) $order->discount_minor > 0) {
-                $counts['promo']++;
-            } elseif (($buyerCounts[$order->buyer_id] ?? 0) > 1) {
-                $counts['repeat']++;
-            } else {
-                $counts['marketplace']++;
-            }
-        }
+        return $rows->map(function (array $row) use ($positiveBase): array {
+            $row['share'] = $positiveBase > 0 ? round(max(0, $row['sales_minor']) / $positiveBase * 100, 1) : 0.0;
 
-        $mix = array_map(fn (int $count): int => (int) round(($count / $total) * 100), $counts);
-        $mix['marketplace'] += 100 - array_sum($mix);
-
-        return $mix;
+            return $row;
+        })->values();
     }
 
     private function period(CarbonInterface $start, CarbonInterface $end): string
@@ -633,6 +990,14 @@ class AdminFinanceController extends Controller
         $prefix = $minor < 0 ? '−' : '';
 
         return $prefix.'₱'.number_format(abs($minor) / 100, 2);
+    }
+
+    /**
+     * Plain decimal money for CSV cells (no currency symbol).
+     */
+    private function decimal(int $minor): string
+    {
+        return ($minor < 0 ? '-' : '').number_format(abs($minor) / 100, 2);
     }
 
     private function amountToMinor(string $amount): int

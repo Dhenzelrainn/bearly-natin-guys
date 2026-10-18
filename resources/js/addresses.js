@@ -1,7 +1,9 @@
+import { createAddressMapPicker } from './address-map-picker';
+
 (() => {
   const $ = id => document.getElementById(id);
   const csrf = () => document.querySelector('meta[name="csrf-token"]')?.content || '';
-  let addresses = [], activeLabel = 'Home', pendingDelete = null;
+  let addresses = [], activeLabel = 'Home', pendingDelete = null, mapPicker = null;
 
   const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -74,6 +76,7 @@
     $('set-default').checked = Boolean(address?.isDefault);
     setLabel(address?.label || 'Home');
     $('address-modal').hidden = false;
+    mapPicker?.reset(address?.latitude, address?.longitude);
     setTimeout(() => $('full-name').focus(), 30);
   }
 
@@ -90,7 +93,9 @@
       province: $('province').value.trim(), city: $('city').value.trim(),
       barangay: $('barangay').value.trim(), postal: $('postal-code').value.trim(),
       street: $('street').value.trim(), label: activeLabel,
-      is_default: $('set-default').checked
+      is_default: $('set-default').checked,
+      latitude: $('address-latitude').value || null,
+      longitude: $('address-longitude').value || null
     };
   }
 
@@ -130,6 +135,14 @@
   };
   $('address-modal').onclick = event => { if (event.target === $('address-modal')) closeForm(); };
   $('delete-modal').onclick = event => { if (event.target === $('delete-modal')) { $('delete-modal').hidden = true; pendingDelete = null; } };
+
+  mapPicker = createAddressMapPicker({
+    element: $('address-map'),
+    latitudeInput: $('address-latitude'),
+    longitudeInput: $('address-longitude'),
+    clearButton: $('clear-address-pin'),
+    status: $('address-map-status'),
+  });
 
   load();
 })();

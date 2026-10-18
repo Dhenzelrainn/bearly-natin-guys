@@ -1,4 +1,5 @@
 import { isValidPhilippineMobile } from './registration-phone.js';
+import './notification-center.js';
 
 const normalize = (value) => String(value || '').trim().toLowerCase().replaceAll('_', ' ');
 const escapeHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, (character) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' })[character]);
@@ -36,11 +37,6 @@ function setupShell() {
     }));
     document.addEventListener('click', (event) => {
         if (!event.target.closest('.popover-wrap')) document.querySelectorAll('[data-popover]').forEach((popover) => { popover.hidden = true; });
-    });
-    document.querySelector('[data-mark-notifications]')?.addEventListener('click', () => {
-        document.querySelectorAll('.notification-row').forEach((row) => row.remove());
-        document.querySelector('.notification-dot')?.remove();
-        toast('Notifications marked as read.');
     });
 }
 
@@ -359,11 +355,39 @@ function setupChat() {
         return;
     }
 
+    const requestedConversation =
+        new URLSearchParams(
+            window.location.search
+        ).get('conversation');
+
+    const requestedConversationButton =
+        requestedConversation
+            ? conversations.find(
+                (item) =>
+                    String(
+                        item.dataset.conversation
+                    ) === String(
+                        requestedConversation
+                    )
+            )
+            : null;
+
     let active = String(
-        conversations[0]
-            .dataset
-            .conversation
+        (requestedConversationButton
+            || conversations[0]
+        ).dataset.conversation
     );
+
+    if (requestedConversationButton) {
+        conversations.forEach(
+            (item) =>
+                item.classList.toggle(
+                    'is-active',
+                    item
+                    === requestedConversationButton
+                )
+        );
+    }
 
     let sending = false;
 
@@ -461,6 +485,213 @@ function setupChat() {
         } finally {
             reading.delete(id);
         }
+    };
+
+    const THREAD_POLL_MS = 5000;
+
+    let pollTimer = null;
+
+    const pollActiveThread =
+        async () => {
+            const conversation =
+                activeConversation();
+
+            if (
+                !conversation
+                || !conversation.thread_url
+            ) {
+                return;
+            }
+
+            const requested = active;
+
+            const thread =
+                Array.isArray(
+                    conversation.messages
+                )
+                    ? conversation.messages
+                    : [];
+
+            const lastId =
+                thread.length
+                    ? Number(
+                        thread[
+                            thread.length
+                            - 1
+                        ].id
+                        || 0
+                    )
+                    : 0;
+
+            const url =
+                new URL(
+                    conversation
+                        .thread_url,
+                    window.location.origin
+                );
+
+            if (lastId > 0) {
+                url.searchParams.set(
+                    'after',
+                    String(lastId)
+                );
+            }
+
+            const response =
+                await fetch(
+                    url.toString(),
+                    {
+                        headers: {
+                            Accept:
+                                'application/json',
+                        },
+                    }
+                );
+
+            if (
+                !response.ok
+                || requested !== active
+            ) {
+                return;
+            }
+
+            const result =
+                await response.json();
+
+            const incoming =
+                result?.data
+                    ?.messages
+                || [];
+
+            if (!incoming.length) {
+                return;
+            }
+
+            const nearBottom =
+                messages.scrollHeight
+                - messages.scrollTop
+                - messages.clientHeight
+                < 96;
+
+            const previousScrollTop =
+                messages.scrollTop;
+
+            conversation.messages = [
+                ...thread,
+                ...incoming,
+            ];
+
+            render();
+
+            if (!nearBottom) {
+                messages.scrollTop =
+                    previousScrollTop;
+            }
+
+            const latest =
+                incoming[
+                    incoming.length
+                    - 1
+                ];
+
+            conversation.preview =
+                latest.text
+                || (
+                    latest.attachments
+                        ?.length
+                        ? latest
+                            .attachments[0]
+                            .name
+                        : 'Attachment'
+                );
+
+            conversation.time =
+                latest.time;
+
+            const button =
+                conversations.find(
+                    (item) =>
+                        String(
+                            item
+                                .dataset
+                                .conversation
+                        ) === requested
+                );
+
+            if (button) {
+                const preview =
+                    button.querySelector(
+                        '.conversation-copy small'
+                    );
+
+                const time =
+                    button.querySelector(
+                        '.conversation-time'
+                    );
+
+                if (preview) {
+                    preview.textContent =
+                        conversation
+                            .preview;
+                }
+
+                if (time) {
+                    time.textContent =
+                        latest.time;
+                }
+            }
+
+            const fromOthers =
+                incoming.filter(
+                    (message) =>
+                        !message.mine
+                ).length;
+
+            if (fromOthers > 0) {
+                conversation.unread =
+                    Number(
+                        conversation.unread
+                        || 0
+                    ) + fromOthers;
+
+                markRead(active);
+            }
+        };
+
+    const startPolling = () => {
+        if (pollTimer) {
+            return;
+        }
+
+        pollTimer =
+            window.setInterval(
+                () => {
+                    if (
+                        document.hidden
+                        || sending
+                    ) {
+                        return;
+                    }
+
+                    pollActiveThread()
+                        .catch(
+                            () => {}
+                        );
+                },
+                THREAD_POLL_MS
+            );
+
+        document.addEventListener(
+            'visibilitychange',
+            () => {
+                if (document.hidden) {
+                    return;
+                }
+
+                pollActiveThread()
+                    .catch(() => {});
+            }
+        );
     };
 
     const render = () => {
@@ -859,6 +1090,13 @@ function setupChat() {
 
     render();
     markRead(active);
+    startPolling();
+
+    window.addEventListener('bearly:message-created', (event) => {
+        const conversationId = String(event.detail?.conversation_id || '');
+        if (conversationId !== active) return;
+        pollActiveThread().catch(() => {});
+    });
 }
 
 function setupNewConversation() {

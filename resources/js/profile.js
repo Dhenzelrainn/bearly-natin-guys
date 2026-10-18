@@ -1,4 +1,4 @@
-import { getPreviewNotifications as getNotifications, savePreviewNotifications as saveNotifications } from './buyer-notification-data.js';
+import './notification-center.js';
 
 function bindPhilippinePhone(input){
  if(!input)return;
@@ -195,37 +195,6 @@ function initVouchers(){
  setFilter(filter);
 }
 
-function updateNotificationBadges(items=getNotifications()){
- const count=items.filter(x=>!x.read).length;
- document.querySelectorAll('[data-notification-badge]').forEach(el=>{el.textContent=count;el.hidden=count===0});
- const nav=$('#notifications-nav-count'); if(nav){nav.textContent=count;nav.hidden=count===0;}
-}
-function initNotifications(showAccountPanel){
-  const list=$('#notification-list'); if(!list){updateNotificationBadges();return;}
-  let filter='all';
-  const escapeHtml=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
-  const safeImage=src=>{const value=String(src||'');return /^(\/images\/|\/storage\/)/.test(value)?value:'/images/bearly-logo.png'};
- const render=()=>{
-   const items=getNotifications(); updateNotificationBadges(items);
-   const visible=filter==='all'?items:items.filter(x=>x.type===filter);
-    const groups=['Today','Yesterday','Earlier'];
-    list.innerHTML=groups.map(group=>{const groupItems=visible.filter(item=>(item.group||'Earlier')===group);if(!groupItems.length)return '';return `<section class="notification-group" aria-labelledby="notification-group-${group.toLowerCase()}"><h2 id="notification-group-${group.toLowerCase()}">${group}</h2>${groupItems.map(n=>{const attachment=n.image?`<img src="${escapeHtml(safeImage(n.image))}" onerror="this.onerror=null;this.src='/images/bearly-logo.png'" alt="">`:n.actionLabel?`<a class="notification-cta" href="${escapeHtml(n.actionHref||'#')}" data-notification-action>${escapeHtml(n.actionLabel)}</a>`:'';return `<article class="notification-item ${n.read?'':'unread'}" data-notification-id="${escapeHtml(n.id)}" tabindex="0" role="button"><span class="notification-unread-dot" aria-label="${n.read?'':'Unread'}"></span><div class="notification-icon"><span class="material-symbols-outlined" aria-hidden="true">${escapeHtml(n.icon)}</span></div><div class="notification-copy"><strong>${escapeHtml(n.title)}</strong><p>${escapeHtml(n.message)}</p>${n.detail?`<small>${escapeHtml(n.detail)}</small>`:''}</div><div class="notification-attachment">${attachment}</div><span class="notification-arrow material-symbols-outlined" aria-hidden="true">chevron_right</span><time class="notification-time">${escapeHtml(n.time)}</time></article>`}).join('')}</section>`}).join('');
-   const empty=$('#notifications-empty'); if(empty) empty.hidden=visible.length!==0;
- };
- const openNotification=id=>{
-   const items=getNotifications(); const item=items.find(x=>x.id===id); if(!item)return;
-   item.read=true; saveNotifications(items); render();
-    if(['purchases','reviews','vouchers'].includes(item.target) && typeof showAccountPanel==='function') showAccountPanel(item.target);
- };
- list.addEventListener('click',e=>{const row=e.target.closest('[data-notification-id]');if(row)openNotification(row.dataset.notificationId)});
- list.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target.matches('[data-notification-id]')){e.preventDefault();openNotification(e.target.dataset.notificationId)}});
-  document.querySelectorAll('[data-notification-filter]').forEach(btn=>btn.addEventListener('click',()=>{filter=btn.dataset.notificationFilter||'all';document.querySelectorAll('[data-notification-filter]').forEach(x=>{const active=x===btn;x.classList.toggle('active',active);x.setAttribute('aria-selected',active?'true':'false')});render()}));
-  $('#mark-all-notifications')?.addEventListener('click',()=>{const items=getNotifications().map(x=>({...x,read:true}));saveNotifications(items);render()});
-  window.addEventListener('bearly:notifications-changed',render);
- render();
-}
-
-
 const helpTopics=[
   {category:'orders',icon:'receipt_long',question:'Where can I see my orders?',answer:'Open My Purchases to view orders by status. Completed and cancelled orders are available in their respective tabs.',action:'purchases',actionLabel:'Open My Purchases'},
   {category:'orders',icon:'cancel',question:'Can I cancel an order?',answer:'Cancellation options depend on the order status. For this frontend demo, cancelled orders appear in the Cancelled tab after their status is updated.'},
@@ -296,7 +265,6 @@ function initProfile(){
     if(name==='help'&&typeof window.renderHelpCenter==='function')window.renderHelpCenter();
     window.bearlyCurrentAccountPanel=name;
   }
-  initNotifications(showAccountPanel);
   initVouchers();
   initHelpCenter(showAccountPanel);
   if(accountTabs.length){
@@ -307,7 +275,6 @@ function initProfile(){
   if(location.hash==='#purchases')showAccountPanel('purchases');
   if(location.hash==='#history')showAccountPanel('purchases');
   if(location.hash==='#reviews')showAccountPanel('reviews');
-  if(location.hash==='#notifications')showAccountPanel('notifications');
   if(location.hash==='#tracking')showAccountPanel('purchases');
   if(location.hash==='#vouchers')showAccountPanel('vouchers');
   if(location.hash==='#help')showAccountPanel('help');
@@ -323,17 +290,13 @@ if(document.readyState === 'loading'){
 /* Bearly global navbar state: keeps notification/cart badges in sync across buyer pages. */
 (function initBearlyGlobalNavbarState(){
   if(window.BearlyNavbarState)return;
-  const CART_KEY=window.bearlyStorageKey?.('preview-cart')||'bearly-preview-cart-v1';
-  const NOTIFICATION_KEY=window.bearlyStorageKey?.('preview-notifications')||'bearly-notifications-v1';
+  /* Notification badges mirror the real unread count synced by notification-center.js. */
   function cartCount(){
-    try{const x=JSON.parse(localStorage.getItem(CART_KEY)||'[]');const preview=Array.isArray(x)?x.reduce((n,i)=>n+Math.max(0,Number(i?.quantity||0)),0):0;return preview+Number(window.bearlyBuyerProfile?.cartCount||0)}catch{return Number(window.bearlyBuyerProfile?.cartCount||0)}
+    return Math.max(0, Number(window.bearlyBuyerProfile?.cartCount || 0));
   }
   function notificationCount(){
-    try{
-      const raw=localStorage.getItem(NOTIFICATION_KEY);
-      if(!raw){const existing=document.querySelector('[data-notification-badge]');return Number(existing?.textContent||3)||0}
-      const x=JSON.parse(raw);return Array.isArray(x)?x.filter(i=>!i?.read).length:0;
-    }catch{return 0}
+    const existing=document.querySelector('[data-notification-badge]');
+    return Math.max(0,Number(existing?.textContent||0)||0);
   }
   function ensureBadge(link,type){
     if(!link)return null;

@@ -1,3 +1,5 @@
+import { createAddressMapPicker } from './address-map-picker';
+
 (() => {
   const profileForm = document.getElementById('address-editing-id') !== null;
   const ids = profileForm ? {
@@ -7,7 +9,7 @@
   };
   const $ = id => document.getElementById(id);
   const csrf = () => document.querySelector('meta[name="csrf-token"]')?.content || '';
-  let addresses = [], activeLabel = 'Home', pendingDelete = null;
+  let addresses = [], activeLabel = 'Home', pendingDelete = null, mapPicker = null;
   const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[char]));
   const value = key => $(ids[key])?.value || '';
   const setValue = (key, data) => { if ($(ids[key])) $(ids[key]).value = data ?? ''; };
@@ -36,11 +38,11 @@
   function setLabel(label) { activeLabel = label; document.querySelectorAll('.label-choice').forEach(button => button.classList.toggle('active', button.dataset.label === label)); }
   function openForm(address = null) {
     $('address-modal-title').textContent = address ? 'Edit Address' : 'New Address'; setValue('editing', address?.id || '');
-    setValue('name', address?.name || ''); setValue('phone', address?.phone || ''); setValue('province', address?.province || ''); setValue('city', address?.city || ''); setValue('barangay', address?.barangay || ''); setValue('postal', address?.postal || ''); setValue('street', address?.street || '');
-    $(ids.default).checked = Boolean(address?.isDefault); setLabel(address?.label || 'Home'); $('address-modal').hidden = false; setTimeout(() => $(ids.name)?.focus(), 30);
+    setValue('name', address?.name || ''); setValue('phone', address?.phone || ''); setValue('province', address?.province || ''); setValue('city', address?.city || ''); setValue('barangay', address?.barangay || ''); setValue('postal', address?.postal || ''); setValue('street', address?.street || ''); mapPicker?.reset(address?.latitude, address?.longitude);
+    $(ids.default).checked = Boolean(address?.isDefault); setLabel(address?.label || 'Home'); $('address-modal').hidden = false; mapPicker?.reset(address?.latitude, address?.longitude); setTimeout(() => $(ids.name)?.focus(), 30);
   }
   function closeForm() { $('address-modal').hidden = true; $('address-form').reset(); setValue('editing', ''); setLabel('Home'); }
-  function formData() { return { name: value('name').trim(), phone: value('phone').trim(), province: value('province').trim(), city: value('city').trim(), barangay: value('barangay').trim(), postal: value('postal').trim(), street: value('street').trim(), label: activeLabel, is_default: Boolean($(ids.default)?.checked) }; }
+  function formData() { return { name: value('name').trim(), phone: value('phone').trim(), province: value('province').trim(), city: value('city').trim(), barangay: value('barangay').trim(), postal: value('postal').trim(), street: value('street').trim(), label: activeLabel, is_default: Boolean($(ids.default)?.checked), latitude: $('address-latitude')?.value || null, longitude: $('address-longitude')?.value || null }; }
 
   $('add-address').onclick = () => openForm(); $('empty-add-address').onclick = () => openForm(); $('close-address-modal').onclick = closeForm; $('cancel-address').onclick = closeForm;
   document.querySelectorAll('.label-choice').forEach(button => button.onclick = () => setLabel(button.dataset.label));
@@ -49,5 +51,6 @@
   $('cancel-delete').onclick = () => { $('delete-modal').hidden = true; pendingDelete = null; };
   $('confirm-delete').onclick = async () => { if (!pendingDelete) return; try { await request(`/addresses/${encodeURIComponent(pendingDelete)}`, { method: 'DELETE' }); $('delete-modal').hidden = true; pendingDelete = null; await load(); toast('Address deleted'); } catch (error) { toast(error.message); } };
   $('address-modal').onclick = event => { if (event.target === $('address-modal')) closeForm(); }; $('delete-modal').onclick = event => { if (event.target === $('delete-modal')) { $('delete-modal').hidden = true; pendingDelete = null; } };
+  mapPicker = createAddressMapPicker({ element: $('address-map'), latitudeInput: $('address-latitude'), longitudeInput: $('address-longitude'), clearButton: $('clear-address-pin'), status: $('address-map-status') });
   load();
 })();

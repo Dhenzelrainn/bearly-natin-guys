@@ -1,9 +1,135 @@
+import './notification-center.js';
+
     const ready = (callback) => {
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', callback, { once: true });
         } else {
             callback();
         }
+    };
+
+    /*
+    |--------------------------------------------------------------------------
+    | Accessible chart tooltips
+    |--------------------------------------------------------------------------
+    | Server-rendered chart points and bars carry their real period label and
+    | amount in data attributes. Hover, keyboard focus, and touch reveal the
+    | same tooltip; amounts are never derived from pixel positions.
+    */
+
+    const initChartTooltips = () => {
+        document.querySelectorAll('[data-chart]').forEach((chart) => {
+            const points = [...chart.querySelectorAll('[data-chart-point]')];
+
+            if (!points.length) return;
+
+            const tooltip = document.createElement('div');
+            tooltip.className = 'chart-tooltip';
+            tooltip.hidden = true;
+            tooltip.innerHTML = '<strong></strong><span></span>';
+            chart.appendChild(tooltip);
+
+            const valueNode = tooltip.querySelector('strong');
+            const labelNode = tooltip.querySelector('span');
+
+            const position = (point) => {
+                const anchor = (point.querySelector('[data-chart-bar]') || point).getBoundingClientRect();
+                const root = chart.getBoundingClientRect();
+                const width = tooltip.offsetWidth;
+                const height = tooltip.offsetHeight;
+                const center = anchor.left - root.left + anchor.width / 2;
+                const left = Math.min(Math.max(center - width / 2, 4), Math.max(root.width - width - 4, 4));
+                let top = anchor.top - root.top - height - 8;
+
+                if (top < 4) {
+                    top = Math.min(anchor.bottom - root.top + 8, Math.max(root.height - height - 4, 4));
+                }
+
+                tooltip.style.left = `${left}px`;
+                tooltip.style.top = `${Math.max(4, top)}px`;
+            };
+
+            const show = (point) => {
+                valueNode.textContent = point.dataset.value || '';
+                labelNode.textContent = point.dataset.label || '';
+                tooltip.hidden = false;
+                position(point);
+            };
+
+            const hide = () => {
+                tooltip.hidden = true;
+            };
+
+            const focusPoint = (index) => {
+                const point = points[(index + points.length) % points.length];
+                points.forEach((item) => { item.tabIndex = item === point ? 0 : -1; });
+                point.focus();
+                show(point);
+            };
+
+            const pointFrom = (event) => (event.target instanceof Element ? event.target.closest('[data-chart-point]') : null);
+
+            chart.addEventListener('pointerover', (event) => {
+                const point = pointFrom(event);
+
+                if (point) show(point);
+            });
+            chart.addEventListener('pointerout', (event) => {
+                const point = pointFrom(event);
+
+                if (!point || event.pointerType === 'touch') return;
+
+                const next = event.relatedTarget;
+
+                if (!(next instanceof Element) || !point.contains(next)) hide();
+            });
+            chart.addEventListener('focusin', (event) => {
+                const point = pointFrom(event);
+
+                if (point) show(point);
+            });
+            chart.addEventListener('focusout', () => hide());
+            chart.addEventListener('pointerdown', (event) => {
+                const point = pointFrom(event);
+
+                if (point && event.pointerType === 'touch') show(point);
+            });
+            chart.addEventListener('keydown', (event) => {
+                const point = pointFrom(event);
+
+                if (!point) return;
+
+                const index = points.indexOf(point);
+
+                if (index < 0) return;
+
+                if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+                    event.preventDefault();
+                    focusPoint(index + 1);
+                } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+                    event.preventDefault();
+                    focusPoint(index - 1);
+                } else if (event.key === 'Home') {
+                    event.preventDefault();
+                    focusPoint(0);
+                } else if (event.key === 'End') {
+                    event.preventDefault();
+                    focusPoint(points.length - 1);
+                } else if (event.key === 'Escape') {
+                    hide();
+                    point.blur();
+                }
+            });
+
+            // Touch: tapping anywhere outside this chart dismisses the tooltip.
+            document.addEventListener('pointerdown', (event) => {
+                if (event.pointerType !== 'touch') return;
+
+                const target = event.target instanceof Element ? event.target.closest('[data-chart]') : null;
+
+                if (target !== chart) hide();
+            });
+        });
     };
 
     ready(() => {
@@ -14,6 +140,108 @@
         };
         refreshIcons();
         setTimeout(refreshIcons, 150);
+
+        document.querySelectorAll('[data-announcement-media-editor]').forEach((editor) => {
+            const input = editor.querySelector('[data-announcement-media-input]');
+            const preview = editor.querySelector('[data-announcement-media-preview]');
+            const count = editor.querySelector('[data-announcement-media-count]');
+            const form = editor.closest('form');
+            const existingCount = Number(editor.dataset.existingMediaCount || 0);
+            let previewUrls = [];
+
+            if (!input || !preview) return;
+
+            const revokePreviewUrls = () => {
+                previewUrls.forEach((url) => URL.revokeObjectURL(url));
+                previewUrls = [];
+            };
+
+            const updateCountAndValidity = () => {
+                const removedCount = form?.querySelectorAll('[name="remove_media_ids[]"]:checked').length || 0;
+                const selectedFiles = [...(input.files || [])];
+                const totalCount = Math.max(0, existingCount - removedCount) + selectedFiles.length;
+                let validityMessage = '';
+
+                if (totalCount > 5) {
+                    validityMessage = 'An announcement can contain up to five media files.';
+                } else {
+                    const oversized = selectedFiles.find((file) => {
+                        const image = ['image/jpeg', 'image/png', 'image/webp'].includes(file.type);
+                        const video = ['video/mp4', 'video/webm'].includes(file.type);
+                        return (image && file.size > 10 * 1024 * 1024)
+                            || (video && file.size > 50 * 1024 * 1024)
+                            || (!image && !video);
+                    });
+
+                    if (oversized) {
+                        const image = ['image/jpeg', 'image/png', 'image/webp'].includes(oversized.type);
+                        validityMessage = image
+                            ? 'Each image must be 10 MB or smaller.'
+                            : 'Choose JPG, PNG, WebP, MP4, or WebM files; videos must be 50 MB or smaller.';
+                    }
+                }
+
+                input.setCustomValidity(validityMessage);
+                if (count) count.textContent = `${totalCount} of 5 media files selected`;
+            };
+
+            const renderPreview = () => {
+                revokePreviewUrls();
+                preview.replaceChildren();
+
+                [...(input.files || [])].forEach((file, index) => {
+                    const url = URL.createObjectURL(file);
+                    previewUrls.push(url);
+
+                    const card = document.createElement('figure');
+                    card.className = 'announcement-upload-preview-item';
+                    let media;
+
+                    if (file.type.startsWith('video/')) {
+                        media = document.createElement('video');
+                        media.controls = true;
+                        media.muted = true;
+                        media.preload = 'metadata';
+                        media.src = url;
+                        media.setAttribute('aria-label', `Preview of ${file.name}`);
+                    } else {
+                        media = document.createElement('img');
+                        media.src = url;
+                        media.alt = `Preview of ${file.name}`;
+                    }
+
+                    const caption = document.createElement('figcaption');
+                    caption.textContent = `${file.name} · ${(file.size / (1024 * 1024)).toFixed(1)} MB`;
+
+                    const remove = document.createElement('button');
+                    remove.type = 'button';
+                    remove.className = 'announcement-upload-remove';
+                    remove.textContent = 'Remove';
+                    remove.setAttribute('aria-label', `Remove ${file.name}`);
+                    remove.addEventListener('click', () => {
+                        const transfer = new DataTransfer();
+                        [...(input.files || [])].forEach((selected, selectedIndex) => {
+                            if (selectedIndex !== index) transfer.items.add(selected);
+                        });
+                        input.files = transfer.files;
+                        renderPreview();
+                        updateCountAndValidity();
+                    });
+
+                    card.append(media, caption, remove);
+                    preview.append(card);
+                });
+
+                updateCountAndValidity();
+            };
+
+            input.addEventListener('change', renderPreview);
+            form?.querySelectorAll('[name="remove_media_ids[]"]').forEach((checkbox) => {
+                checkbox.addEventListener('change', updateCountAndValidity);
+            });
+            form?.addEventListener('reset', () => window.setTimeout(renderPreview, 0));
+            updateCountAndValidity();
+        });
 
         document.querySelectorAll('[data-transfer-outcome]').forEach((select) => {
             const form = select.closest('[data-withdrawal-transfer-form]');
@@ -231,17 +459,24 @@
                 showToast(`Dashboard refreshed at ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.`, 'Dashboard updated');
             }, 350);
         });
-        const dashboardBars = [...document.querySelectorAll('[data-dashboard-bar]')];
-        document.querySelectorAll('[data-dashboard-period]').forEach((button) => {
+        const dashboardPeriodButtons = [...document.querySelectorAll('[data-dashboard-period]')];
+        const dashboardPeriodViews = [...document.querySelectorAll('[data-dashboard-period-view]')];
+        dashboardPeriodButtons.forEach((button) => {
             button.addEventListener('click', () => {
-                const count = Number(button.dataset.dashboardPeriod || 12);
-                document.querySelectorAll('[data-dashboard-period]').forEach((item) => item.classList.toggle('is-active', item === button));
-                dashboardBars.forEach((bar, index) => {
-                    bar.hidden = index < dashboardBars.length - count;
+                const period = button.dataset.dashboardPeriod;
+                dashboardPeriodButtons.forEach((item) => {
+                    const active = item === button;
+                    item.classList.toggle('is-active', active);
+                    item.setAttribute('aria-pressed', active ? 'true' : 'false');
+                });
+                dashboardPeriodViews.forEach((view) => {
+                    view.hidden = view.dataset.dashboardPeriodView !== period;
                 });
                 showToast(`${button.textContent.trim()} sales view selected.`, 'Chart period updated');
             });
         });
+
+        initChartTooltips();
 
 
         // Registration row action menu
@@ -755,727 +990,13 @@
         });
 
 
-        // Change password validation (front-end preview only)
-        const currentPasswordInput =
-            document.querySelector('[data-password-current]');
+        // Report filters are server-authoritative: the filter bar is a GET form
+        // and the page renders only the selected report's dataset. Client code
+        // never re-filters rows; it only builds the print view from the
+        // rendered server values.
 
-        const newPasswordInput =
-            document.querySelector('[data-password-new]');
-
-        const confirmPasswordInput =
-            document.querySelector('[data-password-confirm]');
-
-        const passwordUpdateButton =
-            document.querySelector('[data-password-update]');
-
-        const passwordLengthRule =
-            document.querySelector('[data-password-rule="length"]');
-
-        const passwordMixedRule =
-            document.querySelector('[data-password-rule="mixed"]');
-
-        const passwordMatchRule =
-            document.querySelector('[data-password-rule="match"]');
-
-
-        const isMixedPassword = (value) =>
-            /[A-Za-z]/.test(value) &&
-            /\d/.test(value);
-
-
-        const setPasswordRuleState = (
-            rule,
-            valid
-        ) => {
-            if (!rule) return;
-
-            rule.dataset.valid =
-                valid ? 'true' : 'false';
-
-
-            /*
-            * Lucide converts the original <i>
-            * into an <svg>, so replace whichever
-            * icon element currently exists.
-            */
-            const currentIcon =
-                rule.querySelector('i, svg');
-
-            if (currentIcon) {
-                const nextIcon =
-                    document.createElement('i');
-
-                nextIcon.setAttribute(
-                    'data-lucide',
-                    valid
-                        ? 'circle-check'
-                        : 'circle'
-                );
-
-                currentIcon.replaceWith(
-                    nextIcon
-                );
-            }
-
-
-            refreshIcons();
-        };
-
-
-        const syncPasswordValidation = () => {
-            const currentPassword =
-                currentPasswordInput?.value || '';
-
-            const newPassword =
-                newPasswordInput?.value || '';
-
-            const confirmPassword =
-                confirmPasswordInput?.value || '';
-
-
-            const validLength =
-                newPassword.length >= 8;
-
-            const validMixed =
-                isMixedPassword(newPassword);
-
-            /*
-            * Keep this false while both fields
-            * are empty so the page starts neutral.
-            */
-            const validMatch =
-                Boolean(newPassword) &&
-                Boolean(confirmPassword) &&
-                newPassword === confirmPassword;
-
-
-            setPasswordRuleState(
-                passwordLengthRule,
-                validLength
-            );
-
-            setPasswordRuleState(
-                passwordMixedRule,
-                validMixed
-            );
-
-            setPasswordRuleState(
-                passwordMatchRule,
-                validMatch
-            );
-
-
-            if (passwordUpdateButton) {
-                passwordUpdateButton.disabled =
-                    !currentPassword ||
-                    !validLength ||
-                    !validMixed ||
-                    !validMatch;
-            }
-
-
-        };
-
-
-        [
-            currentPasswordInput,
-            newPasswordInput,
-            confirmPasswordInput,
-        ]
-            .filter(Boolean)
-            .forEach((input) => {
-                input.addEventListener(
-                    'input',
-                    syncPasswordValidation
-                );
-            });
-
-
-        passwordUpdateButton
-            ?.addEventListener(
-                'click',
-                () => {
-
-                    const currentPassword =
-                        currentPasswordInput?.value || '';
-
-                    const newPassword =
-                        newPasswordInput?.value || '';
-
-                    const confirmPassword =
-                        confirmPasswordInput?.value || '';
-
-
-                    if (!currentPassword) {
-                        showToast(
-                            'Enter your current password first.',
-                            'Password not updated'
-                        );
-
-                        currentPasswordInput?.focus();
-                        return;
-                    }
-
-
-                    if (newPassword.length < 8) {
-                        showToast(
-                            'New password must be at least 8 characters.',
-                            'Password not updated'
-                        );
-
-                        newPasswordInput?.focus();
-                        return;
-                    }
-
-
-                    if (!isMixedPassword(newPassword)) {
-                        showToast(
-                            'New password must contain both letters and numbers.',
-                            'Password not updated'
-                        );
-
-                        newPasswordInput?.focus();
-                        return;
-                    }
-
-
-                    if (
-                        newPassword !==
-                        confirmPassword
-                    ) {
-                        showToast(
-                            'New password and confirmation do not match.',
-                            'Password not updated'
-                        );
-
-                        confirmPasswordInput?.focus();
-                        return;
-                    }
-
-
-                    if (
-                        newPassword ===
-                        currentPassword
-                    ) {
-                        showToast(
-                            'Choose a new password that is different from the current password.',
-                            'Password not updated'
-                        );
-
-                        newPasswordInput?.focus();
-                        return;
-                    }
-
-
-                    /*
-                    * Front-end prototype only.
-                    * Never persist real password values.
-                    */
-                    currentPasswordInput.value = '';
-                    newPasswordInput.value = '';
-                    confirmPasswordInput.value = '';
-
-
-                    syncPasswordValidation();
-
-
-                    showToast(
-                        'Password validation passed. Backend authentication can handle the real update later.',
-                        'Password check passed'
-                    );
-                }
-            );
-
-
-        /*
-        * Initialize password controls.
-        */
-        syncPasswordValidation();
-
-        // Current admin identity sync across Admin pages
-        const ADMIN_PROFILE_STORAGE_KEY = 'bearlyAdminProfilePreview';
-
-        const getStoredAdminProfile = () => {
-            try {
-                const raw = localStorage.getItem(ADMIN_PROFILE_STORAGE_KEY);
-                return raw ? JSON.parse(raw) : null;
-            } catch (error) {
-                return null;
-            }
-        };
-
-        const applyCurrentAdminIdentity = (profile) => {
-            if (!profile) return;
-
-            const firstName = String(profile.first_name || '').trim();
-            const lastName = String(profile.last_name || '').trim();
-            const fullName = `${firstName} ${lastName}`.trim();
-            const email = String(profile.email || '').trim();
-            const initials = `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
-
-            if (fullName) {
-                document.querySelectorAll('[data-current-admin-name]').forEach((element) => {
-                    element.textContent = fullName;
-                });
-            }
-
-            if (email) {
-                document.querySelectorAll('[data-current-admin-email]').forEach((element) => {
-                    element.textContent = email;
-                });
-            }
-
-            if (initials) {
-                document.querySelectorAll('[data-current-admin-avatar]').forEach((element) => {
-                    element.textContent = initials;
-                });
-            }
-
-            // Keep account form fields in sync after revisiting the page.
-            document.querySelectorAll('[data-profile-field]').forEach((field) => {
-                const key = field.dataset.profileField;
-                if (profile[key] !== undefined && profile[key] !== null) {
-                    field.value = profile[key];
-                }
-            });
-        };
-
-        const storedAdminProfile = getStoredAdminProfile();
-        if (storedAdminProfile) {
-            applyCurrentAdminIdentity(storedAdminProfile);
-        }
-
-        // Account profile edit / save preview
-        const profileEditButton =
-            document.querySelector(
-                '[data-profile-edit]'
-            );
-
-        const profileSaveButton =
-            document.querySelector(
-                '[data-profile-save]'
-            );
-
-        const profileFields = [
-            ...document.querySelectorAll(
-                '[data-profile-field]'
-            ),
-        ];
-
-        const profileState =
-            document.querySelector(
-                '[data-profile-state]'
-            );
-
-        const profileStateIcon =
-            document.querySelector(
-                '[data-profile-state-icon]'
-            );
-
-        const profileStateLabel =
-            document.querySelector(
-                '[data-profile-state-label]'
-            );
-
-
-        let profileSnapshot = {};
-
-
-        /*
-        * Read the current profile form.
-        */
-        const collectProfileValues = () =>
-            Object.fromEntries(
-                profileFields.map(
-                    (field) => [
-                        field.dataset.profileField,
-                        field.value.trim(),
-                    ]
-                )
-            );
-
-
-        const profileSignature = (
-            profile
-        ) =>
-            JSON.stringify({
-                first_name:
-                    profile.first_name || '',
-
-                last_name:
-                    profile.last_name || '',
-
-                email:
-                    profile.email || '',
-
-                phone:
-                    profile.phone || '',
-            });
-
-
-        const setProfileState = (
-            state
-        ) => {
-            if (profileState) {
-                profileState.dataset.state =
-                    state;
-            }
-
-
-            if (state === 'dirty') {
-                if (profileStateLabel) {
-                    profileStateLabel.textContent =
-                        'Unsaved changes';
-                }
-
-                if (profileStateIcon) {
-                    profileStateIcon.setAttribute(
-                        'data-lucide',
-                        'circle-alert'
-                    );
-                }
-
-                refreshIcons();
-                return;
-            }
-
-
-            if (profileStateLabel) {
-                profileStateLabel.textContent =
-                    'Profile saved';
-            }
-
-            if (profileStateIcon) {
-                profileStateIcon.setAttribute(
-                    'data-lucide',
-                    'circle-check'
-                );
-            }
-
-            refreshIcons();
-        };
-
-
-        const setProfileEditMode = (
-            editing
-        ) => {
-            profileFields.forEach(
-                (field) => {
-                    field.readOnly =
-                        !editing;
-                }
-            );
-
-
-            if (!editing && profileSaveButton) {
-                profileSaveButton.disabled =
-                    true;
-            }
-
-
-            if (profileEditButton) {
-                profileEditButton.innerHTML =
-                    editing
-                        ? `
-                            <i data-lucide="x"></i>
-                            Cancel
-                        `
-                        : `
-                            <i data-lucide="pencil"></i>
-                            Edit
-                        `;
-            }
-
-
-            refreshIcons();
-        };
-
-
-        /*
-        * Check whether an editable field
-        * actually differs from the snapshot.
-        */
-        const syncProfileDirtyState = () => {
-            const current =
-                collectProfileValues();
-
-            const changed =
-                profileSignature(current) !==
-                profileSignature(
-                    profileSnapshot
-                );
-
-
-            if (profileSaveButton) {
-                profileSaveButton.disabled =
-                    !changed;
-            }
-
-
-            setProfileState(
-                changed
-                    ? 'dirty'
-                    : 'saved'
-            );
-        };
-
-
-        profileFields.forEach(
-            (field) => {
-                field.addEventListener(
-                    'input',
-                    syncProfileDirtyState
-                );
-            }
-        );
-
-
-        profileEditButton
-            ?.addEventListener(
-                'click',
-                () => {
-
-                    const currentlyEditing =
-                        profileFields.some(
-                            (field) =>
-                                !field.readOnly
-                        );
-
-
-                    /*
-                    * Enter edit mode.
-                    */
-                    if (!currentlyEditing) {
-
-                        profileSnapshot =
-                            collectProfileValues();
-
-
-                        setProfileEditMode(
-                            true
-                        );
-
-
-                        setProfileState(
-                            'saved'
-                        );
-
-
-                        if (profileSaveButton) {
-                            profileSaveButton.disabled =
-                                true;
-                        }
-
-
-                        profileFields[0]
-                            ?.focus();
-
-
-                        return;
-                    }
-
-
-                    /*
-                    * Cancel edit mode.
-                    * Restore original field values.
-                    */
-                    profileFields.forEach(
-                        (field) => {
-
-                            const key =
-                                field.dataset
-                                    .profileField;
-
-                            if (
-                                Object.prototype
-                                    .hasOwnProperty
-                                    .call(
-                                        profileSnapshot,
-                                        key
-                                    )
-                            ) {
-                                field.value =
-                                    profileSnapshot[key];
-                            }
-
-                        }
-                    );
-
-
-                    setProfileEditMode(
-                        false
-                    );
-
-
-                    setProfileState(
-                        'saved'
-                    );
-
-
-                    showToast(
-                        'Unsaved profile changes were discarded.',
-                        'Changes cancelled'
-                    );
-                }
-            );
-
-
-        profileSaveButton
-            ?.addEventListener(
-                'click',
-                () => {
-
-                    const values =
-                        collectProfileValues();
-
-
-                    if (
-                        !values.first_name ||
-                        !values.last_name ||
-                        !values.email
-                    ) {
-                        showToast(
-                            'First name, last name, and email are required.',
-                            'Profile not saved'
-                        );
-
-                        return;
-                    }
-
-
-                    const emailField =
-                        profileFields.find(
-                            (field) =>
-                                field.dataset
-                                    .profileField ===
-                                'email'
-                        );
-
-
-                    if (
-                        emailField &&
-                        !emailField.checkValidity()
-                    ) {
-                        showToast(
-                            'Enter a valid email address before saving.',
-                            'Profile not saved'
-                        );
-
-                        emailField.focus();
-                        return;
-                    }
-
-
-                    localStorage.setItem(
-                        ADMIN_PROFILE_STORAGE_KEY,
-                        JSON.stringify(values)
-                    );
-
-
-                    applyCurrentAdminIdentity(
-                        values
-                    );
-
-
-                    profileSnapshot = {
-                        ...values,
-                    };
-
-
-                    setProfileEditMode(
-                        false
-                    );
-
-
-                    setProfileState(
-                        'saved'
-                    );
-
-
-                    showToast(
-                        'Admin profile changes were saved in this preview.',
-                        'Profile updated'
-                    );
-                }
-            );
-
-
-        /*
-        * Initial Account page state.
-        */
-        profileSnapshot =
-            collectProfileValues();
-
-        setProfileEditMode(
-            false
-        );
-
-        setProfileState(
-            'saved'
-        );
-
-        // Report filters
-        const reportStartInput = document.querySelector('[data-report-start]');
-        const reportEndInput = document.querySelector('[data-report-end]');
-        const reportTypeInput = document.querySelector('[data-report-type]');
-        const reportFilterButton = document.querySelector('[data-apply-report-filters]');
-        const reportFilterSummary = document.querySelector('[data-report-filter-summary]');
-
-        const formatReportDate = (value) => {
-            if (!value) return 'Not set';
-
-            const date = new Date(`${value}T00:00:00`);
-            if (Number.isNaN(date.getTime())) return value;
-
-            return new Intl.DateTimeFormat('en-PH', {
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric',
-            }).format(date);
-        };
-
-        const applyReportFilters = () => {
-            if (!reportFilterButton || !reportTypeInput) return;
-
-            const startValue = reportStartInput?.value || '';
-            const endValue = reportEndInput?.value || '';
-
-            if (startValue && endValue && startValue > endValue) {
-                showToast('The start date must be on or before the end date.', 'Invalid report period');
-                reportStartInput?.focus();
-                return;
-            }
-
-            const reportType = reportTypeInput.value;
-            const sectionByType = {
-                'Sales Summary': 'sales',
-                'Commission Report': 'commission',
-                'Seller Settlement Report': 'settlement',
-                'Refund Report': 'refund',
-            };
-            const activeSection = sectionByType[reportType] || 'sales';
-
-            document.querySelectorAll('[data-report-section]').forEach((section) => {
-                section.hidden = section.dataset.reportSection !== activeSection;
-            });
-
-            if (reportFilterSummary) {
-                reportFilterSummary.hidden = false;
-                reportFilterSummary.textContent =
-                    `${reportType} • ${formatReportDate(startValue)} to ${formatReportDate(endValue)}`;
-            }
-
-            showToast(
-                `${reportType} view applied for the selected report period.`,
-                'Report filters applied'
-            );
-        };
-
-        reportFilterButton?.addEventListener('click', applyReportFilters);
-
-        // Report exports
         const getReportExportData = () => {
-            const reportType = reportTypeInput?.value || 'Sales Summary';
+            const context = document.querySelector('[data-report-context]');
 
             const kpis = [...document.querySelectorAll('.report-kpi')].map((card) => ({
                 label: card.querySelector('p')?.textContent?.trim() || '',
@@ -1483,63 +1004,26 @@
                 note: card.querySelector('small')?.textContent?.trim() || '',
             }));
 
-            const activeTable = [...document.querySelectorAll('[data-report-section]')]
-                .find((section) => !section.hidden)
-                ?.querySelector('[data-report-export-table]');
-            const tableHeaders = activeTable
-                ? [...activeTable.querySelectorAll('thead th')].map((cell) => cell.textContent.trim())
+            const table = document.querySelector('[data-report-export-table]');
+            const tableHeaders = table
+                ? [...table.querySelectorAll('thead th')].map((cell) => cell.textContent.trim())
                 : [];
-            const tableRows = activeTable
-                ? [...activeTable.querySelectorAll('tbody tr')].map((row) =>
+            const tableRows = table
+                ? [...table.querySelectorAll('tbody tr')].map((row) =>
                     [...row.querySelectorAll('td')].map((cell) => cell.textContent.trim().replace(/\s+/g, ' '))
                 )
                 : [];
 
             return {
-                reportType,
-                startDate: reportStartInput?.value || '',
-                endDate: reportEndInput?.value || '',
+                reportType: context?.dataset.reportLabel || 'Financial Report',
+                period: context?.dataset.reportPeriod || '',
+                startDate: context?.dataset.reportFrom || '',
+                endDate: context?.dataset.reportTo || '',
+                basis: context?.dataset.reportBasis || '',
                 kpis,
                 tableHeaders,
                 tableRows,
             };
-        };
-
-        const downloadReportCsv = () => {
-            const report = getReportExportData();
-
-            const rows = [
-                ['Bearly Admin Report'],
-                ['Report Type', report.reportType],
-                ['Start Date', report.startDate],
-                ['End Date', report.endDate],
-                [],
-                ['Summary Metrics'],
-                ['Metric', 'Value', 'Note'],
-                ...report.kpis.map((item) => [item.label, item.value, item.note]),
-                [],
-                ['Report Details'],
-                report.tableHeaders,
-                ...report.tableRows,
-            ];
-
-            const csv = '\uFEFF' + rows
-                .map((row) => row.map(escapeCsvValue).join(','))
-                .join('\r\n');
-
-            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            const dateStamp = new Date().toISOString().slice(0, 10);
-
-            link.href = url;
-            link.download = `bearly-admin-report-${dateStamp}.csv`;
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            URL.revokeObjectURL(url);
-
-            showToast('The current report data was exported as CSV.', 'Report exported');
         };
 
         const escapeReportHtml = (value = '') => String(value)
@@ -1627,7 +1111,8 @@
                     <header>
                         <h1>Bearly Admin Report</h1>
                         <div class="meta"><strong>Report type:</strong> ${escapeReportHtml(report.reportType)}</div>
-                        <div class="meta"><strong>Period:</strong> ${escapeReportHtml(report.startDate || '—')} to ${escapeReportHtml(report.endDate || '—')}</div>
+                        <div class="meta"><strong>Period:</strong> ${escapeReportHtml(report.period || `${report.startDate || '—'} to ${report.endDate || '—'}`)}</div>
+                        <div class="meta"><strong>Basis:</strong> ${escapeReportHtml(report.basis)}</div>
                     </header>
 
                     <h2>Summary Metrics</h2>
@@ -1656,14 +1141,7 @@
 
         document.querySelectorAll('[data-export-report]').forEach((button) => {
             button.addEventListener('click', () => {
-                const type = button.dataset.exportReport;
-
-                if (type === 'csv') {
-                    downloadReportCsv();
-                    return;
-                }
-
-                if (type === 'pdf') {
+                if (button.dataset.exportReport === 'pdf') {
                     openReportPrintView();
                 }
             });
@@ -5204,19 +4682,21 @@
                     (item) => `
                         <button
                             type="button"
-                            class="evidence-card"
+                            class="evidence-card${
+                                item.preview_url ? ' has-preview' : ''
+                            }"
                             data-evidence-id="${escapeDisputeHtml(
                                 item.id
                             )}"
                         >
                             <span>
-                                <i
-                                    data-lucide="${
-                                        item.type === 'Image'
-                                            ? 'image'
-                                            : 'file-text'
-                                    }"
-                                ></i>
+                                ${item.preview_url
+                                    ? `<img src="${escapeDisputeHtml(
+                                          item.preview_url
+                                      )}" alt="Preview of ${escapeDisputeHtml(
+                                          item.label
+                                      )}">`
+                                    : '<i data-lucide="file-text"></i>'}
                             </span>
 
                             <div>
@@ -5381,8 +4861,13 @@
             );
 
             setDisputeText(
-                '[data-dispute-courier]',
-                dispute.courier
+                '[data-dispute-rider]',
+                dispute.rider ?? dispute.courier ?? 'Unavailable'
+            );
+
+            setDisputeText(
+                '[data-dispute-logistics]',
+                dispute.logistics ?? 'Unavailable'
             );
 
             setDisputeText(
@@ -5418,11 +4903,28 @@
 
             document
                 .querySelectorAll(
-                    '[data-party-courier]'
+                    '[data-party-rider]'
                 )
                 .forEach((element) => {
                     element.textContent =
-                        dispute.courier ?? '—';
+                        dispute.rider ?? dispute.courier ?? 'Unavailable';
+                });
+
+            document
+                .querySelectorAll(
+                    '[data-party-logistics]'
+                )
+                .forEach((element) => {
+                    element.textContent =
+                        dispute.logistics ?? 'Unavailable';
+                });
+
+            document
+                .querySelectorAll('[data-party-message]')
+                .forEach((button) => {
+                    const role = button.dataset.partyMessage;
+                    const participantId = dispute[`${role}_user_id`];
+                    button.disabled = !participantId;
                 });
 
 
@@ -5461,6 +4963,12 @@
             if (note) {
                 note.value =
                     dispute.internalNote || '';
+            }
+
+            const update = document.querySelector('[data-dispute-update]');
+
+            if (update) {
+                update.value = '';
             }
 
 
@@ -5683,26 +5191,9 @@
                                 'seller';
                         }
 
-                        if (
-                            selectedRole === 'courier'
-                        ) {
-                            if (
-                                dispute.rider_user_id
-                            ) {
-                                recipientId =
-                                    dispute.rider_user_id;
-
-                                recipientRole =
-                                    'rider';
-                            } else if (
-                                dispute.logistics_user_id
-                            ) {
-                                recipientId =
-                                    dispute.logistics_user_id;
-
-                                recipientRole =
-                                    'logistics';
-                            }
+                        if (['rider', 'logistics'].includes(selectedRole)) {
+                            recipientId = dispute[`${selectedRole}_user_id`] ?? null;
+                            recipientRole = selectedRole;
                         }
 
                         if (
@@ -5919,13 +5410,13 @@
                     const dispute =
                         getActiveDispute();
 
-                    const noteElement =
+                    const messageElement =
                         document.querySelector(
-                            '[data-dispute-note]'
+                            '[data-dispute-update]'
                         );
 
                     const message =
-                        noteElement
+                        messageElement
                             ?.value
                             .trim() || '';
 
@@ -5949,7 +5440,7 @@
                             'Update not sent'
                         );
 
-                        noteElement?.focus();
+                        messageElement?.focus();
 
                         return;
                     }
@@ -6027,6 +5518,10 @@
                             }.`,
                             'Case update sent'
                         );
+
+                        if (messageElement) {
+                            messageElement.value = '';
+                        }
                     } catch (error) {
                         showToast(
                             error.message ||
@@ -7101,6 +6596,246 @@
 
         /*
         |--------------------------------------------------------------------------
+        | Live refresh (inbox previews + active thread)
+        |--------------------------------------------------------------------------
+        */
+
+        const ADMIN_POLL_MS = 5000;
+        const ADMIN_INBOX_EVERY_TICKS = 3;
+
+        let adminPollTimer = null;
+        let adminPollTick = 0;
+        let adminVisibilityHandler = null;
+
+        const conversationItemById = (id) =>
+            conversationItems.find(
+                (item) =>
+                    getConversationId(item) === String(id)
+            ) || null;
+
+        const refreshAdminInbox = async () => {
+            if (!messageConfig.inbox_url) {
+                return;
+            }
+
+            const response = await fetch(
+                messageConfig.inbox_url,
+                {
+                    headers: {
+                        'Accept': 'application/json',
+                    },
+                }
+            );
+
+            if (!response.ok) {
+                return;
+            }
+
+            const result = await response.json();
+
+            const entries = result?.data?.conversations || [];
+
+            const activeId = getConversationId(
+                getActiveConversationItem()
+            );
+
+            entries.forEach((entry) => {
+                const id = String(entry.id ?? '');
+                const item = conversationItemById(id);
+
+                if (!item) {
+                    return;
+                }
+
+                updateConversationPreview(
+                    item,
+                    entry.preview ?? '',
+                    entry.time ?? ''
+                );
+
+                if (id !== activeId) {
+                    const conversation = conversationData[id];
+
+                    if (conversation) {
+                        conversation.unread = Number(entry.unread || 0);
+                    }
+
+                    setConversationUnread(item, Number(entry.unread || 0));
+                }
+            });
+
+            /*
+             * The snapshot is ordered newest-first; mirror that
+             * order in the rendered inbox.
+             */
+
+            if (conversationList) {
+                entries.forEach((entry) => {
+                    const item = conversationItemById(
+                        String(entry.id ?? '')
+                    );
+
+                    if (item) {
+                        conversationList.appendChild(item);
+                    }
+                });
+            }
+        };
+
+        const pollAdminThread = async () => {
+            const item = getActiveConversationItem();
+
+            const conversation =
+                item
+                    ? conversationData[getConversationId(item)]
+                    : null;
+
+            if (!item || !conversation?.thread_url) {
+                return;
+            }
+
+            const url = new URL(
+                conversation.thread_url,
+                window.location.origin
+            );
+
+            const messages = conversation.messages || [];
+
+            const lastMessageId = messages.length
+                ? Number(messages[messages.length - 1].id || 0)
+                : 0;
+
+            if (lastMessageId > 0) {
+                url.searchParams.set('after', String(lastMessageId));
+            }
+
+            const response = await fetch(
+                url.toString(),
+                {
+                    headers: {
+                        'Accept': 'application/json',
+                    },
+                }
+            );
+
+            if (!response.ok) {
+                return;
+            }
+
+            const result = await response.json();
+
+            const incoming = result?.data?.messages || [];
+
+            if (!incoming.length) {
+                return;
+            }
+
+            const nearBottom = messageThread
+                ? (messageThread.scrollHeight - messageThread.scrollTop - messageThread.clientHeight) < 96
+                : true;
+
+            const previousScrollTop = messageThread?.scrollTop ?? 0;
+
+            conversation.messages = [
+                ...messages,
+                ...incoming,
+            ];
+
+            renderChatThread(String(conversation.database_id));
+
+            if (!nearBottom && messageThread) {
+                messageThread.scrollTop = previousScrollTop;
+            }
+
+            const latest = incoming[incoming.length - 1];
+
+            const previewText =
+                latest.text ||
+                latest.attachments?.[0]?.name ||
+                'Attachment';
+
+            updateConversationPreview(item, previewText, latest.time);
+
+            /*
+             * The active conversation is on screen, so live
+             * arrivals count as read.
+             */
+
+            conversation.unread = 0;
+
+            setConversationUnread(item, 0);
+
+            if (
+                conversation.read_url &&
+                incoming.some((message) => message.from === 'them')
+            ) {
+                fetch(conversation.read_url, {
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken,
+                    },
+                }).catch(() => {});
+            }
+        };
+
+        const startAdminPolling = () => {
+            if (adminPollTimer || !conversationDataNode) {
+                return;
+            }
+
+            adminPollTimer = window.setInterval(async () => {
+                if (document.hidden) {
+                    return;
+                }
+
+                adminPollTick += 1;
+
+                try {
+                    await pollAdminThread();
+
+                    if (adminPollTick % ADMIN_INBOX_EVERY_TICKS === 0) {
+                        await refreshAdminInbox();
+                    }
+                } catch {
+                    /*
+                     * Transient polling failures are ignored;
+                     * the next tick retries.
+                     */
+                }
+            }, ADMIN_POLL_MS);
+
+            adminVisibilityHandler = () => {
+                if (document.hidden) {
+                    return;
+                }
+
+                pollAdminThread().catch(() => {});
+                refreshAdminInbox().catch(() => {});
+            };
+
+            document.addEventListener(
+                'visibilitychange',
+                adminVisibilityHandler
+            );
+        };
+
+        startAdminPolling();
+
+        window.addEventListener('bearly:message-created', (event) => {
+            const conversationId = String(event.detail?.conversation_id || '');
+            const activeId = getConversationId(getActiveConversationItem());
+
+            if (conversationId && conversationId === activeId) {
+                pollAdminThread().catch(() => {});
+            } else {
+                refreshAdminInbox().catch(() => {});
+            }
+        });
+
+
+        /*
+        |--------------------------------------------------------------------------
         | New conversation
         |--------------------------------------------------------------------------
         */
@@ -7489,11 +7224,29 @@
         updateUnreadSummary();
 
 
+        const requestedConversationId =
+            new URLSearchParams(
+                window.location.search
+            ).get('conversation');
+
+        const requestedConversation =
+            requestedConversationId
+                ? conversationItems.find(
+                    (item) =>
+                        getConversationId(
+                            item
+                        )
+                        === String(
+                            requestedConversationId
+                        )
+                )
+                : null;
+
         const initialConversation =
-            document.querySelector(
+            requestedConversation
+            || document.querySelector(
                 '[data-conversation-item].is-active'
             );
-
 
         if (initialConversation) {
             selectConversation(

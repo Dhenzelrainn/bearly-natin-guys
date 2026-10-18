@@ -33,7 +33,6 @@
         'Gross Sales',
     ];
     $adminRecordsKpi = $kpisByLabel->get('Admin Records');
-    $hasSalesData = collect($salesByMonth)->sum() > 0;
 @endphp
 
 <section class="dashboard-kpi-grid" aria-label="Key platform metrics">
@@ -107,33 +106,65 @@
             <div>
                 <span class="eyebrow">Marketplace performance</span>
                 <h2>Sales trend</h2>
-                <p>Monthly gross sales preview for the current year.</p>
+                <p>Gross sales from paid orders, grouped by payment date.</p>
             </div>
             <div class="segmented-control">
-                <button type="button" class="is-active" data-dashboard-period="12">12M</button>
-                <button type="button" data-dashboard-period="3">3M</button>
-                <button type="button" data-dashboard-period="1">30D</button>
+                <button type="button" class="is-active" data-dashboard-period="12" aria-pressed="true">12M</button>
+                <button type="button" data-dashboard-period="3" aria-pressed="false">3M</button>
+                <button type="button" data-dashboard-period="30" aria-pressed="false">30D</button>
             </div>
         </div>
 
         @if ($hasSalesData)
-            <div class="chart-shell">
-                <div class="chart-y-labels"><span>₱1.5M</span><span>₱1.0M</span><span>₱500K</span><span>₱0</span></div>
-                <div class="bar-chart" aria-label="Sales bar chart">
-                    @php $months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; @endphp
-                    @foreach ($salesByMonth as $index => $height)
-                        <div class="bar-column" data-dashboard-bar>
-                            <div class="bar-track"><span style="height: {{ min(100, $height / 1.45) }}%"></span></div>
-                            <small>{{ $months[$index] }}</small>
+            @foreach (['12M', '3M', '30D'] as $periodKey)
+                @php
+                    $trend = $salesTrend[$periodKey];
+                    $trendCaption = match ($periodKey) {
+                        '3M' => 'Gross sales for the last 3 months',
+                        '30D' => 'Gross sales for the last 30 days',
+                        default => 'Gross sales for the current year',
+                    };
+                @endphp
+                <div class="chart-shell" data-dashboard-period-view="{{ $periodKey }}" @if ($periodKey !== '12M') hidden @endif>
+                    @if ($trend['has_data'])
+                        <div class="chart-y-labels" aria-hidden="true">
+                            @foreach ($trend['axis'] as $axisLabel)<span>{{ $axisLabel }}</span>@endforeach
                         </div>
-                    @endforeach
+                        <div
+                            class="bar-chart @if (count($trend['buckets']) > 14) is-dense @endif"
+                            data-chart
+                            role="group"
+                            aria-label="{{ $trendCaption }}"
+                            style="grid-template-columns:repeat({{ count($trend['buckets']) }}, minmax(0, 1fr))"
+                        >
+                            @foreach ($trend['buckets'] as $bucket)
+                                <div
+                                    class="bar-column"
+                                    data-chart-point
+                                    tabindex="{{ $loop->first ? 0 : -1 }}"
+                                    role="img"
+                                    aria-label="{{ $bucket['label'] }}: {{ $bucket['value'] }}"
+                                    data-label="{{ $bucket['label'] }}"
+                                    data-value="{{ $bucket['value'] }}"
+                                >
+                                    <div class="bar-track"><span data-chart-bar style="height: {{ $bucket['height'] }}%"></span></div>
+                                    <small>{{ $bucket['short'] }}</small>
+                                </div>
+                            @endforeach
+                        </div>
+                    @else
+                        <div class="dashboard-chart-empty chart-shell-empty" role="status">
+                            <i data-lucide="chart-column" aria-hidden="true"></i>
+                            <strong>{{ $trend['empty_note'] }}</strong>
+                        </div>
+                    @endif
                 </div>
-            </div>
+            @endforeach
         @else
             <div class="dashboard-chart-empty" role="status">
                 <i data-lucide="chart-column" aria-hidden="true"></i>
-                <strong>No paid sales recorded this year</strong>
-                <span>Monthly sales activity will appear here when payments are recorded.</span>
+                <strong>No paid sales recorded yet</strong>
+                <span>Sales activity will appear here when payments are recorded.</span>
             </div>
         @endif
     </article>

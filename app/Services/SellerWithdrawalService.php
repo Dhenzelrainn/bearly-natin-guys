@@ -11,6 +11,7 @@ use App\Models\SellerWithdrawalStatusHistory;
 use App\Models\SellerWithdrawalTransfer;
 use App\Models\User;
 use App\Notifications\SellerWithdrawalStatusNotification;
+use App\Notifications\WorkflowNotification;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -26,6 +27,7 @@ class SellerWithdrawalService
     public function __construct(
         private readonly SellerWalletService $wallets,
         private readonly AuditService $audit,
+        private readonly NotificationService $notifications,
     ) {}
 
     /** @param array{bank_name:string,account_name:string,account_number:string} $data */
@@ -175,6 +177,7 @@ class SellerWithdrawalService
             $this->wallets->reserveForWithdrawal($withdrawal, $seller);
             $this->recordStatus($withdrawal, null, SellerWithdrawalStatus::PendingReview, $seller, 'Seller submitted a withdrawal request.');
             $this->notifySeller($withdrawal, SellerWithdrawalStatus::PendingReview, 'Seller submitted a withdrawal request.');
+            $this->notifyFinanceReview($withdrawal);
             $this->audit->record(
                 action: 'seller_withdrawal.requested',
                 module: 'Seller Wallet',
@@ -679,13 +682,36 @@ class SellerWithdrawalService
 
     private function notifySeller(SellerWithdrawal $withdrawal, SellerWithdrawalStatus $status, ?string $reason): void
     {
-        $withdrawal->sellerProfile?->user?->notify(new SellerWithdrawalStatusNotification(
+        $seller = $withdrawal->sellerProfile?->user;
+
+        if (! $seller) {
+            return;
+        }
+
+        $this->notifications->sendAfterCommit($seller, new SellerWithdrawalStatusNotification(
             withdrawalId: (int) $withdrawal->id,
             withdrawalNo: $withdrawal->withdrawal_no,
             amountMinor: (int) $withdrawal->amount_minor,
             status: $status->value,
             reason: filled($reason) ? trim((string) $reason) : null,
         ));
+    }
+
+    private function notifyFinanceReview(SellerWithdrawal $withdrawal): void
+    {
+        $amount = '₱'.number_format(((int) $withdrawal->amount_minor) / 100, 2);
+
+        $this->notifications->sendManyAfterCommit(
+            $this->notifications->admins(),
+            new WorkflowNotification(
+                eventKey: 'admin_withdrawal_submitted',
+                title: 'Withdrawal awaiting review',
+                body: "{$withdrawal->withdrawal_no} ({$amount}) was submitted by a Seller and is waiting for Finance review.",
+                actionUrl: route('admin.seller-payouts.show', $withdrawal),
+                type: 'warning',
+                meta: ['withdrawal_id' => (int) $withdrawal->id],
+            ),
+        );
     }
 
     private function safeOriginalName(string $name): string

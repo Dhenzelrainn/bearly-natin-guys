@@ -941,3 +941,18 @@ body.cart-page .cart-toast.show{
         font-size:18px;
     }
 }
+
+body.cart-page .cart-preview-notice {
+    margin: 0 0 16px;
+    padding: 11px 14px;
+    border: 1px solid #ead8b6;
+    border-radius: 9px;
+    color: #66512d;
+    background: #fffaf1;
+    font-size: 12px;
+    line-height: 1.55;
+}
+
+body.cart-page .cart-preview-notice[hidden] {
+    display: none !important;
+}

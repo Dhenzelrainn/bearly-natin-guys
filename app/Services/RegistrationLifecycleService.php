@@ -15,6 +15,7 @@ use App\Models\SellerProfile;
 use App\Models\SortingCenter;
 use App\Models\SortingZone;
 use App\Models\User;
+use App\Notifications\WorkflowNotification;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -29,6 +30,7 @@ class RegistrationLifecycleService
     public function __construct(
         private readonly SellerProductService $sellerProductService,
         private readonly RiderZoneAssignmentService $riderZoneAssignment,
+        private readonly NotificationService $notifications,
     ) {
     }
 
@@ -169,11 +171,63 @@ class RegistrationLifecycleService
                 // It is created only after Admin approval.
             }
 
+            $this->notifyRegistrationSubmitted($user, $requestedRole, $accountApplication, $sponsorProfile);
+
             return $accountApplication->fresh([
                 'requestedRole',
                 'documents',
             ]);
         });
+    }
+
+    /**
+     * Notify the queue that owns the next decision: Admins for Buyer, Seller,
+     * and Logistics applications; the sponsoring Logistics account for Rider
+     * applications.
+     */
+    private function notifyRegistrationSubmitted(
+        User $user,
+        string $requestedRole,
+        AccountApplication $application,
+        ?LogisticsProfile $sponsorProfile,
+    ): void {
+        if ($requestedRole === UserRole::Rider->value) {
+            $sponsorUser = $sponsorProfile?->user;
+
+            if (! $sponsorUser) {
+                return;
+            }
+
+            $this->notifications->sendAfterCommit($sponsorUser, new WorkflowNotification(
+                eventKey: 'logistics_rider_application_submitted',
+                title: 'New rider application',
+                body: "{$user->name} submitted a rider application ({$application->application_no}) under your Logistics account.",
+                actionUrl: route('logistics.riders.index'),
+                type: 'info',
+                meta: ['application_id' => (int) $application->id],
+            ));
+
+            return;
+        }
+
+        $url = match ($requestedRole) {
+            UserRole::Buyer->value => route('admin.registrations.buyers'),
+            UserRole::Seller->value => route('admin.registrations.sellers'),
+            UserRole::Logistics->value => route('admin.registrations.logistics'),
+            default => route('admin.registrations'),
+        };
+
+        $this->notifications->sendManyAfterCommit(
+            $this->notifications->admins(),
+            new WorkflowNotification(
+                eventKey: 'admin_registration_submitted',
+                title: 'New '.ucfirst($requestedRole).' registration',
+                body: "{$user->name} submitted a {$requestedRole} registration ({$application->application_no}) awaiting review.",
+                actionUrl: $url,
+                type: 'info',
+                meta: ['application_id' => (int) $application->id],
+            ),
+        );
     }
 
     /**

@@ -55,7 +55,7 @@
 
 
 
-<section class="messaging-shell panel">
+<section class="messaging-shell panel messages-standard-page" data-standard-role="admin">
 
     {{-- Conversation sidebar --}}
     <aside class="conversation-sidebar">
@@ -442,9 +442,18 @@
 
     </div>
 
+    <aside class="messages-standard-details" data-standard-details>
+        <h3>Conversation details</h3>
+        <div data-standard-details-body>
+            <div class="table-empty">Select a conversation to see its details.</div>
+        </div>
+    </aside>
+
 </section>
 
-
+<script>
+    window.bearlyAdminConversations = {{ Illuminate\Support\Js::from($conversations) }};
+</script>
 
 {{-- New conversation modal --}}
 <div
@@ -589,6 +598,10 @@
     'create_url' => route(
         'admin.messages.conversations.store'
     ),
+
+    'inbox_url' => route(
+        'admin.messages.inbox'
+    ),
 ], JSON_UNESCAPED_SLASHES) !!}
 </script>
 
@@ -636,6 +649,11 @@
 
                 'unread_url' => route(
                     'admin.messages.unread',
+                    $conversation['database_id']
+                ),
+
+                'thread_url' => route(
+                    'admin.messages.thread',
                     $conversation['database_id']
                 ),
 

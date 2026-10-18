@@ -23,8 +23,17 @@
     <section class="sales-performance-lead">
         <article class="sales-momentum-panel">
             <div class="report-detail-panel-heading"><div><span class="section-kicker">Sales movement</span><h3>{{ $momentumHeading }}</h3><p>{{ $momentumSummary }}</p></div><strong>{{ $momentumChange['label'] }}<small>{{ $momentumChange['context'] }}</small></strong></div>
-            <div class="sales-momentum-bars" aria-label="Gross sales by period" style="grid-template-columns:repeat({{ max(1, count($momentum)) }}, 1fr)">
-                @foreach ($momentum as $period)<div><span><i style="height:{{ $period['height'] }}%"></i></span><strong>₱{{ number_format($period['value']) }}</strong><small>{{ $period['label'] }}</small></div>@endforeach
+            <div class="sales-momentum-bars" data-chart role="group" aria-label="Gross sales by period" style="grid-template-columns:repeat({{ max(1, count($momentum)) }}, 1fr)">
+                @foreach ($momentum as $period)
+                    <div
+                        data-chart-point
+                        tabindex="{{ $loop->first ? 0 : -1 }}"
+                        role="img"
+                        aria-label="{{ $period['label'] }}: {{ $period['value_label'] }}"
+                        data-label="{{ $period['label'] }}"
+                        data-value="{{ $period['value_label'] }}"
+                    ><span><i data-chart-bar style="height:{{ $period['height'] }}%"></i></span><strong>₱{{ number_format($period['value']) }}</strong><small>{{ $period['label'] }}</small></div>
+                @endforeach
             </div>
         </article>
         <article class="sales-leaderboard-panel">

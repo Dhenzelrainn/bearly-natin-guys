@@ -17,6 +17,7 @@ use App\Models\Shipment;
 use App\Models\Store;
 use App\Models\User;
 use App\Models\Waybill;
+use App\Notifications\WorkflowNotification;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -25,6 +26,10 @@ use Illuminate\Validation\ValidationException;
 
 class SellerPickupRequestService
 {
+    public function __construct(
+        private readonly NotificationService $notifications,
+    ) {}
+
     /** @var array<string, array{start: string, end: string, label: string}> */
     public const PICKUP_WINDOWS = [
         '10:00-12:00' => ['start' => '10:00:00', 'end' => '12:00:00', 'label' => '10:00 AM–12:00 PM'],
@@ -254,6 +259,8 @@ class SellerPickupRequestService
                 ]);
             }
 
+            $this->notifyProviderOfPickup($pickupRequest, $store, $requestedDate);
+
             return $pickupRequest->fresh([
                 'logisticsProfile',
                 'pickupAddress',
@@ -261,6 +268,24 @@ class SellerPickupRequestService
                 'parcels.waybill',
             ]);
         }, attempts: 3);
+    }
+
+    private function notifyProviderOfPickup(PickupRequest $pickupRequest, Store $store, string $requestedDate): void
+    {
+        $providerUser = $pickupRequest->logisticsProfile?->user;
+
+        if (! $providerUser) {
+            return;
+        }
+
+        $this->notifications->sendAfterCommit($providerUser, new WorkflowNotification(
+            eventKey: 'logistics_pickup_requested',
+            title: 'New pickup request',
+            body: "Pickup {$pickupRequest->pickup_no} from {$store->name} was scheduled for {$requestedDate}.",
+            actionUrl: route('logistics.pickups.index'),
+            type: 'info',
+            meta: ['pickup_request_id' => (int) $pickupRequest->id],
+        ));
     }
 
     /** @return array{weight: float, length: float, width: float, height: float} */

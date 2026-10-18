@@ -473,7 +473,10 @@ class SellerReportsTest extends TestCase
             ->assertSee('value="this_month" selected', false)
             ->assertSee('₱1,000.00')
             ->assertDontSee('₱500.00')
-            ->assertSee('↑ 100.0%');
+            ->assertSee('↑ 100.0%')
+            // Tooltip points carry the real bucket values.
+            ->assertSee('data-chart-point', false)
+            ->assertSee('data-value="₱1,000.00"', false);
 
         $this->actingAs($seller)->get(route('seller.dashboard', ['period' => 'last_month']))
             ->assertOk()
@@ -534,7 +537,7 @@ class SellerReportsTest extends TestCase
         $this->assertSame('2026-08-31', $sales['momentum'][3]['end']);
     }
 
-    public function test_reports_overview_chart_plots_real_bucket_gross_values(): void
+    public function test_reports_overview_chart_renders_real_bucket_gross_as_server_side_svg(): void
     {
         [$seller, , $store] = $this->sellerFixture('Chart Seller', 'chart-seller');
 
@@ -548,34 +551,87 @@ class SellerReportsTest extends TestCase
         $response = $this->actingAs($seller)->get(route('seller.reports', ['from' => '2026-08-01', 'to' => '2026-08-31']));
         $response->assertOk();
 
+        // The trend is a server-rendered SVG: the line, area, gridlines,
+        // points, axes, and date labels render before any JavaScript runs.
         // Regression: the overview trend buckets carry `gross_minor`, so the
-        // rendered chart must plot those values instead of silently zeroing
-        // every point through a missing `value_minor` key.
-        $this->assertMatchesRegularExpression('/<polyline class="report-chart-line" points="[^"]+"/', $response->getContent());
-        preg_match('/<polyline class="report-chart-line" points="([^"]+)"/', $response->getContent(), $matches);
-        $points = array_map(
-            fn (string $pair): array => array_map('floatval', explode(',', $pair)),
-            explode(' ', trim($matches[1])),
-        );
-        $this->assertCount(7, $points);
+        // geometry must plot those values instead of silently zeroing every
+        // point through a missing `value_minor` key.
+        $response->assertSee('class="report-chart-line" points="30,26 140,234 250,234 360,234 470,234 580,172 690,234"', false)
+            ->assertSee('class="report-chart-area"', false)
+            ->assertSee('data-chart-hover="nearest"', false)
+            ->assertSee('data-chart-crosshair', false)
+            ->assertSee('<span style="top:10%">₱1,000</span>', false)
+            ->assertSee('<span style="top:90%">₱0</span>', false)
+            ->assertDontSee('data-report-trend', false);
 
-        $yPositions = array_map(fn (array $point): float => $point[1], $points);
-        $this->assertGreaterThan(1, count(array_unique($yPositions)), 'Chart points must not all sit at the same zero coordinate.');
-        $this->assertLessThan(190, min($yPositions), 'At least one point must sit above the zero baseline.');
+        $this->assertSame(7, substr_count($response->getContent(), 'data-chart-point'));
 
-        // The axis is derived from the data (max ₱1,000 -> ₱1,500 top label),
-        // never the fabricated ₱0–₱3 scale of the broken render.
-        $response->assertSee('₱1,500');
-        $response->assertSee('₱1,000');
-        $response->assertDontSee('₱3</span>', false);
+        // Tooltip metadata and the screen-reader table carry the exact
+        // bucket labels and centavo-exact amounts, not chart coordinates.
+        $response->assertSee('data-label="Aug 1–Aug 5"', false)
+            ->assertSee('aria-label="Aug 1–Aug 5: ₱1,000.00"', false)
+            ->assertSee('data-label="Aug 24–Aug 27"', false)
+            ->assertSee('data-value="₱300.00"', false)
+            ->assertSee('<span style="left:95.833%">Aug 28–Aug 31</span>', false)
+            ->assertSee('Gross completed sales by period');
+
+        // A single-day range keeps its one real bucket (two anchors, one
+        // label) and the screen-reader table lists it once.
+        $singleDay = $this->actingAs($seller)->get(route('seller.reports', ['from' => '2026-08-02', 'to' => '2026-08-02']));
+        $singleDay->assertOk();
+        $singleDay->assertSee('class="report-chart-line" points="30,26 690,26"', false)
+            ->assertSee('data-label="Aug 2"', false)
+            ->assertSee('aria-label="Aug 2: ₱1,000.00"', false);
+        $this->assertSame(1, substr_count($singleDay->getContent(), '<th scope="row">Aug 2</th>'));
 
         // A period without completed sales shows an honest empty state
         // instead of a flat zero line on an arbitrary axis.
         $this->actingAs($seller)->get(route('seller.reports', ['from' => '2026-06-01', 'to' => '2026-06-30']))
             ->assertOk()
             ->assertSee('No completed sales in this period')
-            ->assertDontSee('report-y-axis', false)
-            ->assertDontSee('report-chart-line', false);
+            ->assertDontSee('report-chart-line', false)
+            ->assertDontSee('data-chart-hover', false);
+    }
+
+    public function test_dashboard_chart_renders_real_buckets_with_shared_tooltip_markup(): void
+    {
+        [$seller, , $store] = $this->sellerFixture('Dashboard Chart Seller', 'dashboard-chart-seller');
+
+        $this->createSale($store, [
+            ['name' => 'Dashboard Chart Bowl', 'sku' => 'DCH-001', 'unit_minor' => 125_000],
+        ], completedAt: CarbonImmutable::now()->startOfMonth()->addDays(2)->addHours(4));
+
+        $response = $this->actingAs($seller)->get(route('seller.dashboard'));
+        $response->assertOk();
+
+        // The dashboard line chart mirrors the redesigned reports overview
+        // treatment: server-computed gridlines, a hover and focus crosshair,
+        // and points revealed by the shared tooltip module.
+        $content = $response->getContent();
+        $this->assertSame(4, substr_count($content, '<line x1="0" x2="720"'));
+        $this->assertMatchesRegularExpression('/<line class="dashboard-ref-chart-crosshair" data-chart-crosshair aria-hidden="true"[^>]*y1="26" y2="234"/', $content);
+        $this->assertStringContainsString('data-chart-hover="nearest"', $content);
+
+        // Five real axis labels sit on the data-derived scale: the single
+        // ₱1,250.00 bucket yields a ₱2,000 top label in ₱500 steps.
+        $this->assertStringContainsString('<span style="top:10%">₱2,000</span>', $content);
+        $this->assertStringContainsString('<span style="top:90%">₱0</span>', $content);
+
+        // Tooltip points and sampled day labels keep real values and their
+        // server-computed x coordinates.
+        $this->assertMatchesRegularExpression('/<circle\s[^>]*data-chart-point[^>]*data-value="₱1,250\.00"/', $content);
+        preg_match('/<div class="dashboard-ref-chart-days"[^>]*>(.*?)<\/div>/s', $content, $daysBlock);
+        preg_match_all('/<span style="left:([\d.]+)%">/u', $daysBlock[1] ?? '', $dayLefts);
+        $this->assertCount(7, $dayLefts[1] ?? []);
+        $this->assertSame('4.167', $dayLefts[1][0]);
+
+        // A period without completed sales keeps the honest empty state.
+        [$idleSeller] = $this->sellerFixture('Dashboard Idle Seller', 'dashboard-idle-seller');
+        $this->actingAs($idleSeller)->get(route('seller.dashboard'))
+            ->assertOk()
+            ->assertSee('No completed sales in this period')
+            ->assertDontSee('dashboard-ref-chart-line', false)
+            ->assertDontSee('dashboard-ref-chart-crosshair', false);
     }
 
     public function test_sales_gross_excludes_shipping_across_totals_buckets_and_charts(): void
@@ -626,7 +682,10 @@ class SellerReportsTest extends TestCase
         $this->actingAs($seller)->get(route('seller.reports.sales'))
             ->assertOk()
             ->assertSee('₱1,000.00')
-            ->assertDontSee('₱1,300.00');
+            ->assertDontSee('₱1,300.00')
+            // Momentum bars expose the same gross values as tooltip points.
+            ->assertSee('data-chart-point', false)
+            ->assertSee('data-value="₱1,000.00"', false);
 
         $this->actingAs($seller)->get(route('seller.dashboard'))
             ->assertOk()

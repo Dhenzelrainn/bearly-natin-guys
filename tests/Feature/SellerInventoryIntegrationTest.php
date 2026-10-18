@@ -138,6 +138,35 @@ class SellerInventoryIntegrationTest extends TestCase
         ]);
     }
 
+    public function test_compliance_blocked_inventory_is_not_presented_as_sellable_stock(): void
+    {
+        $category = $this->category();
+        [$seller, $store] = $this->sellerAndStore($category, 'inventory-blocked');
+        $product = $this->product($store, $category, 'Blocked Product', 'blocked-product');
+        $product->update([
+            'product_status' => 'blocked',
+            'compliance_status' => 'blocked',
+        ]);
+        $variant = $this->variant($product, 'INV-BLOCKED-1', 'Default', 5, 0, 2);
+
+        $inventory = app(SellerInventoryService::class)->inventoryFor($seller);
+        $item = $inventory['inventoryItems']->firstWhere('id', $variant->id);
+
+        $this->assertSame('blocked', $item['status_key']);
+        $this->assertSame('Blocked', $item['status']);
+        $this->assertSame(0, $item['available']);
+        $this->assertTrue($item['is_compliance_held']);
+        $this->assertSame(0, $inventory['inventorySummary'][1]['value']);
+
+        $this->actingAs($seller)
+            ->get(route('seller.inventory'))
+            ->assertOk()
+            ->assertSee('Blocked')
+            ->assertSee('Compliance hold')
+            ->assertSee('data-inventory-tab="blocked"', false)
+            ->assertDontSee('stock-in-stock');
+    }
+
     public function test_stock_adjustment_persists_balance_and_auditable_movement(): void
     {
         $category = $this->category();

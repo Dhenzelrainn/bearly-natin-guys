@@ -18,9 +18,11 @@ use App\Models\ShipmentEvent;
 use App\Models\Store;
 use App\Models\User;
 use App\Models\Waybill;
+use App\Notifications\WorkflowNotification;
 use App\Services\SellerPickupRequestService;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -41,6 +43,7 @@ class SellerPickupRequestIntegrationTest extends TestCase
     {
         [$seller, $store] = $this->seller();
         $provider = $this->provider('main');
+        Notification::fake();
         $sellerOrders = [
             $this->readySellerOrder($store, 'first'),
             $this->readySellerOrder($store, 'second'),
@@ -72,6 +75,13 @@ class SellerPickupRequestIntegrationTest extends TestCase
         $this->assertSame(2, $pickup->parcels->count());
         $this->assertSame('Use the side entrance.', $pickup->seller_instructions);
         $this->assertSame(['ready_for_pickup', 'ready_for_pickup'], array_map(fn (SellerOrder $order): string => $order->fresh()->status, $sellerOrders));
+
+        Notification::assertSentTo(
+            $provider['user'],
+            WorkflowNotification::class,
+            fn (WorkflowNotification $notification): bool => $notification->eventKey() === 'logistics_pickup_requested'
+                && $notification->meta()['pickup_request_id'] === $pickup->id,
+        );
 
         $shipments = Shipment::query()->orderBy('seller_order_id')->get();
         $this->assertCount(2, $shipments);
@@ -152,6 +162,30 @@ class SellerPickupRequestIntegrationTest extends TestCase
             ->assertSee($pickup->pickup_no)
             ->assertSee('Rider Collected')
             ->assertSee('No orders are currently eligible for a new pickup request.');
+    }
+
+    public function test_seller_can_save_optional_coordinates_for_the_registered_pickup_address(): void
+    {
+        [$seller] = $this->seller();
+        $address = $seller->sellerProfile->pickupAddress;
+
+        $this->actingAs($seller)
+            ->patch(route('seller.store.pickup.coordinates'), [
+                'latitude' => 14.3121,
+                'longitude' => 121.1112,
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success', 'Pickup map pin saved.');
+
+        $this->assertSame(14.3121, (float) $address->fresh()->latitude);
+        $this->assertSame(121.1112, (float) $address->fresh()->longitude);
+
+        $this->actingAs($seller)
+            ->patchJson(route('seller.store.pickup.coordinates'), [
+                'latitude' => 14.3121,
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('longitude');
     }
 
     public function test_seller_cannot_submit_another_store_order_or_a_non_ready_order(): void

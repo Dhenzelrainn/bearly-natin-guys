@@ -2,21 +2,28 @@
 
 use App\Http\Middleware\EnsureUserHasRole;
 use App\Http\Middleware\PreventBackCache;
+use App\Services\AnnouncementPublishingService;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
-use Illuminate\Console\Scheduling\Schedule;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
         web: __DIR__.'/../routes/web.php',
         api: __DIR__.'/../routes/api.php',
+        channels: __DIR__.'/../routes/channels.php',
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
     ->withSchedule(function (Schedule $schedule): void {
+        $schedule->call(fn () => app(AnnouncementPublishingService::class)->process())
+            ->name('publish-platform-announcements')
+            ->everyMinute()
+            ->withoutOverlapping();
+
         $schedule->command('seller-wallet:release-eligible-earnings')
             ->hourly()
             ->withoutOverlapping();

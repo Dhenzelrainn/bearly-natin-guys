@@ -65,7 +65,11 @@ class RiderPickupWorkflowTest extends TestCase
                 route(
                     'rider.orders.pickup.confirm',
                     $record['pickup']->pickup_no
-                )
+                ),
+                [
+                    'waybill_identifier' => $record['waybill']->waybill_no,
+                    'scan_method' => 'barcode',
+                ]
             )
             ->assertRedirect(
                 route(
@@ -804,6 +808,29 @@ class RiderPickupWorkflowTest extends TestCase
             ->assertSee(
                 'Use the loading bay.'
             );
+    }
+
+    public function test_rider_cannot_confirm_pickup_with_a_waybill_from_another_assignment(): void
+    {
+        $provider = $this->makeProvider('SCAN-SCOPE');
+        $rider = $this->makeRider($provider, 'SCAN-SCOPE');
+        $seller = $this->makeSeller('SCAN-SCOPE');
+        $record = $this->makePickupAssignment($provider, $seller, $rider, 'SCAN-SCOPE');
+        $other = $this->makePickupAssignment($provider, $seller, $rider, 'SCAN-OTHER');
+
+        $this->actingAs($rider->user)
+            ->post(route('rider.orders.pickup.accept', $record['pickup']->pickup_no))
+            ->assertRedirect();
+
+        $this->actingAs($rider->user)
+            ->post(route('rider.orders.pickup.confirm', $record['pickup']->pickup_no), [
+                'waybill_identifier' => $other['waybill']->waybill_no,
+                'scan_method' => 'barcode',
+            ])
+            ->assertStatus(409);
+
+        $this->assertSame('accepted', $record['assignment']->fresh()->status);
+        $this->assertSame('ready_for_pickup', $record['parcel']->fresh()->status);
     }
 
     public function test_rider_can_reopen_completed_pickup_as_read_only_after_sorting_center_intake(): void

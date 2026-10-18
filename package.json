@@ -15,6 +15,9 @@
         "vite": "^7.0.7"
     },
     "dependencies": {
-        "libphonenumber-js": "^1.13.14"
+        "laravel-echo": "^2.6.1",
+        "leaflet": "^1.9.4",
+        "libphonenumber-js": "^1.13.14",
+        "pusher-js": "^8.6.0"
     }
 }

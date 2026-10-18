@@ -7,6 +7,7 @@ use App\Models\Dispute;
 use App\Models\Message;
 use App\Models\MessageAttachment;
 use App\Models\User;
+use App\Services\ConversationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -18,6 +19,10 @@ use Throwable;
 
 class AdminMessageController extends Controller
 {
+    public function __construct(
+        private readonly ConversationService $conversations
+    ) {}
+
     public function storeConversation(Request $request): JsonResponse
     {
         $admin = $request->user();
@@ -121,6 +126,13 @@ class AdminMessageController extends Controller
                         'message_type' => 'text',
                         'sent_at' => $now,
                     ]);
+
+                $this->conversations
+                    ->notifyConversationCounterparts(
+                        $conversation,
+                        $admin,
+                        $message
+                    );
 
                 return [
                     $conversation,
@@ -329,6 +341,195 @@ class AdminMessageController extends Controller
         ]);
     }
 
+    /**
+     * Participant-scoped inbox snapshot for the admin messages page.
+     *
+     * Keeps preview text, activity time, and unread counts current
+     * without a full page reload.
+     */
+    public function inbox(Request $request): JsonResponse
+    {
+        $admin = $request->user();
+
+        $records = Conversation::query()
+            ->with([
+                'participants',
+                'latestMessage',
+                'messages' => fn ($query) => $query
+                    ->select([
+                        'id',
+                        'conversation_id',
+                        'sender_id',
+                        'sent_at',
+                    ])
+                    ->orderBy('sent_at'),
+            ])
+            ->whereHas(
+                'participants',
+                fn ($query) => $query->where(
+                    'users.id',
+                    $admin->id
+                )
+            )
+            ->orderByDesc('last_message_at')
+            ->orderByDesc('updated_at')
+            ->get();
+
+        $conversations = $records
+            ->map(function (Conversation $conversation) use ($admin): array {
+                $adminParticipant = $conversation
+                    ->participants
+                    ->firstWhere('id', $admin->id);
+
+                $lastReadAt = $adminParticipant
+                    ?->pivot
+                    ?->last_read_at;
+
+                $unread = $conversation
+                    ->messages
+                    ->filter(function ($message) use (
+                        $admin,
+                        $lastReadAt
+                    ): bool {
+                        if ($message->sender_id === $admin->id) {
+                            return false;
+                        }
+
+                        if (! $lastReadAt) {
+                            return true;
+                        }
+
+                        return $message->sent_at
+                            && $message->sent_at->isAfter(
+                                Carbon::parse(
+                                    $lastReadAt
+                                )
+                            );
+                    })
+                    ->count();
+
+                $latestMessage = $conversation->latestMessage;
+
+                return [
+                    'id' => (int) $conversation->id,
+
+                    'preview' => $latestMessage?->body
+                        ?? 'No messages yet.',
+
+                    'time' => $latestMessage?->sent_at
+                        ?->format('g:i A')
+                        ?? '',
+
+                    'unread' => $unread,
+
+                    'status' => (string) $conversation->status,
+                ];
+            })
+            ->values()
+            ->all();
+
+        return response()->json([
+            'data' => [
+                'conversations' => $conversations,
+            ],
+
+            'message' => 'Conversations loaded.',
+        ]);
+    }
+
+    /**
+     * Participant-scoped message list for live thread refresh.
+     *
+     * Pass ?after=<message id> to receive only newer messages.
+     */
+    public function thread(
+        Request $request,
+        Conversation $conversation
+    ): JsonResponse {
+        $admin = $request->user();
+
+        $isParticipant = $conversation
+            ->participants()
+            ->where('users.id', $admin->id)
+            ->exists();
+
+        abort_unless($isParticipant, 404);
+
+        $afterId = max(
+            0,
+            (int) $request->query('after', 0)
+        );
+
+        $messages = $conversation
+            ->messages()
+            ->with([
+                'attachments',
+            ])
+            ->when(
+                $afterId > 0,
+                fn ($query) => $query->where(
+                    'id',
+                    '>',
+                    $afterId
+                )
+            )
+            ->orderBy('sent_at')
+            ->orderBy('id')
+            ->get()
+            ->map(
+                fn (Message $message) => [
+                    'id' => $message->id,
+
+                    'from' => $message->sender_id === $admin->id
+                        ? 'me'
+                        : 'them',
+
+                    'text' => $message->body,
+
+                    'time' => $message->sent_at
+                        ?->format('g:i A')
+                        ?? '',
+
+                    'message_type' => $message->message_type,
+
+                    'attachments' => $message->attachments
+                        ->map(
+                            fn (MessageAttachment $attachment) => [
+                                'id' => $attachment->id,
+
+                                'name' => $attachment->original_name,
+
+                                'mime_type' => $attachment->mime_type,
+
+                                'size_bytes' => $attachment->size_bytes,
+
+                                'download_url' => route(
+                                    'admin.messages.attachments.download',
+                                    $attachment
+                                ),
+                            ]
+                        )
+                        ->values()
+                        ->all(),
+                ]
+            )
+            ->values()
+            ->all();
+
+        return response()->json([
+            'data' => [
+                'conversation' => [
+                    'id' => (int) $conversation->id,
+                    'status' => (string) $conversation->status,
+                ],
+
+                'messages' => $messages,
+            ],
+
+            'message' => 'Thread loaded.',
+        ]);
+    }
+
     public function send(
         Request $request,
         Conversation $conversation
@@ -446,6 +647,13 @@ class AdminMessageController extends Controller
                         ->update([
                             'last_read_at' => $now,
                         ]);
+
+                    $this->conversations
+                        ->notifyConversationCounterparts(
+                            $lockedConversation,
+                            $admin,
+                            $message
+                        );
 
                     return $message;
                 }
@@ -581,18 +789,7 @@ class AdminMessageController extends Controller
 
         abort_unless($participant, 404);
 
-        DB::table('conversation_participants')
-            ->where(
-                'conversation_id',
-                $conversation->id
-            )
-            ->where(
-                'user_id',
-                $admin->id
-            )
-            ->update([
-                'last_read_at' => now(),
-            ]);
+        $this->conversations->markRead($conversation, $admin);
 
         return response()->json([
             'message' => 'Conversation marked as read.',

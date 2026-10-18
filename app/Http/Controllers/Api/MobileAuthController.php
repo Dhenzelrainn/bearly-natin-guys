@@ -6,6 +6,7 @@ use App\Enums\AccountStatus;
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\AuditService;
 use App\Services\RegistrationLifecycleService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -14,7 +15,7 @@ use Illuminate\Support\Facades\RateLimiter;
 
 class MobileAuthController extends Controller
 {
-    public function login(Request $request): JsonResponse
+    public function login(Request $request, AuditService $audit): JsonResponse
     {
         $credentials = $request->validate([
             'email' => ['required', 'email'],
@@ -77,6 +78,8 @@ class MobileAuthController extends Controller
             ->createToken('bearly-mobile')
             ->plainTextToken;
 
+        $audit->recordAuthentication($user, 'signed_in', 'mobile_api', $request);
+
         return response()->json([
             'message' => 'Login successful.',
             'token_type' => 'Bearer',
@@ -94,11 +97,16 @@ class MobileAuthController extends Controller
         ]);
     }
 
-    public function logout(Request $request): JsonResponse
+    public function logout(Request $request, AuditService $audit): JsonResponse
     {
-        $request->user()
-            ?->currentAccessToken()
-            ?->delete();
+        $user = $request->user();
+        $token = $user?->currentAccessToken();
+
+        if ($user) {
+            $audit->recordAuthentication($user, 'signed_out', 'mobile_api', $request);
+        }
+
+        $token?->delete();
 
         return response()->json([
             'message' => 'Logout successful.',

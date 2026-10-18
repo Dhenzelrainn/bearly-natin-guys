@@ -10,6 +10,7 @@ use App\Models\Order;
 use App\Models\Payment;
 use App\Models\Shipment;
 use App\Models\User;
+use App\Notifications\WorkflowNotification;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -18,7 +19,10 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 class CodCashCollectionService
 {
-    public function __construct(private readonly CommissionLedgerService $commissionLedger) {}
+    public function __construct(
+        private readonly CommissionLedgerService $commissionLedger,
+        private readonly NotificationService $notifications,
+    ) {}
 
     public function recordRiderCollection(Shipment $shipment, User $riderUser, int $actualAmountMinor): CodCashCollection
     {
@@ -104,6 +108,8 @@ class CodCashCollectionService
                     : 'Rider recorded actual COD cash collected; difference from the amount due is held for Finance review.',
                 $collectedAt,
             );
+
+            $this->notifyCollectionRecorded($collection, $riderUser, $discrepancyMinor);
 
             if ($discrepancyMinor === 0) {
                 $this->captureMarketplacePaymentWhenFullyCollected($order, $payment);
@@ -207,6 +213,56 @@ class CodCashCollectionService
 
             return $collection->fresh(['events']);
         }, attempts: 3);
+    }
+
+    private function notifyCollectionRecorded(CodCashCollection $collection, User $riderUser, int $discrepancyMinor): void
+    {
+        $providerUser = $collection->logisticsProfile?->user;
+        $amount = '₱'.number_format(((int) $collection->amount_collected_minor) / 100, 2);
+
+        if ($providerUser) {
+            $this->notifications->sendAfterCommit($providerUser, new WorkflowNotification(
+                eventKey: 'logistics_cod_collected',
+                title: 'COD cash collected',
+                body: "Rider {$riderUser->name} collected {$amount} for {$collection->collection_no}. Receive and remit the cash.",
+                actionUrl: route('logistics.cash.index'),
+                type: 'info',
+                meta: ['collection_id' => (int) $collection->id],
+            ));
+        }
+
+        if ($discrepancyMinor !== 0) {
+            $due = '₱'.number_format(((int) $collection->amount_due_minor) / 100, 2);
+
+            $this->notifications->sendManyAfterCommit(
+                $this->notifications->admins(),
+                new WorkflowNotification(
+                    eventKey: 'admin_cod_discrepancy',
+                    title: 'COD collection discrepancy',
+                    body: "{$collection->collection_no}: {$amount} was collected against {$due} due. The difference is held for Finance review.",
+                    actionUrl: route('admin.payments'),
+                    type: 'danger',
+                    meta: ['collection_id' => (int) $collection->id],
+                ),
+            );
+        }
+    }
+
+    private function notifyFinanceOfRemittance(CodCashCollection $collection, User $logisticsUser): void
+    {
+        $amount = '₱'.number_format(((int) $collection->amount_remitted_to_finance_minor) / 100, 2);
+
+        $this->notifications->sendManyAfterCommit(
+            $this->notifications->admins(),
+            new WorkflowNotification(
+                eventKey: 'admin_cod_remitted',
+                title: 'COD cash remitted for reconciliation',
+                body: "{$collection->collection_no} ({$amount}) was remitted through {$logisticsUser->name} and is waiting for Finance reconciliation.",
+                actionUrl: route('admin.payments'),
+                type: 'warning',
+                meta: ['collection_id' => (int) $collection->id],
+            ),
+        );
     }
 
     public function reconcileAtFinance(User $admin, int $collectionId, int $receivedAmountMinor): CodCashCollection

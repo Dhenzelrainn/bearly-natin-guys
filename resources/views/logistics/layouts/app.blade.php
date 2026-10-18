@@ -8,10 +8,11 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
-    @vite(['resources/css/logistics.css', 'resources/js/logistics.js'])
+    @vite(['resources/css/logistics.css', 'resources/css/messages-standard.css', 'resources/css/maps.css', 'resources/css/waybill-scanner.css', 'resources/js/messages-standard.js', 'resources/js/realtime.js', 'resources/js/waybill-scanner.js', 'resources/js/destination-map.js', 'resources/js/logistics.js'])
     @include('partials.session-safety')
+    @stack('styles')
 </head>
-<body class="ops-body" data-module="logistics">
+<body class="ops-body" data-module="logistics" data-realtime-user-id="{{ auth()->id() }}">
 <div class="ops-shell">
     <aside class="ops-sidebar" aria-label="Logistics navigation">
         <div class="ops-sidebar-header">
@@ -33,6 +34,7 @@
             <p class="ops-nav-label">Insights & support</p>
             <a href="{{ route('logistics.reports.index') }}" class="ops-nav-link {{ request()->routeIs('logistics.reports.*') ? 'is-active' : '' }}"><i data-lucide="chart-column"></i><span>Reports</span></a>
             <a href="{{ route('logistics.messages.index') }}" class="ops-nav-link {{ request()->routeIs('logistics.messages.*') ? 'is-active' : '' }}"><i data-lucide="message-circle"></i><span>Messages</span></a>
+            <a href="{{ route('notifications.center') }}" class="ops-nav-link {{ request()->routeIs('notifications.center') ? 'is-active' : '' }}"><i data-lucide="bell"></i><span>Notifications</span></a>
             <p class="ops-nav-label">Settings</p>
             <a href="{{ route('logistics.profile.index') }}" class="ops-nav-link {{ request()->routeIs('logistics.profile.*') ? 'is-active' : '' }}"><i data-lucide="user-round-cog"></i><span>Account</span></a>
         </nav>
@@ -46,13 +48,16 @@
         <header class="ops-topbar">
             <div class="ops-topbar-left"><button class="icon-button mobile-menu" type="button" data-mobile-menu aria-label="Open navigation"><i data-lucide="menu"></i></button><h1>@yield('page-title', 'Logistics Center')</h1></div>
             <div class="ops-topbar-actions">
-                <div class="popover-wrap">
-                    <button class="icon-button notification-trigger" type="button" data-popover-toggle="notifications" aria-label="Open notifications"><i data-lucide="bell"></i>@if(count($topNotifications ?? []))<span class="notification-dot"></span>@endif</button>
+                <div class="popover-wrap" data-notification-center data-notification-skin="logistics">
+                    <button class="icon-button notification-trigger" type="button" data-popover-toggle="notifications" aria-label="Open notifications"><i data-lucide="bell"></i><span class="notification-dot" data-notification-badge="dot" hidden></span></button>
                     <div class="topbar-popover notification-popover" data-popover="notifications" hidden>
-                        <div class="popover-heading"><strong>Notifications</strong><button type="button" data-mark-notifications>Mark all read</button></div>
-                        @forelse($topNotifications ?? [] as $notification)
-                            <button class="notification-row" type="button"><span class="notice-icon is-{{ $notification['type'] }}"><i data-lucide="{{ $notification['type'] === 'success' ? 'circle-check' : ($notification['type'] === 'warning' ? 'triangle-alert' : 'info') }}"></i></span><span><strong>{{ $notification['title'] }}</strong><small>{{ $notification['time'] }}</small></span></button>
-                        @empty<p class="empty-copy">No new notifications.</p>@endforelse
+                        <div class="popover-heading"><div><strong>Notifications</strong><span data-notification-summary>Recent updates</span></div></div>
+                        <div data-notification-list></div>
+                        <p class="empty-copy" data-notification-empty hidden>No new notifications.</p>
+                        <div class="popover-footer">
+                            <button type="button" class="notification-mark-all" data-notification-mark-all hidden><i data-lucide="mail-check"></i>Mark all as read</button>
+                            <a class="notification-view-all" href="{{ route('notifications.center') }}">View all notifications<i data-lucide="arrow-right"></i></a>
+                        </div>
                     </div>
                 </div>
                 <div class="popover-wrap">
@@ -72,5 +77,6 @@
 <div class="modal-backdrop" data-modal-backdrop hidden></div>
 <div class="toast-stack" data-toast-stack aria-live="polite"></div>
 <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+@stack('scripts')
 </body>
 </html>

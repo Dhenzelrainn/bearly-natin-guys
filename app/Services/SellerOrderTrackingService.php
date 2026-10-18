@@ -239,7 +239,11 @@ class SellerOrderTrackingService
         };
     }
 
-    private function shipmentEventLabel(string $eventType): string
+    /**
+     * Seller-facing label for a persisted shipment event type. Shared with
+     * Fulfillment → Shipment Tracking so both surfaces use one vocabulary.
+     */
+    public function shipmentEventLabel(string $eventType): string
     {
         return match ($eventType) {
             'shipment_ready_for_pickup' => 'Ready for pickup',

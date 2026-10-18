@@ -26,4 +26,11 @@ class Announcement extends Model
     {
         return $this->belongsToMany(Role::class, 'announcement_roles');
     }
+
+    public function media()
+    {
+        return $this->hasMany(AnnouncementMedia::class)
+            ->orderBy('position')
+            ->orderBy('id');
+    }
 }

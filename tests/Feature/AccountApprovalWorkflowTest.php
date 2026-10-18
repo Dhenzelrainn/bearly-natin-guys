@@ -12,11 +12,13 @@ use App\Models\Role;
 use App\Models\SortingCenter;
 use App\Models\SortingZone;
 use App\Models\User;
+use App\Notifications\WorkflowNotification;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -54,6 +56,13 @@ class AccountApprovalWorkflowTest extends TestCase
     public function test_buyer_application_is_saved_for_admin_approval(): void
     {
         Storage::fake('local');
+        Notification::fake();
+
+        $admin = User::factory()->create([
+            'role' => UserRole::Admin->value,
+            'status' => AccountStatus::Active->value,
+        ]);
+
         $this->grantEmailProof('bianca@example.test');
 
         $this->post(route('register.submit'), [
@@ -143,6 +152,13 @@ class AccountApprovalWorkflowTest extends TestCase
                 ->documents
                 ->sole()
                 ->file_path
+        );
+
+        Notification::assertSentTo(
+            $admin,
+            WorkflowNotification::class,
+            fn (WorkflowNotification $notification): bool => $notification->eventKey() === 'admin_registration_submitted'
+                && $notification->meta()['application_id'] === (int) $application->id,
         );
     }
 

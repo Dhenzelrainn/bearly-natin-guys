@@ -8,11 +8,15 @@ use App\Models\Order;
 use App\Models\Payment;
 use App\Models\SellerOrderStatusHistory;
 use App\Models\User;
+use App\Notifications\WorkflowNotification;
 use Illuminate\Support\Facades\DB;
 
 class BuyerOrderConfirmationService
 {
-    public function __construct(private readonly CodCashCollectionService $codCash) {}
+    public function __construct(
+        private readonly CodCashCollectionService $codCash,
+        private readonly NotificationService $notifications,
+    ) {}
 
     /**
      * Confirm buyer receipt of a fully delivered marketplace order.
@@ -62,6 +66,7 @@ class BuyerOrderConfirmationService
             }
 
             $now = now();
+            $completedNow = [];
 
             foreach ($active as $sellerOrder) {
                 if ($sellerOrder->status === SellerOrderStatus::Completed->value) {
@@ -81,6 +86,8 @@ class BuyerOrderConfirmationService
                     'reason' => 'Buyer confirmed receipt of the delivered order.',
                     'occurred_at' => $now,
                 ]);
+
+                $completedNow[] = $sellerOrder;
             }
 
             $order->update([
@@ -93,8 +100,33 @@ class BuyerOrderConfirmationService
                 $payment->update(['status' => 'paid', 'paid_at' => $now]);
             }
 
+            $this->notifySellersOfCompletion($order, $completedNow, $buyer);
+
             return $order->fresh(['sellerOrders.items', 'payments']);
         }, attempts: 3);
+    }
+
+    /**
+     * @param  list<SellerOrder>  $sellerOrders
+     */
+    private function notifySellersOfCompletion(Order $order, array $sellerOrders, User $buyer): void
+    {
+        foreach ($sellerOrders as $sellerOrder) {
+            $sellerUser = $sellerOrder->store?->sellerProfile?->user;
+
+            if (! $sellerUser) {
+                continue;
+            }
+
+            $this->notifications->sendAfterCommit($sellerUser, new WorkflowNotification(
+                eventKey: 'seller_shipment_updates',
+                title: 'Order delivered and completed',
+                body: "{$buyer->name} confirmed receipt of {$sellerOrder->seller_order_no}. The order is now complete.",
+                actionUrl: route('seller.orders'),
+                type: 'success',
+                meta: ['order_id' => (int) $order->id, 'seller_order_id' => (int) $sellerOrder->id],
+            ));
+        }
     }
 
     /**

@@ -4,24 +4,25 @@
 @section('page-title', 'Account Management')
 
 @section('content')
+
+@if (session('success'))
+    <div class="panel" role="status">{{ session('success') }}</div>
+@endif
+
 <section class="page-hero">
     <div>
         <span class="eyebrow">System Management</span>
         <h1>Account management</h1>
-        <p>Manage the administrator profile and update account security settings.</p>
+        <p>Review the administrator identity used across Bearly and update the account password.</p>
     </div>
 
     <div class="hero-summary-card">
-        <span
-            class="avatar avatar-large avatar-warm"
-            data-profile-avatar
-            data-current-admin-avatar
-        >
+        <span class="avatar avatar-large avatar-warm">
             {{ $admin['initials'] }}
         </span>
 
         <div>
-            <strong data-profile-name data-current-admin-name>
+            <strong>
                 {{ $admin['name'] }}
             </strong>
             <small>{{ $admin['role'] }}</small>
@@ -35,56 +36,35 @@
 
             <div>
                 <span class="eyebrow">Admin profile</span>
-                <h2>View / edit profile</h2>
+                <h2>Administrator identity</h2>
             </div>
 
             <div class="profile-heading-actions">
 
                 <div
                     class="profile-save-state"
-                    data-profile-state
                     data-state="saved"
                 >
-                    <i
-                        data-lucide="circle-check"
-                        data-profile-state-icon
-                    ></i>
+                    <i data-lucide="shield-check"></i>
 
-                    <span data-profile-state-label>
-                        Profile saved
+                    <span>
+                        System managed
                     </span>
                 </div>
-
-                <button
-                    class="button button-secondary button-small"
-                    type="button"
-                    data-profile-edit
-                >
-                    <i data-lucide="pencil"></i>
-                    Edit
-                </button>
 
             </div>
 
         </div>
 
         <div class="profile-banner">
-            <span
-                class="avatar avatar-xxl avatar-warm"
-                data-profile-avatar
-                data-current-admin-avatar
-            >
+            <span class="avatar avatar-xxl avatar-warm">
                 {{ $admin['initials'] }}
             </span>
 
             <div>
-                <h3 data-profile-name data-current-admin-name>
-                    {{ $admin['name'] }}
-                </h3>
+                <h3>{{ $admin['name'] }}</h3>
 
-                <p data-profile-email data-current-admin-email>
-                    {{ $admin['email'] }}
-                </p>
+                <p>{{ $admin['email'] }}</p>
 
                 <span class="status-badge badge-success">
                     Active administrator
@@ -95,68 +75,40 @@
         <div class="form-grid two-column-form">
             <label class="form-field">
                 <span>First name</span>
-                <input
-                    type="text"
-                    value="{{ $profile['first_name'] }}"
-                    data-profile-field="first_name"
-                    readonly
-                >
+                <input type="text" value="{{ $profile['first_name'] }}" readonly>
             </label>
 
             <label class="form-field">
                 <span>Last name</span>
-                <input
-                    type="text"
-                    value="{{ $profile['last_name'] }}"
-                    data-profile-field="last_name"
-                    readonly
-                >
+                <input type="text" value="{{ $profile['last_name'] }}" readonly>
             </label>
 
             <label class="form-field">
                 <span>Email address</span>
-                <input
-                    type="email"
-                    value="{{ $profile['email'] }}"
-                    data-profile-field="email"
-                    readonly
-                >
+                <input type="email" value="{{ $profile['email'] }}" readonly>
             </label>
 
             <label class="form-field">
                 <span>Contact number</span>
-                <input
-                    type="text"
-                    value="{{ $profile['phone'] }}"
-                    data-profile-field="phone"
-                    readonly
-                >
+                <input type="text" value="{{ $profile['phone'] !== '' ? $profile['phone'] : 'Not set' }}" readonly>
             </label>
         </div>
 
         <label class="form-field">
             <span>Role</span>
-            <input
-                type="text"
-                value="{{ $profile['role'] }}"
-                readonly
-            >
+            <input type="text" value="{{ $profile['role'] }}" readonly>
         </label>
 
-        <div class="panel-footer-actions">
-            <button
-                class="button button-primary"
-                type="button"
-                data-profile-save
-                disabled
-            >
-                <i data-lucide="save"></i>
-                Save changes
-            </button>
+        <div class="review-details">
+            <p class="detail-note">
+                Administrator identity fields come from the signed-in account and are
+                managed by the platform, so they are read-only here. Last sign-in:
+                {{ $profile['last_sign_in'] }}.
+            </p>
         </div>
     </article>
 
-    <aside class="panel security-panel">
+    <aside class="panel security-panel" id="security">
         <div class="panel-heading">
             <div>
                 <span class="eyebrow">Security</span>
@@ -164,69 +116,54 @@
             </div>
         </div>
 
-        <label class="form-field">
-            <span>Current password</span>
-            <input
-                type="password"
-                placeholder="••••••••"
-                data-password-current
+        <form method="POST" action="{{ route('admin.account.password') }}">
+            @csrf
+            @method('PATCH')
+
+            <label class="form-field">
+                <span>Current password</span>
+                <input
+                    type="password"
+                    name="current_password"
+                    autocomplete="current-password"
+                    placeholder="••••••••"
+                    required
+                >
+                @error('current_password')<small class="field-error">{{ $message }}</small>@enderror
+            </label>
+
+            <label class="form-field">
+                <span>New password</span>
+                <input
+                    type="password"
+                    name="new_password"
+                    autocomplete="new-password"
+                    placeholder="At least 8 characters"
+                    minlength="8"
+                    required
+                >
+                @error('new_password')<small class="field-error">{{ $message }}</small>@enderror
+            </label>
+
+            <label class="form-field">
+                <span>Confirm new password</span>
+                <input
+                    type="password"
+                    name="new_password_confirmation"
+                    autocomplete="new-password"
+                    placeholder="Repeat new password"
+                    minlength="8"
+                    required
+                >
+            </label>
+
+            <button
+                class="button button-primary full-button"
+                type="submit"
             >
-        </label>
-
-        <label class="form-field">
-            <span>New password</span>
-            <input
-                type="password"
-                placeholder="At least 8 characters"
-                data-password-new
-            >
-        </label>
-
-        <label class="form-field">
-            <span>Confirm new password</span>
-            <input
-                type="password"
-                placeholder="Repeat new password"
-                data-password-confirm
-            >
-        </label>
-
-        <div class="password-rules">
-
-            <span
-                data-password-rule="length"
-                data-valid="false"
-            >
-                <i data-lucide="circle"></i>
-                8+ characters
-            </span>
-
-            <span
-                data-password-rule="mixed"
-                data-valid="false"
-            >
-                <i data-lucide="circle"></i>
-                Mix letters and numbers
-            </span>
-
-            <span
-                data-password-rule="match"
-                data-valid="false"
-            >
-                <i data-lucide="circle"></i>
-                Passwords match
-            </span>
-
-        </div>
-
-        <button
-            class="button button-primary full-button"
-            type="button"
-            data-password-update
-            disabled
-        >
-            Update password
-        </button>
+                Update password
+            </button>
+        </form>
 
         <div class="security-callout">
             <i data-lucide="shield-check"></i>

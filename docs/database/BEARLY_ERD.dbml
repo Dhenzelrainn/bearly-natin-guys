@@ -344,6 +344,8 @@ Table order_items {
   seller_order_id bigint [not null]
   product_id bigint
   product_variant_id bigint
+  category_id_snapshot bigint
+  category_name_snapshot varchar(120)
   product_name varchar(180) [not null]
   variant_name varchar(140) [not null]
   sku varchar(80) [not null]
@@ -1328,6 +1330,7 @@ Ref: messages.conversation_id > conversations.id
 Ref: messages.sender_id > users.id
 Ref: order_items.product_id > products.id
 Ref: order_items.product_variant_id > product_variants.id
+Ref: order_items.category_id_snapshot > categories.id
 Ref: order_items.seller_order_id > seller_orders.id
 Ref: orders.buyer_id > users.id
 Ref: orders.shipping_address_id > addresses.id

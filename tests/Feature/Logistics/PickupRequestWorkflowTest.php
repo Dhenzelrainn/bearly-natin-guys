@@ -18,8 +18,10 @@ use App\Models\Shipment;
 use App\Models\Store;
 use App\Models\User;
 use App\Models\Waybill;
+use App\Notifications\WorkflowNotification;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Notification;
 use Tests\TestCase;
 
 class PickupRequestWorkflowTest extends TestCase
@@ -323,6 +325,8 @@ class PickupRequestWorkflowTest extends TestCase
         );
         $rider = $this->makeRider($provider, 'ASSIGN');
 
+        Notification::fake();
+
         $this
             ->actingAs($provider['user'])
             ->post(
@@ -361,6 +365,13 @@ class PickupRequestWorkflowTest extends TestCase
             'actor_user_id' => $provider['user']->id,
             'source' => 'logistics',
         ]);
+
+        Notification::assertSentTo(
+            $rider->user,
+            WorkflowNotification::class,
+            fn (WorkflowNotification $notification): bool => $notification->eventKey() === 'rider_pickup_assigned'
+                && $notification->meta()['pickup_request_id'] === $fulfillment['pickup']->id,
+        );
 
         $this->actingAs($provider['user'])
             ->get(route('logistics.pickups.index'))

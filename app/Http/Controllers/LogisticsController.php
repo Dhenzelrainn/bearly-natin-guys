@@ -22,12 +22,16 @@ use App\Models\ShipmentTransfer;
 use App\Models\DispatchBatch;
 use App\Models\User;
 use App\Models\Conversation;
+use App\Models\Message;
 use App\Models\MessageAttachment;
 use App\Models\Waybill;
+use App\Notifications\WorkflowNotification;
 use App\Services\DispatchService;
 use App\Services\BuyerCatalogService;
+use App\Services\ConversationService;
 use App\Services\EmailVerificationService;
 use App\Services\InternationalPhone;
+use App\Services\NotificationService;
 use App\Services\ParcelSortingService;
 use App\Services\PostalCodeLookup;
 use App\Services\RegistrationLifecycleService;
@@ -51,6 +55,10 @@ use Throwable;
 
 class LogisticsController extends Controller
 {
+    public function __construct(
+        private readonly ConversationService $conversations
+    ) {}
+
     private function activeSortingCenter(
         ?User $operator
     ): ?SortingCenter {
@@ -1787,6 +1795,12 @@ class LogisticsController extends Controller
             'seller' => $isReturnPickup ? 'Buyer return pickup' : ($seller?->name ?: 'Unknown seller'),
             'pickup_type' => $isReturnPickup ? 'return' : 'outbound',
             'location' => $pickupLocation,
+            'latitude' => $isReturnPickup
+                ? ($addressSnapshot['latitude'] ?? null)
+                : $pickupAddress?->latitude,
+            'longitude' => $isReturnPickup
+                ? ($addressSnapshot['longitude'] ?? null)
+                : $pickupAddress?->longitude,
             'contact_name' => $isReturnPickup
                 ? (string) ($addressSnapshot['recipient_name'] ?? 'Buyer')
                 : ($pickupAddress?->recipient_name ?: ($sellerUser?->name ?: 'Not provided')),
@@ -2049,7 +2063,8 @@ class LogisticsController extends Controller
 
     public function cancelPickup(
         Request $request,
-        PickupRequest $pickupRequest
+        PickupRequest $pickupRequest,
+        NotificationService $notifications
     ): RedirectResponse {
         /** @var User $operator */
         $operator = Auth::user();
@@ -2084,6 +2099,19 @@ class LogisticsController extends Controller
             ),
         ]);
 
+        $sellerUser = $pickupRequest->store?->sellerProfile?->user;
+
+        if ($sellerUser) {
+            $notifications->sendAfterCommit($sellerUser, new WorkflowNotification(
+                eventKey: 'seller_pickup_updates',
+                title: 'Pickup request rejected',
+                body: "{$pickupRequest->pickup_no} was rejected by Logistics. Reason: ".trim($validated['cancellation_reason']).'. You can submit a new pickup request.',
+                actionUrl: route('seller.fulfillment.pickups'),
+                type: 'warning',
+                meta: ['pickup_request_id' => (int) $pickupRequest->id],
+            ));
+        }
+
         return back()->with(
             'success',
             "{$pickupRequest->pickup_no} was rejected."
@@ -2092,7 +2120,8 @@ class LogisticsController extends Controller
 
     public function assignPickup(
         Request $request,
-        PickupRequest $pickupRequest
+        PickupRequest $pickupRequest,
+        NotificationService $notifications
     ): RedirectResponse {
         /** @var User $operator */
         $operator = Auth::user();
@@ -2219,6 +2248,15 @@ class LogisticsController extends Controller
                 ]);
             }
         }, 3);
+
+        $notifications->sendAfterCommit($rider->user, new WorkflowNotification(
+            eventKey: 'rider_pickup_assigned',
+            title: 'New pickup assignment',
+            body: "Pickup {$pickupRequest->pickup_no} from ".($pickupRequest->store?->name ?? 'a Seller').' was assigned to you.',
+            actionUrl: route('rider.dashboard.pickups'),
+            type: 'info',
+            meta: ['pickup_request_id' => (int) $pickupRequest->id, 'rider_profile_id' => (int) $rider->id],
+        ));
 
         return back()->with(
             'success',
@@ -5425,62 +5463,24 @@ class LogisticsController extends Controller
                             $conversation
                         ),
 
+                    'thread_url' =>
+                        route(
+                            'logistics.messages.thread',
+                            $conversation
+                        ),
+
                     'messages' =>
                         $conversation
                             ->messages
                             ->map(
-                                fn ($message): array => [
-                                    'id' =>
-                                        $message->id,
-
-                                    'mine' =>
-                                        (int) $message->sender_id
-                                        === (int) $operator->id,
-
-                                    'text' =>
-                                        $message->body,
-
-                                    'attachments' =>
-                                        $message
-                                            ->attachments
-                                            ->map(
-                                                fn (
-                                                    MessageAttachment $attachment
-                                                ): array => [
-                                                    'id' =>
-                                                        $attachment->id,
-
-                                                    'name' =>
-                                                        $attachment->original_name,
-
-                                                    'mime_type' =>
-                                                        $attachment->mime_type,
-
-                                                    'size_bytes' =>
-                                                        $attachment->size_bytes,
-
-                                                    'download_url' =>
-                                                        route(
-                                                            'logistics.messages.attachments.download',
-                                                            $attachment
-                                                        ),
-                                                ]
-                                            )
-                                            ->values()
-                                            ->all(),
-
-                                    'time' =>
-                                        $message
-                                            ->sent_at
-                                            ?->copy()
-                                            ->timezone(
-                                                'Asia/Manila'
-                                            )
-                                            ->format(
-                                                'M j, g:i A'
-                                            )
-                                        ?? '',
-                                ]
+                                fn (
+                                    Message $message
+                                ): array =>
+                                    $this
+                                        ->messageThreadEntry(
+                                            $operator,
+                                            $message
+                                        )
                             )
                             ->values()
                             ->all(),
@@ -5503,6 +5503,144 @@ class LogisticsController extends Controller
                     $messageRecipients->all(),
             ]
         );
+    }
+
+    /**
+     * Participant-scoped thread snapshot used by the messages page to keep
+     * the open conversation current without a full page reload. Only newer
+     * messages are returned when an `after` message id is supplied.
+     */
+    public function messageThread(
+        Request $request,
+        Conversation $conversation
+    ) {
+        /** @var User $operator */
+        $operator = $request->user();
+
+        $isParticipant =
+            $conversation
+                ->participants()
+                ->where(
+                    'users.id',
+                    $operator->id
+                )
+                ->exists();
+
+        abort_unless(
+            $isParticipant,
+            404
+        );
+
+        $validated = $request->validate([
+            'after' => [
+                'nullable',
+                'integer',
+                'min:0',
+            ],
+        ]);
+
+        $after =
+            (int) (
+                $validated['after']
+                ?? 0
+            );
+
+        $messages =
+            $conversation
+                ->messages()
+                ->with('attachments')
+                ->when(
+                    $after > 0,
+                    fn ($query) =>
+                        $query->where(
+                            'id',
+                            '>',
+                            $after
+                        )
+                )
+                ->orderBy('sent_at')
+                ->orderBy('id')
+                ->get()
+                ->map(
+                    fn (
+                        Message $message
+                    ): array =>
+                        $this
+                            ->messageThreadEntry(
+                                $operator,
+                                $message
+                            )
+                )
+                ->values()
+                ->all();
+
+        return response()->json([
+            'message' =>
+                'Thread loaded.',
+
+            'data' => [
+                'messages' =>
+                    $messages,
+            ],
+        ]);
+    }
+
+    private function messageThreadEntry(
+        User $operator,
+        Message $message
+    ): array {
+        return [
+            'id' =>
+                $message->id,
+
+            'mine' =>
+                (int) $message->sender_id
+                === (int) $operator->id,
+
+            'text' =>
+                $message->body,
+
+            'attachments' =>
+                $message
+                    ->attachments
+                    ->map(
+                        fn (
+                            MessageAttachment $attachment
+                        ): array => [
+                            'id' =>
+                                $attachment->id,
+
+                            'name' =>
+                                $attachment->original_name,
+
+                            'mime_type' =>
+                                $attachment->mime_type,
+
+                            'size_bytes' =>
+                                $attachment->size_bytes,
+
+                            'download_url' =>
+                                route(
+                                    'logistics.messages.attachments.download',
+                                    $attachment
+                                ),
+                        ]
+                    )
+                    ->values()
+                    ->all(),
+
+            'time' =>
+                $message
+                    ->sent_at
+                    ?->copy()
+                    ->timezone(
+                        'Asia/Manila'
+                    )
+                    ->format(
+                        'M j, g:i A'
+                    )
+                ?? '',
+        ];
     }
 
     public function storeConversation(
@@ -5672,6 +5810,13 @@ class LogisticsController extends Controller
                                 $now,
                         ]);
 
+                $this->conversations
+                    ->notifyConversationCounterparts(
+                        $conversation,
+                        $operator,
+                        $message
+                    );
+
                 return [
                     $conversation,
                     $message,
@@ -5737,21 +5882,10 @@ class LogisticsController extends Controller
             404
         );
 
-        DB::table(
-            'conversation_participants'
-        )
-            ->where(
-                'conversation_id',
-                $conversation->id
-            )
-            ->where(
-                'user_id',
-                $operator->id
-            )
-            ->update([
-                'last_read_at' =>
-                    now(),
-            ]);
+        $this->conversations->markRead(
+            $conversation,
+            $operator
+        );
 
         return response()->json([
             'message' =>
@@ -5913,6 +6047,13 @@ class LogisticsController extends Controller
                             'last_read_at' =>
                                 $now,
                         ]);
+
+                    $this->conversations
+                        ->notifyConversationCounterparts(
+                            $lockedConversation,
+                            $operator,
+                            $message
+                        );
 
                     return $message;
                 }

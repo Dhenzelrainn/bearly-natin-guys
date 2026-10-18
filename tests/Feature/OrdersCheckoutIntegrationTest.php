@@ -16,10 +16,12 @@ use App\Models\SellerProfile;
 use App\Models\Store;
 use App\Models\SystemSetting;
 use App\Models\User;
+use App\Notifications\WorkflowNotification;
 use App\Services\PostalCodeLookup;
 use App\Services\ShippingQuoteService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -32,11 +34,13 @@ class OrdersCheckoutIntegrationTest extends TestCase
 
     public function test_checkout_creates_one_order_with_store_orders_and_is_idempotent(): void
     {
+        Notification::fake();
+
         $buyer = $this->user('buyer');
         $destination = $this->address($buyer, 'Santa Rosa');
         $category = $this->category();
-        [, $firstStore] = $this->sellerAndStore($category, 'checkout-first');
-        [, $secondStore] = $this->sellerAndStore($category, 'checkout-second');
+        [$firstSeller, $firstStore] = $this->sellerAndStore($category, 'checkout-first');
+        [$secondSeller, $secondStore] = $this->sellerAndStore($category, 'checkout-second');
         $firstVariant = $this->variant($this->product($firstStore, $category, 'First Item'), 'FIRST-001', 10001, 5);
         $secondVariant = $this->variant($this->product($secondStore, $category, 'Second Item'), 'SECOND-001', 2500, 5);
         $firstCartItem = $this->cartItem($buyer, $firstVariant, 2);
@@ -68,6 +72,12 @@ class OrdersCheckoutIntegrationTest extends TestCase
         $this->assertSame('pending', $order->payments->sole()->status);
         $this->assertNull($order->payments->sole()->provider);
         $this->assertSame(2, $order->sellerOrders->sum(fn ($sellerOrder) => $sellerOrder->items->count()));
+        // Checkout snapshots the purchase-time marketplace category on every
+        // order item for the admin sales reports.
+        $order->sellerOrders->flatMap->items->each(function ($item) use ($category): void {
+            $this->assertSame($category->id, (int) $item->category_id_snapshot);
+            $this->assertSame($category->name, $item->category_name_snapshot);
+        });
         $this->assertSame(2, (int) $firstVariant->fresh()->stock_reserved);
         $this->assertSame(1, (int) $secondVariant->fresh()->stock_reserved);
         $this->assertSame(5, (int) $firstVariant->fresh()->stock_on_hand);
@@ -85,6 +95,18 @@ class OrdersCheckoutIntegrationTest extends TestCase
 
         $this->assertSame(1, Order::query()->count());
         $this->assertSame(2, InventoryMovement::query()->where('type', 'order_reserved')->count());
+
+        Notification::assertSentTo(
+            $firstSeller,
+            WorkflowNotification::class,
+            fn (WorkflowNotification $notification): bool => $notification->eventKey() === 'seller_order_updates',
+        );
+        Notification::assertSentTo(
+            $secondSeller,
+            WorkflowNotification::class,
+            fn (WorkflowNotification $notification): bool => $notification->eventKey() === 'seller_order_updates',
+        );
+        Notification::assertSentToTimes($firstSeller, WorkflowNotification::class, 1);
     }
 
     public function test_quote_uses_combined_parcel_and_flat_fee_for_over_one_kg(): void
@@ -150,7 +172,7 @@ class OrdersCheckoutIntegrationTest extends TestCase
         $buyer = $this->user('buyer');
         $destination = $this->address($buyer, 'Santa Rosa');
         $category = $this->category();
-        [, $store] = $this->sellerAndStore($category, 'checkout-cancel');
+        [$seller, $store] = $this->sellerAndStore($category, 'checkout-cancel');
         $variant = $this->variant($this->product($store, $category, 'Cancelable Item'), 'CANCEL-001', 1299, 7);
         $cartItem = $this->cartItem($buyer, $variant, 3);
         $quoteToken = $this->quoteToken($buyer, [$cartItem->id], $destination->id);
@@ -180,6 +202,19 @@ class OrdersCheckoutIntegrationTest extends TestCase
             'reserved_balance_after' => 0,
             'created_by' => $buyer->id,
         ]);
+
+        // Buyer cancellations notify the owning store through their own
+        // registry event instead of the shared order-updates event.
+        $cancellation = $seller->notifications()
+            ->where('data->event', 'seller_order_cancelled')
+            ->first();
+
+        $this->assertNotNull($cancellation);
+        $this->assertSame(
+            (int) $order->sellerOrders()->sole()->id,
+            (int) $cancellation->data['meta']['seller_order_id'],
+        );
+        $this->assertStringContainsString('Changed my mind', $cancellation->data['body']);
 
         $this->actingAs($buyer)->post(route('checkout.cancel', $order->id), [
             'reason' => 'Retry',

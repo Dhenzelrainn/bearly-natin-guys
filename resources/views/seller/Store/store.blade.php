@@ -118,6 +118,25 @@
                     </div>
                 </div>
 
+                <div class="store-profile-section">
+                    <div class="store-profile-section-heading">
+                        <span class="store-profile-section-icon" aria-hidden="true"><i data-lucide="map-pin"></i></span>
+                        <div><h3>Pickup Map Pin</h3><p>Coordinates supplement your registered pickup address and are used only as a navigation aid.</p></div>
+                    </div>
+                    @if ($pickupAddress)
+                        <div data-seller-pickup-map-form data-action="{{ route('seller.store.pickup.coordinates') }}">
+                            <div class="address-map" data-seller-pickup-map data-latitude="{{ $pickupAddress->latitude ?? '' }}" data-longitude="{{ $pickupAddress->longitude ?? '' }}" data-map-tile-url="{{ config('maps.tile_url') }}" data-map-attribution="{{ config('maps.tile_attribution') }}"></div>
+                            <input type="hidden" name="latitude" value="{{ $pickupAddress->latitude ?? '' }}">
+                            <input type="hidden" name="longitude" value="{{ $pickupAddress->longitude ?? '' }}">
+                            <p class="address-map-status" data-pickup-map-status>Click or drag the pin, then save it explicitly.</p>
+                            <button class="seller-primary-button" type="button" data-save-pickup-pin>Save Pickup Pin</button>
+                            <button class="address-map-clear" type="button" data-clear-pickup-pin @if ($pickupAddress->latitude === null || $pickupAddress->longitude === null) hidden @endif>Clear pin</button>
+                        </div>
+                    @else
+                        <p class="form-alert">No registered pickup address is available for a map pin.</p>
+                    @endif
+                </div>
+
                 <div class="store-profile-section store-contact-section">
                     <div class="store-profile-section-heading">
                         <span class="store-profile-section-icon" aria-hidden="true">

@@ -16,6 +16,8 @@ class Address extends Model
         return [
             'is_default_shipping' => 'boolean',
             'is_default_pickup' => 'boolean',
+            'latitude' => 'float',
+            'longitude' => 'float',
         ];
     }
 

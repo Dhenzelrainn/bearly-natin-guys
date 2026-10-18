@@ -12,8 +12,11 @@ use App\Models\ReturnRequest;
 use App\Models\SellerPayout;
 use App\Models\User;
 use App\Services\BuyerCatalogService;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
@@ -23,42 +26,42 @@ class AdminController extends Controller
     private function base(array $data = []): array
     {
         return array_merge([
-            'admin' => [
-                'name' => 'Christian Joseph Aquino',
-                'role' => 'Admin',
-                'email' => 'admin123@example.com',
-                'initials' => 'CA',
-            ],
-            'topNotifications' => [
-                ['title' => '4 registrations awaiting review', 'time' => '8 min ago', 'type' => 'warning'],
-                ['title' => 'Seller compliance alert detected', 'time' => '24 min ago', 'type' => 'danger'],
-                ['title' => 'Commission report is ready', 'time' => '1 hr ago', 'type' => 'success'],
-            ],
+            'admin' => $this->adminIdentity(),
+            'topNotifications' => [],
         ], $data);
     }
 
-    public function dashboard(): View
+    /**
+     * @return array<string, string>
+     */
+    private function adminIdentity(): array
     {
-        return view('admin.dashboard', $this->base([
-            'kpis' => [
-                ['label' => 'Total Users', 'value' => '24,860', 'change' => '+8.4%', 'trend' => 'up', 'icon' => 'users'],
-                ['label' => 'Gross Sales', 'value' => '₱1.28M', 'change' => '+12.7%', 'trend' => 'up', 'icon' => 'shopping-bag'],
-                ['label' => 'Active Sellers', 'value' => '1,284', 'change' => '+4.1%', 'trend' => 'up', 'icon' => 'store'],
-                ['label' => 'Pending Complaints', 'value' => '18', 'change' => '5 urgent', 'trend' => 'alert', 'icon' => 'message-square-warning'],
-            ],
-            'salesByMonth' => [58, 68, 64, 78, 73, 88, 96, 91, 109, 118, 126, 139],
-            'activity' => [
-                ['title' => 'Seller registration approved', 'meta' => 'Mara Home Goods • 12 minutes ago', 'type' => 'success'],
-                ['title' => 'High-risk product flagged', 'meta' => 'TechVault PH • 31 minutes ago', 'type' => 'danger'],
-                ['title' => 'Complaint moved to review', 'meta' => 'Case DSP-1048 • 46 minutes ago', 'type' => 'warning'],
-                ['title' => 'Platform announcement published', 'meta' => 'Shipping advisory • 2 hours ago', 'type' => 'info'],
-            ],
-            'systemNotices' => [
-                ['title' => 'Registration queue', 'text' => '4 applications have complete documents and are ready for review.', 'action' => 'Review now', 'route' => 'admin.registrations'],
-                ['title' => 'Compliance review', 'text' => '3 flagged listings require an admin decision today.', 'action' => 'Open compliance', 'route' => 'admin.compliance'],
-                ['title' => 'Dispute SLA', 'text' => '2 complaints are nearing the 24-hour response target.', 'action' => 'View disputes', 'route' => 'admin.disputes'],
-            ],
-        ]));
+        $user = Auth::user();
+
+        $name = trim((string) (
+            $user?->name
+            ?: trim(implode(' ', array_filter([
+                $user?->first_name,
+                $user?->last_name,
+            ])))
+        ));
+
+        if ($name === '') {
+            $name = 'Bearly Administrator';
+        }
+
+        $initials = collect(preg_split('/\s+/', $name) ?: [])
+            ->filter()
+            ->take(2)
+            ->map(fn (string $part) => strtoupper(mb_substr($part, 0, 1)))
+            ->implode('');
+
+        return [
+            'name' => $name,
+            'role' => 'Admin',
+            'email' => (string) ($user?->email ?? ''),
+            'initials' => $initials !== '' ? $initials : 'AD',
+        ];
     }
 
     public function registrations(Request $request): View
@@ -93,45 +96,45 @@ class AdminController extends Controller
             ->paginate(10)
             ->withQueryString();
 
-            $applications->through(function (AccountApplication $application): array {
-                return [
-                    'database_id' => $application->user_id,
-                    'application_id' => $application->id,
+        $applications->through(function (AccountApplication $application): array {
+            return [
+                'database_id' => $application->user_id,
+                'application_id' => $application->id,
 
-                    'id' => $application->application_no,
+                'id' => $application->application_no,
 
-                    'name' => $application->user?->name ?? 'Unknown applicant',
-                    'email' => $application->user?->email ?? '—',
+                'name' => $application->user?->name ?? 'Unknown applicant',
+                'email' => $application->user?->email ?? '—',
 
-                    'role' => str($application->requestedRole?->name ?? 'unknown')
-                        ->replace('_', ' ')
-                        ->title()
-                        ->toString(),
+                'role' => str($application->requestedRole?->name ?? 'unknown')
+                    ->replace('_', ' ')
+                    ->title()
+                    ->toString(),
 
-                    'category' => $application->businessCategory?->name ?? '—',
+                'category' => $application->businessCategory?->name ?? '—',
 
-                    'submitted' => $application->submitted_at?->format('M j, Y')
-                        ?? 'Not submitted',
+                'submitted' => $application->submitted_at?->format('M j, Y')
+                    ?? 'Not submitted',
 
-                    'status' => str($application->status)
-                        ->replace('_', ' ')
-                        ->title()
-                        ->toString(),
+                'status' => str($application->status)
+                    ->replace('_', ' ')
+                    ->title()
+                    ->toString(),
 
-                    'documents' => $application->documents
-                        ->map(fn ($document): array => [
-                            'id' => $document->id,
+                'documents' => $application->documents
+                    ->map(fn ($document): array => [
+                        'id' => $document->id,
 
-                            'type' => $document->document_type,
+                        'type' => $document->document_type,
 
-                            'label' => str($document->document_type)
-                                ->replace('_', ' ')
-                                ->title()
-                                ->toString(),
-                        ])
-                        ->all(),
-                ];
-            });
+                        'label' => str($document->document_type)
+                            ->replace('_', ' ')
+                            ->title()
+                            ->toString(),
+                    ])
+                    ->all(),
+            ];
+        });
 
         return view('admin.registrations.index', $this->base([
             'applications' => $applications,
@@ -794,6 +797,13 @@ class AdminController extends Controller
                                 'admin.disputes.evidence.download',
                                 $item
                             ),
+
+                            'preview_url' => $type === 'image'
+                                ? route(
+                                    'admin.disputes.evidence.preview',
+                                    $item
+                                )
+                                : null,
                         ];
                     })
                     ->all();
@@ -877,6 +887,10 @@ class AdminController extends Controller
                     'courier' => $rider?->name
                         ?? $logistics?->name
                         ?? '—',
+
+                    'rider' => $rider?->name ?? 'Unavailable',
+
+                    'logistics' => $logistics?->name ?? 'Unavailable',
 
                     'rider_user_id' => $rider?->id,
 
@@ -1051,6 +1065,8 @@ class AdminController extends Controller
                     'source' => Str::of($violation->source)->replace(['_', '-'], ' ')->title()->toString(),
                     'reason' => $violation->reason,
                     'detected_excerpt' => $violation->detected_excerpt,
+                    'content_mismatch' => $violation->detected_excerpt !== null
+                        && $violation->rule?->rule_type === 'category_mismatch',
                     'reported' => $violation->created_at?->format('M j, Y') ?? '—',
                     'risk' => Str::title($violation->severity),
                     'warnings' => $sellerProfile?->warnings?->count() ?? 0,
@@ -1630,67 +1646,68 @@ class AdminController extends Controller
 
     public function account(): View
     {
+        $admin = Auth::user();
+
+        $identity = $this->adminIdentity();
+
+        $nameParts = preg_split('/\s+/', $identity['name']) ?: [];
+        $firstName = (string) ($admin?->first_name ?: (array_shift($nameParts) ?: ''));
+        $lastName = (string) ($admin?->last_name ?: trim(implode(' ', $nameParts)));
+
         return view('admin.system.account', $this->base([
             'profile' => [
-                'first_name' => 'Christian Joseph',
-                'last_name' => 'Aquino',
-                'email' => 'admin123@example.com',
-                'phone' => '+63 917 555 0198',
-                'role' => 'Admin',
+                'first_name' => $firstName !== '' ? $firstName : $identity['name'],
+                'last_name' => $lastName,
+                'email' => (string) ($admin?->email ?? ''),
+                'phone' => (string) ($admin?->phone ?: $admin?->contact_number ?: ''),
+                'role' => 'Administrator',
+                'last_sign_in' => $admin?->last_login_at?->format('M j, Y · g:i A') ?? 'No sign-in recorded yet',
             ],
         ]));
     }
 
-    public function policies(): View
+    public function updatePassword(Request $request): RedirectResponse
     {
-        return view('admin.system.policies', $this->base([
-            'policies' => [
-                [
-                    'id' => 'POL-1001',
-                    'title' => 'Marketplace Policy',
-                    'category' => 'Marketplace',
-                    'version' => 'v2.4',
-                    'status' => 'Active',
-                    'updated' => 'Aug 18, 2026',
-                    'updated_by' => 'Admin',
-                    'summary' => 'Defines the general rules and responsibilities of Buyers, Sellers, Logistics Centers, and Riders using Bearly.',
-                    'body' => 'Bearly provides a marketplace where Buyers, Sellers, Logistics Centers, and Riders must follow platform rules, maintain accurate account information, and use platform services responsibly.',
-                ],
-                [
-                    'id' => 'POL-1002',
-                    'title' => 'Seller Product Compliance Policy',
-                    'category' => 'Seller Compliance',
-                    'version' => 'v1.8',
-                    'status' => 'Active',
-                    'updated' => 'Aug 20, 2026',
-                    'updated_by' => 'Admin',
-                    'summary' => 'Covers registered seller categories, prohibited products, misleading listings, and compliance enforcement.',
-                    'body' => 'Sellers must only offer products permitted under their registered business category. Prohibited, inappropriate, misleading, or non-compliant listings may be removed and may result in warnings, suspension, or account deactivation.',
-                ],
-                [
-                    'id' => 'POL-1003',
-                    'title' => 'Returns & Refunds Policy',
-                    'category' => 'Transactions',
-                    'version' => 'v1.5',
-                    'status' => 'Active',
-                    'updated' => 'Aug 22, 2026',
-                    'updated_by' => 'Admin',
-                    'summary' => 'Establishes rules for return requests, refund reviews, evidence submission, and escalated cases.',
-                    'body' => 'Return and refund requests must include a valid reason and appropriate supporting evidence when required. Escalated cases may be reviewed by an Administrator before a final platform decision is issued.',
-                ],
-                [
-                    'id' => 'POL-1004',
-                    'title' => 'Account Conduct Policy',
-                    'category' => 'Account',
-                    'version' => 'v1.2',
-                    'status' => 'Draft',
-                    'updated' => 'Aug 24, 2026',
-                    'updated_by' => 'Admin',
-                    'summary' => 'Defines expected user conduct, account security responsibilities, and grounds for suspension or deactivation.',
-                    'body' => 'Users must maintain accurate account information, protect their login credentials, and avoid abusive, fraudulent, or prohibited activity while using the platform.',
-                ],
+        /** @var User $admin */
+        $admin = $request->user();
+
+        $validated = $request->validate([
+            'current_password' => [
+                'required',
+                'string',
             ],
-        ]));
+            'new_password' => [
+                'required',
+                'string',
+                'min:8',
+                'confirmed',
+            ],
+        ]);
+
+        if (! Hash::check(
+            $validated['current_password'],
+            $admin->password
+        )) {
+            return redirect(
+                route('admin.account').'#security'
+            )->withErrors([
+                'current_password' =>
+                    'The current password is incorrect.',
+            ]);
+        }
+
+        $admin->update([
+            'password' => Hash::make(
+                $validated['new_password']
+            ),
+        ]);
+
+        return redirect(
+            route('admin.account').'#security'
+        )->with(
+            'success',
+            'Password updated successfully.'
+        );
     }
 
     public function auditLogs(): View

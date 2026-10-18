@@ -17,7 +17,7 @@
 <a class="wl-back" href="javascript:history.back()" aria-label="Go back"><span class="material-symbols-outlined">arrow_back</span></a>
 <div class="wl-title"><h1>My Wishlist</h1><div class="wl-sub"><span id="wl-count">0</span> saved items</div></div>
 </div>
-<p id="wl-preview-notice" class="preview-notice" hidden>Catalog preview items are stored only in this browser. Live wishlist items are saved to your Bearly account.</p>
+<p id="wl-preview-notice" class="preview-notice" hidden>Catalog preview items are stored only in this browser and cannot be added to the live cart. Live wishlist items are saved to your Bearly account.</p>
 <div id="wl-grid" class="wl-grid"></div>
 <div id="wl-empty" class="wl-empty"><span class="material-symbols-outlined">favorite</span><h2>Your wishlist is empty</h2><p>Tap the heart on any product to save it here.</p><a href="{{ url('/home') }}">Continue shopping</a></div>
 </main>
@@ -38,7 +38,7 @@ const catalog=[{"key": "pet-supplies:1", "name": "Dog Food", "price": 699, "cate
   function render() {
     const items = [...live.map(item => ({ ...item, source:'live', itemKey:`live:${item.id}`, price:Number(item.price_minor || 0) / 100 })), ...previewItems()];
     count.textContent = items.length; grid.innerHTML = ''; grid.style.display = items.length ? 'grid' : 'none'; empty.style.display = items.length ? 'none' : 'block'; notice.hidden = !items.some(item => item.source === 'preview');
-    items.forEach(item => { const card = document.createElement('article'); card.className = 'wl-card'; card.dataset.itemKey = item.itemKey; card.dataset.source = item.source; card.dataset.productId = item.product_id || ''; const image = item.image || '/images/bearly-logo-2.png'; card.innerHTML = `<div class="wl-img"><img src="${esc(image)}" alt="${esc(item.name)}"><button class="wl-remove" aria-label="Remove ${esc(item.name)}" data-key="${esc(item.itemKey)}" type="button"><span class="material-symbols-outlined">favorite</span></button></div><div class="wl-copy"><div class="wl-cat">${esc(item.category || item.seller_name || 'Bearly')}</div><div class="wl-name">${esc(item.name)}</div><div class="wl-price">${money(item.price)}</div><div class="wl-meta">${item.source === 'preview' ? 'Catalog preview' : 'Saved to your account'}</div><button class="wl-cart" type="button">Add to Cart</button></div>`; grid.appendChild(card); });
+    items.forEach(item => { const card = document.createElement('article'); card.className = 'wl-card'; card.dataset.itemKey = item.itemKey; card.dataset.source = item.source; card.dataset.productId = item.product_id || ''; const image = item.image || '/images/bearly-logo-2.png'; card.innerHTML = `<div class="wl-img"><img src="${esc(image)}" alt="${esc(item.name)}"><button class="wl-remove" aria-label="Remove ${esc(item.name)}" data-key="${esc(item.itemKey)}" type="button"><span class="material-symbols-outlined">favorite</span></button></div><div class="wl-copy"><div class="wl-cat">${esc(item.category || item.seller_name || 'Bearly')}</div><div class="wl-name">${esc(item.name)}</div><div class="wl-price">${money(item.price)}</div><div class="wl-meta">${item.source === 'preview' ? 'Catalog preview' : 'Saved to your account'}</div><button class="wl-cart" type="button" ${item.source === 'preview' ? 'disabled aria-label="Preview item; not available in live cart"' : ''}>${item.source === 'preview' ? 'Preview only' : 'Add to Cart'}</button></div>`; grid.appendChild(card); });
   }
   grid.addEventListener('click', async event => {
     const card = event.target.closest('.wl-card');
@@ -66,15 +66,7 @@ const catalog=[{"key": "pet-supplies:1", "name": "Dog Food", "price": 699, "cate
           const response = await fetch('/cart/add', { method:'POST', headers:{ 'Accept':'application/json', 'Content-Type':'application/json', 'X-CSRF-TOKEN':csrf }, body:JSON.stringify({ product_variant_id:item.product_variant_id || undefined, product_id:item.product_variant_id ? undefined : item.product_id, quantity:1 }) });
           if (!response.ok) throw new Error('Unable to add this product to your cart.');
         } else {
-          const item = catalogItems.find(value => value.key === key);
-          if (item) {
-            const cartKey = window.bearlyStorageKey?.('preview-cart') || 'bearly-preview-cart-v1';
-            const stored = (() => { try { const value = JSON.parse(localStorage.getItem(cartKey) || '[]'); return Array.isArray(value) ? value : []; } catch { return []; } })();
-            const existing = stored.find(value => value.key === `wishlist-${item.key}`);
-            if (existing) existing.quantity = Number(existing.quantity || 1) + 1;
-            else stored.push({ key:`wishlist-${item.key}`, product_id:item.key, name:item.name, price:item.price, quantity:1, image:item.image, seller_name:'Bearly Seller', frontend_preview:true });
-            localStorage.setItem(cartKey, JSON.stringify(stored));
-          }
+          throw new Error('Catalog preview items are not connected to the live cart.');
         }
         const button = event.target.closest('.wl-cart');
         button.textContent = 'Added to Cart';

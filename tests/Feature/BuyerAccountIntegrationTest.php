@@ -74,7 +74,7 @@ class BuyerAccountIntegrationTest extends TestCase
         $this->actingAs($buyer)
             ->get('/chat')
             ->assertOk()
-            ->assertSee('Message your sellers here.')
+            ->assertSee('Talk with your sellers about products and orders.')
             ->assertSee('data-chat-filter', false)
             ->assertSee('data-chat-attachment-button', false)
             ->assertSee('data-chat-emoji', false);
@@ -325,17 +325,31 @@ class BuyerAccountIntegrationTest extends TestCase
     {
         $buyer = $this->makeBuyer('buyer@example.test', 'Ava Buyer');
         $otherBuyer = $this->makeBuyer('other@example.test', 'Other Buyer');
-        ['product' => $product] = $this->makeProduct();
+        ['product' => $product, 'variant' => $variant] = $this->makeProduct();
 
         $this->actingAs($buyer)
             ->postJson('/wishlist/toggle', ['product_id' => $product->id])
             ->assertOk()
             ->assertJsonPath('data.is_wishlisted', true);
 
+        $this->actingAs($buyer)
+            ->postJson('/cart/add', [
+                'product_variant_id' => $variant->id,
+                'quantity' => 1,
+            ])
+            ->assertOk();
+
+        $this->actingAs($buyer)
+            ->get('/cart')
+            ->assertOk()
+            ->assertSee('window.bearlyWishlistProductIds = ['.$product->id.'];', false)
+            ->assertSee('cart-preview-notice', false);
+
         $this->actingAs($otherBuyer)
             ->get('/wishlist')
             ->assertOk()
-            ->assertDontSee('Private Integration Product');
+            ->assertDontSee('Private Integration Product')
+            ->assertSee('disabled aria-label="Preview item; not available in live cart"', false);
 
         $otherAddress = Address::create([
             'user_id' => $otherBuyer->id,
@@ -386,6 +400,67 @@ class BuyerAccountIntegrationTest extends TestCase
             'is_default_shipping' => 1,
         ]);
         $this->assertDatabaseHas('addresses', ['id' => $otherAddress->id, 'user_id' => $otherBuyer->id]);
+    }
+
+    public function test_buyer_address_coordinates_are_optional_paired_and_range_validated(): void
+    {
+        $buyer = $this->makeBuyer('coordinates@example.test', 'Coordinate Buyer');
+
+        $response = $this->actingAs($buyer)->postJson('/addresses', [
+            'name' => 'Coordinate Buyer',
+            'phone' => '+63 917 123 4567',
+            'province' => 'Laguna',
+            'city' => 'Santa Rosa',
+            'barangay' => 'Balibago',
+            'postal' => '4026',
+            'street' => 'Maple Street',
+            'label' => 'Home',
+            'is_default' => true,
+            'latitude' => 14.3121,
+            'longitude' => 121.1112,
+        ]);
+
+        $response
+            ->assertCreated()
+            ->assertJsonPath('data.latitude', 14.3121)
+            ->assertJsonPath('data.longitude', 121.1112);
+
+        $this->assertDatabaseHas('addresses', [
+            'user_id' => $buyer->id,
+            'latitude' => 14.3121,
+            'longitude' => 121.1112,
+        ]);
+
+        $this->actingAs($buyer)
+            ->postJson('/addresses', [
+                'name' => 'Coordinate Buyer',
+                'phone' => '+63 917 123 4567',
+                'province' => 'Laguna',
+                'city' => 'Santa Rosa',
+                'barangay' => 'Balibago',
+                'postal' => '4026',
+                'street' => 'Maple Street',
+                'label' => 'Work',
+                'latitude' => 14.3121,
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('longitude');
+
+        $this->actingAs($buyer)
+            ->postJson('/addresses', [
+                'name' => 'Coordinate Buyer',
+                'phone' => '+63 917 123 4567',
+                'province' => 'Laguna',
+                'city' => 'Santa Rosa',
+                'barangay' => 'Balibago',
+                'postal' => '4026',
+                'street' => 'Maple Street',
+                'label' => 'Work',
+                'latitude' => 91,
+                'longitude' => 181,
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['latitude', 'longitude']);
     }
 
     public function test_kids_and_baby_category_uses_the_authenticated_buyer_view(): void

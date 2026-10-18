@@ -9,9 +9,14 @@ use App\Models\ProductViolation;
 use App\Models\SellerProfile;
 use App\Models\Store;
 use App\Models\User;
+use App\Notifications\WorkflowNotification;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Str;
+use RuntimeException;
 use Tests\TestCase;
 
 class AdminProductViolationWorkflowTest extends TestCase
@@ -82,8 +87,30 @@ class AdminProductViolationWorkflowTest extends TestCase
             ->assertSee('name="status"', false);
     }
 
+    public function test_admin_queue_explains_content_based_category_mismatch_with_rule_and_excerpt(): void
+    {
+        $violation = $this->createViolation([
+            'rule_id' => ComplianceRule::query()->where('code', 'CATEGORY_MISMATCH_FASHION_ELECTRONICS')->value('id'),
+            'violation_type' => 'CATEGORY_MISMATCH_FASHION_ELECTRONICS',
+            'reason' => 'Electronics product listed under Fashion and Apparel',
+            'severity' => 'high',
+            'detected_excerpt' => 'smartphone',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.compliance.violations'))
+            ->assertOk()
+            ->assertSee($violation->violation_no)
+            ->assertSee('Electronics product listed under Fashion and Apparel')
+            ->assertSee('Detected text')
+            ->assertSee('smartphone')
+            ->assertSee("Both categories are the Seller's registered category", false);
+    }
+
     public function test_admin_can_issue_a_reasoned_warning_and_it_is_audited_once(): void
     {
+        Notification::fake();
+
         $violation = $this->createViolation(['severity' => 'high']);
 
         $this->actingAs($this->admin)
@@ -120,6 +147,17 @@ class AdminProductViolationWorkflowTest extends TestCase
             'reason' => 'The health claim is unsupported and must not be repeated.',
         ]);
 
+        $seller = $violation->sellerProfile->user;
+
+        Notification::assertSentTo(
+            $seller,
+            WorkflowNotification::class,
+            fn (WorkflowNotification $notification, array $channels): bool => $notification->eventKey() === 'seller_compliance_flagged'
+                && in_array('database', $channels, true)
+                && $notification->meta()['violation_id'] === $violation->id,
+        );
+        Notification::assertSentToTimes($seller, WorkflowNotification::class, 1);
+
         $this->actingAs($this->admin)
             ->from(route('admin.compliance.violations'))
             ->post(route('admin.compliance.decide', $violation), [
@@ -132,6 +170,45 @@ class AdminProductViolationWorkflowTest extends TestCase
 
         $this->assertDatabaseCount('seller_warnings', 1);
         $this->assertDatabaseCount('violation_actions', 1);
+        Notification::assertSentToTimes($seller, WorkflowNotification::class, 1);
+    }
+
+    public function test_warn_seller_decision_survives_notification_delivery_failure(): void
+    {
+        Mail::shouldReceive('mailer')->andThrow(new RuntimeException('SMTP transport unavailable.'));
+        Log::spy();
+
+        $violation = $this->createViolation(['severity' => 'high']);
+
+        $this->actingAs($this->admin)
+            ->from(route('admin.compliance.violations'))
+            ->post(route('admin.compliance.decide', $violation), [
+                'violation_id' => $violation->id,
+                'decision' => 'warn_seller',
+                'note' => 'Delivery failure must not roll back this warning.',
+            ])
+            ->assertRedirect(route('admin.compliance.violations'))
+            ->assertSessionHas('success');
+
+        $this->assertDatabaseHas('product_violations', [
+            'id' => $violation->id,
+            'status' => 'confirmed',
+            'resolution' => 'warn_seller',
+        ]);
+        $this->assertDatabaseHas('seller_warnings', [
+            'violation_id' => $violation->id,
+            'reason' => 'Delivery failure must not roll back this warning.',
+            'issued_by' => $this->admin->id,
+            'status' => 'active',
+        ]);
+
+        // The in-app notification still lands even though the mail transport failed.
+        $seller = $violation->sellerProfile->user;
+        $this->assertSame(1, $seller->notifications()->count());
+
+        Log::shouldHaveReceived('warning')
+            ->withArgs(fn (string $message): bool => str_contains($message, 'Bearly notification delivery failed'))
+            ->once();
     }
 
     public function test_require_removal_blocks_the_listing_and_keeps_product_and_violation_records(): void

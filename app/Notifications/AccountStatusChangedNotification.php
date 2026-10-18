@@ -2,32 +2,51 @@
 
 namespace App\Notifications;
 
-use Illuminate\Bus\Queueable;
-use Illuminate\Notifications\Notification;
-
-class AccountStatusChangedNotification extends Notification
+class AccountStatusChangedNotification extends BearlyNotification
 {
-    use Queueable;
-
     public function __construct(
         private readonly string $fromStatus,
         private readonly string $toStatus,
         private readonly string $reason,
     ) {}
 
-    public function via(object $notifiable): array
+    public function eventKey(): string
     {
-        return ['database'];
+        return 'account_status_changed';
     }
 
+    public function title(): string
+    {
+        return 'Account status updated';
+    }
+
+    public function body(): string
+    {
+        return 'Your Bearly account status changed to '.str_replace('_', ' ', $this->toStatus).'.';
+    }
+
+    public function type(): string
+    {
+        return in_array($this->toStatus, ['suspended', 'rejected', 'deactivated'], true) ? 'danger' : 'success';
+    }
+
+    /**
+     * Keep the historical keys (from_status/to_status/reason/message) and add
+     * display keys used by the shared notification surfaces.
+     *
+     * @return array<string, mixed>
+     */
     public function toDatabase(object $notifiable): array
     {
         return [
-            'event' => 'account_status_changed',
+            'event' => $this->eventKey(),
             'from_status' => $this->fromStatus,
             'to_status' => $this->toStatus,
             'reason' => $this->reason,
-            'message' => 'Your Bearly account status changed to '.str_replace('_', ' ', $this->toStatus).'.',
+            'title' => $this->title(),
+            'body' => $this->body(),
+            'message' => $this->body(),
+            'type' => $this->type(),
         ];
     }
 }

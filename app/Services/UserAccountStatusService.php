@@ -11,6 +11,10 @@ use Illuminate\Support\Facades\DB;
 
 class UserAccountStatusService
 {
+    public function __construct(
+        private readonly NotificationService $notifications,
+    ) {}
+
     public function change(User $user, User $actor, string $targetStatus, string $reason): User
     {
         return DB::transaction(function () use ($user, $actor, $targetStatus, $reason): User {
@@ -40,7 +44,7 @@ class UserAccountStatusService
                 'created_at' => now(),
             ]);
 
-            $user->notify(new AccountStatusChangedNotification($fromStatus, $targetStatus, $reason));
+            $this->notifications->sendAfterCommit($user, new AccountStatusChangedNotification($fromStatus, $targetStatus, $reason));
 
             return $user->fresh();
         }, 3);

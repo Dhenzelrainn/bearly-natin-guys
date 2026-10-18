@@ -950,6 +950,421 @@ class SellerEarningsService
         ];
     }
 
+    /* -----------------------------------------------------------------
+     * Admin marketplace reports
+     *
+     * Same Seller sales basis as the seller reports: completed Seller
+     * Orders by `completed_at`, product values from the immutable order
+     * item snapshots (shipping excluded), and completed refunds by
+     * `refunds.completed_at`. Category rows group by the purchase-time
+     * category snapshot captured on each order item; items without a
+     * snapshot stay in one "Category not recorded" bucket instead of
+     * being backfilled from the Product's current category.
+     * ----------------------------------------------------------------- */
+
+    /**
+     * Marketplace Sales Summary: KPI totals, period buckets, and the top
+     * category preview for the selected administrative date range.
+     */
+    public function marketplaceSalesSummaryFor(CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $sellerOrders = $this->marketplaceSellerOrdersInRange($from, $to);
+        $refunds = $this->marketplaceRefundsInRange($from, $to);
+        $categories = $this->marketplaceCategoryReport($sellerOrders, $refunds, null);
+
+        return [
+            'totals' => $this->marketplaceTotals($sellerOrders, $refunds),
+            'trend' => $this->bucketizeMarketplaceSales($sellerOrders, $refunds, $from, $to),
+            'top_categories' => array_slice($categories['rows'], 0, 5),
+        ];
+    }
+
+    /**
+     * Sales by Seller: grouped per Store (one Store per Seller profile),
+     * with refunds attributed to the Store on their return request.
+     *
+     * @return array{rows: array<int, array<string, mixed>>, totals: array<string, int>}
+     */
+    public function marketplaceSalesBySellerFor(
+        CarbonImmutable $from,
+        CarbonImmutable $to,
+        ?int $sellerProfileId = null,
+    ): array {
+        $sellerOrders = $this->marketplaceSellerOrdersInRange($from, $to, $sellerProfileId);
+        $refunds = $this->marketplaceRefundsInRange($from, $to, $sellerProfileId);
+        $totals = $this->marketplaceTotals($sellerOrders, $refunds);
+
+        $rows = [];
+        $stores = [];
+
+        foreach ($sellerOrders as $sellerOrder) {
+            $storeId = (int) $sellerOrder->store_id;
+            $store = $sellerOrder->store;
+            $stores[$storeId] ??= [
+                'seller' => $store?->name ?? 'Store #'.$storeId,
+                'legal' => $store?->sellerProfile?->legal_business_name,
+            ];
+
+            $rows[$storeId] ??= [
+                'store_id' => $storeId,
+                'gross_minor' => 0,
+                'discounts_minor' => 0,
+                'refunds_minor' => 0,
+                'orders' => 0,
+                'units' => 0,
+            ];
+
+            foreach ($sellerOrder->items as $item) {
+                $rows[$storeId]['gross_minor'] += (int) $item->subtotal_minor;
+                $rows[$storeId]['discounts_minor'] += (int) $item->discount_minor;
+                $rows[$storeId]['units'] += (int) $item->quantity;
+            }
+
+            $rows[$storeId]['orders']++;
+        }
+
+        foreach ($refunds as $refund) {
+            $returnRequest = $refund->returnRequest;
+            $storeId = (int) ($returnRequest?->store_id ?? 0);
+
+            // Refunds without a return request carry no Store attribution and
+            // stay in the marketplace totals only.
+            if ($storeId === 0) {
+                continue;
+            }
+
+            $store = $returnRequest?->store;
+            $stores[$storeId] ??= [
+                'seller' => $store?->name ?? 'Store #'.$storeId,
+                'legal' => $store?->sellerProfile?->legal_business_name,
+            ];
+
+            $rows[$storeId] ??= [
+                'store_id' => $storeId,
+                'gross_minor' => 0,
+                'discounts_minor' => 0,
+                'refunds_minor' => 0,
+                'orders' => 0,
+                'units' => 0,
+            ];
+
+            $rows[$storeId]['refunds_minor'] += abs((int) $refund->amount_minor);
+        }
+
+        $rows = array_values($rows);
+        $totalGrossMinor = 0;
+        foreach ($rows as $row) {
+            $totalGrossMinor += max(0, (int) $row['gross_minor']);
+        }
+
+        foreach ($rows as $index => $row) {
+            $rows[$index]['seller'] = $stores[$row['store_id']]['seller'] ?? 'Store #'.$row['store_id'];
+            $rows[$index]['legal'] = $stores[$row['store_id']]['legal'] ?? null;
+            $rows[$index]['net_minor'] = (int) $row['gross_minor'] - (int) $row['discounts_minor'] - (int) $row['refunds_minor'];
+            $rows[$index]['share'] = $totalGrossMinor > 0
+                ? round(max(0, (int) $row['gross_minor']) / $totalGrossMinor * 100, 1)
+                : 0.0;
+        }
+
+        usort($rows, function (array $a, array $b): int {
+            return [$b['gross_minor'], $b['refunds_minor'], $a['seller']]
+                <=> [$a['gross_minor'], $a['refunds_minor'], $b['seller']];
+        });
+
+        return ['rows' => $rows, 'totals' => $totals];
+    }
+
+    /**
+     * Sales by Category: grouped by the purchase-time marketplace category
+     * recorded on each order item. A selected category narrows the whole
+     * report (totals included) to that category's items.
+     *
+     * @return array{rows: array<int, array<string, mixed>>, totals: array<string, int>}
+     */
+    public function marketplaceSalesByCategoryFor(
+        CarbonImmutable $from,
+        CarbonImmutable $to,
+        ?int $categoryId = null,
+    ): array {
+        return $this->marketplaceCategoryReport(
+            $this->marketplaceSellerOrdersInRange($from, $to),
+            $this->marketplaceRefundsInRange($from, $to),
+            $categoryId,
+        );
+    }
+
+    /**
+     * @return array{rows: array<int, array<string, mixed>>, totals: array<string, int>}
+     */
+    private function marketplaceCategoryReport(
+        Collection $sellerOrders,
+        Collection $refunds,
+        ?int $categoryId,
+    ): array {
+        $rows = [];
+        $orderIds = [];
+
+        $rowFor = function (?int $snapshotId, ?string $snapshotName) use (&$rows): string {
+            $key = $snapshotId !== null && $snapshotId > 0 ? 'category_'.$snapshotId : 'unrecorded';
+
+            if (! isset($rows[$key])) {
+                $rows[$key] = [
+                    'category_id' => $snapshotId !== null && $snapshotId > 0 ? $snapshotId : null,
+                    'label' => $snapshotId !== null && $snapshotId > 0
+                        ? ($snapshotName !== null && $snapshotName !== '' ? $snapshotName : 'Category #'.$snapshotId)
+                        : 'Category not recorded',
+                    'gross_minor' => 0,
+                    'discounts_minor' => 0,
+                    'refunds_minor' => 0,
+                    'orders' => 0,
+                    'units' => 0,
+                ];
+            }
+
+            return $key;
+        };
+
+        foreach ($sellerOrders as $sellerOrder) {
+            foreach ($sellerOrder->items as $item) {
+                $snapshotId = $item->category_id_snapshot === null ? null : (int) $item->category_id_snapshot;
+
+                if ($categoryId !== null && $snapshotId !== $categoryId) {
+                    continue;
+                }
+
+                $key = $rowFor($snapshotId, $item->category_name_snapshot);
+                $rows[$key]['gross_minor'] += (int) $item->subtotal_minor;
+                $rows[$key]['discounts_minor'] += (int) $item->discount_minor;
+                $rows[$key]['units'] += (int) $item->quantity;
+                $orderIds[$key][(int) $sellerOrder->order_id] = true;
+            }
+        }
+
+        foreach ($refunds as $refund) {
+            foreach ($refund->returnRequest?->items ?? collect() as $returnItem) {
+                $item = $returnItem->orderItem;
+
+                if (! $item) {
+                    continue;
+                }
+
+                $snapshotId = $item->category_id_snapshot === null ? null : (int) $item->category_id_snapshot;
+
+                if ($categoryId !== null && $snapshotId !== $categoryId) {
+                    continue;
+                }
+
+                $key = $rowFor($snapshotId, $item->category_name_snapshot);
+                $rows[$key]['refunds_minor'] += abs((int) $returnItem->refund_amount_minor);
+            }
+        }
+
+        foreach ($rows as $key => $row) {
+            $rows[$key]['orders'] = count($orderIds[$key] ?? []);
+        }
+
+        $rows = array_values($rows);
+        $totalGrossMinor = 0;
+        foreach ($rows as $row) {
+            $totalGrossMinor += (int) $row['gross_minor'];
+        }
+
+        foreach ($rows as $index => $row) {
+            $rows[$index]['net_minor'] = (int) $row['gross_minor'] - (int) $row['discounts_minor'] - (int) $row['refunds_minor'];
+            $rows[$index]['share'] = $totalGrossMinor > 0
+                ? round((int) $row['gross_minor'] / $totalGrossMinor * 100, 1)
+                : 0.0;
+        }
+
+        usort($rows, function (array $a, array $b): int {
+            return [$b['gross_minor'], $b['units'], $a['label']]
+                <=> [$a['gross_minor'], $a['units'], $b['label']];
+        });
+
+        $distinctOrderIds = [];
+        foreach ($orderIds as $ids) {
+            foreach (array_keys($ids) as $orderId) {
+                $distinctOrderIds[$orderId] = true;
+            }
+        }
+
+        $grossMinor = 0;
+        $discountsMinor = 0;
+        $refundsMinor = 0;
+        $units = 0;
+        foreach ($rows as $row) {
+            $grossMinor += (int) $row['gross_minor'];
+            $discountsMinor += (int) $row['discounts_minor'];
+            $refundsMinor += (int) $row['refunds_minor'];
+            $units += (int) $row['units'];
+        }
+
+        return [
+            'rows' => $rows,
+            'totals' => [
+                'gross_minor' => $grossMinor,
+                'discounts_minor' => $discountsMinor,
+                'refunds_minor' => $refundsMinor,
+                'net_minor' => $grossMinor - $discountsMinor - $refundsMinor,
+                'orders' => count($distinctOrderIds),
+                'seller_orders' => $sellerOrders->count(),
+                'units' => $units,
+            ],
+        ];
+    }
+
+    /**
+     * Completed Seller Orders in the range for the whole marketplace or one
+     * Seller profile. Items are limited to the snapshot columns the reports
+     * read so the per-Store and per-Category reports never trigger extra
+     * queries.
+     */
+    private function marketplaceSellerOrdersInRange(
+        CarbonImmutable $from,
+        CarbonImmutable $to,
+        ?int $sellerProfileId = null,
+    ): Collection {
+        return SellerOrder::query()
+            ->where('status', SellerOrderStatus::Completed->value)
+            ->whereNotNull('completed_at')
+            ->whereBetween('completed_at', [$from->startOfDay(), $to->endOfDay()])
+            ->when(
+                $sellerProfileId !== null,
+                fn (Builder $orders): Builder => $orders->whereHas(
+                    'store',
+                    fn (Builder $stores): Builder => $stores->where('seller_profile_id', $sellerProfileId),
+                ),
+            )
+            ->with([
+                'store:id,name,seller_profile_id',
+                'store.sellerProfile:id,legal_business_name',
+                'items:id,seller_order_id,subtotal_minor,discount_minor,quantity,category_id_snapshot,category_name_snapshot',
+            ])
+            ->orderBy('completed_at')
+            ->orderBy('id')
+            ->get();
+    }
+
+    /**
+     * Completed refunds in the range (marketplace wide or one Seller profile)
+     * with the return request, Store, and item allocations used to attribute
+     * refunds per Seller and per Category.
+     */
+    private function marketplaceRefundsInRange(
+        CarbonImmutable $from,
+        CarbonImmutable $to,
+        ?int $sellerProfileId = null,
+    ): Collection {
+        return Refund::query()
+            ->completed()
+            ->whereBetween('completed_at', [$from->startOfDay(), $to->endOfDay()])
+            ->when(
+                $sellerProfileId !== null,
+                fn (Builder $refunds): Builder => $refunds->whereHas(
+                    'returnRequest.store',
+                    fn (Builder $stores): Builder => $stores->where('seller_profile_id', $sellerProfileId),
+                ),
+            )
+            ->with([
+                'returnRequest.store:id,name,seller_profile_id',
+                'returnRequest.store.sellerProfile:id,legal_business_name',
+                'returnRequest.items:id,return_request_id,order_item_id,refund_amount_minor',
+                'returnRequest.items.orderItem:id,category_id_snapshot,category_name_snapshot',
+            ])
+            ->orderBy('completed_at')
+            ->orderBy('id')
+            ->get();
+    }
+
+    /**
+     * @return array{gross_minor: int, discounts_minor: int, refunds_minor: int, net_minor: int, orders: int, seller_orders: int, units: int}
+     */
+    private function marketplaceTotals(Collection $sellerOrders, Collection $refunds): array
+    {
+        $grossMinor = 0;
+        $discountsMinor = 0;
+        $units = 0;
+        $orderIds = [];
+
+        foreach ($sellerOrders as $sellerOrder) {
+            $orderIds[(int) $sellerOrder->order_id] = true;
+
+            foreach ($sellerOrder->items as $item) {
+                $grossMinor += (int) $item->subtotal_minor;
+                $discountsMinor += (int) $item->discount_minor;
+                $units += (int) $item->quantity;
+            }
+        }
+
+        $refundsMinor = 0;
+        foreach ($refunds as $refund) {
+            $refundsMinor += abs((int) $refund->amount_minor);
+        }
+
+        return [
+            'gross_minor' => $grossMinor,
+            'discounts_minor' => $discountsMinor,
+            'refunds_minor' => $refundsMinor,
+            'net_minor' => $grossMinor - $discountsMinor - $refundsMinor,
+            'orders' => count($orderIds),
+            'seller_orders' => $sellerOrders->count(),
+            'units' => $units,
+        ];
+    }
+
+    /**
+     * Equal buckets across the selected range (max 12) with the same net
+     * sales basis as the report KPIs.
+     *
+     * @return array<int, array<string, int|string>>
+     */
+    private function bucketizeMarketplaceSales(
+        Collection $sellerOrders,
+        Collection $refunds,
+        CarbonImmutable $from,
+        CarbonImmutable $to,
+    ): array {
+        $days = max(1, (int) $from->startOfDay()->diffInDays($to->startOfDay()) + 1);
+        $bucketCount = max(1, min(12, $days));
+        $base = intdiv($days, $bucketCount);
+        $remainder = $days % $bucketCount;
+
+        $buckets = [];
+        $cursor = $from->startOfDay();
+
+        for ($index = 0; $index < $bucketCount; $index++) {
+            $size = $base + ($index < $remainder ? 1 : 0);
+            $start = $cursor;
+            $end = $cursor->addDays($size - 1)->endOfDay();
+            $cursor = $end->addDay()->startOfDay();
+
+            $totals = $this->marketplaceTotals(
+                $sellerOrders->filter(fn (SellerOrder $sellerOrder): bool => ($completedAt = $this->sellerOrderCompletedAt($sellerOrder)) !== null
+                    && $completedAt->greaterThanOrEqualTo($start)
+                    && $completedAt->lessThanOrEqualTo($end)),
+                $refunds->filter(fn (Refund $refund): bool => $refund->completed_at !== null
+                    && $refund->completed_at->greaterThanOrEqualTo($start)
+                    && $refund->completed_at->lessThanOrEqualTo($end)),
+            );
+
+            if ($start->isSameDay($end)) {
+                $label = $start->format('M j, Y');
+            } elseif ($start->year === $end->year) {
+                $label = $start->format('M j').' – '.$end->format('M j, Y');
+            } else {
+                $label = $start->format('M j, Y').' – '.$end->format('M j, Y');
+            }
+
+            $totals['label'] = $label;
+            $totals['start'] = $start->toDateString();
+            $totals['end'] = $end->toDateString();
+
+            $buckets[] = $totals;
+        }
+
+        return $buckets;
+    }
+
     /**
      * Reports Overview data: metrics, ledger bridge, trend, insights, products.
      */

@@ -106,12 +106,16 @@
             </div>
 
             <div class="panel-body">
-                <div class="route-map">
-                    <span class="map-pin">
-                        <i data-lucide="store"></i>
-                    </span>
+                @if (is_numeric($job['latitude'] ?? null) && is_numeric($job['longitude'] ?? null))
+                    <div class="destination-map" data-destination-map data-latitude="{{ $job['latitude'] }}" data-longitude="{{ $job['longitude'] }}" data-map-tile-url="{{ config('maps.tile_url') }}" data-map-attribution="{{ config('maps.tile_attribution') }}"></div>
+                    <a class="osm-destination-link" href="https://www.openstreetmap.org/?mlat={{ rawurlencode($job['latitude']) }}&amp;mlon={{ rawurlencode($job['longitude']) }}#map=17/{{ rawurlencode($job['latitude']) }}/{{ rawurlencode($job['longitude']) }}" target="_blank" rel="noopener noreferrer">Open destination in OpenStreetMap <i data-lucide="external-link"></i></a>
+                @else
+                    <div class="route-map">
+                        <span class="map-pin"><i data-lucide="store"></i></span>
+                    </div>
+                @endif
 
-                    <div class="map-meta">
+                <div class="map-meta">
                         <span>
                             <strong>
                                  {{ $job['contact_name'] ?? $job['seller'] }}
@@ -131,7 +135,6 @@
 
                              {{ str_contains(strtolower($job['seller']), 'return pickup') ? 'Buyer contact' : 'Seller contact' }}
                         </span>
-                    </div>
                 </div>
             </div>
         </article>
@@ -301,6 +304,16 @@
                             ) }}"
                         >
                             @csrf
+                            <label class="rider-waybill-scan-field">
+                                <span>Verify a waybill before pickup</span>
+                                <div class="waybill-scan-tools">
+                                    <input name="waybill_identifier" data-waybill-identifier required maxlength="120" placeholder="Scan or enter a waybill number" autocomplete="off">
+                                    <button type="button" class="waybill-camera-button" data-waybill-camera-open><i data-lucide="camera"></i>Scan</button>
+                                </div>
+                                <input type="hidden" name="scan_method" value="manual" data-waybill-scan-method>
+                                <small>Use the assignment's Code 128 label. Manual entry and USB/Bluetooth scanners are supported.</small>
+                            </label>
+                            <div class="waybill-camera-panel" data-waybill-camera-panel hidden><video data-waybill-camera-video playsinline muted></video><p class="waybill-camera-status" data-waybill-camera-status>Point the camera at the Code 128 waybill barcode.</p><button type="button" class="button button-small" data-waybill-camera-close>Cancel camera</button></div>
 
                             <button
                                 type="submit"

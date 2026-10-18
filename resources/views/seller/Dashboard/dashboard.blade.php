@@ -128,43 +128,60 @@
             @if ($salesChart['has_data'])
                 <div class="dashboard-ref-chart" aria-label="Sales overview for {{ $periodLabel }}">
                     <div class="dashboard-ref-chart-y" aria-hidden="true">
-                        @foreach ($salesChart['y_axis'] as $axisLabel)
-                            <span>{{ $axisLabel }}</span>
+                        @foreach ($salesChart['y_axis_points'] as $axis)
+                            <span style="top:{{ round($axis['y'] / 260 * 100, 3) }}%">₱{{ $axis['label'] }}</span>
                         @endforeach
                     </div>
 
-                    <div class="dashboard-ref-chart-plot">
-                        <span class="dashboard-ref-grid-line line-1"></span>
-                        <span class="dashboard-ref-grid-line line-2"></span>
-                        <span class="dashboard-ref-grid-line line-3"></span>
-                        <span class="dashboard-ref-grid-line line-4"></span>
-                        <span class="dashboard-ref-grid-line line-5"></span>
-
-                        <svg viewBox="0 0 760 230" role="img" aria-label="Gross completed sales trend" preserveAspectRatio="none">
+                    <div class="dashboard-ref-chart-plot" data-chart data-chart-hover="nearest">
+                        <svg viewBox="0 0 720 260" role="group" aria-label="Gross completed sales trend" preserveAspectRatio="none">
                             <defs>
                                 <linearGradient id="dashboardSalesFill" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="0" stop-color="#E9A72F" stop-opacity=".20"/>
-                                    <stop offset="1" stop-color="#E9A72F" stop-opacity="0"/>
+                                    <stop offset="0" stop-color="#6f8251" stop-opacity=".18"/>
+                                    <stop offset=".6" stop-color="#6f8251" stop-opacity=".06"/>
+                                    <stop offset="1" stop-color="#6f8251" stop-opacity="0"/>
                                 </linearGradient>
                             </defs>
+
+                            <g class="dashboard-ref-chart-grid" aria-hidden="true">
+                                @foreach ($salesChart['y_axis_points'] as $axis)
+                                    @unless ($loop->first)
+                                        <line x1="0" x2="720" y1="{{ $axis['y'] }}" y2="{{ $axis['y'] }}" vector-effect="non-scaling-stroke" {{ $loop->last ? 'class="is-baseline"' : '' }}/>
+                                    @endunless
+                                @endforeach
+                            </g>
 
                             <path
                                 class="dashboard-ref-chart-area"
                                 d="{{ $salesChart['area'] }}"
+                                aria-hidden="true"
                             />
+                            <line class="dashboard-ref-chart-crosshair" data-chart-crosshair aria-hidden="true" x1="0" x2="0" y1="{{ collect($salesChart['y_axis_points'])->first()['y'] }}" y2="{{ collect($salesChart['y_axis_points'])->last()['y'] }}" vector-effect="non-scaling-stroke"/>
                             <polyline
                                 class="dashboard-ref-chart-line"
                                 points="{{ $salesChart['polyline'] }}"
+                                vector-effect="non-scaling-stroke"
+                                aria-hidden="true"
                             />
 
-                            @foreach ($salesChart['points'] as $point)
-                                <circle cx="{{ $point[0] }}" cy="{{ $point[1] }}" r="4.5" />
+                            @foreach ($salesChart['details'] as $detail)
+                                <circle
+                                    cx="{{ $detail['x'] }}"
+                                    cy="{{ $detail['y'] }}"
+                                    r="4.5"
+                                    data-chart-point
+                                    tabindex="{{ $loop->first ? 0 : -1 }}"
+                                    role="img"
+                                    aria-label="{{ $detail['label'] }}: {{ $detail['value'] }}"
+                                    data-label="{{ $detail['label'] }}"
+                                    data-value="{{ $detail['value'] }}"
+                                />
                             @endforeach
                         </svg>
 
-                        <div class="dashboard-ref-chart-days" aria-hidden="true" style="grid-template-columns:repeat({{ max(1, count($salesChart['labels'])) }}, 1fr)">
-                            @foreach ($salesChart['labels'] as $dayLabel)
-                                <span>{{ $dayLabel }}</span>
+                        <div class="dashboard-ref-chart-days" aria-hidden="true">
+                            @foreach ($salesChart['label_points'] as $label)
+                                <span style="left:{{ round($label['x'] / 720 * 100, 3) }}%">{{ $label['label'] }}</span>
                             @endforeach
                         </div>
                     </div>

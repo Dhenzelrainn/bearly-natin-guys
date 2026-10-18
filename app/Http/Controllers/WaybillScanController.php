@@ -120,6 +120,10 @@ class WaybillScanController extends Controller
                 'required',
                 'integer',
             ],
+            'scan_method' => [
+                'nullable',
+                'in:camera,barcode,manual,image',
+            ],
         ]);
 
         $logisticsProfileId = $request
@@ -146,7 +150,7 @@ class WaybillScanController extends Controller
             $waybill,
             $center,
             $request->user(),
-            'manual'
+            $data['scan_method'] ?? 'manual'
         );
 
         return back()->with(

@@ -107,7 +107,7 @@
                             <dd class="pickup-address-value">
                                 <span>{{ $pickup['location'] ?: 'Not provided' }}</span>
                                 @if(filled($pickup['location']) && $pickup['location'] !== 'Not provided')
-                                    <a class="pickup-map-link" href="https://www.google.com/maps/search/?api=1&amp;query={{ rawurlencode($pickup['location']) }}" target="_blank" rel="noopener noreferrer">
+                                    <a class="pickup-map-link" href="{{ filled($pickup['latitude'] ?? null) && filled($pickup['longitude'] ?? null) ? 'https://www.openstreetmap.org/?mlat='.rawurlencode($pickup['latitude']).'&amp;mlon='.rawurlencode($pickup['longitude']).'#map=17/'.rawurlencode($pickup['latitude']).'/'.rawurlencode($pickup['longitude']) : 'https://www.openstreetmap.org/search?query='.rawurlencode($pickup['location']) }}" target="_blank" rel="noopener noreferrer">
                                         View on Map <i data-lucide="external-link" aria-hidden="true"></i>
                                     </a>
                                 @endif

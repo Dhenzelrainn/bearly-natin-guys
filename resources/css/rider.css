@@ -1191,3 +1191,27 @@ body[data-module="rider"] .history-detail-modal .activity-item {
         grid-template-columns: minmax(0, 1fr);
     }
 }
+
+.notification-view-all {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 11px 12px;
+    border-top: 1px solid var(--line, #eee3d8);
+    color: var(--brown-800, #6f3b20);
+    font-size: 11px;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.notification-view-all:hover,
+.notification-view-all:focus-visible {
+    background: rgba(231, 167, 47, 0.08);
+    text-decoration: underline;
+}
+
+.notification-view-all svg {
+    width: 14px;
+    height: 14px;
+}

@@ -17,12 +17,16 @@
 
     @vite([
         'resources/css/admin.css',
+        'resources/css/messages-standard.css',
+        'resources/js/messages-standard.js',
+        'resources/js/realtime.js',
         'resources/js/admin.js'
     ])
     @include('partials.session-safety')
+    @stack('styles')
 </head>
 
-<body class="admin-body">
+<body class="admin-body" data-realtime-user-id="{{ auth()->id() }}">
 
 @php
 
@@ -155,6 +159,11 @@ $adminNavGroups = [
                 'route' => 'admin.announcements',
                 'icon' => 'megaphone',
             ],
+            [
+                'label' => 'Support Tickets',
+                'route' => 'admin.support-tickets',
+                'icon' => 'life-buoy',
+            ],
         ],
     ],
 
@@ -244,6 +253,21 @@ $adminNavGroups = [
 
                 <span>
                     Dashboard
+                </span>
+
+            </a>
+
+
+            <a
+                href="{{ route('notifications.center') }}"
+                class="admin-nav-link {{ request()->routeIs('notifications.center') ? 'is-active' : '' }}"
+                title="Notifications"
+            >
+
+                <i class="admin-ui-icon" data-lucide="bell"></i>
+
+                <span>
+                    Notifications
                 </span>
 
             </a>
@@ -363,7 +387,7 @@ $adminNavGroups = [
             request()->routeIs('admin.users*') => 'User Management',
             request()->routeIs('admin.compliance*', 'admin.disputes*', 'admin.violations*') => 'Compliance & Disputes',
             request()->routeIs('admin.commissions', 'admin.transactions', 'admin.payments', 'admin.seller-payouts.*', 'admin.reports', 'admin.orders', 'admin.fulfillment') => 'Finance & Reports',
-            request()->routeIs('admin.messages', 'admin.announcements') => 'Communication',
+            request()->routeIs('admin.messages', 'admin.announcements', 'admin.support-tickets') => 'Communication',
             request()->routeIs('admin.settings', 'admin.account', 'admin.policies', 'admin.audit-logs') => 'System Management',
             default => trim(View::yieldContent('page-title', 'Admin Center')) ?: 'Admin Center',
         };
@@ -397,7 +421,7 @@ $adminNavGroups = [
     {{-- ================================
          Notifications
          ================================ --}}
-    <div class="admin-popover-wrap topbar-popover-wrap">
+    <div class="admin-popover-wrap topbar-popover-wrap" data-notification-center data-notification-skin="admin">
 
         <button
             class="admin-icon-button admin-notification-trigger"
@@ -411,9 +435,7 @@ $adminNavGroups = [
                 aria-hidden="true"
             ></i>
 
-            @if(count($topNotifications ?? []) > 0)
-                <span class="admin-notification-dot"></span>
-            @endif
+            <span class="admin-notification-dot" data-notification-badge="dot" hidden></span>
         </button>
 
 
@@ -428,49 +450,29 @@ $adminNavGroups = [
                 <div>
                     <strong>Notifications</strong>
 
-                    <span>
-                        {{ count($topNotifications ?? []) }} new
-                    </span>
+                    <span data-notification-summary>Recent updates</span>
                 </div>
 
             </div>
 
 
-            <div class="notification-list">
+            <div class="notification-list" data-notification-list></div>
 
-                @forelse(($topNotifications ?? []) as $notification)
+            <div class="admin-empty-notifications" data-notification-empty hidden>
+                No new notifications.
+            </div>
 
-                    <button
-                        type="button"
-                        class="notification-row"
-                    >
+            <div class="popover-footer">
 
-                        <span
-                            class="admin-notice-dot
-                            admin-notice-dot-{{ $notification['type'] }}"
-                        ></span>
+                <button type="button" class="notification-mark-all" data-notification-mark-all hidden>
+                    <i class="admin-ui-icon" data-lucide="mail-check" aria-hidden="true"></i>
+                    <span>Mark all as read</span>
+                </button>
 
-                        <span>
-
-                            <strong>
-                                {{ $notification['title'] }}
-                            </strong>
-
-                            <small>
-                                {{ $notification['time'] }}
-                            </small>
-
-                        </span>
-
-                    </button>
-
-                @empty
-
-                    <div class="admin-empty-notifications">
-                        No new notifications.
-                    </div>
-
-                @endforelse
+                <a class="admin-notification-view-all" href="{{ route('notifications.center') }}">
+                    <span>View all notifications</span>
+                    <i class="admin-ui-icon" data-lucide="arrow-right" aria-hidden="true"></i>
+                </a>
 
             </div>
 
@@ -494,11 +496,11 @@ $adminNavGroups = [
                 aria-label="Open profile menu"
             >
 
-                <span class="admin-avatar" data-current-admin-avatar>
+                <span class="admin-avatar">
                     {{ $admin['initials'] ?? 'AR' }}
                 </span>
 
-                <span class="admin-profile-name" data-current-admin-name>
+                <span class="admin-profile-name">
                     {{ $admin['name'] ?? 'Alex Rivera' }}
                 </span>
 
@@ -519,17 +521,17 @@ $adminNavGroups = [
 
                 <div class="profile-popover-head">
 
-                    <span class="admin-avatar admin-avatar-small" data-current-admin-avatar>
+                    <span class="admin-avatar admin-avatar-small">
                         {{ $admin['initials'] ?? 'AR' }}
                     </span>
 
                     <div>
 
-                        <strong data-current-admin-name>
+                        <strong>
                             {{ $admin['name'] ?? 'Alex Rivera' }}
                         </strong>
 
-                        <small data-current-admin-email>
+                        <small>
                             {{ $admin['email'] ?? 'admin@bearly.test' }}
                         </small>
 
@@ -623,6 +625,7 @@ $adminNavGroups = [
 
 <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
 
+@stack('scripts')
 
 </body>
 </html>

@@ -16,6 +16,7 @@ use App\Models\SellerOrderStatusHistory;
 use App\Models\SellerProfile;
 use App\Models\Store;
 use App\Models\User;
+use App\Notifications\WorkflowNotification;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
@@ -31,6 +32,7 @@ class CheckoutService
         private readonly BuyerCatalogService $catalog,
         private readonly InventoryReservationService $reservations,
         private readonly PostalCodeLookup $postalCodes,
+        private readonly NotificationService $notifications,
     ) {}
 
     public function quote(User $buyer, array $cartItemIds, int $addressId): array
@@ -107,6 +109,7 @@ class CheckoutService
                     $quoteToken,
                 );
                 $now = now();
+                $createdSellerOrders = [];
 
                 $order = Order::query()->create([
                     'order_no' => $this->number('BRY'),
@@ -149,11 +152,14 @@ class CheckoutService
                         'shipping_quote' => $group['quote'],
                     ]);
 
+                    $createdSellerOrders[] = $sellerOrder;
+
                     foreach ($group['items'] as $line) {
                         /** @var ProductVariant $variant */
                         $variant = $line['variant'];
                         $newReserved = (int) $variant->stock_reserved + $line['quantity'];
                         $productImage = $this->catalog->orderImageRecord($line['product'], $variant);
+                        $category = $line['product']->category;
 
                         $variant->update(['stock_reserved' => $newReserved]);
                         InventoryMovement::query()->create([
@@ -179,6 +185,8 @@ class CheckoutService
                             'options' => $variant->options,
                             'product_image_disk' => $productImage?->disk ?: ($productImage ? 'public' : null),
                             'product_image_path' => $productImage?->path,
+                            'category_id_snapshot' => $category?->id,
+                            'category_name_snapshot' => $category?->name,
                             'unit_price_minor' => (int) $variant->price_minor,
                             'quantity' => $line['quantity'],
                             'discount_minor' => 0,
@@ -200,6 +208,8 @@ class CheckoutService
 
                 CartItem::query()->whereIn('id', $cartItems->pluck('id'))->delete();
 
+                $this->notifySellersOfNewOrder($order, $createdSellerOrders, $buyer);
+
                 return $order->fresh(['sellerOrders.items', 'payments']);
             }, attempts: 3);
         } catch (QueryException $exception) {
@@ -210,6 +220,54 @@ class CheckoutService
             }
 
             throw $exception;
+        }
+    }
+
+    /**
+     * @param  list<SellerOrder>  $sellerOrders
+     */
+    private function notifySellersOfNewOrder(Order $order, array $sellerOrders, User $buyer): void
+    {
+        foreach ($sellerOrders as $sellerOrder) {
+            $sellerUser = $sellerOrder->store?->sellerProfile?->user;
+
+            if (! $sellerUser) {
+                continue;
+            }
+
+            $total = '₱'.number_format(((int) $sellerOrder->total_minor) / 100, 2);
+
+            $this->notifications->sendAfterCommit($sellerUser, new WorkflowNotification(
+                eventKey: 'seller_order_updates',
+                title: 'New order received',
+                body: "{$sellerOrder->seller_order_no} ({$total}) was placed by {$buyer->name}.",
+                actionUrl: route('seller.orders'),
+                type: 'success',
+                meta: ['order_id' => (int) $order->id, 'seller_order_id' => (int) $sellerOrder->id],
+            ));
+        }
+    }
+
+    /**
+     * @param  Collection<int, SellerOrder>  $sellerOrders
+     */
+    private function notifySellersOfCancellation(Order $order, Collection $sellerOrders, User $buyer, string $reason): void
+    {
+        foreach ($sellerOrders as $sellerOrder) {
+            $sellerUser = $sellerOrder->store?->sellerProfile?->user;
+
+            if (! $sellerUser) {
+                continue;
+            }
+
+            $this->notifications->sendAfterCommit($sellerUser, new WorkflowNotification(
+                eventKey: 'seller_order_cancelled',
+                title: 'Order cancelled by buyer',
+                body: "{$buyer->name} cancelled {$sellerOrder->seller_order_no} before it was confirmed. Reason: {$reason}.",
+                actionUrl: route('seller.orders'),
+                type: 'warning',
+                meta: ['order_id' => (int) $order->id, 'seller_order_id' => (int) $sellerOrder->id],
+            ));
         }
     }
 
@@ -255,6 +313,8 @@ class CheckoutService
                 'cancel_reason' => $reason,
             ]);
             $order->payments()->where('status', 'pending')->update(['status' => 'cancelled']);
+
+            $this->notifySellersOfCancellation($order, $activeSellerOrders, $buyer, $reason);
 
             return $order->fresh(['sellerOrders.items', 'payments']);
         });
@@ -307,7 +367,7 @@ class CheckoutService
         $productIds = $variants->pluck('product_id')->unique()->values();
         $productsQuery = Product::query()
             ->visibleToBuyers()
-            ->with(['store.sellerProfile.pickupAddress', 'images.variant'])
+            ->with(['store.sellerProfile.pickupAddress', 'images.variant', 'category'])
             ->whereIn('id', $productIds)
             ->orderBy('id');
         if ($lock) {

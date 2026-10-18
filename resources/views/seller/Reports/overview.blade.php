@@ -32,17 +32,68 @@
         <article class="report-trend-panel">
             <div class="report-section-heading"><div><h3>How {{ $trendTitle }} moved</h3><p>{{ $trendSummary }}</p></div><span><i></i>Gross Sales</span></div>
             @if ($salesChart['has_data'])
-                <div class="report-chart">
-                    <div class="report-y-axis">@foreach ($salesChart['y_axis'] as $axisLabel)<span>₱{{ $axisLabel }}</span>@endforeach</div>
-                    <div class="report-chart-plot">
-                        <svg viewBox="0 0 700 220" role="img" aria-label="Gross completed sales for the selected period">
-                            <defs><linearGradient id="reportArea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#77885b" stop-opacity=".22"/><stop offset="1" stop-color="#77885b" stop-opacity="0"/></linearGradient></defs>
-                            <path class="report-chart-area" d="{{ $salesChart['area'] }}"/>
-                            <polyline class="report-chart-line" points="{{ $salesChart['polyline'] }}"/>
-                            @foreach ($salesChart['points'] as $point)<circle cx="{{ $point[0] }}" cy="{{ $point[1] }}" r="4"/>@endforeach
-                        </svg>
-                        <div class="report-chart-labels" style="grid-template-columns:repeat({{ max(1, count($salesChart['labels'])) }}, 1fr)">@foreach ($salesChart['labels'] as $label)<span>{{ $label }}</span>@endforeach</div>
+                <div class="report-chart" aria-label="Gross completed sales for the selected period">
+                    <div class="report-chart-y" aria-hidden="true">
+                        @foreach ($salesChart['y_axis_points'] as $axis)
+                            <span style="top:{{ round($axis['y'] / 260 * 100, 3) }}%">₱{{ $axis['label'] }}</span>
+                        @endforeach
                     </div>
+
+                    <div class="report-chart-plot" data-chart data-chart-hover="nearest">
+                        <svg viewBox="0 0 720 260" role="group" aria-label="Gross completed sales trend" preserveAspectRatio="none">
+                            <defs>
+                                <linearGradient id="reportTrendFill" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0" stop-color="#6f8251" stop-opacity=".18"/>
+                                    <stop offset=".6" stop-color="#6f8251" stop-opacity=".06"/>
+                                    <stop offset="1" stop-color="#6f8251" stop-opacity="0"/>
+                                </linearGradient>
+                            </defs>
+
+                            <g class="report-chart-grid" aria-hidden="true">
+                                @foreach ($salesChart['y_axis_points'] as $axis)
+                                    @unless ($loop->first)
+                                        <line x1="0" x2="720" y1="{{ $axis['y'] }}" y2="{{ $axis['y'] }}" vector-effect="non-scaling-stroke" {{ $loop->last ? 'class="is-baseline"' : '' }}/>
+                                    @endunless
+                                @endforeach
+                            </g>
+
+                            <path class="report-chart-area" d="{{ $salesChart['area'] }}" aria-hidden="true"/>
+                            <line class="report-chart-crosshair" data-chart-crosshair aria-hidden="true" x1="0" x2="0" y1="{{ collect($salesChart['y_axis_points'])->first()['y'] }}" y2="{{ collect($salesChart['y_axis_points'])->last()['y'] }}" vector-effect="non-scaling-stroke"/>
+                            <polyline class="report-chart-line" points="{{ $salesChart['polyline'] }}" vector-effect="non-scaling-stroke" aria-hidden="true"/>
+
+                            @foreach ($salesChart['details'] as $detail)
+                                <circle
+                                    cx="{{ $detail['x'] }}"
+                                    cy="{{ $detail['y'] }}"
+                                    r="4.5"
+                                    data-chart-point
+                                    tabindex="{{ $loop->first ? 0 : -1 }}"
+                                    role="img"
+                                    aria-label="{{ $detail['label'] }}: {{ $detail['value'] }}"
+                                    data-label="{{ $detail['label'] }}"
+                                    data-value="{{ $detail['value'] }}"
+                                />
+                            @endforeach
+                        </svg>
+
+                        <div class="report-chart-labels" aria-hidden="true">
+                            @foreach ($salesChart['label_points'] as $label)
+                                <span style="left:{{ round($label['x'] / 720 * 100, 3) }}%">{{ $label['label'] }}</span>
+                            @endforeach
+                        </div>
+                    </div>
+
+                    <table class="sr-only">
+                        <caption>Gross completed sales by period</caption>
+                        <thead><tr><th scope="col">Period</th><th scope="col">Gross sales</th></tr></thead>
+                        <tbody>
+                            @foreach ($salesChart['details'] as $detail)
+                                @if ($loop->first || $salesChart['details'][$loop->index - 1]['label'] !== $detail['label'])
+                                    <tr><th scope="row">{{ $detail['label'] }}</th><td>{{ $detail['value'] }}</td></tr>
+                                @endif
+                            @endforeach
+                        </tbody>
+                    </table>
                 </div>
             @else
                 <div class="report-no-results report-chart-empty"><i data-lucide="bar-chart-3"></i><strong>No completed sales in this period</strong><span>Gross sales will chart here once orders complete.</span></div>

@@ -24,6 +24,10 @@
 <div><h1>Shopping Cart</h1><p><span id="cart-selected-count">0 items</span> selected (<span id="cart-count">0 items</span> in your cart)</p></div>
 </div>
 
+<p id="cart-preview-notice" class="cart-preview-notice" role="status" hidden>
+Browser-only catalog previews are not part of your live cart and cannot be checked out. Add an orderable product from the catalog instead.
+</p>
+
 <section id="cart-content" hidden>
 <div class="cart-layout">
 <div class="cart-main">
@@ -64,5 +68,8 @@
 </section>
 </main>
 <div id="cart-toast" class="cart-toast" role="status"></div>
-<script>window.bearlyCartItems = @json($cartItems ?? []);</script>
+<script>
+    window.bearlyCartItems = @json($cartItems ?? []);
+    window.bearlyWishlistProductIds = @json($wishlistProductIds ?? []);
+</script>
 </body></html>

@@ -26,6 +26,7 @@ use App\Models\SortingZone;
 use App\Models\Store;
 use App\Models\User;
 use App\Models\Waybill;
+use App\Notifications\WorkflowNotification;
 use App\Enums\DeliveryAttemptOutcome;
 use App\Services\CodCashCollectionService;
 use App\Services\RiderDeliveryService;
@@ -36,6 +37,7 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 
 class RiderDeliveryWorkflowTest extends TestCase
@@ -2280,6 +2282,7 @@ class RiderDeliveryWorkflowTest extends TestCase
     public function test_rider_can_complete_delivery_with_private_photo_proof(): void
     {
         Storage::fake('local');
+        Notification::fake();
 
         $rider = $this->makeRider('COMPLETE');
 
@@ -2372,6 +2375,23 @@ class RiderDeliveryWorkflowTest extends TestCase
             'actor_user_id' => $rider->user_id,
             'source' => 'rider',
         ]);
+
+        $sellerOrder = $assignment['shipment']->fresh()->sellerOrder;
+        $buyer = $sellerOrder->order->buyer;
+        $sellerUser = $sellerOrder->store->sellerProfile->user;
+
+        Notification::assertSentTo(
+            $buyer,
+            WorkflowNotification::class,
+            fn (WorkflowNotification $notification): bool => $notification->eventKey() === 'buyer_shipment_updates'
+                && $notification->title() === 'Order delivered',
+        );
+
+        Notification::assertSentTo(
+            $sellerUser,
+            WorkflowNotification::class,
+            fn (WorkflowNotification $notification): bool => $notification->eventKey() === 'seller_shipment_updates',
+        );
     }
 
     public function test_return_delivery_requires_seller_inspection_before_restock(): void

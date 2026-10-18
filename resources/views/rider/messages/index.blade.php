@@ -1,8 +1,172 @@
 @extends('rider.layouts.app')
-@section('title','Messages')
-@section('page-title','Messages')
+
+@section('title', 'Messages')
+@section('page-title', 'Messages')
+
 @section('content')
-<div class="page-header"><div><p class="page-kicker">Communication hub</p><h2>Buyer, Seller, and Logistics messaging</h2><p>Coordinate pickup handovers, delivery instructions, and sorting center operations.</p></div><div class="page-actions"><button class="button button-primary" type="button" data-modal-open="new-conversation"><i data-lucide="square-pen"></i>New message</button></div></div>
-<section class="chat-shell"><aside class="chat-sidebar"><div class="chat-sidebar-head"><div class="search-field"><i data-lucide="search"></i><input type="search" data-chat-search placeholder="Search conversations"></div></div>@foreach($conversations as $index=>$conversation)<button class="conversation {{ $index===0?'is-active':'' }}" type="button" data-conversation="{{ $conversation['id'] }}" data-name="{{ $conversation['name'] }}" data-role="{{ $conversation['role'] }}"><span class="avatar">{{ $conversation['initials'] }}</span><span class="conversation-copy"><strong>{{ $conversation['name'] }}</strong><small>{{ $conversation['preview'] }}</small></span><span class="conversation-time">{{ $conversation['time'] }}</span></button>@endforeach</aside><div class="chat-main"><header class="chat-head"><span class="chat-person"><strong data-chat-name></strong><small data-chat-role></small></span><button class="icon-button" type="button"><i data-lucide="info"></i></button></header><div class="chat-messages" data-chat-messages></div><div class="chat-compose"><button class="icon-button" type="button"><i data-lucide="paperclip"></i></button><input type="text" data-chat-input placeholder="Write a message…"><button class="button button-primary" type="button" data-chat-send><i data-lucide="send"></i>Send</button></div></div></section>
-<section class="modal" data-modal="new-conversation" hidden><div class="modal-header"><div><h3>Start a conversation</h3><p>Create a front-end message draft.</p></div><button class="icon-button" type="button" data-modal-close><i data-lucide="x"></i></button></div><form class="modal-body" data-preview-form="newConversation"><div class="field"><label>Contact type</label><select required name="type"><option value="">Select type</option><option>Buyer</option><option>Seller</option><option>Logistics Sorting Center</option></select></div><div class="field" style="margin-top:14px"><label>Recipient</label><input required name="recipient"></div><div class="field" style="margin-top:14px"><label>Message</label><textarea required name="message"></textarea></div><div class="form-actions"><button class="button" type="button" data-modal-close>Cancel</button><button class="button button-primary" type="submit">Create draft</button></div></form></section>
+    <div class="page-header">
+        <div>
+            <p class="page-kicker">
+                Communication hub
+            </p>
+
+            <h2>
+                Messages
+            </h2>
+
+            <p>
+                Coordinate pickup handovers and delivery instructions with your
+                Logistics Center and Bearly Support. Conversations are started by
+                them — replies from you appear in the same thread.
+            </p>
+        </div>
+    </div>
+
+    <section class="chat-shell messages-standard-page" data-standard-role="rider">
+        <aside class="chat-sidebar">
+            <div class="chat-sidebar-head">
+                <div class="search-field">
+                    <i data-lucide="search"></i>
+
+                    <input
+                        type="search"
+                        data-chat-search
+                        placeholder="Search conversations"
+                        @if(empty($conversations))
+                            disabled
+                        @endif
+                    >
+                </div>
+            </div>
+
+            @forelse($conversations as $conversation)
+                <button
+                    class="conversation {{
+                        (int) $selectedConversationId === $conversation['id']
+                            ? 'is-active'
+                            : ''
+                    }}"
+                    type="button"
+                    data-conversation="{{ $conversation['id'] }}"
+                    data-name="{{ $conversation['name'] }}"
+                    data-role="{{ $conversation['role'] }}"
+                    data-unread="{{ $conversation['unread'] }}"
+                >
+                    <span class="avatar">
+                        {{ $conversation['initials'] }}
+                    </span>
+
+                    <span class="conversation-copy">
+                        <strong>
+                            {{ $conversation['name'] }}
+                        </strong>
+
+                        <small>
+                            {{ $conversation['preview'] }}
+                        </small>
+                    </span>
+
+                    <span class="conversation-time">
+                        {{ $conversation['time'] }}
+                    </span>
+                </button>
+            @empty
+                <div class="table-empty">
+                    No conversations yet.
+                </div>
+            @endforelse
+        </aside>
+
+        <div class="chat-main">
+            <header class="chat-head">
+                <span class="chat-person">
+                    <strong data-chat-name>
+                        @if(empty($conversations))
+                            No conversation selected
+                        @endif
+                    </strong>
+
+                    <small data-chat-role></small>
+                </span>
+            </header>
+
+            <div
+                class="chat-messages"
+                data-chat-messages
+            >
+                @if(empty($conversations))
+                    <div class="table-empty">
+                        Conversations started by your Logistics Center or
+                        Bearly Support will appear here.
+                    </div>
+                @endif
+            </div>
+
+            <div class="chat-compose">
+                <button
+                    class="icon-button"
+                    type="button"
+                    data-chat-attachment-button
+                    title="Attach a file"
+                    @if(empty($conversations))
+                        disabled
+                    @endif
+                >
+                    <i data-lucide="paperclip"></i>
+                </button>
+
+                <input
+                    type="file"
+                    data-chat-attachment
+                    accept=".jpg,.jpeg,.png,.webp,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.zip"
+                    hidden
+                    @if(empty($conversations))
+                        disabled
+                    @endif
+                >
+
+                <span
+                    class="chat-selected-file"
+                    data-chat-attachment-name
+                    hidden
+                ></span>
+
+                <input
+                    type="text"
+                    data-chat-input
+                    placeholder="Write a message…"
+                    @if(empty($conversations))
+                        disabled
+                    @endif
+                >
+
+                <button
+                    class="button button-primary"
+                    type="button"
+                    data-chat-send
+                    @if(empty($conversations))
+                        disabled
+                    @endif
+                >
+                    <i data-lucide="send"></i>
+                    Send
+                </button>
+            </div>
+        </div>
+
+        <aside class="messages-standard-details" data-standard-details>
+            <h3>Conversation details</h3>
+            <div data-standard-details-body>
+                <div class="table-empty">Select a conversation to see its details.</div>
+            </div>
+        </aside>
+    </section>
+
+    <script>
+        window.bearlyRiderConversations =
+            {{ Illuminate\Support\Js::from($conversationData) }};
+
+        window.bearlyRiderSelectedConversation =
+            {{ Illuminate\Support\Js::from($selectedConversationId) }};
+    </script>
 @endsection

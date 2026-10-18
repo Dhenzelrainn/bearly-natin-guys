@@ -63,6 +63,48 @@ class DatabaseSeeder extends Seeder
                 'is_active' => true,
                 'version' => 1,
             ],
+            [
+                'code' => 'CATEGORY_MISMATCH_FASHION_ELECTRONICS',
+                'name' => 'Electronics product listed under Fashion and Apparel',
+                'rule_type' => 'category_mismatch',
+                'target_field' => 'name_description',
+                'pattern' => null,
+                'category_id' => null,
+                'severity' => 'high',
+                'default_action' => 'hold',
+                'configuration' => [
+                    'managed_by_migration' => '2026_10_18_000003_add_fashion_electronics_category_mismatch_rule',
+                    'mismatched_terms_by_category_slug' => [
+                        'fashion-and-apparel' => [
+                            'smartphone', 'smartphones',
+                            'cellphone', 'cellphones', 'cell phone', 'cell phones',
+                            'mobile phone', 'mobile phones',
+                            'laptop', 'laptops',
+                            'tablet', 'tablets',
+                            'smartwatch', 'smartwatches',
+                            'earbud', 'earbuds', 'earphone', 'earphones',
+                            'headphone', 'headphones', 'headset', 'headsets',
+                            'power bank', 'powerbank',
+                            'phone charger', 'laptop charger', 'wireless charger',
+                            'charging cable', 'usb cable',
+                            'bluetooth speaker', 'bluetooth headphones', 'bluetooth earbuds', 'bluetooth headset',
+                            'gaming console', 'game console', 'playstation', 'xbox',
+                            'drone', 'drones',
+                            'wifi router', 'wireless router', 'modem',
+                            'graphics card', 'motherboard',
+                            'hard drive', 'external hard drive', 'solid state drive',
+                            'flash drive', 'usb flash drive', 'memory card',
+                            'keyboard', 'gaming mouse', 'wireless mouse',
+                            'computer monitor', 'gaming monitor',
+                            'desktop computer', 'gaming laptop', 'gaming pc',
+                            'smart tv', 'television',
+                            'action camera', 'webcam', 'dslr',
+                        ],
+                    ],
+                ],
+                'is_active' => true,
+                'version' => 1,
+            ],
         ];
         foreach ($rules as $rule) {
             ComplianceRule::updateOrCreate(['code' => $rule['code']], $rule);
@@ -106,5 +148,6 @@ class DatabaseSeeder extends Seeder
                     'assigned_at' => now(),
                 ],
             ]);
-        }    }
+        }
+    }
 }

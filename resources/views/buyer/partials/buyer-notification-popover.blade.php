@@ -2,7 +2,7 @@
     $notificationHeaderActive = ($headerActive ?? '') === 'notifications';
 @endphp
 
-<div class="buyer-notification-menu" data-notification-menu>
+<div class="buyer-notification-menu" data-notification-menu data-notification-center data-notification-skin="buyer">
     <button
         type="button"
         class="notification-header-trigger{{ $notificationHeaderActive ? ' active' : '' }}"
@@ -35,19 +35,19 @@
             </button>
         </div>
 
-        <div class="buyer-notification-popover-list" data-notification-popover-list role="list"></div>
-        <div class="buyer-notification-popover-empty" data-notification-popover-empty hidden>
+        <div class="buyer-notification-popover-list" data-notification-popover-list data-notification-list role="list"></div>
+        <div class="buyer-notification-popover-empty" data-notification-popover-empty data-notification-empty hidden>
             <span class="material-symbols-outlined" aria-hidden="true">notifications_off</span>
             <strong>You're all caught up</strong>
             <span>New Bearly updates will appear here.</span>
         </div>
 
         <div class="buyer-notification-popover-actions">
-            <button type="button" class="buyer-notification-mark-all" data-notification-popover-mark-all>
+            <button type="button" class="buyer-notification-mark-all" data-notification-mark-all>
                 <span class="material-symbols-outlined" aria-hidden="true">mark_email_read</span>
                 Mark all as read
             </button>
-            <a href="{{ url('/profile#notifications') }}" data-notification-view-all>
+            <a href="{{ route('notifications.center') }}" data-notification-view-all>
                 View all notifications
                 <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
             </a>

@@ -16,15 +16,15 @@
     </div>
     <div class="notification-preference-list">
         @foreach ($preferences as $preference)
-            <article class="notification-preference-row">
+            <article class="notification-preference-row" data-notification-preference="{{ $preference['key'] }}">
                 <span class="notification-type-icon"><i data-lucide="{{ $preference['icon'] }}"></i></span>
                 <div class="notification-type-copy"><strong>{{ $preference['title'] }}</strong><small>{{ $preference['description'] }}</small></div>
                 <label class="settings-switch">
-                    <input type="checkbox" name="{{ $preference['key'] }}_app" @checked($preference['in_app']) @disabled($preference['required'] ?? false)>
+                    <input type="checkbox" name="{{ $preference['key'] }}_app" data-preference-channel="in_app" @checked($preference['in_app']) @disabled($preference['required'] ?? false)>
                     <i></i><span class="sr-only">In-app {{ $preference['title'] }}</span>
                 </label>
                 <label class="settings-switch">
-                    <input type="checkbox" name="{{ $preference['key'] }}_email" @checked($preference['email'])>
+                    <input type="checkbox" name="{{ $preference['key'] }}_email" data-preference-channel="email" @checked($preference['email'])>
                     <i></i><span class="sr-only">Email {{ $preference['title'] }}</span>
                 </label>
             </article>

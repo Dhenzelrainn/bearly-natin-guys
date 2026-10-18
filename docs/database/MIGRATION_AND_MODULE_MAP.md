@@ -34,6 +34,8 @@ The additive migration `2026_10_15_000001_create_seller_wallet_and_withdrawal_ta
 
 The additive migration `2026_10_15_000002_add_receiving_bank_name_to_seller_payouts` adds the optional `seller_payouts.receiving_bank_name` field used when Finance records a verified legacy bank transfer. Its rollback refuses to drop the column while any bank names have been recorded.
 
+The additive migration `2026_10_18_000002_add_category_snapshot_to_order_items` adds nullable `order_items.category_id_snapshot` (FK to `categories`, delete SET NULL) and `order_items.category_name_snapshot` for purchase-time category reporting. Legacy rows stay null and report as "Category not recorded"; its `down()` drops the FK and both columns.
+
 ## Delivery priorities
 
 | Priority | Scope | Deadline classification |

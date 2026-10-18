@@ -39,7 +39,7 @@
             <div class="tracking-attention-copy">
                 <strong>
                     {{ $trackingCounts['failed'] }}
-                    shipment{{ $trackingCounts['failed'] === 1 ? '' : 's' }} needs attention
+                    shipment{{ $trackingCounts['failed'] === 1 ? '' : 's' }} {{ $trackingCounts['failed'] === 1 ? 'needs' : 'need' }} attention
                 </strong>
                 <p>{{ $attentionShipment['latest'] }}.</p>
             </div>
@@ -126,33 +126,26 @@
 
                 <tbody>
                     @foreach ($shipments as $item)
-                        @php
-                            $riderPrimary = $item['rider'];
-                            $riderSecondary = 'Delivery rider';
-
-                            if (str_starts_with($item['rider'], 'Pickup rider:')) {
-                                $riderPrimary = trim(str_replace('Pickup rider:', '', $item['rider']));
-                                $riderSecondary = 'Pickup rider';
-                            } elseif (str_contains(strtolower($item['rider']), 'assignment pending')) {
-                                $riderPrimary = 'Awaiting assignment';
-                                $riderSecondary = '—';
-                            }
-
-                            $etaLabel = match ($item['status_key']) {
-                                'delivered' => '—',
-                                'failed' => 'To be updated',
-                                default => $item['eta'],
-                            };
-                        @endphp
-
                         <tr
                             data-tracking-row
                             data-status="{{ $item['status_key'] }}"
-                            data-search="{{ strtolower(implode(' ', $item)) }}"
+                            data-search="{{ $item['search'] }}"
                         >
                             <td class="tracking-order-cell">
-                                <strong>{{ $item['tracking'] }}</strong>
-                                <small>{{ $item['order'] }}</small>
+                                <div class="tracking-shipment">
+                                    <span class="tracking-shipment-thumb" role="img" aria-label="{{ $item['product_name'] }}" title="{{ $item['product_name'] }}">
+                                        @if (filled($item['product_image']))
+                                            <img src="{{ $item['product_image'] }}" alt="" loading="lazy" decoding="async">
+                                        @else
+                                            <i data-lucide="package" aria-hidden="true"></i>
+                                        @endif
+                                    </span>
+
+                                    <span class="tracking-shipment-copy">
+                                        <strong>{{ $item['tracking'] }}</strong>
+                                        <small>{{ $item['order'].($item['item_count'] > 1 ? ' · '.$item['item_count'].' items' : '') }}</small>
+                                    </span>
+                                </div>
                             </td>
 
                             <td class="tracking-customer-cell">
@@ -161,8 +154,8 @@
                             </td>
 
                             <td class="tracking-rider-cell">
-                                <span>{{ $riderPrimary }}</span>
-                                <small>{{ $riderSecondary }}</small>
+                                <span>{{ $item['rider_name'] ?? 'Awaiting assignment' }}</span>
+                                <small>{{ $item['rider_role'] ?? '—' }}</small>
                             </td>
 
                             <td class="tracking-update-cell">
@@ -170,7 +163,7 @@
                                 <small>{{ $item['updated'] }}</small>
                             </td>
 
-                            <td class="tracking-eta-cell">{{ $etaLabel }}</td>
+                            <td class="tracking-eta-cell">{{ $item['status_key'] === 'delivered' ? '—' : $item['eta'] }}</td>
 
                             <td class="tracking-status-cell">
                                 <span class="fulfillment-status is-{{ $item['status_key'] }}">
@@ -193,23 +186,26 @@
                 </tbody>
             </table>
 
-            <div class="fulfillment-empty" data-tracking-empty hidden>
-                <i data-lucide="search-x" aria-hidden="true"></i>
-                <strong>No matching shipments</strong>
-                <span>Try changing your search or status tab.</span>
-            </div>
+            @if ($trackingCounts['all'] === 0)
+                <div class="fulfillment-empty" data-tracking-empty>
+                    <i data-lucide="package-open" aria-hidden="true"></i>
+                    <strong>No shipments to track yet</strong>
+                    <span>Outbound parcels appear here after pickup handover to logistics.</span>
+                </div>
+            @else
+                <div class="fulfillment-empty" data-tracking-empty hidden>
+                    <i data-lucide="search-x" aria-hidden="true"></i>
+                    <strong>No matching shipments</strong>
+                    <span>Try changing your search or status tab.</span>
+                </div>
+            @endif
         </div>
 
         <footer class="fulfillment-footer tracking-footer">
-            <span>Showing <strong data-tracking-count>{{ count($shipments) }}</strong> shipments</span>
-            <span>Tracking updates come from logistics and courier scans.</span>
+            <span role="status" aria-live="polite">Showing <strong data-tracking-count>{{ count($shipments) }}</strong> shipments</span>
+            <span class="tracking-footer-note">Tracking updates come from logistics and courier scans · Delivered orders are completed after buyer confirmation.</span>
         </footer>
     </section>
-
-    <div class="tracking-completion-note">
-        <i data-lucide="badge-check" aria-hidden="true"></i>
-        <span>Delivered orders are completed after buyer confirmation.</span>
-    </div>
 </div>
 
 <div class="seller-modal fulfillment-modal tracking-modal" data-modal="tracking-details" hidden>
@@ -228,64 +224,36 @@
 
         <div class="tracking-overview">
             <div>
-                <span>Order</span>
-                <strong data-tracking-order>—</strong>
+                <i data-lucide="package" aria-hidden="true"></i>
+                <div>
+                    <span>Order</span>
+                    <strong data-tracking-order>—</strong>
+                </div>
             </div>
             <div>
-                <span>Customer</span>
-                <strong data-tracking-customer>—</strong>
+                <i data-lucide="user" aria-hidden="true"></i>
+                <div>
+                    <span>Customer</span>
+                    <strong data-tracking-customer>—</strong>
+                </div>
             </div>
             <div>
-                <span>Destination</span>
-                <strong data-tracking-destination>—</strong>
+                <i data-lucide="map-pin" aria-hidden="true"></i>
+                <div>
+                    <span>Destination</span>
+                    <strong data-tracking-destination>—</strong>
+                </div>
             </div>
             <div>
-                <span>Estimated delivery</span>
-                <strong data-tracking-eta>—</strong>
+                <i data-lucide="calendar-days" aria-hidden="true"></i>
+                <div>
+                    <span>Estimated delivery</span>
+                    <strong data-tracking-eta>—</strong>
+                </div>
             </div>
         </div>
 
-        <ol class="shipment-timeline">
-            <li class="is-done">
-                <span><i data-lucide="check" aria-hidden="true"></i></span>
-                <div>
-                    <strong>Parcel picked up</strong>
-                    <small>Rider confirmed seller handover</small>
-                </div>
-            </li>
-
-            <li class="is-done">
-                <span><i data-lucide="check" aria-hidden="true"></i></span>
-                <div>
-                    <strong>Sorting center processing</strong>
-                    <small>Parcel scanned, sorted, and routed by destination</small>
-                </div>
-            </li>
-
-            <li class="is-current">
-                <span><i data-lucide="truck" aria-hidden="true"></i></span>
-                <div>
-                    <strong data-tracking-latest>Current shipment update</strong>
-                    <small data-tracking-updated>Latest scan time</small>
-                </div>
-            </li>
-
-            <li>
-                <span><i data-lucide="package-check" aria-hidden="true"></i></span>
-                <div>
-                    <strong>Delivered</strong>
-                    <small>Courier records successful delivery</small>
-                </div>
-            </li>
-
-            <li>
-                <span><i data-lucide="circle-check-big" aria-hidden="true"></i></span>
-                <div>
-                    <strong>Completed</strong>
-                    <small>Buyer confirms receipt; financial settlement can finalize</small>
-                </div>
-            </li>
-        </ol>
+        <ol class="shipment-timeline" data-tracking-timeline aria-label="Shipment scan history"></ol>
 
         <section class="delivery-proof" data-delivery-proof hidden>
             <i data-lucide="badge-check" aria-hidden="true"></i>
@@ -293,7 +261,6 @@
                 <strong>Proof of delivery recorded</strong>
                 <p>Delivered to the customer. Buyer confirmation is still required before COMPLETED.</p>
             </div>
-            <button type="button" data-fulfillment-demo="Delivery proof opened.">View Proof</button>
         </section>
 
         <div class="modal-actions">
@@ -306,7 +273,7 @@
     </section>
 </div>
 
-<div class="seller-modal fulfillment-modal" data-modal="tracking-report" hidden>
+<div class="seller-modal fulfillment-modal tracking-modal" data-modal="tracking-report" hidden>
     <button class="modal-backdrop" type="button" data-modal-close aria-label="Close report form"></button>
 
     <section class="modal-card">
@@ -320,35 +287,57 @@
             </button>
         </div>
 
-        <form class="shipment-report-form" data-shipment-report-form>
+        <form
+            class="shipment-report-form"
+            action="{{ route('contact.store') }}"
+            method="POST"
+            data-shipment-report-form
+        >
+            @csrf
+            <input type="hidden" name="name" value="{{ $seller['name'] }}">
+            <input type="hidden" name="email" value="{{ $seller['email'] }}">
+            <input type="hidden" name="role" value="Seller">
+            <input type="hidden" name="topic" value="Delivery &amp; Tracking">
+            <input type="hidden" name="reference" maxlength="50" data-shipment-report-reference>
+            <input type="hidden" name="subject" data-shipment-report-subject>
+
+            <p class="tracking-report-context" data-shipment-report-context>
+                The shipment tracking number will be attached to your support ticket.
+            </p>
+
             <label>
                 <span>Issue type</span>
-                <select required>
+                <select required data-shipment-report-issue>
                     <option value="">Choose issue</option>
-                    <option>No tracking update</option>
-                    <option>Pickup or delivery delay</option>
-                    <option>Parcel damaged in transit</option>
-                    <option>Incorrect delivery status</option>
+                    <option value="No tracking update">No tracking update</option>
+                    <option value="Pickup or delivery delay">Pickup or delivery delay</option>
+                    <option value="Parcel damaged in transit">Parcel damaged in transit</option>
+                    <option value="Incorrect delivery status">Incorrect delivery status</option>
                 </select>
             </label>
 
             <label>
                 <span>Description</span>
                 <textarea
+                    name="message"
                     rows="4"
                     required
+                    minlength="10"
+                    maxlength="900"
+                    data-shipment-report-description
                     placeholder="Describe what happened and the help you need."
                 ></textarea>
             </label>
 
-            <label>
-                <span>Supporting evidence</span>
-                <input type="file" accept="image/*,.pdf">
-            </label>
+            <p class="tracking-report-note">
+                This creates a Delivery &amp; Tracking support ticket. File attachments are not available in this form yet.
+            </p>
+
+            <p class="tracking-report-error" data-shipment-report-error role="alert" hidden></p>
 
             <div class="modal-actions">
                 <button class="draft-button" type="button" data-modal-close>Cancel</button>
-                <button class="seller-primary-button" type="submit">Submit Report</button>
+                <button class="seller-primary-button" type="submit" data-shipment-report-submit>Submit Report</button>
             </div>
         </form>
     </section>

@@ -209,12 +209,62 @@ class Phase8AdminFinanceTest extends TestCase
             ->assertSee('Processing')
             ->assertSee('disabled title=', false);
 
+        // Default Sales Summary report (start of year → today): ₱1,000 gross
+        // product sales less the ₱100 completed refund.
         $this->actingAs($this->admin)->get(route('admin.reports'))
             ->assertOk()
+            ->assertSee('₱1,000.00')
             ->assertSee('₱900.00')
-            ->assertSee('₱90.00')
+            // Last bucket of the default range holds both the completed order
+            // and the completed refund.
+            ->assertSee('aria-label="Aug 26 – Sep 15, 2026: ₱900.00"', false)
+            ->assertSee('data-value="₱900.00"', false);
+
+        // Commission ledger report: recognized sale minus the finalized reversal.
+        $this->actingAs($this->admin)->get(route('admin.reports', ['type' => 'commission']))
+            ->assertOk()
+            ->assertSee('Phase 8 Store')
+            ->assertSee('₱900.00')
+            ->assertSee('₱90.00');
+
+        $this->actingAs($this->admin)->get(route('admin.reports', ['type' => 'refund']))
+            ->assertOk()
             ->assertSee('REF-APPROVED-001')
             ->assertSee('Approved');
+    }
+
+    public function test_captured_sale_with_partial_refund_is_not_shown_as_pending(): void
+    {
+        [$profile, , , $sellerOrder, $payment] = $this->commerceFixture();
+        $payment->update(['status' => 'partially_refunded']);
+
+        $commission = PlatformCommission::create([
+            'seller_order_id' => $sellerOrder->id,
+            'type' => 'sale',
+            'base_amount_minor' => 100000,
+            'rate_bps' => 1000,
+            'amount_minor' => 10000,
+            'status' => 'finalized',
+            'calculated_at' => now(),
+            'finalized_at' => now(),
+        ]);
+        SellerTransaction::create([
+            'transaction_no' => 'STX-PARTIAL-REFUND-001',
+            'seller_profile_id' => $profile->id,
+            'seller_order_id' => $sellerOrder->id,
+            'payment_id' => $payment->id,
+            'commission_id' => $commission->id,
+            'type' => 'sale',
+            'amount_minor' => 90000,
+            'status' => 'posted',
+            'posted_at' => now(),
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.transactions'))
+            ->assertOk()
+            ->assertSee('STX-PARTIAL-REFUND-001')
+            ->assertSee('Completed');
     }
 
     public function test_payout_page_has_no_client_authoritative_finance_state(): void

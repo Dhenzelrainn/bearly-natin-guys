@@ -4,10 +4,11 @@
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><meta name="csrf-token" content="{{ csrf_token() }}">
     <title>@yield('title','Rider Center') | Bearly Marketplace</title>
     <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
-    @vite(['resources/css/rider.css','resources/js/rider.js'])
+    @vite(['resources/css/rider.css','resources/css/messages-standard.css','resources/css/maps.css','resources/css/waybill-scanner.css','resources/js/messages-standard.js','resources/js/realtime.js','resources/js/waybill-scanner.js','resources/js/destination-map.js','resources/js/rider.js'])
     @include('partials.session-safety')
+    @stack('styles')
 </head>
-<body class="ops-body" data-module="rider">
+<body class="ops-body" data-module="rider" data-realtime-user-id="{{ auth()->id() }}">
 <div class="ops-shell">
     <aside class="ops-sidebar" aria-label="Rider navigation">
         <div class="ops-sidebar-header">
@@ -24,6 +25,7 @@
             <a href="{{ route('rider.history.index') }}" class="ops-nav-link {{ request()->routeIs('rider.history.*') ? 'is-active' : '' }}"><i data-lucide="history"></i><span>Delivery History</span></a>
             <p class="ops-nav-label">Support</p>
             <a href="{{ route('rider.messages.index') }}" class="ops-nav-link {{ request()->routeIs('rider.messages.*') ? 'is-active' : '' }}"><i data-lucide="message-circle"></i><span>Messages</span><span class="nav-count">2</span></a>
+            <a href="{{ route('notifications.center') }}" class="ops-nav-link {{ request()->routeIs('notifications.center') ? 'is-active' : '' }}"><i data-lucide="bell"></i><span>Notifications</span></a>
             <a href="{{ route('rider.profile.index') }}" class="ops-nav-link {{ request()->routeIs('rider.profile.*') ? 'is-active' : '' }}"><i data-lucide="user-round-cog"></i><span>Account</span></a>
         </nav>
         <div class="ops-sidebar-footer">
@@ -36,7 +38,18 @@
         <header class="ops-topbar">
             <div class="ops-topbar-left"><button class="icon-button mobile-menu" type="button" data-mobile-menu aria-label="Open navigation"><i data-lucide="menu"></i></button><h1>@yield('page-title','Rider Center')</h1></div>
             <div class="ops-topbar-actions">
-                <div class="popover-wrap"><button class="icon-button notification-trigger" type="button" data-popover-toggle="notifications" aria-label="Open notifications"><i data-lucide="bell"></i>@if(count($topNotifications ?? []))<span class="notification-dot"></span>@endif</button><div class="topbar-popover notification-popover" data-popover="notifications" hidden><div class="popover-heading"><strong>Notifications</strong><button type="button" data-mark-notifications>Mark all read</button></div>@forelse($topNotifications ?? [] as $notification)<button class="notification-row" type="button"><span class="notice-icon is-{{ $notification['type'] }}"><i data-lucide="{{ $notification['type']==='success'?'circle-check':($notification['type']==='warning'?'triangle-alert':'info') }}"></i></span><span><strong>{{ $notification['title'] }}</strong><small>{{ $notification['time'] }}</small></span></button>@empty<p class="empty-copy">No new notifications.</p>@endforelse</div></div>
+                <div class="popover-wrap" data-notification-center data-notification-skin="rider">
+                    <button class="icon-button notification-trigger" type="button" data-popover-toggle="notifications" aria-label="Open notifications"><i data-lucide="bell"></i><span class="notification-dot" data-notification-badge="dot" hidden></span></button>
+                    <div class="topbar-popover notification-popover" data-popover="notifications" hidden>
+                        <div class="popover-heading"><div><strong>Notifications</strong><span data-notification-summary>Recent updates</span></div></div>
+                        <div data-notification-list></div>
+                        <p class="empty-copy" data-notification-empty hidden>No new notifications.</p>
+                        <div class="popover-footer">
+                            <button type="button" class="notification-mark-all" data-notification-mark-all hidden><i data-lucide="mail-check"></i>Mark all as read</button>
+                            <a class="notification-view-all" href="{{ route('notifications.center') }}">View all notifications<i data-lucide="arrow-right"></i></a>
+                        </div>
+                    </div>
+                </div>
                 <span class="topbar-divider"></span>
                 <div class="popover-wrap"><button class="profile-button" type="button" data-popover-toggle="profile"><span class="avatar">{{ $rider['initials'] ?? 'BR' }}</span><span class="profile-copy"><strong>{{ $rider['name'] ?? 'Bearly Rider' }}</strong><small>{{ $rider['role'] ?? 'Rider' }}</small></span><i data-lucide="chevron-down"></i></button><div class="topbar-popover profile-popover" data-popover="profile" hidden><a href="{{ route('rider.profile.index') }}"><i data-lucide="user-round-cog"></i>Account settings</a><form method="POST" action="{{ route('logout') }}" style="display: contents">@csrf<button type="submit"><i data-lucide="log-out"></i>Logout</button></form></div></div>
             </div>
@@ -50,4 +63,5 @@
 </div>
 <div class="modal-backdrop" data-modal-backdrop hidden></div><div class="toast-stack" data-toast-stack aria-live="polite"></div>
 <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+@stack('scripts')
 </body></html>

@@ -87,3 +87,5 @@
 </header>
 
 @vite('resources/js/buyer-notifications.js')
+<script>window.bearlyRealtimeUserId = @json(auth()->id());</script>
+@vite('resources/js/realtime.js')

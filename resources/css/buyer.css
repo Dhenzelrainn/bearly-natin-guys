@@ -7718,17 +7718,17 @@ body.bc .buyer-global-header.bc-header .buyer-notification-menu .notification-he
     align-items:center;
     justify-content:space-between;
     gap:16px;
-    padding:14px 15px 12px;
+    padding:15px 17px 12px;
     border-bottom:1px solid #f0e7df;
 }
-.buyer-notification-popover-head>div{display:grid;gap:2px;min-width:0}
-.buyer-notification-popover-head strong{font-size:13px;line-height:1.2}
-.buyer-notification-popover-head span:not(.material-symbols-outlined){color:#8b7c72;font-size:9px}
+.buyer-notification-popover-head>div{display:grid;gap:3px;min-width:0}
+.buyer-notification-popover-head strong{font-size:15px;line-height:1.25;color:#38271f}
+.buyer-notification-popover-head span:not(.material-symbols-outlined){color:#8b7c72;font-size:11.5px}
 .buyer-notification-popover-close{
     display:grid;
-    width:28px;
-    height:28px;
-    flex:0 0 28px;
+    width:30px;
+    height:30px;
+    flex:0 0 30px;
     place-items:center;
     padding:0;
     border:0;
@@ -7739,24 +7739,24 @@ body.bc .buyer-global-header.bc-header .buyer-notification-menu .notification-he
 }
 .buyer-notification-popover-close:hover,
 .buyer-notification-popover-close:focus-visible{background:#f7eee6;color:#3b2418}
-.buyer-notification-popover-close .material-symbols-outlined{font-size:18px}
+.buyer-notification-popover-close .material-symbols-outlined{font-size:19px}
 .buyer-notification-popover-list{
     display:grid;
     max-height:382px;
-    padding:6px;
+    padding:6px 0;
     overflow:auto;
     scrollbar-width:thin;
 }
 .buyer-notification-item{
     display:grid;
-    grid-template-columns:8px 35px minmax(0,1fr) 18px 52px;
+    grid-template-columns:8px 38px minmax(0,1fr) 18px;
     align-items:center;
-    gap:8px;
+    gap:11px;
     width:100%;
-    min-height:70px;
-    padding:9px 8px;
+    min-height:76px;
+    padding:12px 16px;
     border:0;
-    border-radius:7px;
+    border-radius:0;
     background:transparent;
     color:#38271f;
     font:inherit;
@@ -7764,8 +7764,9 @@ body.bc .buyer-global-header.bc-header .buyer-notification-menu .notification-he
     cursor:pointer;
 }
 .buyer-notification-item:hover,
-.buyer-notification-item:focus-visible{background:#fff8ef;outline:none}
-.buyer-notification-item.unread{background:#fffaf2}
+.buyer-notification-item:focus-visible{background:#faf5ee;outline:none}
+.buyer-notification-item.unread{background:#fdf4ea}
+.buyer-notification-item.unread:hover{background:#fbf0e2}
 .buyer-notification-unread-dot{
     width:7px;
     height:7px;
@@ -7775,22 +7776,22 @@ body.bc .buyer-global-header.bc-header .buyer-notification-menu .notification-he
 .buyer-notification-item.unread .buyer-notification-unread-dot{background:#d27a27}
 .buyer-notification-icon{
     display:grid;
-    width:35px;
-    height:35px;
+    width:38px;
+    height:38px;
     place-items:center;
     border-radius:50%;
-    background:#f4ebe4;
+    background:#f6ede6;
     color:#8b4b22;
-    font-size:19px;
+    font-size:20px;
 }
-.buyer-notification-copy{display:grid;min-width:0;gap:2px}
+.buyer-notification-copy{display:grid;min-width:0;gap:3px}
 .buyer-notification-copy strong,
 .buyer-notification-copy>span,
 .buyer-notification-copy small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.buyer-notification-copy strong{font-size:10.5px;line-height:1.35}
-.buyer-notification-copy>span{color:#74665e;font-size:9px;line-height:1.35}
-.buyer-notification-copy small{color:#a09187;font-size:8px;line-height:1.3}
-.buyer-notification-arrow{color:#8b4b22;font-size:19px}
+.buyer-notification-copy strong{font-size:13px;line-height:1.35}
+.buyer-notification-copy>span{color:#74665e;font-size:12px;line-height:1.4}
+.buyer-notification-copy small{color:#a09187;font-size:11px;line-height:1.3}
+.buyer-notification-arrow{color:#8b4b22;font-size:20px}
 .buyer-notification-image{
     width:48px;
     height:48px;
@@ -7801,21 +7802,21 @@ body.bc .buyer-global-header.bc-header .buyer-notification-menu .notification-he
 .buyer-notification-popover-empty{
     display:grid;
     justify-items:center;
-    gap:4px;
-    padding:30px 18px;
+    gap:5px;
+    padding:32px 18px;
     color:#8b7c72;
     text-align:center;
 }
 .buyer-notification-popover-empty[hidden]{display:none!important}
-.buyer-notification-popover-empty .material-symbols-outlined{font-size:28px;color:#c19670}
-.buyer-notification-popover-empty strong{color:#4b3428;font-size:11px}
-.buyer-notification-popover-empty span:last-child{font-size:9px}
+.buyer-notification-popover-empty .material-symbols-outlined{font-size:30px;color:#c19670}
+.buyer-notification-popover-empty strong{color:#4b3428;font-size:12.5px}
+.buyer-notification-popover-empty span:last-child{font-size:10.5px}
 .buyer-notification-popover-actions{
     display:flex;
     align-items:center;
     justify-content:space-between;
     gap:10px;
-    padding:10px 13px;
+    padding:12px 16px;
     border-top:1px solid #f0e7df;
     background:#fffdfa;
 }
@@ -7823,21 +7824,21 @@ body.bc .buyer-global-header.bc-header .buyer-notification-menu .notification-he
 .buyer-notification-popover-actions a{
     display:inline-flex;
     align-items:center;
-    gap:4px;
-    min-height:28px;
-    padding:4px 5px;
+    gap:6px;
+    min-height:30px;
+    padding:4px 2px;
     border:0;
     background:transparent;
     color:#8c4c22;
-    font:600 9px/1.2 Poppins,sans-serif;
+    font:600 11.5px/1.2 Poppins,sans-serif;
     text-decoration:none;
     cursor:pointer;
 }
 .buyer-notification-popover-actions button:hover,
 .buyer-notification-popover-actions button:focus-visible,
 .buyer-notification-popover-actions a:hover,
-.buyer-notification-popover-actions a:focus-visible{color:#bd6b1d;text-decoration:underline}
-.buyer-notification-popover-actions .material-symbols-outlined{font-size:15px}
+.buyer-notification-popover-actions a:focus-visible{color:#a85a1f;text-decoration:underline}
+.buyer-notification-popover-actions .material-symbols-outlined{font-size:16px}
 
 @media (max-width:980px){
     .notification-header-trigger>span:nth-child(2){display:none}
@@ -7855,11 +7856,11 @@ body.bc .buyer-global-header.bc-header .buyer-notification-menu .notification-he
         border-radius:9px;
     }
     .buyer-notification-popover-list{max-height:calc(100dvh - 240px)}
-    .buyer-notification-item{grid-template-columns:7px 34px minmax(0,1fr) 18px 44px;min-height:64px;padding:8px 6px}
+    .buyer-notification-item{grid-template-columns:7px 38px minmax(0,1fr) 18px;min-height:72px;padding:11px 14px}
     .buyer-notification-image{width:42px;height:42px}
 }
 @media (max-width:390px){
-    .buyer-notification-item{grid-template-columns:6px 32px minmax(0,1fr) 17px}
+    .buyer-notification-item{grid-template-columns:6px 36px minmax(0,1fr) 17px;gap:9px}
     .buyer-notification-image{display:none}
     .buyer-notification-popover-actions{align-items:stretch;flex-direction:column;gap:2px}
     .buyer-notification-popover-actions button,
@@ -7877,9 +7878,9 @@ body.bc .buyer-global-header.bc-header .header-actions .buyer-notification-popov
     justify-content:initial!important;
     width:100%;
     min-width:0!important;
-    min-height:70px!important;
+    min-height:76px!important;
     height:auto!important;
-    padding:9px 8px!important;
+    padding:12px 16px!important;
     color:#38271f!important;
     font:inherit;
     line-height:normal;
@@ -7919,10 +7920,10 @@ body.bc .buyer-global-header.bc-header .header-actions .buyer-notification-popov
     flex-direction:initial!important;
     align-items:center!important;
     justify-content:center!important;
-    width:28px;
-    min-width:28px!important;
-    height:28px;
-    min-height:28px!important;
+    width:30px;
+    min-width:30px!important;
+    height:30px;
+    min-height:30px!important;
     padding:0!important;
     gap:0!important;
     color:#725b4d!important;
@@ -7937,12 +7938,12 @@ body.bc .buyer-global-header.bc-header .header-actions .buyer-notification-popov
     justify-content:center;
     width:auto;
     min-width:0!important;
-    min-height:28px!important;
+    min-height:30px!important;
     height:auto;
-    padding:4px 5px!important;
-    gap:4px!important;
+    padding:4px 2px!important;
+    gap:6px!important;
     color:#8c4c22!important;
-    font:600 9px/1.2 Poppins,sans-serif!important;
+    font:600 11.5px/1.2 Poppins,sans-serif!important;
     line-height:1.2!important;
 }
 @media (max-width:390px){

@@ -60,11 +60,12 @@ function actionButtons(order){
 }
 function orderHTML(o){
    const items=(o.items||[]).map(i=>{const item=i||{};return `<div class="order-product"><img src="${purchaseEsc(safeImage(item.image))}" alt="${purchaseEsc(item.name||'Product')}" onerror="this.onerror=null;this.src='/images/bearly-logo.png'"><div class="order-product-copy"><h3>${purchaseEsc(item.name||'Product')}</h3><p>Variation: ${purchaseEsc(item.variation||'Standard')}</p><p>x${purchaseEsc(item.qty||1)}</p></div><div class="order-price"><strong>${peso(item.price)}</strong></div></div>`}).join('');
-   const returnLinks=(o.seller_orders||[]).map(sellerOrder=>{
-     const cases=(sellerOrder.return_cases||[]).map(returnCase=>`<a class="order-btn" href="${purchaseEsc(returnCase.url)}">Case ${purchaseEsc(returnCase.number)} · ${purchaseEsc(String(returnCase.status||'').replaceAll('_',' '))}</a>`).join('');
-     const request=sellerOrder.return_url?`<a class="order-btn" href="${purchaseEsc(sellerOrder.return_url)}">Return / refund · ${purchaseEsc(sellerOrder.store||'Seller')}</a>`:'';
-     return cases+request;
-   }).join('');
+    const returnLinks=(o.seller_orders||[]).map(sellerOrder=>{
+      const cases=(sellerOrder.return_cases||[]).map(returnCase=>`<a class="order-btn" href="${purchaseEsc(returnCase.url)}">Case ${purchaseEsc(returnCase.number)} · ${purchaseEsc(String(returnCase.status||'').replaceAll('_',' '))}</a>`).join('');
+      const request=sellerOrder.return_url?`<a class="order-btn" href="${purchaseEsc(sellerOrder.return_url)}">Return / refund · ${purchaseEsc(sellerOrder.store||'Seller')}</a>`:'';
+      const dispute=sellerOrder.dispute_url?`<a class="order-btn" href="${purchaseEsc(sellerOrder.dispute_url)}">${purchaseEsc(sellerOrder.dispute_label||'Report a problem')}</a>`:'';
+      return cases+request+dispute;
+    }).join('');
    const status=o.status||'', label=purchaseEsc(o.statusLabel||status||'Order update');
    return `<article class="order-card"><div class="order-card-head"><div class="order-meta"><div class="order-shop"><span class="material-symbols-outlined" aria-hidden="true">storefront</span><strong>${purchaseEsc(o.shop||'Seller')}</strong></div><span class="order-id">Order #${purchaseEsc(o.id||'')}</span><span class="order-date">Placed on ${purchaseEsc(placedDate(o))}</span></div><span class="order-status">${label}</span></div>${items}<div class="order-card-foot"><div class="order-actions">${actionButtons(o)}${returnLinks}</div></div></article>`;
 }

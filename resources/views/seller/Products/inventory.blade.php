@@ -168,6 +168,7 @@
                                     type="checkbox"
                                     aria-label="Select {{ $item['sku'] }}"
                                     data-inventory-check
+                                    @disabled($item['is_compliance_held'])
                                 >
                             </td>
 
@@ -195,6 +196,7 @@
                                 <strong
                                     class="available-stock {{ $item['available'] === 0 ? 'is-empty' : '' }}"
                                     data-stock-available
+                                    @if ($item['is_compliance_held']) title="Unavailable for sale while compliance status is {{ $item['status'] }}" @endif
                                 >
                                     {{ $item['available'] }}
                                 </strong>
@@ -209,15 +211,21 @@
                                 </span>
                             </td>
                             <td>
-                                <button
-                                    class="inventory-row-action"
-                                    type="button"
-                                    data-adjust-stock
-                                    data-item-id="{{ $item['id'] }}"
-                                    data-item-label="{{ $item['product'].' · '.$item['variation'] }}"
-                                >
-                                    {{ $item['available'] === 0 ? 'Restock' : 'Adjust stock' }}
-                                </button>
+                                @if ($item['is_compliance_held'])
+                                    <button class="inventory-row-action" type="button" disabled title="Resolve the compliance issue before adjusting sellable stock.">
+                                        Compliance hold
+                                    </button>
+                                @else
+                                    <button
+                                        class="inventory-row-action"
+                                        type="button"
+                                        data-adjust-stock
+                                        data-item-id="{{ $item['id'] }}"
+                                        data-item-label="{{ $item['product'].' · '.$item['variation'] }}"
+                                    >
+                                        {{ $item['available'] === 0 ? 'Restock' : 'Adjust stock' }}
+                                    </button>
+                                @endif
                             </td>
                         </tr>
                     @endforeach

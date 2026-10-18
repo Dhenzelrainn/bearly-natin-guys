@@ -10,12 +10,18 @@
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     @vite([
         'resources/css/seller.css',
+        'resources/css/messages-standard.css',
+        'resources/css/maps.css',
         'resources/css/seller-polish.css',
         'resources/css/seller-legibility.css',
         'resources/js/seller.js',
+        'resources/js/realtime.js',
+        'resources/js/address-map-picker.js',
+        'resources/js/seller-store-map.js',
         'resources/js/seller-polish.js'
     ])
     @include('partials.session-safety')
+    @stack('styles')
 </head>
 <body class="seller-body">
 @php
@@ -76,6 +82,9 @@
             <a href="{{ route('seller.dashboard') }}" class="seller-nav-link {{ request()->routeIs('seller.dashboard') ? 'is-active' : '' }}" title="Dashboard">
                 <i class="seller-ui-icon" data-lucide="house" aria-hidden="true"></i><span>Dashboard</span>
             </a>
+            <a href="{{ route('notifications.center') }}" class="seller-nav-link {{ request()->routeIs('notifications.center') ? 'is-active' : '' }}" title="Notifications">
+                <i class="seller-ui-icon" data-lucide="bell" aria-hidden="true"></i><span>Notifications</span>
+            </a>
             @foreach ($sellerNavGroups as $group)
                 <section class="seller-nav-group {{ ($group['active'] ?? false) ? 'is-active' : '' }}" data-seller-nav-group="{{ $group['key'] }}">
                     <div class="seller-nav-link seller-nav-heading" title="{{ $group['label'] }}">
@@ -128,20 +137,26 @@
                     <div class="seller-topbar-controls">@yield('topbar-controls')</div>
                     <span class="topbar-divider seller-topbar-controls-divider"></span>
                 @endif
-                <div class="seller-popover-wrap">
+                <div class="seller-popover-wrap" data-notification-center data-notification-skin="seller">
                     <button class="seller-icon-button notification-trigger" type="button" data-seller-popover-toggle="notifications" aria-label="Open notifications">
-                        <i class="seller-ui-icon" data-lucide="bell" aria-hidden="true"></i><span>{{ count($notifications ?? []) }}</span>
+                        <i class="seller-ui-icon" data-lucide="bell" aria-hidden="true"></i><span data-notification-badge="dot" hidden></span>
                     </button>
                     <div class="seller-popover notification-popover" data-seller-popover="notifications" hidden>
-                        <div class="seller-popover-heading"><strong>Notifications</strong><small>{{ count($notifications ?? []) }} new</small></div>
-                        @forelse (($notifications ?? []) as $notification)
-                            <button type="button" class="seller-notification-row">
-                                <span class="notice-dot dot-{{ $notification['type'] }}"></span>
-                                <span><strong>{{ $notification['title'] }}</strong><small>{{ $notification['time'] }}</small></span>
+                        <div class="seller-popover-heading">
+                            <div><strong>Notifications</strong><small data-notification-summary>{{ count($notifications ?? []) }} new</small></div>
+                        </div>
+                        <div data-notification-list></div>
+                        <p class="seller-notification-empty" data-notification-empty hidden>No new notifications.</p>
+                        <div class="popover-footer">
+                            <button type="button" class="notification-mark-all" data-notification-mark-all hidden>
+                                <i class="seller-ui-icon" data-lucide="mail-check" aria-hidden="true"></i>
+                                Mark all as read
                             </button>
-                        @empty
-                            <p class="seller-notification-empty">No new notifications.</p>
-                        @endforelse
+                            <a class="seller-notification-view-all" href="{{ route('notifications.center') }}">
+                                View all notifications
+                                <i class="seller-ui-icon" data-lucide="arrow-right" aria-hidden="true"></i>
+                            </a>
+                        </div>
                     </div>
                 </div>
                 <span class="topbar-divider"></span>
@@ -181,5 +196,6 @@
     <div class="seller-toast is-visible" data-server-error role="alert">{{ $errors->first() }}</div>
 @endif
 <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+@stack('scripts')
 </body>
 </html>

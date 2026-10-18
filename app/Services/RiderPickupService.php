@@ -11,11 +11,17 @@ use App\Models\SellerOrder;
 use App\Models\SellerOrderStatusHistory;
 use App\Models\Shipment;
 use App\Models\User;
+use App\Notifications\WorkflowNotification;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 class RiderPickupService
 {
+    public function __construct(
+        private readonly NotificationService $notifications,
+    ) {}
+
     public function acceptPickup(
         string $pickupNo,
         User $rider
@@ -63,6 +69,12 @@ class RiderPickupService
                         now(),
                 ]);
 
+                $this->notifySellerOfPickupUpdate(
+                    $assignment,
+                    'Pickup accepted by Rider',
+                    "A Rider accepted pickup {$assignment->pickupRequest?->pickup_no} and will collect it on the scheduled date.",
+                );
+
                 return $assignment
                     ->fresh([
                         'pickupRequest',
@@ -76,12 +88,16 @@ class RiderPickupService
         string $pickupNo,
         User $rider,
         ?ReturnRefundService $returns = null,
+        ?string $waybillIdentifier = null,
+        string $scanMethod = 'manual',
     ): PickupAssignment {
         return DB::transaction(
             function () use (
                 $pickupNo,
                 $rider,
                 $returns,
+                $waybillIdentifier,
+                $scanMethod,
             ): PickupAssignment {
                 $profile = $rider
                     ->riderProfile()
@@ -132,7 +148,7 @@ class RiderPickupService
                 $parcels =
                     $pickup
                         ->parcels()
-                        ->with('shipment')
+                        ->with(['shipment', 'waybill'])
                         ->orderBy(
                             'parcels.id'
                         )
@@ -143,6 +159,25 @@ class RiderPickupService
                     throw new ConflictHttpException(
                         'This pickup request has no parcels to collect.'
                     );
+                }
+
+                if (filled($waybillIdentifier)) {
+                    $identifier = trim($waybillIdentifier);
+                    $matched = $parcels->contains(function ($parcel) use ($identifier): bool {
+                        $waybill = $parcel->waybill;
+
+                        return $waybill
+                            && in_array($identifier, [
+                                (string) $waybill->waybill_no,
+                                (string) $waybill->barcode_value,
+                            ], true);
+                    });
+
+                    if (! $matched) {
+                        throw new ConflictHttpException(
+                            'The scanned waybill does not belong to this Rider pickup assignment.'
+                        );
+                    }
                 }
 
                 /*
@@ -250,6 +285,8 @@ class RiderPickupService
 
                                 'pickup_assignment_id' =>
                                     $assignment->id,
+
+                                'scan_method' => $scanMethod,
                             ],
 
                             'occurred_at' =>
@@ -309,6 +346,8 @@ class RiderPickupService
 
                                 'pickup_assignment_id' =>
                                     $assignment->id,
+
+                                'scan_method' => $scanMethod,
                             ],
 
                             'occurred_at' =>
@@ -343,6 +382,13 @@ class RiderPickupService
                     'picked_up_at' =>
                         $pickedUpAt,
                 ]);
+
+                $this->notifySellerOfPickupUpdate(
+                    $assignment,
+                    'Pickup collected',
+                    "Pickup {$pickup->pickup_no} was collected by the Rider and handed to Logistics.",
+                );
+                $this->notifyBuyersOfConfirmedPickup($assignment, $shipments);
 
                 return $assignment
                     ->fresh([
@@ -414,6 +460,67 @@ class RiderPickupService
                 'reason' => 'Rider confirmed pickup and took custody of the parcel.',
                 'occurred_at' => $occurredAt,
             ]);
+        }
+    }
+
+    private function notifySellerOfPickupUpdate(PickupAssignment $assignment, string $title, string $body): void
+    {
+        $pickup = $assignment->pickupRequest;
+        $sellerUser = $pickup?->store?->sellerProfile?->user;
+
+        if (! $pickup || ! $sellerUser) {
+            return;
+        }
+
+        $this->notifications->sendAfterCommit($sellerUser, new WorkflowNotification(
+            eventKey: 'seller_pickup_updates',
+            title: $title,
+            body: $body,
+            actionUrl: route('seller.fulfillment.pickups'),
+            type: 'info',
+            meta: [
+                'pickup_request_id' => (int) $pickup->id,
+                'pickup_assignment_id' => (int) $assignment->id,
+            ],
+        ));
+    }
+
+    private function notifyBuyersOfConfirmedPickup(PickupAssignment $assignment, Collection $shipments): void
+    {
+        $sellerOrderIds = $shipments
+            ->where('purpose', 'outbound')
+            ->pluck('seller_order_id')
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($sellerOrderIds->isEmpty()) {
+            return;
+        }
+
+        $sellerOrders = SellerOrder::query()
+            ->with('order.buyer')
+            ->whereIn('id', $sellerOrderIds)
+            ->get();
+
+        foreach ($sellerOrders as $sellerOrder) {
+            $buyer = $sellerOrder->order?->buyer;
+
+            if (! $buyer) {
+                continue;
+            }
+
+            $this->notifications->sendAfterCommit($buyer, new WorkflowNotification(
+                eventKey: 'buyer_shipment_updates',
+                title: 'Parcel picked up',
+                body: "Your parcel for {$sellerOrder->seller_order_no} was picked up by the Rider.",
+                actionUrl: route('buyer.profile').'#tracking',
+                type: 'info',
+                meta: [
+                    'seller_order_id' => (int) $sellerOrder->id,
+                    'pickup_request_id' => (int) $assignment->pickup_request_id,
+                ],
+            ));
         }
     }
 }

@@ -5,12 +5,16 @@ namespace App\Http\Controllers;
 use App\Enums\AccountStatus;
 use App\Enums\ParcelStatus;
 use App\Enums\UserRole;
+use App\Models\Conversation;
+use App\Models\Message;
+use App\Models\MessageAttachment;
 use App\Models\OrderItem;
 use App\Models\PickupAssignment;
 use App\Models\RiderProfile;
 use App\Models\User;
 use App\Services\CodCashCollectionService;
 use App\Services\BuyerCatalogService;
+use App\Services\ConversationService;
 use App\Services\EmailVerificationService;
 use App\Services\InternationalPhone;
 use App\Services\PostalCodeLookup;
@@ -20,6 +24,7 @@ use App\Services\RiderDeliveryHistoryService;
 use App\Services\RiderDeliveryService;
 use App\Services\RiderPickupService;
 use App\Services\RiderZoneAssignmentService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -547,6 +552,14 @@ class RiderController extends Controller
 
             'address' => $addressText
                     ?: 'Pickup address unavailable',
+
+            'latitude' => $isReturnPickup
+                ? ($addressSnapshot['latitude'] ?? null)
+                : $address?->latitude,
+
+            'longitude' => $isReturnPickup
+                ? ($addressSnapshot['longitude'] ?? null)
+                : $address?->longitude,
 
             'parcels' => $pickup->parcels->count(),
 
@@ -1167,6 +1180,7 @@ class RiderController extends Controller
     }
 
     public function confirmPickup(
+        Request $request,
         string $id,
         RiderPickupService $pickupService,
         ReturnRefundService $returns,
@@ -1174,10 +1188,17 @@ class RiderController extends Controller
         /** @var User $user */
         $user = Auth::user();
 
+        $data = $request->validate([
+            'waybill_identifier' => ['nullable', 'string', 'max:120'],
+            'scan_method' => ['nullable', Rule::in(['camera', 'barcode', 'manual', 'image'])],
+        ]);
+
         $pickupService->confirmPickup(
             $id,
             $user,
             $returns,
+            $data['waybill_identifier'] ?? null,
+            $data['scan_method'] ?? 'manual',
         );
 
         return redirect()
@@ -1565,36 +1586,343 @@ class RiderController extends Controller
         ];
     }
 
-    public function messages()
+    /**
+     * Participant-scoped inbox. Riders only ever see conversations they were
+     * added to by an existing workflow (Admin messaging or their Logistics
+     * provider). Rider-initiated conversations are intentionally not offered
+     * until the counterpart rules are defined.
+     */
+    public function messages(Request $request): View
     {
+        /** @var User $rider */
+        $rider = $request->user();
+
+        $records = Conversation::query()
+            ->whereHas(
+                'participants',
+                fn ($query) => $query->where('users.id', $rider->id)
+            )
+            ->with([
+                'participants',
+                'latestMessage',
+                'messages' => fn ($query) => $query
+                    ->with('attachments')
+                    ->orderBy('sent_at')
+                    ->orderBy('id'),
+            ])
+            ->orderByDesc('last_message_at')
+            ->orderByDesc('id')
+            ->get();
+
+        $conversations = $records
+            ->map(function (Conversation $conversation) use ($rider): array {
+                $participant = $conversation->participants
+                    ->firstWhere('id', $rider->id);
+
+                $counterpart = $conversation->participants
+                    ->first(
+                        fn (User $user): bool =>
+                            (int) $user->id !== (int) $rider->id
+                    );
+
+                $counterpartRole = strtolower((string) (
+                    $counterpart?->pivot?->participant_role
+                    ?? $counterpart?->role
+                    ?? 'participant'
+                ));
+
+                $role = match ($counterpartRole) {
+                    'admin' => 'Administrator',
+                    'buyer' => 'Buyer',
+                    'seller' => 'Seller',
+                    'logistics' => 'Logistics Center',
+                    default => ucwords(
+                        str_replace('_', ' ', $counterpartRole)
+                    ),
+                };
+
+                $name = $counterpart?->name ?: 'Conversation';
+
+                $lastReadAt = $participant?->pivot?->last_read_at
+                    ? Carbon::parse($participant->pivot->last_read_at)
+                    : null;
+
+                $unread = $conversation->messages
+                    ->filter(
+                        function (Message $message) use ($rider, $lastReadAt): bool {
+                            if (
+                                (int) $message->sender_id === (int) $rider->id
+                                || ! $message->sent_at
+                            ) {
+                                return false;
+                            }
+
+                            return ! $lastReadAt
+                                || $message->sent_at->isAfter($lastReadAt);
+                        }
+                    )
+                    ->count();
+
+                $latestMessage = $conversation->latestMessage;
+
+                $latestBody = trim((string) ($latestMessage?->body ?? ''));
+
+                return [
+                    'id' => (int) $conversation->id,
+                    'name' => $name,
+                    'role' => $role,
+                    'initials' => $this->messageInitials($name),
+                    'preview' => $latestBody !== ''
+                        ? $latestBody
+                        : ($latestMessage ? 'Attachment' : 'No messages yet.'),
+                    'time' => $latestMessage?->sent_at
+                        ?->copy()
+                        ->timezone('Asia/Manila')
+                        ->format('M j, g:i A') ?? '',
+                    'unread' => $unread,
+                    'subject' => $conversation->subject,
+                    'status' => $conversation->status,
+                    'type' => $conversation->type,
+                    'send_url' => route('rider.messages.send', $conversation),
+                    'read_url' => route('rider.messages.read', $conversation),
+                    'thread_url' => route('rider.messages.thread', $conversation),
+                    'messages' => $conversation->messages
+                        ->map(
+                            fn (Message $message): array =>
+                                $this->messageThreadEntry($rider, $message)
+                        )
+                        ->values()
+                        ->all(),
+                ];
+            })
+            ->values();
+
+        $requestedId = (int) $request->query('conversation', 0);
+
+        $selectedId = $conversations->contains(
+            fn (array $conversation): bool =>
+                $conversation['id'] === $requestedId
+        )
+            ? $requestedId
+            : $conversations->first()['id'] ?? null;
+
         return view('rider.messages.index', $this->shared() + [
-            'conversations' => [
-                [
-                    'id' => 'sorting-center',
-                    'name' => 'Bearly Sorting Center',
-                    'role' => 'Logistics',
-                    'initials' => 'BS',
-                    'preview' => 'Your next dispatch is ready at Bay 2.',
-                    'time' => '2:10 PM',
-                ],
-                [
-                    'id' => 'karen-yu',
-                    'name' => 'Karen Yu',
-                    'role' => 'Buyer',
-                    'initials' => 'KY',
-                    'preview' => 'Please call me when you are near.',
-                    'time' => '1:55 PM',
-                ],
-                [
-                    'id' => 'techvault-ph',
-                    'name' => 'TechVault PH',
-                    'role' => 'Seller',
-                    'initials' => 'TP',
-                    'preview' => 'The six pickup parcels are ready.',
-                    'time' => '1:31 PM',
-                ],
+            'conversations' => $conversations->all(),
+            'conversationData' => $conversations->keyBy('id')->all(),
+            'selectedConversationId' => $selectedId,
+        ]);
+    }
+
+    /**
+     * Participant-scoped thread snapshot used by the messages page to keep
+     * the open conversation current without a full page reload.
+     */
+    public function messageThread(
+        Request $request,
+        Conversation $conversation
+    ): JsonResponse {
+        /** @var User $rider */
+        $rider = $request->user();
+
+        abort_unless(
+            $this->riderCanAccessConversation($conversation, $rider),
+            404
+        );
+
+        $validated = $request->validate([
+            'after' => ['nullable', 'integer', 'min:0'],
+        ]);
+
+        $after = (int) ($validated['after'] ?? 0);
+
+        $messages = $conversation->messages()
+            ->with('attachments')
+            ->when($after > 0, fn ($query) => $query->where('id', '>', $after))
+            ->orderBy('sent_at')
+            ->orderBy('id')
+            ->get()
+            ->map(
+                fn (Message $message): array =>
+                    $this->messageThreadEntry($rider, $message)
+            )
+            ->values()
+            ->all();
+
+        return response()->json([
+            'message' => 'Thread loaded.',
+            'data' => ['messages' => $messages],
+        ]);
+    }
+
+    public function markMessageConversationRead(
+        Request $request,
+        Conversation $conversation
+    ): JsonResponse {
+        /** @var User $rider */
+        $rider = $request->user();
+
+        abort_unless(
+            $this->riderCanAccessConversation($conversation, $rider),
+            404
+        );
+
+        app(ConversationService::class)->markRead($conversation, $rider);
+
+        return response()->json([
+            'message' => 'Conversation marked as read.',
+            'unread' => 0,
+        ]);
+    }
+
+    public function sendMessage(
+        Request $request,
+        Conversation $conversation
+    ): JsonResponse {
+        /** @var User $rider */
+        $rider = $request->user();
+
+        abort_unless(
+            $this->riderCanAccessConversation($conversation, $rider),
+            404
+        );
+
+        $validated = $request->validate([
+            'message' => [
+                'nullable',
+                'string',
+                'max:5000',
+                'required_without:attachment',
+            ],
+
+            'attachment' => [
+                'nullable',
+                'file',
+                'max:10240',
+                'mimes:jpg,jpeg,png,webp,pdf,doc,docx,xls,xlsx,txt,csv,zip',
             ],
         ]);
+
+        $message = app(ConversationService::class)->send(
+            $conversation,
+            $rider,
+            $validated['message'] ?? null,
+            $request->file('attachment')
+        );
+
+        $message->load('attachments');
+
+        $entry = $this->messageThreadEntry($rider, $message);
+
+        return response()->json([
+            'message' => 'Message sent successfully.',
+            'data' => [
+                'id' => $entry['id'],
+                'mine' => true,
+                'text' => $entry['text'],
+                'preview' => $entry['text'] !== ''
+                    ? $entry['text']
+                    : 'Attachment',
+                'time' => $entry['time'],
+                'attachments' => $entry['attachments'],
+            ],
+        ]);
+    }
+
+    public function downloadMessageAttachment(
+        Request $request,
+        MessageAttachment $attachment
+    ): StreamedResponse {
+        /** @var User $rider */
+        $rider = $request->user();
+
+        $conversation = app(ConversationService::class)
+            ->conversationForAttachment($attachment);
+
+        abort_unless($conversation !== null, 404);
+
+        abort_unless(
+            $this->riderCanAccessConversation($conversation, $rider),
+            404
+        );
+
+        abort_unless(
+            Storage::disk('local')->exists($attachment->file_path),
+            404
+        );
+
+        return app(ConversationService::class)
+            ->attachmentDownload($attachment);
+    }
+
+    private function riderCanAccessConversation(
+        Conversation $conversation,
+        User $rider
+    ): bool {
+        return $conversation->participants()
+            ->where('users.id', $rider->id)
+            ->exists();
+    }
+
+    private function messageInitials(string $name): string
+    {
+        $initials = collect(preg_split('/\s+/', trim($name)) ?: [])
+            ->filter()
+            ->take(2)
+            ->map(
+                fn (string $part): string =>
+                    strtoupper(substr($part, 0, 1))
+            )
+            ->implode('');
+
+        return $initials !== '' ? $initials : '?';
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function messageThreadEntry(User $rider, Message $message): array
+    {
+        return [
+            'id' => (int) $message->id,
+
+            'mine' =>
+                (int) $message->sender_id === (int) $rider->id,
+
+            'text' =>
+                (string) $message->body,
+
+            'attachments' =>
+                $message->attachments
+                    ->map(
+                        fn (MessageAttachment $attachment): array => [
+                            'id' => (int) $attachment->id,
+
+                            'name' =>
+                                (string) $attachment->original_name,
+
+                            'mime_type' =>
+                                (string) $attachment->mime_type,
+
+                            'size_bytes' =>
+                                (int) $attachment->size_bytes,
+
+                            'download_url' =>
+                                route(
+                                    'rider.messages.attachments.download',
+                                    $attachment
+                                ),
+                        ]
+                    )
+                    ->values()
+                    ->all(),
+
+            'time' =>
+                $message->sent_at
+                    ?->copy()
+                    ->timezone('Asia/Manila')
+                    ->format('M j, g:i A')
+                ?? '',
+        ];
     }
 
     public function updateProfile(

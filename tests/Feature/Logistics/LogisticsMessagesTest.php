@@ -13,9 +13,11 @@ use App\Models\PickupRequest;
 use App\Models\RiderProfile;
 use App\Models\SellerProfile;
 use App\Models\Store;
+use App\Notifications\WorkflowNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -1614,6 +1616,296 @@ class LogisticsMessagesTest extends TestCase
             ->assertSee(
                 'No conversations yet.'
             );
+    }
+
+    public function test_logistics_message_notifies_seller_and_appears_in_seller_inbox(): void
+    {
+        $operator =
+            $this->makeLogisticsOperator(
+                'NOTIFY'
+            );
+
+        $seller =
+            $this->makeMessageSeller(
+                'NOTIFY',
+                $operator
+            );
+
+        Notification::fake();
+
+        $this
+            ->actingAs($operator)
+            ->postJson(
+                route(
+                    'logistics.messages.conversations.store'
+                ),
+                [
+                    'recipient_id' =>
+                        $seller->id,
+
+                    'subject' =>
+                        'Pickup coordination',
+
+                    'message' =>
+                        'Please confirm the pickup window.',
+                ]
+            )
+            ->assertCreated();
+
+        $conversation =
+            Conversation::query()
+                ->latest('id')
+                ->firstOrFail();
+
+        Notification::assertSentTo(
+            $seller,
+            WorkflowNotification::class,
+            fn (
+                WorkflowNotification $notification
+            ): bool =>
+                $notification->eventKey()
+                === 'seller_buyer_message'
+                && $notification->meta()[
+                    'conversation_id'
+                ] === (int) $conversation->id
+        );
+
+        $this
+            ->actingAs($seller)
+            ->getJson(
+                route(
+                    'seller.support.messages.inbox'
+                )
+            )
+            ->assertOk()
+            ->assertJsonFragment([
+                'id' =>
+                    $conversation->id,
+            ]);
+    }
+
+    public function test_seller_reply_in_logistics_conversation_notifies_operator(): void
+    {
+        $operator =
+            $this->makeLogisticsOperator(
+                'REPLY'
+            );
+
+        $seller =
+            $this->makeMessageSeller(
+                'REPLY',
+                $operator
+            );
+
+        $this
+            ->actingAs($operator)
+            ->postJson(
+                route(
+                    'logistics.messages.conversations.store'
+                ),
+                [
+                    'recipient_id' =>
+                        $seller->id,
+
+                    'subject' =>
+                        'Pickup coordination',
+
+                    'message' =>
+                        'Please confirm the pickup window.',
+                ]
+            )
+            ->assertCreated();
+
+        $conversation =
+            Conversation::query()
+                ->latest('id')
+                ->firstOrFail();
+
+        Notification::fake();
+
+        $this
+            ->actingAs($seller)
+            ->postJson(
+                route(
+                    'seller.support.messages.send',
+                    [
+                        'conversation' =>
+                            $conversation->id,
+                    ]
+                ),
+                [
+                    'message' =>
+                        'Confirmed for 2 PM.',
+                ]
+            )
+            ->assertOk();
+
+        $this->assertDatabaseHas(
+            'messages',
+            [
+                'conversation_id' =>
+                    $conversation->id,
+
+                'sender_id' =>
+                    $seller->id,
+
+                'body' =>
+                    'Confirmed for 2 PM.',
+            ]
+        );
+
+        Notification::assertSentTo(
+            $operator,
+            WorkflowNotification::class,
+            fn (
+                WorkflowNotification $notification
+            ): bool =>
+                $notification->eventKey()
+                === 'logistics_message_received'
+                && $notification->meta()[
+                    'conversation_id'
+                ] === (int) $conversation->id
+        );
+    }
+
+    public function test_logistics_thread_endpoint_returns_newer_messages_only(): void
+    {
+        $operator =
+            $this->makeLogisticsOperator(
+                'POLL'
+            );
+
+        $seller =
+            $this->makeMessageSeller(
+                'POLL',
+                $operator
+            );
+
+        $this
+            ->actingAs($operator)
+            ->postJson(
+                route(
+                    'logistics.messages.conversations.store'
+                ),
+                [
+                    'recipient_id' =>
+                        $seller->id,
+
+                    'subject' =>
+                        'Pickup coordination',
+
+                    'message' =>
+                        'First message',
+                ]
+            )
+            ->assertCreated();
+
+        $conversation =
+            Conversation::query()
+                ->latest('id')
+                ->firstOrFail();
+
+        $firstMessage =
+            Message::query()
+                ->where(
+                    'conversation_id',
+                    $conversation->id
+                )
+                ->latest('id')
+                ->firstOrFail();
+
+        $this
+            ->actingAs($seller)
+            ->postJson(
+                route(
+                    'seller.support.messages.send',
+                    [
+                        'conversation' =>
+                            $conversation->id,
+                    ]
+                ),
+                [
+                    'message' =>
+                        'Second message',
+                ]
+            )
+            ->assertOk();
+
+        $secondMessage =
+            Message::query()
+                ->where(
+                    'conversation_id',
+                    $conversation->id
+                )
+                ->latest('id')
+                ->firstOrFail();
+
+        $this
+            ->actingAs($operator)
+            ->getJson(
+                route(
+                    'logistics.messages.thread',
+                    [
+                        'conversation' =>
+                            $conversation->id,
+
+                        'after' =>
+                            $firstMessage->id,
+                    ]
+                )
+            )
+            ->assertOk()
+            ->assertJsonCount(
+                1,
+                'data.messages'
+            )
+            ->assertJsonPath(
+                'data.messages.0.id',
+                $secondMessage->id
+            )
+            ->assertJsonPath(
+                'data.messages.0.mine',
+                false
+            )
+            ->assertJsonPath(
+                'data.messages.0.text',
+                'Second message'
+            );
+
+        $this
+            ->actingAs($operator)
+            ->getJson(
+                route(
+                    'logistics.messages.thread',
+                    [
+                        'conversation' =>
+                            $conversation->id,
+                    ]
+                )
+            )
+            ->assertOk()
+            ->assertJsonCount(
+                2,
+                'data.messages'
+            );
+
+        $foreignOperator =
+            $this->makeLogisticsOperator(
+                'POLL-FOREIGN'
+            );
+
+        $this
+            ->actingAs($foreignOperator)
+            ->getJson(
+                route(
+                    'logistics.messages.thread',
+                    [
+                        'conversation' =>
+                            $conversation->id,
+                    ]
+                )
+            )
+            ->assertNotFound();
     }
 
     private function makeLogisticsOperator(

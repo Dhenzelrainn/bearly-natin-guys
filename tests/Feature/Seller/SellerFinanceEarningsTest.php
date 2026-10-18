@@ -189,7 +189,7 @@ class SellerFinanceEarningsTest extends TestCase
             ->assertOk()
             ->assertSee('SPY-EARNINGS-PENDING-001');
         $this->actingAs($this->admin)
-            ->get(route('admin.reports'))
+            ->get(route('admin.reports', ['type' => 'settlement']))
             ->assertOk()
             ->assertSee('Earnings Seller')
             ->assertSee('₱720.00');

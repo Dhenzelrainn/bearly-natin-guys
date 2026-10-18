@@ -170,14 +170,26 @@
     font-size: 13.5px !important;
 }
 
-.seller-popover small,
-.seller-notification-row small {
+.seller-popover-heading strong {
+    font-size: 15px !important;
+}
+
+.seller-popover small {
     font-size: 11.5px !important;
 }
 
-.seller-popover a,
-.seller-notification-row {
+.seller-popover a {
     font-size: 12.5px !important;
+}
+
+.seller-popover .popover-footer a,
+.seller-popover .popover-footer button {
+    font-size: 11.5px !important;
+}
+
+.seller-popover .popover-footer .seller-ui-icon {
+    width: 15px !important;
+    height: 15px !important;
 }
 
 /* =========================================================

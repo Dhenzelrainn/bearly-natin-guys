@@ -8,9 +8,11 @@ use App\Models\Message;
 use App\Models\MessageAttachment;
 use App\Models\Role;
 use App\Models\User;
+use App\Notifications\WorkflowNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -350,6 +352,201 @@ class AdminMessageTest extends TestCase
                 ->fresh()
                 ->last_message_at
         );
+    }
+
+    public function test_buyer_reply_notifies_conversation_admin(): void
+    {
+        Notification::fake();
+
+        $admin = $this->createAdmin();
+
+        $buyer = $this->createUserWithRole(
+            'buyer'
+        );
+
+        $conversation =
+            $this->createConversation(
+                $admin,
+                $buyer
+            );
+
+        $this
+            ->actingAs($buyer)
+            ->postJson(
+                route(
+                    'buyer.chat.send',
+                    $conversation
+                ),
+                [
+                    'message' => 'Hello, I need help with this order.',
+                ]
+            )
+            ->assertOk();
+
+        Notification::assertSentTo(
+            $admin,
+            WorkflowNotification::class,
+            fn (WorkflowNotification $notification): bool => $notification->eventKey() === 'admin_message_received'
+                && $notification->meta()['conversation_id'] === (int) $conversation->id,
+        );
+    }
+
+    public function test_admin_message_notifies_seller_and_logistics_recipients(): void
+    {
+        Notification::fake();
+
+        $admin = $this->createAdmin();
+
+        $seller = $this->createUserWithRole(
+            'seller'
+        );
+
+        $logistics = $this->createUserWithRole(
+            'logistics'
+        );
+
+        $sellerConversation =
+            $this->createConversation(
+                $admin,
+                $seller,
+                'seller'
+            );
+
+        $logisticsConversation =
+            $this->createConversation(
+                $admin,
+                $logistics,
+                'logistics'
+            );
+
+        $this
+            ->actingAs($admin)
+            ->postJson(
+                route(
+                    'admin.messages.send',
+                    $sellerConversation
+                ),
+                [
+                    'message' => 'About your store.',
+                ]
+            )
+            ->assertOk();
+
+        $this
+            ->actingAs($admin)
+            ->postJson(
+                route(
+                    'admin.messages.send',
+                    $logisticsConversation
+                ),
+                [
+                    'message' => 'About the pickup.',
+                ]
+            )
+            ->assertOk();
+
+        Notification::assertSentTo(
+            $seller,
+            WorkflowNotification::class,
+            fn (WorkflowNotification $notification): bool => $notification->eventKey() === 'seller_buyer_message'
+                && $notification->meta()['conversation_id'] === (int) $sellerConversation->id,
+        );
+
+        Notification::assertSentTo(
+            $logistics,
+            WorkflowNotification::class,
+            fn (WorkflowNotification $notification): bool => $notification->eventKey() === 'logistics_message_received'
+                && $notification->meta()['conversation_id'] === (int) $logisticsConversation->id,
+        );
+    }
+
+    /**
+     * These two tests intentionally do NOT use Notification::fake(): they
+     * exercise the real database notification channel so a warning logged by
+     * the delivery guard cannot hide a missing seller notification row.
+     */
+    public function test_admin_created_seller_conversation_writes_a_real_notification_row(): void
+    {
+        $admin = $this->createAdmin();
+
+        $seller = $this->createUserWithRole('seller');
+
+        $response = $this
+            ->actingAs($admin)
+            ->postJson(
+                route('admin.messages.conversations.store'),
+                [
+                    'recipient_id' => $seller->id,
+                    'recipient_role' => 'seller',
+                    'subject' => 'Pickup address confirmation',
+                    'message' => 'Please confirm the pickup address on file.',
+                ]
+            );
+
+        $response->assertCreated();
+
+        $conversationId = (int) $response->json('conversation.id');
+
+        $notification = $seller->notifications()->get()->sole();
+
+        $this->assertSame(WorkflowNotification::class, $notification->type);
+        $this->assertSame('seller_buyer_message', $notification->data['event']);
+        $this->assertSame($conversationId, $notification->data['meta']['conversation_id']);
+        $this->assertSame(
+            route('seller.support.messages', ['conversation' => $conversationId]),
+            $notification->data['url']
+        );
+        $this->assertNull($notification->read_at);
+        $this->assertSame(1, $seller->unreadNotifications()->count());
+
+        $this->actingAs($seller)
+            ->getJson(route('notifications.index'))
+            ->assertOk()
+            ->assertJsonPath('data.unread_count', 1)
+            ->assertJsonPath('data.items.0.event', 'seller_buyer_message')
+            ->assertJsonPath('data.items.0.read', false)
+            ->assertJsonPath('data.items.0.title', 'New message from '.$admin->name)
+            ->assertJsonPath(
+                'data.items.0.url',
+                route('seller.support.messages', ['conversation' => $conversationId])
+            );
+    }
+
+    public function test_admin_sent_seller_message_writes_a_real_notification_row(): void
+    {
+        $admin = $this->createAdmin();
+
+        $seller = $this->createUserWithRole('seller');
+
+        $conversation = $this->createConversation(
+            $admin,
+            $seller,
+            'seller'
+        );
+
+        $this->assertSame(0, $seller->notifications()->count());
+
+        $this
+            ->actingAs($admin)
+            ->postJson(
+                route('admin.messages.send', $conversation),
+                [
+                    'message' => 'Following up on your compliance documents.',
+                ]
+            )
+            ->assertOk();
+
+        $notification = $seller->notifications()->get()->sole();
+
+        $this->assertSame(WorkflowNotification::class, $notification->type);
+        $this->assertSame('seller_buyer_message', $notification->data['event']);
+        $this->assertSame((int) $conversation->id, $notification->data['meta']['conversation_id']);
+        $this->assertSame(
+            route('seller.support.messages', ['conversation' => $conversation->id]),
+            $notification->data['url']
+        );
+        $this->assertNull($notification->read_at);
+        $this->assertSame(1, $seller->unreadNotifications()->count());
     }
 
     public function test_non_participant_cannot_send_message(): void
@@ -1173,5 +1370,231 @@ class AdminMessageTest extends TestCase
                 'dispute_id' => $dispute->id,
             ]
         );
+    }
+
+    public function test_inbox_endpoint_returns_only_admin_conversations_with_live_state(): void
+    {
+        $admin = $this->createAdmin();
+
+        $buyer = $this->createUserWithRole(
+            'buyer'
+        );
+
+        $conversation =
+            $this->createConversation(
+                $admin,
+                $buyer
+            );
+
+        Message::query()->create([
+            'conversation_id' => $conversation->id,
+
+            'sender_id' => $admin->id,
+
+            'body' => 'Opening note',
+
+            'message_type' => 'text',
+
+            'sent_at' => now()->subMinutes(5),
+        ]);
+
+        Message::query()->create([
+            'conversation_id' => $conversation->id,
+
+            'sender_id' => $buyer->id,
+
+            'body' => 'Latest buyer reply',
+
+            'message_type' => 'text',
+
+            'sent_at' => now(),
+        ]);
+
+        DB::table(
+            'conversation_participants'
+        )
+            ->where(
+                'conversation_id',
+                $conversation->id
+            )
+            ->where(
+                'user_id',
+                $admin->id
+            )
+            ->update([
+                'last_read_at' => now()->subMinute(),
+            ]);
+
+        $otherAdmin = $this->createAdmin();
+
+        $otherBuyer = $this->createUserWithRole(
+            'buyer'
+        );
+
+        $this->createConversation(
+            $otherAdmin,
+            $otherBuyer
+        );
+
+        $response = $this
+            ->actingAs($admin)
+            ->getJson(
+                route(
+                    'admin.messages.inbox'
+                )
+            );
+
+        $response
+            ->assertOk()
+            ->assertJsonCount(
+                1,
+                'data.conversations'
+            )
+            ->assertJsonPath(
+                'data.conversations.0.id',
+                $conversation->id
+            )
+            ->assertJsonPath(
+                'data.conversations.0.preview',
+                'Latest buyer reply'
+            )
+            ->assertJsonPath(
+                'data.conversations.0.unread',
+                1
+            );
+    }
+
+    public function test_thread_endpoint_returns_only_messages_after_the_given_id(): void
+    {
+        $admin = $this->createAdmin();
+
+        $buyer = $this->createUserWithRole(
+            'buyer'
+        );
+
+        $conversation =
+            $this->createConversation(
+                $admin,
+                $buyer
+            );
+
+        $first = Message::query()->create([
+            'conversation_id' => $conversation->id,
+
+            'sender_id' => $admin->id,
+
+            'body' => 'First message',
+
+            'message_type' => 'text',
+
+            'sent_at' => now()->subMinutes(2),
+        ]);
+
+        $second = Message::query()->create([
+            'conversation_id' => $conversation->id,
+
+            'sender_id' => $buyer->id,
+
+            'body' => 'Second message',
+
+            'message_type' => 'text',
+
+            'sent_at' => now()->subMinute(),
+        ]);
+
+        $response = $this
+            ->actingAs($admin)
+            ->getJson(
+                route(
+                    'admin.messages.thread',
+                    $conversation
+                )
+            );
+
+        $response
+            ->assertOk()
+            ->assertJsonCount(
+                2,
+                'data.messages'
+            )
+            ->assertJsonPath(
+                'data.messages.0.id',
+                $first->id
+            )
+            ->assertJsonPath(
+                'data.messages.0.from',
+                'me'
+            )
+            ->assertJsonPath(
+                'data.messages.1.from',
+                'them'
+            );
+
+        $afterResponse = $this
+            ->actingAs($admin)
+            ->getJson(
+                route(
+                    'admin.messages.thread',
+                    [
+                        'conversation' => $conversation,
+                        'after' => $first->id,
+                    ]
+                )
+            );
+
+        $afterResponse
+            ->assertOk()
+            ->assertJsonCount(
+                1,
+                'data.messages'
+            )
+            ->assertJsonPath(
+                'data.messages.0.id',
+                $second->id
+            )
+            ->assertJsonPath(
+                'data.messages.0.text',
+                'Second message'
+            );
+    }
+
+    public function test_thread_endpoint_is_hidden_from_non_participant_admins(): void
+    {
+        $admin = $this->createAdmin();
+
+        $buyer = $this->createUserWithRole(
+            'buyer'
+        );
+
+        $conversation =
+            $this->createConversation(
+                $admin,
+                $buyer
+            );
+
+        $outsider = $this->createAdmin();
+
+        $this
+            ->actingAs($outsider)
+            ->getJson(
+                route(
+                    'admin.messages.thread',
+                    $conversation
+                )
+            )
+            ->assertNotFound();
+
+        $this
+            ->actingAs($outsider)
+            ->getJson(
+                route(
+                    'admin.messages.inbox'
+                )
+            )
+            ->assertOk()
+            ->assertJsonCount(
+                0,
+                'data.conversations'
+            );
     }
 }

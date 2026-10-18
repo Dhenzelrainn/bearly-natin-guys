@@ -1,4 +1,5 @@
 import { isValidPhilippineMobile } from './registration-phone.js';
+import './notification-center.js';
 
 const RIDER_STATE_KEY = 'bearlyRiderStateV1';
 const readState = () => { try { return JSON.parse(localStorage.getItem(RIDER_STATE_KEY)) || {}; } catch { return {}; } };
@@ -22,7 +23,6 @@ function setupShell() {
     document.querySelectorAll('[data-dismiss]').forEach((button) => button.addEventListener('click', () => button.closest('.flash-banner')?.remove()));
     document.querySelectorAll('[data-popover-toggle]').forEach((button) => button.addEventListener('click', (event) => { event.stopPropagation(); const name = button.dataset.popoverToggle; document.querySelectorAll('[data-popover]').forEach((popover) => { popover.hidden = popover.dataset.popover !== name || !popover.hidden; }); }));
     document.addEventListener('click', (event) => { if (!event.target.closest('.popover-wrap')) document.querySelectorAll('[data-popover]').forEach((popover) => { popover.hidden = true; }); });
-    document.querySelector('[data-mark-notifications]')?.addEventListener('click', () => { document.querySelectorAll('.notification-row').forEach((row) => row.remove()); document.querySelector('.notification-dot')?.remove(); toast('Notifications marked as read.'); });
 }
 
 function setupModals() {
@@ -194,13 +194,215 @@ function setupHistoryDetails() {
 }
 
 function setupChat() {
-    const conversations = [...document.querySelectorAll('[data-conversation]')]; const messages = document.querySelector('[data-chat-messages]'); const input = document.querySelector('[data-chat-input]'); if (!conversations.length || !messages) return;
-    let active = conversations[0].dataset.conversation; const base = {'sorting-center':[{mine:false,text:'Your next dispatch is ready at Intake Bay 2.',time:'2:10 PM'},{mine:true,text:'Received. I will return after the current pickup.',time:'2:12 PM'}],'karen-yu':[{mine:false,text:'Please call me when you are near the subdivision gate.',time:'1:55 PM'}],'techvault-ph':[{mine:false,text:'The six pickup parcels are ready at our operations counter.',time:'1:31 PM'}]};
-    const render = () => { const button = conversations.find((item) => item.dataset.conversation === active); document.querySelector('[data-chat-name]').textContent = button?.dataset.name || 'Conversation'; document.querySelector('[data-chat-role]').textContent = button?.dataset.role || ''; const saved = readState().messages?.[active] || []; messages.innerHTML = [...(base[active] || []),...saved].map((item) => `<div class="message-bubble ${item.mine?'is-mine':''}">${escapeHtml(item.text)}<small>${escapeHtml(item.time)}</small></div>`).join(''); messages.scrollTop = messages.scrollHeight; };
-    conversations.forEach((button) => button.addEventListener('click', () => { active = button.dataset.conversation; conversations.forEach((item) => item.classList.toggle('is-active',item===button)); render(); }));
-    document.querySelector('[data-chat-search]')?.addEventListener('input', (event) => conversations.forEach((button) => button.hidden = !normalize(button.textContent).includes(normalize(event.target.value))));
-    const send = () => { const text = input.value.trim(); if (!text) return; const state = readState(); state.messages ||= {}; state.messages[active] ||= []; state.messages[active].push({mine:true,text,time:new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}); writeState(state); input.value=''; render(); };
-    document.querySelector('[data-chat-send]')?.addEventListener('click',send); input?.addEventListener('keydown',(event)=>{if(event.key==='Enter'){event.preventDefault();send();}}); render();
+    const conversationButtons = [...document.querySelectorAll('[data-conversation]')];
+    const nameTarget = document.querySelector('[data-chat-name]');
+    const roleTarget = document.querySelector('[data-chat-role]');
+    const messagesTarget = document.querySelector('[data-chat-messages]');
+    const input = document.querySelector('[data-chat-input]');
+    const sendButton = document.querySelector('[data-chat-send]');
+    const attachmentButton = document.querySelector('[data-chat-attachment-button]');
+    const attachmentInput = document.querySelector('[data-chat-attachment]');
+    const attachmentName = document.querySelector('[data-chat-attachment-name]');
+
+    if (!messagesTarget) return;
+
+    const conversationData = window.bearlyRiderConversations || {};
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    const requestedId = String(window.bearlyRiderSelectedConversation ?? new URLSearchParams(window.location.search).get('conversation') ?? '');
+
+    let active = conversationData[requestedId] ? requestedId : (conversationButtons[0]?.dataset.conversation || '');
+    let sending = false;
+
+    const activeConversation = () => conversationData[active] || null;
+
+    const renderMessages = () => {
+        const conversation = activeConversation();
+
+        if (!conversation) return;
+
+        const thread = conversation.messages || [];
+
+        messagesTarget.innerHTML = thread.length
+            ? thread.map((message) => `
+                <div class="message-bubble ${message.mine ? 'is-mine' : ''}">
+                    ${message.text ? `<div class="message-text">${escapeHtml(message.text)}</div>` : ''}
+                    ${(Array.isArray(message.attachments) ? message.attachments : []).map((attachment) => `
+                        <a class="message-attachment" href="${escapeHtml(attachment.download_url)}" download>
+                            <span aria-hidden="true">📎</span>
+                            <span>${escapeHtml(attachment.name)}</span>
+                        </a>
+                    `).join('')}
+                    <small>${escapeHtml(message.time)}</small>
+                </div>
+            `).join('')
+            : '<div class="table-empty">No messages yet.</div>';
+
+        messagesTarget.scrollTop = messagesTarget.scrollHeight;
+    };
+
+    const updateButtons = () => {
+        conversationButtons.forEach((button) => {
+            const conversation = conversationData[button.dataset.conversation] || {};
+
+            button.classList.toggle('is-active', button.dataset.conversation === active);
+            button.dataset.unread = String(conversation.unread || 0);
+        });
+    };
+
+    const markActiveRead = () => {
+        const conversation = activeConversation();
+
+        if (!conversation?.read_url || !(Number(conversation.unread || 0) > 0)) {
+            return;
+        }
+
+        conversation.unread = 0;
+        updateButtons();
+
+        fetch(conversation.read_url, {
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': csrfToken, Accept: 'application/json' },
+        }).catch(() => {});
+    };
+
+    const activate = (id) => {
+        active = String(id);
+        const conversation = activeConversation();
+
+        if (nameTarget) nameTarget.textContent = conversation?.name || 'Conversation';
+        if (roleTarget) roleTarget.textContent = conversation?.role || '';
+
+        updateButtons();
+        renderMessages();
+        markActiveRead();
+    };
+
+    conversationButtons.forEach((button) => button.addEventListener('click', () => activate(button.dataset.conversation)));
+
+    document.querySelector('[data-chat-search]')?.addEventListener('input', (event) => {
+        const query = normalize(event.target.value);
+
+        conversationButtons.forEach((button) => {
+            button.hidden = query !== '' && !normalize(button.textContent).includes(query);
+        });
+    });
+
+    attachmentButton?.addEventListener('click', () => attachmentInput?.click());
+
+    attachmentInput?.addEventListener('change', () => {
+        const file = attachmentInput.files?.[0];
+
+        if (!attachmentName) return;
+
+        attachmentName.textContent = file ? file.name : '';
+        attachmentName.hidden = !file;
+    });
+
+    const send = async () => {
+        const conversation = activeConversation();
+        const text = input?.value.trim() || '';
+        const file = attachmentInput?.files?.[0] || null;
+
+        if (!conversation || sending || (!text && !file)) return;
+
+        sending = true;
+        if (sendButton) sendButton.disabled = true;
+
+        try {
+            const body = new FormData();
+
+            if (text) body.append('message', text);
+            if (file) body.append('attachment', file);
+
+            const response = await fetch(conversation.send_url, {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrfToken, Accept: 'application/json' },
+                body,
+            });
+
+            const payload = await response.json().catch(() => ({}));
+
+            if (!response.ok) {
+                const errors = payload?.errors ? Object.values(payload.errors).flat() : [];
+                throw new Error(errors[0] || payload?.message || 'The message could not be sent.');
+            }
+
+            conversation.messages = [...(conversation.messages || []), payload.data];
+            conversation.preview = payload.data?.preview || conversation.preview;
+
+            input.value = '';
+            if (attachmentInput) attachmentInput.value = '';
+            if (attachmentName) {
+                attachmentName.textContent = '';
+                attachmentName.hidden = true;
+            }
+
+            renderMessages();
+        } catch (error) {
+            toast(error.message || 'The message could not be sent.');
+        } finally {
+            sending = false;
+            if (sendButton) sendButton.disabled = false;
+        }
+    };
+
+    sendButton?.addEventListener('click', send);
+    input?.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            send();
+        }
+    });
+
+    const pollActiveThread = async () => {
+        const conversation = activeConversation();
+
+        if (!conversation?.thread_url || document.hidden || sending) return;
+
+        const lastId = (conversation.messages || []).slice(-1)[0]?.id || 0;
+
+        try {
+            const response = await fetch(`${conversation.thread_url}?after=${lastId}`, {
+                headers: { Accept: 'application/json' },
+            });
+
+            if (!response.ok) return;
+
+            const payload = await response.json();
+            const incoming = payload?.data?.messages || [];
+
+            if (!incoming.length) return;
+
+            conversation.messages = [...(conversation.messages || []), ...incoming];
+            renderMessages();
+
+            const unreadIncoming = incoming.filter((message) => !message.mine).length;
+
+            if (unreadIncoming > 0) {
+                conversation.unread = Number(conversation.unread || 0) + unreadIncoming;
+                markActiveRead();
+            }
+        } catch {
+            /* keep the last rendered thread on polling failures */
+        }
+    };
+
+    window.setInterval(pollActiveThread, 15000);
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) pollActiveThread();
+    });
+
+    if (active) {
+        activate(active);
+    } else {
+        renderMessages();
+    }
+
+    window.addEventListener('bearly:message-created', (event) => {
+        const conversationId = String(event.detail?.conversation_id || '');
+        if (conversationId !== active) return;
+        pollActiveThread().catch(() => {});
+    });
 }
 
 function setupForms() {

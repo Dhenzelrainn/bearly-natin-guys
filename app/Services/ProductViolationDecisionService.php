@@ -7,6 +7,7 @@ use App\Models\ProductViolation;
 use App\Models\SellerWarning;
 use App\Models\User;
 use App\Models\ViolationAction;
+use App\Notifications\WorkflowNotification;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -27,6 +28,10 @@ class ProductViolationDecisionService
         'remove_product',
         'warn_seller',
     ];
+
+    public function __construct(
+        private readonly NotificationService $notifications,
+    ) {}
 
     public function decide(
         ProductViolation $violation,
@@ -141,6 +146,22 @@ class ProductViolationDecisionService
                         'seller_profile_id' => $lockedViolation->seller_profile_id,
                         'violation_id' => $lockedViolation->id,
                     ]);
+                }
+
+                $sellerUser = $lockedViolation->sellerProfile?->user;
+
+                if ($sellerUser) {
+                    $this->notifications->sendAfterCommit($sellerUser, new WorkflowNotification(
+                        eventKey: 'seller_compliance_flagged',
+                        title: 'Compliance warning issued',
+                        body: "An Admin reviewed a compliance flag on \"{$product->name}\" and issued a warning: {$note}",
+                        actionUrl: route('seller.products'),
+                        type: 'warning',
+                        meta: [
+                            'violation_id' => (int) $lockedViolation->id,
+                            'product_id' => (int) $product->id,
+                        ],
+                    ));
                 }
             }
 

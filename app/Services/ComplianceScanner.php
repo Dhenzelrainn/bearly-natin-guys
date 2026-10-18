@@ -10,11 +10,16 @@ use App\Models\ProductViolation;
 use App\Models\SellerWarning;
 use App\Models\User;
 use App\Models\ViolationAction;
+use App\Notifications\WorkflowNotification;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class ComplianceScanner
 {
+    public function __construct(
+        private readonly NotificationService $notifications,
+    ) {}
+
     public function scan(Product $product, string $trigger = 'create', ?User $actor = null): ProductComplianceCheck
     {
         return DB::transaction(function () use ($product, $trigger, $actor): ProductComplianceCheck {
@@ -22,7 +27,7 @@ class ComplianceScanner
                 ->whereKey($product->getKey())
                 ->lockForUpdate()
                 ->firstOrFail();
-            $product->load(['store.sellerProfile', 'category']);
+            $product->load(['store.sellerProfile.user', 'category']);
             $wasComplianceHeld = in_array($product->compliance_status, ['flagged', 'blocked'], true);
 
             $check = ProductComplianceCheck::create([
@@ -100,8 +105,58 @@ class ComplianceScanner
                 },
             ]);
 
+            if ($result !== 'clear' && ! $wasComplianceHeld) {
+                $this->notifyModerators($product, $check, $result);
+                $this->notifySeller($product, $check, $result);
+            }
+
             return $check->load('matches');
         });
+    }
+
+    /**
+     * Only alert moderators when a product newly enters a held state; repeat
+     * scans of an already-flagged or blocked product do not re-notify.
+     */
+    private function notifyModerators(Product $product, ProductComplianceCheck $check, string $result): void
+    {
+        $this->notifications->sendManyAfterCommit(
+            $this->notifications->admins(),
+            new WorkflowNotification(
+                eventKey: 'admin_compliance_flagged',
+                title: $result === 'blocked' ? 'Product blocked by compliance scan' : 'Product flagged by compliance scan',
+                body: "\"{$product->name}\" was ".($result === 'blocked' ? 'blocked' : 'flagged').' by the compliance scan and needs moderation.',
+                actionUrl: route('admin.compliance.violations'),
+                type: $result === 'blocked' ? 'danger' : 'warning',
+                meta: ['product_id' => (int) $product->id, 'check_id' => (int) $check->id],
+            ),
+        );
+    }
+
+    /**
+     * The Seller is told once when their product newly enters a held or
+     * blocked state; repeat scans of an already-held product stay silent.
+     */
+    private function notifySeller(Product $product, ProductComplianceCheck $check, string $result): void
+    {
+        $sellerUser = $product->store?->sellerProfile?->user;
+
+        if (! $sellerUser) {
+            return;
+        }
+
+        $held = $result !== 'blocked';
+
+        $this->notifications->sendAfterCommit($sellerUser, new WorkflowNotification(
+            eventKey: 'seller_compliance_flagged',
+            title: $held ? 'Product held for compliance review' : 'Product blocked by compliance scan',
+            body: $held
+                ? "\"{$product->name}\" is hidden from Buyers while an Admin reviews a compliance flag on its listing. Fixing the flagged wording can clear the hold automatically."
+                : "\"{$product->name}\" was blocked by the compliance scan and is hidden from Buyers. Review the compliance reason beside the product before making changes.",
+            actionUrl: route('seller.products'),
+            type: $held ? 'warning' : 'danger',
+            meta: ['product_id' => (int) $product->id, 'check_id' => (int) $check->id],
+        ));
     }
 
     /** @return array{bool, string|null} */

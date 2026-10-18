@@ -2,7 +2,6 @@
 /* Frontend catalog preview. Preview state is buyer-scoped and never treated as live commerce data. */
 
 const buyerStorageKey = key => window.bearlyStorageKey?.(key) || `bearly-${key}-v1`;
-const PREVIEW_CART_KEY = buyerStorageKey('preview-cart');
 const PREVIEW_WISHLIST_KEY = buyerStorageKey('preview-wishlist');
 const SEARCH_HISTORY_KEY = buyerStorageKey('search-history');
 
@@ -1236,7 +1235,7 @@ function initialize() {
                             <button
                                 type="button"
                                 class="pd-add-cart"
-                                data-pd-add-cart
+                                data-pd-add-cart disabled
                             >
                                 <i
                                     class="mi"
@@ -1245,15 +1244,15 @@ function initialize() {
                                     shopping_cart
                                 </i>
 
-                                Add to Cart
+                                Preview only
                             </button>
 
                             <button
                                 type="button"
                                 class="pd-buy-now"
-                                data-pd-buy-now
+                                data-pd-buy-now disabled
                             >
-                                Buy Now
+                                Checkout preview
                             </button>
 
                         </div>
@@ -1323,21 +1322,6 @@ function initialize() {
                     </div>
 
                     <div class="pd-seller-actions">
-
-                        <button
-                            type="button"
-                            class="pd-shop-button"
-                            data-pd-chat
-                        >
-                            <i
-                                class="mi"
-                                aria-hidden="true"
-                            >
-                                chat_bubble
-                            </i>
-
-                            Chat
-                        </button>
 
                         <button
                             type="button"
@@ -1627,13 +1611,11 @@ function initialize() {
             }
 
             if (addButton) {
-                addButton.disabled =
-                    stock <= 0;
+                addButton.disabled = true;
             }
 
             if (buyButton) {
-                buyButton.disabled =
-                    stock <= 0;
+                buyButton.disabled = true;
             }
         }
 
@@ -1765,139 +1747,6 @@ function initialize() {
 
         detail
             .querySelector(
-                '[data-pd-add-cart]'
-            )
-            ?.addEventListener(
-                'click',
-                () => {
-                    const stock =
-                        currentStock();
-
-                    if (stock <= 0) {
-                        notify(
-                            'This variation is out of stock.'
-                        );
-                        return;
-                    }
-
-                    const cartKey =
-                        PREVIEW_CART_KEY;
-
-                    let previewCart = [];
-
-                    try {
-                        const stored =
-                            JSON.parse(
-                                localStorage.getItem(
-                                    cartKey
-                                ) || '[]'
-                            );
-
-                        if (
-                            Array.isArray(
-                                stored
-                            )
-                        ) {
-                            previewCart =
-                                stored;
-                        }
-                    } catch {
-                        previewCart = [];
-                    }
-
-                    const itemKey = [
-                        product.id,
-                        selectedColor,
-                        selectedSize,
-                    ].join('-');
-
-                    const existing =
-                        previewCart.find(
-                            item =>
-                                item.key ===
-                                itemKey
-                        );
-
-                    if (existing) {
-                        existing.quantity =
-                            Math.min(
-                                stock,
-                                existing.quantity +
-                                quantity
-                            );
-                    } else {
-                        previewCart.push({
-                            key: itemKey,
-                            product_id:
-                                product.id,
-                            name:
-                                product.name,
-                            price:
-                                currentPrice(),
-                            color:
-                                selectedColor,
-                            size:
-                                selectedSize,
-                            quantity,
-                            photo:
-                                product.photo,
-                            image:
-                                product.image || '',
-                            category:
-                                document.body.dataset.category || '',
-                            seller_name:
-                                sellerName,
-                            frontend_preview:
-                                true,
-                        });
-                    }
-
-                    try {
-                        localStorage.setItem(
-                            cartKey,
-                            JSON.stringify(
-                                previewCart
-                            )
-                        );
-                    } catch {
-                        // LocalStorage unavailable.
-                    }
-
-                    const button =
-                        detail.querySelector(
-                            '[data-pd-add-cart]'
-                        );
-
-                    const original =
-                        button.innerHTML;
-
-                    button.innerHTML = `
-                        <i
-                            class="mi"
-                            aria-hidden="true"
-                        >
-                            check
-                        </i>
-                        Added to Cart
-                    `;
-
-                    notify(
-                        `${quantity} × ${product.name} added to the preview cart.`
-                    );
-
-                    setTimeout(() => {
-                        if (
-                            button.isConnected
-                        ) {
-                            button.innerHTML =
-                                original;
-                        }
-                    }, 1400);
-                }
-            );
-
-        detail
-            .querySelector(
                 '[data-pd-buy-now]'
             )
             ?.addEventListener(
@@ -1905,19 +1754,6 @@ function initialize() {
                 () => {
                     notify(
                         'Buy Now is frontend-only for now. Checkout will be connected later.'
-                    );
-                }
-            );
-
-        detail
-            .querySelector(
-                '[data-pd-chat]'
-            )
-            ?.addEventListener(
-                'click',
-                () => {
-                    notify(
-                        'Seller chat will be connected during backend integration.'
                     );
                 }
             );
@@ -4264,7 +4100,7 @@ function init() {
                             <button
                                 type="button"
                                 class="pd-add-cart"
-                                data-pd-add-cart
+                                data-pd-add-cart disabled
                             >
                                 <i
                                     class="mi"
@@ -4273,15 +4109,15 @@ function init() {
                                     shopping_cart
                                 </i>
 
-                                Add to Cart
+                                Preview only
                             </button>
 
                             <button
                                 type="button"
                                 class="pd-buy-now"
-                                data-pd-buy-now
+                                data-pd-buy-now disabled
                             >
-                                Buy Now
+                                Checkout preview
                             </button>
 
                         </div>
@@ -4351,21 +4187,6 @@ function init() {
                     </div>
 
                     <div class="pd-seller-actions">
-
-                        <button
-                            type="button"
-                            class="pd-shop-button"
-                            data-pd-chat
-                        >
-                            <i
-                                class="mi"
-                                aria-hidden="true"
-                            >
-                                chat_bubble
-                            </i>
-
-                            Chat
-                        </button>
 
                         <button
                             type="button"
@@ -4654,13 +4475,11 @@ function init() {
             }
 
             if (addButton) {
-                addButton.disabled =
-                    stock <= 0;
+                addButton.disabled = true;
             }
 
             if (buyButton) {
-                buyButton.disabled =
-                    stock <= 0;
+                buyButton.disabled = true;
             }
         }
 
@@ -4792,135 +4611,6 @@ function init() {
 
         detail
             .querySelector(
-                '[data-pd-add-cart]'
-            )
-            ?.addEventListener(
-                'click',
-                () => {
-                    const stock =
-                        currentStock();
-
-                    if (stock <= 0) {
-                        notify(
-                            'This variation is out of stock.'
-                        );
-                        return;
-                    }
-
-                    const cartKey =
-                        PREVIEW_CART_KEY;
-
-                    let previewCart = [];
-
-                    try {
-                        const stored =
-                            JSON.parse(
-                                localStorage.getItem(
-                                    cartKey
-                                ) || '[]'
-                            );
-
-                        if (
-                            Array.isArray(
-                                stored
-                            )
-                        ) {
-                            previewCart =
-                                stored;
-                        }
-                    } catch {
-                        previewCart = [];
-                    }
-
-                    const itemKey = [
-                        product.id,
-                        selectedColor,
-                        selectedSize,
-                    ].join('-');
-
-                    const existing =
-                        previewCart.find(
-                            item =>
-                                item.key ===
-                                itemKey
-                        );
-
-                    if (existing) {
-                        existing.quantity =
-                            Math.min(
-                                stock,
-                                existing.quantity +
-                                quantity
-                            );
-                    } else {
-                        previewCart.push({
-                            key: itemKey,
-                            product_id:
-                                product.id,
-                            name:
-                                product.name,
-                            price:
-                                currentPrice(),
-                            color:
-                                selectedColor,
-                            size:
-                                selectedSize,
-                            quantity,
-                            photo:
-                                product.photo,
-                            seller_name:
-                                sellerName,
-                            frontend_preview:
-                                true,
-                        });
-                    }
-
-                    try {
-                        localStorage.setItem(
-                            cartKey,
-                            JSON.stringify(
-                                previewCart
-                            )
-                        );
-                    } catch {
-                        // LocalStorage unavailable.
-                    }
-
-                    const button =
-                        detail.querySelector(
-                            '[data-pd-add-cart]'
-                        );
-
-                    const original =
-                        button.innerHTML;
-
-                    button.innerHTML = `
-                        <i
-                            class="mi"
-                            aria-hidden="true"
-                        >
-                            check
-                        </i>
-                        Added to Cart
-                    `;
-
-                    notify(
-                        `${quantity} × ${product.name} added to the preview cart.`
-                    );
-
-                    setTimeout(() => {
-                        if (
-                            button.isConnected
-                        ) {
-                            button.innerHTML =
-                                original;
-                        }
-                    }, 1400);
-                }
-            );
-
-        detail
-            .querySelector(
                 '[data-pd-buy-now]'
             )
             ?.addEventListener(
@@ -4928,19 +4618,6 @@ function init() {
                 () => {
                     notify(
                         'Buy Now is frontend-only for now. Checkout will be connected later.'
-                    );
-                }
-            );
-
-        detail
-            .querySelector(
-                '[data-pd-chat]'
-            )
-            ?.addEventListener(
-                'click',
-                () => {
-                    notify(
-                        'Seller chat will be connected during backend integration.'
                     );
                 }
             );
@@ -6144,7 +5821,7 @@ function showFeaturedProductFull(product) {
                         <button
                             type="button"
                             class="pd-add-cart"
-                            data-pd-add-cart
+                            data-pd-add-cart disabled
                         >
                             <i
                                 class="mi"
@@ -6153,15 +5830,15 @@ function showFeaturedProductFull(product) {
                                 shopping_cart
                             </i>
 
-                            Add to Cart
+                            Preview only
                         </button>
 
                         <button
                             type="button"
                             class="pd-buy-now"
-                            data-pd-buy-now
+                            data-pd-buy-now disabled
                         >
-                            Buy Now
+                            Checkout preview
                         </button>
 
                     </div>
@@ -6231,21 +5908,6 @@ function showFeaturedProductFull(product) {
                 </div>
 
                 <div class="pd-seller-actions">
-
-                    <button
-                        type="button"
-                        class="pd-shop-button"
-                        data-pd-chat
-                    >
-                        <i
-                            class="mi"
-                            aria-hidden="true"
-                        >
-                            chat_bubble
-                        </i>
-
-                        Chat
-                    </button>
 
                     <button
                         type="button"
@@ -6535,13 +6197,11 @@ function showFeaturedProductFull(product) {
         }
 
         if (addButton) {
-            addButton.disabled =
-                stock <= 0;
+            addButton.disabled = true;
         }
 
         if (buyButton) {
-            buyButton.disabled =
-                stock <= 0;
+            buyButton.disabled = true;
         }
     }
 
@@ -6673,139 +6333,6 @@ function showFeaturedProductFull(product) {
 
     detail
         .querySelector(
-            '[data-pd-add-cart]'
-        )
-        ?.addEventListener(
-            'click',
-            () => {
-                const stock =
-                    currentStock();
-
-                if (stock <= 0) {
-                    notify(
-                        'This variation is out of stock.'
-                    );
-                    return;
-                }
-
-                const cartKey =
-                    PREVIEW_CART_KEY;
-
-                let previewCart = [];
-
-                try {
-                    const stored =
-                        JSON.parse(
-                            localStorage.getItem(
-                                cartKey
-                            ) || '[]'
-                        );
-
-                    if (
-                        Array.isArray(
-                            stored
-                        )
-                    ) {
-                        previewCart =
-                            stored;
-                    }
-                } catch {
-                    previewCart = [];
-                }
-
-                const itemKey = [
-                    product.id,
-                    selectedColor,
-                    selectedSize,
-                ].join('-');
-
-                const existing =
-                    previewCart.find(
-                        item =>
-                            item.key ===
-                            itemKey
-                    );
-
-                if (existing) {
-                    existing.quantity =
-                        Math.min(
-                            stock,
-                            existing.quantity +
-                            quantity
-                        );
-                } else {
-                    previewCart.push({
-                        key: itemKey,
-                        product_id:
-                            product.id,
-                        name:
-                            product.name,
-                        price:
-                            currentPrice(),
-                        color:
-                            selectedColor,
-                        size:
-                            selectedSize,
-                        quantity,
-                        photo:
-                            product.photo,
-                        image:
-                            product.image || '',
-                        category:
-                            document.body.dataset.category || '',
-                        seller_name:
-                            sellerName,
-                        frontend_preview:
-                            true,
-                    });
-                }
-
-                try {
-                    localStorage.setItem(
-                        cartKey,
-                        JSON.stringify(
-                            previewCart
-                        )
-                    );
-                } catch {
-                    // LocalStorage unavailable.
-                }
-
-                const button =
-                    detail.querySelector(
-                        '[data-pd-add-cart]'
-                    );
-
-                const original =
-                    button.innerHTML;
-
-                button.innerHTML = `
-                    <i
-                        class="mi"
-                        aria-hidden="true"
-                    >
-                        check
-                    </i>
-                    Added to Cart
-                `;
-
-                notify(
-                    `${quantity} × ${product.name} added to the preview cart.`
-                );
-
-                setTimeout(() => {
-                    if (
-                        button.isConnected
-                    ) {
-                        button.innerHTML =
-                            original;
-                    }
-                }, 1400);
-            }
-        );
-
-    detail
-        .querySelector(
             '[data-pd-buy-now]'
         )
         ?.addEventListener(
@@ -6813,19 +6340,6 @@ function showFeaturedProductFull(product) {
             () => {
                 notify(
                     'Buy Now is frontend-only for now. Checkout will be connected later.'
-                );
-            }
-        );
-
-    detail
-        .querySelector(
-            '[data-pd-chat]'
-        )
-        ?.addEventListener(
-            'click',
-            () => {
-                notify(
-                    'Seller chat will be connected during backend integration.'
                 );
             }
         );
@@ -6945,36 +6459,12 @@ window.bearlyOpenFeaturedCard = (card, kind = 'top') => {
     openBearlyFeaturedPreview(card, kind);
 };
 
-function addBearlyFeaturedToCart(card, kind = 'top') {
-  const CART_KEY = PREVIEW_CART_KEY;
-    let cart = [];
-    try { const saved = JSON.parse(localStorage.getItem(CART_KEY) || '[]'); if (Array.isArray(saved)) cart = saved; } catch {}
-    const key = card.dataset.key || `${kind}-${card.dataset.productId || Date.now()}`;
-    const existing = cart.find(item => item.key === key);
-    if (existing) existing.quantity = Number(existing.quantity || 1) + 1;
-    else cart.push({
-        key,
-        product_id: card.dataset.productId || key,
-        name: card.dataset.name || 'Bearly Product',
-        price: Number(card.dataset.price || 0),
-        original_price: Number(card.dataset.originalPrice || 0) || undefined,
-        color: '', size: '', quantity: 1,
-        image: card.dataset.image || '',
-        category: kind === 'flash' ? (card.dataset.flashCategory || '') : (card.dataset.topCategory || ''),
-        seller_name: 'Bearly Official',
-        flash_deal: kind === 'flash',
-        frontend_preview: true,
-    });
-    try { localStorage.setItem(CART_KEY, JSON.stringify(cart)); } catch {}
-}
-
 /* BEAR-110 Flash Deals */
 function initBearlyFlashDeals() {
     const products = [...document.querySelectorAll('[data-flash-product]')];
     const countdowns = [...document.querySelectorAll('[data-flash-countdown]')];
     if (!products.length && !countdowns.length) return;
 
-    const CART_KEY = PREVIEW_CART_KEY;
     const SAVED_KEY = PREVIEW_WISHLIST_KEY;
     const END_KEY = 'bearly-flash-deal-end-v1';
     const cycleMs = 6 * 60 * 60 * 1000;
@@ -7060,39 +6550,7 @@ function initBearlyFlashDeals() {
             return;
         }
 
-        let cart = [];
-        try {
-            const saved = JSON.parse(localStorage.getItem(CART_KEY) || '[]');
-            if (Array.isArray(saved)) cart = saved;
-        } catch {}
-
-        const key = card.dataset.key || `flash-${card.dataset.productId}`;
-        const existing = cart.find(item => item.key === key);
-        if (existing) {
-            existing.quantity = Number(existing.quantity || 1) + 1;
-            existing.price = Number(card.dataset.price || existing.price || 0);
-        } else {
-            cart.push({
-                key,
-                product_id: card.dataset.productId || key,
-                name: card.dataset.name || 'Flash Deal Product',
-                price: Number(card.dataset.price || 0),
-                original_price: Number(card.dataset.originalPrice || 0),
-                color: '', size: '', quantity: 1,
-                image: card.dataset.image || '',
-                category: card.dataset.flashCategory || '',
-                seller_name: 'Bearly Official',
-                flash_deal: true,
-                frontend_preview: true,
-            });
-        }
-
-        try { localStorage.setItem(CART_KEY, JSON.stringify(cart)); } catch {}
-        const old = button.textContent;
-        button.textContent = 'Added ✓';
-        button.classList.add('is-added');
-        window.setTimeout(() => { button.textContent = old; button.classList.remove('is-added'); }, 1000);
-        toast(`${card.dataset.name || 'Item'} added at the flash deal price.`);
+        toast('This Flash Deal is a preview and is not connected to the live cart.');
     });
 }
 
@@ -7288,7 +6746,6 @@ function initBearlyTopProducts() {
     }
     const cards = [...document.querySelectorAll('[data-top-product]')];
     if (!cards.length) return;
-    const CART_KEY = PREVIEW_CART_KEY;
     const SAVED_KEY = PREVIEW_WISHLIST_KEY;
     const toastEl = document.querySelector('[data-top-toast]');
     const toast = message => {
@@ -7347,15 +6804,7 @@ function initBearlyTopProducts() {
             openProductPreview(card);
             return;
         }
-        const cart = readArray(CART_KEY);
-        const key = card.dataset.key || `top-${card.dataset.productId}`;
-        const existing = cart.find(item => item.key === key);
-        if (existing) existing.quantity = Number(existing.quantity || 1) + 1;
-        else cart.push({key, product_id:card.dataset.productId||key, name:card.dataset.name||'Top Product', price:Number(card.dataset.price||0), color:'', size:'', quantity:1, image:card.dataset.image||'', category:card.dataset.topCategory||'', seller_name:'Bearly Official', frontend_preview:true});
-        try { localStorage.setItem(CART_KEY, JSON.stringify(cart)); } catch {}
-        const old=add.textContent; add.textContent='Added ✓'; add.classList.add('is-added');
-        window.setTimeout(()=>{add.textContent=old;add.classList.remove('is-added');},900);
-        toast(`${card.dataset.name || 'Item'} added to cart.`);
+        toast('This Top Products item is a preview and is not connected to the live cart.');
     });
     const filters=[...document.querySelectorAll('[data-top-filter]')];
     const moreToggle=document.querySelector('[data-top-more-toggle]');
@@ -7474,17 +6923,13 @@ if (typeof document !== 'undefined' && !document.getElementById('home-data')) {
 /* Bearly global navbar state: keeps notification/cart badges in sync across buyer pages. */
 (function initBearlyGlobalNavbarState(){
   if(window.BearlyNavbarState)return;
-  const CART_KEY=PREVIEW_CART_KEY;
-  const NOTIFICATION_KEY=window.bearlyStorageKey?.('preview-notifications')||'bearly-notifications-v1';
+  /* Notification badges mirror the real unread count synced by notification-center.js. */
   function cartCount(){
-    try{const x=JSON.parse(localStorage.getItem(CART_KEY)||'[]');const preview=Array.isArray(x)?x.reduce((n,i)=>n+Math.max(0,Number(i?.quantity||0)),0):0;return preview+Number(window.bearlyBuyerProfile?.cartCount||0)}catch{return Number(window.bearlyBuyerProfile?.cartCount||0)}
+    return Math.max(0, Number(window.bearlyBuyerProfile?.cartCount || 0));
   }
   function notificationCount(){
-    try{
-      const raw=localStorage.getItem(NOTIFICATION_KEY);
-      if(!raw){const existing=document.querySelector('[data-notification-badge]');return Number(existing?.textContent||3)||0}
-      const x=JSON.parse(raw);return Array.isArray(x)?x.filter(i=>!i?.read).length:0;
-    }catch{return 0}
+    const existing=document.querySelector('[data-notification-badge]');
+    return Math.max(0,Number(existing?.textContent||0)||0);
   }
   function ensureBadge(link,type){
     if(!link)return null;

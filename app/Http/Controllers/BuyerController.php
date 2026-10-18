@@ -7,6 +7,7 @@ use App\Enums\ShipmentStatus;
 use App\Models\Address;
 use App\Models\Cart;
 use App\Models\CartItem;
+use App\Models\Conversation;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\ProductVariant;
@@ -14,6 +15,7 @@ use App\Models\Store;
 use App\Models\Wishlist;
 use App\Services\BuyerCatalogService;
 use App\Services\BuyerOrderConfirmationService;
+use App\Services\ConversationService;
 use App\Services\InternationalPhone;
 use App\Services\PostalCodeLookup;
 use App\Services\ProductReviewService;
@@ -39,6 +41,44 @@ class BuyerController extends Controller
             && Schema::hasTable('carts')
             && Schema::hasTable('cart_items')
             && Schema::hasTable('wishlists');
+    }
+
+    /**
+     * Buyer messaging center. Conversations and the initially selected thread
+     * are loaded from persisted data; the bootstrap payload keeps the page
+     * server-driven while `bearly-chat.js` handles in-place updates.
+     */
+    public function chat(Request $request, ConversationService $conversations): View
+    {
+        $buyer = $request->user();
+
+        $inbox = $conversations->inboxForBuyer($buyer);
+
+        $activeId = (int) $request->query('conversation', 0);
+        $active = null;
+
+        if ($activeId > 0) {
+            $candidate = Conversation::query()->find($activeId);
+
+            abort_unless(
+                $candidate && $conversations->isParticipant($candidate, $buyer),
+                404,
+            );
+
+            $active = $candidate;
+        } elseif ($inbox !== []) {
+            $active = Conversation::query()->find((int) $inbox[0]['id']);
+        }
+
+        return view('buyer.chat', [
+            'chatBootstrap' => [
+                'conversations' => $inbox,
+                'active_id' => $active ? (int) $active->id : null,
+                'thread' => $active
+                    ? $conversations->threadPayload($active, $buyer, 'buyer.chat.attachment')
+                    : null,
+            ],
+        ]);
     }
 
     public function profile(): View
@@ -202,6 +242,7 @@ class BuyerController extends Controller
                 'sellerOrders.items.variant',
                 'sellerOrders.shipments.events',
                 'sellerOrders.returnRequests',
+                'sellerOrders.activeDispute',
             ])
             ->latest('id')
             ->get()
@@ -285,6 +326,13 @@ class BuyerController extends Controller
                 'number' => (string) $sellerOrder->seller_order_no,
                 'store' => (string) ($sellerOrder->store?->name ?? 'Seller'),
                 'status' => (string) $sellerOrder->status,
+                'dispute_url' => $sellerOrder->activeDispute
+                    ? route('buyer.disputes.show', $sellerOrder->activeDispute)
+                    : route('buyer.disputes.create', $sellerOrder->id),
+                'dispute_label' => $sellerOrder->activeDispute
+                    ? 'View dispute '.(string) $sellerOrder->activeDispute->dispute_no
+                    : 'Report a problem',
+                'active_dispute_no' => $sellerOrder->activeDispute?->dispute_no,
                 'return_url' => $sellerOrder->status === SellerOrderStatus::Completed->value
                     ? route('buyer.returns.create', $sellerOrder->id)
                     : null,
@@ -441,6 +489,8 @@ class BuyerController extends Controller
                 'postal_code' => $data['postal'],
                 'psgc_city_code' => $data['city_code'] ?? null,
                 'is_default_shipping' => $makeDefault,
+                'latitude' => $data['latitude'] ?? null,
+                'longitude' => $data['longitude'] ?? null,
             ]);
         });
 
@@ -480,6 +530,8 @@ class BuyerController extends Controller
                 'postal_code' => $data['postal'],
                 'psgc_city_code' => $data['city_code'] ?? null,
                 'is_default_shipping' => $makeDefault,
+                'latitude' => $data['latitude'] ?? null,
+                'longitude' => $data['longitude'] ?? null,
             ]);
 
             return $address->fresh();
@@ -541,6 +593,8 @@ class BuyerController extends Controller
             'label' => ['required', 'string', 'in:Home,Work'],
             'is_default' => ['nullable', 'boolean'],
             'city_code' => ['nullable', 'regex:/^[0-9]{6,10}$/D'],
+            'latitude' => ['nullable', 'numeric', 'between:-90,90', 'required_with:longitude'],
+            'longitude' => ['nullable', 'numeric', 'between:-180,180', 'required_with:latitude'],
         ]);
 
         $data['city_code'] = app(PostalCodeLookup::class)->canonicalCityCode(
@@ -579,6 +633,8 @@ class BuyerController extends Controller
             'postal' => $address->postal_code,
             'street' => $address->street,
             'isDefault' => (bool) $address->is_default_shipping,
+            'latitude' => $address->latitude,
+            'longitude' => $address->longitude,
         ];
     }
 
@@ -1181,9 +1237,17 @@ class BuyerController extends Controller
     public function cart(Request $request, BuyerCatalogService $catalog): View
     {
         $cart = $this->currentCart($request->user(), false);
+        $wishlistProductIds = Wishlist::query()
+            ->where('user_id', $request->user()->id)
+            ->whereHas('product', fn ($query) => $query->visibleToBuyers())
+            ->pluck('product_id')
+            ->map(fn ($productId): int => (int) $productId)
+            ->values()
+            ->all();
 
         return view('buyer.cart', [
             'cartItems' => $cart ? $this->cartPayload($cart, $catalog) : [],
+            'wishlistProductIds' => $wishlistProductIds,
         ]);
     }
 

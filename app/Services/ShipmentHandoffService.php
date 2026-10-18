@@ -12,6 +12,7 @@ use App\Models\ShipmentTransfer;
 use App\Models\SortingCenter;
 use App\Models\User;
 use App\Models\Waybill;
+use App\Notifications\WorkflowNotification;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
@@ -19,6 +20,10 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 class ShipmentHandoffService
 {
+    public function __construct(
+        private readonly NotificationService $notifications,
+    ) {}
+
     public function hasSingleActiveSortingCenter(LogisticsProfile $profile): bool
     {
         $centers = $profile->sortingCenters()
@@ -193,12 +198,35 @@ class ShipmentHandoffService
                 ]);
             }
 
+            $this->notifyDestinationOfHandoff($transfer, $origin, $targetUser);
+
             return $transfer->fresh([
                 'shipment.waybill',
                 'fromLogisticsProfile',
                 'toLogisticsProfile',
             ]);
         }, attempts: 3);
+    }
+
+    /**
+     * Tell the receiving Logistics account that parcels are on the way.
+     */
+    private function notifyDestinationOfHandoff(ShipmentTransfer $transfer, LogisticsProfile $origin, ?User $targetUser): void
+    {
+        if (! $targetUser) {
+            return;
+        }
+
+        $reference = $this->shipmentReference($transfer);
+
+        $this->notifications->sendAfterCommit($targetUser, new WorkflowNotification(
+            eventKey: 'logistics_handoff_sent',
+            title: 'Incoming parcel handoff',
+            body: "{$reference} was sent from {$origin->display_name} and is arriving at your facility.",
+            actionUrl: route('logistics.transfers.index'),
+            type: 'info',
+            meta: ['shipment_transfer_id' => (int) $transfer->id],
+        ));
     }
 
     public function accept(
@@ -339,6 +367,8 @@ class ShipmentHandoffService
                 ]);
             }
 
+            $this->notifyOriginOfAcceptance($transfer, $recipient);
+
             return $transfer->fresh([
                 'shipment.waybill',
                 'fromLogisticsProfile',
@@ -346,6 +376,39 @@ class ShipmentHandoffService
                 'toSortingCenter',
             ]);
         }, attempts: 3);
+    }
+
+    /**
+     * Confirm to the sending Logistics account that the handoff was accepted.
+     */
+    private function notifyOriginOfAcceptance(ShipmentTransfer $transfer, LogisticsProfile $recipient): void
+    {
+        $originUser = LogisticsProfile::query()
+            ->whereKey($transfer->from_logistics_profile_id)
+            ->first()
+            ?->user;
+
+        if (! $originUser) {
+            return;
+        }
+
+        $reference = $this->shipmentReference($transfer);
+
+        $this->notifications->sendAfterCommit($originUser, new WorkflowNotification(
+            eventKey: 'logistics_handoff_accepted',
+            title: 'Handoff accepted',
+            body: "{$reference} was received and accepted at {$recipient->display_name}.",
+            actionUrl: route('logistics.transfers.index'),
+            type: 'success',
+            meta: ['shipment_transfer_id' => (int) $transfer->id],
+        ));
+    }
+
+    private function shipmentReference(ShipmentTransfer $transfer): string
+    {
+        $waybillNo = $transfer->shipment?->waybill?->waybill_no;
+
+        return $waybillNo ? "Waybill {$waybillNo}" : 'The shipment';
     }
 
     private function destinationCityCode(Shipment $shipment): ?string

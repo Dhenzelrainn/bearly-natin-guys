@@ -7,6 +7,7 @@ use App\Models\Dispute;
 use App\Models\DisputeEvent;
 use App\Models\DisputeEvidence;
 use App\Services\AuditService;
+use App\Services\ConversationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -18,7 +19,8 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 class AdminDisputeController extends Controller
 {
     public function __construct(
-        private readonly AuditService $auditService
+        private readonly AuditService $auditService,
+        private readonly ConversationService $conversations,
     ) {}
 
     public function saveNote(
@@ -249,6 +251,12 @@ class AdminDisputeController extends Controller
                         'last_read_at' => $now,
                     ]);
 
+                $this->conversations->notifyConversationCounterparts(
+                    $conversation,
+                    $admin,
+                    $message,
+                );
+
                 $sent[] = [
                     'conversation_id' => $conversation->id,
 
@@ -373,6 +381,47 @@ class AdminDisputeController extends Controller
                 $evidence->file_path
             ),
             $evidence->original_name
+        );
+    }
+
+    public function previewEvidence(
+        Request $request,
+        DisputeEvidence $evidence
+    ): BinaryFileResponse {
+        if (! Storage::disk('local')->exists($evidence->file_path)) {
+            abort(404);
+        }
+
+        $mimeType = Storage::disk('local')->mimeType($evidence->file_path)
+            ?: 'application/octet-stream';
+
+        abort_unless(
+            $evidence->type === 'image'
+                && str_starts_with($mimeType, 'image/'),
+            404,
+        );
+
+        $this->auditService->record(
+            action: 'dispute.evidence_previewed',
+            module: 'Compliance & Disputes',
+            subject: $evidence->dispute,
+            description: "Evidence previewed for {$evidence->dispute->dispute_no}.",
+            oldValues: [],
+            newValues: [
+                'evidence_id' => $evidence->id,
+                'original_name' => $evidence->original_name,
+            ],
+            severity: 'info',
+            request: $request,
+        );
+
+        return response()->file(
+            Storage::disk('local')->path($evidence->file_path),
+            [
+                'Content-Type' => $mimeType,
+                'Cache-Control' => 'private, no-store',
+                'X-Content-Type-Options' => 'nosniff',
+            ],
         );
     }
 

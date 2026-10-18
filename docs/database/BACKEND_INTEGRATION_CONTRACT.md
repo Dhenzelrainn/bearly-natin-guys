@@ -51,6 +51,7 @@ This file is the shared contract for backend, UI, and database work. The executa
 - Existing image rows with purpose `variant` are legacy color-level images; keep them as a same-color fallback until a Seller replaces or removes them.
 - Buyer variation selection prefers a shared `variant_color` image, then its exact SKU image, then a legacy same-color image, then the product's main image (primary when present). This ensures the selected color-gallery image is used consistently for every matching SKU.
 - `order_items` snapshots the selected product image's disk and path at checkout so later catalog edits do not change order presentation. Retain an image file while either a catalog image or an order-item snapshot references its disk/path; older rows without a snapshot may resolve through their current product/variant relationships.
+- `order_items` also snapshots the purchase-time marketplace category (`category_id_snapshot`, nullable FK to `categories` with delete SET NULL, and `category_name_snapshot`). Admin sales-by-category reporting groups by this snapshot and never substitutes the Product's current category. Legacy rows without a snapshot report as "Category not recorded"; deleting a category clears the id reference while the name snapshot remains readable.
 
 ## Seller pricing and campaigns
 

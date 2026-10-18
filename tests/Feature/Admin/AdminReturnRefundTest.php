@@ -1010,6 +1010,40 @@ class AdminReturnRefundTest extends TestCase
         );
     }
 
+    public function test_creating_a_return_request_notifies_the_owning_seller_store(): void
+    {
+        $this->returnRequest->update(['status' => 'rejected']);
+
+        $this->actingAs($this->buyer)
+            ->post(route('buyer.returns.store', $this->returnRequest->seller_order_id), [
+                'request_type' => 'refund_only',
+                'reason_code' => 'item_not_as_described',
+                'item_quantities' => [$this->orderItem->id => 1],
+                'buyer_note' => 'The received item does not match the saved order description.',
+            ])
+            ->assertRedirect();
+
+        $case = ReturnRequest::query()
+            ->where('buyer_id', $this->buyer->id)
+            ->where('id', '!=', $this->returnRequest->id)
+            ->firstOrFail();
+
+        $notification = $this->seller->notifications()
+            ->where('data->event', 'seller_return_updates')
+            ->first();
+
+        $this->assertNotNull($notification);
+        $this->assertSame((int) $case->id, (int) $notification->data['meta']['return_request_id']);
+        $this->assertSame((int) $this->returnRequest->seller_order_id, (int) $notification->data['meta']['seller_order_id']);
+        $this->assertSame(route('seller.orders.returns'), $notification->data['url']);
+        $this->assertStringContainsString($case->return_no, $notification->data['body']);
+
+        // A different Seller never receives this store's return alerts.
+        $otherSeller = User::factory()->create(['role' => 'seller', 'status' => 'active']);
+
+        $this->assertSame(0, $otherSeller->notifications()->count());
+    }
+
     public function test_buyer_cannot_request_a_return_after_the_seven_day_window(): void
     {
         $this->returnRequest->sellerOrder()->update(['completed_at' => now()->subDays(8)]);

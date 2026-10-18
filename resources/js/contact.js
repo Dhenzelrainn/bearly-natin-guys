@@ -13,6 +13,9 @@
     if (!form) return;
 
     let toastTimer = null;
+    let submitting = false;
+
+    const submitButton = form.querySelector('button[type="submit"]');
 
     const showToast = (message) => {
         if (!toast) return;
@@ -145,8 +148,10 @@
         });
     });
 
-    form.addEventListener("submit", (event) => {
+    form.addEventListener("submit", async (event) => {
         event.preventDefault();
+
+        if (submitting) return;
 
         let firstInvalid = null;
         let valid = true;
@@ -169,16 +174,79 @@
             return;
         }
 
-        showToast(
-            "Your message is ready. Sending will be connected when Bearly’s backend support module is implemented.",
-        );
+        submitting = true;
+        submitButton?.setAttribute("disabled", "disabled");
+        submitButton?.setAttribute("aria-busy", "true");
 
-        form.reset();
+        try {
+            const response = await fetch(form.action, {
+                method: "POST",
+                headers: {
+                    Accept: "application/json",
+                    "X-CSRF-TOKEN":
+                        form.querySelector('input[name="_token"]')?.value || "",
+                },
+                body: new FormData(form),
+            });
 
-        Object.keys(fields).forEach((id) => {
-            setFieldError(id, "");
-        });
+            const result = await response.json().catch(() => ({}));
 
-        updateCount();
+            if (response.status === 422 && result.errors) {
+                let firstInvalidField = null;
+
+                Object.entries(result.errors).forEach(([field, messages]) => {
+                    const id = `contact-${field}`;
+                    const message = Array.isArray(messages)
+                        ? messages[0]
+                        : String(messages);
+
+                    if (fields[id]) {
+                        setFieldError(id, message);
+                        if (!firstInvalidField) {
+                            firstInvalidField = fields[id].element;
+                        }
+                    }
+                });
+
+                firstInvalidField?.focus();
+
+                showToast(
+                    firstInvalidField
+                        ? "Please review the highlighted fields and try again."
+                        : "Please review your message and try again.",
+                );
+
+                return;
+            }
+
+            if (!response.ok) {
+                showToast(
+                    "We couldn't send your message right now. Please try again in a moment.",
+                );
+
+                return;
+            }
+
+            showToast(
+                result.message ||
+                    "Your message was received by Bearly support.",
+            );
+
+            form.reset();
+
+            Object.keys(fields).forEach((id) => {
+                setFieldError(id, "");
+            });
+
+            updateCount();
+        } catch (error) {
+            showToast(
+                "We couldn't reach Bearly support. Please check your connection and try again.",
+            );
+        } finally {
+            submitting = false;
+            submitButton?.removeAttribute("disabled");
+            submitButton?.removeAttribute("aria-busy");
+        }
     });
 })();

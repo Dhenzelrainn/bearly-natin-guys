@@ -1,271 +1,329 @@
+/* Bearly buyer chat: persisted conversations for the /chat page and the compact drawer. */
 (() => {
-    const KEY = window.bearlyStorageKey?.('preview-chat') || 'bearly-chat-v1';
-    const buyerName = window.bearlyBuyerProfile?.fullName || 'there';
+    const rootStates = new WeakMap();
 
-    const conversations = [
-        {
-            id: 'sundays',
-            name: 'Sundays Market',
-            subtitle: 'Seller',
-            location: 'Laguna',
-            avatar: 'SM',
-            tone: 'sundays',
-            preview: 'Thanks for your order!',
-            time: '2:15 PM',
-            unread: 2,
-            seller: true,
-            online: true,
-            dayLabel: 'Yesterday 6:42 PM',
-            shopUrl: '/home#results',
-        },
-        {
-            id: 'greenline',
-            name: 'Greenline Home',
-            subtitle: 'Seller',
-            location: 'Quezon City',
-            avatar: '🌱',
-            tone: 'greenline',
-            preview: 'Your desk lamp is on the way.',
-            time: '11:23 AM',
-            unread: 1,
-            seller: true,
-            online: true,
-            dayLabel: 'Today',
-            shopUrl: '/home#results',
-        },
-        {
-            id: 'bearly',
-            name: 'Bearly Official Store',
-            subtitle: 'Official store',
-            location: 'Bearly',
-            avatar: '🧸',
-            tone: 'bearly',
-            preview: 'Hi there! How can I help you?',
-            time: '10:05 AM',
-            unread: 0,
-            assistant: true,
-            online: true,
-            dayLabel: 'Today',
-        },
-        {
-            id: 'techworld',
-            name: 'TechWorld PH',
-            subtitle: 'Seller',
-            location: 'Manila',
-            avatar: '◉',
-            tone: 'techworld',
-            preview: 'Item is available po.',
-            time: 'Yesterday',
-            unread: 1,
-            seller: true,
-            online: false,
-            dayLabel: 'Yesterday',
-            shopUrl: '/home#results',
-        },
-        {
-            id: 'cozy',
-            name: 'Cozy Living',
-            subtitle: 'Seller',
-            location: 'Cebu',
-            avatar: '🪑',
-            tone: 'cozy',
-            preview: 'Thank you!',
-            time: 'Yesterday',
-            unread: 0,
-            seller: true,
-            online: false,
-            dayLabel: 'Yesterday',
-            shopUrl: '/home#results',
-        },
-        {
-            id: 'pet-supplies',
-            name: 'Pet Supplies PH',
-            subtitle: 'Seller',
-            location: 'Pasig',
-            avatar: '🐾',
-            tone: 'pets',
-            preview: 'Yes po, available po.',
-            time: 'Jun 10',
-            unread: 0,
-            seller: true,
-            online: false,
-            dayLabel: 'Jun 10',
-            shopUrl: '/home#results',
-        },
-    ];
+    const escapeHtml = (value) => String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 
-    const quick = [
-        ['Track my order', 'track'],
-        ['My vouchers', 'vouchers'],
-        ['Shipping', 'shipping'],
-        ['Payments', 'payments'],
-        ['Returns & refunds', 'returns'],
-        ['Account help', 'account'],
-    ];
-
-    const defaults = {
-        active: 'sundays',
-        messages: {
-            bearly: [
-                {
-                    from: 'them',
-                    text: `Hi ${buyerName}! I’m the Bearly Assistant. I can help with orders, shipping, payments, vouchers, returns, and your account.`,
-                    time: 'Now',
-                },
-            ],
-            greenline: [
-                { from: 'them', text: 'Your desk lamp has been handed to the courier.', time: '11:20 AM' },
-                { from: 'me', text: 'Great, thank you for the update!', time: '11:23 AM' },
-            ],
-            sundays: [
-                { from: 'them', text: 'Thanks for your order!\nLet us know if you need anything.', time: '6:42 PM' },
-                { from: 'me', text: 'Hi! Is this still available?', time: '6:45 PM' },
-                { from: 'them', text: 'Yes po, available po. You can place your order anytime.', time: '6:46 PM' },
-                {
-                    from: 'them',
-                    text: '',
-                    time: '6:46 PM',
-                    product: {
-                        title: 'Dog Food',
-                        price: '₱699',
-                        status: 'In Stock',
-                        image: '/images/products/foods-gourmet/foods-gourmet-07-01.jpg',
-                        href: '/home#results',
-                    },
-                },
-                { from: 'me', text: 'Okay. Thank you!', time: '6:47 PM' },
-            ],
-            techworld: [
-                { from: 'them', text: 'Item is available po.', time: 'Yesterday' },
-            ],
-            cozy: [
-                { from: 'them', text: 'Thank you!', time: 'Yesterday' },
-            ],
-            'pet-supplies': [
-                { from: 'them', text: 'Yes po, available po.', time: 'Jun 10' },
-            ],
-        },
-        unread: {},
+    const safeHref = (value) => {
+        const url = String(value ?? '').trim();
+        return /^(\/|https?:\/\/)/i.test(url) ? url : '#';
     };
 
-    function clone(value) {
+    const initials = (name) => String(name ?? '')
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((part) => part.charAt(0))
+        .join('')
+        .toUpperCase() || 'B';
+
+    const csrfToken = () => document.querySelector('meta[name="csrf-token"]')?.content ?? '';
+
+    const requestHeaders = (json = false) => ({
+        Accept: 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+        'X-CSRF-TOKEN': csrfToken(),
+        ...(json ? { 'Content-Type': 'application/json' } : {}),
+    });
+
+    function rootState(root) {
+        if (!rootStates.has(root)) {
+            rootStates.set(root, {
+                loaded: false,
+                loading: false,
+                loadError: null,
+                conversations: [],
+                activeId: null,
+                thread: null,
+                threadLoading: false,
+                threadError: null,
+                filter: 'all',
+                sending: false,
+                sendError: null,
+                file: null,
+                lastMessageId: 0,
+                inboxSnapshot: null,
+                pollTimer: null,
+                pollTick: 0,
+                visibilityHandler: null,
+            });
+        }
+        return rootStates.get(root);
+    }
+
+    const lastMessageIdOf = (thread) => {
+        const messages = Array.isArray(thread?.messages) ? thread.messages : [];
+        const last = messages[messages.length - 1];
+        return last ? Number(last.id || 0) : 0;
+    };
+
+    function bootstrapRoot(root) {
+        const node = root.querySelector('script[data-chat-bootstrap]');
+        if (!node) return false;
+
         try {
-            return structuredClone(value);
-        } catch {
-            return JSON.parse(JSON.stringify(value));
+            const payload = JSON.parse(node.textContent || '{}');
+            const state = rootState(root);
+            state.conversations = Array.isArray(payload.conversations) ? payload.conversations : [];
+            state.activeId = payload.active_id ? Number(payload.active_id) : (state.conversations[0]?.id ?? null);
+            state.thread = payload.thread || null;
+            state.lastMessageId = lastMessageIdOf(state.thread);
+            state.inboxSnapshot = JSON.stringify(state.conversations);
+            state.loaded = true;
+            return true;
+        } catch (error) {
+            return false;
         }
     }
 
-    function load() {
+    function conversationOf(root, id) {
+        const state = rootState(root);
+        return state.conversations.find((conversation) => Number(conversation.id) === Number(id)) || null;
+    }
+
+    async function loadInbox(root) {
+        const state = rootState(root);
+        if (state.loaded || state.loading) return;
+
+        state.loading = true;
+        state.loadError = null;
+        renderRoot(root);
+
         try {
-            const saved = JSON.parse(localStorage.getItem(KEY) || 'null');
-            if (!saved || !saved.messages) return clone(defaults);
+            const response = await fetch(root.dataset.chatInboxUrl, {
+                headers: requestHeaders(),
+            });
+            const result = await response.json().catch(() => ({}));
 
-            return {
-                ...clone(defaults),
-                ...saved,
-                messages: { ...clone(defaults.messages), ...saved.messages },
-                unread: { ...clone(defaults.unread), ...(saved.unread || {}) },
-            };
-        } catch {
-            return clone(defaults);
+            if (!response.ok) throw new Error(result.message || 'Unable to load conversations.');
+
+            state.conversations = result.data?.conversations ?? [];
+            const requestedId = Number(new URLSearchParams(window.location.search).get('conversation') || 0);
+            const requested = requestedId
+                ? state.conversations.find((item) => Number(item.id) === requestedId)
+                : null;
+            state.activeId = requested?.id ?? state.conversations[0]?.id ?? null;
+            state.inboxSnapshot = JSON.stringify(state.conversations);
+            state.loaded = true;
+        } catch (error) {
+            state.loadError = error.message || 'Unable to load conversations.';
+            state.loaded = true;
+        } finally {
+            state.loading = false;
+            renderRoot(root);
         }
+
+        if (state.activeId) await selectConversation(root, state.activeId);
     }
 
-    let state = load();
+    async function markRead(root, conversation, force = false) {
+        if (!conversation?.read_url) return;
+        if (!force && Number(conversation.unread || 0) === 0) return;
 
-    function save() {
         try {
-            localStorage.setItem(KEY, JSON.stringify(state));
-        } catch {
-            // Preview chat state is best-effort when browser storage is unavailable.
+            const response = await fetch(conversation.read_url, {
+                method: 'POST',
+                headers: requestHeaders(),
+            });
+            if (!response.ok) return;
+            conversation.unread = 0;
+            renderList(root);
+        } catch (error) {
+            /* Keep the unread badge when the read marker fails. */
         }
     }
 
-    function unreadCount(conversation) {
-        return Number(state.unread?.[conversation.id] ?? conversation.unread ?? 0);
+    async function refreshInbox(root) {
+        const state = rootState(root);
+        if (!state.loaded || state.loading || state.sending || !root.dataset.chatInboxUrl) return;
+
+        try {
+            const response = await fetch(root.dataset.chatInboxUrl, {
+                headers: requestHeaders(),
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok) return;
+
+            const conversations = result.data?.conversations;
+            if (!Array.isArray(conversations)) return;
+
+            const snapshot = JSON.stringify(conversations);
+            if (snapshot === state.inboxSnapshot) return;
+            state.inboxSnapshot = snapshot;
+            state.conversations = conversations;
+
+            if (!state.activeId || !conversationOf(root, state.activeId)) {
+                const first = conversations[0]?.id ?? null;
+                if (first && !state.loadError) {
+                    await selectConversation(root, first);
+                    return;
+                }
+            }
+
+            renderList(root);
+        } catch (error) {
+            /* Transient refresh failures keep the current inbox. */
+        }
     }
 
-    function escapeHtml(value) {
-        return String(value ?? '').replace(/[&<>"']/g, character => ({
-            '&': '&amp;',
-            '<': '&lt;',
-            '>': '&gt;',
-            '"': '&quot;',
-            "'": '&#039;',
-        }[character]));
+    async function pollThread(root) {
+        const state = rootState(root);
+        const conversation = conversationOf(root, state.activeId);
+        if (!conversation?.thread_url || !state.thread) return;
+
+        const url = new URL(conversation.thread_url, window.location.origin);
+        if (state.lastMessageId > 0) url.searchParams.set('after', String(state.lastMessageId));
+
+        try {
+            const response = await fetch(url, { headers: requestHeaders() });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok) return;
+
+            const payload = result.data;
+            const active = state.thread?.conversation;
+            if (!payload?.conversation || !active || Number(active.id) !== Number(payload.conversation.id)) return;
+
+            const previousMeta = JSON.stringify(state.thread.conversation);
+            state.thread.conversation = payload.conversation;
+
+            const incoming = Array.isArray(payload.messages) ? payload.messages : [];
+            if (incoming.length) {
+                const container = root.querySelector('[data-chat-messages]');
+                const nearBottom = container
+                    ? (container.scrollHeight - container.scrollTop - container.clientHeight) < 90
+                    : true;
+
+                state.thread.messages.push(...incoming);
+                state.lastMessageId = Math.max(state.lastMessageId, ...incoming.map((message) => Number(message.id || 0)));
+
+                const entry = conversationOf(root, payload.conversation.id);
+                const last = incoming[incoming.length - 1];
+                if (entry && last) {
+                    entry.preview = last.text || 'Sent an attachment.';
+                    entry.time_label = last.time_label || entry.time_label;
+                }
+
+                renderMessages(root);
+                if (container && nearBottom) container.scrollTop = container.scrollHeight;
+
+                if (entry && incoming.some((message) => message.from === 'them')) {
+                    markRead(root, entry, true);
+                }
+            } else if (previousMeta !== JSON.stringify(payload.conversation)) {
+                renderThreadHead(root);
+                renderDetails(root);
+            }
+        } catch (error) {
+            /* Transient polling failures are ignored; the next tick retries. */
+        }
     }
 
-    function safeImage(source) {
-        const value = String(source || '');
-        return /^(\/images\/|\/storage\/)/.test(value) ? value : '/images/bearly-logo.png';
+    function startPolling(root) {
+        const state = rootState(root);
+        if (state.pollTimer || !root.dataset.chatMode) return;
+
+        state.pollTimer = window.setInterval(() => {
+            if (document.hidden || state.sending) return;
+            state.pollTick += 1;
+            if (state.pollTick % 3 === 0) refreshInbox(root);
+            pollThread(root);
+        }, 5000);
+
+        state.visibilityHandler = () => {
+            if (document.hidden || state.sending) return;
+            pollThread(root);
+            refreshInbox(root);
+        };
+
+        document.addEventListener('visibilitychange', state.visibilityHandler);
     }
 
-    function safeHref(source) {
-        const value = String(source || '');
-        return /^\/(?!\/)/.test(value) ? value : '/home#results';
+    function stopPolling(root) {
+        const state = rootState(root);
+        if (!state.pollTimer) return;
+        window.clearInterval(state.pollTimer);
+        state.pollTimer = null;
+        if (state.visibilityHandler) {
+            document.removeEventListener('visibilitychange', state.visibilityHandler);
+            state.visibilityHandler = null;
+        }
     }
 
-    function answer(text) {
-        const query = text.toLowerCase();
-        if (/track|where.*order|order status/.test(query)) {
-            return ['Open My Purchases, choose the relevant order, then select Track Order to view its delivery timeline.', '/profile#purchases', 'View My Purchases'];
-        }
-        if (/voucher|discount|coupon/.test(query)) {
-            return ['Your claimed and available vouchers are in My Vouchers. You can also apply eligible vouchers during checkout.', '/profile#vouchers', 'Open My Vouchers'];
-        }
-        if (/ship|delivery|courier/.test(query)) {
-            return ['Open My Purchases and choose Track Order on the specific purchase you want to follow.', '/profile#purchases', 'View My Purchases'];
-        }
-        if (/payment|pay|gcash|maya|card|cod/.test(query)) {
-            return ['Bearly currently uses Cash on Delivery (COD) for buyer orders. Pay with cash when your order is delivered.', '/checkout', 'Go to Checkout'];
-        }
-        if (/return|refund|cancel/.test(query)) {
-            return ['For returns, refunds, or cancellation questions, check the Help Center first and review the status of the related purchase.', '/profile#help', 'Open Help Center'];
-        }
-        if (/address|account|profile/.test(query)) {
-            return ['You can update your profile and saved delivery addresses from Buyer Account.', '/profile#addresses', 'Manage Addresses'];
-        }
-        if (/help|support/.test(query)) {
-            return ['I can help with orders, shipping, payments, vouchers, returns, and account settings. Pick a quick option below or type your question.', '/profile#help', 'Open Help Center'];
-        }
-        return ['I can help with Bearly shopping questions. Try asking about your order, shipping, payment, vouchers, returns, or account.', null, null];
-    }
+    async function selectConversation(root, id) {
+        const state = rootState(root);
+        const conversation = conversationOf(root, id);
+        if (!conversation) return;
 
-    function conversationMatches(conversation, root) {
-        const search = (root.querySelector('[data-chat-search]')?.value || '').trim().toLowerCase();
-        const filter = root.dataset.chatFilter || 'all';
-        const searchable = `${conversation.name} ${conversation.subtitle} ${conversation.preview}`.toLowerCase();
-        const matchesSearch = !search || searchable.includes(search);
-        const matchesFilter = filter === 'all'
-            || (filter === 'unread' && unreadCount(conversation) > 0)
-            || (filter === 'sellers' && conversation.seller);
+        state.activeId = Number(id);
+        state.sendError = null;
+        state.lastMessageId = 0;
+        markRead(root, conversation);
 
-        return matchesSearch && matchesFilter;
+        state.threadLoading = true;
+        state.threadError = null;
+        state.thread = null;
+        renderRoot(root);
+
+        try {
+            const response = await fetch(conversation.thread_url, {
+                headers: requestHeaders(),
+            });
+            const result = await response.json().catch(() => ({}));
+
+            if (!response.ok) throw new Error(result.message || 'Unable to load this conversation.');
+
+            state.thread = result.data || null;
+            state.lastMessageId = lastMessageIdOf(state.thread);
+        } catch (error) {
+            state.threadError = error.message || 'Unable to load this conversation.';
+        } finally {
+            state.threadLoading = false;
+            renderRoot(root);
+        }
     }
 
     function renderList(root) {
+        const state = rootState(root);
         const list = root.querySelector('[data-chat-list]');
         if (!list) return;
 
-        const visible = conversations.filter(conversation => conversationMatches(conversation, root));
-        list.innerHTML = visible.map(conversation => {
-            const unread = unreadCount(conversation);
+        const search = (root.querySelector('[data-chat-search]')?.value || '').trim().toLowerCase();
+        const visible = state.conversations.filter((conversation) => {
+            const haystack = `${conversation.title} ${conversation.context} ${conversation.preview}`.toLowerCase();
+            const matchesSearch = !search || haystack.includes(search);
+            const matchesFilter = state.filter === 'all'
+                || (state.filter === 'unread' && Number(conversation.unread || 0) > 0);
+
+            return matchesSearch && matchesFilter;
+        });
+
+        list.innerHTML = visible.map((conversation) => {
+            const unread = Number(conversation.unread || 0);
+            const active = Number(conversation.id) === Number(state.activeId);
+            const dispute = conversation.dispute;
+            const avatar = conversation.image_url
+                ? `<img src="${escapeHtml(safeHref(conversation.image_url))}" alt="">`
+                : escapeHtml(conversation.avatar || initials(conversation.title));
+            const disputeBadge = dispute
+                ? `<span class="bearly-chat-item-dispute"><span class="material-symbols-outlined" aria-hidden="true">gavel</span>Complaint &amp; Dispute</span>`
+                : '';
 
             return `
-                <button
-                    type="button"
-                    class="bearly-chat-item ${conversation.assistant ? 'is-assistant' : ''} ${state.active === conversation.id ? 'is-active' : ''}"
-                    data-chat-id="${escapeHtml(conversation.id)}"
-                    aria-pressed="${state.active === conversation.id}"
-                >
-                    <span class="bearly-chat-avatar bearly-chat-avatar-${escapeHtml(conversation.tone)}" aria-hidden="true">${escapeHtml(conversation.avatar)}</span>
+                <button type="button" class="bearly-chat-item ${active ? 'is-active' : ''}" data-chat-id="${escapeHtml(conversation.id)}" aria-pressed="${active}">
+                    <span class="bearly-chat-avatar" aria-hidden="true">${avatar}</span>
                     <span class="bearly-chat-item-copy">
                         <span class="bearly-chat-item-meta">
-                            <strong>${escapeHtml(conversation.name)}</strong>
-                            <time>${escapeHtml(conversation.time)}</time>
+                            <strong>${escapeHtml(conversation.title)}</strong>
+                            <time>${escapeHtml(conversation.time_label)}</time>
                         </span>
-                        <small>${escapeHtml(conversation.preview)}</small>
+                         <small>${escapeHtml(conversation.preview)}</small>
+                         ${disputeBadge}
                     </span>
                     ${unread ? `<b class="bearly-chat-unread-count" aria-label="${unread} unread messages">${unread}</b>` : ''}
                 </button>
@@ -273,200 +331,423 @@
         }).join('');
 
         const empty = root.querySelector('[data-chat-list-empty]');
-        if (empty) empty.hidden = visible.length !== 0;
-
-        const unreadCountLabel = root.querySelector('[data-chat-unread-count]');
-        if (unreadCountLabel) {
-            unreadCountLabel.textContent = conversations.filter(conversation => unreadCount(conversation) > 0).length;
+        if (empty) {
+            const zero = state.conversations.length === 0;
+            empty.hidden = visible.length > 0;
+            const title = empty.querySelector('[data-chat-empty-title]');
+            const copy = empty.querySelector('[data-chat-empty-copy]');
+            if (title) title.textContent = zero ? 'No conversations yet' : 'No conversations found';
+            if (copy) copy.textContent = zero
+                ? 'Open a product or store page and use “Chat with seller” to start one.'
+                : 'Try another search or filter.';
+        } else if (!visible.length) {
+            list.innerHTML = `<p class="bearly-chat-list-note">${
+                state.loading ? 'Loading conversations…'
+                    : state.loadError ? escapeHtml(state.loadError)
+                        : state.conversations.length ? 'No conversations match your search.' : 'No conversations yet.'
+            }</p>`;
         }
 
-        root.querySelectorAll('[data-chat-filter]').forEach(button => {
-            const active = button.dataset.chatFilter === (root.dataset.chatFilter || 'all');
+        const unreadLabel = root.querySelector('[data-chat-unread-count]');
+        if (unreadLabel) unreadLabel.textContent = String(state.conversations.filter((conversation) => Number(conversation.unread || 0) > 0).length);
+
+        root.querySelectorAll('[data-chat-filter]').forEach((button) => {
+            const active = (button.dataset.chatFilter || 'all') === state.filter;
             button.classList.toggle('is-active', active);
             button.setAttribute('aria-selected', active ? 'true' : 'false');
         });
     }
 
-    function renderCompactHeader(head, conversation) {
-        head.innerHTML = `
-            <span class="bearly-chat-avatar bearly-chat-avatar-${escapeHtml(conversation.tone)}">${escapeHtml(conversation.avatar)}</span>
-            <div>
-                <strong>${escapeHtml(conversation.name)}</strong>
-                <small>${escapeHtml(conversation.subtitle)}${conversation.assistant ? ' · Always pinned' : ''}</small>
-            </div>
-        `;
-    }
+    function renderThreadHead(root) {
+        const state = rootState(root);
+        const head = root.querySelector('[data-chat-thread-head]');
+        if (!head) return;
 
-    function renderPageHeader(head, conversation) {
-        const status = conversation.online ? 'Online' : 'Away';
-        const shopAction = conversation.seller
-            ? `<a class="bearly-chat-shop-link" href="${escapeHtml(safeHref(conversation.shopUrl))}"><span class="material-symbols-outlined" aria-hidden="true">storefront</span><span>View Shop</span></a>`
-            : '';
+        const conversation = state.thread?.conversation;
+        if (!conversation) {
+            head.innerHTML = '';
+            return;
+        }
+
+        const entry = conversationOf(root, conversation.id);
+        const isPage = root.dataset.chatMode === 'page';
+        const dispute = conversation.dispute;
+        const image = conversation.counterpart?.image_url || entry?.image_url;
+        const avatar = image
+            ? `<img src="${escapeHtml(safeHref(image))}" alt="">`
+            : escapeHtml(entry?.avatar || conversation.initials || initials(conversation.title));
+
+        if (!isPage) {
+            head.innerHTML = `
+                <span class="bearly-chat-avatar">${avatar}</span>
+                <div>
+                    <strong>${escapeHtml(conversation.title)}</strong>
+                    <small>${escapeHtml(dispute ? `Complaint & Dispute · ${dispute.number}` : conversation.context)}</small>
+                </div>
+            `;
+            return;
+        }
+
+        const since = conversation.counterpart?.since_label;
+        const caption = conversation.counterpart?.since_caption;
+        const subtitle = dispute
+            ? `Complaint & Dispute · ${dispute.number}`
+            : (since && caption ? `${caption} ${since}` : conversation.context);
+        const order = conversation.order;
 
         head.innerHTML = `
             <div class="bearly-chat-thread-person">
-                <span class="bearly-chat-avatar bearly-chat-avatar-${escapeHtml(conversation.tone)}">${escapeHtml(conversation.avatar)}</span>
+                <span class="bearly-chat-avatar" aria-hidden="true">${avatar}</span>
                 <div>
-                    <strong>${escapeHtml(conversation.name)} <span class="material-symbols-outlined bearly-chat-name-arrow" aria-hidden="true">chevron_right</span></strong>
-                    <small><span class="bearly-chat-online-dot ${conversation.online ? '' : 'is-away'}"></span>${status}${conversation.location ? ` <i>·</i> ${escapeHtml(conversation.location)}` : ''}</small>
+                    <strong>${escapeHtml(conversation.title)}</strong>
+                    <small>${escapeHtml(subtitle)}</small>
                 </div>
             </div>
-            <div class="bearly-chat-thread-actions">
-                ${shopAction}
-                <button type="button" aria-label="More conversation options" title="More options"><span class="material-symbols-outlined" aria-hidden="true">more_vert</span></button>
-            </div>
+            <span class="bearly-chat-thread-order${dispute ? ' is-dispute' : ''}">${escapeHtml(dispute ? 'Complaint & Dispute' : (order ? `Order #${order.number}` : 'No active order'))}</span>
         `;
     }
 
-    function renderProduct(product) {
-        return `
-            <article class="bearly-chat-product-card">
-                <img src="${escapeHtml(safeImage(product.image))}" alt="${escapeHtml(product.title)}" loading="lazy">
-                <div class="bearly-chat-product-copy">
-                    <strong>${escapeHtml(product.title)}</strong>
-                    <b>${escapeHtml(product.price)}</b>
-                    <span>${escapeHtml(product.status || 'Available')}</span>
+    function renderDetails(root) {
+        const details = root.querySelector('[data-chat-details]');
+        if (!details) return;
+
+        const state = rootState(root);
+        const conversation = state.thread?.conversation;
+        const entry = conversationOf(root, state.activeId);
+
+        if (!conversation) {
+            details.innerHTML = '<h3>Conversation details</h3><p class="bearly-chat-details-note">Select a conversation to see product and order details.</p>';
+            return;
+        }
+
+        const image = conversation.counterpart?.image_url || entry?.image_url;
+        const avatar = image
+            ? `<img src="${escapeHtml(safeHref(image))}" alt="">`
+            : escapeHtml(entry?.avatar || conversation.initials || initials(conversation.title));
+        const since = conversation.counterpart?.since_label;
+        const caption = conversation.counterpart?.since_caption || 'Seller on Bearly since';
+        const dispute = conversation.dispute;
+        const personMeta = dispute
+            ? `Complaint & Dispute · ${dispute.number}`
+            : (since ? `${caption} ${since}` : conversation.context);
+
+        const order = conversation.order;
+        const orderBox = order
+            ? `<div class="bearly-chat-details-order"><strong>Order #${escapeHtml(order.number)}</strong><span>${escapeHtml(order.status_label || 'Processing')}</span></div>`
+            : '<div class="bearly-chat-details-empty"><span class="material-symbols-outlined" aria-hidden="true">inventory_2</span><span>No active order for this conversation.</span></div>';
+
+        const product = conversation.product;
+        const productCard = product
+            ? `
+                <a class="bearly-chat-details-product" href="${escapeHtml(safeHref(product.url))}">
+                    <span class="bearly-chat-details-thumb" aria-hidden="true">${product.image_url ? `<img src="${escapeHtml(safeHref(product.image_url))}" alt="">` : '<span class="material-symbols-outlined">image</span>'}</span>
+                    <span class="bearly-chat-details-product-copy">
+                        <strong>${escapeHtml(product.name)}</strong>
+                        ${product.price_label ? `<small>${escapeHtml(product.price_label)}</small>` : ''}
+                    </span>
+                    <span class="material-symbols-outlined" aria-hidden="true">chevron_right</span>
+                </a>`
+            : '<div class="bearly-chat-details-empty"><span class="material-symbols-outlined" aria-hidden="true">forum</span><span>No product linked to this conversation.</span></div>';
+
+        const disputeBox = dispute
+            ? `
+                <section class="bearly-chat-details-dispute">
+                    <span class="bearly-chat-details-label">Complaint &amp; Dispute</span>
+                    <div class="bearly-chat-dispute-card">
+                        <div class="bearly-chat-dispute-card-head"><strong>${escapeHtml(dispute.number)}</strong><span>${escapeHtml(dispute.status_label || dispute.status || 'Open')}</span></div>
+                        <strong class="bearly-chat-dispute-subject">${escapeHtml(dispute.subject)}</strong>
+                        <p>${escapeHtml(dispute.description)}</p>
+                        <dl>
+                            <div><dt>Seller Order</dt><dd>${escapeHtml(dispute.seller_order_no || '—')}</dd></div>
+                            <div><dt>Shipment</dt><dd>${escapeHtml(dispute.shipment_no || 'Not linked')}</dd></div>
+                            <div><dt>Order value</dt><dd>${escapeHtml(dispute.amount_label || '—')}</dd></div>
+                        </dl>
+                    </div>
+                </section>
+            `
+            : '';
+
+        const actions = [];
+        if (conversation.store_url) {
+            actions.push(`<a class="bearly-chat-details-action" href="${escapeHtml(safeHref(conversation.store_url))}"><span class="material-symbols-outlined" aria-hidden="true">storefront</span><span>View store</span></a>`);
+        }
+        if (conversation.product_url) {
+            actions.push(`<a class="bearly-chat-details-action" href="${escapeHtml(safeHref(conversation.product_url))}"><span class="material-symbols-outlined" aria-hidden="true">shopping_bag</span><span>View product</span></a>`);
+        }
+
+        details.innerHTML = `
+            <h3>Conversation details</h3>
+            <div class="bearly-chat-details-person">
+                <span class="bearly-chat-avatar" aria-hidden="true">${avatar}</span>
+                <div>
+                    <strong>${escapeHtml(conversation.title)}</strong>
+                    <small>${escapeHtml(personMeta)}</small>
                 </div>
-                <a href="${escapeHtml(safeHref(product.href))}">
-                    View Product
-                    <span class="material-symbols-outlined" aria-hidden="true">open_in_new</span>
-                </a>
-            </article>
+            </div>
+                <section>
+                    <span class="bearly-chat-details-label">Order information</span>
+                    ${orderBox}
+                    ${productCard}
+                </section>
+                ${disputeBox}
+                ${actions.length ? `<section><span class="bearly-chat-details-label">Quick actions</span>${actions.join('')}</section>` : ''}
         `;
     }
 
-    function renderPageMessages(messages, conversation) {
-        const day = `<div class="bearly-chat-day-divider"><span>${escapeHtml(conversation.dayLabel || 'Today')}</span></div>`;
-        const rows = messages.map(message => {
-            const avatar = message.from === 'them'
-                ? `<span class="bearly-chat-avatar bearly-chat-avatar-${escapeHtml(conversation.tone)}" aria-hidden="true">${escapeHtml(conversation.avatar)}</span>`
+    function renderMessages(root) {
+        const state = rootState(root);
+        const container = root.querySelector('[data-chat-messages]');
+        if (!container) return;
+
+        const isPage = root.dataset.chatMode === 'page';
+
+        if (state.threadLoading) {
+            container.innerHTML = '<p class="bearly-chat-thread-empty">Loading messages…</p>';
+            return;
+        }
+
+        if (state.threadError) {
+            container.innerHTML = `<p class="bearly-chat-thread-empty">${escapeHtml(state.threadError)}</p>`;
+            return;
+        }
+
+        const thread = state.thread;
+        if (!thread) {
+            container.innerHTML = `<p class="bearly-chat-thread-empty">${
+                state.loadError ? escapeHtml(state.loadError)
+                    : state.conversations.length ? 'Select a conversation to read it.'
+                        : 'No conversations yet. Open a product and use “Chat with seller” to start one.'
+            }</p>`;
+            return;
+        }
+
+        const entry = conversationOf(root, thread.conversation?.id);
+        const avatar = escapeHtml(entry?.avatar || initials(thread.conversation?.title));
+        const messages = Array.isArray(thread.messages) ? thread.messages : [];
+
+        const rows = messages.map((message, index) => {
+            const previous = messages[index - 1];
+            const dayDivider = message.day_label && (!previous || previous.day_label !== message.day_label)
+                ? `<div class="bearly-chat-day-divider"><span>${escapeHtml(message.day_label)}</span></div>`
                 : '';
-            const text = message.text
-                ? `<div class="bearly-message ${message.from}">${escapeHtml(message.text)}</div>`
-                : '';
-            const product = message.product ? renderProduct(message.product) : '';
-            const checks = message.from === 'me'
-                ? '<span class="material-symbols-outlined bearly-chat-read-icon" aria-label="Read">done_all</span>'
+            const attachments = (message.attachments || []).map((attachment) => `
+                <a class="bearly-chat-attachment" href="${escapeHtml(safeHref(attachment.download_url))}">
+                    <span class="material-symbols-outlined" aria-hidden="true">${attachment.is_image ? 'image' : 'attach_file'}</span>
+                    <span>${escapeHtml(attachment.name)}</span>
+                </a>`).join('');
+
+            if (!isPage) {
+                return dayDivider + `
+                    <div class="bearly-message ${message.from}">
+                        ${message.text ? escapeHtml(message.text) : ''}
+                        ${attachments}
+                        <span class="bearly-message-time">${escapeHtml(message.time_label)}</span>
+                    </div>
+                `;
+            }
+
+            const bubbleAvatar = message.from === 'them'
+                ? `<span class="bearly-chat-avatar" aria-hidden="true">${avatar}</span>`
                 : '';
 
-            return `
+            return dayDivider + `
                 <div class="bearly-message-row ${message.from}">
-                    ${avatar}
+                    ${bubbleAvatar}
                     <div class="bearly-message-stack">
-                        ${text}
-                        ${product}
-                        <span class="bearly-message-time">${escapeHtml(message.time || '')} ${checks}</span>
+                        ${message.text ? `<div class="bearly-message ${message.from}">${escapeHtml(message.text)}</div>` : ''}
+                        ${attachments}
+                        <span class="bearly-message-time">${escapeHtml(message.time_label)}</span>
                     </div>
                 </div>
             `;
         }).join('');
 
-        return day + rows;
+        const notes = [];
+        if (thread.conversation && thread.conversation.status !== 'open') {
+            notes.push('This conversation is closed. You can still read the history.');
+        }
+        if (state.sendError) notes.push(state.sendError);
+        const noteHtml = notes.map((note) => `<p class="bearly-chat-system-note">${escapeHtml(note)}</p>`).join('');
+
+        container.innerHTML = (rows || '<p class="bearly-chat-thread-empty">No messages yet. Say hello to your seller.</p>') + noteHtml;
+        container.scrollTop = container.scrollHeight;
     }
 
-    function renderCompactMessages(messages) {
-        return messages.map(message => `
-            <div class="bearly-message ${message.from}">
-                ${escapeHtml(message.text)}
-                ${message.action ? `<div style="margin-top:8px"><a class="bearly-chat-action" href="${escapeHtml(safeHref(message.action.url))}">${escapeHtml(message.action.label)}</a></div>` : ''}
-                <span class="bearly-message-time">${escapeHtml(message.time || '')}</span>
-            </div>
-        `).join('');
+    function renderComposerState(root) {
+        const state = rootState(root);
+        const form = root.querySelector('[data-chat-form]');
+        if (!form) return;
+
+        const closed = Boolean(state.thread?.conversation && state.thread.conversation.status !== 'open');
+        const enabled = Boolean(state.thread) && !closed;
+
+        ['[data-chat-input]', '[data-chat-attachment-button]', 'button[type="submit"]'].forEach((selector) => {
+            const node = form.querySelector(selector);
+            if (node) node.disabled = !enabled || state.sending;
+        });
     }
 
     function renderRoot(root) {
-        const list = root.querySelector('[data-chat-list]');
-        const head = root.querySelector('[data-chat-thread-head]');
-        const messages = root.querySelector('[data-chat-messages]');
-        const quickEl = root.querySelector('[data-chat-quick]');
-        if (!list || !head || !messages) return;
-
         renderList(root);
-        const conversation = conversations.find(item => item.id === state.active) || conversations[0];
-        const chatMessages = state.messages[conversation.id] || [];
-        const isPage = root.dataset.chatMode === 'page';
-
-        if (isPage) {
-            renderPageHeader(head, conversation);
-            messages.innerHTML = renderPageMessages(chatMessages, conversation);
-        } else {
-            renderCompactHeader(head, conversation);
-            messages.innerHTML = renderCompactMessages(chatMessages);
-        }
-
-        if (quickEl) {
-            quickEl.innerHTML = conversation.assistant
-                ? quick.map(([label, key]) => `<button type="button" data-chat-quick="${key}">${label}</button>`).join('')
-                : '';
-        }
-
-        messages.scrollTop = messages.scrollHeight;
+        renderThreadHead(root);
+        renderMessages(root);
+        renderComposerState(root);
+        renderDetails(root);
     }
 
-    function renderAll() {
-        document.querySelectorAll('[data-bearly-chat-root]').forEach(renderRoot);
+    function fileChip(root) {
+        let chip = root.querySelector('[data-chat-file-chip]');
+        if (chip) return chip;
+
+        const form = root.querySelector('[data-chat-form]');
+        if (!form || !form.parentElement) return null;
+
+        chip = document.createElement('div');
+        chip.className = 'bearly-chat-file-chip';
+        chip.setAttribute('data-chat-file-chip', '');
+        chip.hidden = true;
+        form.parentElement.insertBefore(chip, form);
+        return chip;
     }
 
-    function send(text) {
-        const value = String(text || '').trim();
-        if (!value) return;
+    function renderFileChip(root) {
+        const state = rootState(root);
+        const chip = fileChip(root);
+        if (!chip) return;
 
-        const id = state.active;
-        state.messages[id] = state.messages[id] || [];
-        state.messages[id].push({ from: 'me', text: value, time: 'Now' });
+        chip.replaceChildren();
+        if (!state.file) {
+            chip.hidden = true;
+            return;
+        }
 
-        if (id === 'bearly') {
-            const [reply, url, label] = answer(value);
-            state.messages[id].push({
-                from: 'them',
-                text: reply,
-                time: 'Now',
-                action: url ? { url, label } : null,
+        const label = document.createElement('span');
+        label.textContent = `Attach: ${state.file.name}`;
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.setAttribute('data-chat-file-remove', '');
+        remove.setAttribute('aria-label', 'Remove attachment');
+        remove.textContent = '×';
+        chip.append(label, remove);
+        chip.hidden = false;
+    }
+
+    function clearFile(root) {
+        const state = rootState(root);
+        state.file = null;
+        const input = root.querySelector('[data-chat-file]');
+        if (input) input.value = '';
+        renderFileChip(root);
+    }
+
+    async function sendMessage(root) {
+        const state = rootState(root);
+        const form = root.querySelector('[data-chat-form]');
+        const input = form?.querySelector('[data-chat-input]');
+        if (!form || !input || state.sending) return;
+
+        const text = input.value.trim();
+        const file = state.file;
+        if (!text && !file) {
+            input.focus();
+            return;
+        }
+
+        const conversation = conversationOf(root, state.activeId);
+        if (!conversation?.send_url) return;
+
+        state.sending = true;
+        state.sendError = null;
+        renderComposerState(root);
+        renderMessages(root);
+
+        try {
+            const body = new FormData();
+            if (text) body.append('message', text);
+            if (file) body.append('attachment', file);
+
+            const response = await fetch(conversation.send_url, {
+                method: 'POST',
+                headers: requestHeaders(),
+                body,
             });
-        } else {
-            state.messages[id].push({ from: 'them', text: 'Thanks for your message! This seller conversation is a frontend demo for now.', time: 'Now' });
-        }
+            const result = await response.json().catch(() => ({}));
 
-        save();
-        renderAll();
+            if (!response.ok) {
+                const validation = Object.values(result.errors || {}).flat()[0];
+                throw new Error(validation || result.message || 'Unable to send this message. Try again.');
+            }
+
+            const payload = result.data?.message;
+            input.value = '';
+            clearFile(root);
+
+            if (payload) {
+                conversation.preview = payload.text || 'Sent an attachment.';
+                conversation.time_label = payload.time_label || conversation.time_label;
+                conversation.unread = 0;
+
+                if (state.thread && Number(state.thread.conversation?.id) === Number(conversation.id)) {
+                    state.thread.messages.push(payload);
+                    state.lastMessageId = Math.max(state.lastMessageId, Number(payload.id || 0));
+                }
+            }
+
+            input.focus();
+        } catch (error) {
+            state.sendError = error.message || 'Unable to send this message. Try again.';
+        } finally {
+            state.sending = false;
+            renderRoot(root);
+        }
     }
 
-    function openDrawer(forceBearly = false) {
+    function insertEmoji(button) {
+        const input = button.closest('form')?.querySelector('[data-chat-input]');
+        if (!input || input.disabled) return;
+
+        const start = input.selectionStart ?? input.value.length;
+        const end = input.selectionEnd ?? input.value.length;
+        input.setRangeText('🙂', start, end, 'end');
+        input.focus();
+    }
+
+    function openDrawer() {
         const drawer = document.querySelector('[data-bearly-chat-drawer]');
         const backdrop = document.querySelector('.bearly-chat-backdrop');
         if (!drawer) return;
-        if (forceBearly) state.active = 'bearly';
-        save();
+
         drawer.classList.add('is-open');
         drawer.setAttribute('aria-hidden', 'false');
         if (backdrop) backdrop.hidden = false;
-        renderAll();
+
+        const root = drawer.querySelector('[data-bearly-chat-root]');
+        if (!root) return;
+
+        bootstrapRoot(root);
+        loadInbox(root);
+        renderRoot(root);
+        startPolling(root);
+        refreshInbox(root);
     }
 
     function closeDrawer() {
         const drawer = document.querySelector('[data-bearly-chat-drawer]');
         const backdrop = document.querySelector('.bearly-chat-backdrop');
         if (!drawer) return;
+
         drawer.classList.remove('is-open');
         drawer.setAttribute('aria-hidden', 'true');
         if (backdrop) backdrop.hidden = true;
+
+        const root = drawer.querySelector('[data-bearly-chat-root]');
+        if (root) stopPolling(root);
     }
 
-    function insertEmoji(button) {
-        const input = button.closest('form')?.querySelector('[data-chat-input]');
-        if (!input) return;
-        const emoji = '🙂';
-        const start = input.selectionStart ?? input.value.length;
-        const end = input.selectionEnd ?? input.value.length;
-        input.setRangeText(emoji, start, end, 'end');
-        input.focus();
-    }
-
-    document.addEventListener('click', event => {
-        const launcher = event.target.closest('[data-bearly-chat-launcher]');
-        if (launcher) {
+    document.addEventListener('click', (event) => {
+        if (event.target.closest('[data-bearly-chat-launcher]')) {
             event.preventDefault();
-            openDrawer(launcher.hasAttribute('data-open-bearly'));
+            openDrawer();
             return;
         }
 
@@ -476,35 +757,17 @@
         }
 
         const filter = event.target.closest('[data-chat-filter]');
-        if (filter) {
-            const root = filter.closest('[data-bearly-chat-root]');
-            if (root) {
-                root.dataset.chatFilter = filter.dataset.chatFilter || 'all';
-                renderRoot(root);
-            }
+        const filterRoot = filter?.closest('[data-bearly-chat-root]');
+        if (filter && filterRoot) {
+            rootState(filterRoot).filter = filter.dataset.chatFilter || 'all';
+            renderRoot(filterRoot);
             return;
         }
 
         const item = event.target.closest('[data-chat-id]');
-        if (item) {
-            state.active = item.dataset.chatId;
-            state.unread = { ...(state.unread || {}), [state.active]: 0 };
-            save();
-            renderAll();
-            return;
-        }
-
-        const quickButton = event.target.closest('button[data-chat-quick]');
-        if (quickButton) {
-            const labels = {
-                track: 'Where is my order?',
-                vouchers: 'Show me my vouchers',
-                shipping: 'How does shipping work?',
-                payments: 'What payment methods are available?',
-                returns: 'How do returns and refunds work?',
-                account: 'Help me with my account',
-            };
-            send(labels[quickButton.dataset.chatQuick] || quickButton.textContent);
+        const itemRoot = item?.closest('[data-bearly-chat-root]');
+        if (item && itemRoot) {
+            selectConversation(itemRoot, Number(item.dataset.chatId));
             return;
         }
 
@@ -517,53 +780,69 @@
         const attachmentButton = event.target.closest('[data-chat-attachment-button]');
         if (attachmentButton) {
             attachmentButton.closest('form')?.querySelector('[data-chat-file]')?.click();
+            return;
         }
+
+        const removeFile = event.target.closest('[data-chat-file-remove]');
+        const removeRoot = removeFile?.closest('[data-bearly-chat-root]');
+        if (removeFile && removeRoot) clearFile(removeRoot);
     });
 
-    document.addEventListener('change', event => {
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') closeDrawer();
+    });
+
+    document.addEventListener('input', (event) => {
+        if (!event.target.matches('[data-chat-search]')) return;
+        renderRoot(event.target.closest('[data-bearly-chat-root]'));
+    });
+
+    document.addEventListener('change', (event) => {
         if (!event.target.matches('[data-chat-file]')) return;
-        const file = event.target.files?.[0];
-        const input = event.target.closest('form')?.querySelector('[data-chat-input]');
-        if (file && input) {
-            input.value = `[Attachment] ${file.name}`;
-            input.focus();
-        }
+        const root = event.target.closest('[data-bearly-chat-root]');
+        if (!root) return;
+        rootState(root).file = event.target.files?.[0] || null;
+        renderFileChip(root);
     });
 
-    document.addEventListener('submit', event => {
+    document.addEventListener('submit', (event) => {
         const form = event.target.closest('[data-chat-form]');
         if (!form) return;
         event.preventDefault();
-        const input = form.querySelector('[data-chat-input]');
-        send(input?.value || '');
-        if (input) {
-            input.value = '';
-            input.focus();
+        const root = form.closest('[data-bearly-chat-root]');
+        if (root) sendMessage(root);
+    });
+
+    document.querySelectorAll('[data-bearly-chat-root]').forEach((root) => {
+        const state = rootState(root);
+        state.filter = root.dataset.chatFilter || 'all';
+        bootstrapRoot(root);
+
+        if (root.dataset.chatMode === 'page') {
+            if (state.activeId) markRead(root, conversationOf(root, state.activeId));
+            startPolling(root);
         }
-        const file = form.querySelector('[data-chat-file]');
-        if (file) file.value = '';
+
+        renderRoot(root);
     });
 
-    document.addEventListener('input', event => {
-        if (event.target.matches('[data-chat-search]')) {
-            renderRoot(event.target.closest('[data-bearly-chat-root]'));
-        }
-    });
+    window.addEventListener('bearly:message-created', (event) => {
+        const conversationId = Number(event.detail?.conversation_id || 0);
 
-    const params = new URLSearchParams(location.search);
-    if (params.get('conversation') === 'bearly') {
-        state.active = 'bearly';
-        save();
-    }
+        document.querySelectorAll('[data-bearly-chat-root]').forEach((root) => {
+            const state = rootState(root);
+            if (!state.loaded) return;
 
-    document.querySelectorAll('[data-bearly-chat-root]').forEach(root => {
-        root.dataset.chatFilter = root.dataset.chatFilter || 'all';
+            if (Number(state.activeId) === conversationId) {
+                pollThread(root).catch(() => {});
+            } else {
+                refreshInbox(root).catch(() => {});
+            }
+        });
     });
-    renderAll();
 
     window.BearlyChat = {
         open: openDrawer,
-        openAssistant: () => openDrawer(true),
     };
 })();
 
@@ -571,33 +850,15 @@
 (function initBearlyGlobalNavbarState() {
     if (window.BearlyNavbarState) return;
 
-    const CART_KEY = window.bearlyStorageKey?.('preview-cart') || 'bearly-preview-cart-v1';
-    const NOTIFICATION_KEY = window.bearlyStorageKey?.('preview-notifications') || 'bearly-notifications-v1';
+    /* Notification badges mirror the real unread count synced by notification-center.js. */
 
     function cartCount() {
-        try {
-            const value = JSON.parse(localStorage.getItem(CART_KEY) || '[]');
-            const preview = Array.isArray(value)
-                ? value.reduce((total, item) => total + Math.max(0, Number(item?.quantity || 0)), 0)
-                : 0;
-            return preview + Number(window.bearlyBuyerProfile?.cartCount || 0);
-        } catch {
-            return Number(window.bearlyBuyerProfile?.cartCount || 0);
-        }
+        return Math.max(0, Number(window.bearlyBuyerProfile?.cartCount || 0));
     }
 
     function notificationCount() {
-        try {
-            const raw = localStorage.getItem(NOTIFICATION_KEY);
-            if (!raw) {
-                const existing = document.querySelector('[data-notification-badge]');
-                return Number(existing?.textContent || 3) || 0;
-            }
-            const value = JSON.parse(raw);
-            return Array.isArray(value) ? value.filter(item => !item?.read).length : 0;
-        } catch {
-            return 0;
-        }
+        const existing = document.querySelector('[data-notification-badge]');
+        return Math.max(0, Number(existing?.textContent || 0) || 0);
     }
 
     function ensureBadge(link, type) {

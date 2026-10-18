@@ -6,8 +6,9 @@ use App\Enums\AccountStatus;
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Models\User;
-use App\Services\InternationalPhone;
+use App\Services\AuditService;
 use App\Services\EmailVerificationService;
+use App\Services\InternationalPhone;
 use App\Services\PostalCodeLookup;
 use App\Services\RegistrationLifecycleService;
 use Illuminate\Support\Facades\DB;
@@ -40,7 +41,7 @@ class BearlyAuthController extends Controller
         return view('auth.register');
     }
 
-    public function login(Request $request): RedirectResponse
+    public function login(Request $request, AuditService $audit): RedirectResponse
     {
         $credentials = $request->validate([
             'email' => ['required', 'email'],
@@ -130,6 +131,10 @@ class BearlyAuthController extends Controller
         app(RegistrationLifecycleService::class)
             ->syncActiveRole($user);
 
+        $request->session()->put('bearly_auth_channel', 'web_password');
+
+        $audit->recordAuthentication($user, 'signed_in', 'web_password', $request);
+
         $routes = [
             UserRole::Admin->value => 'admin.dashboard',
             UserRole::Buyer->value => 'home',
@@ -151,7 +156,7 @@ class BearlyAuthController extends Controller
         return Socialite::driver('google')->redirect();
     }
 
-    public function handleGoogleCallback(Request $request): RedirectResponse
+    public function handleGoogleCallback(Request $request, AuditService $audit): RedirectResponse
     {
         try {
             $googleUser = Socialite::driver('google')->user();
@@ -249,6 +254,10 @@ class BearlyAuthController extends Controller
             $user->forceFill([
                 'last_login_at' => now(),
             ])->save();
+
+            $request->session()->put('bearly_auth_channel', 'google');
+
+            $audit->recordAuthentication($user, 'signed_in', 'google', $request);
 
             $routes = [
                 UserRole::Admin->value => 'admin.dashboard',
@@ -621,8 +630,22 @@ class BearlyAuthController extends Controller
                 'email' => __($status),
             ]);
     }
-    public function logout(Request $request): RedirectResponse
+
+    public function logout(Request $request, AuditService $audit): RedirectResponse
     {
+        $user = $request->user();
+
+        if ($user) {
+            $channel = $request->session()->get('bearly_auth_channel');
+
+            $audit->recordAuthentication(
+                $user,
+                'signed_out',
+                in_array($channel, ['web_password', 'google'], true) ? $channel : 'web_session',
+                $request,
+            );
+        }
+
         Auth::logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();

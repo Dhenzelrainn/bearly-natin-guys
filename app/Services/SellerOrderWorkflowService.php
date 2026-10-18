@@ -8,12 +8,16 @@ use App\Models\Payment;
 use App\Models\SellerOrder;
 use App\Models\SellerOrderStatusHistory;
 use App\Models\User;
+use App\Notifications\WorkflowNotification;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 class SellerOrderWorkflowService
 {
-    public function __construct(private readonly InventoryReservationService $reservations) {}
+    public function __construct(
+        private readonly InventoryReservationService $reservations,
+        private readonly NotificationService $notifications,
+    ) {}
 
     public function transition(User $actor, int $sellerOrderId, string $action, ?string $reason = null): SellerOrder
     {
@@ -102,8 +106,34 @@ class SellerOrderWorkflowService
         ]);
 
         $this->recordChange($sellerOrder, $actor, $previousStatus, $nextStatus->value, $reason, $now);
+        $this->notifyBuyerOfProgress($sellerOrder, $nextStatus);
 
         return $sellerOrder->fresh(['statusHistory.actor']);
+    }
+
+    private function notifyBuyerOfProgress(SellerOrder $sellerOrder, SellerOrderStatus $status): void
+    {
+        $buyer = $sellerOrder->order?->buyer;
+
+        if (! $buyer) {
+            return;
+        }
+
+        $message = match ($status) {
+            SellerOrderStatus::Accepted => "The Seller confirmed order {$sellerOrder->seller_order_no} and will start preparing it.",
+            SellerOrderStatus::Packing => "The Seller started preparing order {$sellerOrder->seller_order_no}.",
+            SellerOrderStatus::ReadyForPickup => "Order {$sellerOrder->seller_order_no} is packed and ready for pickup by Logistics.",
+            default => "Order {$sellerOrder->seller_order_no} was updated.",
+        };
+
+        $this->notifications->sendAfterCommit($buyer, new WorkflowNotification(
+            eventKey: 'buyer_order_updates',
+            title: 'Order update',
+            body: $message,
+            actionUrl: route('buyer.profile').'#purchases',
+            type: 'info',
+            meta: ['seller_order_id' => (int) $sellerOrder->id],
+        ));
     }
 
     /** @param Collection<int, SellerOrder> $sellerOrders */
@@ -183,7 +213,27 @@ class SellerOrderWorkflowService
             $payment->update(['amount_minor' => $total]);
         }
 
+        $this->notifyBuyerOfSellerCancellation($order, $sellerOrder, $reason);
+
         return $sellerOrder->fresh(['statusHistory.actor']);
+    }
+
+    private function notifyBuyerOfSellerCancellation(Order $order, SellerOrder $sellerOrder, string $reason): void
+    {
+        $buyer = $order->buyer;
+
+        if (! $buyer) {
+            return;
+        }
+
+        $this->notifications->sendAfterCommit($buyer, new WorkflowNotification(
+            eventKey: 'buyer_order_updates',
+            title: 'Order cancelled by Seller',
+            body: "The Seller cancelled {$sellerOrder->seller_order_no}. Reason: {$reason}.",
+            actionUrl: route('buyer.profile').'#purchases',
+            type: 'warning',
+            meta: ['order_id' => (int) $order->id, 'seller_order_id' => (int) $sellerOrder->id],
+        ));
     }
 
     private function recordChange(

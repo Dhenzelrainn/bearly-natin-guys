@@ -13,9 +13,10 @@
         <h1>Audit logs</h1>
 
         <p>
-            Review administrative activity across the Bearly platform,
-            including account actions, compliance decisions, policy changes,
-            and other important system events.
+            Review recorded activity across the Bearly platform,
+            including sign-ins and sign-outs, account actions,
+            compliance decisions, policy changes, and other
+            important system events.
         </p>
     </div>
 
@@ -38,7 +39,7 @@
             </strong>
 
             <span>
-                Administrative events logged
+                Platform events logged
             </span>
 
         </div>
@@ -55,7 +56,7 @@
 
         <div>
             <span class="eyebrow">
-                Administrative activity
+                Recorded activity
             </span>
 
             <h2>
@@ -87,6 +88,10 @@
 
                 <option value="">
                     All modules
+                </option>
+
+                <option value="Authentication">
+                    Authentication
                 </option>
 
                 <option value="Registration Management">
@@ -153,7 +158,7 @@
 
                 <tr>
                     <th>Activity</th>
-                    <th>Administrator</th>
+                    <th>Account</th>
                     <th>Module</th>
                     <th>Target</th>
                     <th>Date & Time</th>
@@ -183,7 +188,12 @@
                                 $log['module'].' '.
                                 $log['target'].' '.
                                 $log['description'].' '.
-                                $log['ip']
+                                $log['ip'].' '.
+                                ($log['channel'] ?? '').' '.
+                                ($log['device'] ?? '').' '.
+                                ($log['browser'] ?? '').' '.
+                                ($log['os'] ?? '').' '.
+                                ($log['location'] ?? '')
                             )
                         }}"
                     >
@@ -215,7 +225,7 @@
                         </td>
 
 
-                        {{-- Administrator --}}
+                        {{-- Account --}}
                         <td>
 
                             <div class="table-primary-secondary">
@@ -407,11 +417,11 @@
                 </div>
 
 
-                {{-- Administrator --}}
+                {{-- Account --}}
                 <div>
 
                     <span>
-                        Administrator
+                        Account
                     </span>
 
                     <strong>
@@ -421,11 +431,11 @@
                 </div>
 
 
-                {{-- Administrator Role --}}
+                {{-- Account Role --}}
                 <div>
 
                     <span>
-                        Administrator role
+                        Account role
                     </span>
 
                     <strong>
@@ -532,6 +542,79 @@
 
                 </div>
 
+                @if ($log['is_authentication'])
+
+                    {{-- Sign-in channel --}}
+                    <div>
+
+                        <span>
+                            Sign-in channel
+                        </span>
+
+                        <strong>
+                            {{ $log['channel'] ?? '—' }}
+                        </strong>
+
+                    </div>
+
+
+                    {{-- Device --}}
+                    <div>
+
+                        <span>
+                            Device
+                        </span>
+
+                        <strong>
+                            {{ $log['device'] ?? '—' }}
+                        </strong>
+
+                    </div>
+
+
+                    {{-- Browser --}}
+                    <div>
+
+                        <span>
+                            Browser
+                        </span>
+
+                        <strong>
+                            {{ $log['browser'] ?? '—' }}
+                        </strong>
+
+                    </div>
+
+
+                    {{-- Operating system --}}
+                    <div>
+
+                        <span>
+                            Operating system
+                        </span>
+
+                        <strong>
+                            {{ $log['os'] ?? '—' }}
+                        </strong>
+
+                    </div>
+
+
+                    {{-- Approximate location --}}
+                    <div>
+
+                        <span>
+                            Approximate location
+                        </span>
+
+                        <strong>
+                            {{ $log['location'] ?? 'Approximate location unavailable' }}
+                        </strong>
+
+                    </div>
+
+                @endif
+
             </div>
 
 
@@ -549,6 +632,27 @@
             </div>
 
 
+            @if ($log['is_authentication'])
+
+                <div class="detail-note">
+
+                    <span>
+                        Approximate device and location
+                    </span>
+
+                    <p>
+                        Device, browser, and operating system are estimated
+                        from the request User-Agent and can be spoofed by the
+                        client. Location is IP-based, not GPS location; when no
+                        approved location provider is configured, it is
+                        reported as unavailable.
+                    </p>
+
+                </div>
+
+            @endif
+
+
             <div class="detail-note">
 
                 <span>
@@ -556,9 +660,8 @@
                 </span>
 
                 <p>
-                    This record is read-only and represents an administrative
-                    action recorded by the platform for accountability and
-                    system monitoring.
+                    This record is read-only and represents platform activity
+                    recorded for accountability and system monitoring.
                 </p>
 
             </div>

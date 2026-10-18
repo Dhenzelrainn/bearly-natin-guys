@@ -6,7 +6,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Material+Symbols+Outlined:wght@400&display=swap" rel="stylesheet">
 @include('buyer.partials.account-context-script')
-@vite(['resources/css/buyer.css','resources/css/addresses.css','resources/js/addresses.js'])
+@vite(['resources/css/buyer.css','resources/css/addresses.css','resources/css/maps.css','resources/js/addresses.js'])
 </head>
 <body class="bh address-page">
 @include('buyer.partials.buyer-header', ['headerActive' => 'profile'])
@@ -53,6 +53,14 @@
 <div class="form-grid">
 <label><span>Postal Code</span><input id="postal-code" inputmode="numeric" maxlength="4" pattern="\d{4}" required placeholder="Postal Code"></label>
 <label><span>Street Name, Building, House No.</span><input id="street" required placeholder="Street Name, Building, House No."></label>
+</div>
+
+<div class="address-map-picker-section">
+<div class="address-map-picker-heading"><div><strong>Pin your location <span>(optional)</span></strong><small>Coordinates supplement your validated address. We do not reverse-geocode or change your PSGC fields.</small></div><button id="clear-address-pin" type="button" class="address-map-clear" hidden>Clear pin</button></div>
+<div id="address-map" class="address-map" data-map-tile-url="{{ config('maps.tile_url') }}" data-map-attribution="{{ config('maps.tile_attribution') }}" aria-label="Address map pin picker"></div>
+<p id="address-map-status" class="address-map-status" role="status">Click the map to place a pin, then save the address.</p>
+<input id="address-latitude" type="hidden">
+<input id="address-longitude" type="hidden">
 </div>
 
 <div class="label-section">Label As:</div>

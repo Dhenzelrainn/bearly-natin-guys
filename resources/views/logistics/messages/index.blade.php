@@ -37,7 +37,7 @@
         </div>
     </div>
 
-    <section class="chat-shell">
+    <section class="chat-shell messages-standard-page" data-standard-role="logistics">
         <aside class="chat-sidebar">
             <div class="chat-sidebar-head">
                 <div class="search-field">
@@ -183,6 +183,13 @@
                 </button>
             </div>
         </div>
+
+        <aside class="messages-standard-details" data-standard-details>
+            <h3>Conversation details</h3>
+            <div data-standard-details-body>
+                <div class="table-empty">Select a conversation to see its details.</div>
+            </div>
+        </aside>
     </section>
 
     <section

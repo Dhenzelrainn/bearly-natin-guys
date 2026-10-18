@@ -2,11 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\SellerOrderStatus;
 use App\Models\Order;
 use App\Models\Payment;
+use App\Notifications\WorkflowNotification;
 use App\Services\AuditService;
 use App\Services\BuyerCatalogService;
 use App\Services\CommissionLedgerService;
+use App\Services\NotificationService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -39,7 +42,7 @@ class AdminCommerceController extends Controller
         return view('admin.finance.orders', $this->base($request) + compact('orders'));
     }
 
-    public function confirmPayment(Request $request, Payment $payment, CommissionLedgerService $ledger, AuditService $audit): RedirectResponse
+    public function confirmPayment(Request $request, Payment $payment, CommissionLedgerService $ledger, AuditService $audit, NotificationService $notifications): RedirectResponse
     {
         $data = $request->validate(['provider_reference' => ['required', 'string', 'max:150']]);
         $confirmed = DB::transaction(function () use ($request, $payment, $data, $ledger, $audit): bool {
@@ -73,9 +76,56 @@ class AdminCommerceController extends Controller
             return true;
         }, 3);
 
+        if ($confirmed) {
+            $order = Order::query()
+                ->with(['buyer', 'sellerOrders.store.sellerProfile.user'])
+                ->find($payment->order_id);
+
+            $this->notifyPaymentConfirmed($order, $notifications);
+        }
+
         return back()->with('success', $confirmed
             ? 'Payment confirmed and commission ledger finalized.'
             : 'Payment was already confirmed; no changes were made.');
+    }
+
+    private function notifyPaymentConfirmed(?Order $order, NotificationService $notifications): void
+    {
+        if (! $order) {
+            return;
+        }
+
+        if ($order->buyer) {
+            $notifications->sendAfterCommit($order->buyer, new WorkflowNotification(
+                eventKey: 'buyer_order_updates',
+                title: 'Payment confirmed',
+                body: "Payment for {$order->order_no} was confirmed. Your order is now being processed.",
+                actionUrl: route('buyer.profile').'#purchases',
+                type: 'success',
+                meta: ['order_id' => (int) $order->id],
+            ));
+        }
+
+        foreach ($order->sellerOrders as $sellerOrder) {
+            if ($sellerOrder->status === SellerOrderStatus::Cancelled->value) {
+                continue;
+            }
+
+            $sellerUser = $sellerOrder->store?->sellerProfile?->user;
+
+            if (! $sellerUser) {
+                continue;
+            }
+
+            $notifications->sendAfterCommit($sellerUser, new WorkflowNotification(
+                eventKey: 'seller_order_updates',
+                title: 'Payment confirmed',
+                body: "Payment for {$sellerOrder->seller_order_no} was confirmed. Prepare the order for pickup.",
+                actionUrl: route('seller.orders'),
+                type: 'success',
+                meta: ['order_id' => (int) $order->id, 'seller_order_id' => (int) $sellerOrder->id],
+            ));
+        }
     }
 
     private function base(Request $request): array

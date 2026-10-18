@@ -307,7 +307,14 @@
                 <span><strong>{{ number_format($storeProductCount) }}</strong><small>Products</small></span>
                 <span><strong>{{ $storeReviewSummary['count'] > 0 ? number_format($storeReviewSummary['average'], 1) : '—' }}</strong><small>Rating · {{ number_format($storeReviewSummary['count']) }} {{ Str::plural('review', $storeReviewSummary['count']) }}</small></span>
             </div>
-            <a class="detail-store-action" href="{{ route('stores.show', $product->store->slug) }}">View Store</a>
+            <div class="detail-store-actions">
+                <a class="detail-store-action" href="{{ route('stores.show', $product->store->slug) }}">View Store</a>
+                <form method="POST" action="{{ route('buyer.chat.product') }}">
+                    @csrf
+                    <input type="hidden" name="product_id" value="{{ $product->id }}">
+                    <button class="detail-store-action detail-store-chat-action" type="submit"><span class="material-symbols-outlined" aria-hidden="true">chat_bubble</span>Chat with seller</button>
+                </form>
+            </div>
         </section>
 
         <section class="detail-panel" aria-labelledby="detail-specs-title">

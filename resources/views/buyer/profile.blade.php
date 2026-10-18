@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Material+Symbols+Outlined:wght@400&display=swap" rel="stylesheet">
     @include('buyer.partials.account-context-script')
-    @vite(['resources/css/buyer.css','resources/css/profile.css','resources/css/addresses.css','resources/css/bearly-chat.css','resources/js/profile.js','resources/js/account-addresses.js','resources/js/my-likes.js','resources/js/my-purchases.js','resources/js/reviews-ratings.js','resources/js/bearly-chat.js'])
+    @vite(['resources/css/buyer.css','resources/css/profile.css','resources/css/addresses.css','resources/css/maps.css','resources/css/bearly-chat.css','resources/js/profile.js','resources/js/account-addresses.js','resources/js/my-likes.js','resources/js/my-purchases.js','resources/js/reviews-ratings.js','resources/js/bearly-chat.js'])
 </head>
 <body class="bh profile-page">
 @include('buyer.partials.buyer-header', [
@@ -37,7 +37,7 @@
             <div class="nav-section-gap"></div>
             <button class="account-tab nav-parent" type="button" data-account-tab="purchases"><span class="material-symbols-outlined">receipt_long</span>My Purchases</button>
             <button class="account-tab nav-parent" type="button" data-account-tab="reviews"><span class="material-symbols-outlined">star</span>Reviews & Ratings</button>
-            <button class="account-tab nav-parent" type="button" data-account-tab="notifications"><span class="material-symbols-outlined">notifications</span>Notifications <span id="notifications-nav-count" class="notifications-nav-count">0</span></button>
+            <a class="account-tab nav-parent" href="{{ route('notifications.center') }}"><span class="material-symbols-outlined">notifications</span>Notifications <span id="notifications-nav-count" class="notifications-nav-count">0</span></a>
             <button class="account-tab nav-parent" type="button" data-account-tab="vouchers"><span class="material-symbols-outlined">confirmation_number</span>My Vouchers <span id="vouchers-nav-count" class="vouchers-nav-count" hidden>0</span></button>
             <button class="account-tab nav-parent" type="button" data-account-tab="help"><span class="material-symbols-outlined">help</span>Help Center</button>
         </nav>
@@ -216,23 +216,6 @@
         <div id="tracking-content"></div>
     </section>
 
-    <section class="profile-card account-panel" id="notifications-panel" data-account-panel="notifications" hidden>
-        <div class="notifications-head">
-            <div><h1>Notifications</h1><p>Stay updated with your orders, payments, promotions, and more.</p></div>
-            <button id="mark-all-notifications" type="button" class="notification-mark-all"><span class="material-symbols-outlined" aria-hidden="true">mark_email_read</span><span>Mark all as read</span></button>
-        </div>
-        <div class="notification-filters" role="tablist" aria-label="Notification filters">
-            <button class="notification-filter active" type="button" data-notification-filter="all" aria-selected="true">All</button>
-            <button class="notification-filter" type="button" data-notification-filter="orders" aria-selected="false">Order Updates</button>
-            <button class="notification-filter" type="button" data-notification-filter="payment" aria-selected="false">Payment</button>
-            <button class="notification-filter" type="button" data-notification-filter="promos" aria-selected="false">Promos</button>
-        </div>
-        <div id="notification-list" class="notification-list"></div>
-        <div id="notifications-empty" class="notifications-empty" hidden>
-            <span class="material-symbols-outlined">notifications_off</span><h2>No notifications here</h2><p>New Bearly updates will appear here.</p>
-        </div>
-    </section>
-
     <section class="profile-card account-panel" id="vouchers-panel" data-account-panel="vouchers" hidden>
         <div class="vouchers-head">
             <div class="vouchers-heading-copy">
@@ -289,7 +272,7 @@
     <section class="profile-card account-panel" id="help-panel" data-account-panel="help" hidden>
         <div class="help-head">
             <div><h1>Help Center</h1><p>Find quick answers about shopping with Bearly.</p></div>
-            <a class="help-chat-bearly" href="{{ url('/chat?conversation=bearly') }}" title="Chat with Bearly Assistant"><span class="material-symbols-outlined help-head-icon">support_agent</span><span>Chat with Bearly</span></a>
+            <a class="help-chat-bearly" href="{{ url('/chat') }}" title="Chat with Bearly Assistant"><span class="material-symbols-outlined help-head-icon">support_agent</span><span>Chat with Bearly</span></a>
         </div>
         <label class="help-search"><span class="material-symbols-outlined">search</span><input id="help-search" type="search" placeholder="Search orders, shipping, vouchers, account..." autocomplete="off"></label>
         <div class="help-categories" aria-label="Help categories">
@@ -364,7 +347,8 @@
    <div class="form-grid two"><label><span>Full Name</span><input id="address-full-name" required placeholder="Recipient name"></label><label><span>Phone Number</span><input id="address-phone-number" required placeholder="+63 900 000 0000"></label></div>
    <div class="form-grid"><label><span>Province</span><input id="address-province" required placeholder="Laguna"></label></div>
    <div class="form-grid two"><label><span>City / Municipality</span><input id="address-city" required placeholder="City / Municipality"></label><label><span>Barangay</span><input id="address-barangay" required placeholder="Barangay"></label></div>
-   <div class="form-grid"><label><span>Postal Code</span><input id="address-postal-code" required placeholder="Postal Code"></label><label><span>Street Name, Building, House No.</span><input id="address-street" required placeholder="Street Name, Building, House No."></label></div>
+    <div class="form-grid"><label><span>Postal Code</span><input id="address-postal-code" required placeholder="Postal Code"></label><label><span>Street Name, Building, House No.</span><input id="address-street" required placeholder="Street Name, Building, House No."></label></div>
+    <div class="address-map-picker-section"><div class="address-map-picker-heading"><div><strong>Pin your location <span>(optional)</span></strong><small>Coordinates supplement your validated address and do not replace PSGC fields.</small></div><button id="clear-address-pin" type="button" class="address-map-clear" hidden>Clear pin</button></div><div id="address-map" class="address-map" data-map-tile-url="{{ config('maps.tile_url') }}" data-map-attribution="{{ config('maps.tile_attribution') }}" aria-label="Address map pin picker"></div><p id="address-map-status" class="address-map-status" role="status">Click the map to place a pin, then save the address.</p><input id="address-latitude" type="hidden"><input id="address-longitude" type="hidden"></div>
    <div class="label-section">Label As:</div><div class="label-buttons"><button class="label-choice active" data-label="Home" type="button">Home</button><button class="label-choice" data-label="Work" type="button">Work</button></div>
    <label class="default-check"><input id="address-set-default" type="checkbox"><span></span>Set as Default Address</label>
    <div class="dialog-actions"><button id="cancel-address" class="cancel-btn" type="button">Cancel</button><button class="save-btn" type="submit">Save Address</button></div>

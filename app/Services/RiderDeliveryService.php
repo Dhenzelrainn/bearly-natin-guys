@@ -14,6 +14,7 @@ use App\Models\Parcel;
 use App\Models\Shipment;
 use App\Models\ShipmentEvent;
 use App\Models\User;
+use App\Notifications\WorkflowNotification;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
@@ -26,6 +27,10 @@ use Throwable;
 
 class RiderDeliveryService
 {
+    public function __construct(
+        private readonly NotificationService $notifications,
+    ) {}
+
     public function startDelivery(
         string $shipmentNo,
         User $actor
@@ -298,6 +303,8 @@ class RiderDeliveryService
                             'occurred_at' => $now,
                         ]);
                 }
+
+                $this->notifyBuyerOutForDelivery($shipment);
 
                 return $shipment->fresh([
                     'parcels',
@@ -834,6 +841,8 @@ class RiderDeliveryService
                         ],
                     ]);
                 }
+
+                $this->notifyBuyerOfFailedDelivery($shipment);
 
                 return $shipment
                     ->fresh([
@@ -1465,6 +1474,13 @@ class RiderDeliveryService
 
                         if (
                             $aggregateStatus === ShipmentStatus::Delivered->value
+                            && $shipment->purpose === 'outbound'
+                        ) {
+                            $this->notifyDeliveryCompleted($shipment);
+                        }
+
+                        if (
+                            $aggregateStatus === ShipmentStatus::Delivered->value
                             && $shipment->purpose === 'return'
                             && $returns
                         ) {
@@ -1518,6 +1534,79 @@ class RiderDeliveryService
             }
 
             throw $exception;
+        }
+    }
+
+    private function notifyBuyerOutForDelivery(Shipment $shipment): void
+    {
+        $sellerOrder = $shipment->sellerOrder;
+        $buyer = $sellerOrder?->order?->buyer;
+
+        if ($shipment->purpose !== 'outbound' || ! $sellerOrder || ! $buyer) {
+            return;
+        }
+
+        $this->notifications->sendAfterCommit($buyer, new WorkflowNotification(
+            eventKey: 'buyer_shipment_updates',
+            title: 'Out for delivery',
+            body: "{$sellerOrder->seller_order_no} is out for delivery today.",
+            actionUrl: route('buyer.profile').'#tracking',
+            type: 'info',
+            meta: ['seller_order_id' => (int) $sellerOrder->id, 'shipment_id' => (int) $shipment->id],
+        ));
+    }
+
+    private function notifyBuyerOfFailedDelivery(Shipment $shipment): void
+    {
+        $sellerOrder = $shipment->sellerOrder;
+        $buyer = $sellerOrder?->order?->buyer;
+
+        if ($shipment->purpose !== 'outbound' || ! $sellerOrder || ! $buyer) {
+            return;
+        }
+
+        $this->notifications->sendAfterCommit($buyer, new WorkflowNotification(
+            eventKey: 'buyer_shipment_updates',
+            title: 'Delivery attempt failed',
+            body: "The Rider could not deliver {$sellerOrder->seller_order_no}. Logistics will schedule another attempt.",
+            actionUrl: route('buyer.profile').'#tracking',
+            type: 'warning',
+            meta: ['seller_order_id' => (int) $sellerOrder->id, 'shipment_id' => (int) $shipment->id],
+        ));
+    }
+
+    private function notifyDeliveryCompleted(Shipment $shipment): void
+    {
+        $sellerOrder = $shipment->sellerOrder;
+
+        if (! $sellerOrder) {
+            return;
+        }
+
+        $buyer = $sellerOrder->order?->buyer;
+
+        if ($buyer) {
+            $this->notifications->sendAfterCommit($buyer, new WorkflowNotification(
+                eventKey: 'buyer_shipment_updates',
+                title: 'Order delivered',
+                body: "The shipment for {$sellerOrder->seller_order_no} was delivered.",
+                actionUrl: route('buyer.profile').'#tracking',
+                type: 'success',
+                meta: ['seller_order_id' => (int) $sellerOrder->id, 'shipment_id' => (int) $shipment->id],
+            ));
+        }
+
+        $sellerUser = $sellerOrder->store?->sellerProfile?->user;
+
+        if ($sellerUser) {
+            $this->notifications->sendAfterCommit($sellerUser, new WorkflowNotification(
+                eventKey: 'seller_shipment_updates',
+                title: 'Shipment delivered',
+                body: "{$sellerOrder->seller_order_no} was delivered to the buyer.",
+                actionUrl: route('seller.fulfillment.tracking'),
+                type: 'success',
+                meta: ['seller_order_id' => (int) $sellerOrder->id, 'shipment_id' => (int) $shipment->id],
+            ));
         }
     }
 }

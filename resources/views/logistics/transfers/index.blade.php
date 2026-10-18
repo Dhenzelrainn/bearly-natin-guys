@@ -17,13 +17,14 @@
             <p>Scan or enter the waybill. Incoming parcels are assigned automatically to your account’s single active Sorting Center.</p>
         </div>
     </div>
-    <form class="panel-body" method="POST" action="{{ route('logistics.transfers.accept') }}">
+    <form class="panel-body" method="POST" action="{{ route('logistics.transfers.accept') }}" data-waybill-scan-form>
         @csrf
-        <input type="hidden" name="scan_method" value="manual">
+        <input type="hidden" name="scan_method" value="manual" data-waybill-scan-method>
         <div class="field-grid">
             <div class="field span-2">
                 <label for="transfer-identifier">Waybill or barcode</label>
-                <input id="transfer-identifier" name="identifier" value="{{ old('identifier') }}" maxlength="120" required autocomplete="off" placeholder="Scan or enter the waybill number">
+                    <input id="transfer-identifier" name="identifier" value="{{ old('identifier') }}" maxlength="120" required autocomplete="off" placeholder="Scan or enter the waybill number" data-waybill-identifier>
+                    <div class="waybill-scan-tools"><button type="button" class="waybill-camera-button" data-waybill-camera-open><i data-lucide="camera"></i>Use camera</button><small>Manual entry and USB/Bluetooth barcode scanners are also supported.</small></div>
                 @error('identifier')<small class="form-error">{{ $message }}</small>@enderror
             </div>
             <div class="field span-2">
@@ -31,6 +32,7 @@
                 <input id="transfer-center" type="text" value="{{ $sortingCenter?->name ?? 'No active Sorting Center available' }}" readonly>
             </div>
         </div>
+        <div class="waybill-camera-panel" data-waybill-camera-panel hidden><video data-waybill-camera-video playsinline muted></video><p class="waybill-camera-status" data-waybill-camera-status>Point the camera at the Code 128 waybill barcode.</p><button type="button" class="button button-small" data-waybill-camera-close>Cancel camera</button></div>
         <div class="form-actions">
             <button class="button button-primary" type="submit" @disabled(! $sortingCenter)><i data-lucide="scan-line"></i> Scan and accept</button>
         </div>

@@ -46,4 +46,16 @@ class SellerOrder extends Model
             ->orderByDesc('submitted_at')
             ->orderByDesc('id');
     }
+
+    public function disputes()
+    {
+        return $this->hasMany(Dispute::class);
+    }
+
+    public function activeDispute()
+    {
+        return $this->hasOne(Dispute::class)
+            ->whereNotIn('status', ['resolved', 'closed'])
+            ->latestOfMany();
+    }
 }

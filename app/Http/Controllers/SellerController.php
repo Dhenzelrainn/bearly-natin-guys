@@ -4,9 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Models\AccountApplication;
 use App\Models\Address;
+use App\Models\Conversation;
 use App\Models\StorePromotion;
 use App\Models\StorePromotionalBanner;
+use App\Services\ConversationService;
 use App\Services\InternationalPhone;
+use App\Services\NotificationPreferenceService;
 use App\Services\ProductReviewService;
 use App\Services\SellerEarningsService;
 use App\Services\SellerIdentityService;
@@ -20,6 +23,7 @@ use App\Services\StorePublicationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -158,6 +162,7 @@ class SellerController extends Controller
             'momentum' => collect($data['momentum'])->map(fn (array $bucket): array => [
                 'label' => $bucket['label'],
                 'value' => intdiv($bucket['gross_minor'], 100),
+                'value_label' => $this->moneyFromMinor((int) $bucket['gross_minor']),
                 'height' => $bucket['height'],
             ])->values(),
             'productPerformance' => collect($data['products'])->map(fn (array $product): array => [
@@ -203,18 +208,48 @@ class SellerController extends Controller
         ]);
     }
 
-    public function messages(): View
+    public function messages(Request $request, ConversationService $conversations): View
     {
+        $store = $request->user()->sellerProfile?->store;
+
+        abort_unless($store, 404, 'Seller Store not found.');
+
+        $inbox = $conversations->inboxForSeller($request->user(), (int) $store->id);
+
+        $activeId = (int) $request->query('conversation', 0);
+        $active = null;
+
+        if ($activeId > 0) {
+            foreach ($inbox as $summary) {
+                if ((int) $summary['id'] === $activeId) {
+                    $active = $summary;
+
+                    break;
+                }
+            }
+
+            abort_unless($active, 404);
+        } elseif ($inbox !== []) {
+            $active = $inbox[0];
+        }
+
+        $activeThread = null;
+
+        if ($active) {
+            $conversation = Conversation::query()->find((int) $active['id']);
+
+            $activeThread = $conversation
+                ? $conversations->threadPayload($conversation, $request->user(), 'seller.support.messages.attachment')
+                : null;
+        }
+
         return view('seller.CustomerService.messages', [
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
-            'conversations' => [
-                ['id' => 1, 'buyer' => 'Maria Santos', 'initials' => 'MS', 'time' => '10:24 AM', 'last' => 'Large please, if it’s still available.', 'context' => 'Order #BR-1058', 'order' => '#BR-1058', 'product' => 'Classic Linen Shirt', 'variant' => 'Medium', 'price' => '₱1,299', 'status' => 'To Prepare', 'unread' => 1, 'type' => 'order', 'active' => 'Active 8 min ago', 'member' => 'October 12, 2023', 'previous' => 6, 'messages' => [['from' => 'buyer', 'text' => 'Hi, can I change the size from Medium to Large?', 'time' => '10:18 AM'], ['from' => 'seller', 'text' => 'Hi Maria! Yes, we can change the size to Large for you. Would you like me to proceed?', 'time' => '10:20 AM'], ['from' => 'buyer', 'text' => 'Large please, if it’s still available.', 'time' => '10:24 AM']]],
-                ['id' => 2, 'buyer' => 'Juan Dela Cruz', 'initials' => 'JD', 'time' => '9:58 AM', 'last' => 'When will my order be shipped?', 'context' => 'Order #BR-1055', 'order' => '#BR-1055', 'product' => 'Canvas Tote Bag', 'variant' => 'Natural', 'price' => '₱899', 'status' => 'To Prepare', 'unread' => 2, 'type' => 'order', 'active' => 'Active 20 min ago', 'member' => 'January 8, 2025', 'previous' => 2, 'messages' => [['from' => 'buyer', 'text' => 'Hello, when will my order be shipped?', 'time' => '9:58 AM']]],
-                ['id' => 3, 'buyer' => 'Angela Cruz', 'initials' => 'AC', 'time' => 'Yesterday', 'last' => 'Do you have this in black?', 'context' => 'Classic Linen Shirt', 'order' => 'No active order', 'product' => 'Classic Linen Shirt', 'variant' => 'Product inquiry', 'price' => '₱1,299', 'status' => 'Product Inquiry', 'unread' => 1, 'type' => 'product', 'active' => 'Active yesterday', 'member' => 'March 14, 2026', 'previous' => 1, 'messages' => [['from' => 'buyer', 'text' => 'Hi! Do you have the Classic Linen Shirt in black?', 'time' => 'Yesterday · 4:18 PM']]],
-                ['id' => 4, 'buyer' => 'Liam Reyes', 'initials' => 'LR', 'time' => 'Yesterday', 'last' => 'Thank you, I’ll wait for it.', 'context' => 'Order #BR-1049', 'order' => '#BR-1049', 'product' => 'Everyday Sneakers', 'variant' => 'White / Size 40', 'price' => '₱1,499', 'status' => 'In Transit', 'unread' => 0, 'type' => 'order', 'active' => 'Active yesterday', 'member' => 'June 2, 2024', 'previous' => 4, 'messages' => [['from' => 'buyer', 'text' => 'Can you check the latest delivery update?', 'time' => 'Yesterday · 1:05 PM'], ['from' => 'seller', 'text' => 'Your parcel is already in transit. You can also track it from your order page.', 'time' => 'Yesterday · 1:12 PM'], ['from' => 'buyer', 'text' => 'Thank you, I’ll wait for it.', 'time' => 'Yesterday · 1:14 PM']]],
-                ['id' => 5, 'buyer' => 'Kim Chua', 'initials' => 'KC', 'time' => '2d ago', 'last' => 'I received the wrong item.', 'context' => 'Order #BR-1042', 'order' => '#BR-1042', 'product' => 'Canvas Tote Bag', 'variant' => 'Natural', 'price' => '₱899', 'status' => 'Completed', 'unread' => 1, 'type' => 'order', 'active' => 'Active 2 days ago', 'member' => 'November 20, 2025', 'previous' => 3, 'messages' => [['from' => 'buyer', 'text' => 'I received the wrong item. What should I do?', 'time' => 'Sep 2 · 3:42 PM']]],
-            ],
+            'conversations' => $inbox,
+            'activeConversation' => $active,
+            'activeThread' => $activeThread,
+            'totalUnread' => array_sum(array_column($inbox, 'unread')),
             'quickReplies' => [
                 ['label' => 'Size availability', 'text' => 'Let me check the available sizes for you. I’ll send an update shortly.'],
                 ['label' => 'Order preparation', 'text' => 'Your order is currently being prepared and will be ready before the scheduled pickup.'],
@@ -304,62 +339,230 @@ class SellerController extends Controller
         ]);
     }
 
-    public function account(): View
+    public function account(Request $request): View
     {
+        /** @var User $user */
+        $user = $request->user();
+
+        $user->loadMissing('sellerProfile');
+
+        $fullName = trim((string) (
+            $user->name
+            ?: trim(implode(' ', array_filter([
+                $user->first_name,
+                $user->middle_initial,
+                $user->last_name,
+            ])))
+        ));
+
+        if ($fullName === '') {
+            $fullName = 'Bearly Seller';
+        }
+
+        $addressParts = array_filter([
+            $user->street_address,
+            $user->barangay ? 'Barangay '.$user->barangay : null,
+            $user->city,
+            $user->province,
+        ]);
+
         return view('seller.Settings.account', [
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
             'account' => [
-                'full_name' => 'Bea Rivera',
-                'email' => 'bea@juansclothing.test',
-                'phone' => '+63 917 123 4567',
-                'birthday' => 'May 18, 1998',
-                'sex' => 'Female',
-                'address' => 'Blk 12 Lot 8, Barangay Balibago, Santa Rosa City, Laguna',
-                'status' => 'Active',
-                'verification' => 'Verified',
-                'member_since' => 'August 20, 2026',
-                'last_updated' => 'August 31, 2026 · 4:18 PM',
-                'last_sign_in' => 'Today · 10:42 AM',
+                'full_name' => $fullName,
+                'email' => (string) $user->email,
+                'phone' => (string) ($user->phone ?: $user->contact_number ?: ''),
+                'birthday' => $user->birthday?->format('F j, Y') ?? 'Not provided',
+                'sex' => $this->sexLabel($user->sex),
+                'address' => $addressParts !== [] ? implode(', ', $addressParts) : 'Not provided',
+                'status' => ucfirst((string) ($user->status ?: 'pending')),
+                'verification' => $user->sellerProfile?->approved_at !== null ? 'Verified' : 'Pending review',
+                'member_since' => $user->created_at?->format('F j, Y') ?? '—',
+                'last_updated' => $user->updated_at?->format('F j, Y · g:i A') ?? '—',
+                'last_sign_in' => $user->last_login_at?->format('M j, Y · g:i A') ?? 'No sign-in recorded yet',
+                'identity_verified' => $user->sellerProfile?->approved_at !== null,
+                'email_verified' => $user->email_verified_at !== null,
+                'contact_verified' => $user->phone_verified_at !== null,
             ],
         ]);
     }
 
-    public function security(): View
+    public function updateAccount(Request $request): RedirectResponse
     {
+        /** @var User $user */
+        $user = $request->user();
+
+        $contact = trim((string) $request->input('contact'));
+
+        if ($contact !== '') {
+            try {
+                $contact = app(InternationalPhone::class)
+                    ->normalize($contact, 'PH');
+            } catch (ValidationException $exception) {
+                throw ValidationException::withMessages([
+                    'contact' => $exception->errors()['contact_number']
+                        ?? ['Enter a valid Philippine mobile number.'],
+                ]);
+            }
+        }
+
+        $request->merge(['contact' => $contact]);
+
+        $validated = $request->validate([
+            'contact' => [
+                'required',
+                'string',
+                'max:17',
+                Rule::unique('users', 'contact_number')->ignore($user->id),
+                Rule::unique('users', 'phone')->ignore($user->id),
+            ],
+        ]);
+
+        $user->update([
+            'phone' => $validated['contact'],
+            'contact_number' => $validated['contact'],
+        ]);
+
+        return redirect(
+            route('seller.settings.account').'#contact'
+        )->with(
+            'success',
+            'Contact number updated successfully.'
+        );
+    }
+
+    public function security(Request $request): View
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $activity = collect([
+            $user->last_login_at ? [
+                'event' => 'Successful sign-in',
+                'detail' => 'Latest sign-in recorded for this account',
+                'time' => $user->last_login_at->format('M j, Y · g:i A'),
+                'tone' => 'success',
+                'at' => $user->last_login_at,
+            ] : null,
+            $user->email_verified_at ? [
+                'event' => 'Email verified',
+                'detail' => (string) $user->email,
+                'time' => $user->email_verified_at->format('M j, Y · g:i A'),
+                'tone' => 'neutral',
+                'at' => $user->email_verified_at,
+            ] : null,
+            $user->phone_verified_at ? [
+                'event' => 'Contact verified',
+                'detail' => (string) ($user->phone ?: $user->contact_number),
+                'time' => $user->phone_verified_at->format('M j, Y · g:i A'),
+                'tone' => 'neutral',
+                'at' => $user->phone_verified_at,
+            ] : null,
+            [
+                'event' => 'Account created',
+                'detail' => 'Seller account registration',
+                'time' => $user->created_at?->format('M j, Y · g:i A') ?? '—',
+                'tone' => 'neutral',
+                'at' => $user->created_at ?? now(),
+            ],
+        ])->filter()->sortByDesc('at')->values()->all();
+
         return view('seller.Settings.security', [
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
             'security' => [
-                'two_factor_enabled' => false,
-                'last_password_change' => 'August 20, 2026',
-                'sessions' => [
-                    ['device' => 'Windows · Microsoft Edge', 'location' => 'Santa Rosa, Laguna', 'activity' => 'Active now', 'current' => true],
-                    ['device' => 'Android · Chrome', 'location' => 'Santa Rosa, Laguna', 'activity' => 'August 29, 2026 · 8:16 PM', 'current' => false],
-                ],
-                'activity' => [
-                    ['event' => 'Successful sign-in', 'detail' => 'Windows · Microsoft Edge', 'time' => 'Today · 10:42 AM', 'tone' => 'success'],
-                    ['event' => 'Password changed', 'detail' => 'Account password updated', 'time' => 'August 20, 2026', 'tone' => 'neutral'],
-                    ['event' => 'New device verified', 'detail' => 'Android · Chrome', 'time' => 'August 18, 2026', 'tone' => 'warning'],
-                ],
+                'activity' => $activity,
+                'last_sign_in' => $user->last_login_at?->format('M j, Y · g:i A') ?? 'No sign-in recorded yet',
             ],
         ]);
     }
 
-    public function notificationSettings(): View
+    public function updatePassword(Request $request): RedirectResponse
     {
+        /** @var User $user */
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'current_password' => [
+                'required',
+                'string',
+            ],
+            'new_password' => [
+                'required',
+                'string',
+                'min:8',
+                'confirmed',
+            ],
+        ]);
+
+        if (! Hash::check(
+            $validated['current_password'],
+            $user->password
+        )) {
+            return redirect(
+                route('seller.settings.security').'#password'
+            )->withErrors([
+                'current_password' =>
+                    'The current password is incorrect.',
+            ]);
+        }
+
+        $user->update([
+            'password' => Hash::make(
+                $validated['new_password']
+            ),
+        ]);
+
+        return redirect(
+            route('seller.settings.security').'#password'
+        )->with(
+            'success',
+            'Password updated successfully.'
+        );
+    }
+
+    private function sexLabel(?string $sex): string
+    {
+        return match (strtolower((string) $sex)) {
+            'male' => 'Male',
+            'female' => 'Female',
+            'prefer_not_to_say', 'other' => 'Prefer not to say',
+            default => $sex !== null && trim($sex) !== '' ? $sex : 'Not provided',
+        };
+    }
+
+    public function notificationSettings(NotificationPreferenceService $preferenceService): View
+    {
+        $icons = [
+            'orders' => 'clipboard-list',
+            'fulfillment' => 'truck',
+            'shipments' => 'package-search',
+            'messages' => 'message-circle-more',
+            'finance' => 'coins',
+            'returns' => 'package-x',
+            'account' => 'shield-alert',
+            'compliance' => 'badge-check',
+            'registrations' => 'user-check',
+        ];
+
+        $preferences = collect($preferenceService->forUser(auth()->user()))
+            ->map(fn (array $event): array => [
+                'key' => $event['key'],
+                'title' => $event['label'],
+                'description' => $event['description'],
+                'icon' => $icons[$event['group']] ?? 'bell-ring',
+                'in_app' => $event['in_app'],
+                'email' => $event['email'],
+                'required' => $event['mandatory'],
+            ])
+            ->values()
+            ->all();
+
         return view('seller.Settings.notifications', [
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
-            'preferences' => [
-                ['key' => 'new_orders', 'title' => 'New orders', 'description' => 'Notify me when a buyer places a new order.', 'icon' => 'clipboard-list', 'in_app' => true, 'email' => true],
-                ['key' => 'preparation_deadlines', 'title' => 'Preparation deadlines', 'description' => 'Remind me when an order is nearing its packing deadline.', 'icon' => 'clock-3', 'in_app' => true, 'email' => true],
-                ['key' => 'inventory_alerts', 'title' => 'Inventory alerts', 'description' => 'Notify me when available stock reaches its threshold.', 'icon' => 'triangle-alert', 'in_app' => true, 'email' => true],
-                ['key' => 'pickup_updates', 'title' => 'Pickup request updates', 'description' => 'Receive logistics approval and rider handover updates.', 'icon' => 'truck', 'in_app' => true, 'email' => true],
-                ['key' => 'shipment_updates', 'title' => 'Shipment exceptions', 'description' => 'Notify me about failed, delayed, or returned deliveries.', 'icon' => 'package-search', 'in_app' => true, 'email' => true],
-                ['key' => 'buyer_messages', 'title' => 'Buyer messages', 'description' => 'Notify me when a buyer sends a new message.', 'icon' => 'message-circle-more', 'in_app' => true, 'email' => false],
-                ['key' => 'account_security', 'title' => 'Account and security alerts', 'description' => 'Critical sign-in and account status notifications cannot be disabled in-app.', 'icon' => 'shield-alert', 'in_app' => true, 'email' => true, 'required' => true],
-            ],
+            'preferences' => $preferences,
         ]);
     }
 
@@ -635,7 +838,38 @@ class SellerController extends Controller
             'store' => $storeData,
             'documents' => $documents,
             'completion' => $completed * 20,
+            'pickupAddress' => $pickupAddress,
         ]);
+    }
+
+    public function updatePickupCoordinates(Request $request): RedirectResponse|JsonResponse
+    {
+        $data = $request->validate([
+            'latitude' => ['nullable', 'numeric', 'between:-90,90', 'required_with:longitude'],
+            'longitude' => ['nullable', 'numeric', 'between:-180,180', 'required_with:latitude'],
+        ]);
+        $profile = $request->user()->sellerProfile;
+        abort_unless($profile?->pickup_address_id, 404);
+
+        Address::query()
+            ->whereKey($profile->pickup_address_id)
+            ->where('user_id', $request->user()->id)
+            ->update([
+                'latitude' => $data['latitude'] ?? null,
+                'longitude' => $data['longitude'] ?? null,
+            ]);
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'data' => [
+                    'latitude' => $data['latitude'] ?? null,
+                    'longitude' => $data['longitude'] ?? null,
+                ],
+                'message' => 'Pickup map pin saved.',
+            ]);
+        }
+
+        return back()->with('success', 'Pickup map pin saved.');
     }
 
     public function storeDocument(Request $request, string $type)

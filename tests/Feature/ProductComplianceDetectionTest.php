@@ -9,10 +9,12 @@ use App\Models\SellerProfile;
 use App\Models\SellerWarning;
 use App\Models\Store;
 use App\Models\User;
+use App\Notifications\WorkflowNotification;
 use App\Services\ComplianceScanner;
 use App\Services\ProductViolationDecisionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -206,6 +208,162 @@ class ProductComplianceDetectionTest extends TestCase
         $this->assertSame('clear', $product->fresh()->compliance_status);
         $this->assertSame('active', $product->fresh()->product_status);
         $this->assertSame(0, SellerWarning::query()->where('violation_id', $violation->id)->where('status', 'active')->count());
+    }
+
+    public function test_seller_product_submission_is_restricted_to_the_registration_approved_category(): void
+    {
+        $fashion = $this->category('fashion-and-apparel');
+        [$seller, $store] = $this->sellerAndStore($fashion);
+
+        $wrongCategoryPayload = $this->sellerProductPayload($fashion, 'Wool Overcoat', 'A tailored wool overcoat.');
+        $wrongCategoryPayload['category'] = 'Electronics and Gadgets';
+
+        $this->actingAs($seller)
+            ->post('/seller/products', $wrongCategoryPayload)
+            ->assertSessionHasErrors('category');
+
+        $this->assertSame(0, Product::query()->where('store_id', $store->id)->count());
+
+        $this->actingAs($seller)
+            ->post('/seller/products', $this->sellerProductPayload($fashion, 'Wool Overcoat', 'A tailored wool overcoat.'))
+            ->assertRedirect('/seller/products');
+
+        $product = Product::query()->where('store_id', $store->id)->firstOrFail();
+        $this->assertSame($fashion->id, (int) $product->category_id);
+        $this->assertSame('active', $product->product_status);
+        $this->assertSame('clear', $product->compliance_status);
+    }
+
+    public function test_fashion_seller_electronics_content_is_held_with_excerpt_warnings_and_single_notifications(): void
+    {
+        Notification::fake();
+
+        $fashion = $this->category('fashion-and-apparel');
+        [$seller, $store] = $this->sellerAndStore($fashion);
+        $admin = User::query()->where('role', 'admin')->firstOrFail();
+
+        $this->actingAs($seller)
+            ->post('/seller/products', $this->sellerProductPayload(
+                $fashion,
+                'Flagship Smartphone 5G',
+                'Unlocked 5G smartphone with 128 GB storage and a bright display.',
+            ))
+            ->assertRedirect('/seller/products')
+            ->assertSessionHas('compliance_warning');
+
+        $product = Product::query()->where('store_id', $store->id)->firstOrFail();
+        $this->assertSame('flagged', $product->product_status);
+        $this->assertSame('flagged', $product->compliance_status);
+        $this->assertFalse(Product::visibleToBuyers()->whereKey($product->id)->exists());
+
+        $violation = $product->violations()->firstOrFail();
+        $this->assertSame('CATEGORY_MISMATCH_FASHION_ELECTRONICS', $violation->violation_type);
+        $this->assertSame('Electronics product listed under Fashion and Apparel', $violation->reason);
+        $this->assertSame('flagged', $violation->status);
+        $this->assertSame('smartphone', $violation->detected_excerpt);
+
+        $match = $violation->check->matches()->where('rule_id', $violation->rule_id)->firstOrFail();
+        $this->assertSame('smartphone', $match->matched_excerpt);
+        $this->assertSame('hold', $match->recommended_action);
+
+        $this->assertDatabaseHas('seller_warnings', [
+            'violation_id' => $violation->id,
+            'seller_profile_id' => $violation->seller_profile_id,
+            'reason' => 'Electronics product listed under Fashion and Apparel',
+            'status' => 'active',
+        ]);
+
+        Notification::assertSentTo(
+            $seller,
+            WorkflowNotification::class,
+            fn (WorkflowNotification $notification, array $channels): bool => $notification->eventKey() === 'seller_compliance_flagged'
+                && in_array('database', $channels, true)
+                && $notification->meta()['product_id'] === $product->id,
+        );
+        Notification::assertSentToTimes($seller, WorkflowNotification::class, 1);
+        Notification::assertSentTo(
+            $admin,
+            WorkflowNotification::class,
+            fn (WorkflowNotification $notification): bool => $notification->eventKey() === 'admin_compliance_flagged'
+                && $notification->meta()['product_id'] === $product->id,
+        );
+
+        app(ComplianceScanner::class)->scan($product->fresh());
+
+        $this->assertSame(1, $product->violations()->count(), 'Repeated scans must reuse the open violation.');
+        $this->assertSame(1, $product->violations()->firstOrFail()->warnings()->where('status', 'active')->count());
+        Notification::assertSentToTimes($seller, WorkflowNotification::class, 1);
+        Notification::assertSentToTimes($admin, WorkflowNotification::class, 1);
+
+        $buyer = $this->user('buyer');
+
+        $this->actingAs($buyer)
+            ->get('/products/'.$product->id)
+            ->assertNotFound();
+
+        $this->actingAs($seller)
+            ->put('/seller/products/'.$product->id, $this->sellerProductPayload(
+                $fashion,
+                'Handwoven Cotton Shirt',
+                'Relaxed-fit handwoven cotton shirt with a classic collar.',
+            ))
+            ->assertRedirect('/seller/products');
+
+        $product->refresh();
+        $this->assertSame('active', $product->product_status);
+        $this->assertSame('clear', $product->compliance_status);
+        $this->assertSame('resolved', $violation->fresh()->status);
+        $this->assertSame('no_active_rule_match', $violation->fresh()->resolution);
+        $this->assertSame(1, $product->violations()->count(), 'Resolving a hold must preserve violation history.');
+        $this->assertSame(0, $violation->warnings()->where('status', 'active')->count());
+        $this->assertTrue(Product::visibleToBuyers()->whereKey($product->id)->exists());
+        Notification::assertSentToTimes($seller, WorkflowNotification::class, 1);
+
+        $this->actingAs($buyer)
+            ->get('/products/'.$product->id)
+            ->assertOk()
+            ->assertSee('Handwoven Cotton Shirt');
+    }
+
+    public function test_fashion_mismatch_terms_skip_harmless_wording_but_hold_electronics_phrases(): void
+    {
+        $fashion = $this->category('fashion-and-apparel');
+        [, $store] = $this->sellerAndStore($fashion);
+        $scanner = app(ComplianceScanner::class);
+
+        $harmlessListings = [
+            'Mickey Mouse Print Hoodie' => 'Cotton hoodie with an all-over cartoon mouse print.',
+            'Cable Knit Sweater' => 'Chunky cable knit sweater in soft wool.',
+            'USB-C Compatible Heated Vest' => 'Rechargeable heated vest with a USB-C power port.',
+            'Pleated Midi Dress' => 'Flowing pleated dress with a fitted waist.',
+        ];
+
+        foreach ($harmlessListings as $name => $description) {
+            $harmless = $this->product($store, $fashion, $name, $description);
+            $check = $scanner->scan($harmless);
+
+            $this->assertSame('clear', $check->result, "[{$name}] must not be flagged.");
+            $this->assertSame(0, $harmless->violations()->count(), "[{$name}] must not create a violation.");
+            $this->assertTrue(Product::visibleToBuyers()->whereKey($harmless->id)->exists());
+        }
+
+        $heldListings = [
+            'Wireless Earbuds Pro' => 'Noise-cancelling earbuds with a long battery life.',
+            'Action Camera 4K' => 'Waterproof action camera for outdoor trips.',
+        ];
+
+        foreach ($heldListings as $name => $description) {
+            $held = $this->product($store, $fashion, $name, $description);
+            $check = $scanner->scan($held);
+
+            $this->assertSame('review_required', $check->result, "[{$name}] must be held for review.");
+            $this->assertSame('flagged', $held->fresh()->product_status);
+            $this->assertSame(
+                'CATEGORY_MISMATCH_FASHION_ELECTRONICS',
+                $held->violations()->firstOrFail()->violation_type,
+            );
+            $this->assertFalse(Product::visibleToBuyers()->whereKey($held->id)->exists());
+        }
     }
 
     private function category(string $slug): Category

@@ -9,6 +9,7 @@ export default defineConfig({
                 // Auth
                 'resources/css/bearly-auth.css',
                 'resources/js/bearly-auth.js',
+                'resources/css/announcement.css',
 
                 // Admin
                 'resources/css/admin.css',
@@ -27,8 +28,9 @@ export default defineConfig({
                 'resources/css/profile.css',
                 'resources/css/addresses.css',
                 'resources/css/cart.css',
-                'resources/css/checkout.css',
-                'resources/css/wishlist.css',
+                 'resources/css/checkout.css',
+                 'resources/css/buyer-dispute.css',
+                 'resources/css/wishlist.css',
                 'resources/css/bearly-chat.css',
                 'resources/js/profile.js',
                 'resources/js/account-addresses.js',
@@ -40,8 +42,18 @@ export default defineConfig({
                 'resources/js/checkout.js',
                 'resources/js/bearly-chat.js',
 
+                // Shared role notification center page
+                'resources/css/notification-center.css',
+                'resources/js/notification-center-page.js',
+
                 // Seller
                 'resources/css/seller.css',
+                'resources/css/messages-standard.css',
+                'resources/js/messages-standard.js',
+                'resources/js/realtime.js',
+                'resources/js/waybill-scanner.js',
+                'resources/js/destination-map.js',
+                'resources/js/seller-store-map.js',
                 'resources/css/seller-polish.css',
                 'resources/css/seller-legibility.css',
                 'resources/js/seller.js',

@@ -75,14 +75,19 @@ class SellerInventoryService
             $subcategory = $product->subcategory;
             $hasOwnedSubcategory = $subcategory !== null
                 && (int) $subcategory->store_id === (int) $store->id;
-            $available = max(0, (int) $variant->stock_on_hand - (int) $variant->stock_reserved);
+            $physicalAvailable = max(0, (int) $variant->stock_on_hand - (int) $variant->stock_reserved);
             $threshold = (int) $variant->low_stock_threshold;
             $productStatus = (string) $product->product_status;
-            $statusKey = $productStatus === 'archived'
-                ? 'archived'
-                : ($available === 0
-                    ? 'out-of-stock'
-                    : ($available <= $threshold ? 'low-stock' : 'in-stock'));
+            $complianceHeld = in_array($productStatus, ['blocked', 'flagged'], true);
+            $statusKey = match (true) {
+                $productStatus === 'archived' => 'archived',
+                $productStatus === 'blocked' => 'blocked',
+                $productStatus === 'flagged' => 'held-for-review',
+                $physicalAvailable === 0 => 'out-of-stock',
+                $physicalAvailable <= $threshold => 'low-stock',
+                default => 'in-stock',
+            };
+            $available = $complianceHeld ? 0 : $physicalAvailable;
             $isVariationRow = isset($seenProducts[$product->id]);
             $seenProducts[$product->id] = true;
 
@@ -103,21 +108,28 @@ class SellerInventoryService
                 'on_hand' => (int) $variant->stock_on_hand,
                 'reserved' => (int) $variant->stock_reserved,
                 'available' => $available,
+                'physical_available' => $physicalAvailable,
                 'threshold' => $threshold,
                 'status' => match ($statusKey) {
                     'archived' => 'Archived',
+                    'blocked' => 'Blocked',
+                    'held-for-review' => 'Held for Review',
                     'out-of-stock' => 'Out of Stock',
                     'low-stock' => 'Low Stock',
                     default => 'In Stock',
                 },
                 'status_key' => $statusKey,
+                'is_compliance_held' => $complianceHeld,
             ];
         })->values();
 
         $activeItems = $items->reject(fn (array $item): bool => $item['status_key'] === 'archived');
-        $lowStockCount = $activeItems->where('status_key', 'low-stock')->count();
-        $outOfStockCount = $activeItems->where('status_key', 'out-of-stock')->count();
-        $availableUnits = (int) $activeItems->sum('available');
+        $sellableItems = $activeItems->reject(fn (array $item): bool => $item['is_compliance_held']);
+        $lowStockCount = $sellableItems->where('status_key', 'low-stock')->count();
+        $outOfStockCount = $sellableItems->where('status_key', 'out-of-stock')->count();
+        $availableUnits = (int) $sellableItems->sum('available');
+        $blockedCount = $activeItems->where('status_key', 'blocked')->count();
+        $reviewCount = $activeItems->where('status_key', 'held-for-review')->count();
         $nonArchivedProductCount = $activeItems->pluck('parent')->unique()->count();
 
         $subcategories = $items
@@ -150,6 +162,8 @@ class SellerInventoryService
                 ['key' => 'needs-restocking', 'label' => 'Needs Restocking', 'count' => $lowStockCount + $outOfStockCount],
                 ['key' => 'low-stock', 'label' => 'Low Stock', 'count' => $lowStockCount],
                 ['key' => 'out-of-stock', 'label' => 'Out of Stock', 'count' => $outOfStockCount],
+                ['key' => 'needs-review', 'label' => 'Needs Review', 'count' => $reviewCount],
+                ['key' => 'blocked', 'label' => 'Blocked', 'count' => $blockedCount],
                 ['key' => 'archived', 'label' => 'Archived', 'count' => $items->where('status_key', 'archived')->count()],
             ],
             'inventorySubcategories' => $subcategories,

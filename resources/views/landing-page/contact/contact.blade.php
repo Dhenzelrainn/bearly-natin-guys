@@ -129,18 +129,19 @@
                     <p>Tell us what happened and include the details that will help us understand your concern.</p>
                 </div>
 
-                <form class="contact-form" id="contact-form" novalidate data-contact-form>
+                <form class="contact-form" id="contact-form" method="POST" action="{{ route('contact.store') }}" novalidate data-contact-form>
+                    @csrf
                     <div class="contact-field-row">
                         <div class="contact-field">
                             <label for="contact-name">Full name <span aria-hidden="true">*</span></label>
-                            <input id="contact-name" name="name" type="text" maxlength="100" autocomplete="name" placeholder="Enter your full name" required>
-                            <small class="contact-error" data-error-for="contact-name"></small>
+                            <input id="contact-name" name="name" type="text" maxlength="100" autocomplete="name" placeholder="Enter your full name" value="{{ old('name') }}" required>
+                            <small class="contact-error" data-error-for="contact-name">@error('name'){{ $message }}@enderror</small>
                         </div>
 
                         <div class="contact-field">
                             <label for="contact-email">Email address <span aria-hidden="true">*</span></label>
-                            <input id="contact-email" name="email" type="email" maxlength="254" autocomplete="email" placeholder="Enter your email address" required>
-                            <small class="contact-error" data-error-for="contact-email"></small>
+                            <input id="contact-email" name="email" type="email" maxlength="254" autocomplete="email" placeholder="Enter your email address" value="{{ old('email') }}" required>
+                            <small class="contact-error" data-error-for="contact-email">@error('email'){{ $message }}@enderror</small>
                         </div>
                     </div>
 
@@ -149,11 +150,11 @@
                             <label for="contact-role">I am a</label>
                             <select id="contact-role" name="role">
                                 <option value="">Select an option</option>
-                                <option value="Buyer">Buyer</option>
-                                <option value="Seller">Seller</option>
-                                <option value="Courier">Courier</option>
-                                <option value="Logistics / Sorting Center">Logistics / Sorting Center</option>
-                                <option value="Other">Other</option>
+                                <option value="Buyer" @selected(old('role') === 'Buyer')>Buyer</option>
+                                <option value="Seller" @selected(old('role') === 'Seller')>Seller</option>
+                                <option value="Courier" @selected(old('role') === 'Courier')>Courier</option>
+                                <option value="Logistics / Sorting Center" @selected(old('role') === 'Logistics / Sorting Center')>Logistics / Sorting Center</option>
+                                <option value="Other" @selected(old('role') === 'Other')>Other</option>
                             </select>
                         </div>
 
@@ -161,28 +162,28 @@
                             <label for="contact-topic">What can we help you with? <span aria-hidden="true">*</span></label>
                             <select id="contact-topic" name="topic" required>
                                 <option value="">Select a topic</option>
-                                <option value="Shopping & Orders">Shopping &amp; Orders</option>
-                                <option value="Delivery & Tracking">Delivery &amp; Tracking</option>
-                                <option value="Seller Support">Seller Support</option>
-                                <option value="Account & Registration">Account &amp; Registration</option>
-                                <option value="Complaints & Disputes">Complaints &amp; Disputes</option>
-                                <option value="Technical Issue">Technical Issue</option>
-                                <option value="General Inquiry">General Inquiry</option>
+                                <option value="Shopping & Orders" @selected(old('topic') === 'Shopping & Orders')>Shopping &amp; Orders</option>
+                                <option value="Delivery & Tracking" @selected(old('topic') === 'Delivery & Tracking')>Delivery &amp; Tracking</option>
+                                <option value="Seller Support" @selected(old('topic') === 'Seller Support')>Seller Support</option>
+                                <option value="Account & Registration" @selected(old('topic') === 'Account & Registration')>Account &amp; Registration</option>
+                                <option value="Complaints & Disputes" @selected(old('topic') === 'Complaints & Disputes')>Complaints &amp; Disputes</option>
+                                <option value="Technical Issue" @selected(old('topic') === 'Technical Issue')>Technical Issue</option>
+                                <option value="General Inquiry" @selected(old('topic') === 'General Inquiry')>General Inquiry</option>
                             </select>
-                            <small class="contact-error" data-error-for="contact-topic"></small>
+                            <small class="contact-error" data-error-for="contact-topic">@error('topic'){{ $message }}@enderror</small>
                         </div>
                     </div>
 
                     <div class="contact-field-row">
                         <div class="contact-field">
                             <label for="contact-reference">Order / Reference number <span class="contact-optional">(optional)</span></label>
-                            <input id="contact-reference" name="reference" type="text" maxlength="50" placeholder="e.g. BRLY123456">
+                            <input id="contact-reference" name="reference" type="text" maxlength="50" placeholder="e.g. BRLY123456" value="{{ old('reference') }}">
                         </div>
 
                         <div class="contact-field">
                             <label for="contact-subject">Subject <span aria-hidden="true">*</span></label>
-                            <input id="contact-subject" name="subject" type="text" maxlength="120" placeholder="Enter a subject" required>
-                            <small class="contact-error" data-error-for="contact-subject"></small>
+                            <input id="contact-subject" name="subject" type="text" maxlength="120" placeholder="Enter a subject" value="{{ old('subject') }}" required>
+                            <small class="contact-error" data-error-for="contact-subject">@error('subject'){{ $message }}@enderror</small>
                         </div>
                     </div>
 
@@ -192,14 +193,14 @@
                             <span data-contact-count>0/1000</span>
                         </div>
 
-                        <textarea id="contact-message" name="message" rows="7" maxlength="1000" placeholder="Tell us more about your inquiry..." required></textarea>
-                        <small class="contact-error" data-error-for="contact-message"></small>
+                        <textarea id="contact-message" name="message" rows="7" maxlength="1000" placeholder="Tell us more about your inquiry..." required>{{ old('message') }}</textarea>
+                        <small class="contact-error" data-error-for="contact-message">@error('message'){{ $message }}@enderror</small>
                     </div>
 
                     <div class="contact-form-actions">
                         <button class="contact-primary-button" type="submit">Send message ↗</button>
                         <p>
-                            Message delivery will be connected when the backend support module is implemented.
+                            Your message is saved as a support ticket and reviewed by the Bearly team.
                         </p>
                     </div>
                 </form>
@@ -279,6 +280,6 @@
     </div>
 </footer>
 
-<p class="contact-toast" role="status" data-contact-toast hidden></p>
+<p class="contact-toast" role="status" data-contact-toast @if (! session('contact_status')) hidden @endif>{{ session('contact_status') }}</p>
 </body>
 </html>

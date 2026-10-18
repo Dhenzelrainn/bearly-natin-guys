@@ -53,9 +53,11 @@
         .store-subcategory-filters a[aria-current="page"] { border-color:#6f4a2e; color:#fff; background:#6f4a2e; }
         .store-product-subcategory { display:inline-flex !important; width:fit-content; margin-top:8px !important; padding:4px 7px; border-radius:5px; color:#6c543f !important; background:#f4ece3; font-size:10px; font-weight:600 !important; }
         .store-product-copy > span { display:block; margin-top:7px; color:#6f4a2e; font-weight:800; }
-        .store-shop-actions { margin-left:auto; }
-        .store-shop-actions a, .store-product-add { display:inline-flex; min-height:40px; align-items:center; justify-content:center; gap:7px; padding:8px 14px; border:1px solid #6f4a2e; border-radius:8px; background:#6f4a2e; color:#fff; font:600 12px Poppins,sans-serif; text-decoration:none; cursor:pointer; }
+        .store-shop-actions { display:grid; gap:8px; margin-left:auto; }
+        .store-shop-actions a, .store-shop-actions button, .store-product-add { display:inline-flex; min-height:40px; align-items:center; justify-content:center; gap:7px; padding:8px 14px; border:1px solid #6f4a2e; border-radius:8px; background:#6f4a2e; color:#fff; font:600 12px Poppins,sans-serif; text-decoration:none; cursor:pointer; }
+        .store-shop-actions button { border-color:#cbb49c; background:#fffdfa; color:#6f4a2e; }
         .store-shop-actions a:hover, .store-product-add:hover:not(:disabled) { background:#563823; }
+        .store-shop-actions button:hover { border-color:#6f4a2e; background:#f4ebe0; }
         .store-stats { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:1px; margin:0 26px 22px; overflow:hidden; border:1px solid #eadfd4; border-radius:10px; background:#eadfd4; }
         .store-stats > div { min-height:76px; display:flex; flex-direction:column; justify-content:center; padding:12px 16px; background:#fffaf4; }
         .store-stats strong { color:#39251b; font-size:19px; }
@@ -106,7 +108,14 @@
                     <p class="store-category">{{ $category }}</p>
                     <p>{{ $store->description ?: 'Browse published products from this Bearly store.' }}</p>
                 </div>
-                <div class="store-shop-actions"><a href="#store-products"><span class="material-symbols-outlined" aria-hidden="true">storefront</span>Shop products</a></div>
+                <div class="store-shop-actions">
+                    <a href="#store-products"><span class="material-symbols-outlined" aria-hidden="true">storefront</span>Shop products</a>
+                    <form method="POST" action="{{ route('buyer.chat.store') }}">
+                        @csrf
+                        <input type="hidden" name="store" value="{{ $store->slug }}">
+                        <button type="submit"><span class="material-symbols-outlined" aria-hidden="true">chat_bubble</span>Chat with seller</button>
+                    </form>
+                </div>
             </div>
             <div class="store-stats" aria-label="Store information">
                 <div><strong>{{ number_format($publishedProductCount) }}</strong><span>Published products</span></div>

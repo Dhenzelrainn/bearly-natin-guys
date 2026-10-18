@@ -1,3 +1,5 @@
+import './notification-center.js';
+
 const bootSeller = () => {
     window.lucide?.createIcons();
 
@@ -203,11 +205,8 @@ const bootSeller = () => {
         const orderSearch = orderWorkspace.querySelector('[data-order-search]');
         const orderDate = orderWorkspace.querySelector('[data-order-date]');
         const orderPayment = orderWorkspace.querySelector('[data-order-payment]');
-        const orderCheckAll = orderWorkspace.querySelector('[data-order-check-all]');
-        const selectedCount = orderWorkspace.querySelector('[data-order-selected-count]');
         const visibleCount = orderWorkspace.querySelector('[data-order-visible-count]');
         const noResults = orderWorkspace.querySelector('[data-orders-no-results]');
-        const bulkButtons = [...orderWorkspace.querySelectorAll('[data-order-bulk-action]')];
 
         const refreshOrderStatusCounts = () => {
             orderWorkspace.querySelectorAll('[data-order-tab]').forEach((tab) => {
@@ -223,21 +222,6 @@ const bootSeller = () => {
                 if (!countNode) return;
                 countNode.textContent = String(orderRows.filter((row) => row.dataset.status === card.dataset.orderQueueCard).length);
             });
-        };
-
-        const updateOrderSelection = () => {
-            const visibleChecks = orderRows
-                .filter((row) => !row.hidden)
-                .map((row) => row.querySelector('[data-order-check]'));
-            const checked = orderRows.filter((row) => row.querySelector('[data-order-check]')?.checked).length;
-
-            if (selectedCount) selectedCount.textContent = checked;
-            bulkButtons.forEach((button) => { button.disabled = checked === 0; });
-
-            if (orderCheckAll) {
-                orderCheckAll.checked = visibleChecks.length > 0 && visibleChecks.every((check) => check?.checked);
-                orderCheckAll.indeterminate = visibleChecks.some((check) => check?.checked) && !orderCheckAll.checked;
-            }
         };
 
         const applyOrderFilters = () => {
@@ -261,7 +245,6 @@ const bootSeller = () => {
 
             if (visibleCount) visibleCount.textContent = visible;
             if (noResults) noResults.hidden = visible > 0;
-            updateOrderSelection();
         };
 
         orderWorkspace.addEventListener('seller:order-tracking-updated', () => {
@@ -313,37 +296,8 @@ const bootSeller = () => {
             applyOrderFilters();
         });
 
-        orderCheckAll?.addEventListener('change', () => {
-            orderRows.filter((row) => !row.hidden).forEach((row) => {
-                const checkbox = row.querySelector('[data-order-check]');
-                if (checkbox) checkbox.checked = orderCheckAll.checked;
-            });
-            updateOrderSelection();
-        });
-
-        orderRows.forEach((row) => row.querySelector('[data-order-check]')?.addEventListener('change', updateOrderSelection));
-
-        bulkButtons.forEach((button) => button.addEventListener('click', () => {
-            const count = Number(selectedCount?.textContent ?? 0);
-            if (!toast || count === 0) return;
-            toast.textContent = `${button.dataset.orderBulkAction} is ready for ${count} selected order${count === 1 ? '' : 's'} (preview only).`;
-            toast.classList.add('is-visible');
-            window.clearTimeout(window.sellerToastTimer);
-            window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3000);
-        }));
-
         applyOrderFilters();
     }
-
-    document.querySelectorAll('[data-order-demo]').forEach((button) => {
-        button.addEventListener('click', () => {
-            if (!toast) return;
-            toast.textContent = `${button.dataset.orderDemo} Frontend preview only.`;
-            toast.classList.add('is-visible');
-            window.clearTimeout(window.sellerToastTimer);
-            window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3000);
-        });
-    });
 
     document.querySelectorAll('[data-order-details]').forEach((button) => {
         button.addEventListener('click', () => {
@@ -484,6 +438,8 @@ const bootSeller = () => {
                     ? row.dataset.status !== 'archived'
                     : activeInventoryStatus === 'needs-restocking'
                         ? ['low-stock', 'out-of-stock'].includes(row.dataset.status)
+                        : activeInventoryStatus === 'needs-review'
+                            ? ['held-for-review', 'pending-review'].includes(row.dataset.status)
                         : row.dataset.status === activeInventoryStatus;
                 const matches = matchesStatus
                     && (!search || row.dataset.search.includes(search))
@@ -785,91 +741,53 @@ const bootSeller = () => {
         });
     });
 
-    /* Seller account page — frontend-only edit and photo preview. */
-    const accountForm = document.querySelector('[data-account-form]');
-    const accountEdit = document.querySelector('[data-account-edit]');
-    const accountCancel = document.querySelector('[data-account-cancel]');
-    const accountActions = document.querySelector('[data-account-actions]');
-    const accountEditState = document.querySelector('[data-account-edit-state]');
-    const accountEditableFields = [...document.querySelectorAll('[data-account-editable]')];
-    const originalAccountValues = new Map(accountEditableFields.map((field) => [field, field.value]));
+    document.querySelector('[data-save-notifications]')?.addEventListener('click', async (event) => {
+        const button = event.currentTarget;
+        const preferences = {};
 
-    const setAccountEditing = (editing) => {
-        accountEditableFields.forEach((field) => { field.disabled = !editing; });
-        if (accountActions) accountActions.hidden = !editing;
-        if (accountEdit) {
-            accountEdit.disabled = editing;
-            accountEdit.querySelector('span').textContent = editing ? 'Editing profile' : 'Edit profile';
+        document.querySelectorAll('[data-notification-preference]').forEach((row) => {
+            const key = row.dataset.notificationPreference;
+            if (!key) return;
+
+            preferences[key] = {
+                in_app: row.querySelector('[data-preference-channel="in_app"]')?.checked === true,
+                email: row.querySelector('[data-preference-channel="email"]')?.checked === true,
+            };
+        });
+
+        button.disabled = true;
+
+        try {
+            const response = await fetch('/notifications/preferences', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                },
+                body: JSON.stringify({ preferences }),
+            });
+
+            if (!response.ok) throw new Error(`Save failed with status ${response.status}`);
+
+            if (toast) {
+                toast.textContent = 'Notification preferences saved.';
+                toast.classList.add('is-visible');
+                window.clearTimeout(window.sellerToastTimer);
+                window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3000);
+            }
+        } catch (error) {
+            if (toast) {
+                toast.textContent = 'Could not save notification preferences. Please try again.';
+                toast.classList.add('is-visible');
+                window.clearTimeout(window.sellerToastTimer);
+                window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3400);
+            }
+        } finally {
+            button.disabled = false;
         }
-        if (accountEditState) accountEditState.textContent = editing ? 'Editing' : 'View only';
-        if (editing) accountEditableFields[0]?.focus();
-    };
-
-    accountEdit?.addEventListener('click', () => setAccountEditing(true));
-    accountCancel?.addEventListener('click', () => {
-        originalAccountValues.forEach((value, field) => { field.value = value; });
-        setAccountEditing(false);
-    });
-    accountForm?.addEventListener('submit', (event) => {
-        event.preventDefault();
-        accountEditableFields.forEach((field) => originalAccountValues.set(field, field.value));
-        setAccountEditing(false);
-        if (!toast) return;
-        toast.textContent = 'Profile preview updated. Changes will reset after refreshing the page.';
-        toast.classList.add('is-visible');
-        window.clearTimeout(window.sellerToastTimer);
-        window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3400);
-    });
-
-    document.querySelector('[data-account-photo]')?.addEventListener('change', (event) => {
-        const file = event.currentTarget.files?.[0];
-        const avatar = document.querySelector('[data-account-avatar]');
-        if (!file || !avatar) return;
-        const image = document.createElement('img');
-        image.alt = 'Seller profile preview';
-        image.src = URL.createObjectURL(file);
-        image.addEventListener('load', () => URL.revokeObjectURL(image.src), { once: true });
-        avatar.replaceChildren(image);
-    });
-
-    document.querySelector('[data-password-form]')?.addEventListener('submit', (event) => {
-        event.preventDefault();
-        const form = event.currentTarget;
-        const password = form.querySelector('[data-new-password]');
-        const confirmation = form.querySelector('[data-confirm-password]');
-        if (password?.value !== confirmation?.value) {
-            confirmation?.setCustomValidity('Passwords do not match.');
-            confirmation?.reportValidity();
-            return;
-        }
-        confirmation?.setCustomValidity('');
-        form.reset();
-        if (!toast) return;
-        toast.textContent = 'Password update validated. Backend saving will be connected later.';
-        toast.classList.add('is-visible');
-        window.clearTimeout(window.sellerToastTimer);
-        window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3400);
-    });
-
-    document.querySelector('[data-confirm-password]')?.addEventListener('input', (event) => event.currentTarget.setCustomValidity(''));
-    document.querySelector('[data-two-factor-toggle]')?.addEventListener('change', (event) => {
-        const label = document.querySelector('[data-two-factor-label]');
-        if (label) label.textContent = event.currentTarget.checked ? 'Enabled (preview)' : 'Not enabled';
-    });
-    document.querySelectorAll('[data-security-demo]').forEach((button) => button.addEventListener('click', () => {
-        if (!toast) return;
-        toast.textContent = `${button.dataset.securityDemo} Frontend preview only.`;
-        toast.classList.add('is-visible');
-        window.clearTimeout(window.sellerToastTimer);
-        window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3000);
-    }));
-
-    document.querySelector('[data-save-notifications]')?.addEventListener('click', () => {
-        if (!toast) return;
-        toast.textContent = 'Notification preferences updated for this preview. They will reset after refresh.';
-        toast.classList.add('is-visible');
-        window.clearTimeout(window.sellerToastTimer);
-        window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3400);
     });
 
     /* Store appearance — persisted image, description, and buyer preview. */
@@ -1367,16 +1285,177 @@ const bootSeller = () => {
         tab?.focus();
     });
 
+    let activeTrackingShipment = null;
+
     document.querySelectorAll('[data-tracking-view]').forEach((button) => button.addEventListener('click', () => {
         const item = JSON.parse(button.dataset.shipment); const modal = document.querySelector('[data-modal="tracking-details"]'); if (!modal) return;
+        activeTrackingShipment = item;
         const set = (selector, value) => { const node = modal.querySelector(selector); if (node) node.textContent = value; };
-        set('[data-tracking-number]', item.tracking); set('[data-tracking-order]', item.order); set('[data-tracking-customer]', item.customer); set('[data-tracking-destination]', item.destination); set('[data-tracking-eta]', item.eta); set('[data-tracking-latest]', item.latest); set('[data-tracking-updated]', item.updated);
+        set('[data-tracking-number]', item.tracking); set('[data-tracking-order]', item.order); set('[data-tracking-customer]', item.customer); set('[data-tracking-destination]', item.destination); set('[data-tracking-eta]', item.eta);
+        const timeline = modal.querySelector('[data-tracking-timeline]');
+        if (timeline) {
+            timeline.replaceChildren();
+            const events = Array.isArray(item.events) ? item.events : [];
+            if (events.length === 0) {
+                const empty = document.createElement('li');
+                const marker = document.createElement('span');
+                const copy = document.createElement('div');
+                const heading = document.createElement('strong');
+                heading.textContent = 'No tracking scans recorded yet';
+                const note = document.createElement('small');
+                note.textContent = 'Scans appear here once Bearly Logistics records them.';
+                copy.append(heading, note); empty.append(marker, copy); timeline.append(empty);
+            } else {
+                events.forEach((event, index) => {
+                    const row = document.createElement('li');
+                    row.className = index === 0 ? 'is-current' : 'is-done';
+                    const marker = document.createElement('span');
+                    marker.innerHTML = `<i data-lucide="${index === 0 ? 'package' : 'check'}" aria-hidden="true"></i>`;
+                    const copy = document.createElement('div');
+                    const heading = document.createElement('strong');
+                    heading.textContent = event.label || 'Tracking update';
+                    const note = document.createElement('small');
+                    note.textContent = [event.time, event.note].filter(Boolean).join(' · ');
+                    copy.append(heading, note); row.append(marker, copy); timeline.append(row);
+                });
+            }
+            window.lucide?.createIcons();
+        }
         const proof = modal.querySelector('[data-delivery-proof]'); if (proof) proof.hidden = item.status_key !== 'delivered';
         modal.hidden = false; document.body.style.overflow = 'hidden';
     }));
-    document.querySelector('[data-report-shipment]')?.addEventListener('click', () => { const details = document.querySelector('[data-modal="tracking-details"]'); const report = document.querySelector('[data-modal="tracking-report"]'); if (details) details.hidden = true; if (report) report.hidden = false; });
-    document.querySelector('[data-shipment-report-form]')?.addEventListener('submit', (event) => { event.preventDefault(); event.currentTarget.closest('[data-modal]').hidden = true; document.body.style.overflow = ''; if (toast) { toast.textContent = 'Shipment issue submitted to logistics support.'; toast.classList.add('is-visible'); } });
-    document.querySelector('[data-tracking-export]')?.addEventListener('click', () => { if (toast) { toast.textContent = 'Shipment report prepared for export.'; toast.classList.add('is-visible'); } });
+    document.querySelector('[data-report-shipment]')?.addEventListener('click', () => {
+        const details = document.querySelector('[data-modal="tracking-details"]');
+        const report = document.querySelector('[data-modal="tracking-report"]');
+        const form = report?.querySelector('[data-shipment-report-form]');
+        if (!report || !form) return;
+
+        const reference = form.querySelector('[data-shipment-report-reference]');
+        const subject = form.querySelector('[data-shipment-report-subject]');
+        const context = form.querySelector('[data-shipment-report-context]');
+        const trackingNumber = String(activeTrackingShipment?.tracking || '');
+
+        if (reference) reference.value = trackingNumber;
+        if (subject) subject.value = trackingNumber
+            ? `Shipment issue: ${trackingNumber}`
+            : 'Shipment tracking issue';
+        if (context) {
+            context.textContent = trackingNumber
+                ? `Support ticket reference: ${trackingNumber}`
+                : 'The shipment tracking number will be attached to your support ticket.';
+        }
+
+        if (details) details.hidden = true;
+        report.hidden = false;
+        form.querySelector('[data-shipment-report-issue]')?.focus();
+    });
+
+    document.querySelector('[data-shipment-report-form]')?.addEventListener('submit', async (event) => {
+        event.preventDefault();
+
+        const form = event.currentTarget;
+        const submitButton = form.querySelector('[data-shipment-report-submit]');
+        const errorNode = form.querySelector('[data-shipment-report-error]');
+        const issue = form.querySelector('[data-shipment-report-issue]')?.value || '';
+        const description = form.querySelector('[data-shipment-report-description]');
+
+        if (errorNode) {
+            errorNode.hidden = true;
+            errorNode.textContent = '';
+        }
+
+        if (submitButton) {
+            submitButton.disabled = true;
+            submitButton.textContent = 'Submitting…';
+        }
+
+        try {
+            const formData = new FormData(form);
+            formData.set('message', `Issue type: ${issue}\n\n${description?.value.trim() || ''}`);
+
+            const response = await fetch(form.action, {
+                method: 'POST',
+                body: formData,
+                credentials: 'same-origin',
+                headers: {
+                    Accept: 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                },
+            });
+            const result = await response.json().catch(() => ({}));
+
+            if (!response.ok) {
+                const validationMessage = Object.values(result.errors || {}).flat()[0];
+                throw new Error(validationMessage || result.message || 'The support ticket could not be submitted.');
+            }
+
+            form.reset();
+            form.closest('[data-modal]').hidden = true;
+            document.body.style.overflow = '';
+
+            if (toast) {
+                toast.textContent = result.message || 'Your shipment issue was saved as a support ticket.';
+                toast.classList.add('is-visible');
+                window.clearTimeout(window.sellerToastTimer);
+                window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 4200);
+            }
+        } catch (error) {
+            if (errorNode) {
+                errorNode.textContent = error instanceof Error
+                    ? error.message
+                    : 'The support ticket could not be submitted.';
+                errorNode.hidden = false;
+            }
+        } finally {
+            if (submitButton) {
+                submitButton.disabled = false;
+                submitButton.textContent = 'Submit Report';
+            }
+        }
+    });
+
+    document.querySelector('[data-tracking-export]')?.addEventListener('click', () => {
+        const workspace = document.querySelector('[data-tracking-workspace]');
+        const rows = [...(workspace?.querySelectorAll('[data-tracking-row]') || [])]
+            .filter((row) => !row.hidden);
+
+        if (!rows.length) {
+            if (toast) {
+                toast.textContent = 'There are no shipments matching the current filters to export.';
+                toast.classList.add('is-visible');
+                window.clearTimeout(window.sellerToastTimer);
+                window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3200);
+            }
+            return;
+        }
+
+        const headings = [...(workspace?.querySelectorAll('.tracking-table thead th') || [])]
+            .slice(0, -1)
+            .map((cell) => cell.textContent.trim());
+        const records = rows.map((row) => [...row.querySelectorAll('td')]
+            .slice(0, -1)
+            .map((cell) => cell.innerText.replace(/\s+/g, ' ').trim()));
+        const escapeCsv = (value) => `"${String(value).replaceAll('"', '""')}"`;
+        const csv = [headings, ...records]
+            .map((record) => record.map(escapeCsv).join(','))
+            .join('\n');
+        const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' }));
+        const download = document.createElement('a');
+        download.href = url;
+        download.download = `shipments-${new Date().toISOString().slice(0, 10)}.csv`;
+        download.hidden = true;
+        document.body.append(download);
+        download.click();
+        download.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+        if (toast) {
+            toast.textContent = `${rows.length} shipment${rows.length === 1 ? '' : 's'} exported from the current view.`;
+            toast.classList.add('is-visible');
+            window.clearTimeout(window.sellerToastTimer);
+            window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3200);
+        }
+    });
     document.querySelectorAll('[data-fulfillment-demo]').forEach((button) => button.addEventListener('click', () => { if (toast) { toast.textContent = `${button.dataset.fulfillmentDemo} Frontend preview only.`; toast.classList.add('is-visible'); } }));
 
     /* Product pricing and promotion workspace. */
@@ -1669,73 +1748,332 @@ const bootSeller = () => {
         syncPromotionSummary();
     }
 
-    /* Customer Service — frontend-only seller inbox. */
+    /* Customer Service — persisted buyer conversations (live thread + inbox). */
     const messageWorkspace = document.querySelector('[data-message-workspace]');
     if (messageWorkspace) {
-        const conversationRows = [...messageWorkspace.querySelectorAll('[data-conversation]')];
+        const list = messageWorkspace.querySelector('[data-conversation-list]');
         const search = messageWorkspace.querySelector('[data-message-search]');
         const empty = messageWorkspace.querySelector('[data-conversation-empty]');
         const thread = messageWorkspace.querySelector('[data-message-thread]');
         const input = messageWorkspace.querySelector('[data-message-input]');
+        const fileInput = messageWorkspace.querySelector('[data-message-file]');
+        const fileChip = messageWorkspace.querySelector('[data-message-file-chip]');
+        const messageForm = messageWorkspace.querySelector('[data-message-form]');
+        const inboxUrl = messageWorkspace.dataset.inboxUrl || '';
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
+        const POLL_MS = 5000;
+        const INBOX_EVERY_TICKS = 3;
         let filter = 'all';
-        let activeConversation = JSON.parse(conversationRows[0]?.dataset.payload || '{}');
+        let conversations = [];
+        let conversationRows = [];
+        let activeRow = null;
+        let activePayload = {};
+        let lastMessageId = 0;
+        let lastDayLabel = null;
+        let lastInboxSnapshot = null;
+        let sending = false;
+        let pollTimer = null;
+        let pollTick = 0;
+        let visibilityHandler = null;
 
+        const esc = (value) => String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+        const rowPayload = (row) => {
+            try { return JSON.parse(row?.dataset.payload || '{}'); } catch { return {}; }
+        };
         const setText = (selector, value) => {
             const node = messageWorkspace.querySelector(selector);
             if (node) node.textContent = value;
         };
-        const renderThread = (conversation) => {
+        const refreshUnreadTotals = () => {
+            const unread = conversations.reduce((total, item) => total + Number(item.unread || 0), 0);
+            setText('[data-inbox-unread-count]', String(unread));
+        };
+        const requestJson = async (url, options = {}) => {
+            if (!url) throw new Error('This conversation is missing its endpoint. Reload the page.');
+            const response = await fetch(url, {
+                ...options,
+                headers: {
+                    Accept: 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    ...(options.method && options.method !== 'GET' ? { 'X-CSRF-TOKEN': csrfToken } : {}),
+                    ...(options.headers || {}),
+                },
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                const validationMessage = Object.values(result.errors || {}).flat()[0];
+                throw new Error(validationMessage || result.message || 'Something went wrong. Try again.');
+            }
+            return result;
+        };
+        const seedState = () => {
+            conversationRows = [...messageWorkspace.querySelectorAll('[data-conversation]')];
+            conversations = conversationRows.map((row) => rowPayload(row));
+            activeRow = conversationRows.find((row) => row.classList.contains('is-active')) ?? conversationRows[0] ?? null;
+            activePayload = activeRow ? rowPayload(activeRow) : {};
+            lastInboxSnapshot = JSON.stringify(conversations);
+        };
+        const rowNode = (conversation) => {
+            const unread = Number(conversation.unread || 0);
+            const row = document.createElement('button');
+            row.type = 'button';
+            row.className = `conversation-row${Number(conversation.id) === Number(activePayload.id) ? ' is-active' : ''}`;
+            row.setAttribute('data-conversation', '');
+            row.dataset.search = `${conversation.buyer} ${conversation.context} ${conversation.preview}`.toLowerCase();
+            row.dataset.type = conversation.type;
+            row.dataset.unread = String(unread);
+            row.dataset.payload = JSON.stringify(conversation);
+            const disputeBadge = conversation.dispute
+                ? '<span class="conversation-dispute-badge"><i data-lucide="gavel"></i>Complaint &amp; Dispute</span>'
+                : '';
+            row.innerHTML = `<span class="conversation-avatar">${esc(conversation.initials)}</span><span class="conversation-copy"><span><strong>${esc(conversation.buyer)}</strong><time>${esc(conversation.time_label)}</time></span><em>${esc(conversation.preview)}</em>${disputeBadge}<span class="conversation-chip"><i data-lucide="${conversation.order ? 'receipt' : 'package'}"></i>${esc(conversation.order ? `Order #${conversation.order}` : conversation.context)}</span></span>${unread ? `<b class="conversation-unread">${unread}</b>` : ''}`;
+            return row;
+        };
+        const renderConversationRows = () => {
+            if (!list) return;
+            conversationRows.forEach((row) => row.remove());
+            const anchor = empty && empty.parentElement === list ? empty : null;
+            conversationRows = conversations.map((conversation) => {
+                const row = rowNode(conversation);
+                if (anchor) list.insertBefore(row, anchor); else list.append(row);
+                return row;
+            });
+            const activeId = Number(activePayload.id || 0);
+            activeRow = conversationRows.find((row) => Number(rowPayload(row).id) === activeId) ?? activeRow;
+            applyConversationFilter();
+            window.lucide?.createIcons();
+        };
+        const refreshInbox = async () => {
+            if (!inboxUrl || sending) return;
+            try {
+                const result = await requestJson(inboxUrl);
+                const incoming = result.data?.conversations;
+                if (!Array.isArray(incoming)) return;
+                const snapshot = JSON.stringify(incoming);
+                if (snapshot === lastInboxSnapshot) return;
+                lastInboxSnapshot = snapshot;
+                conversations = incoming;
+                renderConversationRows();
+                refreshUnreadTotals();
+            } catch { /* keep the current list when a background refresh fails */ }
+        };
+        const markRowRead = async (row) => {
+            if (!row || Number(row.dataset.unread || 0) === 0) return;
+            const payload = rowPayload(row);
+            try {
+                await requestJson(payload.read_url, { method: 'POST' });
+                row.dataset.unread = '0';
+                row.querySelector('.conversation-unread')?.remove();
+                const entry = conversations.find((item) => Number(item.id) === Number(payload.id));
+                if (entry) entry.unread = 0;
+                refreshUnreadTotals();
+            } catch { /* keep the unread badge if the read marker fails */ }
+        };
+        const updateRowPreview = (id, message) => {
+            const preview = message.text || (message.attachments || []).map((attachment) => attachment.name).join(', ') || 'Sent an attachment.';
+            const entry = conversations.find((item) => Number(item.id) === Number(id));
+            if (entry) {
+                entry.preview = preview;
+                entry.time_label = message.time_label || entry.time_label;
+            }
+            const row = conversationRows.find((item) => Number(rowPayload(item).id) === Number(id));
+            const copy = row?.querySelector('.conversation-copy');
+            if (!copy) return;
+            const previewNode = copy.querySelector('em');
+            const timeNode = copy.querySelector('time');
+            if (previewNode) previewNode.textContent = preview;
+            if (timeNode) timeNode.textContent = message.time_label ?? '';
+        };
+        const threadNote = (text) => {
+            const note = document.createElement('p');
+            note.className = 'message-thread-empty';
+            note.textContent = text;
+            return note;
+        };
+        const bubble = (message, initials) => {
+            const row = document.createElement('article');
+            row.className = `chat-bubble-row is-${message.from === 'me' ? 'seller' : 'buyer'}`;
+            row.dataset.messageId = String(message.id ?? '');
+            if (message.from === 'them') {
+                const avatar = document.createElement('span');
+                avatar.className = 'conversation-avatar';
+                avatar.textContent = initials;
+                row.append(avatar);
+            }
+            const body = document.createElement('div');
+            if (message.text) {
+                const copy = document.createElement('p');
+                copy.textContent = message.text;
+                body.append(copy);
+            }
+            (message.attachments || []).forEach((attachment) => {
+                const link = document.createElement('a');
+                link.className = 'chat-attachment';
+                link.href = attachment.download_url;
+                const icon = document.createElement('i');
+                icon.setAttribute('data-lucide', 'paperclip');
+                link.append(icon, document.createTextNode(attachment.name));
+                body.append(link);
+            });
+            const time = document.createElement('time');
+            time.textContent = message.time_label;
+            body.append(time);
+            row.append(body);
+            return row;
+        };
+        const appendDay = (label) => {
             if (!thread) return;
-            thread.replaceChildren();
             const day = document.createElement('div');
             day.className = 'message-day';
-            day.innerHTML = '<span>Today</span>';
+            const span = document.createElement('span');
+            span.textContent = label;
+            day.append(span);
             thread.append(day);
-            conversation.messages.forEach((message) => {
-                const row = document.createElement('article');
-                row.className = `chat-bubble-row is-${message.from}`;
-                if (message.from === 'buyer') {
-                    const avatar = document.createElement('span');
-                    avatar.className = 'conversation-avatar';
-                    avatar.textContent = conversation.initials;
-                    row.append(avatar);
-                }
-                const bubble = document.createElement('div');
-                const copy = document.createElement('p');
-                const time = document.createElement('time');
-                copy.textContent = message.text;
-                time.textContent = message.time;
-                if (message.from === 'seller') time.insertAdjacentHTML('beforeend', '<i data-lucide="check-check"></i>');
-                bubble.append(copy, time);
-                row.append(bubble);
-                thread.append(row);
-            });
+        };
+        const appendMessage = (message, initials) => {
+            if (!thread) return;
+            if (message.day_label && message.day_label !== lastDayLabel) {
+                lastDayLabel = message.day_label;
+                appendDay(lastDayLabel);
+            }
+            thread.querySelector('.message-thread-empty')?.remove();
+            thread.append(bubble(message, initials));
+            lastMessageId = Math.max(lastMessageId, Number(message.id || 0));
+        };
+        const renderThread = (messages, initials) => {
+            if (!thread) return;
+            thread.replaceChildren();
+            lastMessageId = 0;
+            lastDayLabel = null;
+            (messages || []).forEach((message) => appendMessage(message, initials));
+            if (!messages || messages.length === 0) thread.append(threadNote('No messages yet. Say hello to start the conversation.'));
             window.lucide?.createIcons();
             thread.scrollTop = thread.scrollHeight;
         };
-        const openConversation = (row) => {
-            activeConversation = JSON.parse(row.dataset.payload);
+        const syncRenderedThreadState = () => {
+            if (!thread) return;
+            const bubbles = thread.querySelectorAll('[data-message-id]');
+            const lastBubble = bubbles[bubbles.length - 1];
+            lastMessageId = lastBubble ? Number(lastBubble.dataset.messageId || 0) : 0;
+            const days = thread.querySelectorAll('.message-day span');
+            lastDayLabel = days.length ? days[days.length - 1].textContent : null;
+        };
+        const renderThreadHeader = (payload, conversation = null) => {
+            setText('[data-chat-initials]', payload.initials ?? 'B');
+            setText('[data-chat-buyer]', payload.buyer ?? 'Buyer');
+            const since = conversation?.counterpart?.since_label ?? payload.member ?? null;
+            setText('[data-chat-member]', since ? 'Member since '.concat(since) : '');
+            const orderNumber = conversation?.order?.number ?? payload.order ?? null;
+            const dispute = conversation?.dispute ?? payload.dispute ?? null;
+            setText('[data-chat-order]', dispute ? `Complaint & Dispute · ${dispute.number}` : (orderNumber ? `Order #${orderNumber}` : 'No active order'));
+            messageWorkspace.querySelector('[data-chat-order]')?.classList.toggle('is-dispute', Boolean(dispute));
+            const productName = conversation?.product?.name ?? payload.product ?? null;
+            setText('[data-chat-context-product]', productName ?? 'this store');
+            setText('[data-chat-context-order]', orderNumber ? `Order #${orderNumber}` : 'No active order yet');
+            const strip = messageWorkspace.querySelector('[data-message-context]');
+            if (strip) {
+                strip.hidden = (payload?.counterpart_role ?? 'buyer') === 'admin';
+                const url = conversation?.product?.url ?? payload.product_url ?? '';
+                if (url) strip.setAttribute('href', url); else strip.removeAttribute('href');
+                strip.classList.toggle('is-static', !url);
+            }
+        };
+        const renderDetails = (payload, conversation = null) => {
+            setText('[data-detail-initials]', payload.initials ?? 'B');
+            setText('[data-detail-buyer]', payload.buyer ?? 'Buyer');
+            const since = conversation?.counterpart?.since_label ?? payload.member ?? null;
+            setText('[data-detail-member]', since ?? '—');
+            setText('[data-detail-previous]', String(payload.previous ?? 0));
+
+            const orderBox = messageWorkspace.querySelector('[data-detail-order-card]');
+            if (orderBox) {
+                const order = conversation?.order ?? null;
+                if (order) {
+                    orderBox.innerHTML = `<div class="detail-order-heading"><strong>Order #${esc(order.number)}</strong>${order.status_label ? `<span>${esc(order.status_label)}</span>` : ''}</div>${order.url ? `<a class="detail-order-button" href="${esc(order.url)}">Manage orders</a>` : ''}`;
+                } else if (payload.order) {
+                    orderBox.innerHTML = `<div class="detail-order-heading"><strong>Order #${esc(payload.order)}</strong>${payload.order_status ? `<span>${esc(payload.order_status)}</span>` : ''}</div>${payload.order_url ? `<a class="detail-order-button" href="${esc(payload.order_url)}">Manage orders</a>` : ''}`;
+                } else {
+                    orderBox.innerHTML = '<div class="detail-empty-card"><i data-lucide="package-x"></i><span>No active order for this conversation.</span></div>';
+                }
+            }
+
+            const disputeSection = messageWorkspace.querySelector('[data-detail-dispute]');
+            const disputeBox = messageWorkspace.querySelector('[data-detail-dispute-card]');
+            const dispute = conversation?.dispute ?? payload.dispute ?? null;
+            if (disputeSection && disputeBox) {
+                disputeSection.hidden = !dispute;
+                disputeBox.innerHTML = dispute ? `
+                    <div class="detail-dispute-heading"><strong>${esc(dispute.number)}</strong><span>${esc(dispute.status_label || dispute.status || 'Open')}</span></div>
+                    <strong class="detail-dispute-subject">${esc(dispute.subject)}</strong>
+                    <p class="detail-dispute-description">${esc(dispute.description)}</p>
+                    <dl class="detail-dispute-meta">
+                        <div><dt>Seller Order</dt><dd>${esc(dispute.seller_order_no || '—')}</dd></div>
+                        <div><dt>Shipment</dt><dd>${esc(dispute.shipment_no || 'Not linked')}</dd></div>
+                        <div><dt>Order value</dt><dd>${esc(dispute.amount_label || '—')}</dd></div>
+                    </dl>
+                ` : '';
+            }
+
+            const productCard = messageWorkspace.querySelector('[data-detail-product-card]');
+            if (productCard) {
+                const product = conversation?.product ?? null;
+                const url = product?.url ?? payload.product_url ?? '';
+                const name = product?.name ?? payload.product ?? 'Direct message';
+                const image = product?.image_url
+                    ? `<img src="${esc(product.image_url)}" alt="">`
+                    : `<i data-lucide="${product ? 'shirt' : 'messages-square'}"></i>`;
+                const price = product?.price_label ? `<small>${esc(product.price_label)}</small>` : '';
+                const hint = product ? '' : '<small>No product linked to this conversation.</small>';
+                productCard.classList.toggle('is-static', !url);
+                if (url) productCard.setAttribute('href', url); else productCard.removeAttribute('href');
+                productCard.innerHTML = `<span class="detail-product-thumb">${image}</span><span class="detail-product-copy"><strong>${esc(name)}</strong>${price}${hint}</span>${url ? '<i data-lucide="chevron-right"></i>' : ''}`;
+            }
+
+            const actions = messageWorkspace.querySelector('[data-detail-actions]');
+            if (actions) {
+                const productUrl = conversation?.product?.url ?? payload.product_url ?? '';
+                const orderUrl = conversation?.order?.url ?? payload.order_url ?? '';
+                const body = actions.querySelector('[data-detail-actions-body]');
+                if (body) {
+                    body.innerHTML = [
+                        productUrl ? `<a class="meta-row" href="${esc(productUrl)}"><i data-lucide="external-link"></i><span>Manage product</span><i data-lucide="chevron-right"></i></a>` : '',
+                        orderUrl ? `<a class="meta-row" href="${esc(orderUrl)}"><i data-lucide="receipt"></i><span>Manage orders</span><i data-lucide="chevron-right"></i></a>` : '',
+                    ].join('');
+                }
+                actions.hidden = !productUrl && !orderUrl;
+            }
+
+            window.lucide?.createIcons();
+        };
+        const openConversation = async (row) => {
+            if (!row) return;
+            activeRow = row;
+            activePayload = rowPayload(row);
             conversationRows.forEach((item) => item.classList.toggle('is-active', item === row));
-            row.dataset.unread = '0';
-            row.querySelector('.conversation-unread')?.remove();
-            setText('[data-chat-initials]', activeConversation.initials);
-            setText('[data-chat-buyer]', activeConversation.buyer);
-            setText('[data-chat-active]', activeConversation.active);
-            setText('[data-chat-order]', activeConversation.order);
-            setText('[data-chat-context-product]', activeConversation.product);
-            setText('[data-chat-context-order]', activeConversation.order);
-            setText('[data-detail-initials]', activeConversation.initials);
-            setText('[data-detail-buyer]', activeConversation.buyer);
-            setText('[data-detail-member]', activeConversation.member);
-            setText('[data-detail-order]', activeConversation.order);
-            setText('[data-detail-status]', activeConversation.status);
-            setText('[data-detail-product]', activeConversation.product);
-            setText('[data-detail-variant]', activeConversation.variant);
-            setText('[data-detail-price]', activeConversation.price);
-            setText('[data-detail-previous]', activeConversation.previous);
-            renderThread(activeConversation);
-            const unread = conversationRows.reduce((total, item) => total + Number(item.dataset.unread || 0), 0);
-            setText('[data-total-unread]', unread);
+            renderThreadHeader(activePayload);
+            renderDetails(activePayload);
+            if (thread) {
+                thread.replaceChildren();
+                thread.append(threadNote('Loading messages…'));
+            }
+            try {
+                const result = await requestJson(activePayload.thread_url);
+                const conversation = result.data?.conversation ?? null;
+                renderThread(result.data?.messages ?? [], activePayload.initials ?? 'B');
+                renderThreadHeader(activePayload, conversation);
+                renderDetails(activePayload, conversation);
+            } catch (error) {
+                if (thread) {
+                    thread.replaceChildren();
+                    thread.append(threadNote(error.message || 'Unable to load this conversation.'));
+                }
+            }
+            await markRowRead(row);
         };
         const applyConversationFilter = () => {
             const query = search?.value.trim().toLowerCase() ?? '';
@@ -1748,7 +2086,21 @@ const bootSeller = () => {
             });
             if (empty) empty.hidden = visible > 0;
         };
-        conversationRows.forEach((row) => row.addEventListener('click', () => openConversation(row)));
+        list?.addEventListener('click', (event) => {
+            const row = event.target.closest('[data-conversation]');
+            if (!row) return;
+            if (!messageWorkspace.querySelector('[data-message-thread]')) {
+                /* Workspace loaded without an active conversation; open the chosen thread via a scoped load. */
+                const id = rowPayload(row).id;
+                if (id) {
+                    const target = new URL(window.location.href);
+                    target.searchParams.set('conversation', String(id));
+                    window.location.assign(target.toString());
+                }
+                return;
+            }
+            openConversation(row);
+        });
         messageWorkspace.querySelectorAll('[data-message-filter]').forEach((button) => button.addEventListener('click', () => {
             filter = button.dataset.messageFilter;
             messageWorkspace.querySelectorAll('[data-message-filter]').forEach((item) => item.classList.toggle('is-active', item === button));
@@ -1758,26 +2110,123 @@ const bootSeller = () => {
         messageWorkspace.querySelectorAll('[data-quick-reply]').forEach((button) => button.addEventListener('click', () => {
             if (input) { input.value = button.dataset.quickReply; input.focus(); }
         }));
-        const messageForm = messageWorkspace.querySelector('[data-message-form]');
-        messageForm?.addEventListener('submit', (event) => {
+        messageWorkspace.querySelector('[data-message-emoji]')?.addEventListener('click', () => {
+            if (!input || input.disabled) return;
+            const start = input.selectionStart ?? input.value.length;
+            const end = input.selectionEnd ?? input.value.length;
+            input.setRangeText('🙂', start, end, 'end');
+            input.focus();
+        });
+        const pollThread = async () => {
+            if (!activeRow || !activePayload.thread_url) return;
+            try {
+                const target = new URL(activePayload.thread_url, window.location.origin);
+                if (lastMessageId > 0) target.searchParams.set('after', String(lastMessageId));
+                const result = await requestJson(target.toString());
+                const conversation = result.data?.conversation ?? null;
+                if (conversation && Number(conversation.id) !== Number(activePayload.id)) return;
+                renderThreadHeader(activePayload, conversation);
+                renderDetails(activePayload, conversation);
+                const incoming = Array.isArray(result.data?.messages) ? result.data.messages : [];
+                if (incoming.length === 0) return;
+                const nearBottom = thread
+                    ? (thread.scrollHeight - thread.scrollTop - thread.clientHeight) < 80
+                    : true;
+                const initials = activePayload.initials ?? 'B';
+                incoming.forEach((message) => appendMessage(message, initials));
+                window.lucide?.createIcons();
+                if (thread && nearBottom) thread.scrollTop = thread.scrollHeight;
+                updateRowPreview(activePayload.id, incoming[incoming.length - 1]);
+                if (incoming.some((message) => message.from === 'them')) await markRowRead(activeRow);
+            } catch { /* transient polling failures are ignored; the next tick retries */ }
+        };
+        const startPolling = () => {
+            if (pollTimer) return;
+            pollTimer = window.setInterval(() => {
+                if (document.hidden || sending) return;
+                pollTick += 1;
+                pollThread();
+                if (pollTick % INBOX_EVERY_TICKS === 0) refreshInbox();
+            }, POLL_MS);
+
+            visibilityHandler = () => {
+                if (document.hidden || sending) return;
+                pollThread();
+                refreshInbox();
+            };
+
+            document.addEventListener('visibilitychange', visibilityHandler);
+        };
+        const clearAttachment = () => {
+            if (fileInput) fileInput.value = '';
+            if (fileChip) { fileChip.hidden = true; fileChip.replaceChildren(); }
+        };
+        const showAttachmentChip = () => {
+            if (!fileChip) return;
+            fileChip.replaceChildren();
+            const file = fileInput?.files?.[0];
+            if (!file) { fileChip.hidden = true; return; }
+            const label = document.createElement('span');
+            label.textContent = `Attach: ${file.name}`;
+            const clear = document.createElement('button');
+            clear.type = 'button';
+            clear.setAttribute('aria-label', 'Remove attachment');
+            const icon = document.createElement('i');
+            icon.setAttribute('data-lucide', 'x');
+            clear.append(icon);
+            clear.addEventListener('click', clearAttachment);
+            fileChip.append(label, clear);
+            fileChip.hidden = false;
+            window.lucide?.createIcons();
+        };
+        messageWorkspace.querySelector('[data-message-attach]')?.addEventListener('click', () => fileInput?.click());
+        fileInput?.addEventListener('change', showAttachmentChip);
+        messageForm?.addEventListener('submit', async (event) => {
             event.preventDefault();
-            const message = input?.value.trim();
-            if (!message || !thread) { input?.focus(); return; }
-            activeConversation.messages.push({ from: 'seller', text: message, time: 'Just now' });
-            renderThread(activeConversation);
-            input.value = '';
+            if (sending || !activeRow) return;
+            const message = input?.value.trim() ?? '';
+            const file = fileInput?.files?.[0] ?? null;
+            if (!message && !file) { input?.focus(); return; }
+            sending = true;
+            const submit = messageForm.querySelector('[type="submit"]');
+            if (submit) submit.disabled = true;
+            try {
+                const formData = new FormData();
+                if (message) formData.append('message', message);
+                if (file) formData.append('attachment', file);
+                const result = await requestJson(activePayload.send_url, { method: 'POST', body: formData });
+                const sent = result.data?.message;
+                if (input) input.value = '';
+                clearAttachment();
+                if (thread && sent) {
+                    appendMessage(sent, activePayload.initials ?? 'B');
+                    window.lucide?.createIcons();
+                    thread.scrollTop = thread.scrollHeight;
+                }
+                if (sent) updateRowPreview(activePayload.id, sent);
+            } catch (error) {
+                if (toast) { toast.textContent = error.message || 'Unable to send this message. Try again.'; toast.classList.add('is-visible'); }
+            } finally {
+                sending = false;
+                if (submit) submit.disabled = false;
+            }
         });
         input?.addEventListener('keydown', (event) => {
             if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); messageForm?.requestSubmit(); }
         });
-        messageWorkspace.querySelector('[data-message-attach]')?.addEventListener('click', () => {
-            if (toast) { toast.textContent = 'Attachment picker will be connected with the backend later.'; toast.classList.add('is-visible'); }
-        });
-        messageWorkspace.querySelector('[data-seller-availability]')?.addEventListener('change', (event) => {
-            if (toast) { toast.textContent = `Status changed to ${event.currentTarget.value} for this preview.`; toast.classList.add('is-visible'); }
-        });
-        messageWorkspace.querySelector('[data-report-conversation]')?.addEventListener('click', () => {
-            if (toast) { toast.textContent = 'Conversation report form will be connected during backend integration.'; toast.classList.add('is-visible'); }
+        seedState();
+        syncRenderedThreadState();
+        refreshUnreadTotals();
+        markRowRead(activeRow);
+        startPolling();
+
+        window.addEventListener('bearly:message-created', (event) => {
+            const conversationId = Number(event.detail?.conversation_id || 0);
+            if (Number(activePayload.id) === conversationId) {
+                pollThread().catch(() => {});
+            } else {
+                refreshInbox().catch(() => {});
+            }
         });
     }
 
@@ -3870,4 +4319,198 @@ if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', setupBearlyOrderActionModal);
 } else {
     setupBearlyOrderActionModal();
+}
+
+/* =========================================================
+   ACCESSIBLE CHART TOOLTIPS
+   Server-rendered chart points and bars carry their real period
+   label and amount in data attributes. Hover, keyboard focus, and
+   touch reveal the same tooltip; amounts are never derived from
+   pixel positions.
+   ========================================================= */
+
+const setupChartTooltips = () => {
+    document.querySelectorAll('[data-chart]').forEach((chart) => {
+        const points = [...chart.querySelectorAll('[data-chart-point]')];
+
+        if (!points.length) return;
+
+        const tooltip = document.createElement('div');
+        tooltip.className = 'chart-tooltip';
+        tooltip.hidden = true;
+        tooltip.innerHTML = '<strong></strong><span></span>';
+        chart.appendChild(tooltip);
+
+        const valueNode = tooltip.querySelector('strong');
+        const labelNode = tooltip.querySelector('span');
+        const crosshair = chart.querySelector('[data-chart-crosshair]');
+        const nearestMode = chart.dataset.chartHover === 'nearest';
+        let activePoint = null;
+        let shownPoint = null;
+
+        // Active state for the revealed data point and its guide line.
+        const activate = (point) => {
+            if (activePoint === point) return;
+
+            if (activePoint) activePoint.classList.remove('is-active');
+
+            activePoint = point;
+
+            if (point) point.classList.add('is-active');
+
+            if (crosshair) {
+                const x = point ? point.getAttribute('cx') : null;
+
+                if (x) {
+                    crosshair.setAttribute('x1', x);
+                    crosshair.setAttribute('x2', x);
+                    crosshair.classList.add('is-visible');
+                } else {
+                    crosshair.classList.remove('is-visible');
+                }
+            }
+        };
+
+        const position = (point) => {
+            const anchor = (point.querySelector('[data-chart-bar]') || point).getBoundingClientRect();
+            const root = chart.getBoundingClientRect();
+            const width = tooltip.offsetWidth;
+            const height = tooltip.offsetHeight;
+            const center = anchor.left - root.left + anchor.width / 2;
+            const left = Math.min(Math.max(center - width / 2, 4), Math.max(root.width - width - 4, 4));
+            let top = anchor.top - root.top - height - 8;
+
+            if (top < 4) {
+                top = Math.min(anchor.bottom - root.top + 8, Math.max(root.height - height - 4, 4));
+            }
+
+            tooltip.style.left = `${left}px`;
+            tooltip.style.top = `${Math.max(4, top)}px`;
+        };
+
+        const show = (point) => {
+            if (point === shownPoint) return;
+
+            shownPoint = point;
+            activate(point);
+            valueNode.textContent = point.dataset.value || '';
+            labelNode.textContent = point.dataset.label || '';
+            tooltip.hidden = false;
+            position(point);
+        };
+
+        const hide = () => {
+            shownPoint = null;
+            activate(null);
+            tooltip.hidden = true;
+        };
+
+        const focusPoint = (index) => {
+            const point = points[(index + points.length) % points.length];
+            points.forEach((item) => { item.tabIndex = item === point ? 0 : -1; });
+            point.focus();
+            show(point);
+        };
+
+        const pointFrom = (event) => (event.target instanceof Element ? event.target.closest('[data-chart-point]') : null);
+
+        // Charts flagged with `data-chart-hover="nearest"` use the whole plot
+        // as the hover target: the point closest on the x-axis is activated,
+        // so small data points stay easy to reach with a mouse.
+        const nearestPoint = (clientX) => {
+            let best = null;
+
+            points.forEach((point) => {
+                const bounds = point.getBoundingClientRect();
+                const distance = Math.abs(clientX - (bounds.left + bounds.width / 2));
+
+                if (!best || distance < best.distance) best = { point, distance };
+            });
+
+            return best ? best.point : null;
+        };
+
+        if (nearestMode) {
+            const hoverRoot = chart.querySelector('svg') || chart;
+
+            hoverRoot.addEventListener('pointermove', (event) => {
+                const point = nearestPoint(event.clientX);
+
+                if (point) show(point);
+            });
+            hoverRoot.addEventListener('pointerleave', (event) => {
+                if (event.pointerType !== 'touch') hide();
+            });
+        } else {
+            chart.addEventListener('pointerover', (event) => {
+                const point = pointFrom(event);
+
+                if (point) show(point);
+            });
+            chart.addEventListener('pointerout', (event) => {
+                const point = pointFrom(event);
+
+                if (!point || event.pointerType === 'touch') return;
+
+                const next = event.relatedTarget;
+
+                if (!(next instanceof Element) || !point.contains(next)) hide();
+            });
+        }
+
+        chart.addEventListener('focusin', (event) => {
+            const point = pointFrom(event);
+
+            if (point) show(point);
+        });
+        chart.addEventListener('focusout', () => hide());
+        chart.addEventListener('pointerdown', (event) => {
+            if (event.pointerType !== 'touch') return;
+
+            const point = nearestMode ? nearestPoint(event.clientX) : pointFrom(event);
+
+            if (point) show(point);
+        });
+        chart.addEventListener('keydown', (event) => {
+            const point = pointFrom(event);
+
+            if (!point) return;
+
+            const index = points.indexOf(point);
+
+            if (index < 0) return;
+
+            if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+                event.preventDefault();
+                focusPoint(index + 1);
+            } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+                event.preventDefault();
+                focusPoint(index - 1);
+            } else if (event.key === 'Home') {
+                event.preventDefault();
+                focusPoint(0);
+            } else if (event.key === 'End') {
+                event.preventDefault();
+                focusPoint(points.length - 1);
+            } else if (event.key === 'Escape') {
+                hide();
+                point.blur();
+            }
+        });
+
+        // Touch: tapping anywhere outside this chart dismisses the tooltip.
+        document.addEventListener('pointerdown', (event) => {
+            if (event.pointerType !== 'touch') return;
+
+            const target = event.target instanceof Element ? event.target.closest('[data-chart]') : null;
+
+            if (target !== chart) hide();
+        });
+    });
+};
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', setupChartTooltips);
+} else {
+    setupChartTooltips();
 }

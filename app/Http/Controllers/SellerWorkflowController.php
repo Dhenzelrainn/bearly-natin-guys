@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\ShipmentStatus;
 use App\Models\Address;
 use App\Models\PickupRequest;
 use App\Models\Refund;
@@ -10,6 +11,7 @@ use App\Models\ReturnRequest;
 use App\Models\SellerOrder;
 use App\Models\SellerPayout;
 use App\Models\SellerProfile;
+use App\Models\Shipment;
 use App\Services\AuditService;
 use App\Services\BuyerCatalogService;
 use App\Services\ReturnRefundService;
@@ -21,6 +23,8 @@ use App\Services\SellerOrderTrackingService;
 use App\Services\SellerOrderWorkflowService;
 use App\Services\SellerPickupRequestService;
 use App\Services\SellerWalletService;
+use Carbon\Carbon;
+use Carbon\CarbonInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -93,7 +97,7 @@ class SellerWorkflowController extends Controller
      * Money stays in minor units; only pixel coordinates are derived.
      *
      * @param  array<int, array{label: string, value_minor: int}>  $series
-     * @return array{points: array<int, array{0: int, 1: int}>, polyline: string, area: string, has_data: bool, labels: array<int, string>, y_axis: array<int, string>}
+     * @return array{points: array<int, array{0: int, 1: int}>, polyline: string, area: string, has_data: bool, y_axis_points: array<int, array{label: string, y: int}>, label_points: array<int, array{label: string, x: int}>, details: array<int, array{x: int, y: int, label: string, value: string}>}
      */
     private function chartGeometry(
         array $series,
@@ -126,11 +130,30 @@ class SellerWorkflowController extends Controller
             }
         }
 
-        $yAxis = [];
+        $yAxisPoints = [];
 
         for ($index = 0; $index < $yLabelCount; $index++) {
             $value = (int) round($axisMax * ($yLabelCount - 1 - $index) / $intervals);
-            $yAxis[] = number_format(intdiv($value, 100));
+
+            // Axis label with the plot coordinate it marks so the seller sales
+            // charts can align labels and gridlines on the real scale.
+            $yAxisPoints[] = [
+                'label' => number_format(intdiv($value, 100)),
+                'y' => $this->chartY($value, $axisMax, $yTop, $yBottom),
+            ];
+        }
+
+        $details = [];
+
+        foreach ($points as $index => $point) {
+            $bucket = $series[min($index, max(0, $count - 1))] ?? [];
+
+            $details[] = [
+                'x' => $point[0],
+                'y' => $point[1],
+                'label' => (string) ($bucket['label'] ?? ''),
+                'value' => $this->moneyFromMinor((int) ($bucket['value_minor'] ?? 0)),
+            ];
         }
 
         return [
@@ -141,8 +164,11 @@ class SellerWorkflowController extends Controller
                 : 'M'.implode(' L', array_map(fn (array $point): string => $point[0].' '.$point[1], $points))
                     .' L'.$xEnd.' '.$yBottom.' L'.$xStart.' '.$yBottom.' Z',
             'has_data' => $maxValue > 0,
-            'labels' => $this->chartLabels(array_map(fn (array $point): string => (string) ($point['label'] ?? ''), $series), $labelLimit),
-            'y_axis' => $yAxis,
+            'y_axis_points' => $yAxisPoints,
+            'label_points' => $this->chartLabelPoints($series, $points, $labelLimit),
+            // Tooltip metadata aligned with `points`: real bucket labels and
+            // centavo-exact amounts rendered in the chart view markup.
+            'details' => $details,
         ];
     }
 
@@ -174,38 +200,56 @@ class SellerWorkflowController extends Controller
     }
 
     /**
-     * @param  array<int, string>  $labels
-     * @return array<int, string>
+     * Sampled x-axis labels with the plot coordinate of the point they mark.
+     *
+     * @param  array<int, array{label: string, value_minor: int}>  $series
+     * @param  array<int, array{0: int, 1: int}>  $points
+     * @return array<int, array{label: string, x: int}>
      */
-    private function chartLabels(array $labels, int $limit): array
+    private function chartLabelPoints(array $series, array $points, int $limit): array
     {
-        $count = count($labels);
+        $count = count($series);
 
-        if ($count <= $limit) {
-            return array_values($labels);
+        if ($count <= 0 || $points === []) {
+            return [];
         }
+
+        $indexes = $count <= $limit
+            ? range(0, $count - 1)
+            : array_map(fn (int $step): int => (int) round($step * ($count - 1) / ($limit - 1)), range(0, $limit - 1));
 
         $picked = [];
 
-        for ($index = 0; $index < $limit; $index++) {
-            $label = $labels[(int) round($index * ($count - 1) / ($limit - 1))] ?? '';
+        foreach ($indexes as $index) {
+            $label = (string) ($series[$index]['label'] ?? '');
 
-            if ($picked === [] || end($picked) !== $label) {
-                $picked[] = $label;
+            // Sampled steps can land on the same bucket; keep one label for it.
+            if ($count > $limit && $picked !== [] && end($picked)['label'] === $label) {
+                continue;
             }
+
+            $picked[] = [
+                'label' => $label,
+                'x' => $points[$index][0],
+            ];
         }
 
-        return array_values($picked);
+        return $picked;
     }
 
     private function dashboardChart(array $series): array
     {
-        return $this->chartGeometry($series, xStart: 10, xEnd: 752, yTop: 60, yBottom: 214, yLabelCount: 5, labelLimit: 7);
+        // Geometry is laid out for the 720x260 viewBox rendered by the seller
+        // dashboard chart (resources/views/seller/Dashboard/dashboard.blade.php).
+        return $this->chartGeometry($series, xStart: 30, xEnd: 690, yTop: 26, yBottom: 234, yLabelCount: 5, labelLimit: 7);
     }
 
     private function reportChart(array $series): array
     {
-        return $this->chartGeometry($series, xStart: 24, xEnd: 676, yTop: 60, yBottom: 190, yLabelCount: 4, labelLimit: 7);
+        // The reports overview trend shares the dashboard viewBox (720x260)
+        // and treatment: the same gridlines, crosshair, and tooltip hooks,
+        // rendered server-side from the selected period's real gross buckets.
+        return $this->chartGeometry($series, xStart: 30, xEnd: 690, yTop: 26, yBottom: 234, yLabelCount: 5, labelLimit: 7);
     }
 
     private function commissionRateLabel(float|int $commissionRate): string
@@ -833,25 +877,253 @@ class SellerWorkflowController extends Controller
         ]));
     }
 
-    public function shipmentTracking(): View
-    {
+    public function shipmentTracking(
+        Request $request,
+        SellerOrderTrackingService $tracking,
+        BuyerCatalogService $catalog,
+    ): View {
+        $storeId = (int) ($request->user()->sellerProfile?->store?->id ?? 0);
+        abort_unless($storeId > 0, 404, 'Seller Store not found.');
+
+        // Outbound shipments only: return-shipment tracking lives on the
+        // return case pages. Pre-handover stages (pending_waybill,
+        // ready_for_pickup, pickup_assigned) stay on the Pickup Requests
+        // page until logistics actually receives the parcel; this page
+        // starts at rider handover.
+        $shipments = Shipment::query()
+            ->where('purpose', 'outbound')
+            ->whereIn('status', $this->trackedShipmentStatuses())
+            ->whereHas('sellerOrder', fn ($query) => $query->where('store_id', $storeId))
+            ->with([
+                'waybill',
+                'sellerOrder.order.buyer',
+                'sellerOrder.items.product.images.variant',
+                'sellerOrder.items.variant',
+                'parcels.pickupRequests.latestAssignment.riderProfile.user',
+                'parcels.dispatchBatches' => fn ($query) => $query
+                    ->where('dispatch_batches.status', '!=', 'cancelled')
+                    ->orderByDesc('dispatch_batches.dispatched_at')
+                    ->orderByDesc('dispatch_batches.id'),
+                'parcels.dispatchBatches.riderProfile.user',
+                'events' => fn ($query) => $query->orderBy('occurred_at')->orderBy('id'),
+            ])
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->get();
+
+        $rows = $shipments
+            ->map(fn (Shipment $shipment): array => $this->trackingRow($shipment, $tracking, $catalog))
+            ->values();
+
+        $countFor = fn (string $statusKey): int => $rows->where('status_key', $statusKey)->count();
+
         return view('seller.fulfillment.tracking', [
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
             'summary' => [
-                ['label' => 'Sorting / Routed', 'value' => '2', 'note' => 'At center or already sorted', 'icon' => 'scan-line', 'tone' => 'info'],
-                ['label' => 'Out for Delivery', 'value' => '1', 'note' => 'With delivery rider', 'icon' => 'bike', 'tone' => 'gold'],
-                ['label' => 'Delivered', 'value' => '1', 'note' => 'Waiting buyer confirmation', 'icon' => 'badge-check', 'tone' => 'olive'],
-                ['label' => 'Needs Attention', 'value' => '1', 'note' => 'Delivery exception', 'icon' => 'triangle-alert', 'tone' => 'warning'],
+                ['label' => 'Sorting / Routed', 'value' => (string) ($countFor('sorting') + $countFor('transit')), 'note' => 'At a hub or moving between centers', 'icon' => 'scan-line', 'tone' => 'info'],
+                ['label' => 'Out for Delivery', 'value' => (string) $countFor('out-delivery'), 'note' => 'With a delivery rider', 'icon' => 'bike', 'tone' => 'gold'],
+                ['label' => 'Delivered', 'value' => (string) $countFor('delivered'), 'note' => 'Recorded by logistics', 'icon' => 'badge-check', 'tone' => 'olive'],
+                ['label' => 'Needs Attention', 'value' => (string) $countFor('failed'), 'note' => 'Exception or returning to Store', 'icon' => 'triangle-alert', 'tone' => 'warning'],
             ],
-            'shipments' => [
-                ['tracking' => 'BRLY-784228', 'order' => '#BR-1054', 'customer' => 'Jamie Lim', 'destination' => 'Biñan, Laguna', 'rider' => 'Pickup rider: Paolo Reyes', 'latest' => 'Parcel received at Santa Rosa Sorting Center', 'updated' => 'Today · 2:18 PM', 'eta' => 'Sep 12', 'status' => 'At Sorting Center', 'status_key' => 'sorting', 'canonical_status' => 'AT_SORTING_CENTER'],
-                ['tracking' => 'BRLY-784218', 'order' => '#BR-1053', 'customer' => 'Miguel Garcia', 'destination' => 'Calamba, Laguna', 'rider' => 'Delivery rider assignment pending', 'latest' => 'Parcel sorted for Calamba delivery area', 'updated' => 'Today · 1:42 PM', 'eta' => 'Sep 12', 'status' => 'Sorted', 'status_key' => 'transit', 'canonical_status' => 'SORTED'],
-                ['tracking' => 'BRLY-784188', 'order' => '#BR-1052', 'customer' => 'Liam Reyes', 'destination' => 'Los Baños, Laguna', 'rider' => 'Paolo Reyes', 'latest' => 'Rider is delivering the parcel', 'updated' => 'Today · 9:15 AM', 'eta' => 'Today', 'status' => 'Out for Delivery', 'status_key' => 'out-delivery', 'canonical_status' => 'OUT_FOR_DELIVERY'],
-                ['tracking' => 'BRLY-784176', 'order' => '#BR-1051', 'customer' => 'Kim Chua', 'destination' => 'Calamba, Laguna', 'rider' => 'John Ramos', 'latest' => 'Delivered to customer; awaiting buyer confirmation', 'updated' => 'Today · 10:05 AM', 'eta' => 'Delivered', 'status' => 'Delivered', 'status_key' => 'delivered', 'canonical_status' => 'DELIVERED'],
-                ['tracking' => 'BRLY-784160', 'order' => '#BR-1049', 'customer' => 'Daniel Tan', 'destination' => 'Pagsanjan, Laguna', 'rider' => 'Alex Santos', 'latest' => 'Delivery failed: customer unavailable', 'updated' => 'Yesterday · 5:40 PM', 'eta' => 'Reschedule', 'status' => 'Delivery Failed', 'status_key' => 'failed', 'canonical_status' => 'DELIVERY_FAILED'],
-            ],
+            'shipments' => $rows->all(),
         ]);
+    }
+
+    /**
+     * Persisted shipment statuses that belong on the Seller tracking page:
+     * everything from rider handover onward. Pre-handover stages remain on
+     * Fulfillment → Pickup Requests until logistics takes custody.
+     *
+     * @return array<int, string>
+     */
+    private function trackedShipmentStatuses(): array
+    {
+        return [
+            ShipmentStatus::PickedUp->value,
+            ShipmentStatus::AtSortingCenter->value,
+            ShipmentStatus::HandoffPending->value,
+            ShipmentStatus::Sorted->value,
+            ShipmentStatus::Dispatched->value,
+            ShipmentStatus::OutForDelivery->value,
+            ShipmentStatus::Delivered->value,
+            ShipmentStatus::DeliveryFailed->value,
+            ShipmentStatus::ReturnToSender->value,
+            ShipmentStatus::Cancelled->value,
+            // Persisted by AdminFulfillmentController::override() but absent
+            // from the ShipmentStatus enum. Tracked by literal value so those
+            // existing shipments stay visible; no new persisted status is
+            // introduced and the admin override remains untouched.
+            'in_transit',
+            'exception',
+        ];
+    }
+
+    /**
+     * Seller-facing label and existing UI tab bucket for a persisted
+     * ShipmentStatus value. Buckets are limited to the tabs the page already
+     * renders (sorting, transit, out-delivery, delivered, failed) so the
+     * frontend filter keeps working without new status vocabulary.
+     *
+     * @return array{0: string, 1: string}
+     */
+    private function trackingStatusDisplay(string $status): array
+    {
+        return match ($status) {
+            ShipmentStatus::PickedUp->value => ['Picked Up', 'transit'],
+            ShipmentStatus::HandoffPending->value => ['In Transit', 'transit'],
+            ShipmentStatus::AtSortingCenter->value => ['At Sorting Center', 'sorting'],
+            ShipmentStatus::Sorted->value => ['Sorted', 'transit'],
+            ShipmentStatus::Dispatched->value => ['Dispatched to Rider', 'transit'],
+            ShipmentStatus::OutForDelivery->value => ['Out for Delivery', 'out-delivery'],
+            ShipmentStatus::Delivered->value => ['Delivered', 'delivered'],
+            ShipmentStatus::DeliveryFailed->value => ['Delivery Failed', 'failed'],
+            ShipmentStatus::ReturnToSender->value => ['Returning to Seller', 'failed'],
+            ShipmentStatus::Cancelled->value => ['Shipment Cancelled', 'failed'],
+            // Admin-override-only persisted statuses (not in the enum).
+            // Buckets match the Admin fulfillment metrics: in_transit counts
+            // as transit, exception as failed.
+            'in_transit' => ['In Transit', 'transit'],
+            'exception' => ['Exception', 'failed'],
+            default => [Str::headline($status), 'failed'],
+        };
+    }
+
+    /**
+     * One tracking table row from persisted shipment, waybill, order, and
+     * event records. No rider, ETA, or scan is invented when the database
+     * has no authoritative source for it.
+     *
+     * @return array<string, mixed>
+     */
+    private function trackingRow(
+        Shipment $shipment,
+        SellerOrderTrackingService $tracking,
+        BuyerCatalogService $catalog,
+    ): array {
+        $sellerOrder = $shipment->sellerOrder;
+        $order = $sellerOrder?->order;
+        $waybillNo = (string) ($shipment->waybill?->waybill_no ?: $shipment->shipment_no);
+        $orderLabel = $sellerOrder ? '#'.$sellerOrder->seller_order_no : 'Order unavailable';
+        $customer = (string) ($order?->recipient_name ?: $order?->buyer?->name ?: 'Recipient');
+        $destination = implode(', ', array_filter([
+            $order?->city_municipality,
+            $order?->province,
+        ], fn ($part): bool => filled($part))) ?: 'Destination unavailable';
+        [$statusLabel, $statusKey] = $this->trackingStatusDisplay((string) $shipment->status);
+        $latestEvent = $shipment->events->last();
+        $latestLabel = $latestEvent
+            ? $tracking->shipmentEventLabel((string) $latestEvent->event_type)
+            : 'No tracking scans recorded yet';
+        $rider = $this->trackingRider($shipment);
+
+        // Parcel identity from the immutable purchase snapshot: the cover
+        // item's image plus the item count. Never fabricated when the order
+        // has no items.
+        $items = $sellerOrder?->items ?? collect();
+        $coverItem = $items->first();
+        $coverName = $coverItem
+            ? (trim((string) $coverItem->product_name) ?: 'Unnamed product')
+            : 'Product details unavailable';
+        $coverImage = $coverItem ? $catalog->orderItemImageUrl($coverItem) : '';
+
+        $events = $shipment->events
+            ->reverse()
+            ->map(fn ($event): array => [
+                'label' => $tracking->shipmentEventLabel((string) $event->event_type),
+                'note' => trim((string) ($event->notes ?? '')),
+                'time' => $this->trackingTimeLabel($event->occurred_at),
+            ])
+            ->values()
+            ->all();
+
+        // estimated_delivery_at is not cast on the model and no current flow
+        // writes it, so parse defensively and fall back honestly.
+        $estimatedDelivery = $shipment->estimated_delivery_at;
+
+        return [
+            'tracking' => $waybillNo,
+            'order' => $orderLabel,
+            'customer' => $customer,
+            'destination' => $destination,
+            'rider_name' => $rider['name'],
+            'rider_role' => $rider['role'],
+            'latest' => $latestLabel,
+            'updated' => $latestEvent ? $this->trackingTimeLabel($latestEvent->occurred_at) : '—',
+            'eta' => $estimatedDelivery ? Carbon::parse($estimatedDelivery)->format('M j, Y') : 'Not provided',
+            'status' => $statusLabel,
+            'status_key' => $statusKey,
+            'canonical_status' => Str::upper((string) $shipment->status),
+            'product_name' => $coverName,
+            'product_image' => $coverImage,
+            'item_count' => $items->count(),
+            'search' => Str::lower(implode(' ', array_filter([
+                $waybillNo,
+                $orderLabel,
+                $customer,
+                $destination,
+                $rider['name'],
+                $statusLabel,
+                $latestLabel,
+                $items->pluck('product_name')->implode(' '),
+            ]))),
+            'events' => $events,
+        ];
+    }
+
+    /**
+     * Current responsible rider from persisted records only: the latest
+     * non-cancelled delivery dispatch batch wins, otherwise the pickup rider
+     * who collected the parcel. Null when no rider is assigned.
+     *
+     * @return array{name: ?string, role: ?string}
+     */
+    private function trackingRider(Shipment $shipment): array
+    {
+        $deliveryBatch = $shipment->parcels
+            ->flatMap(fn ($parcel) => $parcel->dispatchBatches)
+            ->sortByDesc('id')
+            ->first();
+
+        $deliveryRider = $deliveryBatch?->riderProfile?->user?->name;
+
+        if ($deliveryRider) {
+            return ['name' => $deliveryRider, 'role' => 'Delivery rider'];
+        }
+
+        $pickupAssignment = $shipment->parcels
+            ->flatMap(fn ($parcel) => $parcel->pickupRequests->map(
+                fn ($pickupRequest) => $pickupRequest->latestAssignment,
+            ))
+            ->filter()
+            ->reject(fn ($assignment): bool => $assignment->status === 'cancelled')
+            ->sortByDesc('id')
+            ->first();
+
+        $pickupRider = $pickupAssignment?->riderProfile?->user?->name;
+
+        if ($pickupRider) {
+            return ['name' => $pickupRider, 'role' => 'Pickup rider'];
+        }
+
+        return ['name' => null, 'role' => null];
+    }
+
+    private function trackingTimeLabel(?CarbonInterface $occurredAt): string
+    {
+        if ($occurredAt === null) {
+            return '—';
+        }
+
+        if ($occurredAt->isToday()) {
+            return 'Today · '.$occurredAt->format('g:i A');
+        }
+
+        if ($occurredAt->isYesterday()) {
+            return 'Yesterday · '.$occurredAt->format('g:i A');
+        }
+
+        return $occurredAt->format('M j, Y · g:i A');
     }
 
     public function returns(Request $request, BuyerCatalogService $catalog): View
@@ -1309,7 +1581,8 @@ class SellerWorkflowController extends Controller
             ],
             // The overview trend carries `gross_minor` from the shared sales
             // buckets; the chart geometry expects `value_minor`. Map them
-            // explicitly so the graph plots real bucket gross, never zeros.
+            // explicitly so the server-rendered graph plots real bucket gross,
+            // never zeros.
             'salesChart' => $this->reportChart(array_map(
                 fn (array $bucket): array => [
                     'label' => $bucket['label'],

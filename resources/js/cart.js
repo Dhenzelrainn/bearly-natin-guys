@@ -2,25 +2,13 @@
     const PREVIEW_KEY =
         window.bearlyStorageKey?.('preview-cart') ||
         'bearly-preview-cart-v1';
-    const LIKES_KEY =
-        window.bearlyStorageKey?.('preview-wishlist') ||
-        'bearly-preview-wishlist-v1';
-
-    const likeCategoryAliases = {
-        'electronics-gadgets': 'electronics-and-gadgets',
-        'womens-apparel': 'women-s-apparel',
-        'mens-apparel': 'men-s-apparel',
-        'kids-baby': 'kids-and-baby',
-        'home-garden': 'home-and-garden',
-        'sports-outdoors': 'sports-and-outdoors',
-        'health-beauty': 'health-and-beauty',
-        'books-media': 'books-and-media',
-        'jewelry-watches': 'jewelry-and-watches',
-        'foods-gourmet': 'food-and-gourmet',
-        'furniture-office-equipment': 'furniture-and-office-equipment',
-    };
 
     const $ = id => document.getElementById(id);
+    const wishlistProductIds = new Set(
+        (Array.isArray(window.bearlyWishlistProductIds) ? window.bearlyWishlistProductIds : [])
+            .map(Number)
+            .filter(productId => Number.isInteger(productId) && productId > 0)
+    );
 
     const money = value =>
         '₱' + Number(value || 0).toLocaleString('en-PH', {
@@ -44,61 +32,12 @@
                 })[character]
         );
 
-    function readLikes() {
-        try {
-            const value = JSON.parse(localStorage.getItem(LIKES_KEY) || '[]');
-
-            return Array.isArray(value) ? value.map(String) : [];
-        } catch {
-            return [];
-        }
-    }
-
-    function writeLikes(values) {
-        try {
-            localStorage.setItem(LIKES_KEY, JSON.stringify([...new Set(values)]));
-            window.dispatchEvent(new CustomEvent('bearly:likes-changed'));
-        } catch {
-            // Likes are a browser-scoped preview feature.
-        }
-    }
-
-    function categorySlug(value) {
-        const normalized = String(value || '')
-            .trim()
-            .toLowerCase()
-            .replace(/&/g, 'and')
-            .replace(/[^a-z0-9]+/g, '-')
-            .replace(/^-|-$/g, '');
-
-        return likeCategoryAliases[normalized] || normalized;
-    }
-
-    function likeKeyForItem(item) {
-        const candidates = [item.like_key, item.product_id, item.key]
-            .map(value => String(value || '').replace(/^preview:/, '').replace(/^wishlist-/, ''))
-            .filter(Boolean);
-
-        for (const candidate of candidates) {
-            const legacy = candidate.match(/^(?:home|flash|sales)-(.+)-(\d+)$/);
-
-            if (legacy) return `${legacy[1]}:${legacy[2]}`;
-            if (/^[^:]+:\d+$/.test(candidate)) return candidate;
-
-            if (/^\d+$/.test(candidate) && item.category) {
-                return `${categorySlug(item.category)}:${candidate}`;
-            }
-        }
-
-        return candidates[0] || '';
-    }
-
     function likeButtonMarkup(item) {
-        const key = likeKeyForItem(item);
-        const isLiked = key ? readLikes().includes(key) : false;
+        const productId = Number(item.product_id || 0);
+        const isLiked = productId > 0 && wishlistProductIds.has(productId);
 
         return `
-            <button type="button" class="cart-like${isLiked ? ' is-added' : ''}" data-add-like aria-pressed="${isLiked ? 'true' : 'false'}" aria-label="${isLiked ? 'Already added to' : 'Add'} ${escapeHtml(item.name)} ${isLiked ? 'in' : 'to'} My Likes">
+            <button type="button" class="cart-like${isLiked ? ' is-added' : ''}" data-add-like aria-pressed="${isLiked ? 'true' : 'false'}" aria-label="${isLiked ? 'Remove' : 'Add'} ${escapeHtml(item.name)} ${isLiked ? 'from' : 'to'} My Likes">
                 <span class="material-symbols-outlined" aria-hidden="true">${isLiked ? 'favorite' : 'favorite_border'}</span>
                 <span class="cart-like-label">${isLiked ? 'In My Likes' : 'Add to Likes'}</span>
             </button>
@@ -124,44 +63,19 @@
         }))
         : [];
 
-    let previewItems = readPreview();
     let items = [];
     let selected = new Set();
     let selectionInitialized = false;
 
-    function readPreview() {
+    function hasPreviewItems() {
         try {
             const value = JSON.parse(
                 localStorage.getItem(PREVIEW_KEY) || '[]'
             );
 
-            return Array.isArray(value)
-                ? value.map(item => ({
-                    ...item,
-                    source: 'preview',
-                    key: `preview:${item.key || item.product_id}`,
-                }))
-                : [];
+            return Array.isArray(value) && value.length > 0;
         } catch {
-            return [];
-        }
-    }
-
-    function writePreview() {
-        try {
-            localStorage.setItem(
-                PREVIEW_KEY,
-                JSON.stringify(
-                    previewItems.map(({ source, key, ...item }) => ({
-                        ...item,
-                        key: String(
-                            key || item.product_id || ''
-                        ).replace(/^preview:/, ''),
-                    }))
-                )
-            );
-        } catch {
-            // Local storage is optional for preview items.
+            return false;
         }
     }
 
@@ -188,7 +102,7 @@
     }
 
     function syncItems() {
-        items = [...liveItems, ...previewItems].filter(
+        items = liveItems.filter(
             item =>
                 item &&
                 item.name &&
@@ -313,6 +227,8 @@
 
     function render() {
         syncItems();
+        const previewNotice = $('cart-preview-notice');
+        if (previewNotice) previewNotice.hidden = !hasPreviewItems();
 
         const quantity = items.reduce(
             (sum, item) => sum + Number(item.quantity || 1),
@@ -386,13 +302,6 @@
     }
 
     async function updateItem(item, quantity) {
-        if (item.source === 'preview') {
-            item.quantity = quantity;
-            writePreview();
-            render();
-            return;
-        }
-
         try {
             await liveRequest(item, 'PATCH', quantity);
             item.quantity = quantity;
@@ -404,16 +313,6 @@
     }
 
     async function removeItem(item) {
-        if (item.source === 'preview') {
-            previewItems = previewItems.filter(
-                value => itemKey(value) !== itemKey(item)
-            );
-            writePreview();
-            render();
-            toast('Item removed');
-            return;
-        }
-
         try {
             await liveRequest(item, 'DELETE');
             liveItems = liveItems.filter(
@@ -434,7 +333,7 @@
         button.setAttribute('aria-pressed', String(liked));
         button.setAttribute(
             'aria-label',
-            `${liked ? 'Already added to' : 'Add'} ${item.name} ${liked ? 'in' : 'to'} My Likes`
+            `${liked ? 'Remove' : 'Add'} ${item.name} ${liked ? 'from' : 'to'} My Likes`
         );
 
         const icon = button.querySelector('.material-symbols-outlined');
@@ -444,25 +343,46 @@
         if (label) label.textContent = liked ? 'In My Likes' : 'Add to Likes';
     }
 
-    function addToLikes(item, button) {
-        const key = likeKeyForItem(item);
+    async function addToLikes(item, button) {
+        const productId = Number(item.product_id || 0);
 
-        if (!key) {
-            toast('This item cannot be added to My Likes.');
+        if (productId < 1) {
+            toast('This product is not available in your wishlist.');
             return;
         }
 
-        const saved = readLikes();
+        button.disabled = true;
 
-        if (saved.includes(key)) {
-            updateLikeButton(button, item, true);
-            toast('This item is already in My Likes.');
-            return;
+        try {
+            const response = await fetch('/wishlist/toggle', {
+                method: 'POST',
+                headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrf(),
+                },
+                body: JSON.stringify({ product_id: productId }),
+            });
+            const result = await response.json().catch(() => ({}));
+
+            if (!response.ok) {
+                throw new Error(
+                    Object.values(result.errors || {}).flat()[0] ||
+                    result.message ||
+                    'Unable to update My Likes.'
+                );
+            }
+
+            const liked = Boolean(result.data?.is_wishlisted);
+            if (liked) wishlistProductIds.add(productId);
+            else wishlistProductIds.delete(productId);
+            updateLikeButton(button, item, liked);
+            toast(result.message || (liked ? 'Added to My Likes.' : 'Removed from My Likes.'));
+        } catch (error) {
+            toast(error.message || 'Unable to update My Likes.');
+        } finally {
+            button.disabled = false;
         }
-
-        writeLikes([...saved, key]);
-        updateLikeButton(button, item, true);
-        toast('Added to My Likes.');
     }
 
     $('cart-list').addEventListener('click', event => {
@@ -575,9 +495,6 @@
     render();
 
     window.addEventListener('storage', event => {
-        if (event.key === PREVIEW_KEY) {
-            previewItems = readPreview();
-            render();
-        }
+        if (event.key === PREVIEW_KEY) render();
     });
 })();

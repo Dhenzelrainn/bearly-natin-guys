@@ -46,7 +46,7 @@ foreach($categoryProductSources as $slug=>$source){
 <main class="flash-page-main">
     <a class="flash-back" href="{{ url('/home') }}"><span class="material-symbols-outlined">arrow_back</span> Back to Home</a>
     <section class="flash-hero">
-        <div><p class="flash-kicker"><span class="material-symbols-outlined">bolt</span> Bearly Flash Deals</p><h1>Catch it before the clock runs out.</h1><p>Selected Bearly finds at limited-time demo prices. Sale prices stay with the item when you add it to your cart.</p></div>
+        <div><p class="flash-kicker"><span class="material-symbols-outlined">bolt</span> Bearly Flash Deals</p><h1>Catch it before the clock runs out.</h1><p>Sample products, prices, and availability for the frontend preview. These deals are not connected to the live cart or checkout.</p></div>
         <div><small>Deals refresh in</small><div class="flash-countdown flash-countdown-large" data-flash-countdown><span data-hours>00</span><b>:</b><span data-minutes>00</span><b>:</b><span data-seconds>00</span></div></div>
     </section>
     <div class="flash-page-toolbar"><div><h2>Today's deals</h2><p>Demo sale · fixed availability for the buyer prototype</p></div><span class="flash-live"><i></i> LIVE</span></div>
@@ -66,7 +66,7 @@ $deals = [
 @foreach($deals as $d)
         <article class="flash-deal-card" data-flash-product data-key="{{ $d[0] }}" data-product-id="{{ $d[1] }}" data-name="{{ $d[2] }}" data-price="{{ $d[3] }}" data-original-price="{{ $d[4] }}" data-image="{{ asset('images/products/'.$d[5]) }}" data-flash-category="{{ $d[6] }}">
             <button type="button" class="flash-image" data-feature-open><img src="{{ asset('images/products/'.$d[5]) }}" alt="{{ $d[2] }}"><span>{{ $d[7] }}% OFF</span></button>
-            <div class="flash-copy"><small>{{ $d[6] }}</small><h3>{{ $d[2] }}</h3><div class="flash-prices"><strong>₱{{ number_format($d[3]) }}</strong><del>₱{{ number_format($d[4]) }}</del></div><div class="flash-stock"><span style="--sold:{{ $d[8] }}%"></span><small>{{ $d[8] }}% claimed</small></div><button type="button" class="flash-add" data-flash-add>Add to Cart</button></div>
+        <div class="flash-copy"><small>{{ $d[6] }}</small><h3>{{ $d[2] }}</h3><div class="flash-prices"><strong>₱{{ number_format($d[3]) }}</strong><del>₱{{ number_format($d[4]) }}</del></div><div class="flash-stock"><span style="--sold:{{ $d[8] }}%"></span><small>{{ $d[8] }}% claimed</small></div><button type="button" class="flash-add" data-flash-add disabled aria-label="Flash deal preview; not connected to the live cart">Preview only</button></div>
         </article>
 @endforeach
     </section>

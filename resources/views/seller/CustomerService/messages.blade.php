@@ -2,40 +2,120 @@
 @section('title', 'Messages')
 @section('page-title', 'Customer Service')
 @section('content')
-@php($activeConversation = $conversations[0])
-<section class="customer-messages-page" data-message-workspace>
+@php($hasConversations = $conversations !== [])
+@php($activeProduct = $activeThread['conversation']['product'] ?? null)
+@php($activeOrder = $activeThread['conversation']['order'] ?? null)
+@php($activeDispute = $activeThread['conversation']['dispute'] ?? null)
+<section class="customer-messages-page" data-message-workspace data-inbox-url="{{ route('seller.support.messages.inbox') }}">
     <header class="customer-service-heading">
         <div><span class="section-kicker">Buyer communication</span><h2>Messages</h2><p>Talk with buyers about products and active orders.</p></div>
-        <div class="message-heading-actions"><label class="seller-availability"><i></i><select aria-label="Seller availability" data-seller-availability><option>Available</option><option>Away</option></select></label><span class="message-unread-total"><strong data-total-unread>5</strong> unread</span></div>
+        <div class="message-heading-actions">
+            <label class="message-search"><i data-lucide="search"></i><input type="search" placeholder="Search buyers or orders" data-message-search></label>
+            <div class="message-filter-tabs" role="tablist" aria-label="Conversation filters"><button class="is-active" type="button" data-message-filter="all">All</button><button type="button" data-message-filter="unread">Unread <b data-inbox-unread-count>{{ $totalUnread }}</b></button><button type="button" data-message-filter="order">Orders</button></div>
+        </div>
     </header>
 
-    <section class="message-workspace">
+    <section class="message-workspace messages-standard-page">
         <aside class="message-inbox">
-            <div class="message-inbox-heading"><h3>Inbox</h3><button type="button" aria-label="Inbox options"><i data-lucide="list-filter"></i></button></div>
-            <label class="message-search"><i data-lucide="search"></i><input type="search" placeholder="Search buyers or orders" data-message-search></label>
-            <div class="message-filter-tabs" role="tablist"><button class="is-active" type="button" data-message-filter="all">All</button><button type="button" data-message-filter="unread">Unread <b>5</b></button><button type="button" data-message-filter="order">Orders</button></div>
-            <div class="conversation-list">
+            <div class="conversation-list" data-conversation-list>
                 @foreach ($conversations as $conversation)
-                    <button class="conversation-row {{ $loop->first ? 'is-active' : '' }}" type="button" data-conversation data-search="{{ strtolower($conversation['buyer'].' '.$conversation['context'].' '.$conversation['last']) }}" data-type="{{ $conversation['type'] }}" data-unread="{{ $conversation['unread'] }}" data-payload='@json($conversation)'>
-                        <span class="conversation-avatar">{{ $conversation['initials'] }}</span><span class="conversation-copy"><span><strong>{{ $conversation['buyer'] }}</strong><time>{{ $conversation['time'] }}</time></span><em>{{ $conversation['last'] }}</em><small>{{ $conversation['context'] }}</small></span>@if ($conversation['unread'])<b class="conversation-unread">{{ $conversation['unread'] }}</b>@endif
+                    <button class="conversation-row {{ $activeConversation && (int) $activeConversation['id'] === (int) $conversation['id'] ? 'is-active' : '' }}" type="button" data-conversation data-search="{{ strtolower($conversation['buyer'].' '.$conversation['context'].' '.$conversation['preview']) }}" data-type="{{ $conversation['type'] }}" data-unread="{{ $conversation['unread'] }}" data-payload="{{ json_encode($conversation, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_THROW_ON_ERROR) }}">
+                        <span class="conversation-avatar">{{ $conversation['initials'] }}</span><span class="conversation-copy"><span><strong>{{ $conversation['buyer'] }}</strong><time>{{ $conversation['time_label'] }}</time></span><em>{{ $conversation['preview'] }}</em>@if ($conversation['dispute'])<span class="conversation-dispute-badge"><i data-lucide="gavel"></i>Complaint &amp; Dispute</span>@endif<span class="conversation-chip"><i data-lucide="{{ $conversation['order'] ? 'receipt' : 'package' }}"></i>{{ $conversation['order'] ? 'Order #'.$conversation['order'] : $conversation['context'] }}</span></span>@if ($conversation['unread'])<b class="conversation-unread">{{ $conversation['unread'] }}</b>@endif
                     </button>
                 @endforeach
-                <div class="conversation-empty" data-conversation-empty hidden><i data-lucide="message-circle-off"></i><strong>No conversations found</strong><span>Try another search or filter.</span></div>
+                <div class="conversation-empty" data-conversation-empty @if ($hasConversations) hidden @endif><i data-lucide="message-circle-off"></i><strong>{{ $hasConversations ? 'No conversations found' : 'No conversations yet' }}</strong><span>{{ $hasConversations ? 'Try another search or filter.' : 'Buyer inquiries and order questions will appear here.' }}</span></div>
             </div>
         </aside>
 
-        <section class="message-thread">
-            <header class="message-thread-header"><span class="conversation-avatar" data-chat-initials>{{ $activeConversation['initials'] }}</span><div><strong data-chat-buyer>{{ $activeConversation['buyer'] }}</strong><small data-chat-active>{{ $activeConversation['active'] }}</small></div><span class="message-order-reference" data-chat-order>{{ $activeConversation['order'] }}</span><button type="button" aria-label="Search conversation"><i data-lucide="search"></i></button><button type="button" aria-label="Conversation options"><i data-lucide="ellipsis-vertical"></i></button></header>
-            <div class="message-context-strip"><i data-lucide="info"></i><p>Buyer is asking about <strong data-chat-context-product>{{ $activeConversation['product'] }}</strong> · <span data-chat-context-order>{{ $activeConversation['order'] }}</span></p><a href="{{ route('seller.orders') }}">View order<i data-lucide="external-link"></i></a></div>
-            <div class="message-thread-scroll" data-message-thread><div class="message-day"><span>Today</span></div>@foreach ($activeConversation['messages'] as $message)<article class="chat-bubble-row is-{{ $message['from'] }}">@if ($message['from'] === 'buyer')<span class="conversation-avatar">{{ $activeConversation['initials'] }}</span>@endif<div><p>{{ $message['text'] }}</p><time>{{ $message['time'] }}@if ($message['from'] === 'seller')<i data-lucide="check-check"></i>@endif</time></div></article>@endforeach</div>
-            <footer class="message-composer"><div class="quick-reply-list">@foreach ($quickReplies as $reply)<button type="button" data-quick-reply="{{ $reply['text'] }}"><i data-lucide="message-square-text"></i>{{ $reply['label'] }}</button>@endforeach</div><form data-message-form><button class="message-attach" type="button" data-message-attach aria-label="Attach file"><i data-lucide="paperclip"></i></button><label><textarea rows="2" placeholder="Write a reply…" data-message-input></textarea><small>Enter to send · Shift + Enter for a new line</small></label><button class="message-send" type="submit"><i data-lucide="send"></i>Send</button></form></footer>
-        </section>
+        @if ($activeConversation)
+            <section class="message-thread">
+                <header class="message-thread-header"><span class="conversation-avatar" data-chat-initials>{{ $activeConversation['initials'] }}</span><div><strong data-chat-buyer>{{ $activeConversation['buyer'] }}</strong><small data-chat-member>Member since {{ $activeConversation['member'] }}</small></div><span class="message-order-reference{{ $activeConversation['dispute'] ? ' is-dispute' : '' }}" data-chat-order>{{ $activeConversation['dispute'] ? 'Complaint & Dispute · '.$activeConversation['dispute']['number'] : ($activeConversation['order'] ? 'Order #'.$activeConversation['order'] : 'No active order') }}</span></header>
+                <a @if ($activeConversation['product_url']) href="{{ $activeConversation['product_url'] }}" @endif @if (($activeConversation['counterpart_role'] ?? 'buyer') === 'admin') hidden @endif class="message-context-strip{{ $activeConversation['product_url'] ? '' : ' is-static' }}" data-message-context><i data-lucide="info"></i><p>Buyer is asking about <strong data-chat-context-product>{{ $activeConversation['product'] ?? 'this store' }}</strong> · <span data-chat-context-order>{{ $activeConversation['order'] ? 'Order #'.$activeConversation['order'] : 'No active order yet' }}</span></p><i data-lucide="chevron-right" class="message-context-chevron"></i></a>
+                <div class="message-thread-scroll" data-message-thread>
+                    @php($currentDay = null)
+                    @foreach ($activeThread['messages'] ?? [] as $message)
+                        @if ($message['day_label'] !== $currentDay)
+                            @php($currentDay = $message['day_label'])
+                            <div class="message-day"><span>{{ $currentDay }}</span></div>
+                        @endif
+                        <article class="chat-bubble-row is-{{ $message['from'] === 'me' ? 'seller' : 'buyer' }}" data-message-id="{{ $message['id'] }}">
+                            @if ($message['from'] === 'them')<span class="conversation-avatar">{{ $activeConversation['initials'] }}</span>@endif
+                            <div>
+                                @if ($message['text'] !== '')<p>{{ $message['text'] }}</p>@endif
+                                @foreach ($message['attachments'] as $attachment)
+                                    <a class="chat-attachment" href="{{ $attachment['download_url'] }}"><i data-lucide="paperclip"></i>{{ $attachment['name'] }}</a>
+                                @endforeach
+                                <time>{{ $message['time_label'] }}</time>
+                            </div>
+                        </article>
+                    @endforeach
+                    @if (($activeThread['messages'] ?? []) === [])
+                        <p class="message-thread-empty">No messages yet. Say hello to start the conversation.</p>
+                    @endif
+                </div>
+                <footer class="message-composer">
+                    <div class="quick-reply-list">@foreach ($quickReplies as $reply)<button type="button" data-quick-reply="{{ $reply['text'] }}"><i data-lucide="message-square-text"></i>{{ $reply['label'] }}</button>@endforeach</div>
+                    <div class="message-attach-chip" data-message-file-chip hidden></div>
+                    <form data-message-form>
+                        <button class="message-attach" type="button" data-message-attach aria-label="Attach file"><i data-lucide="paperclip"></i></button>
+                        <input type="file" data-message-file hidden accept=".jpg,.jpeg,.png,.webp,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.zip">
+                        <div class="message-field"><textarea rows="1" placeholder="Type a message…" data-message-input></textarea><button class="message-emoji" type="button" data-message-emoji aria-label="Add emoji"><i data-lucide="smile"></i></button></div>
+                        <button class="message-send" type="submit"><i data-lucide="send"></i>Send</button>
+                    </form>
+                    <small class="message-composer-hint">Press Enter to send · Shift + Enter for a new line</small>
+                </footer>
+            </section>
 
-        <aside class="conversation-details">
-            <h3>Conversation details</h3><div class="conversation-buyer"><span class="conversation-avatar" data-detail-initials>{{ $activeConversation['initials'] }}</span><div><strong data-detail-buyer>{{ $activeConversation['buyer'] }}</strong><small>Member since <span data-detail-member>{{ $activeConversation['member'] }}</span></small></div></div>
-            <section><span class="detail-section-label">Active context</span><div class="detail-order-heading"><strong data-detail-order>{{ $activeConversation['order'] }}</strong><span data-detail-status>{{ $activeConversation['status'] }}</span></div><div class="detail-product"><span><i data-lucide="shirt"></i></span><div><strong data-detail-product>{{ $activeConversation['product'] }}</strong><small data-detail-variant>{{ $activeConversation['variant'] }}</small><b data-detail-price>{{ $activeConversation['price'] }}</b></div></div><a class="detail-order-button" href="{{ route('seller.orders') }}">Open full order</a></section>
-            <section class="conversation-meta-actions"><button type="button"><span>Previous conversations</span><b data-detail-previous>{{ $activeConversation['previous'] }}</b><i data-lucide="chevron-right"></i></button><button class="is-danger" type="button" data-report-conversation><i data-lucide="flag"></i>Report conversation</button></section>
-        </aside>
+            <aside class="conversation-details">
+                <h3>Conversation details</h3>
+                <div class="conversation-buyer"><span class="conversation-avatar" data-detail-initials>{{ $activeConversation['initials'] }}</span><div><strong data-detail-buyer>{{ $activeConversation['buyer'] }}</strong><small>Member since <span data-detail-member>{{ $activeConversation['member'] }}</span></small></div></div>
+                <section class="detail-panel-section">
+                    <span class="detail-section-label">Order information</span>
+                    <div data-detail-order-card>
+                        @if ($activeOrder)
+                            <div class="detail-order-heading"><strong>Order #{{ $activeOrder['number'] }}</strong>@if ($activeOrder['status_label'])<span>{{ $activeOrder['status_label'] }}</span>@endif</div>
+                            @if ($activeOrder['url'])<a class="detail-order-button" href="{{ $activeOrder['url'] }}">Manage orders</a>@endif
+                        @else
+                            <div class="detail-empty-card"><i data-lucide="package-x"></i><span>No active order for this conversation.</span></div>
+                        @endif
+                    </div>
+                    <div class="detail-dispute-section" data-detail-dispute @if (! $activeDispute) hidden @endif>
+                        <span class="detail-section-label">Dispute case</span>
+                        <div class="detail-dispute-card" data-detail-dispute-card>
+                            @if ($activeDispute)
+                                <div class="detail-dispute-heading"><strong>{{ $activeDispute['number'] }}</strong><span>{{ $activeDispute['status_label'] }}</span></div>
+                                <strong class="detail-dispute-subject">{{ $activeDispute['subject'] }}</strong>
+                                <p class="detail-dispute-description">{{ $activeDispute['description'] }}</p>
+                                <dl class="detail-dispute-meta">
+                                    <div><dt>Seller Order</dt><dd>{{ $activeDispute['seller_order_no'] ?? '—' }}</dd></div>
+                                    <div><dt>Shipment</dt><dd>{{ $activeDispute['shipment_no'] ?? 'Not linked' }}</dd></div>
+                                    <div><dt>Order value</dt><dd>{{ $activeDispute['amount_label'] }}</dd></div>
+                                </dl>
+                            @endif
+                        </div>
+                    </div>
+                    <a class="detail-product-card{{ $activeProduct ? '' : ' is-static' }}" data-detail-product-card @if ($activeProduct) href="{{ $activeProduct['url'] }}" @endif>
+                        <span class="detail-product-thumb">@if ($activeProduct && $activeProduct['image_url'])<img src="{{ $activeProduct['image_url'] }}" alt="">@else<i data-lucide="{{ $activeProduct ? 'shirt' : 'messages-square' }}"></i>@endif</span>
+                        <span class="detail-product-copy"><strong>{{ $activeProduct['name'] ?? 'Direct message' }}</strong>@if ($activeProduct && $activeProduct['price_label'])<small>{{ $activeProduct['price_label'] }}</small>@endif @if (! $activeProduct)<small>No product linked to this conversation.</small>@endif</span>
+                        @if ($activeProduct)<i data-lucide="chevron-right"></i>@endif
+                    </a>
+                </section>
+                <section class="detail-panel-section detail-panel-actions" data-detail-actions @if (! $activeConversation['product_url'] && ! ($activeOrder['url'] ?? null)) hidden @endif>
+                    <span class="detail-section-label">Quick actions</span>
+                    <div class="conversation-meta-actions" data-detail-actions-body>
+                        @if ($activeConversation['product_url'])<a class="meta-row" href="{{ $activeConversation['product_url'] }}"><i data-lucide="external-link"></i><span>Manage product</span><i data-lucide="chevron-right"></i></a>@endif
+                        @if ($activeOrder['url'] ?? null)<a class="meta-row" href="{{ $activeOrder['url'] }}"><i data-lucide="receipt"></i><span>Manage orders</span><i data-lucide="chevron-right"></i></a>@endif
+                    </div>
+                </section>
+                <section class="detail-panel-section">
+                    <span class="detail-section-label">Activity</span>
+                    <div class="conversation-meta-actions"><div class="meta-row"><i data-lucide="history"></i><span>Previous conversations</span><b data-detail-previous>{{ $activeConversation['previous'] }}</b></div></div>
+                </section>
+            </aside>
+        @else
+            <section class="message-thread message-thread-blank"><p class="message-thread-empty">No conversations yet. Product inquiries and order questions from buyers will appear here.</p></section>
+            <aside class="conversation-details"></aside>
+        @endif
     </section>
 </section>
 @endsection

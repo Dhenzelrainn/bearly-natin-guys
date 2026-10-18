@@ -1,0 +1,248 @@
+/* Shared messaging visual language.
+ * Role-specific controllers and endpoints remain unchanged; this sheet keeps
+ * Buyer, Seller, Logistics, Rider, and Admin message workspaces visually
+ * consistent with the Buyer chat reference surface.
+ */
+.messages-standard-page {
+    --messages-line: #eadfd6;
+    --messages-cream: #fffaf6;
+    --messages-brown: #6f3f25;
+    --messages-muted: #8a7b71;
+    border: 1px solid var(--messages-line) !important;
+    border-radius: 18px !important;
+    background: #fff !important;
+    box-shadow: 0 10px 30px rgba(53, 37, 30, .07) !important;
+    overflow: hidden;
+}
+
+.messages-standard-page.chat-shell,
+.messages-standard-page.messaging-shell {
+    display: grid;
+    grid-template-columns: 300px minmax(0, 1fr) 280px;
+    min-height: 680px;
+    height: clamp(650px, calc(100vh - 205px), 790px);
+    padding: 0 !important;
+}
+
+.messages-standard-details {
+    min-width: 0;
+    min-height: 0;
+    overflow-y: auto;
+    border-left: 1px solid var(--messages-line);
+    background: #fff;
+}
+
+.messages-standard-details > h3 {
+    margin: 0;
+    padding: 20px 18px 16px;
+    border-bottom: 1px solid var(--messages-line);
+    color: #2d211b;
+    font-size: 16px;
+}
+
+.messages-standard-details > [data-standard-details-body] {
+    padding: 18px;
+}
+
+.messages-standard-person {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--messages-line);
+}
+
+.messages-standard-avatar {
+    display: grid;
+    width: 42px;
+    height: 42px;
+    flex: 0 0 42px;
+    place-items: center;
+    border-radius: 50%;
+    color: #fff;
+    background: var(--messages-brown);
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.messages-standard-person strong,
+.messages-standard-person small {
+    display: block;
+}
+
+.messages-standard-person strong {
+    color: #2d211b;
+    font-size: 12px;
+}
+
+.messages-standard-person small {
+    margin-top: 3px;
+    color: var(--messages-muted);
+    font-size: 9px;
+}
+
+.messages-standard-context-card {
+    position: relative;
+    display: grid;
+    gap: 6px;
+    margin-top: 16px;
+    padding: 12px;
+    border: 1px solid #edcda9;
+    border-radius: 11px;
+    background: #fff7ed;
+}
+
+.messages-standard-label {
+    color: #9a4c20;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+}
+
+.messages-standard-context-card strong {
+    color: #3d2c22;
+    font-size: 11px;
+}
+
+.messages-standard-context-card small {
+    color: #806e62;
+    font-size: 9px;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+}
+
+.messages-standard-status {
+    justify-self: start;
+    padding: 4px 7px;
+    border-radius: 6px;
+    color: #9a5d18;
+    background: #ffe8c8;
+    font-size: 9px;
+    font-weight: 700;
+}
+
+.messages-standard-page.message-workspace {
+    border-radius: 18px !important;
+}
+
+.messages-standard-page .chat-sidebar,
+.messages-standard-page .conversation-sidebar,
+.messages-standard-page .message-inbox {
+    min-width: 0;
+    background: var(--messages-cream);
+    border-right: 1px solid var(--messages-line);
+}
+
+.messages-standard-page .chat-main,
+.messages-standard-page .chat-pane,
+.messages-standard-page .message-thread {
+    min-width: 0;
+    min-height: 0;
+    background: #fff;
+}
+
+.messages-standard-page .conversation,
+.messages-standard-page .conversation-item,
+.messages-standard-page .conversation-row {
+    border: 1px solid transparent;
+    border-radius: 12px;
+    transition: background .16s ease, border-color .16s ease;
+}
+
+.messages-standard-page .conversation:hover,
+.messages-standard-page .conversation-item:hover,
+.messages-standard-page .conversation-row:hover,
+.messages-standard-page .conversation.is-active,
+.messages-standard-page .conversation-item.is-active,
+.messages-standard-page .conversation-row.is-active {
+    border-color: #e1c1a5;
+    background: #fff;
+}
+
+.messages-standard-page .chat-head,
+.messages-standard-page .chat-header,
+.messages-standard-page .message-thread-header {
+    min-height: 67px;
+    border-bottom: 1px solid var(--messages-line);
+    background: #fff;
+}
+
+.messages-standard-page .chat-messages,
+.messages-standard-page .message-thread,
+.messages-standard-page .chat-pane .message-thread {
+    background: #fffdfb;
+}
+
+.messages-standard-page .chat-compose,
+.messages-standard-page .message-composer,
+.messages-standard-page .chat-compose {
+    border-top: 1px solid var(--messages-line);
+    background: #fff;
+}
+
+.messages-standard-page .chat-compose input,
+.messages-standard-page .message-composer textarea,
+.messages-standard-page .message-composer input {
+    border-color: #ddcfc4;
+    border-radius: 999px;
+    background: #fff;
+}
+
+.messages-standard-page .chat-compose input:focus,
+.messages-standard-page .message-composer textarea:focus,
+.messages-standard-page .message-composer input:focus {
+    border-color: #9c6b4d;
+    outline: none;
+}
+
+.messages-standard-page .button-primary,
+.messages-standard-page .send-button,
+.messages-standard-page .message-send {
+    border-color: var(--messages-brown);
+    background: var(--messages-brown);
+}
+
+.messages-standard-page .button-primary:hover,
+.messages-standard-page .send-button:hover,
+.messages-standard-page .message-send:hover {
+    background: #4f2b1b;
+}
+
+@media (max-width: 1250px) {
+    .messages-standard-page.message-workspace {
+        grid-template-columns: 285px minmax(430px, 1fr);
+    }
+
+    .messages-standard-page .conversation-details {
+        display: none;
+    }
+}
+
+@media (max-width: 900px) {
+    .messages-standard-page.chat-shell,
+    .messages-standard-page.messaging-shell {
+        height: auto;
+        min-height: 0;
+        grid-template-columns: 1fr;
+        overflow: visible;
+    }
+
+    .messages-standard-page .chat-sidebar,
+    .messages-standard-page .conversation-sidebar,
+    .messages-standard-page .message-inbox {
+        max-height: 330px;
+        border-right: 0;
+        border-bottom: 1px solid var(--messages-line);
+    }
+
+    .messages-standard-page .chat-main,
+    .messages-standard-page .chat-pane,
+    .messages-standard-page .message-thread {
+        min-height: 620px;
+    }
+
+    .messages-standard-details {
+        display: none;
+    }
+}

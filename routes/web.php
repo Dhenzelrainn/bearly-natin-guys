@@ -1,40 +1,49 @@
 <?php
 
-use App\Http\Controllers\Auth\BearlyAuthController;
-use App\Http\Controllers\Auth\EmailVerificationController;
 use App\Http\Controllers\AccountApprovalController;
-use App\Http\Controllers\AdminController;
-use App\Http\Controllers\AdminRegistrationController;
-use App\Http\Controllers\AdminRoleApplicationController;
-use App\Http\Controllers\BuyerCheckoutController;
 use App\Http\Controllers\AdminAnnouncementController;
 use App\Http\Controllers\AdminAuditLogController;
 use App\Http\Controllers\AdminCommerceController;
 use App\Http\Controllers\AdminComplianceController;
+use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AdminDashboardController;
 use App\Http\Controllers\AdminDisputeController;
 use App\Http\Controllers\AdminFinanceController;
 use App\Http\Controllers\AdminFulfillmentController;
 use App\Http\Controllers\AdminMessageController;
+use App\Http\Controllers\AdminPolicyController;
+use App\Http\Controllers\AdminRegistrationController;
 use App\Http\Controllers\AdminReturnRefundController;
+use App\Http\Controllers\AdminRoleApplicationController;
 use App\Http\Controllers\AdminSellerPayoutController;
+use App\Http\Controllers\AdminSupportTicketController;
 use App\Http\Controllers\AdminUserController;
+use App\Http\Controllers\AnnouncementController;
 use App\Http\Controllers\ApplicationDocumentController;
+use App\Http\Controllers\Auth\BearlyAuthController;
+use App\Http\Controllers\Auth\EmailVerificationController;
+use App\Http\Controllers\BuyerCheckoutController;
 use App\Http\Controllers\BuyerController;
+use App\Http\Controllers\BuyerDisputeController;
+use App\Http\Controllers\BuyerMessageController;
 use App\Http\Controllers\BuyerReturnController;
 use App\Http\Controllers\BuyerReviewController;
-use App\Http\Controllers\LogisticsController;
+use App\Http\Controllers\ContactController;
+use App\Http\Controllers\DisputeParticipantController;
 use App\Http\Controllers\LogisticsCashController;
+use App\Http\Controllers\LogisticsController;
+use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PostalCodeController;
 use App\Http\Controllers\ProductComplianceController;
 use App\Http\Controllers\PsgcController;
-use App\Http\Controllers\RiderController;
 use App\Http\Controllers\RiderCashController;
+use App\Http\Controllers\RiderController;
 use App\Http\Controllers\SellerController;
+use App\Http\Controllers\SellerMessageController;
 use App\Http\Controllers\SellerProductController;
 use App\Http\Controllers\SellerWalletController;
-use App\Http\Controllers\SellerWorkflowController;
 use App\Http\Controllers\SellerWaybillController;
+use App\Http\Controllers\SellerWorkflowController;
 use App\Http\Controllers\ShippingRateController;
 use App\Http\Controllers\WaybillScanController;
 use Illuminate\Support\Facades\Route;
@@ -54,6 +63,16 @@ Route::view('/about', 'landing-page.about.about')
 
 Route::view('/contact', 'landing-page.contact.contact')
     ->name('contact');
+
+Route::post('/contact', [ContactController::class, 'store'])
+    ->middleware('throttle:10,1')
+    ->name('contact.store');
+
+Route::middleware('auth')->get(
+    '/disputes/evidence/{evidence}/download',
+    [DisputeParticipantController::class, 'downloadEvidence']
+)->whereNumber('evidence')
+    ->name('disputes.evidence.download');
 
 /*
 |--------------------------------------------------------------------------
@@ -135,6 +154,38 @@ Route::prefix('api/psgc')
 
 /*
 |--------------------------------------------------------------------------
+| Notifications
+|--------------------------------------------------------------------------
+|
+| Shared, user-scoped notification history and preferences. Every route
+| reads and writes only the authenticated user's own records.
+|
+*/
+
+Route::middleware('auth')->prefix('notifications')->name('notifications.')->group(function () {
+    Route::get('/', [NotificationController::class, 'index'])->name('index');
+    Route::get('/center', [NotificationController::class, 'center'])
+        ->middleware('role:buyer,seller,admin,logistics,rider')
+        ->name('center');
+    Route::get('/preferences', [NotificationController::class, 'preferences'])->name('preferences');
+    Route::post('/preferences', [NotificationController::class, 'updatePreferences'])->name('preferences.update');
+    Route::post('/read-all', [NotificationController::class, 'readAll'])->name('read-all');
+    Route::post('/{notification}/read', [NotificationController::class, 'read'])->name('read');
+});
+
+Route::get('/announcements/{announcement}', [AnnouncementController::class, 'show'])
+    ->middleware('auth')
+    ->whereNumber('announcement')
+    ->name('announcements.show');
+
+Route::get('/announcements/{announcement}/media/{media}', [AnnouncementController::class, 'media'])
+    ->middleware('auth')
+    ->whereNumber('announcement')
+    ->whereNumber('media')
+    ->name('announcements.media');
+
+/*
+|--------------------------------------------------------------------------
 | Buyer
 |--------------------------------------------------------------------------
 |
@@ -169,6 +220,18 @@ Route::middleware(['auth', 'role:buyer'])->group(function () {
 
     Route::get('/profile/purchases/data', [BuyerController::class, 'purchaseData'])
         ->name('buyer.purchases.data');
+
+    Route::get('/profile/seller-orders/{sellerOrder}/dispute', [BuyerDisputeController::class, 'create'])
+        ->whereNumber('sellerOrder')
+        ->name('buyer.disputes.create');
+
+    Route::post('/profile/seller-orders/{sellerOrder}/dispute', [BuyerDisputeController::class, 'store'])
+        ->whereNumber('sellerOrder')
+        ->name('buyer.disputes.store');
+
+    Route::get('/profile/disputes/{dispute}', [BuyerDisputeController::class, 'show'])
+        ->whereNumber('dispute')
+        ->name('buyer.disputes.show');
 
     Route::get('/profile/seller-orders/{sellerOrder}/return', [BuyerReturnController::class, 'create'])
         ->whereNumber('sellerOrder')
@@ -236,8 +299,33 @@ Route::middleware(['auth', 'role:buyer'])->group(function () {
         ->whereNumber('order')
         ->name('checkout.confirm-receipt');
 
-    Route::view('/chat', 'buyer.chat')
+    Route::get('/chat', [BuyerController::class, 'chat'])
         ->name('buyer.chat');
+
+    Route::get('/chat/conversations', [BuyerMessageController::class, 'inbox'])
+        ->name('buyer.chat.inbox');
+
+    Route::post('/chat/product', [BuyerMessageController::class, 'startProduct'])
+        ->name('buyer.chat.product');
+
+    Route::post('/chat/store', [BuyerMessageController::class, 'startStore'])
+        ->name('buyer.chat.store');
+
+    Route::get('/chat/conversations/{conversation}/messages', [BuyerMessageController::class, 'thread'])
+        ->whereNumber('conversation')
+        ->name('buyer.chat.thread');
+
+    Route::post('/chat/conversations/{conversation}/messages', [BuyerMessageController::class, 'send'])
+        ->whereNumber('conversation')
+        ->name('buyer.chat.send');
+
+    Route::post('/chat/conversations/{conversation}/read', [BuyerMessageController::class, 'markRead'])
+        ->whereNumber('conversation')
+        ->name('buyer.chat.read');
+
+    Route::get('/chat/attachments/{attachment}', [BuyerMessageController::class, 'attachment'])
+        ->whereNumber('attachment')
+        ->name('buyer.chat.attachment');
 
     Route::view('/flash-deals', 'buyer.flash-deals')
         ->name('flash-deals');
@@ -427,6 +515,11 @@ Route::prefix('admin')
             [AdminDisputeController::class, 'downloadEvidence']
         )->name('disputes.evidence.download');
 
+        Route::get(
+            '/disputes/evidence/{evidence}/preview',
+            [AdminDisputeController::class, 'previewEvidence']
+        )->name('disputes.evidence.preview');
+
         /*
         |--------------------------------------------------------------------------
         | Returns & Refunds
@@ -585,6 +678,9 @@ Route::prefix('admin')
         Route::get('/reports', [AdminFinanceController::class, 'reports'])
             ->name('reports');
 
+        Route::get('/reports/export', [AdminFinanceController::class, 'exportReports'])
+            ->name('reports.export');
+
         /*
         |--------------------------------------------------------------------------
         | Fulfillment
@@ -607,6 +703,17 @@ Route::prefix('admin')
 
         Route::get('/messages', [AdminController::class, 'messages'])
             ->name('messages');
+
+        Route::get(
+            '/messages/inbox',
+            [AdminMessageController::class, 'inbox']
+        )->name('messages.inbox');
+
+        Route::get(
+            '/messages/{conversation}/messages',
+            [AdminMessageController::class, 'thread']
+        )->whereNumber('conversation')
+            ->name('messages.thread');
 
         Route::post(
             '/messages/conversations',
@@ -660,6 +767,22 @@ Route::prefix('admin')
             [AdminAnnouncementController::class, 'destroy']
         )->name('announcements.destroy');
 
+        Route::get(
+            '/announcements/{announcement}/media/{media}',
+            [AnnouncementController::class, 'media']
+        )->whereNumber('announcement')
+            ->whereNumber('media')
+            ->name('announcements.media');
+
+        /*
+        |--------------------------------------------------------------------------
+        | Support Tickets
+        |--------------------------------------------------------------------------
+        */
+
+        Route::get('/support-tickets', [AdminSupportTicketController::class, 'index'])
+            ->name('support-tickets');
+
         /*
         |--------------------------------------------------------------------------
         | Settings / Policies
@@ -676,8 +799,20 @@ Route::prefix('admin')
         Route::put('/shipping-rates', [ShippingRateController::class, 'update'])
             ->name('shipping-rates.update');
 
-        Route::get('/policies', [AdminController::class, 'policies'])
+        Route::get('/policies', [AdminPolicyController::class, 'index'])
             ->name('policies');
+
+        Route::post('/policies', [AdminPolicyController::class, 'store'])
+            ->name('policies.store');
+
+        Route::patch('/policies/{policy}', [AdminPolicyController::class, 'update'])
+            ->name('policies.update');
+
+        Route::post('/policies/{policy}/publish', [AdminPolicyController::class, 'publish'])
+            ->name('policies.publish');
+
+        Route::post('/policies/{policy}/archive', [AdminPolicyController::class, 'archive'])
+            ->name('policies.archive');
 
         /*
         |--------------------------------------------------------------------------
@@ -697,6 +832,9 @@ Route::prefix('admin')
 
         Route::get('/account', [AdminController::class, 'account'])
             ->name('account');
+
+        Route::patch('/account/password', [AdminController::class, 'updatePassword'])
+            ->name('account.password');
 
         /*
         |--------------------------------------------------------------------------
@@ -845,6 +983,9 @@ Route::prefix('seller')
         Route::post('/store', [SellerController::class, 'saveStore'])
             ->name('store.save');
 
+        Route::patch('/store/pickup-address/coordinates', [SellerController::class, 'updatePickupCoordinates'])
+            ->name('store.pickup.coordinates');
+
         Route::get('/store/appearance', [SellerController::class, 'storeAppearance'])
             ->name('store.appearance');
 
@@ -920,6 +1061,25 @@ Route::prefix('seller')
         Route::get('/support/messages', [SellerController::class, 'messages'])
             ->name('support.messages');
 
+        Route::get('/support/messages/conversations', [SellerMessageController::class, 'inbox'])
+            ->name('support.messages.inbox');
+
+        Route::get('/support/messages/conversations/{conversation}/messages', [SellerMessageController::class, 'thread'])
+            ->whereNumber('conversation')
+            ->name('support.messages.thread');
+
+        Route::post('/support/messages/conversations/{conversation}/messages', [SellerMessageController::class, 'send'])
+            ->whereNumber('conversation')
+            ->name('support.messages.send');
+
+        Route::post('/support/messages/conversations/{conversation}/read', [SellerMessageController::class, 'markRead'])
+            ->whereNumber('conversation')
+            ->name('support.messages.read');
+
+        Route::get('/support/messages/attachments/{attachment}', [SellerMessageController::class, 'attachment'])
+            ->whereNumber('attachment')
+            ->name('support.messages.attachment');
+
         Route::get('/support/feedback', [SellerController::class, 'customerFeedback'])
             ->name('support.feedback');
 
@@ -930,8 +1090,14 @@ Route::prefix('seller')
         Route::get('/settings/account', [SellerController::class, 'account'])
             ->name('settings.account');
 
+        Route::patch('/settings/account', [SellerController::class, 'updateAccount'])
+            ->name('settings.account.update');
+
         Route::get('/settings/security', [SellerController::class, 'security'])
             ->name('settings.security');
+
+        Route::patch('/settings/security/password', [SellerController::class, 'updatePassword'])
+            ->name('settings.security.password');
 
         Route::get('/settings/notifications', [SellerController::class, 'notificationSettings'])
             ->name('settings.notifications');
@@ -941,8 +1107,7 @@ Route::prefix('seller')
 |--------------------------------------------------------------------------
 | Logistics
 |--------------------------------------------------------------------------
-*/
-
+ */
 Route::prefix('logistics')->name('logistics.')->group(function () {
     // Public Logistics pages.
     Route::get('/', [LogisticsController::class, 'landing'])
@@ -1087,10 +1252,13 @@ Route::prefix('logistics')->name('logistics.')->group(function () {
         Route::post('/messages/conversations', [LogisticsController::class, 'storeConversation'])
             ->name('messages.conversations.store');
 
-        Route::get('/messages/attachments/{attachment}', [LogisticsController::class, 'downloadMessageAttachment',])
+        Route::get('/messages/attachments/{attachment}', [LogisticsController::class, 'downloadMessageAttachment'])
             ->name('messages.attachments.download');
 
-        Route::post('/messages/{conversation}/read', [LogisticsController::class, 'markMessageConversationRead',])
+        Route::get('/messages/{conversation}/messages', [LogisticsController::class, 'messageThread'])
+            ->name('messages.thread');
+
+        Route::post('/messages/{conversation}/read', [LogisticsController::class, 'markMessageConversationRead'])
             ->name('messages.read');
 
         Route::post('/messages/{conversation}', [LogisticsController::class, 'sendMessage'])
@@ -1242,6 +1410,22 @@ Route::prefix('rider')->name('rider.')->group(function () {
 
         Route::get('/messages', [RiderController::class, 'messages'])
             ->name('messages.index');
+
+        Route::get('/messages/attachments/{attachment}', [RiderController::class, 'downloadMessageAttachment'])
+            ->whereNumber('attachment')
+            ->name('messages.attachments.download');
+
+        Route::get('/messages/{conversation}/messages', [RiderController::class, 'messageThread'])
+            ->whereNumber('conversation')
+            ->name('messages.thread');
+
+        Route::post('/messages/{conversation}/read', [RiderController::class, 'markMessageConversationRead'])
+            ->whereNumber('conversation')
+            ->name('messages.read');
+
+        Route::post('/messages/{conversation}', [RiderController::class, 'sendMessage'])
+            ->whereNumber('conversation')
+            ->name('messages.send');
 
         Route::patch('/account/profile', [RiderController::class, 'updateProfile'])
             ->name('profile.update');

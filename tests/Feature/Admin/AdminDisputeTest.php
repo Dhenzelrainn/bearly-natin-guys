@@ -772,6 +772,41 @@ class AdminDisputeTest extends TestCase
             ->assertNotFound();
     }
 
+    public function test_admin_can_preview_image_dispute_evidence(): void
+    {
+        Storage::fake('local');
+
+        $path = 'dispute-evidence/preview.png';
+        Storage::disk('local')->put(
+            $path,
+            base64_decode(
+                'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+                true,
+            ),
+        );
+
+        $evidence = DisputeEvidence::query()->create([
+            'dispute_id' => $this->dispute->id,
+            'uploaded_by' => $this->buyer->id,
+            'type' => 'image',
+            'file_path' => $path,
+            'original_name' => 'preview.png',
+            'description' => 'Preview image',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.disputes.evidence.preview', $evidence))
+            ->assertOk()
+            ->assertHeader('Content-Type', 'image/png');
+
+        $this->assertDatabaseHas('audit_logs', [
+            'actor_user_id' => $this->admin->id,
+            'action' => 'dispute.evidence_previewed',
+            'module' => 'Compliance & Disputes',
+            'auditable_id' => $this->dispute->id,
+        ]);
+    }
+
     public function test_non_admin_cannot_download_dispute_evidence(): void
     {
         Storage::fake('local');

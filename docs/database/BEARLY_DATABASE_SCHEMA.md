@@ -668,6 +668,8 @@ Conventions: money integers are centavos; timestamps are UTC at storage boundari
 | `seller_order_id` | `bigint unsigned` | NO | — | MUL |
 | `product_id` | `bigint unsigned` | YES | — | MUL |
 | `product_variant_id` | `bigint unsigned` | YES | — | MUL |
+| `category_id_snapshot` | `bigint unsigned` | YES | — | MUL |
+| `category_name_snapshot` | `varchar(120)` | YES | — |  |
 | `product_name` | `varchar(180)` | NO | — |  |
 | `variant_name` | `varchar(140)` | NO | — |  |
 | `sku` | `varchar(80)` | NO | — |  |
@@ -685,10 +687,12 @@ Conventions: money integers are centavos; timestamps are UTC at storage boundari
 
 - `product_id` → `products.id`; update NO ACTION, delete SET NULL.
 - `product_variant_id` → `product_variants.id`; update NO ACTION, delete SET NULL.
+- `category_id_snapshot` → `categories.id`; update NO ACTION, delete SET NULL.
 - `seller_order_id` → `seller_orders.id`; update NO ACTION, delete RESTRICT.
 
 **Indexes**
 
+- `order_items_category_id_snapshot_foreign` (category_id_snapshot) — index.
 - `order_items_product_id_foreign` (product_id) — index.
 - `order_items_product_variant_id_foreign` (product_variant_id) — index.
 - `order_items_seller_order_id_foreign` (seller_order_id) — index.

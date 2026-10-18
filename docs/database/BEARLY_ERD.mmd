@@ -318,6 +318,8 @@ erDiagram
         bigint seller_order_id
         bigint product_id
         bigint product_variant_id
+        bigint category_id_snapshot
+        varchar category_name_snapshot
         varchar product_name
         varchar variant_name
         varchar sku
@@ -1199,6 +1201,7 @@ erDiagram
     users ||--o{ messages : sender_id
     products ||--o{ order_items : product_id
     product_variants ||--o{ order_items : product_variant_id
+    categories ||--o{ order_items : category_id_snapshot
     seller_orders ||--|{ order_items : seller_order_id
     users ||--|{ orders : buyer_id
     addresses ||--o{ orders : shipping_address_id

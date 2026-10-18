@@ -14,6 +14,7 @@ use App\Models\RefundCashPayoutEvent;
 use App\Models\RiderProfile;
 use App\Models\Shipment;
 use App\Models\User;
+use App\Notifications\WorkflowNotification;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -30,6 +31,7 @@ class RefundCashPayoutService
     public function __construct(
         private readonly AuditService $audit,
         private readonly ReturnRefundService $returns,
+        private readonly NotificationService $notifications,
     ) {}
 
     /** @return Collection<int, Refund> */
@@ -141,6 +143,8 @@ class RefundCashPayoutService
                 request: $request,
             );
 
+            $this->notifyLogisticsOfCashIssue($payout, $provider);
+
             return $payout->fresh(['refund', 'logisticsProfile', 'events']);
         }, attempts: 3);
     }
@@ -237,6 +241,40 @@ class RefundCashPayoutService
 
             return $payout->fresh(['riderProfile.user', 'events']);
         }, attempts: 3);
+    }
+
+    private function notifyLogisticsOfCashIssue(RefundCashPayout $payout, LogisticsProfile $provider): void
+    {
+        $providerUser = $provider->user;
+
+        if (! $providerUser) {
+            return;
+        }
+
+        $amount = '₱'.number_format(((int) $payout->amount_minor) / 100, 2);
+
+        $this->notifications->sendAfterCommit($providerUser, new WorkflowNotification(
+            eventKey: 'logistics_refund_cash_issued',
+            title: 'Refund cash issued to your facility',
+            body: "{$payout->payout_no} ({$amount}) was handed to your facility. Acknowledge receipt to continue the return.",
+            actionUrl: route('logistics.cash.index'),
+            type: 'warning',
+            meta: ['refund_cash_payout_id' => (int) $payout->id],
+        ));
+    }
+
+    private function notifyRiderOfCashAssignment(RefundCashPayout $payout, User $riderUser, string $reference): void
+    {
+        $amount = '₱'.number_format(((int) $payout->amount_minor) / 100, 2);
+
+        $this->notifications->sendAfterCommit($riderUser, new WorkflowNotification(
+            eventKey: 'rider_refund_cash_assigned',
+            title: 'Refund cash assignment',
+            body: "You were assigned {$payout->payout_no} ({$amount}) for delivery to the buyer under acknowledgment {$reference}.",
+            actionUrl: route('rider.refund-cash.index'),
+            type: 'warning',
+            meta: ['refund_cash_payout_id' => (int) $payout->id],
+        ));
     }
 
     public function prepareAcknowledgmentForLogistics(User $user, int $payoutId): RefundCashPayout

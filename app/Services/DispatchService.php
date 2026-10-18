@@ -10,6 +10,7 @@ use App\Models\Parcel;
 use App\Models\RiderProfile;
 use App\Models\SortingZone;
 use App\Models\User;
+use App\Notifications\WorkflowNotification;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -18,7 +19,8 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 class DispatchService
 {
     public function __construct(
-        private readonly SortingZoneMatcher $zoneMatcher
+        private readonly SortingZoneMatcher $zoneMatcher,
+        private readonly NotificationService $notifications,
     ) {}
 
     /**
@@ -337,6 +339,8 @@ class DispatchService
                 ]);
             }
 
+            $this->notifyRiderOfBatch($batch, $rider, $parcels->count());
+
             return $batch->fresh([
                 'sortingCenter',
                 'sortingZone',
@@ -344,6 +348,26 @@ class DispatchService
                 'parcels.shipment',
             ]);
         }, 3);
+    }
+
+    private function notifyRiderOfBatch(DispatchBatch $batch, RiderProfile $rider, int $parcelCount): void
+    {
+        $riderUser = $rider->user;
+
+        if (! $riderUser) {
+            return;
+        }
+
+        $manifest = $parcelCount === 1 ? '1 parcel' : "{$parcelCount} parcels";
+
+        $this->notifications->sendAfterCommit($riderUser, new WorkflowNotification(
+            eventKey: 'rider_dispatch_assigned',
+            title: 'New delivery batch',
+            body: "Batch {$batch->batch_no} with {$manifest} was dispatched to you.",
+            actionUrl: route('rider.dashboard.deliveries'),
+            type: 'info',
+            meta: ['dispatch_batch_id' => (int) $batch->id],
+        ));
     }
 
     private function generateBatchNumber(): string

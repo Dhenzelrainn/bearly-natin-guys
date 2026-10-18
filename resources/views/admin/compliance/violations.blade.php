@@ -434,6 +434,13 @@
                     <div class="detail-note admin-violation-excerpt">
                         <span>Detected text</span>
                         <p>{{ $violation['detected_excerpt'] }}</p>
+                        @if ($violation['content_mismatch'])
+                            <small class="admin-violation-excerpt-note">
+                                Both categories are the Seller's registered category — Sellers cannot list outside it.
+                                This hold comes from the listing text matching the configured category-content
+                                mismatch rule, not from a category change. Review the listing wording before deciding.
+                            </small>
+                        @endif
                     </div>
                 @endif
 

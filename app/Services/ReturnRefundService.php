@@ -29,6 +29,7 @@ use App\Models\Shipment;
 use App\Models\Store;
 use App\Models\User;
 use App\Models\Waybill;
+use App\Notifications\WorkflowNotification;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -47,6 +48,7 @@ class ReturnRefundService
     public function __construct(
         private readonly AuditService $audit,
         private readonly CommissionLedgerService $commissionLedger,
+        private readonly NotificationService $notifications,
     ) {}
 
     /** @return array<string, mixed> */
@@ -268,6 +270,8 @@ class ReturnRefundService
 
                 $this->storeEvidence($returnRequest, $buyer, $evidenceFiles, 'buyer', $storedPaths);
                 $this->event($returnRequest, $buyer, 'request_submitted', null, ReturnRequestStatus::AwaitingSeller->value, $buyerNote);
+                $this->notifyAdminsOfReturn($returnRequest, $order);
+                $this->notifySellerOfReturn($returnRequest, $order, $sellerOrder, $buyer);
 
                 return $returnRequest->fresh(['items.orderItem', 'evidence', 'events']);
             }, attempts: 3);
@@ -522,6 +526,13 @@ class ReturnRefundService
                 request: $request,
             );
 
+            $this->notifyBuyerOfReturnUpdate(
+                $returnRequest,
+                'Return approved',
+                "Your return {$returnRequest->return_no} was approved.",
+                'success',
+            );
+
             return $returnRequest->fresh(['refunds', 'returnShipment.waybill', 'events']);
         }, attempts: 3);
     }
@@ -618,8 +629,33 @@ class ReturnRefundService
                 request: $request,
             );
 
+            $this->notifyBuyerOfReturnUpdate(
+                $returnRequest,
+                'Return request rejected',
+                "Your return {$returnRequest->return_no} was rejected. Reason: ".trim($reason).'.',
+                'warning',
+            );
+
             return $returnRequest->fresh(['events']);
         }, attempts: 3);
+    }
+
+    private function notifyBuyerOfReturnUpdate(ReturnRequest $returnRequest, string $title, string $body, string $type = 'info'): void
+    {
+        $buyer = $returnRequest->buyer;
+
+        if (! $buyer) {
+            return;
+        }
+
+        $this->notifications->sendAfterCommit($buyer, new WorkflowNotification(
+            eventKey: 'buyer_return_updates',
+            title: $title,
+            body: $body,
+            actionUrl: route('buyer.returns.show', $returnRequest->id),
+            type: $type,
+            meta: ['return_request_id' => (int) $returnRequest->id],
+        ));
     }
 
     public function adminRequestEvidence(User $admin, int $returnRequestId, string $note, string $requestedFrom, Request $request): ReturnRequest
@@ -670,6 +706,12 @@ class ReturnRefundService
         $fromStatus = $returnRequest->status;
         $returnRequest->update(['status' => ReturnRequestStatus::ReturnInTransit->value]);
         $this->event($returnRequest, $actor, 'return_picked_up', $fromStatus, ReturnRequestStatus::ReturnInTransit->value, 'The Logistics provider assigned to the original shipment collected the return parcel.');
+
+        $this->notifyBuyerOfReturnUpdate(
+            $returnRequest,
+            'Return parcel collected',
+            "The Rider collected your return parcel for {$returnRequest->return_no}.",
+        );
     }
 
     public function recordReturnDelivered(int $shipmentId, User $actor): void
@@ -688,6 +730,12 @@ class ReturnRefundService
             'resolution' => 'Return parcel was delivered to the Seller. Seller inspection is required before payout.',
         ]);
         $this->event($returnRequest, $actor, 'return_delivered_to_seller', $fromStatus, ReturnRequestStatus::AwaitingInspection->value, 'Rider recorded delivery to the Seller.');
+
+        $this->notifyBuyerOfReturnUpdate(
+            $returnRequest,
+            'Return delivered to Seller',
+            "{$returnRequest->return_no} was delivered to the Seller for inspection.",
+        );
     }
 
     /** @param array<int, array{condition_code: string, resolution: string}> $dispositions */
@@ -974,6 +1022,15 @@ class ReturnRefundService
                     request: $request,
                 );
 
+                if ($refund->returnRequest) {
+                    $this->notifyBuyerOfReturnUpdate(
+                        $refund->returnRequest,
+                        'Refund sent',
+                        "Refund {$refund->refund_no} was recorded as paid via {$method}.",
+                        'success',
+                    );
+                }
+
                 return $refund->fresh(['returnRequest', 'payment', 'sellerTransactions', 'commissions', 'sellerRecovery.events.sellerPayout']);
             }, attempts: 3);
         } catch (Throwable $exception) {
@@ -1214,6 +1271,57 @@ class ReturnRefundService
         ];
     }
 
+    private function notifyAdminsOfReturn(ReturnRequest $returnRequest, Order $order): void
+    {
+        $this->notifications->sendManyAfterCommit(
+            $this->notifications->admins(),
+            new WorkflowNotification(
+                eventKey: 'admin_return_submitted',
+                title: 'New return request',
+                body: "Return {$returnRequest->return_no} was filed for order {$order->order_no} and needs review.",
+                actionUrl: route('admin.compliance.returns-refunds'),
+                type: 'warning',
+                meta: ['return_request_id' => (int) $returnRequest->id],
+            ),
+        );
+    }
+
+    private function notifySellerOfReturn(ReturnRequest $returnRequest, Order $order, SellerOrder $sellerOrder, User $buyer): void
+    {
+        $sellerUser = $sellerOrder->store?->sellerProfile?->user;
+
+        if (! $sellerUser) {
+            return;
+        }
+
+        $this->notifications->sendAfterCommit($sellerUser, new WorkflowNotification(
+            eventKey: 'seller_return_updates',
+            title: 'New return request',
+            body: "{$buyer->name} filed return {$returnRequest->return_no} for order {$order->order_no}. Review and respond before the case deadline.",
+            actionUrl: route('seller.orders.returns'),
+            type: 'warning',
+            meta: ['return_request_id' => (int) $returnRequest->id, 'seller_order_id' => (int) $sellerOrder->id],
+        ));
+    }
+
+    private function notifyProviderOfReturnPickup(PickupRequest $pickupRequest, ReturnRequest $returnRequest): void
+    {
+        $providerUser = $pickupRequest->logisticsProfile?->user;
+
+        if (! $providerUser) {
+            return;
+        }
+
+        $this->notifications->sendAfterCommit($providerUser, new WorkflowNotification(
+            eventKey: 'logistics_pickup_requested',
+            title: 'New return pickup scheduled',
+            body: "Return pickup {$pickupRequest->pickup_no} for case {$returnRequest->return_no} is scheduled with your facility.",
+            actionUrl: route('logistics.pickups.index'),
+            type: 'info',
+            meta: ['pickup_request_id' => (int) $pickupRequest->id],
+        ));
+    }
+
     private function createReturnShipment(ReturnRequest $returnRequest, Order $order, Payment $payment, User $admin): PickupRequest
     {
         $store = Store::query()
@@ -1316,6 +1424,8 @@ class ReturnRefundService
             'return_pickup_window' => '10:00-12:00',
             'seller_instructions' => 'Buyer return pickup. No return-shipping fee is collected in this phase.',
         ]);
+
+        $this->notifyProviderOfReturnPickup($pickupRequest, $returnRequest);
 
         $shipment = Shipment::query()->create([
             'shipment_no' => 'SHP-'.Str::upper((string) Str::ulid()),

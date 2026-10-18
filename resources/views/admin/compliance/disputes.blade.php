@@ -14,8 +14,10 @@
         'id' => 'No open cases',
         'subject' => 'Resolution queue is clear',
         'buyer' => '—',
-        'seller' => '—',
-        'courier' => '—',
+         'seller' => '—',
+         'courier' => 'No active case',
+         'rider' => 'No active case',
+         'logistics' => 'No active case',
         'amount' => '—',
         'priority' => 'Normal',
         'status' => 'Open',
@@ -301,12 +303,16 @@
 
 
                 <div>
-                    <span>
-                        Rider
-                    </span>
+                    <span>Rider</span>
+                    <strong data-dispute-rider>
+                        {{ $active['rider'] ?? $active['courier'] ?? 'Unavailable' }}
+                    </strong>
+                </div>
 
-                    <strong data-dispute-courier>
-                        {{ $active['courier'] }}
+                <div>
+                    <span>Logistics</span>
+                    <strong data-dispute-logistics>
+                        {{ $active['logistics'] ?? 'Unavailable' }}
                     </strong>
                 </div>
 
@@ -371,19 +377,19 @@
 
                         <button
                             type="button"
-                            class="evidence-card"
+                            class="evidence-card{{ $item['preview_url'] ? ' has-preview' : '' }}"
                             data-evidence-id="{{ $item['id'] }}"
                         >
 
                             <span>
-
-                                <i
-                                    data-lucide="{{
-                                        $item['type'] === 'Image'
-                                            ? 'image'
-                                            : 'file-text'
-                                    }}"
-                                ></i>
+                                @if ($item['preview_url'])
+                                    <img
+                                        src="{{ $item['preview_url'] }}"
+                                        alt="Preview of {{ $item['label'] }}"
+                                    >
+                                @else
+                                    <i data-lucide="file-text"></i>
+                                @endif
 
                             </span>
 
@@ -605,23 +611,18 @@
 
 
                     <div>
-
-                        <small>
-                            Rider
-                        </small>
-
-                        <strong data-party-courier>
-                            {{ $active['courier'] }}
+                        <small>Rider</small>
+                        <strong data-party-rider>
+                            {{ $active['rider'] ?? $active['courier'] ?? 'Unavailable' }}
                         </strong>
-
                     </div>
 
 
                     <button
                         type="button"
                         class="button button-ghost button-small"
-                        data-party-message="courier"
-                        @if (! $hasDisputes) disabled @endif
+                        data-party-message="rider"
+                        @if (! $hasDisputes || empty($active['rider_user_id'])) disabled @endif
                     >
                         <i data-lucide="message-circle"></i>
 
@@ -630,14 +631,35 @@
 
                 </div>
 
+                <div class="party-card">
+                    <span class="party-icon">
+                        <i data-lucide="warehouse"></i>
+                    </span>
+
+                    <div>
+                        <small>Logistics</small>
+                        <strong data-party-logistics>
+                            {{ $active['logistics'] ?? 'Unavailable' }}
+                        </strong>
+                    </div>
+
+                    <button
+                        type="button"
+                        class="button button-ghost button-small"
+                        data-party-message="logistics"
+                        @if (! $hasDisputes || empty($active['logistics_user_id'])) disabled @endif
+                    >
+                        <i data-lucide="message-circle"></i>
+                        Message
+                    </button>
+                </div>
+
             </div>
 
 
             <label class="form-field">
 
-                <span>
-                    Internal resolution note
-                </span>
+                <span>Admin-only internal note</span>
 
                 <textarea
                     rows="4"
@@ -646,6 +668,25 @@
                     @if (! $hasDisputes) disabled @endif
                 >{{ $active['internalNote'] ?? '' }}</textarea>
 
+                <small class="dispute-visibility-help">
+                    Save note keeps this text private to Admin. Send case update
+                    shares it only with active case participants.
+                </small>
+
+            </label>
+
+            <label class="form-field">
+                <span>Participant-visible case update</span>
+                <textarea
+                    rows="4"
+                    placeholder="Write the message that active case participants should receive..."
+                    data-dispute-update
+                    @if (! $hasDisputes) disabled @endif
+                ></textarea>
+                <small class="dispute-visibility-help">
+                    This message is sent only to active participants and recorded
+                    in the participant update history.
+                </small>
             </label>
 
 
@@ -830,8 +871,11 @@
                 'id' => $dispute['id'],
                 'subject' => $dispute['subject'],
                 'buyer' => $dispute['buyer'],
-                'seller' => $dispute['seller'],
-                'courier' => $dispute['courier'],
+                 'seller' => $dispute['seller'],
+                 'courier' => $dispute['courier'],
+
+                 'rider' => $dispute['rider'] ?? $dispute['courier'] ?? 'Unavailable',
+                 'logistics' => $dispute['logistics'] ?? 'Unavailable',
 
                 'buyer_user_id' =>
                     $dispute['buyer_user_id'] ?? null,

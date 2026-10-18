@@ -1,6 +1,19 @@
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
+function coordinatePair(latitude, longitude) {
+    const parse = (value, minimum, maximum) => {
+        if (value === null || value === undefined || String(value).trim() === '') return null;
+        const number = Number(value);
+        return Number.isFinite(number) && number >= minimum && number <= maximum ? number : null;
+    };
+
+    const lat = parse(latitude, -90, 90);
+    const lng = parse(longitude, -180, 180);
+
+    return lat === null || lng === null ? null : [lat, lng];
+}
+
 export function createAddressMapPicker({
     element,
     latitudeInput,
@@ -13,24 +26,33 @@ export function createAddressMapPicker({
     if (!element || !latitudeInput || !longitudeInput) return null;
 
     const defaultCenter = [12.8797, 121.7740];
-    const hasCoordinates = Number.isFinite(Number(latitude)) && Number.isFinite(Number(longitude));
+    const initialCoordinates = coordinatePair(latitude, longitude);
     const map = L.map(element, { scrollWheelZoom: false }).setView(
-        hasCoordinates ? [Number(latitude), Number(longitude)] : defaultCenter,
-        hasCoordinates ? 16 : 6,
+        initialCoordinates || defaultCenter,
+        initialCoordinates ? 16 : 6,
     );
-
-    L.tileLayer(element.dataset.mapTileUrl, {
-        attribution: element.dataset.mapAttribution || '&copy; OpenStreetMap contributors',
-        maxZoom: 19,
-    }).addTo(map);
-
-    let marker = null;
-
-    if (!hasCoordinates) clearButton?.setAttribute('hidden', 'hidden');
 
     const setStatus = (message) => {
         if (status) status.textContent = message;
     };
+
+    const tileUrl = element.dataset.mapTileUrl?.trim();
+    if (tileUrl) {
+        const tileLayer = L.tileLayer(tileUrl, {
+            attribution: element.dataset.mapAttribution || '&copy; OpenStreetMap contributors',
+            maxZoom: 19,
+        });
+        tileLayer.on('tileerror', () => {
+            setStatus('Map tiles could not load. Check MAPTILER_API_KEY, the allowed origin, and your internet connection.');
+        });
+        tileLayer.addTo(map);
+    } else {
+        setStatus('Map tiles are not configured. Set MAPS_TILE_URL in your .env file.');
+    }
+
+    let marker = null;
+
+    if (!initialCoordinates) clearButton?.setAttribute('hidden', 'hidden');
 
     const setPin = (latlng, announce = true) => {
         const lat = Number(latlng.lat).toFixed(7);
@@ -56,7 +78,10 @@ export function createAddressMapPicker({
         setStatus('No coordinates selected. Your validated address will still be saved.');
     };
 
-    if (hasCoordinates) setPin({ lat: Number(latitude), lng: Number(longitude) }, false);
+    if (initialCoordinates) {
+        setPin({ lat: initialCoordinates[0], lng: initialCoordinates[1] }, false);
+    }
+
     map.on('click', event => setPin(event.latlng));
     clearButton?.addEventListener('click', clearPin);
 
@@ -64,14 +89,18 @@ export function createAddressMapPicker({
         map,
         reset: (lat = null, lng = null) => {
             clearPin();
-            if (Number.isFinite(Number(lat)) && Number.isFinite(Number(lng))) {
-                map.setView([Number(lat), Number(lng)], 16);
-                setPin({ lat: Number(lat), lng: Number(lng) }, false);
+            const coordinates = coordinatePair(lat, lng);
+            if (coordinates) {
+                map.setView(coordinates, 16);
+                setPin({ lat: coordinates[0], lng: coordinates[1] }, false);
             } else {
                 map.setView(defaultCenter, 6);
             }
             window.setTimeout(() => map.invalidateSize(), 0);
         },
-        coordinates: () => ({ latitude: latitudeInput.value || null, longitude: longitudeInput.value || null }),
+        coordinates: () => ({
+            latitude: latitudeInput.value || null,
+            longitude: longitudeInput.value || null,
+        }),
     };
 }

@@ -36,6 +36,7 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PostalCodeController;
 use App\Http\Controllers\ProductComplianceController;
 use App\Http\Controllers\PsgcController;
+use App\Http\Controllers\MapLocationController;
 use App\Http\Controllers\RiderCashController;
 use App\Http\Controllers\RiderController;
 use App\Http\Controllers\SellerController;
@@ -151,6 +152,10 @@ Route::prefix('api/psgc')
         Route::get('/cities/{cityCode}/barangays', [PsgcController::class, 'barangays'])
             ->name('psgc.barangays');
     });
+
+Route::get('/api/maps/reverse-geocode', [MapLocationController::class, 'reverseGeocode'])
+    ->middleware(['auth', 'throttle:12,1'])
+    ->name('maps.reverse-geocode');
 
 /*
 |--------------------------------------------------------------------------

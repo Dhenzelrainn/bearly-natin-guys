@@ -141,6 +141,11 @@ import { createAddressMapPicker } from './address-map-picker';
     latitudeInput: $('address-latitude'),
     longitudeInput: $('address-longitude'),
     clearButton: $('clear-address-pin'),
+    locationButton: $('use-current-location'),
+    reverseGeocodeUrl: $('address-map')?.dataset.reverseGeocodeUrl,
+    fields: {
+      street: $('street'), barangay: $('barangay'), city: $('city'), province: $('province'), postal: $('postal-code'),
+    },
     status: $('address-map-status'),
   });
 

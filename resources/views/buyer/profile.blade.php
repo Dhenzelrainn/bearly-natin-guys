@@ -128,6 +128,22 @@
             <span class="material-symbols-outlined">location_on</span><h2>No addresses yet</h2><p>Add a delivery address for checkout.</p>
             <button id="empty-add-address" type="button">Add Address</button>
         </div>
+        <div id="address-modal" class="address-editor" hidden>
+            <div class="address-dialog">
+                <div class="dialog-head"><h2 id="address-modal-title">New Address</h2><button id="close-address-modal" type="button" aria-label="Close">×</button></div>
+                <form id="address-form">
+                    <input id="address-editing-id" type="hidden">
+                    <div class="form-grid two"><label><span>Full Name</span><input id="address-full-name" required placeholder="Recipient name"></label><label><span>Phone Number</span><input id="address-phone-number" required placeholder="+63 900 000 0000"></label></div>
+                    <div class="form-grid"><label><span>Province</span><input id="address-province" required placeholder="Laguna"></label></div>
+                    <div class="form-grid two"><label><span>City / Municipality</span><input id="address-city" required placeholder="City / Municipality"></label><label><span>Barangay</span><input id="address-barangay" required placeholder="Barangay"></label></div>
+                    <div class="form-grid"><label><span>Postal Code</span><input id="address-postal-code" required placeholder="Postal Code"></label><label><span>Street Name, Building, House No.</span><input id="address-street" required placeholder="Street Name, Building, House No."></label></div>
+                    <div class="address-map-picker-section"><div class="address-map-picker-heading"><div><strong>Pin your location <span>(optional)</span></strong><small>Coordinates supplement your validated address and do not replace PSGC fields.</small></div><div class="address-map-picker-actions"><button id="use-current-location" type="button" class="address-map-location"><span class="material-symbols-outlined" aria-hidden="true">my_location</span>Use my current location</button><button id="clear-address-pin" type="button" class="address-map-clear" hidden>Clear pin</button></div></div><div id="address-map" class="address-map" data-map-tile-url="{{ config('maps.tile_url') }}" data-map-attribution="{{ config('maps.tile_attribution') }}" data-reverse-geocode-url="{{ route('maps.reverse-geocode') }}" aria-label="Address map pin picker"></div><p id="address-map-status" class="address-map-status" role="status">Click the map to place a pin, then save the address.</p><input id="address-latitude" type="hidden"><input id="address-longitude" type="hidden"></div>
+                    <div class="label-section">Label As:</div><div class="label-buttons"><button class="label-choice active" data-label="Home" type="button">Home</button><button class="label-choice" data-label="Work" type="button">Work</button></div>
+                    <label class="default-check"><input id="address-set-default" type="checkbox"><span></span>Set as Default Address</label>
+                    <div class="dialog-actions"><button id="cancel-address" class="cancel-btn" type="button">Cancel</button><button class="save-btn" type="submit">Save Address</button></div>
+                </form>
+            </div>
+        </div>
     </section>
 
     <section class="profile-card account-panel likes-panel" id="likes-panel" data-account-panel="likes" hidden>
@@ -339,22 +355,6 @@
 </div>
 <div id="review-toast" class="profile-toast">Review saved.</div>
 
-<div id="address-modal" class="address-modal" hidden>
- <div class="address-dialog">
-  <div class="dialog-head"><h2 id="address-modal-title">New Address</h2><button id="close-address-modal" type="button" aria-label="Close">×</button></div>
-  <form id="address-form">
-   <input id="address-editing-id" type="hidden">
-   <div class="form-grid two"><label><span>Full Name</span><input id="address-full-name" required placeholder="Recipient name"></label><label><span>Phone Number</span><input id="address-phone-number" required placeholder="+63 900 000 0000"></label></div>
-   <div class="form-grid"><label><span>Province</span><input id="address-province" required placeholder="Laguna"></label></div>
-   <div class="form-grid two"><label><span>City / Municipality</span><input id="address-city" required placeholder="City / Municipality"></label><label><span>Barangay</span><input id="address-barangay" required placeholder="Barangay"></label></div>
-    <div class="form-grid"><label><span>Postal Code</span><input id="address-postal-code" required placeholder="Postal Code"></label><label><span>Street Name, Building, House No.</span><input id="address-street" required placeholder="Street Name, Building, House No."></label></div>
-    <div class="address-map-picker-section"><div class="address-map-picker-heading"><div><strong>Pin your location <span>(optional)</span></strong><small>Coordinates supplement your validated address and do not replace PSGC fields.</small></div><button id="clear-address-pin" type="button" class="address-map-clear" hidden>Clear pin</button></div><div id="address-map" class="address-map" data-map-tile-url="{{ config('maps.tile_url') }}" data-map-attribution="{{ config('maps.tile_attribution') }}" aria-label="Address map pin picker"></div><p id="address-map-status" class="address-map-status" role="status">Click the map to place a pin, then save the address.</p><input id="address-latitude" type="hidden"><input id="address-longitude" type="hidden"></div>
-   <div class="label-section">Label As:</div><div class="label-buttons"><button class="label-choice active" data-label="Home" type="button">Home</button><button class="label-choice" data-label="Work" type="button">Work</button></div>
-   <label class="default-check"><input id="address-set-default" type="checkbox"><span></span>Set as Default Address</label>
-   <div class="dialog-actions"><button id="cancel-address" class="cancel-btn" type="button">Cancel</button><button class="save-btn" type="submit">Save Address</button></div>
-  </form>
- </div>
-</div>
 <div id="delete-modal" class="address-modal" hidden><div class="confirm-dialog"><span class="material-symbols-outlined">delete</span><h2>Delete Address?</h2><p>This address will be removed from your saved addresses.</p><div><button id="cancel-delete" class="cancel-btn" type="button">Cancel</button><button id="confirm-delete" class="delete-confirm" type="button">Delete</button></div></div></div>
 <div id="address-toast" class="address-toast" role="status"></div>
 

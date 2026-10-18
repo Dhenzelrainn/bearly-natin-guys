@@ -19,6 +19,9 @@ export function createAddressMapPicker({
     latitudeInput,
     longitudeInput,
     clearButton,
+    locationButton,
+    reverseGeocodeUrl,
+    fields = {},
     status,
     latitude = null,
     longitude = null,
@@ -34,6 +37,32 @@ export function createAddressMapPicker({
 
     const setStatus = (message) => {
         if (status) status.textContent = message;
+    };
+
+    let lookupSequence = 0;
+    const reverseGeocode = async (lat, lng) => {
+        if (!reverseGeocodeUrl) return;
+        const sequence = ++lookupSequence;
+        setStatus('Looking up address details from OpenStreetMap…');
+        try {
+            const response = await fetch(`${reverseGeocodeUrl}?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lng)}`, {
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok || sequence !== lookupSequence) throw new Error(payload.message || 'Address lookup failed.');
+            const data = payload.data || {};
+            const assign = (field, value) => {
+                if (field && value) field.value = value;
+            };
+            assign(fields.street, data.street || (data.name ? `${data.name}` : null));
+            assign(fields.barangay, data.barangay);
+            assign(fields.city, data.city);
+            assign(fields.province, data.province);
+            assign(fields.postal, data.postal);
+            setStatus('Address details suggested by OpenStreetMap. Verify the fields and pin before saving.');
+        } catch (error) {
+            if (sequence === lookupSequence) setStatus(`${error.message} You can keep the pin and enter the address manually.`, 'error');
+        }
     };
 
     const tileUrl = element.dataset.mapTileUrl?.trim();
@@ -67,6 +96,7 @@ export function createAddressMapPicker({
         }
         clearButton?.removeAttribute('hidden');
         if (announce) setStatus(`Pin selected: ${lat}, ${lng}. Click Save Address to persist it.`);
+        if (announce) reverseGeocode(Number(lat), Number(lng));
     };
 
     const clearPin = () => {
@@ -84,6 +114,32 @@ export function createAddressMapPicker({
 
     map.on('click', event => setPin(event.latlng));
     clearButton?.addEventListener('click', clearPin);
+    locationButton?.addEventListener('click', () => {
+        if (!navigator.geolocation) {
+            setStatus('Browser location is unavailable. Place the pin manually.', 'error');
+            return;
+        }
+
+        locationButton.disabled = true;
+        setStatus('Requesting your location permission…');
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                const coords = {
+                    lat: position.coords.latitude,
+                    lng: position.coords.longitude,
+                };
+                map.setView([coords.lat, coords.lng], 16);
+                setPin(coords, true);
+                setStatus('Current location selected. Drag the pin to confirm the exact point, then verify the suggested address before saving.');
+                locationButton.disabled = false;
+            },
+            () => {
+                setStatus('Location permission was denied or unavailable. Place the pin manually.', 'error');
+                locationButton.disabled = false;
+            },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
+        );
+    });
 
     return {
         map,

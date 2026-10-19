@@ -464,15 +464,23 @@ import './notification-center.js';
         dashboardPeriodButtons.forEach((button) => {
             button.addEventListener('click', () => {
                 const period = button.dataset.dashboardPeriod;
+                const periodView = dashboardPeriodViews.find(
+                    (view) => view.dataset.dashboardPeriodView === period
+                );
+
+                // Never hide every chart when the control and view keys do not
+                // match; the server-rendered default stays visible instead.
+                if (!periodView) return;
+
                 dashboardPeriodButtons.forEach((item) => {
                     const active = item === button;
                     item.classList.toggle('is-active', active);
                     item.setAttribute('aria-pressed', active ? 'true' : 'false');
                 });
                 dashboardPeriodViews.forEach((view) => {
-                    view.hidden = view.dataset.dashboardPeriodView !== period;
+                    view.hidden = view !== periodView;
                 });
-                showToast(`${button.textContent.trim()} sales view selected.`, 'Chart period updated');
+                showToast(`${button.textContent.trim()} net sales view selected.`, 'Chart period updated');
             });
         });
 

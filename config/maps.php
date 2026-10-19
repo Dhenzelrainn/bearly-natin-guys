@@ -8,4 +8,6 @@ return [
     'tile_attribution' => env('MAPS_TILE_ATTRIBUTION', '&copy; MapTiler &copy; OpenStreetMap contributors'),
     'geocoding_url' => env('MAPS_GEOCODING_URL', 'https://nominatim.openstreetmap.org/reverse'),
     'geocoder_email' => env('MAPS_GEOCODER_EMAIL'),
+    'maptiler_api_key' => env('MAPTILER_API_KEY'),
+    'forward_geocoding_url' => env('MAPS_FORWARD_GEOCODING_URL', 'https://api.maptiler.com/geocoding'),
 ];

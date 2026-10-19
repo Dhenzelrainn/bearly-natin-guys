@@ -11,13 +11,14 @@ use App\Models\Policy;
 use App\Models\ProductViolation;
 use App\Models\SystemSetting;
 use App\Models\User;
+use App\Services\SellerEarningsService;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
 use Illuminate\View\View;
 
 class AdminDashboardController extends Controller
 {
-    public function __invoke(Request $request): View
+    public function __invoke(Request $request, SellerEarningsService $earnings): View
     {
         $roleCounts = User::query()->selectRaw('role, count(*) as aggregate')->groupBy('role')->pluck('aggregate', 'role');
         $pendingApplications = AccountApplication::query()->whereIn('status', ['submitted', 'under_review', 'needs_revision'])->count();
@@ -27,29 +28,26 @@ class AdminDashboardController extends Controller
         $orders = Order::query()->whereYear('created_at', now()->year)->get(['id', 'total_minor', 'status', 'created_at']);
         $paidPayments = Payment::query()->where('status', 'paid')->whereYear('paid_at', now()->year)->get(['amount_minor', 'paid_at']);
 
-        // Sales trend uses the Admin Finance Reports gross-sales basis: paid
-        // orders counted once, grouped by the order's earliest paid payment
-        // date, summed in integer centavos (orders.total_minor).
-        $grossMinorByDay = $this->grossMinorByPaymentDay();
-        $grossMinorByMonth = [];
-
-        foreach ($grossMinorByDay as $day => $minor) {
-            $month = substr($day, 0, 7);
-            $grossMinorByMonth[$month] = ($grossMinorByMonth[$month] ?? 0) + $minor;
-        }
+        // Sales trend uses the Admin Financial Reports Sales Summary basis:
+        // completed Seller Orders grouped by completed_at, product amounts from
+        // order-item snapshots (shipping excluded), net of item discounts and
+        // completed refunds. One marketplace order may split across Seller
+        // Orders, but each snapshot item is counted exactly once.
+        $today = CarbonImmutable::now();
+        $currentMonth = $today->startOfMonth();
 
         $salesTrend = [
             '12M' => $this->salesTrendView(
-                $this->monthlyTrendBuckets($grossMinorByMonth, now()->startOfYear(), 12),
-                'No paid sales recorded this year.',
+                $earnings->marketplaceNetSalesTrendFor($currentMonth->subMonths(11), $currentMonth->endOfMonth(), 'month'),
+                'No net product sales recorded in the last 12 months.',
             ),
             '3M' => $this->salesTrendView(
-                $this->monthlyTrendBuckets($grossMinorByMonth, now()->subMonths(2)->startOfMonth(), 3),
-                'No paid sales in the last three months.',
+                $earnings->marketplaceNetSalesTrendFor($currentMonth->subMonths(2), $currentMonth->endOfMonth(), 'month'),
+                'No net product sales recorded in the last 3 months.',
             ),
             '30D' => $this->salesTrendView(
-                $this->dailyTrendBuckets($grossMinorByDay, now()->subDays(29)->startOfDay(), 30),
-                'No paid sales in the last 30 days.',
+                $earnings->marketplaceNetSalesTrendFor($today->startOfDay()->subDays(29), $today->endOfDay(), 'day'),
+                'No net product sales recorded in the last 30 days.',
             ),
         ];
 
@@ -76,7 +74,7 @@ class AdminDashboardController extends Controller
                 ['label' => 'Pending Applications', 'value' => number_format($pendingApplications), 'change' => 'Needs review', 'trend' => $pendingApplications ? 'alert' : 'up', 'icon' => 'user-check'],
                 ['label' => 'Restricted Accounts', 'value' => number_format(User::whereIn('status', ['suspended', 'deactivated'])->count()), 'change' => 'Suspended / deactivated', 'trend' => 'alert', 'icon' => 'shield-alert'],
                 ['label' => 'Admin Records', 'value' => number_format($adminOwned), 'change' => 'Announcements / policies / settings', 'trend' => 'up', 'icon' => 'database'],
-                ['label' => 'Gross Sales', 'value' => '₱'.number_format($paidPayments->sum('amount_minor') / 100, 2), 'change' => $paidPayments->count().' paid transactions', 'trend' => 'up', 'icon' => 'chart-column'],
+                ['label' => 'Paid Collections', 'value' => '₱'.number_format($paidPayments->sum('amount_minor') / 100, 2), 'change' => $paidPayments->count().' payments marked paid', 'trend' => 'up', 'icon' => 'chart-column'],
                 ['label' => 'Active Orders', 'value' => number_format($orders->whereNotIn('status', ['completed', 'cancelled'])->count()), 'change' => $orders->count().' total orders', 'trend' => 'up', 'icon' => 'package'],
             ],
             'hasSalesData' => $salesTrend['12M']['has_data'] || $salesTrend['3M']['has_data'] || $salesTrend['30D']['has_data'],
@@ -90,101 +88,65 @@ class AdminDashboardController extends Controller
     }
 
     /**
-     * Gross minor per payment day using the Admin Finance Reports basis:
-     * paid orders only, each order counted once at its earliest paid payment.
+     * Convert service trend buckets into chart values, axis labels, and
+     * zero-based bar heights. A negative period uses a symmetric axis around a
+     * visible zero baseline instead of clamping the value.
      *
-     * @return array<string, int>
-     */
-    private function grossMinorByPaymentDay(): array
-    {
-        $paidOrders = Order::query()
-            ->with(['payments' => fn ($query) => $query->where('status', 'paid')->whereNotNull('paid_at')])
-            ->whereHas('payments', fn ($query) => $query->where('status', 'paid')->whereNotNull('paid_at'))
-            ->get(['id', 'total_minor']);
-
-        $grossMinorByDay = [];
-
-        foreach ($paidOrders as $order) {
-            $paidAt = $order->payments->sortBy('paid_at')->first()?->paid_at;
-
-            if ($paidAt === null) {
-                continue;
-            }
-
-            $day = $paidAt->toDateString();
-            $grossMinorByDay[$day] = ($grossMinorByDay[$day] ?? 0) + (int) $order->total_minor;
-        }
-
-        return $grossMinorByDay;
-    }
-
-    /**
-     * @param  array<string, int>  $grossMinorByMonth
-     * @return array<int, array{label: string, short: string, value_minor: int}>
-     */
-    private function monthlyTrendBuckets(array $grossMinorByMonth, Carbon $firstMonth, int $months): array
-    {
-        $buckets = [];
-
-        for ($index = 0; $index < $months; $index++) {
-            $month = $firstMonth->copy()->addMonths($index);
-
-            $buckets[] = [
-                'label' => $month->format('M Y'),
-                'short' => $month->format('M'),
-                'value_minor' => $grossMinorByMonth[$month->format('Y-m')] ?? 0,
-            ];
-        }
-
-        return $buckets;
-    }
-
-    /**
-     * @param  array<string, int>  $grossMinorByDay
-     * @return array<int, array{label: string, short: string, value_minor: int}>
-     */
-    private function dailyTrendBuckets(array $grossMinorByDay, Carbon $firstDay, int $days): array
-    {
-        $buckets = [];
-
-        for ($index = 0; $index < $days; $index++) {
-            $day = $firstDay->copy()->addDays($index);
-
-            $buckets[] = [
-                'label' => $day->format('M j, Y'),
-                'short' => $day->format('j'),
-                'value_minor' => $grossMinorByDay[$day->toDateString()] ?? 0,
-            ];
-        }
-
-        return $buckets;
-    }
-
-    /**
-     * @param  array<int, array{label: string, short: string, value_minor: int}>  $buckets
-     * @return array{has_data: bool, axis: array<int, string>, empty_note: string, buckets: array<int, array{label: string, short: string, value: string, height: float}>}
+     * @param  array<int, array<string, mixed>>  $buckets
+     * @return array{has_data: bool, has_negative: bool, zero_percent: float, axis: array<int, string>, empty_note: string, buckets: array<int, array{label: string, short: string, value: string, value_minor: int, negative: bool, height: float}>}
      */
     private function salesTrendView(array $buckets, string $emptyNote): array
     {
-        $intervals = 3;
-        $values = array_map(fn (array $bucket): int => $bucket['value_minor'], $buckets);
-        $axisTop = $this->niceAxisStep($values === [] ? 0 : max($values), $intervals) * $intervals;
+        $values = array_map(fn (array $bucket): int => (int) $bucket['net_minor'], $buckets);
+        $hasData = false;
+
+        foreach ($buckets as $bucket) {
+            if ((int) ($bucket['seller_orders'] ?? 0) > 0 || (int) ($bucket['refunds_minor'] ?? 0) !== 0) {
+                $hasData = true;
+                break;
+            }
+        }
+
+        $minValue = $values === [] ? 0 : min($values);
+        $maxValue = $values === [] ? 0 : max($values);
+
+        if ($minValue < 0) {
+            $extent = $this->niceAxisStep(max(abs($minValue), abs($maxValue)), 2) * 2;
+            $axisTop = $extent;
+            $axisBottom = -$extent;
+            $axisIntervals = 4;
+        } else {
+            $axisTop = $this->niceAxisStep($maxValue, 3) * 3;
+            $axisBottom = 0;
+            $axisIntervals = 3;
+        }
+
+        $range = $axisTop - $axisBottom;
+        $zeroPercent = $range > 0 ? (0 - $axisBottom) / $range * 100 : 0.0;
         $axis = [];
 
-        for ($index = 0; $index <= $intervals; $index++) {
-            $axis[] = $this->formatAxisLabel((int) round($axisTop * ($intervals - $index) / $intervals));
+        for ($index = 0; $index <= $axisIntervals; $index++) {
+            $axis[] = $this->formatAxisLabel((int) round($axisTop - $range * $index / $axisIntervals));
         }
 
         return [
-            'has_data' => array_sum($values) > 0,
+            'has_data' => $hasData,
+            'has_negative' => $minValue < 0,
+            'zero_percent' => round($zeroPercent, 2),
             'axis' => $axis,
             'empty_note' => $emptyNote,
-            'buckets' => array_map(fn (array $bucket): array => [
-                'label' => $bucket['label'],
-                'short' => $bucket['short'],
-                'value' => '₱'.number_format($bucket['value_minor'] / 100, 2),
-                'height' => $axisTop > 0 ? round($bucket['value_minor'] / $axisTop * 100, 1) : 0.0,
-            ], $buckets),
+            'buckets' => array_map(function (array $bucket) use ($range): array {
+                $valueMinor = (int) $bucket['net_minor'];
+
+                return [
+                    'label' => $bucket['label'],
+                    'short' => $bucket['short'],
+                    'value_minor' => $valueMinor,
+                    'value' => ($valueMinor < 0 ? '−' : '').'₱'.number_format(abs($valueMinor) / 100, 2),
+                    'negative' => $valueMinor < 0,
+                    'height' => $range > 0 ? round(abs($valueMinor) / $range * 100, 1) : 0.0,
+                ];
+            }, $buckets),
         ];
     }
 
@@ -210,16 +172,18 @@ class AdminDashboardController extends Controller
 
     private function formatAxisLabel(int $minor): string
     {
-        $peso = max(0, $minor) / 100;
+        $negative = $minor < 0;
+        $peso = abs($minor) / 100;
+        $prefix = $negative ? '−' : '';
 
         foreach ([[1_000_000, 'M'], [1_000, 'K']] as [$unit, $suffix]) {
             if ($peso >= $unit) {
                 $scaled = round($peso / $unit, 1);
 
-                return '₱'.rtrim(rtrim(number_format($scaled, 1), '0'), '.').$suffix;
+                return $prefix.'₱'.rtrim(rtrim(number_format($scaled, 1), '0'), '.').$suffix;
             }
         }
 
-        return '₱'.rtrim(rtrim(number_format(round($peso, 2), 2), '0'), '.');
+        return $prefix.'₱'.rtrim(rtrim(number_format(round($peso, 2), 2), '0'), '.');
     }
 }

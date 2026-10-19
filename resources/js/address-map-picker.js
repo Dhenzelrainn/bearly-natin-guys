@@ -21,6 +21,7 @@ export function createAddressMapPicker({
     clearButton,
     locationButton,
     reverseGeocodeUrl,
+    forwardGeocodeUrl,
     fields = {},
     status,
     latitude = null,
@@ -51,15 +52,7 @@ export function createAddressMapPicker({
             const payload = await response.json().catch(() => ({}));
             if (!response.ok || sequence !== lookupSequence) throw new Error(payload.message || 'Address lookup failed.');
             const data = payload.data || {};
-            const assign = (field, value) => {
-                if (field && value) field.value = value;
-            };
-            assign(fields.street, data.street || (data.name ? `${data.name}` : null));
-            assign(fields.barangay, data.barangay);
-            assign(fields.city, data.city);
-            assign(fields.province, data.province);
-            assign(fields.postal, data.postal);
-            setStatus('Address details suggested by OpenStreetMap. Verify the fields and pin before saving.');
+            setStatus(`Pin selected near ${data.display_name || 'the selected location'}. Verify your address fields and pin before saving.`);
         } catch (error) {
             if (sequence === lookupSequence) setStatus(`${error.message} You can keep the pin and enter the address manually.`, 'error');
         }
@@ -98,6 +91,39 @@ export function createAddressMapPicker({
         if (announce) setStatus(`Pin selected: ${lat}, ${lng}. Click Save Address to persist it.`);
         if (announce) reverseGeocode(Number(lat), Number(lng));
     };
+
+    let forwardTimer = null;
+    let forwardSequence = 0;
+    const scheduleForwardGeocode = () => {
+        if (!forwardGeocodeUrl || !fields.province?.value.trim() || !fields.city?.value.trim() || !fields.barangay?.value.trim()) return;
+        window.clearTimeout(forwardTimer);
+        forwardTimer = window.setTimeout(async () => {
+            const sequence = ++forwardSequence;
+            const params = new URLSearchParams({
+                province: fields.province.value.trim(),
+                city: fields.city.value.trim(),
+                barangay: fields.barangay.value.trim(),
+            });
+            if (fields.street?.value.trim()) params.set('street', fields.street.value.trim());
+            if (fields.postal?.value.trim()) params.set('postal', fields.postal.value.trim());
+            setStatus('Searching the address on the map…');
+            try {
+                const response = await fetch(`${forwardGeocodeUrl}?${params.toString()}`, {
+                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                });
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok || sequence !== forwardSequence) throw new Error(payload.message || 'Address search failed.');
+                const data = payload.data;
+                map.setView([Number(data.latitude), Number(data.longitude)], data.approximate ? 14 : 17);
+                setPin({ lat: Number(data.latitude), lng: Number(data.longitude) }, false);
+                setStatus(`${data.approximate ? 'Approximate locality match' : 'Address match'} found. Drag the pin to confirm the exact location, then save.`);
+            } catch (error) {
+                if (sequence === forwardSequence) setStatus(`${error.message} You can place the pin manually.`, 'error');
+            }
+        }, 1200);
+    };
+
+    Object.values(fields).forEach((field) => field?.addEventListener('input', scheduleForwardGeocode));
 
     const clearPin = () => {
         marker?.remove();

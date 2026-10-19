@@ -52,6 +52,7 @@ use Illuminate\View\View;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Throwable;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class LogisticsController extends Controller
 {
@@ -4397,9 +4398,19 @@ class LogisticsController extends Controller
         return $timeline->values()->all();
     }
 
+    public function exportReports(
+        Request $request
+    ): View|RedirectResponse|StreamedResponse {
+        $request->merge([
+            'export' => true,
+        ]);
+
+        return $this->reports($request);
+    }
+
     public function reports(
         Request $request
-    ): View|RedirectResponse {
+    ): View|RedirectResponse|StreamedResponse {
         $validated = $request->validate([
             'from' => [
                 'nullable',
@@ -5019,47 +5030,145 @@ class LogisticsController extends Controller
             ->values()
             ->all();
 
+        $reportData = [
+            'reportRange' => [
+                'from' => $reportFrom->format('Y-m-d'),
+                'to' => $reportTo->format('Y-m-d'),
+            ],
+            'summary' => [
+                'throughput' => $throughput,
+                'delivered' => $delivered,
+                'success_rate' => $successRate,
+                'resolved_delivery_outcomes' => $resolvedDeliveryOutcomes,
+                'avg_sort_time' => $averageSortTime,
+            ],
+            'riderStats' => $riderStats,
+            'dailyVolumes' => $dailyVolumes,
+            'dailyLabels' => $dailyLabels,
+            'statusBreakdown' => $statusBreakdown,
+        ];
+
+        if ($request->boolean('export')) {
+            return $this->streamReportsCsv(
+                $reportData,
+                $reportFrom,
+                $reportTo
+            );
+        }
+
         return view(
             'logistics.reports.index',
-            $this->shared() + [
-                'reportRange' => [
-                    'from' =>
-                        $reportFrom->format('Y-m-d'),
-
-                    'to' =>
-                        $reportTo->format('Y-m-d'),
-                ],
-
-                'summary' => [
-                    'throughput' =>
-                        $throughput,
-
-                    'delivered' =>
-                        $delivered,
-
-                    'success_rate' =>
-                        $successRate,
-
-                    'resolved_delivery_outcomes' =>
-                        $resolvedDeliveryOutcomes,
-
-                    'avg_sort_time' =>
-                        $averageSortTime,
-                ],
-
-                'riderStats' =>
-                    $riderStats,
-
-                'dailyVolumes' =>
-                    $dailyVolumes,
-
-                'dailyLabels' =>
-                    $dailyLabels,
-
-                'statusBreakdown' =>
-                    $statusBreakdown,
-            ]
+            $this->shared() + $reportData
         );
+    }
+
+    /**
+     * Stream every report section from the same provider-scoped payload that
+     * powers the Reports page. The browser does not reconstruct this export
+     * from visible table rows.
+     *
+     * @param  array<string, mixed>  $reportData
+     */
+    private function streamReportsCsv(
+        array $reportData,
+        Carbon $reportFrom,
+        Carbon $reportTo
+    ): StreamedResponse {
+        return response()->streamDownload(function () use (
+            $reportData
+        ): void {
+            $stream = fopen('php://output', 'wb');
+
+            if ($stream === false) {
+                return;
+            }
+
+            fwrite($stream, "\xEF\xBB\xBF");
+
+            $write = function (array $cells) use ($stream): void {
+                fputcsv($stream, $cells, ',', '"', '\\');
+            };
+
+            $summary = $reportData['summary'];
+
+            $write(['Bearly Logistics Operations Report']);
+            $write([
+                'Report period',
+                $reportData['reportRange']['from'].' to '.$reportData['reportRange']['to'],
+            ]);
+            $write([]);
+
+            $write(['Summary metrics']);
+            $write(['Metric', 'Value', 'Description']);
+            $write([
+                'Parcel throughput',
+                $summary['throughput'],
+                'Parcels received in selected period',
+            ]);
+            $write([
+                'Delivered',
+                $summary['delivered'],
+                'Parcels completed in selected period',
+            ]);
+            $write([
+                'Success rate',
+                $summary['success_rate'].'%',
+                $summary['resolved_delivery_outcomes'].' resolved delivery outcomes',
+            ]);
+            $write([
+                'Average sort time',
+                $summary['avg_sort_time'],
+                'Receipt to initial sorting',
+            ]);
+            $write([]);
+
+            $write(['Daily parcel throughput']);
+            $write(['Date', 'Parcels received']);
+            foreach ($reportData['dailyLabels'] as $index => $label) {
+                $write([
+                    $label,
+                    $reportData['dailyVolumes'][$index] ?? 0,
+                ]);
+            }
+            $write([]);
+
+            $write(['Delivery status breakdown']);
+            $write(['Status', 'Count', 'Share']);
+            foreach ($reportData['statusBreakdown'] as $item) {
+                $write([
+                    $item['label'],
+                    $item['value'],
+                    $item['share'].'%',
+                ]);
+            }
+            $write([]);
+
+            $write(['Rider performance']);
+            $write([
+                'Rider',
+                'Assigned',
+                'Delivered',
+                'Failed',
+                'Success rate',
+            ]);
+            foreach ($reportData['riderStats'] as $rider) {
+                $write([
+                    $rider['name'],
+                    $rider['assigned'],
+                    $rider['delivered'],
+                    $rider['failed'],
+                    $rider['rate'],
+                ]);
+            }
+
+            fclose($stream);
+        }, 'bearly-logistics-report-'
+            .$reportFrom->format('Ymd')
+            .'-to-'
+            .$reportTo->format('Ymd')
+            .'.csv', [
+                'Content-Type' => 'text/csv; charset=UTF-8',
+            ]);
     }
 
     private function messageRecipientDirectory(

@@ -54,12 +54,6 @@ function setupWorkflow() {
     const proof = document.querySelector('[data-proof-file]'); proof?.addEventListener('change', () => { const name = document.querySelector('[data-proof-name]'); if (name) name.textContent = proof.files?.[0]?.name || 'JPG or PNG preview file'; });
 }
 
-function downloadCsv(filename, rows) { const csv = rows.map((row) => row.map((value) => `"${String(value).replaceAll('"','""')}"`).join(',')).join('\n'); const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([csv],{type:'text/csv'})); link.download = filename; link.click(); URL.revokeObjectURL(link.href); }
-function setupReports() {
-    document.querySelector('[data-apply-earnings]')?.addEventListener('click', () => toast('Earnings preview refreshed for the selected date range.'));
-    document.querySelector('[data-export-earnings]')?.addEventListener('click', () => { const rows = [['Date','Job','Type','Amount','Status']]; document.querySelectorAll('[data-earnings-row]').forEach((row) => rows.push([...row.children].map((cell) => cell.innerText.trim()))); downloadCsv('bearly-rider-earnings.csv', rows); toast('Earnings CSV exported.'); });
-}
-
 function renderHistoryProducts(container, products) {
     container.replaceChildren();
 
@@ -2061,7 +2055,6 @@ document.addEventListener('DOMContentLoaded', () => {
     setupTabs();
     setupTables();
     setupWorkflow();
-    setupReports();
     setupHistoryDetails();
     setupChat();
     setupForms();

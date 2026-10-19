@@ -115,6 +115,107 @@ class LogisticsReportsTest extends TestCase
             );
     }
 
+    public function test_reports_export_contains_the_full_provider_scoped_report(): void
+    {
+        $user = $this->makeLogisticsOperator(
+            'EXPORT',
+            'reports-export@example.test'
+        );
+        $profile = LogisticsProfile::query()
+            ->where('user_id', $user->id)
+            ->firstOrFail();
+        $record = $this->makeReportParcel($profile, 'EXPORT');
+
+        $this->recordParcelEvent(
+            $record['shipment'],
+            $record['parcel'],
+            'received_at_center',
+            ParcelStatus::Received->value,
+            '2026-09-15 09:00:00'
+        );
+        $this->recordParcelEvent(
+            $record['shipment'],
+            $record['parcel'],
+            'parcel_sorted',
+            ParcelStatus::Sorted->value,
+            '2026-09-15 09:30:00'
+        );
+        $this->recordParcelEvent(
+            $record['shipment'],
+            $record['parcel'],
+            'parcel_delivered',
+            ParcelStatus::Delivered->value,
+            '2026-09-15 12:00:00'
+        );
+
+        $facility = $this->makeReportFacility(
+            $user,
+            $profile,
+            'EXPORT'
+        );
+        $rider = $this->makeReportRider(
+            $profile,
+            $facility['center'],
+            $facility['zone'],
+            'Export'
+        );
+        $batch = $this->makeReportDispatchBatch(
+            $facility['center'],
+            $facility['zone'],
+            $rider,
+            $user,
+            'EXPORT',
+            '2026-09-15 10:00:00'
+        );
+        $batch->parcels()->attach($record['parcel']->id, [
+            'sequence' => 1,
+            'loaded_at' => '2026-09-15 10:10:00',
+        ]);
+        $this->recordDeliveryAttempt(
+            $record['parcel'],
+            $batch,
+            $rider,
+            1,
+            DeliveryAttemptOutcome::Delivered,
+            '2026-09-15 12:00:00'
+        );
+
+        $response = $this->actingAs($user)
+            ->get(route('logistics.reports.export', [
+                'from' => '2026-09-14',
+                'to' => '2026-09-20',
+            ]));
+
+        $response
+            ->assertOk()
+            ->assertHeader('Content-Type', 'text/csv; charset=UTF-8');
+
+        $csv = $response->streamedContent();
+
+        $this->assertStringContainsString('Bearly Logistics Operations Report', $csv);
+        $this->assertStringContainsString(
+            '"Report period","2026-09-14 to 2026-09-20"',
+            $csv
+        );
+        $this->assertStringContainsString('Summary metrics', $csv);
+        $this->assertStringContainsString('"Parcel throughput",1', $csv);
+        $this->assertStringContainsString('Delivered,1', $csv);
+        $this->assertStringContainsString('"Success rate",100%', $csv);
+        $this->assertStringContainsString('Daily parcel throughput', $csv);
+        $this->assertStringContainsString('"Sep 15",1', $csv);
+        $this->assertStringContainsString('Delivery status breakdown', $csv);
+        $this->assertStringContainsString('Delivered,1,100%', $csv);
+        $this->assertStringContainsString('Rider performance', $csv);
+        $this->assertStringContainsString(
+            'Rider,Assigned,Delivered,Failed,"Success rate"',
+            $csv
+        );
+        $this->assertStringContainsString(
+            '"Report Rider Export",1,1,0,100.0%',
+            $csv
+        );
+    }
+
     public function test_reports_reject_reversed_date_range(): void
     {
         $user = $this->makeLogisticsOperator();

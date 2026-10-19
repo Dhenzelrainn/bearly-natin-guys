@@ -61,4 +61,86 @@ class MapLocationTest extends TestCase
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['latitude', 'longitude']);
     }
+
+    public function test_forward_geocoding_centers_only_on_a_matching_philippine_locality(): void
+    {
+        config(['maps.maptiler_api_key' => 'test-maptiler-key']);
+        Http::fake([
+            'api.maptiler.com/geocoding/*' => Http::response([
+                'features' => [[
+                    'place_name' => 'Maple Street, Balibago, Santa Rosa, Laguna, Philippines',
+                    'place_type' => ['address'],
+                    'center' => [121.1112, 14.3121],
+                ]],
+            ]),
+        ]);
+        $user = User::factory()->create(['role' => 'buyer', 'status' => 'active']);
+
+        $this->actingAs($user)
+            ->getJson(route('maps.forward-geocode', [
+                'street' => 'Maple Street',
+                'barangay' => 'Balibago',
+                'city' => 'Santa Rosa',
+                'province' => 'Laguna',
+                'postal' => '4026',
+            ]))
+            ->assertOk()
+            ->assertJsonPath('data.latitude', 14.3121)
+            ->assertJsonPath('data.longitude', 121.1112)
+            ->assertJsonPath('data.approximate', false);
+
+        Http::assertSent(fn ($request): bool => str_contains($request->url(), 'country=ph')
+            && str_contains($request->url(), 'key=test-maptiler-key'));
+    }
+
+    public function test_forward_geocoding_rejects_invalid_or_non_philippine_results(): void
+    {
+        config(['maps.maptiler_api_key' => 'test-maptiler-key']);
+        $user = User::factory()->create(['role' => 'buyer', 'status' => 'active']);
+
+        $this->actingAs($user)
+            ->getJson(route('maps.forward-geocode', [
+                'city' => 'Santa Rosa',
+                'province' => 'Laguna',
+            ]))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('barangay');
+
+        Http::fake([
+            'api.maptiler.com/geocoding/*' => Http::response([
+                'features' => [[
+                    'place_name' => 'Paris, France',
+                    'place_type' => ['place'],
+                    'center' => [2.3522, 48.8566],
+                ]],
+            ]),
+        ]);
+
+        $this->actingAs($user)
+            ->getJson(route('maps.forward-geocode', [
+                'barangay' => 'Balibago',
+                'city' => 'Santa Rosa',
+                'province' => 'Laguna',
+            ]))
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'No Philippine map result matched the selected barangay, city, and province. Refine the address or place the pin manually.');
+    }
+
+    public function test_forward_geocoding_provider_failure_is_reported_without_changing_fields(): void
+    {
+        config(['maps.maptiler_api_key' => 'test-maptiler-key']);
+        Http::fake([
+            'api.maptiler.com/geocoding/*' => Http::response([], 503),
+        ]);
+        $user = User::factory()->create(['role' => 'buyer', 'status' => 'active']);
+
+        $this->actingAs($user)
+            ->getJson(route('maps.forward-geocode', [
+                'barangay' => 'Balibago',
+                'city' => 'Santa Rosa',
+                'province' => 'Laguna',
+            ]))
+            ->assertStatus(502)
+            ->assertJsonPath('message', 'MapTiler could not find this address. Place the pin manually.');
+    }
 }

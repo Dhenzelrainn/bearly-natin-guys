@@ -157,6 +157,10 @@ Route::get('/api/maps/reverse-geocode', [MapLocationController::class, 'reverseG
     ->middleware(['auth', 'throttle:12,1'])
     ->name('maps.reverse-geocode');
 
+Route::get('/api/maps/forward-geocode', [MapLocationController::class, 'forwardGeocode'])
+    ->middleware(['auth', 'throttle:12,1'])
+    ->name('maps.forward-geocode');
+
 /*
 |--------------------------------------------------------------------------
 | Notifications
@@ -1248,6 +1252,9 @@ Route::prefix('logistics')->name('logistics.')->group(function () {
         Route::get('/monitoring', [LogisticsController::class, 'monitoring'])
             ->name('dispatch.monitoring');
 
+        Route::get('/reports/export', [LogisticsController::class, 'exportReports'])
+            ->name('reports.export');
+
         Route::get('/reports', [LogisticsController::class, 'reports'])
             ->name('reports.index');
 
@@ -1406,6 +1413,9 @@ Route::prefix('rider')->name('rider.')->group(function () {
 
         Route::get('/earnings', [RiderController::class, 'earnings'])
             ->name('earnings.index');
+
+        Route::get('/earnings/export', [RiderController::class, 'exportEarnings'])
+            ->name('earnings.export');
 
         Route::get('/history/export', [RiderController::class, 'exportHistory'])
             ->name('history.export');

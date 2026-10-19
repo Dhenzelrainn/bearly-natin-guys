@@ -17,14 +17,14 @@
         </div>
         <nav class="ops-nav">
             <p class="ops-nav-label">Workspace</p>
-            <a href="{{ route('rider.dashboard.pickups') }}" class="ops-nav-link {{ request()->routeIs('rider.dashboard.pickups','rider.orders.pickup*') ? 'is-active' : '' }}"><i data-lucide="package-plus"></i><span>Items for Pickup</span><span class="nav-count">3</span></a>
-            <a href="{{ route('rider.dashboard.deliveries') }}" class="ops-nav-link {{ request()->routeIs('rider.dashboard.deliveries','rider.orders.delivery*') ? 'is-active' : '' }}"><i data-lucide="bike"></i><span>Items for Delivery</span><span class="nav-count">3</span></a>
+            <a href="{{ route('rider.dashboard.pickups') }}" class="ops-nav-link {{ request()->routeIs('rider.dashboard.pickups','rider.orders.pickup*') ? 'is-active' : '' }}"><i data-lucide="package-plus"></i><span>Items for Pickup</span></a>
+            <a href="{{ route('rider.dashboard.deliveries') }}" class="ops-nav-link {{ request()->routeIs('rider.dashboard.deliveries','rider.orders.delivery*') ? 'is-active' : '' }}"><i data-lucide="bike"></i><span>Items for Delivery</span></a>
             <a href="{{ route('rider.refund-cash.index') }}" class="ops-nav-link {{ request()->routeIs('rider.refund-cash.*') ? 'is-active' : '' }}"><i data-lucide="hand-coins"></i><span>Cash custody</span></a>
             <p class="ops-nav-label">Finance & records</p>
             <a href="{{ route('rider.earnings.index') }}" class="ops-nav-link {{ request()->routeIs('rider.earnings.*') ? 'is-active' : '' }}"><i data-lucide="wallet-cards"></i><span>Earnings</span></a>
             <a href="{{ route('rider.history.index') }}" class="ops-nav-link {{ request()->routeIs('rider.history.*') ? 'is-active' : '' }}"><i data-lucide="history"></i><span>Delivery History</span></a>
             <p class="ops-nav-label">Support</p>
-            <a href="{{ route('rider.messages.index') }}" class="ops-nav-link {{ request()->routeIs('rider.messages.*') ? 'is-active' : '' }}"><i data-lucide="message-circle"></i><span>Messages</span><span class="nav-count">2</span></a>
+            <a href="{{ route('rider.messages.index') }}" class="ops-nav-link {{ request()->routeIs('rider.messages.*') ? 'is-active' : '' }}"><i data-lucide="message-circle"></i><span>Messages</span></a>
             <a href="{{ route('notifications.center') }}" class="ops-nav-link {{ request()->routeIs('notifications.center') ? 'is-active' : '' }}"><i data-lucide="bell"></i><span>Notifications</span></a>
             <a href="{{ route('rider.profile.index') }}" class="ops-nav-link {{ request()->routeIs('rider.profile.*') ? 'is-active' : '' }}"><i data-lucide="user-round-cog"></i><span>Account</span></a>
         </nav>

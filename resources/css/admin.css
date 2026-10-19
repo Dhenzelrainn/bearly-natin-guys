@@ -3467,6 +3467,33 @@ body,
     font-size: 10px;
 }
 
+/* Net sales can be negative: bars sit on a visible zero baseline and extend
+   downward for refund-only periods instead of being clamped. */
+.bar-chart .bar-track {
+    position: relative;
+}
+
+.bar-chart .bar-track span {
+    position: absolute;
+    left: 0;
+    z-index: 1;
+}
+
+.bar-chart .bar-track span.is-negative {
+    border-radius: 2px 2px 5px 5px;
+    background: #9a4a32;
+}
+
+.bar-chart.has-negative .bar-track::after {
+    content: "";
+    position: absolute;
+    right: -6px;
+    bottom: var(--zero-position, 0%);
+    left: -6px;
+    border-top: 1px dashed #d8c7b8;
+    pointer-events: none;
+}
+
 
 /* ---------------------------------------------------------
    8. ADMIN ATTENTION QUEUE

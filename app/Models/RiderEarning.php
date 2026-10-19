@@ -11,6 +11,7 @@ class RiderEarning extends Model
     protected function casts(): array
     {
         return [
+            'amount_minor' => 'integer',
             'earned_at' => 'datetime',
             'posted_at' => 'datetime',
             'paid_at' => 'datetime',

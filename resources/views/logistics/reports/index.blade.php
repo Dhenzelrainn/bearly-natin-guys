@@ -21,14 +21,13 @@
         </div>
 
         <div class="page-actions">
-            <button
+            <a
                 class="button button-primary"
-                type="button"
-                data-report-export
+                href="{{ route('logistics.reports.export', $reportRange) }}"
             >
                 <i data-lucide="download"></i>
                 Export CSV
-            </button>
+            </a>
         </div>
     </div>
 
@@ -317,7 +316,7 @@
 
                 <tbody>
                     @forelse($riderStats as $rider)
-                        <tr data-report-row>
+                        <tr>
                             <td>
                                 <strong>
                                     {{ $rider['name'] }}

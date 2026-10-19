@@ -240,20 +240,6 @@ function setupTables() {
     });
 }
 
-function setupReports() {
-    document.querySelector('[data-report-export]')?.addEventListener('click', () => {
-        const rows = [['Rider','Assigned','Delivered','Failed','Success Rate']];
-        document.querySelectorAll('[data-report-row]').forEach((row) => rows.push([...row.children].map((cell) => cell.innerText.trim())));
-        const blob = new Blob([rows.map((row) => row.map((value) => `"${value.replaceAll('"', '""')}"`).join(',')).join('\n')], { type: 'text/csv' });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = 'bearly-logistics-report.csv';
-        link.click();
-        URL.revokeObjectURL(link.href);
-        toast('CSV report exported.');
-    });
-}
-
 function setupChat() {
     const conversations = [
         ...document.querySelectorAll(
@@ -3081,7 +3067,6 @@ document.addEventListener('DOMContentLoaded', () => {
     setupPickupRejection();
     setupTabs();
     setupTables();
-    setupReports();
     setupChat();
     setupNewConversation();
     setupRegistration();

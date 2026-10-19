@@ -143,6 +143,7 @@ import { createAddressMapPicker } from './address-map-picker';
     clearButton: $('clear-address-pin'),
     locationButton: $('use-current-location'),
     reverseGeocodeUrl: $('address-map')?.dataset.reverseGeocodeUrl,
+    forwardGeocodeUrl: $('address-map')?.dataset.forwardGeocodeUrl,
     fields: {
       street: $('street'), barangay: $('barangay'), city: $('city'), province: $('province'), postal: $('postal-code'),
     },

@@ -1045,6 +1045,22 @@ body[data-module="rider"] .history-toolbar .filter-select {
     width: 100%;
 }
 
+body[data-module="rider"] .earnings-toolbar .search-field {
+    flex-basis: 280px;
+}
+
+body[data-module="rider"] .earnings-job-cell {
+    display: grid;
+    min-width: 190px;
+    gap: 2px;
+}
+
+body[data-module="rider"] .earnings-job-cell small {
+    color: var(--muted);
+    font-size: 9px;
+    overflow-wrap: anywhere;
+}
+
 body[data-module="rider"] .history-secondary-value {
     display: block;
     margin-top: 3px;

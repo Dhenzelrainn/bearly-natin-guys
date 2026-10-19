@@ -30,7 +30,7 @@
         'Pending Applications',
         'Restricted Accounts',
         'Active Orders',
-        'Gross Sales',
+        'Paid Collections',
     ];
     $adminRecordsKpi = $kpisByLabel->get('Admin Records');
 @endphp
@@ -52,7 +52,7 @@
                     'Pending Applications' => 'Applications awaiting review.',
                     'Restricted Accounts' => 'Suspended or deactivated accounts.',
                     'Active Orders' => 'Orders still in progress.',
-                    'Gross Sales' => 'Payments recorded as paid this year.',
+                    'Paid Collections' => 'Payments marked paid this year, by payment date.',
                     default => '',
                 };
                 $showStatus = ! in_array($label, ['Buyers', 'Sellers'], true);
@@ -106,12 +106,12 @@
             <div>
                 <span class="eyebrow">Marketplace performance</span>
                 <h2>Sales trend</h2>
-                <p>Gross sales from paid orders, grouped by payment date.</p>
+                <p>Net product sales from completed seller orders, grouped by completion date. Shipping is excluded; item discounts and completed refunds are deducted.</p>
             </div>
             <div class="segmented-control">
-                <button type="button" class="is-active" data-dashboard-period="12" aria-pressed="true">12M</button>
-                <button type="button" data-dashboard-period="3" aria-pressed="false">3M</button>
-                <button type="button" data-dashboard-period="30" aria-pressed="false">30D</button>
+                <button type="button" class="is-active" data-dashboard-period="12M" aria-pressed="true">12M</button>
+                <button type="button" data-dashboard-period="3M" aria-pressed="false">3M</button>
+                <button type="button" data-dashboard-period="30D" aria-pressed="false">30D</button>
             </div>
         </div>
 
@@ -120,9 +120,9 @@
                 @php
                     $trend = $salesTrend[$periodKey];
                     $trendCaption = match ($periodKey) {
-                        '3M' => 'Gross sales for the last 3 months',
-                        '30D' => 'Gross sales for the last 30 days',
-                        default => 'Gross sales for the current year',
+                        '3M' => 'Net product sales for the last 3 calendar months, grouped by completion date',
+                        '30D' => 'Net product sales for the last 30 days, grouped by completion date',
+                        default => 'Net product sales for the last 12 calendar months, grouped by completion date',
                     };
                 @endphp
                 <div class="chart-shell" data-dashboard-period-view="{{ $periodKey }}" @if ($periodKey !== '12M') hidden @endif>
@@ -131,11 +131,11 @@
                             @foreach ($trend['axis'] as $axisLabel)<span>{{ $axisLabel }}</span>@endforeach
                         </div>
                         <div
-                            class="bar-chart @if (count($trend['buckets']) > 14) is-dense @endif"
+                            class="bar-chart @if (count($trend['buckets']) > 14) is-dense @endif @if ($trend['has_negative']) has-negative @endif"
                             data-chart
                             role="group"
                             aria-label="{{ $trendCaption }}"
-                            style="grid-template-columns:repeat({{ count($trend['buckets']) }}, minmax(0, 1fr))"
+                            style="grid-template-columns:repeat({{ count($trend['buckets']) }}, minmax(0, 1fr))@if ($trend['has_negative']);--zero-position: {{ $trend['zero_percent'] }}%@endif"
                         >
                             @foreach ($trend['buckets'] as $bucket)
                                 <div
@@ -147,7 +147,15 @@
                                     data-label="{{ $bucket['label'] }}"
                                     data-value="{{ $bucket['value'] }}"
                                 >
-                                    <div class="bar-track"><span data-chart-bar style="height: {{ $bucket['height'] }}%"></span></div>
+                                    <div class="bar-track">
+                                        @if ($bucket['value_minor'] !== 0)
+                                            <span
+                                                data-chart-bar
+                                                @if ($bucket['negative']) class="is-negative" @endif
+                                                style="height: {{ $bucket['height'] }}%; @if ($bucket['negative']) top: {{ 100 - $trend['zero_percent'] }}%; @else bottom: {{ $trend['zero_percent'] }}%; @endif"
+                                            ></span>
+                                        @endif
+                                    </div>
                                     <small>{{ $bucket['short'] }}</small>
                                 </div>
                             @endforeach
@@ -163,8 +171,8 @@
         @else
             <div class="dashboard-chart-empty" role="status">
                 <i data-lucide="chart-column" aria-hidden="true"></i>
-                <strong>No paid sales recorded yet</strong>
-                <span>Sales activity will appear here when payments are recorded.</span>
+                <strong>No net product sales recorded yet</strong>
+                <span>Net product sales appear here after seller orders complete.</span>
             </div>
         @endif
     </article>

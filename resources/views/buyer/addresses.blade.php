@@ -57,7 +57,7 @@
 
 <div class="address-map-picker-section">
 <div class="address-map-picker-heading"><div><strong>Pin your location <span>(optional)</span></strong><small>Coordinates supplement your validated address. We do not reverse-geocode or change your PSGC fields.</small></div><div class="address-map-picker-actions"><button id="use-current-location" type="button" class="address-map-location"><span class="material-symbols-outlined" aria-hidden="true">my_location</span>Use my current location</button><button id="clear-address-pin" type="button" class="address-map-clear" hidden>Clear pin</button></div></div>
-<div id="address-map" class="address-map" data-map-tile-url="{{ config('maps.tile_url') }}" data-map-attribution="{{ config('maps.tile_attribution') }}" data-reverse-geocode-url="{{ route('maps.reverse-geocode') }}" aria-label="Address map pin picker"></div>
+<div id="address-map" class="address-map" data-map-tile-url="{{ config('maps.tile_url') }}" data-map-attribution="{{ config('maps.tile_attribution') }}" data-reverse-geocode-url="{{ route('maps.reverse-geocode') }}" data-forward-geocode-url="{{ route('maps.forward-geocode') }}" aria-label="Address map pin picker"></div>
 <p id="address-map-status" class="address-map-status" role="status">Click the map to place a pin, then save the address.</p>
 <input id="address-latitude" type="hidden">
 <input id="address-longitude" type="hidden">

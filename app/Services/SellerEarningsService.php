@@ -980,6 +980,62 @@ class SellerEarningsService
     }
 
     /**
+     * Net marketplace sales trend on the Sales Summary basis, split into
+     * calendar months or calendar days. Completed Seller Orders are attributed
+     * once by `completed_at`; product values come from the immutable order-item
+     * snapshots (shipping excluded), item discounts are deducted in the order's
+     * bucket, and completed refunds are deducted by their `completed_at`.
+     *
+     * @param  'day'|'month'  $interval
+     * @return array<int, array{gross_minor: int, discounts_minor: int, refunds_minor: int, net_minor: int, orders: int, seller_orders: int, units: int, label: string, short: string, start: string, end: string}>
+     */
+    public function marketplaceNetSalesTrendFor(
+        CarbonImmutable $from,
+        CarbonImmutable $to,
+        string $interval = 'day',
+    ): array {
+        $interval = $interval === 'month' ? 'month' : 'day';
+        $sellerOrders = $this->marketplaceSellerOrdersInRange($from, $to);
+        $refunds = $this->marketplaceRefundsInRange($from, $to);
+
+        $buckets = [];
+        $cursor = $interval === 'month' ? $from->startOfMonth() : $from->startOfDay();
+        $last = $to;
+
+        while ($cursor->lessThanOrEqualTo($last)) {
+            $start = $cursor;
+            $end = $interval === 'month' ? $cursor->endOfMonth() : $cursor->endOfDay();
+
+            if ($end->greaterThan($last)) {
+                $end = $last;
+            }
+
+            $bucket = $this->marketplaceTotals(
+                $sellerOrders->filter(fn (SellerOrder $sellerOrder): bool => ($completedAt = $this->sellerOrderCompletedAt($sellerOrder)) !== null
+                    && $completedAt->greaterThanOrEqualTo($start)
+                    && $completedAt->lessThanOrEqualTo($end)),
+                $refunds->filter(fn (Refund $refund): bool => $refund->completed_at !== null
+                    && $refund->completed_at->greaterThanOrEqualTo($start)
+                    && $refund->completed_at->lessThanOrEqualTo($end)),
+            );
+
+            $bucket['label'] = $interval === 'month'
+                ? $start->format('M Y')
+                : $start->format('M j, Y');
+            $bucket['short'] = $interval === 'month' ? $start->format('M') : $start->format('j');
+            $bucket['start'] = $start->toDateString();
+            $bucket['end'] = $end->toDateString();
+            $buckets[] = $bucket;
+
+            $cursor = $interval === 'month'
+                ? $start->addMonth()->startOfMonth()
+                : $start->addDay()->startOfDay();
+        }
+
+        return $buckets;
+    }
+
+    /**
      * Sales by Seller: grouped per Store (one Store per Seller profile),
      * with refunds attributed to the Store on their return request.
      *

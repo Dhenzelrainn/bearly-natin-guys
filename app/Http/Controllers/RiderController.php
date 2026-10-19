@@ -22,6 +22,7 @@ use App\Services\RegistrationLifecycleService;
 use App\Services\ReturnRefundService;
 use App\Services\RiderDeliveryHistoryService;
 use App\Services\RiderDeliveryService;
+use App\Services\RiderEarningsService;
 use App\Services\RiderPickupService;
 use App\Services\RiderZoneAssignmentService;
 use Illuminate\Http\JsonResponse;
@@ -1445,49 +1446,63 @@ class RiderController extends Controller
             );
     }
 
-    public function earnings()
-    {
+    public function earnings(
+        Request $request,
+        RiderEarningsService $earningsService,
+    ): View {
+        $riderProfile = $this->authenticatedRiderProfile($request);
+        $filters = $this->earningsFilters($request);
+
         return view('rider.earnings.index', $this->shared() + [
-            'earnings' => [
-                'today' => 420,
-                'week' => 2840,
-                'month' => 11260,
-                'pending' => 780,
-                'completed_jobs' => 63,
-                'tips' => 640,
-                'incentives' => 1200,
-                'deductions' => 360,
-            ],
-            'logs' => [
-                [
-                    'date' => 'Sep 6, 2026',
-                    'job' => 'DL-8411',
-                    'type' => 'Delivery',
-                    'amount' => 70,
-                    'status' => 'Posted',
-                ],
-                [
-                    'date' => 'Sep 6, 2026',
-                    'job' => 'PU-24088',
-                    'type' => 'Pickup',
-                    'amount' => 50,
-                    'status' => 'Posted',
-                ],
-                [
-                    'date' => 'Sep 5, 2026',
-                    'job' => 'DL-8399',
-                    'type' => 'Delivery',
-                    'amount' => 70,
-                    'status' => 'Posted',
-                ],
-                [
-                    'date' => 'Sep 5, 2026',
-                    'job' => 'DL-8396',
-                    'type' => 'Delivery',
-                    'amount' => 70,
-                    'status' => 'Pending',
-                ],
-            ],
+            'earnings' => $earningsService->summary($riderProfile),
+            'logs' => $earningsService->paginate($riderProfile, $filters),
+            'filters' => $filters,
+            'statusOptions' => $earningsService->statusOptions($riderProfile),
+            'typeOptions' => $earningsService->typeOptions($riderProfile),
+        ]);
+    }
+
+    public function exportEarnings(
+        Request $request,
+        RiderEarningsService $earningsService,
+    ): StreamedResponse {
+        $riderProfile = $this->authenticatedRiderProfile($request);
+        $filters = $this->earningsFilters($request);
+
+        return response()->streamDownload(function () use (
+            $earningsService,
+            $riderProfile,
+            $filters,
+        ): void {
+            $stream = fopen('php://output', 'wb');
+
+            if ($stream === false) {
+                return;
+            }
+
+            fwrite($stream, "\xEF\xBB\xBF");
+            fputcsv($stream, [
+                'Earned at',
+                'Job',
+                'Linked source',
+                'Type',
+                'Amount',
+                'Amount (centavos)',
+                'Status',
+                'Posted at',
+                'Paid at',
+                'Description',
+                'Pickup assignment ID',
+                'Delivery attempt ID',
+            ], ',', '"', '\\');
+
+            foreach ($earningsService->exportQuery($riderProfile, $filters)->cursor() as $record) {
+                fputcsv($stream, $earningsService->csvRow($record), ',', '"', '\\');
+            }
+
+            fclose($stream);
+        }, 'bearly-rider-earnings-'.now()->format('Ymd-His').'.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
     }
 
@@ -1496,7 +1511,7 @@ class RiderController extends Controller
         RiderDeliveryHistoryService $historyService,
         BuyerCatalogService $catalog,
     ): View {
-        $riderProfile = $this->historyRiderProfile($request);
+        $riderProfile = $this->authenticatedRiderProfile($request);
         $filters = $this->historyFilters($request);
 
         return view('rider.history.index', $this->shared() + [
@@ -1510,7 +1525,7 @@ class RiderController extends Controller
         Request $request,
         RiderDeliveryHistoryService $historyService
     ): StreamedResponse {
-        $riderProfile = $this->historyRiderProfile($request);
+        $riderProfile = $this->authenticatedRiderProfile($request);
         $filters = $this->historyFilters($request);
 
         return response()->streamDownload(function () use (
@@ -1547,13 +1562,51 @@ class RiderController extends Controller
         ]);
     }
 
-    private function historyRiderProfile(Request $request): RiderProfile
+    private function authenticatedRiderProfile(Request $request): RiderProfile
     {
         $user = $request->user();
 
         abort_unless($user instanceof User, 403);
 
         return $user->riderProfile()->firstOrFail();
+    }
+
+    /**
+     * @return array{search: string|null, status: string|null, type: string|null, date_from: string|null, date_to: string|null}
+     */
+    private function earningsFilters(Request $request): array
+    {
+        $validated = $request->validate([
+            'search' => ['nullable', 'string', 'max:120'],
+            'status' => ['nullable', 'string', 'max:30'],
+            'type' => ['nullable', 'string', 'max:30'],
+            'date_from' => ['nullable', 'date_format:Y-m-d'],
+            'date_to' => [
+                'nullable',
+                'date_format:Y-m-d',
+                function (string $attribute, mixed $value, \Closure $fail) use ($request): void {
+                    $dateFrom = $request->input('date_from');
+
+                    if (filled($value) && filled($dateFrom) && $value < $dateFrom) {
+                        $fail('The end date must be on or after the start date.');
+                    }
+                },
+            ],
+        ]);
+
+        return [
+            'search' => filled($validated['search'] ?? null)
+                ? trim((string) $validated['search'])
+                : null,
+            'status' => filled($validated['status'] ?? null)
+                ? trim((string) $validated['status'])
+                : null,
+            'type' => filled($validated['type'] ?? null)
+                ? trim((string) $validated['type'])
+                : null,
+            'date_from' => $validated['date_from'] ?? null,
+            'date_to' => $validated['date_to'] ?? null,
+        ];
     }
 
     /**

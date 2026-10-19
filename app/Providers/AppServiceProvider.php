@@ -2,20 +2,19 @@
 
 namespace App\Providers;
 
-use App\Observers\AccountApplicationObserver;
-
-use App\Observers\AddressObserver;
-
 use App\Models\AccountApplication;
-
 use App\Models\Address;
-
 use App\Models\Cart;
-
-use Illuminate\Support\ServiceProvider;
+use App\Models\User;
+use App\Observers\AccountApplicationObserver;
+use App\Observers\AddressObserver;
+use Illuminate\Filesystem\FilesystemAdapter;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\View;
+use Illuminate\Support\Facades\Vite;
+use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -32,13 +31,22 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // For the Cloudflare development hostname, always use compiled Vite assets.
+        // Localhost can keep using the normal public/hot Vite dev server.
+        if (
+            ! $this->app->runningInConsole()
+            && request()->getHost() === 'dev.bearlymarket.com'
+        ) {
+            Vite::useHotFile(storage_path('framework/vite-cloudflare-disabled.hot'));
+        }
+
         Address::observe(AddressObserver::class);
         AccountApplication::observe(AccountApplicationObserver::class);
 
         View::composer('buyer.*', function ($view): void {
-            $buyer = auth()->user();
+            $buyer = Auth::user();
 
-            if (! $buyer) {
+            if (! $buyer instanceof User) {
                 return;
             }
 
@@ -51,6 +59,14 @@ class AppServiceProvider extends ServiceProvider
                 : strtolower(preg_replace('/\s+/', '', $buyerName));
             $buyerBirthday = $buyer->birthday ?? $buyer->birth_date;
             $buyerBirthdayValue = $buyerBirthday?->format('Y-m-d') ?? '';
+            $buyerPhotoUrl = '';
+
+            if ($buyer->profile_photo_path) {
+                /** @var FilesystemAdapter $publicDisk */
+                $publicDisk = Storage::disk('public');
+                $buyerPhotoUrl = $publicDisk->url($buyer->profile_photo_path);
+            }
+
             $buyerCartCount = 0;
 
             if (Schema::hasTable('carts') && Schema::hasTable('cart_items')) {
@@ -70,9 +86,7 @@ class AppServiceProvider extends ServiceProvider
                 'phone' => $buyerPhone,
                 'gender' => (string) ($buyer->sex ?? ''),
                 'birthday' => $buyerBirthdayValue,
-                'photo' => $buyer->profile_photo_path
-                    ? Storage::disk('public')->url($buyer->profile_photo_path)
-                    : '',
+                'photo' => $buyerPhotoUrl,
                 'cartCount' => $buyerCartCount,
                 'notificationCount' => 0,
             ];

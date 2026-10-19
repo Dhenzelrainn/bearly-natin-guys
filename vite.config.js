@@ -30,6 +30,7 @@ export default defineConfig({
                 'resources/css/cart.css',
                  'resources/css/checkout.css',
                  'resources/css/buyer-dispute.css',
+                 'resources/css/buyer-return.css',
                  'resources/css/wishlist.css',
                 'resources/css/bearly-chat.css',
                 'resources/js/profile.js',
@@ -47,6 +48,7 @@ export default defineConfig({
                 'resources/js/notification-center-page.js',
 
                 // Seller
+                'resources/css/maps.css',
                 'resources/css/seller.css',
                 'resources/css/messages-standard.css',
                 'resources/js/messages-standard.js',
@@ -58,6 +60,9 @@ export default defineConfig({
                 'resources/css/seller-legibility.css',
                 'resources/js/seller.js',
                 'resources/js/seller-polish.js',
+
+                // Shared logistics/rider waybill scanning
+                'resources/css/waybill-scanner.css',
 
                 // Logistics
                 'resources/css/logistics.css',

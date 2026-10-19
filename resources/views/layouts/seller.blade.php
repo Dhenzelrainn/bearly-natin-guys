@@ -16,7 +16,6 @@
         'resources/css/seller-legibility.css',
         'resources/js/seller.js',
         'resources/js/realtime.js',
-        'resources/js/address-map-picker.js',
         'resources/js/seller-store-map.js',
         'resources/js/seller-polish.js'
     ])

@@ -87,5 +87,5 @@
 </header>
 
 @vite('resources/js/buyer-notifications.js')
-<script>window.bearlyRealtimeUserId = @json(auth()->id());</script>
+@include('partials.realtime-identity')
 @vite('resources/js/realtime.js')

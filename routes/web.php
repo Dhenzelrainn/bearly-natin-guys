@@ -182,6 +182,10 @@ Route::middleware('auth')->prefix('notifications')->name('notifications.')->grou
     Route::post('/{notification}/read', [NotificationController::class, 'read'])->name('read');
 });
 
+Route::get('/announcements/feed', [AnnouncementController::class, 'feed'])
+    ->middleware('auth')
+    ->name('announcements.feed');
+
 Route::get('/announcements/{announcement}', [AnnouncementController::class, 'show'])
     ->middleware('auth')
     ->whereNumber('announcement')

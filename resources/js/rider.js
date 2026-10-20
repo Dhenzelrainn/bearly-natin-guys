@@ -8,6 +8,24 @@ const saveValue = (section, key, value) => { const state = readState(); state[se
 const normalize = (value) => String(value || '').trim().toLowerCase().replaceAll('_',' ');
 const escapeHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, (character) => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'})[character]);
 const refreshIcons = () => window.lucide?.createIcons();
+const unseenMessages = (existing = [], incoming = []) => {
+    const seen = new Set(
+        (Array.isArray(existing) ? existing : [])
+            .map((message) => Number(message?.id || 0))
+            .filter((id) => id > 0),
+    );
+
+    return (Array.isArray(incoming) ? incoming : []).filter((message) => {
+        const id = Number(message?.id || 0);
+
+        if (id <= 0) return true;
+        if (seen.has(id)) return false;
+
+        seen.add(id);
+
+        return true;
+    });
+};
 
 function toast(message) {
     const stack = document.querySelector('[data-toast-stack]'); if (!stack) return;
@@ -321,7 +339,10 @@ function setupChat() {
                 throw new Error(errors[0] || payload?.message || 'The message could not be sent.');
             }
 
-            conversation.messages = [...(conversation.messages || []), payload.data];
+            conversation.messages = [
+                ...(conversation.messages || []),
+                ...unseenMessages(conversation.messages, [payload.data]),
+            ];
             conversation.preview = payload.data?.preview || conversation.preview;
 
             input.value = '';
@@ -363,7 +384,7 @@ function setupChat() {
             if (!response.ok) return;
 
             const payload = await response.json();
-            const incoming = payload?.data?.messages || [];
+            const incoming = unseenMessages(conversation.messages, payload?.data?.messages || []);
 
             if (!incoming.length) return;
 

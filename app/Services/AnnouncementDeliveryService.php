@@ -3,12 +3,15 @@
 namespace App\Services;
 
 use App\Enums\AccountStatus;
+use App\Events\AnnouncementPublished;
 use App\Models\Announcement;
 use App\Models\User;
 use App\Notifications\WorkflowNotification;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Throwable;
 
 class AnnouncementDeliveryService
 {
@@ -34,11 +37,7 @@ class AnnouncementDeliveryService
 
         $announcement->loadMissing('roles');
 
-        $roleNames = $announcement->roles
-            ->pluck('name')
-            ->intersect(self::AUDIENCE_ROLES)
-            ->values()
-            ->all();
+        $roleNames = $this->audienceRoles($announcement);
 
         if ($roleNames === []) {
             return 0;
@@ -101,5 +100,58 @@ class AnnouncementDeliveryService
         });
 
         return $attempted;
+    }
+
+    /**
+     * Push the published announcement to the private role channels before the
+     * slower per-recipient notification fan-out starts. A realtime outage is
+     * logged and must never fail or roll back the published announcement.
+     */
+    public function broadcastPublished(Announcement $announcement): void
+    {
+        if ($announcement->status !== 'published') {
+            return;
+        }
+
+        $announcement->loadMissing('roles');
+
+        $roleNames = $this->audienceRoles($announcement);
+
+        if ($roleNames === []) {
+            return;
+        }
+
+        $publishedAt = $announcement->published_at ?? $announcement->publish_at;
+
+        try {
+            event(new AnnouncementPublished(
+                recipientRoles: $roleNames,
+                payload: [
+                    'id' => (int) $announcement->id,
+                    'announcement_no' => (string) $announcement->announcement_no,
+                    'title' => (string) $announcement->title,
+                    'excerpt' => Str::limit(Str::squish((string) $announcement->body), 180),
+                    'url' => route('announcements.show', $announcement),
+                    'published_at' => $publishedAt?->toIso8601String(),
+                    'audience_roles' => $roleNames,
+                ],
+            ));
+        } catch (Throwable $exception) {
+            Log::notice('Bearly realtime announcement broadcast failed.', [
+                'announcement_id' => (int) $announcement->id,
+                'exception' => $exception::class,
+            ]);
+        }
+    }
+
+    /** @return list<string> */
+    private function audienceRoles(Announcement $announcement): array
+    {
+        return $announcement->roles
+            ->pluck('name')
+            ->intersect(self::AUDIENCE_ROLES)
+            ->unique()
+            ->values()
+            ->all();
     }
 }

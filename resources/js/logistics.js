@@ -381,6 +381,35 @@ function setupChat() {
         conversationData[active]
         || null;
 
+    /* Realtime fetches and polling may overlap; keep one bubble per message id. */
+    const unseenMessages = (
+        existing = [],
+        incoming = []
+    ) => {
+        const seen = new Set(
+            (Array.isArray(existing) ? existing : [])
+                .map((message) => Number(message?.id || 0))
+                .filter((id) => id > 0)
+        );
+
+        return (Array.isArray(incoming) ? incoming : [])
+            .filter((message) => {
+                const id = Number(message?.id || 0);
+
+                if (id <= 0) {
+                    return true;
+                }
+
+                if (seen.has(id)) {
+                    return false;
+                }
+
+                seen.add(id);
+
+                return true;
+            });
+    };
+
     const maxAttachmentSize =
         10 * 1024 * 1024;
 
@@ -545,9 +574,12 @@ function setupChat() {
                 await response.json();
 
             const incoming =
-                result?.data
-                    ?.messages
-                || [];
+                unseenMessages(
+                    thread,
+                    result?.data
+                        ?.messages
+                    || []
+                );
 
             if (!incoming.length) {
                 return;
@@ -983,7 +1015,11 @@ function setupChat() {
             conversation
                 .messages
                 .push(
-                    data.data
+                    ...unseenMessages(
+                        conversation
+                            .messages,
+                        [data.data]
+                    )
                 );
 
             conversation.preview =

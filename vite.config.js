@@ -10,6 +10,7 @@ export default defineConfig({
                 'resources/css/bearly-auth.css',
                 'resources/js/bearly-auth.js',
                 'resources/css/announcement.css',
+                'resources/js/announcement.js',
 
                 // Admin
                 'resources/css/admin.css',

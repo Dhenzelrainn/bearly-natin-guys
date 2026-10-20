@@ -5858,6 +5858,39 @@ import './notification-center.js';
                 .replaceAll("'", '&#039;');
 
 
+        /*
+         * A realtime refetch can overlap polling and the send response. Keep
+         * only message ids that are not already in the thread.
+         */
+        const unseenChatMessages = (
+            existing = [],
+            incoming = []
+        ) => {
+            const seen = new Set(
+                (Array.isArray(existing) ? existing : [])
+                    .map((message) => Number(message?.id || 0))
+                    .filter((id) => id > 0)
+            );
+
+            return (Array.isArray(incoming) ? incoming : [])
+                .filter((message) => {
+                    const id = Number(message?.id || 0);
+
+                    if (id <= 0) {
+                        return true;
+                    }
+
+                    if (seen.has(id)) {
+                        return false;
+                    }
+
+                    seen.add(id);
+
+                    return true;
+                });
+        };
+
+
         const getConversationId = (
             item
         ) =>
@@ -6517,7 +6550,10 @@ import './notification-center.js';
                     conversation.messages || [];
 
                 conversation.messages.push(
-                    result.data
+                    ...unseenChatMessages(
+                        conversation.messages,
+                        [result.data]
+                    )
                 );
 
                 const previewText =
@@ -6732,7 +6768,10 @@ import './notification-center.js';
 
             const result = await response.json();
 
-            const incoming = result?.data?.messages || [];
+            const incoming = unseenChatMessages(
+                messages,
+                result?.data?.messages || []
+            );
 
             if (!incoming.length) {
                 return;

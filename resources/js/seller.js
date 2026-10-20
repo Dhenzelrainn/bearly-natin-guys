@@ -1770,6 +1770,7 @@ const bootSeller = () => {
         let activePayload = {};
         let lastMessageId = 0;
         let lastDayLabel = null;
+        let renderedMessageIds = new Set();
         let lastInboxSnapshot = null;
         let sending = false;
         let pollTimer = null;
@@ -1937,19 +1938,26 @@ const bootSeller = () => {
         };
         const appendMessage = (message, initials) => {
             if (!thread) return;
+
+            const messageId = Number(message.id || 0);
+
+            if (messageId > 0 && renderedMessageIds.has(messageId)) return;
+            if (messageId > 0) renderedMessageIds.add(messageId);
+
             if (message.day_label && message.day_label !== lastDayLabel) {
                 lastDayLabel = message.day_label;
                 appendDay(lastDayLabel);
             }
             thread.querySelector('.message-thread-empty')?.remove();
             thread.append(bubble(message, initials));
-            lastMessageId = Math.max(lastMessageId, Number(message.id || 0));
+            lastMessageId = Math.max(lastMessageId, messageId);
         };
         const renderThread = (messages, initials) => {
             if (!thread) return;
             thread.replaceChildren();
             lastMessageId = 0;
             lastDayLabel = null;
+            renderedMessageIds = new Set();
             (messages || []).forEach((message) => appendMessage(message, initials));
             if (!messages || messages.length === 0) thread.append(threadNote('No messages yet. Say hello to start the conversation.'));
             window.lucide?.createIcons();
@@ -1960,6 +1968,11 @@ const bootSeller = () => {
             const bubbles = thread.querySelectorAll('[data-message-id]');
             const lastBubble = bubbles[bubbles.length - 1];
             lastMessageId = lastBubble ? Number(lastBubble.dataset.messageId || 0) : 0;
+            renderedMessageIds = new Set(
+                [...bubbles]
+                    .map((bubble) => Number(bubble.dataset.messageId || 0))
+                    .filter((id) => id > 0),
+            );
             const days = thread.querySelectorAll('.message-day span');
             lastDayLabel = days.length ? days[days.length - 1].textContent : null;
         };

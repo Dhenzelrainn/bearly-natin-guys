@@ -85,6 +85,40 @@ body.announcement-page {
     box-shadow: 0 8px 20px rgba(76, 49, 29, .1);
 }
 
+.announcement-live {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px 16px;
+    margin-bottom: 18px;
+    padding: 13px 16px;
+    border: 1px solid #e2c69f;
+    border-radius: 12px;
+    color: #674323;
+    background: #fff6e8;
+    box-shadow: 0 6px 18px rgba(104, 64, 28, .08);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.5;
+}
+
+.announcement-live[hidden] {
+    display: none;
+}
+
+.announcement-live a {
+    margin-left: auto;
+    color: #7d481c;
+    font-weight: 700;
+    text-underline-offset: 3px;
+}
+
+.announcement-live a:focus-visible {
+    outline: 3px solid #d89a42;
+    outline-offset: 3px;
+    border-radius: 3px;
+}
+
 .announcement-card {
     padding: clamp(26px, 5vw, 64px);
     border: 1px solid #eadfd4;
@@ -562,6 +596,19 @@ body.announcement-page {
     .announcement-brand img {
         width: 136px;
         height: 45px;
+    }
+
+    .announcement-live {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 6px;
+        margin-bottom: 14px;
+        padding: 11px 13px;
+        font-size: 11px;
+    }
+
+    .announcement-live a {
+        margin-left: 0;
     }
 
     .announcement-card {

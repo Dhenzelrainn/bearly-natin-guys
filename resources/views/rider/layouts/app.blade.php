@@ -9,6 +9,7 @@
     @stack('styles')
 </head>
 <body class="ops-body" data-module="rider" data-realtime-user-id="{{ auth()->id() }}">
+@include('partials.realtime-identity')
 <div class="ops-shell">
     <aside class="ops-sidebar" aria-label="Rider navigation">
         <div class="ops-sidebar-header">

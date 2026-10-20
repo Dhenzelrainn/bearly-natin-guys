@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\AccountStatus;
 use App\Models\Conversation;
 use App\Models\User;
 use Illuminate\Support\Facades\Broadcast;
@@ -16,4 +17,10 @@ Broadcast::channel('conversations.{conversation}', function (User $user, Convers
     return $conversation->participants()
         ->whereKey($user->id)
         ->exists();
+});
+
+Broadcast::channel('announcements.{role}', function (User $user, string $role): bool {
+    return $user->status === AccountStatus::Active->value
+        && in_array($role, ['buyer', 'seller', 'logistics', 'rider'], true)
+        && $user->hasRole($role);
 });

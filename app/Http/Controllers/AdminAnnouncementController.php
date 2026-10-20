@@ -107,6 +107,7 @@ class AdminAnnouncementController extends Controller
         }
 
         if ($announcement->status === 'published') {
+            $delivery->broadcastPublished($announcement);
             $delivery->deliverMissing($announcement);
         }
 
@@ -122,10 +123,12 @@ class AdminAnnouncementController extends Controller
         $validated = $this->validateAnnouncement($request, $announcement);
         $storedFiles = [];
         $removedFiles = [];
+        $becamePublished = false;
 
         try {
-            $announcement = DB::transaction(function () use ($announcement, $request, $validated, $mediaService, &$storedFiles, &$removedFiles): Announcement {
+            $announcement = DB::transaction(function () use ($announcement, $request, $validated, $mediaService, &$storedFiles, &$removedFiles, &$becamePublished): Announcement {
                 $announcement = Announcement::query()->with(['roles', 'media'])->lockForUpdate()->findOrFail($announcement->id);
+                $wasPublished = $announcement->status === 'published';
                 $this->validateMediaCapacity($announcement, $validated);
                 $oldValues = $announcement->toArray();
                 $oldValues['media_summary'] = $this->mediaAuditValues($announcement->media);
@@ -139,6 +142,7 @@ class AdminAnnouncementController extends Controller
                 $newValues['media_summary'] = $this->mediaAuditValues($announcement->media);
                 unset($newValues['media']);
                 $this->audit($request, $announcement, 'announcement.updated', $oldValues, $newValues);
+                $becamePublished = ! $wasPublished && $announcement->status === 'published';
 
                 return $announcement;
             }, 3);
@@ -149,6 +153,10 @@ class AdminAnnouncementController extends Controller
         }
 
         $mediaService->deleteFiles($removedFiles);
+
+        if ($becamePublished) {
+            $delivery->broadcastPublished($announcement);
+        }
 
         if ($announcement->status === 'published') {
             $delivery->deliverMissing($announcement);

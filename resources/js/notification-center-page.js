@@ -116,6 +116,24 @@ const initCenter = root => {
         loading: false,
     };
 
+    let refreshTimer = null;
+    let refreshPending = false;
+
+    const scheduleRefresh = () => {
+        window.clearTimeout(refreshTimer);
+
+        refreshTimer = window.setTimeout(() => {
+            refreshTimer = null;
+
+            if (state.loading) {
+                refreshPending = true;
+                return;
+            }
+
+            fetchPage(state.page);
+        }, 250);
+    };
+
     const emptyCopy = () => {
         const filtered = state.search !== '' || state.category !== 'all';
 
@@ -209,6 +227,11 @@ const initCenter = root => {
             state.loading = false;
             root.classList.remove('is-loading');
             list.setAttribute('aria-busy', 'false');
+
+            if (refreshPending) {
+                refreshPending = false;
+                fetchPage(state.page);
+            }
         }
     };
 
@@ -351,6 +374,8 @@ const initCenter = root => {
     window.BearlyNotificationCenterPage = {
         refresh: () => fetchPage(state.page),
     };
+
+    window.addEventListener('bearly:notification-created', scheduleRefresh);
 
     fetchPage(1);
 };

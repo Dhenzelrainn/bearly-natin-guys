@@ -27,6 +27,7 @@
 </head>
 
 <body class="admin-body" data-realtime-user-id="{{ auth()->id() }}">
+@include('partials.realtime-identity')
 
 @php
 

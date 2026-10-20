@@ -54,7 +54,10 @@ class AnnouncementPublishingService
                 ->whereIn('id', $result['publishedIds'])
                 ->orderBy('id')
                 ->get()
-                ->each(fn (Announcement $announcement) => $this->delivery->deliverMissing($announcement));
+                ->each(function (Announcement $announcement): void {
+                    $this->delivery->broadcastPublished($announcement);
+                    $this->delivery->deliverMissing($announcement);
+                });
         }
 
         return [

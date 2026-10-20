@@ -63,6 +63,30 @@
         return last ? Number(last.id || 0) : 0;
     };
 
+    /*
+     * Realtime refetches and polling can overlap: both may request messages
+     * after the same cursor and receive the same rows. Keep the first row per
+     * message id so a thread never renders a duplicate bubble.
+     */
+    const unseenMessages = (existing, incoming) => {
+        const seen = new Set(
+            (Array.isArray(existing) ? existing : [])
+                .map((message) => Number(message.id || 0))
+                .filter((id) => id > 0),
+        );
+
+        return (Array.isArray(incoming) ? incoming : []).filter((message) => {
+            const id = Number(message.id || 0);
+
+            if (id <= 0) return true;
+            if (seen.has(id)) return false;
+
+            seen.add(id);
+
+            return true;
+        });
+    };
+
     function bootstrapRoot(root) {
         const node = root.querySelector('script[data-chat-bootstrap]');
         if (!node) return false;
@@ -192,7 +216,7 @@
             const previousMeta = JSON.stringify(state.thread.conversation);
             state.thread.conversation = payload.conversation;
 
-            const incoming = Array.isArray(payload.messages) ? payload.messages : [];
+            const incoming = unseenMessages(state.thread.messages, payload.messages);
             if (incoming.length) {
                 const container = root.querySelector('[data-chat-messages]');
                 const nearBottom = container
@@ -688,7 +712,7 @@
                 conversation.unread = 0;
 
                 if (state.thread && Number(state.thread.conversation?.id) === Number(conversation.id)) {
-                    state.thread.messages.push(payload);
+                    state.thread.messages.push(...unseenMessages(state.thread.messages, [payload]));
                     state.lastMessageId = Math.max(state.lastMessageId, Number(payload.id || 0));
                 }
             }

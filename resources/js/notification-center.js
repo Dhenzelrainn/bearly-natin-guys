@@ -288,6 +288,17 @@ function boot() {
         if (document.visibilityState === 'visible') refreshNotificationCenters();
     });
 
+    /*
+     * realtime.js dispatches this when a private notification event arrives.
+     * Debounce so a burst of events causes one refresh; the 60-second
+     * interval below remains the fallback when Reverb is unavailable.
+     */
+    let realtimeRefreshTimer = null;
+    window.addEventListener('bearly:notification-created', () => {
+        window.clearTimeout(realtimeRefreshTimer);
+        realtimeRefreshTimer = window.setTimeout(refreshNotificationCenters, 250);
+    });
+
     window.setInterval(refreshNotificationCenters, 60000);
 
     window.BearlyNotifications = {

@@ -204,6 +204,33 @@ class BuyerChatMessagingTest extends TestCase
         );
     }
 
+    public function test_message_is_persisted_before_its_realtime_event_is_dispatched(): void
+    {
+        $buyer = $this->buyerFixture('Ordering Buyer');
+        [$seller, $store] = $this->storeFixture('Sundays Market', 'sundays-market');
+        $product = $this->productFixture($store, 'Classic Linen Shirt');
+        $conversation = $this->conversationFixture($buyer, $seller, $product, 'First question');
+
+        Event::fake([ConversationMessageCreated::class]);
+
+        $this->actingAs($buyer)->postJson(route('buyer.chat.send', ['conversation' => $conversation->id]), [
+            'message' => 'Persist first, then announce.',
+        ])->assertOk();
+
+        Event::assertDispatched(
+            ConversationMessageCreated::class,
+            function (ConversationMessageCreated $event) use ($conversation, $buyer, $seller): bool {
+                $message = Message::query()->find($event->messageId);
+
+                return $message !== null
+                    && (int) $message->conversation_id === (int) $conversation->id
+                    && $message->body === 'Persist first, then announce.'
+                    && $event->recipientIds === [$seller->id]
+                    && ! in_array($buyer->id, $event->recipientIds, true);
+            },
+        );
+    }
+
     public function test_unread_counts_follow_participant_read_timestamps(): void
     {
         $buyer = $this->buyerFixture('Unread Buyer');

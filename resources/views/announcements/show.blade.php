@@ -9,9 +9,15 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     @include('partials.session-safety')
-    @vite(['resources/css/announcement.css'])
+    @include('partials.realtime-identity')
+    @vite(['resources/css/announcement.css', 'resources/js/realtime.js', 'resources/js/announcement.js'])
 </head>
-<body class="announcement-page">
+<body
+    class="announcement-page"
+    data-announcement-feed-url="{{ route('announcements.feed') }}"
+    data-current-announcement-id="{{ $announcement->id }}"
+    data-latest-published-at="{{ $publishedAt->toIso8601String() }}"
+>
     <main class="announcement-shell">
         <header class="announcement-topbar">
             <a class="announcement-brand" href="{{ $dashboardUrl }}" aria-label="Bearly {{ $roleLabel }} dashboard">
@@ -23,6 +29,8 @@
                 Back to {{ $roleLabel }} dashboard
             </a>
         </header>
+
+        <div class="announcement-live" data-announcement-live hidden role="status" aria-live="polite"></div>
 
         <article class="announcement-card" aria-labelledby="announcement-title">
             <div class="announcement-kicker">
@@ -89,9 +97,12 @@
                 <p>Scroll through earlier full posts, including their attached photos and videos.</p>
             </header>
 
-            <div class="announcement-history-list">
+            <div class="announcement-history-list" data-announcement-history-list>
                 @forelse ($pastAnnouncements as $pastAnnouncement)
-                    <article class="announcement-history-post">
+                    <article
+                        class="announcement-history-post"
+                        data-announcement-id="{{ $pastAnnouncement->id }}"
+                    >
                         <header class="announcement-history-post-header">
                             <span class="announcement-history-avatar" aria-hidden="true">
                                 <img src="{{ asset('images/bearly-logo-2.png') }}" alt="">
@@ -140,7 +151,7 @@
                         </footer>
                     </article>
                 @empty
-                    <div class="announcement-history-empty">
+                    <div class="announcement-history-empty" data-announcement-history-empty>
                         <span class="announcement-history-empty-icon" aria-hidden="true">
                             <svg viewBox="0 0 24 24"><path d="M12 8v4l3 2m6-2a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
                         </span>

@@ -23,6 +23,7 @@
     @stack('styles')
 </head>
 <body class="seller-body" data-realtime-user-id="{{ auth()->id() }}">
+@include('partials.realtime-identity')
 @php
     $sellerNavGroups = [
         ['key' => 'orders', 'label' => 'Orders', 'icon' => 'clipboard-list', 'active' => request()->routeIs('seller.orders*'), 'children' => [

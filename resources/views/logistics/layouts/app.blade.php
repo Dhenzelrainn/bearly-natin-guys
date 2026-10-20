@@ -13,6 +13,7 @@
     @stack('styles')
 </head>
 <body class="ops-body" data-module="logistics" data-realtime-user-id="{{ auth()->id() }}">
+@include('partials.realtime-identity')
 <div class="ops-shell">
     <aside class="ops-sidebar" aria-label="Logistics navigation">
         <div class="ops-sidebar-header">

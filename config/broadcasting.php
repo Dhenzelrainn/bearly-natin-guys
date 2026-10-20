@@ -35,14 +35,23 @@ return [
             'key' => env('REVERB_APP_KEY'),
             'secret' => env('REVERB_APP_SECRET'),
             'app_id' => env('REVERB_APP_ID'),
+            /*
+             * Laravel talks to Reverb over the internal listener, never the
+             * public Cloudflare Tunnel hostname. Keep this target separate
+             * from REVERB_HOST so changing the browser-facing host cannot
+             * point server broadcasts back at the public edge.
+             */
             'options' => [
-                'host' => env('REVERB_HOST'),
-                'port' => env('REVERB_PORT', 443),
-                'scheme' => env('REVERB_SCHEME', 'https'),
-                'useTLS' => env('REVERB_SCHEME', 'https') === 'https',
+                'host' => env('REVERB_BROADCAST_HOST', '127.0.0.1'),
+                'port' => env('REVERB_BROADCAST_PORT', 8080),
+                'scheme' => env('REVERB_BROADCAST_SCHEME', 'http'),
+                'useTLS' => env('REVERB_BROADCAST_SCHEME', 'http') === 'https',
             ],
             'client_options' => [
-                // Guzzle client options: https://docs.guzzlephp.org/en/stable/request-options.html
+                // Keep a Reverb outage from stalling the HTTP request that
+                // produced the broadcast. The polling fallback still works.
+                'timeout' => (float) env('REVERB_BROADCAST_TIMEOUT', 3),
+                'connect_timeout' => (float) env('REVERB_BROADCAST_CONNECT_TIMEOUT', 1),
             ],
         ],
 

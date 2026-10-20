@@ -29,9 +29,18 @@ return [
     'servers' => [
 
         'reverb' => [
+            /*
+             * The socket Reverb binds. Cloudflare Tunnel reaches it through
+             * this local listener, so keep it on 0.0.0.0:8080 in deployments
+             * that run behind the tunnel.
+             */
             'host' => env('REVERB_SERVER_HOST', '0.0.0.0'),
             'port' => env('REVERB_SERVER_PORT', 8080),
             'path' => env('REVERB_SERVER_PATH', ''),
+            /*
+             * Public hostname only. It is used for TLS certificate lookup and
+             * the startup banner, not as Laravel's broadcast destination.
+             */
             'hostname' => env('REVERB_HOST'),
             'options' => [
                 'tls' => [],
@@ -76,6 +85,11 @@ return [
                 'key' => env('REVERB_APP_KEY'),
                 'secret' => env('REVERB_APP_SECRET'),
                 'app_id' => env('REVERB_APP_ID'),
+                /*
+                 * Public connection metadata advertised to browser clients.
+                 * The browser uses explicit VITE_REVERB_* values; Laravel's
+                 * server-to-Reverb client uses REVERB_BROADCAST_* instead.
+                 */
                 'options' => [
                     'host' => env('REVERB_HOST'),
                     'port' => env('REVERB_PORT', 443),

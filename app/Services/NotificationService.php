@@ -5,11 +5,13 @@ namespace App\Services;
 use App\Enums\AccountStatus;
 use App\Enums\UserRole;
 use App\Events\UserNotificationCreated;
+use App\Jobs\SendBearlyNotificationEmail;
 use App\Models\User;
 use App\Notifications\BearlyNotification;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Notification;
 use Throwable;
 
 class NotificationService
@@ -60,36 +62,46 @@ class NotificationService
     }
 
     /**
-     * Deliver through the user's enabled channels. The in-app row is written
-     * before the mail attempt, and a channel failure (for example an SMTP
-     * transport error) is logged instead of breaking the workflow that
-     * produced the notification.
+     * Deliver through the user's enabled channels. The in-app row and realtime
+     * broadcast are written immediately; the optional email is queued after the
+     * surrounding transaction commits so slow SMTP transport never delays the
+     * workflow that produced the notification. Channel failures (for example an
+     * SMTP transport error) are logged instead of breaking the workflow.
      */
     private function deliver(User $user, BearlyNotification $notification): void
     {
         try {
-            $user->notify($notification);
+            $channels = $notification->via($user);
+            $wantsDatabase = in_array('database', $channels, true);
+            $wantsEmail = in_array('mail', $channels, true);
 
-            if (! in_array('database', $notification->via($user), true)) {
-                return;
+            if ($wantsDatabase) {
+                Notification::sendNow($user, $notification, ['database']);
+
+                try {
+                    event(new UserNotificationCreated(
+                        userId: (int) $user->id,
+                        event: $notification->eventKey(),
+                        title: $notification->title(),
+                        body: $notification->body(),
+                        url: $notification->actionUrl(),
+                        type: $notification->type(),
+                        meta: $notification->meta(),
+                    ));
+                } catch (Throwable $broadcastException) {
+                    Log::notice('Bearly realtime notification broadcast failed.', [
+                        'event' => $notification->eventKey(),
+                        'user_id' => (int) $user->id,
+                        'exception' => $broadcastException::class,
+                    ]);
+                }
             }
 
-            try {
-                event(new UserNotificationCreated(
-                    userId: (int) $user->id,
-                    event: $notification->eventKey(),
-                    title: $notification->title(),
-                    body: $notification->body(),
-                    url: $notification->actionUrl(),
-                    type: $notification->type(),
-                    meta: $notification->meta(),
-                ));
-            } catch (Throwable $broadcastException) {
-                Log::notice('Bearly realtime notification broadcast failed.', [
-                    'event' => $notification->eventKey(),
-                    'user_id' => (int) $user->id,
-                    'exception' => $broadcastException::class,
-                ]);
+            if ($wantsEmail) {
+                SendBearlyNotificationEmail::dispatch(
+                    (int) $user->id,
+                    $notification,
+                )->afterCommit();
             }
         } catch (Throwable $exception) {
             Log::warning('Bearly notification delivery failed.', [

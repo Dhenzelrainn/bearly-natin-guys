@@ -41,6 +41,7 @@ class SellerMessagesTest extends TestCase
 
         $response = $this->actingAs($sellerA)->get(route('seller.support.messages'));
         $response->assertOk()
+            ->assertSee('data-realtime-user-id="'.$sellerA->id.'"', false)
             ->assertSee('Ana Cruz')
             ->assertSee('Do you have this in brown?')
             ->assertSee('Alpha Basket')

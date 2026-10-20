@@ -17,6 +17,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -345,11 +346,26 @@ class ConversationService
             return;
         }
 
-        DB::afterCommit(fn () => event(new ConversationMessageCreated(
-            conversationId: (int) $conversation->id,
-            messageId: (int) $message->id,
-            recipientIds: $recipientIds->map(fn ($id): int => (int) $id)->values()->all(),
-        )));
+        DB::afterCommit(function () use ($conversation, $message, $recipientIds): void {
+            try {
+                event(new ConversationMessageCreated(
+                    conversationId: (int) $conversation->id,
+                    messageId: (int) $message->id,
+                    recipientIds: $recipientIds->map(fn ($id): int => (int) $id)->values()->all(),
+                ));
+            } catch (Throwable $exception) {
+                /*
+                 * A realtime outage must not roll back or fail a message that
+                 * is already persisted. Recipients still get the notification
+                 * and the polling fallback.
+                 */
+                Log::notice('Bearly realtime message broadcast failed.', [
+                    'conversation_id' => (int) $conversation->id,
+                    'message_id' => (int) $message->id,
+                    'exception' => $exception::class,
+                ]);
+            }
+        });
 
         $preview = trim((string) $message->body);
         $preview = $preview === '' ? 'Sent an attachment.' : Str::limit($preview, 120);

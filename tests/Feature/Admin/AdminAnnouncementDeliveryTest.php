@@ -2,13 +2,17 @@
 
 namespace Tests\Feature\Admin;
 
+use App\Jobs\SendBearlyNotificationEmail;
 use App\Models\Announcement;
 use App\Models\Role;
 use App\Models\User;
+use App\Models\UserNotificationPreference;
 use App\Notifications\WorkflowNotification;
+use App\Services\AnnouncementDeliveryService;
 use App\Services\AnnouncementPublishingService;
 use App\Services\NotificationPreferenceService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -85,6 +89,40 @@ class AdminAnnouncementDeliveryTest extends TestCase
 
         $this->assertTrue($channels['in_app']);
         $this->assertFalse($channels['email']);
+    }
+
+    public function test_enabled_announcement_email_is_queued_once_and_keeps_a_single_in_app_row(): void
+    {
+        $admin = $this->user('admin', 'Bearly Admin');
+        $buyer = $this->user('buyer', 'Announcement Buyer');
+
+        UserNotificationPreference::create([
+            'user_id' => $buyer->id,
+            'event_key' => 'announcement_published',
+            'in_app' => true,
+            'email' => true,
+        ]);
+
+        Queue::fake();
+
+        $announcement = $this->announcement($admin, ['buyer'], [
+            'announcement_no' => 'ANN-QUEUE-001',
+            'title' => 'Queued announcement email',
+        ]);
+
+        $delivery = app(AnnouncementDeliveryService::class);
+
+        // Running the delivery twice must not duplicate the in-app row or the
+        // queued email job.
+        $this->assertSame(1, $delivery->deliverMissing($announcement));
+        $this->assertSame(0, $delivery->deliverMissing($announcement));
+
+        $this->assertSame(
+            1,
+            $buyer->notifications()->where('type', WorkflowNotification::class)->count(),
+        );
+
+        Queue::assertPushed(SendBearlyNotificationEmail::class, 1);
     }
 
     public function test_announcement_detail_includes_only_older_visible_posts_for_the_signed_in_roles(): void

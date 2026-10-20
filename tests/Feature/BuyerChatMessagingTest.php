@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Events\ConversationMessageCreated;
 use App\Models\Category;
 use App\Models\Conversation;
 use App\Models\Message;
@@ -18,9 +19,11 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use RuntimeException;
 use Tests\TestCase;
 
 class BuyerChatMessagingTest extends TestCase
@@ -167,6 +170,38 @@ class BuyerChatMessagingTest extends TestCase
         ])->assertStatus(409);
 
         $this->assertSame(2, Message::query()->where('conversation_id', $conversation->id)->count());
+    }
+
+    public function test_message_delivery_survives_a_realtime_broadcast_failure(): void
+    {
+        $buyer = $this->buyerFixture('Realtime Buyer');
+        [$seller, $store] = $this->storeFixture('Sundays Market', 'sundays-market');
+        $product = $this->productFixture($store, 'Classic Linen Shirt');
+        $conversation = $this->conversationFixture($buyer, $seller, $product, 'First question');
+
+        Notification::fake();
+
+        Event::listen(ConversationMessageCreated::class, function (): void {
+            throw new RuntimeException('Realtime transport unavailable.');
+        });
+
+        $this->actingAs($buyer)->postJson(route('buyer.chat.send', ['conversation' => $conversation->id]), [
+            'message' => 'Persist even without realtime',
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.message.text', 'Persist even without realtime');
+
+        $this->assertDatabaseHas('messages', [
+            'conversation_id' => $conversation->id,
+            'sender_id' => $buyer->id,
+            'body' => 'Persist even without realtime',
+        ]);
+
+        Notification::assertSentTo(
+            $seller,
+            WorkflowNotification::class,
+            fn (WorkflowNotification $notification): bool => $notification->eventKey() === 'seller_buyer_message',
+        );
     }
 
     public function test_unread_counts_follow_participant_read_timestamps(): void

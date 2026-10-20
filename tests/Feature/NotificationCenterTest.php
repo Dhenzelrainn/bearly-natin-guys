@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Events\UserNotificationCreated;
+use App\Jobs\SendBearlyNotificationEmail;
 use App\Models\User;
 use App\Models\UserNotificationPreference;
 use App\Notifications\AccountStatusChangedNotification;
@@ -11,9 +13,11 @@ use App\Services\NotificationCategoryService;
 use App\Services\NotificationPreferenceService;
 use App\Services\NotificationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use RuntimeException;
 use Tests\TestCase;
@@ -348,20 +352,126 @@ class NotificationCenterTest extends TestCase
         $this->assertSame(1, $seller->notifications()->count());
     }
 
-    public function test_mail_transport_failure_is_logged_without_breaking_notification_delivery(): void
+    public function test_database_notification_and_realtime_broadcast_are_delivered_immediately(): void
     {
         $seller = $this->seller();
+
+        Queue::fake();
+        Event::fake([UserNotificationCreated::class]);
+
+        app(NotificationService::class)->send(
+            $seller,
+            new SellerWithdrawalStatusNotification(9, 'WD-9', 15_000, 'completed'),
+        );
+
+        $this->assertSame(1, $seller->notifications()->count());
+        $this->assertSame(1, $seller->unreadNotifications()->count());
+
+        Event::assertDispatched(
+            UserNotificationCreated::class,
+            fn (UserNotificationCreated $event): bool => $event->userId === $seller->id
+                && $event->event === 'seller_withdrawal_status_changed',
+        );
+
+        Queue::assertPushed(SendBearlyNotificationEmail::class, 1);
+    }
+
+    public function test_email_channel_is_queued_instead_of_sent_synchronously(): void
+    {
+        $seller = $this->seller();
+
+        Queue::fake();
+        Mail::fake();
+
+        app(NotificationService::class)->send(
+            $seller,
+            new SellerWithdrawalStatusNotification(4, 'WD-4', 5_000, 'approved'),
+        );
+
+        Queue::assertPushed(
+            SendBearlyNotificationEmail::class,
+            fn (SendBearlyNotificationEmail $job): bool => $job->userId === $seller->id,
+        );
+
+        Mail::assertNothingSent();
+    }
+
+    public function test_disabled_email_preference_does_not_queue_the_email_job(): void
+    {
+        $seller = $this->seller();
+
+        UserNotificationPreference::create([
+            'user_id' => $seller->id,
+            'event_key' => 'seller_withdrawal_status_changed',
+            'in_app' => true,
+            'email' => false,
+        ]);
+
+        Queue::fake();
+
+        app(NotificationService::class)->send(
+            $seller,
+            new SellerWithdrawalStatusNotification(5, 'WD-5', 6_000, 'approved'),
+        );
+
+        Queue::assertNotPushed(SendBearlyNotificationEmail::class);
+        $this->assertSame(1, $seller->notifications()->count());
+    }
+
+    public function test_email_is_still_queued_when_in_app_delivery_is_disabled(): void
+    {
+        $seller = $this->seller();
+
+        UserNotificationPreference::create([
+            'user_id' => $seller->id,
+            'event_key' => 'seller_withdrawal_status_changed',
+            'in_app' => false,
+            'email' => true,
+        ]);
+
+        Queue::fake();
+        Event::fake([UserNotificationCreated::class]);
+
+        app(NotificationService::class)->send(
+            $seller,
+            new SellerWithdrawalStatusNotification(6, 'WD-6', 7_000, 'processing'),
+        );
+
+        Queue::assertPushed(SendBearlyNotificationEmail::class, 1);
+        $this->assertSame(0, $seller->notifications()->count());
+        Event::assertNotDispatched(UserNotificationCreated::class);
+    }
+
+    public function test_handling_the_queued_email_job_does_not_duplicate_the_database_notification(): void
+    {
+        $seller = $this->seller();
+        $notification = new SellerWithdrawalStatusNotification(7, 'WD-7', 8_000, 'approved');
+
+        Queue::fake();
+
+        app(NotificationService::class)->send($seller, $notification);
+
+        $this->assertSame(1, $seller->notifications()->count());
+
+        Mail::fake();
+
+        (new SendBearlyNotificationEmail($seller->id, $notification))->handle();
+
+        $this->assertSame(1, $seller->notifications()->count());
+    }
+
+    public function test_queued_email_transport_failure_is_logged_without_breaking_notification_delivery(): void
+    {
+        $seller = $this->seller();
+        $notification = new SellerWithdrawalStatusNotification(3, 'WD-3', 12_000, 'processing');
 
         Mail::shouldReceive('mailer')->andThrow(new RuntimeException('SMTP transport unavailable.'));
         Log::spy();
 
-        app(NotificationService::class)->send(
-            $seller,
-            new SellerWithdrawalStatusNotification(3, 'WD-3', 12_000, 'processing'),
-        );
+        (new SendBearlyNotificationEmail($seller->id, $notification))->handle();
 
-        // The in-app notification still lands even though the mail transport failed.
-        $this->assertSame(1, $seller->notifications()->count());
+        // The mail-only job never writes an in-app row.
+        $this->assertSame(0, $seller->notifications()->count());
 
         Log::shouldHaveReceived('warning')
             ->withArgs(fn (string $message): bool => str_contains($message, 'Bearly notification delivery failed'))

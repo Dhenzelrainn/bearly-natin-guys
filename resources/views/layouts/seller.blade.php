@@ -22,7 +22,7 @@
     @include('partials.session-safety')
     @stack('styles')
 </head>
-<body class="seller-body">
+<body class="seller-body" data-realtime-user-id="{{ auth()->id() }}">
 @php
     $sellerNavGroups = [
         ['key' => 'orders', 'label' => 'Orders', 'icon' => 'clipboard-list', 'active' => request()->routeIs('seller.orders*'), 'children' => [

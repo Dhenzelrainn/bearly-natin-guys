@@ -3,17 +3,17 @@
 namespace Tests\Feature\Rider;
 
 use App\Enums\AccountStatus;
+use App\Enums\ParcelStatus;
 use App\Enums\ShipmentStatus;
 use App\Enums\UserRole;
-use App\Enums\ParcelStatus;
 use App\Models\Address;
 use App\Models\LogisticsProfile;
 use App\Models\Order;
 use App\Models\Parcel;
 use App\Models\PickupAssignment;
 use App\Models\PickupRequest;
-use App\Models\RiderProfile;
 use App\Models\ReturnRequest;
+use App\Models\RiderProfile;
 use App\Models\SellerOrder;
 use App\Models\SellerProfile;
 use App\Models\Shipment;
@@ -132,46 +132,34 @@ class RiderPickupWorkflowTest extends TestCase
         $this->assertDatabaseHas(
             'shipment_events',
             [
-                'shipment_id' =>
-                    $record['shipment']->id,
+                'shipment_id' => $record['shipment']->id,
 
-                'parcel_id' =>
-                    $record['parcel']->id,
+                'parcel_id' => $record['parcel']->id,
 
-                'event_type' =>
-                    'parcel_picked_up',
+                'event_type' => 'parcel_picked_up',
 
-                'to_status' =>
-                    ParcelStatus::PickedUp->value,
+                'to_status' => ParcelStatus::PickedUp->value,
 
-                'actor_user_id' =>
-                    $rider->user_id,
+                'actor_user_id' => $rider->user_id,
 
-                'source' =>
-                    'rider',
+                'source' => 'rider',
             ]
         );
 
         $this->assertDatabaseHas(
             'shipment_events',
             [
-                'shipment_id' =>
-                    $record['shipment']->id,
+                'shipment_id' => $record['shipment']->id,
 
-                'parcel_id' =>
-                    null,
+                'parcel_id' => null,
 
-                'event_type' =>
-                    'shipment_picked_up',
+                'event_type' => 'shipment_picked_up',
 
-                'to_status' =>
-                    ShipmentStatus::PickedUp->value,
+                'to_status' => ShipmentStatus::PickedUp->value,
 
-                'actor_user_id' =>
-                    $rider->user_id,
+                'actor_user_id' => $rider->user_id,
 
-                'source' =>
-                    'rider',
+                'source' => 'rider',
             ]
         );
 
@@ -188,7 +176,12 @@ class RiderPickupWorkflowTest extends TestCase
             ->assertSeeText('assigned Sorting Center.')
             ->assertSeeText('Logistics will scan and')
             ->assertSeeText('record each parcel in Incoming Parcels')
-            ->assertSeeText('receiving the handoff.');
+            ->assertSeeText('receiving the handoff.')
+            ->assertSee('data-destination-map', false)
+            ->assertSee('data-map-barangay="San Rafael"', false)
+            ->assertSee('data-map-city="San Pablo City"', false)
+            ->assertSee('data-map-forward-geocode-url="'.route('maps.forward-geocode').'"', false)
+            ->assertSee('id="pickup-map-status"', false);
     }
 
     public function test_rider_pickup_moves_return_case_into_transit(): void
@@ -610,7 +603,7 @@ class RiderPickupWorkflowTest extends TestCase
         );
     }
 
-    public function test_pickup_acceptance_cannot_be_repeated(): void
+    public function test_pickup_acceptance_is_idempotent_when_repeated(): void
     {
         $provider =
             $this->makeProvider('ACCEPT-ONCE');
@@ -652,7 +645,16 @@ class RiderPickupWorkflowTest extends TestCase
         $this
             ->actingAs($rider->user)
             ->post($url)
-            ->assertStatus(409);
+            ->assertRedirect(
+                route(
+                    'rider.orders.pickup',
+                    $record['pickup']->pickup_no
+                )
+            )
+            ->assertSessionHas(
+                'job_status',
+                'Pickup assignment accepted.'
+            );
 
         $assignment =
             $record['assignment']->fresh();
@@ -807,7 +809,26 @@ class RiderPickupWorkflowTest extends TestCase
             ->assertSee('seller-products/rider-pickup-preview.png', false)
             ->assertSee(
                 'Use the loading bay.'
-            );
+            )
+            ->assertSee('data-single-submit', false);
+    }
+
+    public function test_rider_pickup_detail_keeps_map_address_when_the_address_is_soft_deleted(): void
+    {
+        $provider = $this->makeProvider('SOFT-DELETED-MAP');
+        $rider = $this->makeRider($provider, 'SOFT-DELETED-MAP');
+        $seller = $this->makeSeller('SOFT-DELETED-MAP');
+        $record = $this->makePickupAssignment($provider, $seller, $rider, 'SOFT-DELETED-MAP');
+
+        $seller['address']->delete();
+
+        $this->actingAs($rider->user)
+            ->get(route('rider.orders.pickup', $record['pickup']->pickup_no))
+            ->assertOk()
+            ->assertSee('San Rafael')
+            ->assertSee('data-map-barangay="San Rafael"', false)
+            ->assertSee('data-map-city="San Pablo City"', false)
+            ->assertSee('data-map-forward-geocode-url="'.route('maps.forward-geocode').'"', false);
     }
 
     public function test_rider_cannot_confirm_pickup_with_a_waybill_from_another_assignment(): void
@@ -917,17 +938,13 @@ class RiderPickupWorkflowTest extends TestCase
     {
         $user =
             User::factory()->create([
-                'name' =>
-                    'Rider Without Profile',
+                'name' => 'Rider Without Profile',
 
-                'email' =>
-                    'rider-no-profile@example.test',
+                'email' => 'rider-no-profile@example.test',
 
-                'role' =>
-                    UserRole::Rider->value,
+                'role' => UserRole::Rider->value,
 
-                'status' =>
-                    AccountStatus::Active->value,
+                'status' => AccountStatus::Active->value,
             ]);
 
         $this
@@ -993,8 +1010,7 @@ class RiderPickupWorkflowTest extends TestCase
                 'availableRiders',
                 fn (array $riders): bool => collect($riders)
                     ->contains(
-                        fn (array $rider): bool =>
-                            $rider['id'] === $riderProfile->id
+                        fn (array $rider): bool => $rider['id'] === $riderProfile->id
                     )
             );
 
@@ -1042,8 +1058,7 @@ class RiderPickupWorkflowTest extends TestCase
                 'availableRiders',
                 fn (array $riders): bool => collect($riders)
                     ->doesntContain(
-                        fn (array $rider): bool =>
-                            $rider['id'] === $riderProfile->id
+                        fn (array $rider): bool => $rider['id'] === $riderProfile->id
                     )
             );
 
@@ -1113,41 +1128,31 @@ class RiderPickupWorkflowTest extends TestCase
     ): array {
         $user =
             User::factory()->create([
-                'name' =>
-                    "Logistics {$suffix}",
+                'name' => "Logistics {$suffix}",
 
-                'email' =>
-                    'rider-pickup-logistics-'
+                'email' => 'rider-pickup-logistics-'
                     .strtolower($suffix)
                     .'@example.test',
 
-                'role' =>
-                    UserRole::Logistics->value,
+                'role' => UserRole::Logistics->value,
 
-                'status' =>
-                    AccountStatus::Active->value,
+                'status' => AccountStatus::Active->value,
 
-                'business_name' =>
-                    "Logistics {$suffix}",
+                'business_name' => "Logistics {$suffix}",
             ]);
 
         $profile =
             LogisticsProfile::query()
                 ->create([
-                    'user_id' =>
-                        $user->id,
+                    'user_id' => $user->id,
 
-                    'legal_name' =>
-                        "Logistics {$suffix} Inc.",
+                    'legal_name' => "Logistics {$suffix} Inc.",
 
-                    'display_name' =>
-                        "Logistics {$suffix}",
+                    'display_name' => "Logistics {$suffix}",
 
-                    'contact_phone' =>
-                        '09170000001',
+                    'contact_phone' => '09170000001',
 
-                    'status' =>
-                        'active',
+                    'status' => 'active',
                 ]);
 
         return compact(
@@ -1162,49 +1167,36 @@ class RiderPickupWorkflowTest extends TestCase
     ): RiderProfile {
         $user =
             User::factory()->create([
-                'name' =>
-                    "Pickup Rider {$suffix}",
+                'name' => "Pickup Rider {$suffix}",
 
-                'email' =>
-                    'rider-pickup-'
+                'email' => 'rider-pickup-'
                     .strtolower($suffix)
                     .'@example.test',
 
-                'role' =>
-                    UserRole::Rider->value,
+                'role' => UserRole::Rider->value,
 
-                'status' =>
-                    AccountStatus::Active->value,
+                'status' => AccountStatus::Active->value,
 
-                'logistics_id' =>
-                    $provider['user']->id,
+                'logistics_id' => $provider['user']->id,
 
-                'vehicle_type' =>
-                    'Motorcycle',
+                'vehicle_type' => 'Motorcycle',
 
-                'plate_number' =>
-                    "RP-{$suffix}",
+                'plate_number' => "RP-{$suffix}",
             ]);
 
         return RiderProfile::query()
             ->create([
-                'user_id' =>
-                    $user->id,
+                'user_id' => $user->id,
 
-                'logistics_profile_id' =>
-                    $provider['profile']->id,
+                'logistics_profile_id' => $provider['profile']->id,
 
-                'vehicle_type' =>
-                    'Motorcycle',
+                'vehicle_type' => 'Motorcycle',
 
-                'plate_number' =>
-                    "RP-{$suffix}",
+                'plate_number' => "RP-{$suffix}",
 
-                'availability_status' =>
-                    'available',
+                'availability_status' => 'available',
 
-                'verification_status' =>
-                    'approved',
+                'verification_status' => 'approved',
             ]);
     }
 
@@ -1213,95 +1205,69 @@ class RiderPickupWorkflowTest extends TestCase
     ): array {
         $user =
             User::factory()->create([
-                'name' =>
-                    "Pickup Seller {$suffix}",
+                'name' => "Pickup Seller {$suffix}",
 
-                'email' =>
-                    'rider-pickup-seller-'
+                'email' => 'rider-pickup-seller-'
                     .strtolower($suffix)
                     .'@example.test',
 
-                'role' =>
-                    UserRole::Seller->value,
+                'role' => UserRole::Seller->value,
 
-                'status' =>
-                    AccountStatus::Active->value,
+                'status' => AccountStatus::Active->value,
 
-                'contact_number' =>
-                    '09171111111',
+                'contact_number' => '09171111111',
             ]);
 
         $address =
             Address::query()->create([
-                'user_id' =>
-                    $user->id,
+                'user_id' => $user->id,
 
-                'label' =>
-                    'Pickup',
+                'label' => 'Pickup',
 
-                'recipient_name' =>
-                    $user->name,
+                'recipient_name' => $user->name,
 
-                'phone' =>
-                    '09171111111',
+                'phone' => '09171111111',
 
-                'house_number' =>
-                    '12',
+                'house_number' => '12',
 
-                'street' =>
-                    "Pickup {$suffix} Street",
+                'street' => "Pickup {$suffix} Street",
 
-                'barangay' =>
-                    'San Rafael',
+                'barangay' => 'San Rafael',
 
-                'city_municipality' =>
-                    'San Pablo City',
+                'city_municipality' => 'San Pablo City',
 
-                'province' =>
-                    'Laguna',
+                'province' => 'Laguna',
 
-                'postal_code' =>
-                    '4000',
+                'postal_code' => '4000',
 
-                'is_default_pickup' =>
-                    true,
+                'is_default_pickup' => true,
             ]);
 
         $profile =
             SellerProfile::query()->create([
-                'user_id' =>
-                    $user->id,
+                'user_id' => $user->id,
 
-                'legal_business_name' =>
-                    "Pickup Seller {$suffix}",
+                'legal_business_name' => "Pickup Seller {$suffix}",
 
-                'pickup_address_id' =>
-                    $address->id,
+                'pickup_address_id' => $address->id,
 
-                'approved_at' =>
-                    now(),
+                'approved_at' => now(),
             ]);
 
         $store =
             Store::query()->create([
-                'seller_profile_id' =>
-                    $profile->id,
+                'seller_profile_id' => $profile->id,
 
-                'name' =>
-                    "Pickup Store {$suffix}",
+                'name' => "Pickup Store {$suffix}",
 
-                'slug' =>
-                    'pickup-store-'
+                'slug' => 'pickup-store-'
                     .strtolower($suffix),
 
-                'contact_phone' =>
-                    '09171111111',
+                'contact_phone' => '09171111111',
 
-                'publication_status' =>
-                    'published',
+                'publication_status' => 'published',
 
-                'published_at' =>
-                    now(),
+                'published_at' => now(),
             ]);
 
         return compact(
@@ -1321,204 +1287,146 @@ class RiderPickupWorkflowTest extends TestCase
     ): array {
         $buyer =
             User::factory()->create([
-                'email' =>
-                    'rider-pickup-buyer-'
+                'email' => 'rider-pickup-buyer-'
                     .strtolower($suffix)
                     .'@example.test',
 
-                'role' =>
-                    UserRole::Buyer->value,
+                'role' => UserRole::Buyer->value,
 
-                'status' =>
-                    AccountStatus::Active->value,
+                'status' => AccountStatus::Active->value,
             ]);
 
         $order =
             Order::query()->create([
-                'order_no' =>
-                    "RIDER-PICKUP-ORDER-{$suffix}",
+                'order_no' => "RIDER-PICKUP-ORDER-{$suffix}",
 
-                'buyer_id' =>
-                    $buyer->id,
+                'buyer_id' => $buyer->id,
 
-                'recipient_name' =>
-                    $buyer->name,
+                'recipient_name' => $buyer->name,
 
-                'recipient_phone' =>
-                    '09172222222',
+                'recipient_phone' => '09172222222',
 
-                'address_line' =>
-                    'Buyer Street',
+                'address_line' => 'Buyer Street',
 
-                'barangay' =>
-                    'San Roque',
+                'barangay' => 'San Roque',
 
-                'city_municipality' =>
-                    'San Pablo City',
+                'city_municipality' => 'San Pablo City',
 
-                'province' =>
-                    'Laguna',
+                'province' => 'Laguna',
 
-                'postal_code' =>
-                    '4000',
+                'postal_code' => '4000',
 
-                'subtotal_minor' =>
-                    10000,
+                'subtotal_minor' => 10000,
 
-                'total_minor' =>
-                    10000,
+                'total_minor' => 10000,
 
-                'status' =>
-                    'processing',
+                'status' => 'processing',
 
-                'payment_status' =>
-                    'paid',
+                'payment_status' => 'paid',
             ]);
 
         $sellerOrder =
             SellerOrder::query()->create([
-                'seller_order_no' =>
-                    "RIDER-PICKUP-SO-{$suffix}",
+                'seller_order_no' => "RIDER-PICKUP-SO-{$suffix}",
 
-                'order_id' =>
-                    $order->id,
+                'order_id' => $order->id,
 
-                'store_id' =>
-                    $seller['store']->id,
+                'store_id' => $seller['store']->id,
 
-                'status' =>
-                    'ready_for_pickup',
+                'status' => 'ready_for_pickup',
 
-                'subtotal_minor' =>
-                    10000,
+                'subtotal_minor' => 10000,
 
-                'total_minor' =>
-                    10000,
+                'total_minor' => 10000,
 
-                'ready_at' =>
-                    now(),
+                'ready_at' => now(),
             ]);
 
         $shipment =
             Shipment::query()->create([
-                'shipment_no' =>
-                    "RIDER-PICKUP-SHIP-{$suffix}",
+                'shipment_no' => "RIDER-PICKUP-SHIP-{$suffix}",
 
-                'seller_order_id' =>
-                    $sellerOrder->id,
+                'seller_order_id' => $sellerOrder->id,
 
-                'logistics_profile_id' =>
-                    $provider['profile']->id,
+                'logistics_profile_id' => $provider['profile']->id,
 
-                'origin_address_id' =>
-                    $seller['address']->id,
+                'origin_address_id' => $seller['address']->id,
 
-                'purpose' =>
-                    'outbound',
+                'purpose' => 'outbound',
 
-                'status' =>
-                    ShipmentStatus::PickupAssigned->value,
+                'status' => ShipmentStatus::PickupAssigned->value,
 
-                'shipping_fee_minor' =>
-                    0,
+                'shipping_fee_minor' => 0,
 
-                'cod_amount_minor' =>
-                    0,
+                'cod_amount_minor' => 0,
             ]);
 
         $waybill =
             Waybill::query()->create([
-                'shipment_id' =>
-                    $shipment->id,
+                'shipment_id' => $shipment->id,
 
-                'waybill_no' =>
-                    "RIDER-PICKUP-WB-{$suffix}",
+                'waybill_no' => "RIDER-PICKUP-WB-{$suffix}",
 
-                'scan_token' =>
-                    hash(
-                        'sha256',
-                        "rider-pickup-scan-{$suffix}"
-                    ),
+                'scan_token' => hash(
+                    'sha256',
+                    "rider-pickup-scan-{$suffix}"
+                ),
 
-                'barcode_value' =>
-                    "RIDER-PICKUP-BARCODE-{$suffix}",
+                'barcode_value' => "RIDER-PICKUP-BARCODE-{$suffix}",
 
-                'piece_count' =>
-                    1,
+                'piece_count' => 1,
 
-                'total_weight_kg' =>
-                    1.250,
+                'total_weight_kg' => 1.250,
 
-                'status' =>
-                    'printed',
+                'status' => 'printed',
 
-                'generated_at' =>
-                    now(),
+                'generated_at' => now(),
 
-                'printed_at' =>
-                    now(),
+                'printed_at' => now(),
 
-                'print_count' =>
-                    1,
+                'print_count' => 1,
             ]);
 
         $parcel =
             Parcel::query()->create([
-                'shipment_id' =>
-                    $shipment->id,
+                'shipment_id' => $shipment->id,
 
-                'waybill_id' =>
-                    $waybill->id,
+                'waybill_id' => $waybill->id,
 
-                'parcel_no' =>
-                    "RIDER-PICKUP-PARCEL-{$suffix}",
+                'parcel_no' => "RIDER-PICKUP-PARCEL-{$suffix}",
 
-                'piece_sequence' =>
-                    1,
+                'piece_sequence' => 1,
 
-                'weight_kg' =>
-                    1.250,
+                'weight_kg' => 1.250,
 
-                'size_class' =>
-                    'small',
+                'size_class' => 'small',
 
-                'status' =>
-                    'ready_for_pickup',
+                'status' => 'ready_for_pickup',
             ]);
 
         $pickup =
             PickupRequest::query()->create([
-                'pickup_no' =>
-                    "RIDER-PICKUP-{$suffix}",
+                'pickup_no' => "RIDER-PICKUP-{$suffix}",
 
-                'store_id' =>
-                    $seller['store']->id,
+                'store_id' => $seller['store']->id,
 
-                'logistics_profile_id' =>
-                    $provider['profile']->id,
+                'logistics_profile_id' => $provider['profile']->id,
 
-                'pickup_address_id' =>
-                    $seller['address']->id,
+                'pickup_address_id' => $seller['address']->id,
 
-                'status' =>
-                    $assignmentStatus === 'completed'
+                'status' => $assignmentStatus === 'completed'
                         ? 'completed'
                         : 'scheduled',
 
-                'requested_date' =>
-                    today(),
+                'requested_date' => today(),
 
-                'window_start' =>
-                    now()->addHour(),
+                'window_start' => now()->addHour(),
 
-                'window_end' =>
-                    now()->addHours(2),
+                'window_end' => now()->addHours(2),
 
-                'seller_instructions' =>
-                    'Use the loading bay.',
+                'seller_instructions' => 'Use the loading bay.',
 
-                'completed_at' =>
-                    $assignmentStatus === 'completed'
+                'completed_at' => $assignmentStatus === 'completed'
                         ? now()
                         : null,
             ]);
@@ -1532,26 +1440,19 @@ class RiderPickupWorkflowTest extends TestCase
         $assignment =
             PickupAssignment::query()
                 ->create([
-                    'pickup_request_id' =>
-                        $pickup->id,
+                    'pickup_request_id' => $pickup->id,
 
-                    'rider_profile_id' =>
-                        $rider->id,
+                    'rider_profile_id' => $rider->id,
 
-                    'status' =>
-                        $assignmentStatus,
+                    'status' => $assignmentStatus,
 
-                    'assigned_by' =>
-                        $provider['user']->id,
+                    'assigned_by' => $provider['user']->id,
 
-                    'assigned_at' =>
-                        now(),
+                    'assigned_at' => now(),
 
-                    'notes' =>
-                        'Return parcels to the assigned sorting center.',
+                    'notes' => 'Return parcels to the assigned sorting center.',
 
-                    'completed_at' =>
-                        $assignmentStatus === 'completed'
+                    'completed_at' => $assignmentStatus === 'completed'
                             ? now()
                             : null,
                 ]);

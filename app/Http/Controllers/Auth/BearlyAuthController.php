@@ -6,26 +6,27 @@ use App\Enums\AccountStatus;
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\ApplicationReviewService;
 use App\Services\AuditService;
 use App\Services\EmailVerificationService;
 use App\Services\InternationalPhone;
 use App\Services\PostalCodeLookup;
 use App\Services\RegistrationLifecycleService;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
-use Throwable;
+use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Str;
-use Illuminate\Support\Facades\RateLimiter;
-use Illuminate\Support\Facades\Password;
-use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use Laravel\Socialite\Facades\Socialite;
+use Throwable;
 
 class BearlyAuthController extends Controller
 {
@@ -51,12 +52,12 @@ class BearlyAuthController extends Controller
         $email = strtolower(trim($credentials['email']));
         $request->merge(['email' => $email]);
 
-        $emailRateKey = 'login:email:' . hash_hmac(
+        $emailRateKey = 'login:email:'.hash_hmac(
             'sha256',
             $email,
             (string) config('app.key')
         );
-        $ipRateKey = 'login:ip:' . hash_hmac(
+        $ipRateKey = 'login:ip:'.hash_hmac(
             'sha256',
             (string) $request->ip(),
             (string) config('app.key')
@@ -102,6 +103,10 @@ class BearlyAuthController extends Controller
             Auth::logout();
             $request->session()->invalidate();
             $request->session()->regenerateToken();
+
+            if (in_array($user->status, ['pending', 'needs_revision'], true)) {
+                app(ApplicationReviewService::class)->remember($request, $user);
+            }
 
             if (
                 in_array(
@@ -235,6 +240,7 @@ class BearlyAuthController extends Controller
 
             if ($user->status !== AccountStatus::Active->value) {
                 if (in_array($user->status, ['pending', 'needs_revision'], true)) {
+                    app(ApplicationReviewService::class)->remember($request, $user);
                     $request->session()->put('marketplace_application', [
                         'name' => $user->name,
                         'role' => $user->role,
@@ -536,6 +542,7 @@ class BearlyAuthController extends Controller
                 'approval_authority' => 'Bearly Administrator',
             ],
         ]);
+        app(ApplicationReviewService::class)->remember($request, $user);
 
         return redirect()->route('application.pending');
     }

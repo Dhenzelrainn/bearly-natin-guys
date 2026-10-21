@@ -17,6 +17,8 @@ class SellerOrderWorkflowService
     public function __construct(
         private readonly InventoryReservationService $reservations,
         private readonly NotificationService $notifications,
+        private readonly SellerFulfillmentService $fulfillment,
+        private readonly PromotionService $promotions,
     ) {}
 
     public function transition(User $actor, int $sellerOrderId, string $action, ?string $reason = null): SellerOrder
@@ -61,26 +63,66 @@ class SellerOrderWorkflowService
                     'confirmed_at',
                     'Seller confirmed that this order can be fulfilled.',
                 ),
-                'start_preparing' => $this->advance(
-                    $sellerOrder,
-                    $actor,
-                    [SellerOrderStatus::Accepted->value],
-                    SellerOrderStatus::Packing,
-                    'preparing_at',
-                    'Seller started preparing the order.',
-                ),
-                'mark_ready' => $this->advance(
-                    $sellerOrder,
-                    $actor,
-                    [SellerOrderStatus::Packing->value],
-                    SellerOrderStatus::ReadyForPickup,
-                    'ready_at',
-                    'Seller completed the packing checklist and marked the order ready for pickup.',
-                ),
+                'start_preparing' => $this->startPreparing($sellerOrder, $actor),
+                'mark_ready' => $this->markReady($sellerOrder, $actor),
                 'cancel' => $this->cancelPending($order, $sellerOrders, $sellerOrder, $actor, trim((string) $reason)),
                 default => abort(422, 'Unsupported Seller Order action.'),
             };
         }, attempts: 3);
+    }
+
+    private function startPreparing(SellerOrder $sellerOrder, User $actor): SellerOrder
+    {
+        abort_unless(
+            $sellerOrder->status === SellerOrderStatus::Accepted->value,
+            409,
+            'This order has changed or is not ready for that action. Refresh the order list and try again.',
+        );
+
+        $pickupAddress = $this->fulfillment->pickupAddressFor($actor, lock: true);
+
+        abort_unless(
+            $pickupAddress,
+            409,
+            'Set a valid Seller pickup address before starting preparation.',
+        );
+
+        $provider = $this->fulfillment->providerForPickupAddress($pickupAddress, lock: true);
+        $this->fulfillment->createShipmentFor(
+            $sellerOrder,
+            $actor,
+            $provider,
+            $pickupAddress,
+        );
+
+        return $this->advance(
+            $sellerOrder,
+            $actor,
+            [SellerOrderStatus::Accepted->value],
+            SellerOrderStatus::Packing,
+            'preparing_at',
+            'Seller started preparing the order and generated its waybill.',
+        );
+    }
+
+    private function markReady(SellerOrder $sellerOrder, User $actor): SellerOrder
+    {
+        abort_unless(
+            $sellerOrder->status === SellerOrderStatus::Packing->value,
+            409,
+            'This order has changed or is not ready for that action. Refresh the order list and try again.',
+        );
+
+        $this->fulfillment->markShipmentReady($sellerOrder, $actor);
+
+        return $this->advance(
+            $sellerOrder,
+            $actor,
+            [SellerOrderStatus::Packing->value],
+            SellerOrderStatus::ReadyForPickup,
+            'ready_at',
+            'Seller completed the packing checklist and marked the order ready for pickup.',
+        );
     }
 
     private function advance(
@@ -191,23 +233,39 @@ class SellerOrderWorkflowService
                 'subtotal_minor' => 0,
                 'shipping_fee_minor' => 0,
                 'discount_minor' => 0,
+                'platform_discount_minor' => 0,
+                'campaign_platform_discount_minor' => 0,
+                'platform_shipping_discount_minor' => 0,
                 'total_minor' => 0,
                 'status' => 'cancelled',
                 'payment_status' => 'cancelled',
                 'cancelled_at' => $now,
                 'cancel_reason' => "Seller cancelled {$sellerOrder->seller_order_no}: {$reason}",
             ]);
-            $payment->update(['status' => 'cancelled']);
+            $payment->update(['status' => 'cancelled', 'amount_minor' => 0]);
+            $this->promotions->releaseForOrder($order);
         } else {
             $subtotal = (int) $remainingOrders->sum(fn (SellerOrder $item): int => (int) $item->subtotal_minor);
             $shipping = (int) $remainingOrders->sum(fn (SellerOrder $item): int => (int) $item->shipping_fee_minor);
-            $discount = (int) $remainingOrders->sum(fn (SellerOrder $item): int => (int) $item->discount_minor);
-            $total = (int) $remainingOrders->sum(fn (SellerOrder $item): int => (int) $item->total_minor);
+            $sellerDiscount = (int) $remainingOrders->sum(fn (SellerOrder $item): int => (int) $item->discount_minor);
+            $platformDiscount = (int) $remainingOrders->sum(fn (SellerOrder $item): int => (int) $item->platform_discount_minor);
+            $campaignPlatformDiscount = (int) $remainingOrders->sum(fn (SellerOrder $item): int => (int) $item->campaign_platform_discount_minor);
+            $platformShipping = (int) $remainingOrders->sum(fn (SellerOrder $item): int => (int) $item->platform_shipping_discount_minor);
+            $total = (int) $remainingOrders->sum(fn (SellerOrder $item): int => max(
+                0,
+                (int) $item->total_minor
+                    - (int) $item->platform_discount_minor
+                    - (int) $item->campaign_platform_discount_minor
+                    - (int) $item->platform_shipping_discount_minor,
+            ));
 
             $order->update([
-                'subtotal_minor' => $subtotal,
+                'subtotal_minor' => max(0, $subtotal - $campaignPlatformDiscount),
                 'shipping_fee_minor' => $shipping,
-                'discount_minor' => $discount,
+                'discount_minor' => $sellerDiscount + $platformDiscount,
+                'platform_discount_minor' => $platformDiscount,
+                'campaign_platform_discount_minor' => $campaignPlatformDiscount,
+                'platform_shipping_discount_minor' => $platformShipping,
                 'total_minor' => $total,
             ]);
             $payment->update(['amount_minor' => $total]);

@@ -1,5 +1,7 @@
 import Echo from 'laravel-echo';
 import Pusher from 'pusher-js';
+import { acknowledgeDelivery } from './chat-receipts.js';
+import { initChatPresence } from './chat-presence.js';
 
 window.Pusher = Pusher;
 
@@ -65,6 +67,13 @@ if (userId > 0 && key) {
             status: 'connecting',
         };
 
+        /*
+         * Presence is additive to polling. The manager only joins channels for
+         * conversation avatars rendered by the current Messages surface and
+         * leaves them when the page or conversation disappears.
+         */
+        window.BearlyPresence = initChatPresence({ echo, userId });
+
         echo.private(`users.${userId}`)
             .listen('.notification.created', (payload) => {
                 window.BearlyNotifications?.refresh?.();
@@ -72,6 +81,26 @@ if (userId > 0 && key) {
             })
             .listen('.message.created', (payload) => {
                 window.dispatchEvent(new CustomEvent('bearly:message-created', { detail: payload }));
+
+                /*
+                 * A delivered receipt means this authenticated browser
+                 * actually received the event, not just that the sender
+                 * pressed send. The endpoint re-checks membership and the
+                 * write is idempotent, so retries are safe.
+                 */
+                const conversationId = Number(payload?.conversation_id || 0);
+                const messageId = Number(payload?.message_id || 0);
+
+                if (conversationId > 0 && messageId > 0) {
+                    acknowledgeDelivery(
+                        `/messages/conversations/${conversationId}/delivered`,
+                        [messageId],
+                        csrfToken,
+                    ).catch(() => {});
+                }
+            })
+            .listen('.message.receipt', (payload) => {
+                window.dispatchEvent(new CustomEvent('bearly:message-receipt', { detail: payload }));
             });
 
         roles.forEach((role) => {

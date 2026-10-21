@@ -3,6 +3,13 @@
     $initialVariant = $variantCollection->first(fn (array $variant): bool => (int) ($variant['stock'] ?? 0) > 0)
         ?? $variantCollection->first();
     $initialVariantId = (int) ($initialVariant['id'] ?? 0);
+    $initialPrice = (float) ($initialVariant['price'] ?? $productCard['price']);
+    $initialRegularPrice = (float) ($initialVariant['regular_price'] ?? $initialPrice);
+    $initialDiscount = (int) ($initialVariant['discount_percent'] ?? 0);
+    $initialHasDiscount = $initialDiscount > 0 && $initialRegularPrice > $initialPrice;
+    $initialPromotionName = trim((string) ($initialVariant['product_discount_name'] ?? ''));
+    $initialPromotionStartsAt = $initialVariant['product_discount_starts_at'] ?? null;
+    $initialPromotionEndsAt = $initialVariant['product_discount_ends_at'] ?? null;
     $initialImage = filled($initialVariant['image'] ?? null)
         ? (string) $initialVariant['image']
         : (string) ($productCard['image'] ?? '');
@@ -213,7 +220,24 @@
                     @endif
                 </a>
 
-                <div class="detail-price-row"><strong class="detail-price" data-detail-price>₱{{ number_format((float) ($initialVariant['price'] ?? $productCard['price']), 2) }}</strong><span class="detail-price-caption">Current variation price</span></div>
+                <div class="detail-price-row">
+                    <strong class="detail-price" data-detail-price>₱{{ number_format($initialPrice, 2) }}</strong>
+                    @include('buyer.partials.product-price-meta', [
+                        'current' => $initialPrice,
+                        'regular' => $initialRegularPrice,
+                        'discount' => $initialDiscount,
+                        'campaign_name' => null,
+                    ])
+                    <span class="detail-price-caption" data-detail-price-caption{{ $initialHasDiscount ? ' hidden' : '' }}>Current variation price</span>
+                </div>
+                <div class="detail-promotion-note" data-detail-promotion @if (! $initialPromotionName || ! $initialHasDiscount) hidden @endif aria-live="polite">
+                    <strong data-detail-promotion-name>{{ $initialPromotionName }}</strong>
+                    <span data-detail-promotion-period>
+                        @if ($initialPromotionStartsAt && $initialPromotionEndsAt)
+                            {{ \Illuminate\Support\Carbon::parse($initialPromotionStartsAt)->timezone('Asia/Manila')->format('M j, Y g:i A') }} – {{ \Illuminate\Support\Carbon::parse($initialPromotionEndsAt)->timezone('Asia/Manila')->format('M j, Y g:i A') }} PHT
+                        @endif
+                    </span>
+                </div>
 
                 @if (!empty($productCard['payment_methods']))
                     <div class="detail-payment-methods" aria-label="Payment methods listed by seller">
@@ -400,7 +424,18 @@
                     @foreach ($relatedProducts as $related)
                         <a class="related-card" href="{{ route('products.show', $related['id']) }}">
                             @if ($related['image'])<img src="{{ $related['image'] }}" alt="{{ $related['name'] }}" loading="lazy">@else<div class="related-image" aria-hidden="true">Image unavailable</div>@endif
-                            <div class="related-copy"><strong>{{ $related['name'] }}</strong><span>₱{{ number_format($related['price'], 2) }}</span></div>
+                            <div class="related-copy">
+                                <strong>{{ $related['name'] }}</strong>
+                                <div class="related-price-line">
+                                    <span class="related-price-current">₱{{ number_format((float) $related['price'], 2) }}</span>
+                                    @include('buyer.partials.product-price-meta', [
+                                        'current' => (float) $related['price'],
+                                        'regular' => (float) ($related['regular_price'] ?? $related['price']),
+                                        'discount' => (int) ($related['discount_percent'] ?? 0),
+                                        'campaign_name' => $related['product_discount_name'] ?? null,
+                                    ])
+                                </div>
+                            </div>
                         </a>
                     @endforeach
                 </div>
@@ -414,6 +449,7 @@
         'variantSpecs' => $detailVariantSpecs,
         'productName' => $product->name,
         'defaultImage' => $productCard['image'],
+        'timeZone' => 'Asia/Manila',
         'addUrl' => route('cart.add'),
         'buyNowUrl' => route('cart.buy-now'),
         'checkoutUrl' => route('checkout'),

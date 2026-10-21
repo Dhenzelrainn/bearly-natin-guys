@@ -47,7 +47,7 @@
                     <button type="button" class="bearly-chat-tool" data-chat-emoji aria-label="Add emoji">
                         <span class="material-symbols-outlined" aria-hidden="true">sentiment_satisfied</span>
                     </button>
-                    <input type="file" data-chat-file hidden accept=".jpg,.jpeg,.png,.webp,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.zip">
+                    <input type="file" data-chat-file hidden accept=".jpg,.jpeg,.png,.webp,.mp4,.mov,.webm,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.zip">
                 </div>
                 <button type="submit" class="bearly-chat-send" aria-label="Send message"><span class="material-symbols-outlined" aria-hidden="true">send</span></button>
             </form>

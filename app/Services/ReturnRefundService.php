@@ -14,6 +14,7 @@ use App\Models\Payment;
 use App\Models\PickupRequest;
 use App\Models\PlatformCommission;
 use App\Models\ProductVariant;
+use App\Models\PromotionRedemption;
 use App\Models\Refund;
 use App\Models\RefundCashPayout;
 use App\Models\RefundCashPayoutEvent;
@@ -49,6 +50,8 @@ class ReturnRefundService
         private readonly AuditService $audit,
         private readonly CommissionLedgerService $commissionLedger,
         private readonly NotificationService $notifications,
+        private readonly SellerWalletService $wallets,
+        private readonly PromotionService $promotions,
     ) {}
 
     /** @return array<string, mixed> */
@@ -64,16 +67,24 @@ class ReturnRefundService
         $returnable = $eligible
             ? $this->returnableQuantities($sellerOrder->items)
             : [];
-        $items = $sellerOrder->items->map(fn (OrderItem $item): array => [
-            'id' => (int) $item->id,
-            'name' => (string) $item->product_name,
-            'variant' => (string) ($item->variant_name ?: 'Standard'),
-            'sku' => (string) $item->sku,
-            'quantity' => (int) $item->quantity,
-            'returnable_quantity' => (int) ($returnable[$item->id] ?? 0),
-            'unit_price_minor' => (int) $item->unit_price_minor,
-            'image_url' => $this->orderItemImageUrl($item),
-        ])->values()->all();
+        $items = $sellerOrder->items->map(function (OrderItem $item) use ($returnable): array {
+            $quantity = max(1, (int) $item->quantity);
+            $buyerLineTotalMinor = max(0, (int) $item->subtotal_minor
+                - (int) ($item->discount_minor ?? 0)
+                - (int) ($item->platform_discount_minor ?? 0)
+                - (int) ($item->campaign_platform_discount_minor ?? 0));
+
+            return [
+                'id' => (int) $item->id,
+                'name' => (string) $item->product_name,
+                'variant' => (string) ($item->variant_name ?: 'Standard'),
+                'sku' => (string) $item->sku,
+                'quantity' => (int) $item->quantity,
+                'returnable_quantity' => (int) ($returnable[$item->id] ?? 0),
+                'unit_price_minor' => intdiv($buyerLineTotalMinor + intdiv($quantity, 2), $quantity),
+                'image_url' => $this->orderItemImageUrl($item),
+            ];
+        })->values()->all();
 
         $cases = ReturnRequest::query()
             ->where('seller_order_id', $sellerOrder->id)
@@ -211,6 +222,7 @@ class ReturnRefundService
 
                 $amountMinor = 0;
                 $itemAmounts = [];
+                $lineDiscountTotal = (int) $sellerOrder->items->sum(fn (OrderItem $item): int => (int) $item->discount_minor);
                 $allItemNet = max(1, (int) $sellerOrder->items->sum(fn (OrderItem $item): int => max(
                     0,
                     ((int) $item->unit_price_minor * (int) $item->quantity) - (int) $item->discount_minor,
@@ -221,16 +233,19 @@ class ReturnRefundService
                         continue;
                     }
                     $quantity = $quantities[$item->id];
+                    $itemQuantity = max(1, (int) $item->quantity);
                     $selectedGross = (int) $item->unit_price_minor * $quantity;
-                    $selectedLineDiscount = intdiv((int) $item->discount_minor * $quantity, max(1, (int) $item->quantity));
+                    $selectedLineDiscount = intdiv((int) $item->discount_minor * $quantity, $itemQuantity);
                     $selectedNet = max(0, $selectedGross - $selectedLineDiscount);
-                    $sellerDiscountShare = intdiv((int) $sellerOrder->discount_minor * $selectedNet, $allItemNet);
-                    $refundMinor = max(0, $selectedNet - $sellerDiscountShare);
-
-                    if ($quantity === (int) $item->quantity) {
-                        $fullLineNet = max(0, (int) $item->subtotal_minor - (int) $item->discount_minor);
-                        $refundMinor = max(0, $fullLineNet - $sellerDiscountShare);
-                    }
+                    $sellerDiscountShare = $lineDiscountTotal < 1
+                        ? intdiv((int) $sellerOrder->discount_minor * $selectedNet, $allItemNet)
+                        : 0;
+                    $platformDiscountShare = intdiv(
+                        ((int) ($item->platform_discount_minor ?? 0)
+                            + (int) ($item->campaign_platform_discount_minor ?? 0)) * $quantity,
+                        $itemQuantity,
+                    );
+                    $refundMinor = max(0, $selectedNet - $sellerDiscountShare - $platformDiscountShare);
 
                     $itemAmounts[$item->id] = [$quantity, $refundMinor];
                     $amountMinor += $refundMinor;
@@ -866,7 +881,7 @@ class ReturnRefundService
         }
 
         try {
-            return DB::transaction(function () use ($admin, $refundId, $method, $reference, $externalPaidOn, $receipt, $receiptPath, $request, $cashPayoutId, $completionReason): Refund {
+            $completed = DB::transaction(function () use ($admin, $refundId, $method, $reference, $externalPaidOn, $receipt, $receiptPath, $request, $cashPayoutId, $completionReason): Refund {
                 $stub = Refund::query()->findOrFail($refundId);
                 $order = Order::query()->whereKey($stub->order_id)->lockForUpdate()->firstOrFail();
                 $refund = Refund::query()->whereKey($stub->id)->lockForUpdate()->firstOrFail();
@@ -995,6 +1010,10 @@ class ReturnRefundService
                 ]);
                 $order->update(['payment_status' => $paymentStatus]);
 
+                if ($paymentStatus === 'refunded' || $this->orderItemsFullyRefunded($order)) {
+                    $this->promotions->releaseForOrder($order, PromotionRedemption::STATUS_REFUNDED);
+                }
+
                 $this->audit->record(
                     action: 'refund.manual_payout_recorded',
                     module: 'Returns & Refunds',
@@ -1037,6 +1056,17 @@ class ReturnRefundService
             Storage::disk('local')->delete($receiptPath);
             throw $exception;
         }
+
+        try {
+            // The refund is already committed at this point. Wallet catch-up
+            // also runs on refreshForSeller(), so a transient failure here
+            // must not turn a completed refund into an error response.
+            $this->wallets->recordRefundAdjustment($completed, $admin);
+        } catch (Throwable $exception) {
+            report($exception);
+        }
+
+        return $completed;
     }
 
     public function recordSellerRecovery(
@@ -1072,7 +1102,8 @@ class ReturnRefundService
             if ($refund->status !== 'completed'
                 || $refund->financially_responsible_party !== 'seller'
                 || ! $returnRequest
-                || ! $recovery) {
+                || ! $recovery
+                || ! in_array($recovery->status, ['pending', 'partially_recovered'], true)) {
                 throw ValidationException::withMessages(['refund' => 'There is no outstanding Seller recovery to record for this refund.']);
             }
 
@@ -1104,7 +1135,10 @@ class ReturnRefundService
                 throw ValidationException::withMessages(['seller_payout_id' => 'A Seller payout may only be selected when recording an applied payout offset.']);
             }
 
-            $outstandingMinor = (int) $recovery->amount_minor - (int) $recovery->recovered_amount_minor;
+            $outstandingMinor = $recovery->outstandingMinor();
+            if ($outstandingMinor < 1) {
+                throw ValidationException::withMessages(['refund' => 'There is no outstanding Seller recovery to record for this refund.']);
+            }
             if ($amountMinor > $outstandingMinor) {
                 throw ValidationException::withMessages(['amount' => 'The recovery amount cannot exceed the outstanding Seller balance of ₱'.number_format($outstandingMinor / 100, 2).'.']);
             }
@@ -1142,7 +1176,7 @@ class ReturnRefundService
                 'seller_recovery_recorded',
                 $returnRequest->status,
                 $returnRequest->status,
-                'Admin recorded a verified Seller '.str_replace('_', ' ', $method).' of ₱'.number_format($amountMinor / 100, 2).'. No automatic payout deduction was made by Bearly.',
+                'Admin recorded a verified Seller '.str_replace('_', ' ', $method).' of ₱'.number_format($amountMinor / 100, 2).'. This manual recovery action did not perform an automatic payout deduction.',
                 [
                     'refund_id' => $refund->id,
                     'seller_refund_recovery_id' => $recovery->id,
@@ -1160,7 +1194,7 @@ class ReturnRefundService
                 action: 'refund.seller_recovery_recorded',
                 module: 'Returns & Refunds',
                 subject: $refund,
-                description: "A verified Seller refund recovery was recorded for {$refund->refund_no}; Bearly did not automatically deduct or transfer funds.",
+                description: "A verified legacy or external Seller refund recovery was recorded for {$refund->refund_no}; this action did not automatically deduct or transfer funds.",
                 oldValues: ['recovered_amount_minor' => $previouslyRecoveredMinor],
                 newValues: [
                     'method' => $method,
@@ -1559,6 +1593,30 @@ class ReturnRefundService
                 'evidence' => 'Add a note or at least one evidence file.',
             ]);
         }
+    }
+
+    private function orderItemsFullyRefunded(Order $order): bool
+    {
+        $sellerOrders = $order->sellerOrders()
+            ->with('items:id,seller_order_id,quantity')
+            ->get();
+
+        foreach ($sellerOrders as $sellerOrder) {
+            foreach ($sellerOrder->items as $item) {
+                $refundedQuantity = (int) ReturnItem::query()
+                    ->where('order_item_id', $item->id)
+                    ->whereHas('returnRequest', fn ($query) => $query
+                        ->where('order_id', $order->id)
+                        ->whereHas('refunds', fn ($refunds) => $refunds->completed()))
+                    ->sum('quantity');
+
+                if ($refundedQuantity < (int) $item->quantity) {
+                    return false;
+                }
+            }
+        }
+
+        return $sellerOrders->contains(fn (SellerOrder $sellerOrder): bool => $sellerOrder->items->isNotEmpty());
     }
 
     private function eligibleForRequest(SellerOrder $sellerOrder): bool

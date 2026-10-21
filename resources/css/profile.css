@@ -2047,6 +2047,8 @@ body.profile-page.bh #vouchers-panel .voucher-claim{
 body.profile-page.bh #vouchers-panel .voucher-claim:hover{background:#6a3c25}
 body.profile-page.bh #vouchers-panel .voucher-use{background:#fffaf4;color:#6a3c25}
 body.profile-page.bh #vouchers-panel .voucher-use:hover{background:#f8e9d7}
+body.profile-page.bh #vouchers-panel .voucher-auto-applies{display:inline-flex;align-items:center;gap:4px;max-width:150px;margin-left:auto;color:#6a3c25;font-size:9px;font-weight:600;line-height:1.25;text-align:right}
+body.profile-page.bh #vouchers-panel .voucher-auto-applies .material-symbols-outlined{font-size:14px}
 body.profile-page.bh #vouchers-panel .vouchers-empty{padding:70px 20px 50px;text-align:center;color:#81766f}
 body.profile-page.bh #vouchers-panel .vouchers-empty[hidden]{display:none}
 body.profile-page.bh #vouchers-panel .vouchers-empty>.material-symbols-outlined{font-size:55px;color:#d8c9bd}
@@ -2331,4 +2333,24 @@ body.profile-page.bh #tracking-panel .tracking-estimate>div>p{margin:3px 0 0;col
   body.profile-page.bh #tracking-panel .tracking-estimate>div>span{font-size:11px}
   body.profile-page.bh #tracking-panel .tracking-estimate>div>strong{font-size:14px}
   body.profile-page.bh #tracking-panel .tracking-estimate>div>p{font-size:10px}
+}
+
+/* Server-backed voucher wallet */
+.voucher-code-entry .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.voucher-code-entry{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-top:16px;padding:14px 16px;border:1px solid var(--line);border-radius:12px;background:#fffdfa}
+.voucher-code-copy{display:flex;flex-direction:column;gap:2px}
+.voucher-code-copy strong{font-size:13px;color:var(--brown2)}
+.voucher-code-copy span{font-size:11px;color:var(--muted)}
+.voucher-code-control{display:flex;gap:8px;align-items:center}
+.voucher-code-control input{width:min(220px,48vw);height:38px;padding:0 12px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--ink);font:inherit;font-size:12px;text-transform:uppercase}
+.voucher-code-control input:focus{outline:0;border-color:var(--brown);box-shadow:0 0 0 3px rgba(122,53,29,.1)}
+.voucher-code-control button{height:38px;padding:0 14px;border:1px solid var(--brown);border-radius:9px;background:var(--brown);color:#fff;font:inherit;font-size:11px;font-weight:700;cursor:pointer}
+.voucher-code-control button:disabled{opacity:.6;cursor:wait}
+.voucher-code-status{flex-basis:100%;margin:0;font-size:11px;line-height:1.5}
+.voucher-code-status[data-tone="success"]{color:#397a4c}
+.voucher-code-status[data-tone="error"]{color:#a33a2c}
+@media (max-width:640px){
+  .voucher-code-entry{align-items:flex-start}
+  .voucher-code-control{width:100%}
+  .voucher-code-control input{flex:1;width:auto}
 }

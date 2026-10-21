@@ -12,8 +12,9 @@ use App\Models\OrderItem;
 use App\Models\PickupAssignment;
 use App\Models\RiderProfile;
 use App\Models\User;
-use App\Services\CodCashCollectionService;
+use App\Services\ApplicationReviewService;
 use App\Services\BuyerCatalogService;
+use App\Services\CodCashCollectionService;
 use App\Services\ConversationService;
 use App\Services\EmailVerificationService;
 use App\Services\InternationalPhone;
@@ -28,18 +29,18 @@ use App\Services\RiderZoneAssignmentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Carbon;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
-use Throwable;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Throwable;
 
 class RiderController extends Controller
 {
@@ -429,7 +430,7 @@ class RiderController extends Controller
             )
             ->with([
                 'pickupRequest.store.sellerProfile.user',
-                'pickupRequest.pickupAddress',
+                'pickupRequest.pickupAddress' => fn ($query) => $query->withTrashed(),
                 'pickupRequest.parcels.waybill',
             ])
             ->orderByDesc('assigned_at')
@@ -493,6 +494,34 @@ class RiderController extends Controller
             )
             ->implode(', ');
 
+        $mapAddress = [
+            'street' => collect($isReturnPickup ? [
+                $addressSnapshot['house_number'] ?? null,
+                $addressSnapshot['street'] ?? null,
+            ] : [
+                $address?->house_number,
+                $address?->street,
+            ])
+                ->filter(fn ($value) => filled($value))
+                ->implode(' '),
+
+            'barangay' => $isReturnPickup
+                ? ($addressSnapshot['barangay'] ?? null)
+                : $address?->barangay,
+
+            'city' => $isReturnPickup
+                ? ($addressSnapshot['city_municipality'] ?? null)
+                : $address?->city_municipality,
+
+            'province' => $isReturnPickup
+                ? ($addressSnapshot['province'] ?? null)
+                : $address?->province,
+
+            'postal' => $isReturnPickup
+                ? ($addressSnapshot['postal_code'] ?? null)
+                : $address?->postal_code,
+        ];
+
         $window =
             $pickup->window_start
             && $pickup->window_end
@@ -553,6 +582,8 @@ class RiderController extends Controller
 
             'address' => $addressText
                     ?: 'Pickup address unavailable',
+
+            'map_address' => $mapAddress,
 
             'latitude' => $isReturnPickup
                 ? ($addressSnapshot['latitude'] ?? null)
@@ -671,8 +702,9 @@ class RiderController extends Controller
         return view('rider.landing.index');
     }
 
-    public function register(): View
+    public function register(Request $request, ApplicationReviewService $reviews): View
     {
+        $applicationReview = $reviews->forSession($request);
         $logisticsPartners = Schema::hasTable('users')
             ? User::query()
                 ->where('role', UserRole::Logistics->value)
@@ -692,7 +724,7 @@ class RiderController extends Controller
                 ->all()
             : [];
 
-        return view('rider.applications.create', compact('logisticsPartners'));
+        return view('rider.applications.create', compact('logisticsPartners', 'applicationReview'));
     }
 
     private function uniqueRiderPlateRule(
@@ -939,6 +971,7 @@ class RiderController extends Controller
                 'status' => 'Awaiting Logistics Approval',
             ],
         ]);
+        app(ApplicationReviewService::class)->remember($request, $user);
 
         return redirect()
             ->route('rider.register')
@@ -1138,7 +1171,7 @@ class RiderController extends Controller
             )
             ->with([
                 'pickupRequest.store.sellerProfile.user',
-                'pickupRequest.pickupAddress',
+                'pickupRequest.pickupAddress' => fn ($query) => $query->withTrashed(),
                 'pickupRequest.parcels.waybill',
                 'pickupRequest.parcels.shipment.sellerOrder.items.product.images.variant',
                 'pickupRequest.parcels.shipment.sellerOrder.items.variant',
@@ -1659,7 +1692,10 @@ class RiderController extends Controller
                 'participants',
                 'latestMessage',
                 'messages' => fn ($query) => $query
-                    ->with('attachments')
+                    ->with([
+                        'attachments',
+                        'receipts',
+                    ])
                     ->orderBy('sent_at')
                     ->orderBy('id'),
             ])
@@ -1674,8 +1710,7 @@ class RiderController extends Controller
 
                 $counterpart = $conversation->participants
                     ->first(
-                        fn (User $user): bool =>
-                            (int) $user->id !== (int) $rider->id
+                        fn (User $user): bool => (int) $user->id !== (int) $rider->id
                     );
 
                 $counterpartRole = strtolower((string) (
@@ -1736,13 +1771,19 @@ class RiderController extends Controller
                     'subject' => $conversation->subject,
                     'status' => $conversation->status,
                     'type' => $conversation->type,
+                    'presence_user_ids' => app(ConversationService::class)
+                        ->presenceUserIds($conversation, $rider),
                     'send_url' => route('rider.messages.send', $conversation),
                     'read_url' => route('rider.messages.read', $conversation),
                     'thread_url' => route('rider.messages.thread', $conversation),
+                    'delivery_url' => route('messages.delivered', $conversation),
                     'messages' => $conversation->messages
                         ->map(
-                            fn (Message $message): array =>
-                                $this->messageThreadEntry($rider, $message)
+                            fn (Message $message): array => $this->messageThreadEntry(
+                                $rider,
+                                $message,
+                                $conversation->participants
+                            )
                         )
                         ->values()
                         ->all(),
@@ -1753,8 +1794,7 @@ class RiderController extends Controller
         $requestedId = (int) $request->query('conversation', 0);
 
         $selectedId = $conversations->contains(
-            fn (array $conversation): bool =>
-                $conversation['id'] === $requestedId
+            fn (array $conversation): bool => $conversation['id'] === $requestedId
         )
             ? $requestedId
             : $conversations->first()['id'] ?? null;
@@ -1788,22 +1828,36 @@ class RiderController extends Controller
 
         $after = (int) ($validated['after'] ?? 0);
 
+        $conversation->loadMissing('participants');
+
         $messages = $conversation->messages()
-            ->with('attachments')
+            ->with([
+                'attachments',
+                'receipts',
+            ])
             ->when($after > 0, fn ($query) => $query->where('id', '>', $after))
             ->orderBy('sent_at')
             ->orderBy('id')
             ->get()
             ->map(
-                fn (Message $message): array =>
-                    $this->messageThreadEntry($rider, $message)
+                fn (Message $message): array => $this->messageThreadEntry(
+                    $rider,
+                    $message,
+                    $conversation->participants
+                )
             )
             ->values()
             ->all();
 
         return response()->json([
             'message' => 'Thread loaded.',
-            'data' => ['messages' => $messages],
+            'data' => [
+                'messages' => $messages,
+                'receipt_updates' => $after > 0
+                    ? app(ConversationService::class)
+                        ->receiptUpdatesForViewer($conversation, $rider)
+                    : [],
+            ],
         ]);
     }
 
@@ -1851,7 +1905,7 @@ class RiderController extends Controller
                 'nullable',
                 'file',
                 'max:10240',
-                'mimes:jpg,jpeg,png,webp,pdf,doc,docx,xls,xlsx,txt,csv,zip',
+                'mimes:jpg,jpeg,png,webp,mp4,mov,webm,pdf,doc,docx,xls,xlsx,txt,csv,zip',
             ],
         ]);
 
@@ -1863,8 +1917,13 @@ class RiderController extends Controller
         );
 
         $message->load('attachments');
+        $conversation->loadMissing('participants');
 
-        $entry = $this->messageThreadEntry($rider, $message);
+        $entry = $this->messageThreadEntry(
+            $rider,
+            $message,
+            $conversation->participants
+        );
 
         return response()->json([
             'message' => 'Message sent successfully.',
@@ -1876,6 +1935,7 @@ class RiderController extends Controller
                     ? $entry['text']
                     : 'Attachment',
                 'time' => $entry['time'],
+                'receipt' => $entry['receipt'],
                 'attachments' => $entry['attachments'],
             ],
         ]);
@@ -1922,8 +1982,7 @@ class RiderController extends Controller
             ->filter()
             ->take(2)
             ->map(
-                fn (string $part): string =>
-                    strtoupper(substr($part, 0, 1))
+                fn (string $part): string => strtoupper(substr($part, 0, 1))
             )
             ->implode('');
 
@@ -1931,49 +1990,58 @@ class RiderController extends Controller
     }
 
     /**
+     * @param  Collection<int, User>|null  $participants
      * @return array<string, mixed>
      */
-    private function messageThreadEntry(User $rider, Message $message): array
+    private function messageThreadEntry(User $rider, Message $message, $participants = null): array
     {
         return [
             'id' => (int) $message->id,
 
-            'mine' =>
-                (int) $message->sender_id === (int) $rider->id,
+            'mine' => (int) $message->sender_id === (int) $rider->id,
 
-            'text' =>
-                (string) $message->body,
+            'text' => (string) $message->body,
 
-            'attachments' =>
-                $message->attachments
-                    ->map(
-                        fn (MessageAttachment $attachment): array => [
-                            'id' => (int) $attachment->id,
+            'receipt' => app(ConversationService::class)
+                ->receiptPayload($message, $rider, $participants),
 
-                            'name' =>
-                                (string) $attachment->original_name,
+            'attachments' => $message->attachments
+                ->map(
+                    fn (MessageAttachment $attachment): array => [
+                        'id' => (int) $attachment->id,
 
-                            'mime_type' =>
-                                (string) $attachment->mime_type,
+                        'name' => (string) $attachment->original_name,
 
-                            'size_bytes' =>
-                                (int) $attachment->size_bytes,
+                        'mime_type' => (string) $attachment->mime_type,
 
-                            'download_url' =>
-                                route(
-                                    'rider.messages.attachments.download',
-                                    $attachment
-                                ),
-                        ]
-                    )
-                    ->values()
-                    ->all(),
+                        'size_bytes' => (int) $attachment->size_bytes,
 
-            'time' =>
-                $message->sent_at
-                    ?->copy()
-                    ->timezone('Asia/Manila')
-                    ->format('M j, g:i A')
+                        'is_image' => str_starts_with(
+                            (string) $attachment->mime_type,
+                            'image/'
+                        ),
+
+                        'is_video' => str_starts_with(
+                            (string) $attachment->mime_type,
+                            'video/'
+                        ),
+
+                        'is_previewable' => app(ConversationService::class)
+                            ->isPreviewableMime($attachment->mime_type),
+
+                        'download_url' => route(
+                            'rider.messages.attachments.download',
+                            $attachment
+                        ),
+                    ]
+                )
+                ->values()
+                ->all(),
+
+            'time' => $message->sent_at
+                ?->copy()
+                ->timezone('Asia/Manila')
+                ->format('M j, g:i A')
                 ?? '',
         ];
     }

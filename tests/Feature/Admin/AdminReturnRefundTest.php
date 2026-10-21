@@ -21,8 +21,11 @@ use App\Models\Shipment;
 use App\Models\Store;
 use App\Models\User;
 use App\Models\Waybill;
+use App\Services\CommissionLedgerService;
+use App\Services\SellerWalletService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -158,6 +161,13 @@ class AdminReturnRefundTest extends TestCase
             'response_due_at' => now()->addDay(),
             'submitted_at' => now(),
         ]);
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+
+        parent::tearDown();
     }
 
     public function test_admin_can_approve_refund_only_and_create_pending_refund(): void
@@ -741,7 +751,7 @@ class AdminReturnRefundTest extends TestCase
             ->assertSee('Recoverable Seller balance')
             ->assertSee('₱1,299.00 paid')
             ->assertSee('₱1,169.10')
-            ->assertSee('not automatically deducted')
+            ->assertSee('not yet deducted')
             ->assertDontSee('Download payout receipt');
 
         $this->actingAs($this->admin)
@@ -758,6 +768,56 @@ class AdminReturnRefundTest extends TestCase
 
         $this->assertSame(0, SellerTransaction::query()->where('refund_id', $refund->id)->where('type', 'refund_reversal')->count());
         $this->assertSame(1, SellerRefundRecovery::query()->where('refund_id', $refund->id)->count());
+    }
+
+    public function test_post_cutoff_completed_payout_deducts_from_seller_wallet(): void
+    {
+        Carbon::setTestNow('2026-10-22 12:00:00');
+        Storage::fake('local');
+        $sellerProfile = SellerProfile::query()->where('user_id', $this->seller->id)->firstOrFail();
+        $sellerOrder = SellerOrder::query()->where('seller_order_no', 'SOR-RETURN-001')->firstOrFail();
+        $payment = Payment::query()->where('order_id', $this->returnRequest->order_id)->firstOrFail();
+        app(CommissionLedgerService::class)->finalize($payment);
+        $transaction = SellerTransaction::query()
+            ->where('seller_order_id', $sellerOrder->id)
+            ->where('type', 'sale')
+            ->sole();
+        $wallet = app(SellerWalletService::class)->refreshForSeller($sellerProfile);
+        $this->assertSame(116_910, (int) $wallet->pending_balance_minor);
+
+        $this->actingAs($this->admin)
+            ->post(route('admin.compliance.returns-refunds.approve', $this->returnRequest), $this->responsibilityData('seller'))
+            ->assertRedirect();
+        $refund = Refund::query()->where('return_request_id', $this->returnRequest->id)->firstOrFail();
+
+        $this->actingAs($this->admin)
+            ->post(route('admin.compliance.returns-refunds.record-payout', $refund), $this->payoutData())
+            ->assertRedirect();
+
+        $wallet->refresh();
+        $this->assertSame(0, (int) $wallet->pending_balance_minor);
+        $this->assertSame(0, (int) $wallet->available_balance_minor);
+        $this->assertDatabaseHas('seller_wallet_transactions', [
+            'seller_transaction_id' => $transaction->id,
+            'refund_id' => $refund->id,
+            'type' => 'refund_adjustment',
+            'amount_minor' => 116_910,
+            'pending_delta_minor' => -116_910,
+        ]);
+        $this->assertDatabaseHas('seller_refund_recoveries', [
+            'refund_id' => $refund->id,
+            'status' => 'recovered',
+            'recovered_amount_minor' => 116_910,
+        ]);
+        $this->assertDatabaseHas('seller_refund_recovery_events', [
+            'method' => 'wallet_offset',
+            'amount_minor' => 116_910,
+        ]);
+
+        $this->actingAs($this->seller)
+            ->get(route('seller.orders.returns.show', $this->returnRequest->return_no))
+            ->assertOk()
+            ->assertSee('Deducted automatically from Seller Wallet');
     }
 
     public function test_admin_cannot_approve_a_refund_without_recording_financial_responsibility(): void

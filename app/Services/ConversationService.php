@@ -4,9 +4,11 @@ namespace App\Services;
 
 use App\Enums\UserRole;
 use App\Events\ConversationMessageCreated;
+use App\Events\ConversationMessageReceiptUpdated;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\MessageAttachment;
+use App\Models\MessageReceipt;
 use App\Models\Product;
 use App\Models\Store;
 use App\Models\User;
@@ -27,7 +29,7 @@ class ConversationService
 {
     public const MESSAGE_MAX_LENGTH = 5000;
 
-    public const ATTACHMENT_MIMES = 'jpg,jpeg,png,webp,pdf,doc,docx,xls,xlsx,txt,csv,zip';
+    public const ATTACHMENT_MIMES = 'jpg,jpeg,png,webp,mp4,mov,webm,pdf,doc,docx,xls,xlsx,txt,csv,zip';
 
     public const ATTACHMENT_MAX_KILOBYTES = 10240;
 
@@ -108,6 +110,7 @@ class ConversationService
         return $conversations
             ->map(fn (Conversation $conversation): array => $this->sellerSummary(
                 $conversation,
+                $seller,
                 $unread[(int) $conversation->id] ?? 0,
                 max(0, ($buyerCounts[(int) ($this->buyerParticipant($conversation)?->id ?? 0)] ?? 1) - 1),
             ))
@@ -121,7 +124,7 @@ class ConversationService
      * `$afterId` is provided only newer messages are returned, which lets the
      * chat pages poll for updates without re-reading the whole history.
      *
-     * @return array{conversation: array<string, mixed>, messages: list<array<string, mixed>>}
+     * @return array{conversation: array<string, mixed>, messages: list<array<string, mixed>>, receipt_updates: list<array{message_id: int, receipt: array<string, mixed>}>}
      */
     public function threadPayload(Conversation $conversation, User $viewer, string $attachmentRoute, ?int $afterId = null): array
     {
@@ -135,7 +138,7 @@ class ConversationService
         ]);
 
         $messages = $conversation->messages()
-            ->with('attachments')
+            ->with(['attachments', 'receipts'])
             ->when($afterId, fn ($query) => $query->where('id', '>', $afterId))
             ->orderBy('sent_at')
             ->orderBy('id')
@@ -154,15 +157,25 @@ class ConversationService
                 'context' => $this->conversationContext($conversation),
                 'store_url' => $this->storeUrl($conversation),
                 'product_url' => $this->productUrl($conversation, $forSeller),
+                'delivery_url' => route('messages.delivered', ['conversation' => $conversation->id]),
                 'counterpart' => $this->counterpartPayload($conversation, $viewer),
                 'product' => $this->productCard($conversation->product, $forSeller),
                 'order' => $this->orderCard($conversation, $viewer),
                 'dispute' => $this->disputePayload($conversation),
+                'presence_user_ids' => $this->presenceUserIds($conversation, $viewer),
             ],
             'messages' => $messages
-                ->map(fn (Message $message): array => $this->messagePayload($message, $viewer, $attachmentRoute))
+                ->map(fn (Message $message): array => $this->messagePayload(
+                    $message,
+                    $viewer,
+                    $attachmentRoute,
+                    $conversation->participants,
+                ))
                 ->values()
                 ->all(),
+            'receipt_updates' => $afterId
+                ? $this->receiptUpdatesForViewer($conversation, $viewer)
+                : [],
         ];
     }
 
@@ -272,7 +285,7 @@ class ConversationService
         $storedPath = null;
 
         try {
-            return DB::transaction(function () use ($conversation, $sender, $body, $attachment, &$storedPath): Message {
+            $message = DB::transaction(function () use ($conversation, $sender, $body, $attachment, &$storedPath): Message {
                 $locked = Conversation::query()
                     ->lockForUpdate()
                     ->findOrFail($conversation->id);
@@ -316,6 +329,10 @@ class ConversationService
 
                 return $message;
             });
+
+            $message->setRelation('conversation', $conversation->loadMissing('participants'));
+
+            return $message;
         } catch (Throwable $exception) {
             /*
              * Filesystem writes are not rolled back by a database
@@ -404,13 +421,171 @@ class ConversationService
     public function markRead(Conversation $conversation, User $user): void
     {
         $readAt = now();
+        $messages = $this->inboundMessages($conversation, $user);
 
-        DB::table('conversation_participants')
-            ->where('conversation_id', $conversation->id)
-            ->where('user_id', $user->id)
-            ->update(['last_read_at' => $readAt]);
+        $changedIds = DB::transaction(function () use ($conversation, $user, $readAt, $messages): array {
+            DB::table('conversation_participants')
+                ->where('conversation_id', $conversation->id)
+                ->where('user_id', $user->id)
+                ->update(['last_read_at' => $readAt]);
+
+            return $messages->isEmpty()
+                ? []
+                : $this->upsertReceipts($user, $messages, true);
+        });
+
+        if ($changedIds !== []) {
+            $this->broadcastReceiptUpdates(
+                $conversation,
+                $user,
+                $messages->whereIn('id', $changedIds),
+            );
+        }
 
         $this->markConversationNotificationsRead($conversation, $user, $readAt);
+    }
+
+    /**
+     * @param  list<int>  $messageIds
+     * @return Collection<int, Message>
+     */
+    private function inboundMessages(Conversation $conversation, User $recipient, array $messageIds = []): Collection
+    {
+        return $conversation->messages()
+            ->with('receipts')
+            ->where('sender_id', '!=', $recipient->id)
+            ->whereNull('deleted_at')
+            ->when($messageIds !== [], fn ($query) => $query->whereIn('id', $messageIds))
+            ->orderBy('id')
+            ->get();
+    }
+
+    /**
+     * Insert missing receipt rows and advance them without ever moving a
+     * timestamp backwards. Returns the message ids that actually changed.
+     *
+     * @param  Collection<int, Message>  $messages
+     * @return list<int>
+     */
+    private function upsertReceipts(User $recipient, Collection $messages, bool $read): array
+    {
+        $now = now();
+        $existing = MessageReceipt::query()
+            ->whereIn('message_id', $messages->pluck('id')->all())
+            ->where('recipient_id', $recipient->id)
+            ->get()
+            ->keyBy(fn (MessageReceipt $receipt): int => (int) $receipt->message_id);
+
+        $changedIds = [];
+
+        foreach ($messages as $message) {
+            $receipt = $existing->get((int) $message->id);
+
+            if ($receipt && $receipt->read_at) {
+                continue;
+            }
+
+            if ($receipt && ! $read && $receipt->delivered_at) {
+                continue;
+            }
+
+            $changedIds[] = (int) $message->id;
+        }
+
+        if ($changedIds === []) {
+            return [];
+        }
+
+        $inserts = array_map(fn (int $messageId): array => [
+            'message_id' => $messageId,
+            'recipient_id' => $recipient->id,
+            'delivered_at' => $now,
+            'read_at' => $read ? $now : null,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ], $changedIds);
+
+        DB::table('message_receipts')->insertOrIgnore($inserts);
+
+        $base = DB::table('message_receipts')
+            ->whereIn('message_id', $changedIds)
+            ->where('recipient_id', $recipient->id);
+
+        $base->clone()
+            ->whereNull('delivered_at')
+            ->update(['delivered_at' => $now, 'updated_at' => $now]);
+
+        if ($read) {
+            $base->clone()
+                ->whereNull('read_at')
+                ->update(['read_at' => $now, 'updated_at' => $now]);
+        }
+
+        return $changedIds;
+    }
+
+    /**
+     * Broadcast the fresh receipt summary for changed messages to each sender.
+     * Never let a realtime outage fail the underlying receipt write.
+     *
+     * @param  Collection<int, Message>  $messages
+     */
+    private function broadcastReceiptUpdates(Conversation $conversation, User $recipient, Collection $messages): void
+    {
+        $messageIds = $messages->pluck('id')->map(fn ($id): int => (int) $id)->all();
+
+        if ($messageIds === []) {
+            return;
+        }
+
+        $conversation->loadMissing('participants');
+
+        $receipts = MessageReceipt::query()
+            ->whereIn('message_id', $messageIds)
+            ->get()
+            ->groupBy(fn (MessageReceipt $receipt): int => (int) $receipt->message_id);
+
+        $senderIds = $messages->pluck('sender_id')->filter()->unique()->map(fn ($id): int => (int) $id)->all();
+        $senders = User::query()->whereIn('id', $senderIds)->get()->keyBy(fn (User $user): int => (int) $user->id);
+
+        $grouped = [];
+
+        foreach ($messages as $message) {
+            $sender = $senders->get((int) $message->sender_id);
+
+            if (! $sender) {
+                continue;
+            }
+
+            $message->setRelation('receipts', ($receipts->get((int) $message->id) ?? collect())->values());
+
+            $receipt = $this->receiptPayload($message, $sender, $conversation->participants);
+
+            if ($receipt === null) {
+                continue;
+            }
+
+            $grouped[(int) $sender->id][] = [
+                'message_id' => (int) $message->id,
+                'receipt' => $receipt,
+            ];
+        }
+
+        foreach ($grouped as $senderId => $entries) {
+            try {
+                event(new ConversationMessageReceiptUpdated(
+                    conversationId: (int) $conversation->id,
+                    senderId: (int) $senderId,
+                    receipts: $entries,
+                ));
+            } catch (Throwable $exception) {
+                Log::notice('Bearly realtime receipt broadcast failed.', [
+                    'conversation_id' => (int) $conversation->id,
+                    'sender_id' => (int) $senderId,
+                    'exception' => $exception::class,
+                ]);
+            }
+        }
     }
 
     /**
@@ -438,6 +613,69 @@ class ConversationService
             ->where('conversation_id', $conversation->id)
             ->where('user_id', $user->id)
             ->exists();
+    }
+
+    /**
+     * Minimal presence identity for an authorized conversation participant.
+     *
+     * Seller presence uses the public Store name/logo. Admin and Logistics use
+     * the support-facing labels already shown by the messaging UI, so buyers
+     * and sellers never receive a staff member's account name through presence.
+     * Email, phone, and all other account fields are intentionally omitted.
+     *
+     * @return array{id: int, name: string, avatar_url: ?string}|null
+     */
+    public function presenceMemberFor(Conversation $conversation, User $user): ?array
+    {
+        $participantRole = DB::table('conversation_participants')
+            ->where('conversation_id', $conversation->id)
+            ->where('user_id', $user->id)
+            ->value('participant_role');
+
+        if (! is_string($participantRole) || $participantRole === '') {
+            return null;
+        }
+
+        if ($participantRole === 'seller') {
+            $storeId = (int) ($user->sellerProfile?->store?->id ?? 0);
+
+            if ($storeId <= 0 || ! $this->sellerCanAccess($conversation, $user, $storeId)) {
+                return null;
+            }
+        }
+
+        $store = $participantRole === 'seller'
+            ? $user->sellerProfile?->store
+            : null;
+
+        $name = match ($participantRole) {
+            'seller' => $store?->name ?? $this->displayName($user),
+            'admin' => $this->roleName('admin') ?? 'Bearly Support',
+            'logistics' => $this->roleName('logistics') ?? 'Bearly Logistics',
+            default => $this->displayName($user),
+        };
+
+        return [
+            'id' => (int) $user->id,
+            'name' => $name,
+            'avatar_url' => $store ? $this->logoUrl($store) : null,
+        ];
+    }
+
+    /**
+     * Other conversation participants whose presence this viewer may observe.
+     *
+     * @return list<int>
+     */
+    public function presenceUserIds(Conversation $conversation, User $viewer): array
+    {
+        $conversation->loadMissing('participants');
+
+        return $conversation->participants
+            ->reject(fn (User $participant): bool => (int) $participant->id === (int) $viewer->id)
+            ->map(fn (User $participant): int => (int) $participant->id)
+            ->values()
+            ->all();
     }
 
     /**
@@ -499,17 +737,33 @@ class ConversationService
 
     public function attachmentDownload(MessageAttachment $attachment): StreamedResponse
     {
-        return Storage::disk('local')->download(
+        $mime = (string) ($attachment->mime_type ?: 'application/octet-stream');
+        $previewable = $this->isPreviewableMime($mime);
+
+        return Storage::disk('local')->response(
             $attachment->file_path,
             $attachment->original_name,
-            ['Content-Type' => $attachment->mime_type ?: 'application/octet-stream'],
+            [
+                'Content-Type' => $mime,
+                'X-Content-Type-Options' => 'nosniff',
+                'Cache-Control' => 'private, max-age=0, no-store',
+            ],
+            $previewable ? 'inline' : 'attachment',
         );
+    }
+
+    public function isPreviewableMime(?string $mime): bool
+    {
+        $mime = strtolower(trim((string) $mime));
+
+        return str_starts_with($mime, 'image/')
+            || str_starts_with($mime, 'video/');
     }
 
     /**
      * @return array<string, mixed>
      */
-    public function messagePayload(Message $message, User $viewer, string $attachmentRoute): array
+    public function messagePayload(Message $message, User $viewer, string $attachmentRoute, ?Collection $participants = null): array
     {
         $sentAt = $message->sent_at?->copy()->setTimezone(self::TIMEZONE);
 
@@ -520,18 +774,177 @@ class ConversationService
             'sent_at' => $sentAt?->toIso8601String(),
             'time_label' => $sentAt?->format('g:i A') ?? '',
             'day_label' => $this->dayLabel($message->sent_at),
+            'receipt' => $this->receiptPayload($message, $viewer, $participants),
             'attachments' => $message->attachments
-                ->map(fn (MessageAttachment $attachment): array => [
-                    'id' => (int) $attachment->id,
-                    'name' => (string) $attachment->original_name,
-                    'mime_type' => (string) $attachment->mime_type,
-                    'size_bytes' => (int) $attachment->size_bytes,
-                    'is_image' => str_starts_with((string) $attachment->mime_type, 'image/'),
-                    'download_url' => route($attachmentRoute, ['attachment' => $attachment->id]),
-                ])
+                ->map(function (MessageAttachment $attachment) use ($attachmentRoute): array {
+                    $mime = strtolower((string) $attachment->mime_type);
+
+                    return [
+                        'id' => (int) $attachment->id,
+                        'name' => (string) $attachment->original_name,
+                        'mime_type' => $mime,
+                        'size_bytes' => (int) $attachment->size_bytes,
+                        'is_image' => str_starts_with($mime, 'image/'),
+                        'is_video' => str_starts_with($mime, 'video/'),
+                        'is_previewable' => $this->isPreviewableMime($mime),
+                        'download_url' => route($attachmentRoute, ['attachment' => $attachment->id]),
+                    ];
+                })
                 ->values()
                 ->all(),
         ];
+    }
+
+    /**
+     * Per-recipient delivery/seen summary for a message the viewer sent.
+     * Recipients are derived from the conversation participants combined with
+     * whatever receipt rows currently exist, so no placeholder rows are needed
+     * for messages that were never delivered.
+     *
+     * @param  Collection<int, User>|null  $participants
+     * @return array<string, mixed>|null
+     */
+    public function receiptPayload(Message $message, User $viewer, ?Collection $participants = null): ?array
+    {
+        if ((int) $message->sender_id !== (int) $viewer->id) {
+            return null;
+        }
+
+        if ($participants === null) {
+            $conversation = $message->relationLoaded('conversation')
+                ? $message->conversation
+                : $message->conversation()->with('participants')->first();
+
+            $participants = $conversation?->participants ?? collect();
+        }
+
+        $message->loadMissing('receipts');
+
+        $receipts = $message->receipts->keyBy(fn (MessageReceipt $receipt): int => (int) $receipt->recipient_id);
+        $senderId = (int) $message->sender_id;
+
+        $recipients = collect($participants)
+            ->filter(fn (User $participant): bool => (int) $participant->id !== $senderId)
+            ->map(function (User $participant) use ($receipts): array {
+                $receipt = $receipts->get((int) $participant->id);
+                $readAt = $receipt?->read_at;
+                $deliveredAt = $receipt?->delivered_at ?? $readAt;
+
+                $status = $readAt
+                    ? 'seen'
+                    : ($deliveredAt ? 'delivered' : 'sent');
+
+                return [
+                    'id' => (int) $participant->id,
+                    'name' => $this->displayName($participant),
+                    'role' => (string) ($participant->pivot?->participant_role ?? $participant->role ?? ''),
+                    'status' => $status,
+                    'delivered_at' => $deliveredAt?->copy()->toIso8601String(),
+                    'read_at' => $readAt?->copy()->toIso8601String(),
+                ];
+            })
+            ->values();
+
+        $recipientCount = $recipients->count();
+        $deliveredCount = $recipients->whereIn('status', ['delivered', 'seen'])->count();
+        $readCount = $recipients->where('status', 'seen')->count();
+
+        if ($recipientCount > 0 && $readCount === $recipientCount) {
+            $status = 'seen';
+        } elseif ($recipientCount > 0 && $deliveredCount === $recipientCount) {
+            $status = 'delivered';
+        } else {
+            $status = 'sent';
+        }
+
+        $label = match ($status) {
+            'seen' => 'Seen',
+            'delivered' => 'Delivered',
+            default => 'Sent',
+        };
+
+        if ($recipientCount > 1) {
+            $label = match (true) {
+                $readCount > 0 => 'Seen '.$readCount.'/'.$recipientCount,
+                $deliveredCount > 0 => 'Delivered '.$deliveredCount.'/'.$recipientCount,
+                default => 'Sent',
+            };
+        }
+
+        return [
+            'status' => $status,
+            'label' => $label,
+            'is_group' => $recipientCount > 1,
+            'recipient_count' => $recipientCount,
+            'delivered_count' => $deliveredCount,
+            'read_count' => $readCount,
+            'detail' => $recipients
+                ->map(fn (array $recipient): string => $recipient['name'].': '.Str::headline($recipient['status']))
+                ->implode(' · '),
+            'recipients' => $recipients->all(),
+        ];
+    }
+
+    /**
+     * Receipt summaries for messages the viewer sent, used by polling so a
+     * missed realtime receipt event still resolves on the next thread poll.
+     *
+     * @return list<array{message_id: int, receipt: array<string, mixed>}>
+     */
+    public function receiptUpdatesForViewer(Conversation $conversation, User $viewer): array
+    {
+        $conversation->loadMissing('participants');
+
+        $messages = $conversation->messages()
+            ->with('receipts')
+            ->where('sender_id', $viewer->id)
+            ->whereNull('deleted_at')
+            ->whereHas('receipts')
+            ->orderByDesc('id')
+            ->limit(200)
+            ->get();
+
+        return $messages
+            ->map(function (Message $message) use ($viewer, $conversation): ?array {
+                $receipt = $this->receiptPayload($message, $viewer, $conversation->participants);
+
+                return $receipt === null
+                    ? null
+                    : ['message_id' => (int) $message->id, 'receipt' => $receipt];
+            })
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Mark every inbound message in the conversation (or the given subset)
+     * delivered for this recipient. Idempotent; only newly changed receipts
+     * produce sender-facing broadcast events.
+     *
+     * @param  list<int>  $messageIds
+     */
+    public function acknowledgeDelivered(Conversation $conversation, User $recipient, array $messageIds = []): int
+    {
+        $messages = $this->inboundMessages($conversation, $recipient, $messageIds);
+
+        if ($messages->isEmpty()) {
+            return 0;
+        }
+
+        $changedIds = DB::transaction(fn (): array => $this->upsertReceipts($recipient, $messages, false));
+
+        if ($changedIds === []) {
+            return 0;
+        }
+
+        $this->broadcastReceiptUpdates(
+            $conversation,
+            $recipient,
+            $messages->whereIn('id', $changedIds),
+        );
+
+        return count($changedIds);
     }
 
     private function participatingConversations(User $user)
@@ -609,13 +1022,15 @@ class ConversationService
             'thread_url' => route('buyer.chat.thread', ['conversation' => $conversation->id]),
             'send_url' => route('buyer.chat.send', ['conversation' => $conversation->id]),
             'read_url' => route('buyer.chat.read', ['conversation' => $conversation->id]),
+            'delivery_url' => route('messages.delivered', ['conversation' => $conversation->id]),
+            'presence_user_ids' => $this->presenceUserIds($conversation, $buyer),
         ];
     }
 
     /**
      * @return array<string, mixed>
      */
-    private function sellerSummary(Conversation $conversation, int $unread, int $previous): array
+    private function sellerSummary(Conversation $conversation, User $seller, int $unread, int $previous): array
     {
         $buyer = $this->buyerParticipant($conversation);
         $admin = $buyer ? null : $this->adminParticipant($conversation);
@@ -662,6 +1077,8 @@ class ConversationService
             'thread_url' => route('seller.support.messages.thread', ['conversation' => $conversation->id]),
             'send_url' => route('seller.support.messages.send', ['conversation' => $conversation->id]),
             'read_url' => route('seller.support.messages.read', ['conversation' => $conversation->id]),
+            'delivery_url' => route('messages.delivered', ['conversation' => $conversation->id]),
+            'presence_user_ids' => $this->presenceUserIds($conversation, $seller),
         ];
     }
 

@@ -37,6 +37,11 @@ class SellerWalletTransaction extends Model
         return $this->belongsTo(SellerWithdrawal::class, 'seller_withdrawal_id');
     }
 
+    public function refund()
+    {
+        return $this->belongsTo(Refund::class);
+    }
+
     public function legacyPayout()
     {
         return $this->belongsTo(SellerPayout::class, 'seller_payout_id');

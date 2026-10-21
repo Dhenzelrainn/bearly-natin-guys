@@ -143,4 +143,60 @@ class MapLocationTest extends TestCase
             ->assertStatus(502)
             ->assertJsonPath('message', 'MapTiler could not find this address. Place the pin manually.');
     }
+
+    public function test_forward_geocoding_uses_openstreetmap_search_when_maptiler_is_not_configured(): void
+    {
+        config([
+            'maps.maptiler_api_key' => null,
+            'maps.forward_geocoding_search_url' => 'https://nominatim.openstreetmap.org/search',
+            'maps.geocoder_email' => 'maps@example.test',
+        ]);
+        Http::fake([
+            'nominatim.openstreetmap.org/search*' => Http::response([[
+                'lat' => '14.3121000',
+                'lon' => '121.1112000',
+                'display_name' => 'San Rafael, San Pablo, Laguna, Calabarzon, 4000, Philippines',
+                'type' => 'administrative',
+                'address' => ['country_code' => 'ph'],
+            ]]),
+        ]);
+        $user = User::factory()->create(['role' => 'buyer', 'status' => 'active']);
+
+        $this->actingAs($user)
+            ->getJson(route('maps.forward-geocode', [
+                'street' => '12 Pickup Street',
+                'barangay' => 'San Rafael',
+                'city' => 'San Pablo City',
+                'province' => 'Laguna',
+                'postal' => '4000',
+            ]))
+            ->assertOk()
+            ->assertJsonPath('data.latitude', 14.3121)
+            ->assertJsonPath('data.longitude', 121.1112)
+            ->assertJsonPath('data.approximate', true);
+
+        Http::assertSent(fn ($request): bool => str_starts_with($request->url(), 'https://nominatim.openstreetmap.org/search')
+            && ($request->data()['q'] ?? '') === 'San Rafael, San Pablo City, Laguna, Philippines'
+            && ($request->data()['countrycodes'] ?? '') === 'ph'
+            && ($request->data()['email'] ?? '') === 'maps@example.test'
+            && isset($request->headers()['User-Agent']));
+    }
+
+    public function test_openstreetmap_forward_geocoding_failure_is_reported(): void
+    {
+        config(['maps.maptiler_api_key' => null]);
+        Http::fake([
+            'nominatim.openstreetmap.org/search*' => Http::response([], 503),
+        ]);
+        $user = User::factory()->create(['role' => 'buyer', 'status' => 'active']);
+
+        $this->actingAs($user)
+            ->getJson(route('maps.forward-geocode', [
+                'barangay' => 'San Rafael',
+                'city' => 'San Pablo City',
+                'province' => 'Laguna',
+            ]))
+            ->assertStatus(502)
+            ->assertJsonPath('message', 'OpenStreetMap could not find this address. Open OpenStreetMap and place the pin manually.');
+    }
 }

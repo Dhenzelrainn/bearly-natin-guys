@@ -97,6 +97,10 @@ const initializeSellerPolish = () => {
         const totalStockInput = productEditor.querySelector('[data-product-total-stock]');
         const globalThresholdControl = productEditor.querySelector('[data-product-global-threshold]');
         const globalThresholdInput = globalThresholdControl?.querySelector('input[name="low_stock_threshold"]');
+        const singlePriceControl = productEditor.querySelector('[data-single-price-control]');
+        const singlePricePreview = productEditor.querySelector('[data-single-price-preview]');
+        const singleCommissionPreview = productEditor.querySelector('[data-single-commission-preview]');
+        const variantPricingNote = productEditor.querySelector('[data-variant-pricing-note]');
         const singlePackageDetails = productEditor.querySelector('[data-single-package-details]');
         const basePriceInput = productEditor.querySelector('[data-product-price]');
         const rowsHost = variantMatrix.querySelector('[data-variant-rows]');
@@ -579,6 +583,9 @@ const initializeSellerPolish = () => {
                 row.dataset.variantMainRow = '';
                 row.dataset.variantId = variant.id ? String(variant.id) : '';
                 row.dataset.variantLabel = variant.label || `Variant ${index + 1}`;
+                row.dataset.originalRegularPrice = String(variant.original_regular_price ?? variant.price ?? '');
+                row.dataset.originalSalePrice = String(variant.original_sale_price ?? variant.sale_price ?? variant.price ?? '');
+                row.dataset.legacyDiscountPercent = String(variant.legacy_discount_percent ?? 0);
                 const reservedStock = Math.max(0, Number(variant.reserved_stock ?? variant.reservedStock ?? 0));
                 row.dataset.reservedStock = String(reservedStock);
 
@@ -622,8 +629,10 @@ const initializeSellerPolish = () => {
                 priceInput.name = `variants[${index}][price]`;
                 priceInput.min = '0';
                 priceInput.step = '0.01';
-                priceInput.value = variant.price ?? basePriceInput?.value ?? '0';
+                priceInput.value = variant.price ?? '';
                 priceInput.placeholder = '0.00';
+                priceInput.required = true;
+                priceInput.setAttribute('aria-label', `Regular price for ${variant.label || `Variant ${index + 1}`}`);
                 priceCell.appendChild(priceInput);
 
                 const stockCell = document.createElement('td');
@@ -730,6 +739,15 @@ const initializeSellerPolish = () => {
         const syncProductMode = () => {
             const withVariants = currentProductMode() === 'with_variants';
 
+            if (singlePriceControl) singlePriceControl.hidden = withVariants;
+            if (basePriceInput) {
+                basePriceInput.disabled = withVariants;
+                basePriceInput.required = !withVariants;
+            }
+            if (singlePricePreview) singlePricePreview.hidden = withVariants;
+            if (singleCommissionPreview) singleCommissionPreview.hidden = withVariants;
+            if (variantPricingNote) variantPricingNote.hidden = !withVariants;
+
             if (singlePackageDetails) {
                 singlePackageDetails.hidden = withVariants;
                 singlePackageDetails.querySelectorAll('input').forEach((input) => {
@@ -778,6 +796,9 @@ const initializeSellerPolish = () => {
                     label: row.querySelector('input[type="hidden"]')?.value || '',
                     sku: row.querySelector('input[name*="[sku]"]')?.value || '',
                     price: row.querySelector('input[name*="[price]"]')?.value || '',
+                    original_regular_price: row.dataset.originalRegularPrice || '',
+                    original_sale_price: row.dataset.originalSalePrice || '',
+                    legacy_discount_percent: Number(row.dataset.legacyDiscountPercent || 0),
                     stock: row.querySelector('input[name*="[stock]"]')?.value || 0,
                     low_stock_threshold: row.querySelector('[data-variant-threshold]')?.value ?? '',
                     package_weight_kg: packageRow?.querySelector('input[name*="[package_weight_kg]"]')?.value ?? '',
@@ -1075,12 +1096,22 @@ const initializeSellerPolish = () => {
                 }
             }
 
-            const variantPrice = selectedVariant?.price !== undefined && selectedVariant.price !== ''
-                ? selectedVariant.price
+            const variantPrice = withVariants
+                ? (selectedVariant?.price ?? '')
                 : basePriceInput?.value;
             const regularPrice = Math.max(0, Number(variantPrice || 0));
-            const discount = productDiscountPercent;
-            const salePrice = Math.round((regularPrice * (1 - (discount / 100)) + Number.EPSILON) * 100) / 100;
+            const discount = withVariants
+                ? Math.min(90, Math.max(0, Number(selectedVariant?.legacy_discount_percent || 0)))
+                : productDiscountPercent;
+            const storedRegular = Number(selectedVariant?.original_regular_price);
+            const storedSale = Number(selectedVariant?.original_sale_price);
+            const unchangedVariantPrice = withVariants
+                && Number.isFinite(storedRegular)
+                && regularPrice === storedRegular
+                && Number.isFinite(storedSale);
+            const salePrice = unchangedVariantPrice
+                ? storedSale
+                : Math.round((regularPrice * (1 - (discount / 100)) + Number.EPSILON) * 100) / 100;
             if (buyerPreviewPrice) buyerPreviewPrice.textContent = formatPeso(salePrice);
             if (buyerPreviewRegular) {
                 buyerPreviewRegular.textContent = formatPeso(regularPrice);
@@ -1362,7 +1393,9 @@ const initializeSellerPolish = () => {
             const generated = labels.map((label) => currentByLabel.get(label.toLocaleLowerCase()) || {
                 label,
                 sku: '',
-                price: basePriceInput?.value || 0,
+                price: '',
+                sale_price: '',
+                legacy_discount_percent: 0,
                 stock: 0,
                 package_weight_kg: '',
                 package_length_cm: '',
@@ -1379,13 +1412,6 @@ const initializeSellerPolish = () => {
             renderVariants(mergeVariantsByLabel(retained, generated));
         });
 
-        basePriceInput?.addEventListener('change', () => {
-            const price = basePriceInput.value || '0';
-            rowsHost.querySelectorAll('input[name*="[price]"]').forEach((input) => {
-                if (!input.value) input.value = price;
-            });
-            syncBuyerProductPreview();
-        });
     }
 
 

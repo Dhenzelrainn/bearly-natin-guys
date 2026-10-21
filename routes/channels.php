@@ -3,6 +3,7 @@
 use App\Enums\AccountStatus;
 use App\Models\Conversation;
 use App\Models\User;
+use App\Services\ConversationService;
 use Illuminate\Support\Facades\Broadcast;
 
 Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
@@ -17,6 +18,16 @@ Broadcast::channel('conversations.{conversation}', function (User $user, Convers
     return $conversation->participants()
         ->whereKey($user->id)
         ->exists();
+});
+
+/*
+ * Presence is conversation-scoped so subscribers only see the participants
+ * of a thread they can already open. The service applies the same seller
+ * Store check used by the seller message endpoints and returns only the
+ * minimum identity fields consumed by the online indicator.
+ */
+Broadcast::channel('conversation-presence.{conversation}', function (User $user, Conversation $conversation): array|bool {
+    return app(ConversationService::class)->presenceMemberFor($conversation, $user) ?? false;
 });
 
 Broadcast::channel('announcements.{role}', function (User $user, string $role): bool {

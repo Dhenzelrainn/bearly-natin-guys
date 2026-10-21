@@ -3,6 +3,7 @@
 use App\Http\Controllers\AccountApprovalController;
 use App\Http\Controllers\AdminAnnouncementController;
 use App\Http\Controllers\AdminAuditLogController;
+use App\Http\Controllers\AdminCampaignController;
 use App\Http\Controllers\AdminCommerceController;
 use App\Http\Controllers\AdminComplianceController;
 use App\Http\Controllers\AdminController;
@@ -12,6 +13,7 @@ use App\Http\Controllers\AdminFinanceController;
 use App\Http\Controllers\AdminFulfillmentController;
 use App\Http\Controllers\AdminMessageController;
 use App\Http\Controllers\AdminPolicyController;
+use App\Http\Controllers\AdminPromotionController;
 use App\Http\Controllers\AdminRegistrationController;
 use App\Http\Controllers\AdminReturnRefundController;
 use App\Http\Controllers\AdminRoleApplicationController;
@@ -20,28 +22,34 @@ use App\Http\Controllers\AdminSupportTicketController;
 use App\Http\Controllers\AdminUserController;
 use App\Http\Controllers\AnnouncementController;
 use App\Http\Controllers\ApplicationDocumentController;
+use App\Http\Controllers\ApplicationStatusController;
 use App\Http\Controllers\Auth\BearlyAuthController;
 use App\Http\Controllers\Auth\EmailVerificationController;
 use App\Http\Controllers\BuyerCheckoutController;
 use App\Http\Controllers\BuyerController;
 use App\Http\Controllers\BuyerDisputeController;
 use App\Http\Controllers\BuyerMessageController;
+use App\Http\Controllers\BuyerPromotionController;
 use App\Http\Controllers\BuyerReturnController;
 use App\Http\Controllers\BuyerReviewController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\DisputeParticipantController;
 use App\Http\Controllers\LogisticsCashController;
 use App\Http\Controllers\LogisticsController;
+use App\Http\Controllers\MapLocationController;
+use App\Http\Controllers\MessageReceiptController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PostalCodeController;
 use App\Http\Controllers\ProductComplianceController;
 use App\Http\Controllers\PsgcController;
-use App\Http\Controllers\MapLocationController;
 use App\Http\Controllers\RiderCashController;
 use App\Http\Controllers\RiderController;
+use App\Http\Controllers\SellerCampaignController;
 use App\Http\Controllers\SellerController;
 use App\Http\Controllers\SellerMessageController;
 use App\Http\Controllers\SellerProductController;
+use App\Http\Controllers\SellerProductDiscountController;
+use App\Http\Controllers\SellerStoreVoucherController;
 use App\Http\Controllers\SellerWalletController;
 use App\Http\Controllers\SellerWaybillController;
 use App\Http\Controllers\SellerWorkflowController;
@@ -74,6 +82,12 @@ Route::middleware('auth')->get(
     [DisputeParticipantController::class, 'downloadEvidence']
 )->whereNumber('evidence')
     ->name('disputes.evidence.download');
+
+Route::middleware('auth')->post(
+    '/messages/conversations/{conversation}/delivered',
+    [MessageReceiptController::class, 'delivered']
+)->whereNumber('conversation')
+    ->name('messages.delivered');
 
 /*
 |--------------------------------------------------------------------------
@@ -112,8 +126,13 @@ Route::post('/logout', [BearlyAuthController::class, 'logout'])
     ->middleware('auth')
     ->name('logout');
 
-Route::view('/application/pending', 'auth.pending')
+Route::get('/application/pending', [ApplicationStatusController::class, 'pending'])
+    ->middleware('throttle:60,1')
     ->name('application.pending');
+
+Route::get('/application/pending/status', [ApplicationStatusController::class, 'status'])
+    ->middleware('throttle:60,1')
+    ->name('application.pending.status');
 
 Route::middleware('guest')->group(function () {
     Route::get('/forgot-password', [BearlyAuthController::class, 'showForgotPassword'])
@@ -224,6 +243,13 @@ Route::middleware(['auth', 'role:buyer'])->group(function () {
 
     Route::patch('/profile', [BuyerController::class, 'updateProfile'])
         ->name('buyer.profile.update');
+
+    Route::get('/profile/vouchers/data', [BuyerPromotionController::class, 'wallet'])
+        ->name('buyer.vouchers.data');
+
+    Route::post('/profile/vouchers/claim', [BuyerPromotionController::class, 'claim'])
+        ->middleware('throttle:30,1')
+        ->name('buyer.vouchers.claim');
 
     Route::get('/addresses', [BuyerController::class, 'addresses'])
         ->name('buyer.addresses');
@@ -340,7 +366,7 @@ Route::middleware(['auth', 'role:buyer'])->group(function () {
         ->whereNumber('attachment')
         ->name('buyer.chat.attachment');
 
-    Route::view('/flash-deals', 'buyer.flash-deals')
+    Route::get('/flash-deals', [BuyerController::class, 'flashDeals'])
         ->name('flash-deals');
 
     Route::get('/vouchers', function () {
@@ -498,6 +524,57 @@ Route::prefix('admin')
             '/violations/{violation}/decision',
             [ProductComplianceController::class, 'decide']
         )->name('violations.decision');
+
+        /*
+        |--------------------------------------------------------------------------
+        | Promotions
+        |--------------------------------------------------------------------------
+        */
+
+        Route::get('/promotions', [AdminPromotionController::class, 'index'])
+            ->name('promotions');
+
+        Route::post('/promotions', [AdminPromotionController::class, 'store'])
+            ->name('promotions.store');
+
+        Route::patch('/promotions/{promotion}/status', [AdminPromotionController::class, 'updateStatus'])
+            ->whereNumber('promotion')
+            ->name('promotions.status');
+
+        /*
+        |--------------------------------------------------------------------------
+        | Bearly Campaigns
+        |--------------------------------------------------------------------------
+        */
+
+        Route::get('/campaigns', [AdminCampaignController::class, 'index'])
+            ->name('campaigns');
+
+        Route::get('/campaigns/create', [AdminCampaignController::class, 'create'])
+            ->name('campaigns.create');
+
+        Route::post('/campaigns', [AdminCampaignController::class, 'store'])
+            ->name('campaigns.store');
+
+        Route::get('/campaigns/{campaign}/edit', [AdminCampaignController::class, 'edit'])
+            ->whereNumber('campaign')
+            ->name('campaigns.edit');
+
+        Route::patch('/campaigns/{campaign}', [AdminCampaignController::class, 'update'])
+            ->whereNumber('campaign')
+            ->name('campaigns.update');
+
+        Route::get('/campaigns/{campaign}', [AdminCampaignController::class, 'show'])
+            ->whereNumber('campaign')
+            ->name('campaigns.show');
+
+        Route::patch('/campaigns/{campaign}/status', [AdminCampaignController::class, 'updateStatus'])
+            ->whereNumber('campaign')
+            ->name('campaigns.status');
+
+        Route::patch('/campaigns/participations/{participation}/review', [AdminCampaignController::class, 'reviewParticipation'])
+            ->whereNumber('participation')
+            ->name('campaigns.participations.review');
 
         /*
         |--------------------------------------------------------------------------
@@ -1032,11 +1109,75 @@ Route::prefix('seller')
         Route::post('/products/pricing', [SellerController::class, 'storePromotion'])
             ->name('products.pricing.store');
 
-        Route::patch('/products/pricing/{product}', [SellerController::class, 'updateProductPricing'])
-            ->name('products.pricing.update');
+        /*
+        |--------------------------------------------------------------------------
+        | Product Discounts
+        |--------------------------------------------------------------------------
+        */
 
-        Route::patch('/products/pricing/{product}/voucher', [SellerController::class, 'updateVoucherEligibility'])
-            ->name('products.pricing.voucher');
+        Route::get('/promotions/product-discounts/create', [SellerProductDiscountController::class, 'create'])
+            ->name('promotions.product-discounts.create');
+
+        Route::post('/promotions/product-discounts', [SellerProductDiscountController::class, 'store'])
+            ->name('promotions.product-discounts.store');
+
+        Route::get('/promotions/product-discounts/{promotion}/edit', [SellerProductDiscountController::class, 'edit'])
+            ->whereNumber('promotion')
+            ->name('promotions.product-discounts.edit');
+
+        Route::patch('/promotions/product-discounts/{promotion}', [SellerProductDiscountController::class, 'update'])
+            ->whereNumber('promotion')
+            ->name('promotions.product-discounts.update');
+
+        Route::patch('/promotions/product-discounts/{promotion}/pause', [SellerProductDiscountController::class, 'pause'])
+            ->whereNumber('promotion')
+            ->name('promotions.product-discounts.pause');
+
+        Route::patch('/promotions/product-discounts/{promotion}/resume', [SellerProductDiscountController::class, 'resume'])
+            ->whereNumber('promotion')
+            ->name('promotions.product-discounts.resume');
+
+        Route::patch('/promotions/product-discounts/{promotion}/end', [SellerProductDiscountController::class, 'end'])
+            ->whereNumber('promotion')
+            ->name('promotions.product-discounts.end');
+
+        Route::post('/promotions/product-discounts/{promotion}/duplicate', [SellerProductDiscountController::class, 'duplicate'])
+            ->whereNumber('promotion')
+            ->name('promotions.product-discounts.duplicate');
+
+        /*
+        |--------------------------------------------------------------------------
+        | Store Vouchers
+        |--------------------------------------------------------------------------
+        */
+
+        Route::get('/promotions/store-vouchers/create', [SellerStoreVoucherController::class, 'create'])
+            ->name('promotions.store-vouchers.create');
+
+        Route::post('/promotions/store-vouchers', [SellerStoreVoucherController::class, 'store'])
+            ->name('promotions.store-vouchers.store');
+
+        Route::patch('/promotions/store-vouchers/{promotion}/status', [SellerStoreVoucherController::class, 'updateStatus'])
+            ->whereNumber('promotion')
+            ->name('promotions.store-vouchers.status');
+
+        /*
+        |--------------------------------------------------------------------------
+        | Bearly Campaigns
+        |--------------------------------------------------------------------------
+        */
+
+        Route::get('/promotions/campaigns/{campaign}', [SellerCampaignController::class, 'show'])
+            ->whereNumber('campaign')
+            ->name('promotions.campaigns.show');
+
+        Route::post('/promotions/campaigns/{campaign}/join', [SellerCampaignController::class, 'join'])
+            ->whereNumber('campaign')
+            ->name('promotions.campaigns.join');
+
+        Route::patch('/promotions/campaigns/participations/{participation}/withdraw', [SellerCampaignController::class, 'withdraw'])
+            ->whereNumber('participation')
+            ->name('promotions.campaigns.withdraw');
 
         Route::get('/products/create', [SellerProductController::class, 'createProduct'])
             ->name('products.create');

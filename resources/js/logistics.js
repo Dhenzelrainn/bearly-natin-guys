@@ -1,5 +1,13 @@
 import { isValidPhilippineMobile } from './registration-phone.js';
 import './notification-center.js';
+import {
+    acknowledgeConversation,
+    acknowledgeIncoming,
+    applyReceiptUpdates,
+    attachmentPreviewHtml,
+    receiptMarkup,
+    updateReceiptElements,
+} from './chat-receipts.js';
 
 const normalize = (value) => String(value || '').trim().toLowerCase().replaceAll('_', ' ');
 const escapeHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, (character) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' })[character]);
@@ -446,10 +454,6 @@ function setupChat() {
         if (
             !conversation
             || !conversation.read_url
-            || Number(
-                conversation.unread
-                || 0
-            ) <= 0
             || reading.has(id)
         ) {
             return;
@@ -573,6 +577,28 @@ function setupChat() {
             const result =
                 await response.json();
 
+            const receiptUpdates =
+                Array.isArray(
+                    result?.data
+                        ?.receipt_updates
+                )
+                    ? result
+                        .data
+                        .receipt_updates
+                    : [];
+
+            if (receiptUpdates.length) {
+                applyReceiptUpdates(
+                    thread,
+                    receiptUpdates
+                );
+
+                updateReceiptElements(
+                    receiptUpdates,
+                    messages
+                );
+            }
+
             const incoming =
                 unseenMessages(
                     thread,
@@ -665,6 +691,12 @@ function setupChat() {
                         !message.mine
                 ).length;
 
+            acknowledgeIncoming(
+                conversation,
+                incoming,
+                csrfToken
+            ).catch(() => {});
+
             if (fromOthers > 0) {
                 conversation.unread =
                     Number(
@@ -708,6 +740,8 @@ function setupChat() {
 
                 pollActiveThread()
                     .catch(() => {});
+
+                markRead(active);
             }
         );
     };
@@ -738,6 +772,27 @@ function setupChat() {
                 || button?.dataset.role
                 || '';
         }
+
+        const presence =
+            document.querySelector(
+                '[data-chat-presence]'
+            );
+
+        if (presence) {
+            presence.dataset.presenceConversation =
+                String(conversation.id || '');
+
+            presence.dataset.presenceUsers =
+                (
+                    Array.isArray(
+                        conversation.presence_user_ids
+                    )
+                        ? conversation.presence_user_ids
+                        : []
+                ).join(',');
+        }
+
+        window.BearlyPresence?.refresh?.();
 
         const isOpen =
             conversation.status
@@ -793,6 +848,9 @@ function setupChat() {
                                             : ''
                                     }
                                 "
+                                data-message-id="${Number(
+                                    item.id || 0
+                                )}"
                             >
                                 ${item.text
                                     ? `
@@ -810,27 +868,31 @@ function setupChat() {
                                     ? item.attachments
                                     : [])
                                     .map(
-                                        (attachment) => `
-                                            <a
-                                                class="message-attachment"
-                                                href="${escapeHtml(
-                                                    attachment.download_url
-                                                )}"
-                                                download
-                                            >
-                                                <span aria-hidden="true">📎</span>
-                                                <span>${escapeHtml(
-                                                    attachment.name
-                                                )}</span>
-                                            </a>
-                                        `
+                                        (attachment) =>
+                                            attachmentPreviewHtml(
+                                                attachment,
+                                                {
+                                                    linkClass:
+                                                        'message-attachment',
+                                                    mediaClass:
+                                                        'message-attachment-preview',
+                                                }
+                                            )
                                     )
                                     .join('')}
 
-                                <small>
+                                <small class="message-meta" data-chat-meta>
                                     ${escapeHtml(
                                         item.time
                                     )}
+                                    ${
+                                        item.mine
+                                        && item.receipt
+                                            ? receiptMarkup(
+                                                item.receipt
+                                            )
+                                            : ''
+                                    }
                                 </small>
                             </div>
                         `
@@ -864,7 +926,10 @@ function setupChat() {
         );
 
         render();
-        markRead(active);
+
+        if (!document.hidden) {
+            markRead(active);
+        }
     };
 
     conversations.forEach(
@@ -1111,13 +1176,43 @@ function setupChat() {
         );
 
     render();
-    markRead(active);
+
+    const initialConversation =
+        activeConversation();
+
+    if (initialConversation) {
+        acknowledgeConversation(
+            initialConversation,
+            csrfToken
+        ).catch(() => {});
+    }
+
+    if (!document.hidden) {
+        markRead(active);
+    }
+
     startPolling();
 
     window.addEventListener('bearly:message-created', (event) => {
         const conversationId = String(event.detail?.conversation_id || '');
         if (conversationId !== active) return;
         pollActiveThread().catch(() => {});
+    });
+
+    window.addEventListener('bearly:message-receipt', (event) => {
+        const receipts = Array.isArray(event.detail?.receipts)
+            ? event.detail.receipts
+            : [];
+
+        if (!receipts.length) return;
+
+        const conversation = activeConversation();
+
+        if (conversation?.messages) {
+            applyReceiptUpdates(conversation.messages, receipts);
+        }
+
+        updateReceiptElements(receipts, messages);
     });
 }
 

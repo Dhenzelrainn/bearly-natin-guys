@@ -16,6 +16,8 @@ use Illuminate\Support\Str;
 
 class BuyerCatalogService
 {
+    public function __construct(private readonly ProductPricingService $pricing) {}
+
     private const CATEGORY_ALIASES = [
         'men-s-apparel' => ['fashion-and-apparel', 'Fashion and Apparel'],
         'women-s-apparel' => ['fashion-and-apparel', 'Fashion and Apparel'],
@@ -85,6 +87,8 @@ class BuyerCatalogService
             ? Wishlist::query()->where('user_id', $buyer->id)->pluck('product_id')->map(fn ($id) => (int) $id)->all()
             : [];
 
+        $this->pricing->warm($products);
+
         return $products
             ->map(fn (Product $product): array => $this->card(
                 $product,
@@ -108,15 +112,31 @@ class BuyerCatalogService
         $defaultVariantImage = $firstVariant
             ? ($variantImages[(int) $firstVariant->id] ?? null)
             : null;
+        $this->pricing->warm([$product]);
+
         $variantCards = $variants
-            ->map(fn (ProductVariant $variant): array => $this->variant($variant, $variantImages[(int) $variant->id] ?? null))
+            ->map(fn (ProductVariant $variant): array => $this->variant($product, $variant, $variantImages[(int) $variant->id] ?? null))
             ->values();
+        $firstPrice = $firstVariant
+            ? $this->pricing->priceForVariant($product, $firstVariant)
+            : null;
 
         $card = [
             'id' => (int) $product->id,
             'product_id' => (int) $product->id,
             'name' => $product->name,
-            'price' => ((int) ($firstVariant?->price_minor ?? 0)) / 100,
+            'price' => ((int) ($firstPrice['unit_price_minor'] ?? 0)) / 100,
+            'price_minor' => (int) ($firstPrice['unit_price_minor'] ?? 0),
+            'regular_price' => ((int) ($firstPrice['regular_unit_price_minor'] ?? 0)) / 100,
+            'regular_price_minor' => (int) ($firstPrice['regular_unit_price_minor'] ?? 0),
+            'discount_percent' => (int) ($firstPrice['discount_percent'] ?? 0),
+            'campaign_name' => $firstPrice['campaign_name'] ?? null,
+            'product_discount_name' => $firstPrice['product_discount_name'] ?? null,
+            'product_discount_starts_at' => $firstPrice['product_discount_starts_at'] ?? null,
+            'product_discount_ends_at' => $firstPrice['product_discount_ends_at'] ?? null,
+            'campaign_type' => $firstPrice['campaign_type'] ?? null,
+            'campaign_funding' => $firstPrice['campaign_funding'] ?? null,
+            'price_source' => $firstPrice['price_source'] ?? 'regular',
             'subcategory' => $product->category?->name ?? 'Marketplace',
             'category' => $product->category?->name ?? 'Marketplace',
             'category_slug' => $this->buyerCategorySlug($product->category),
@@ -172,17 +192,29 @@ class BuyerCatalogService
         };
     }
 
-    private function variant(ProductVariant $variant, ?string $image = null): array
+    private function variant(Product $product, ProductVariant $variant, ?string $image = null): array
     {
         $options = (array) ($variant->options ?: []);
         $size = $this->option($options, ['size']);
         $color = $this->option($options, ['color', 'colour']);
+        $price = $this->pricing->priceForVariant($product, $variant);
 
         return [
             'id' => (int) $variant->id,
             'name' => $variant->name,
             'sku' => $variant->sku,
-            'price' => ((int) $variant->price_minor) / 100,
+            'price' => ((int) $price['unit_price_minor']) / 100,
+            'price_minor' => (int) $price['unit_price_minor'],
+            'regular_price' => ((int) $price['regular_unit_price_minor']) / 100,
+            'regular_price_minor' => (int) $price['regular_unit_price_minor'],
+            'discount_percent' => (int) $price['discount_percent'],
+            'campaign_name' => $price['campaign_name'],
+            'product_discount_name' => $price['product_discount_name'],
+            'product_discount_starts_at' => $price['product_discount_starts_at'],
+            'product_discount_ends_at' => $price['product_discount_ends_at'],
+            'campaign_type' => $price['campaign_type'],
+            'campaign_funding' => $price['campaign_funding'],
+            'price_source' => $price['price_source'],
             'stock' => (int) $variant->available_stock,
             'size' => $size,
             'color' => $color,

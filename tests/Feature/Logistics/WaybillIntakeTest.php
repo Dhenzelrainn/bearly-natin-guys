@@ -609,6 +609,50 @@ class WaybillIntakeTest extends TestCase
             ->assertDontSee('data-set-status', false);
     }
 
+    public function test_sorting_center_directs_cross_city_parcels_to_city_handoffs(): void
+    {
+        $record = $this->makeCrossCityShipment('CROSS-CITY-GUIDE');
+
+        $this->actingAs($this->logisticsA)
+            ->get(route('logistics.sorting.center'))
+            ->assertOk()
+            ->assertSee($record['waybill']->waybill_no)
+            ->assertSee('Transfer required')
+            ->assertSee('Transfer to '.$this->profileB->display_name)
+            ->assertSee('Go to City Handoffs')
+            ->assertSee(route('logistics.transfers.index'), false)
+            ->assertDontSee('Review coverage');
+
+        $this->actingAs($this->logisticsA)
+            ->get(route('logistics.transfers.index'))
+            ->assertOk()
+            ->assertSee($record['waybill']->waybill_no)
+            ->assertSee($this->profileB->display_name)
+            ->assertSee('Detected from destination city')
+            ->assertSee('Send handoff');
+    }
+
+    public function test_city_handoffs_explains_when_destination_has_no_active_logistics_account(): void
+    {
+        $record = $this->makeCrossCityShipment('CROSS-CITY-NO-PROVIDER');
+        $this->profileB->update(['status' => 'inactive']);
+        $issue = 'No active Logistics account is registered for Pila, Laguna.';
+
+        $this->actingAs($this->logisticsA)
+            ->get(route('logistics.sorting.center'))
+            ->assertOk()
+            ->assertSee($record['waybill']->waybill_no)
+            ->assertSee('Handoff unavailable')
+            ->assertSee($issue);
+
+        $this->actingAs($this->logisticsA)
+            ->get(route('logistics.transfers.index'))
+            ->assertOk()
+            ->assertSee('Needs destination Logistics')
+            ->assertSee($record['waybill']->waybill_no)
+            ->assertSee($issue);
+    }
+
     public function test_logistics_can_sort_an_owned_received_parcel(): void
     {
         $record = $this->makeShipmentFor($this->profileA, 'SORT');
@@ -1155,6 +1199,39 @@ class WaybillIntakeTest extends TestCase
             'assignment',
             'rider'
         );
+    }
+
+    /**
+     * @return array{
+     *     shipment: Shipment,
+     *     waybill: Waybill,
+     *     parcel: Parcel
+     * }
+     */
+    private function makeCrossCityShipment(string $suffix): array
+    {
+        $record = $this->makeShipmentFor($this->profileA, $suffix);
+
+        $record['shipment']->sellerOrder->order->update([
+            'barangay' => 'Pinagbayanan',
+            'city_municipality' => 'Pila',
+            'province' => 'Laguna',
+            'postal_code' => '4010',
+            'psgc_city_code' => $this->profileB->psgc_city_code,
+        ]);
+
+        $record['shipment']->update([
+            'destination_city_code' => $this->profileB->psgc_city_code,
+        ]);
+
+        app(ParcelIntakeService::class)->receive(
+            $record['waybill'],
+            $this->centerA,
+            $this->logisticsA,
+            'manual'
+        );
+
+        return $record;
     }
 
     /**

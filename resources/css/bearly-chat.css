@@ -1,3 +1,5 @@
+@import './chat-receipts.css';
+@import './chat-presence.css';
 :root{--bc-brown:#452719;--bc-brown-2:#5b3321;--bc-cream:#fbf8f3;--bc-soft:#f4ebe3;--bc-line:#e7d9cd;--bc-muted:#7d6a5e;--bc-gold:#a65b22}
 .bearly-chat-backdrop{position:fixed;inset:0;z-index:80;background:rgba(42,25,17,.18)}
 .bearly-chat-drawer{position:fixed;left:18px;bottom:18px;z-index:81;width:min(520px,calc(100vw - 36px));height:min(650px,calc(100vh - 36px));background:#fff;border:1px solid var(--bc-line);border-radius:18px;box-shadow:0 20px 55px rgba(47,28,18,.24);display:flex;flex-direction:column;overflow:hidden;opacity:0;visibility:hidden;transform:translateY(18px) scale(.98);transform-origin:left bottom;transition:.2s ease}

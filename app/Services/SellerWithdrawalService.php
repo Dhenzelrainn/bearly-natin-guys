@@ -122,6 +122,13 @@ class SellerWithdrawalService
         $profile = $this->sellerProfile($seller);
         $this->wallets->refreshForSeller($profile);
 
+        $outstandingRecoveryMinor = $this->wallets->outstandingRecoveryMinor($profile);
+        if ($outstandingRecoveryMinor > 0) {
+            throw ValidationException::withMessages([
+                'amount' => 'Your outstanding refund recovery of ₱'.number_format($outstandingRecoveryMinor / 100, 2).' must be cleared before requesting a withdrawal.',
+            ]);
+        }
+
         return DB::transaction(function () use ($seller, $profile, $amountMinor, $bankAccountId, $idempotencyKey, $request): SellerWithdrawal {
             $profile = SellerProfile::query()->whereKey($profile->id)->lockForUpdate()->firstOrFail();
             $existing = SellerWithdrawal::query()
@@ -208,6 +215,7 @@ class SellerWithdrawalService
                 return $withdrawal->fresh();
             }
             $this->assertTransition($withdrawal, SellerWithdrawalStatus::Approved);
+            $this->assertNoOutstandingRecovery($withdrawal);
 
             $withdrawal->update(['status' => SellerWithdrawalStatus::Approved->value, 'reviewed_by' => $admin->id, 'reviewed_at' => now()]);
             $this->recordStatus($withdrawal, SellerWithdrawalStatus::PendingReview, SellerWithdrawalStatus::Approved, $admin, $reason);
@@ -277,6 +285,7 @@ class SellerWithdrawalService
                 return $withdrawal->fresh();
             }
             $this->assertTransition($withdrawal, SellerWithdrawalStatus::Processing);
+            $this->assertNoOutstandingRecovery($withdrawal);
             $withdrawal->update([
                 'status' => SellerWithdrawalStatus::Processing->value,
                 'processing_started_by' => $admin->id,
@@ -660,6 +669,16 @@ class SellerWithdrawalService
         $current = SellerWithdrawalStatus::tryFrom($withdrawal->status);
         if (! $current || ! $current->canTransitionTo($target)) {
             throw new ConflictHttpException("Withdrawal status {$withdrawal->status} cannot transition to {$target->value}.");
+        }
+    }
+
+    private function assertNoOutstandingRecovery(SellerWithdrawal $withdrawal): void
+    {
+        $outstandingRecoveryMinor = $this->wallets->outstandingRecoveryMinorForSellerId((int) $withdrawal->seller_profile_id);
+        if ($outstandingRecoveryMinor > 0) {
+            throw ValidationException::withMessages([
+                'withdrawal' => 'This Seller still has an outstanding refund recovery of ₱'.number_format($outstandingRecoveryMinor / 100, 2).'. Resolve it before approving or processing the withdrawal.',
+            ]);
         }
     }
 

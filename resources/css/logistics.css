@@ -56,6 +56,9 @@
 .zone-list-empty{margin:0;padding:10px 0;color:var(--muted);font-size:12px}
 .zone-routing-note{color:var(--muted);font-size:12px}
 .zone-routing-note.is-unmatched{color:var(--amber);font-weight:600}
+.zone-routing-note.is-handoff{color:var(--brown-800);font-weight:600}
+.zone-routing-note.is-handoff small{display:block;max-width:340px;margin-top:2px;color:var(--muted);font-size:10px;font-weight:400;line-height:1.45;white-space:normal}
+#ready-to-send,#needs-destination{scroll-margin-top:96px}
 .sorting-zone-select{min-width:210px}
 .status-badge.is-warning{border-color:#eedaa8;background:var(--amber-soft);color:var(--amber)}
 .rider-zone-help{display:block;margin-top:6px;color:var(--muted);font-size:11px}

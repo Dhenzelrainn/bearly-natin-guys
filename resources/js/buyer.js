@@ -62,6 +62,17 @@ const peso = value =>
         maximumFractionDigits: 0,
     }).format(value);
 
+const buyerPriceMetaMarkup = product => {
+    const current = Number(product?.price) || 0;
+    const regular = Number(product?.regular_price) || 0;
+    const discount = Number(product?.discount_percent) || 0;
+    const campaignName = String(product?.product_discount_name || '').trim();
+
+    if (!(discount > 0 && regular > current)) return '';
+
+    return `<span class="buyer-price-meta" data-price-meta><s class="buyer-price-regular"><span class="sr-only">Regular price </span>${peso(regular)}</s><span class="buyer-price-badge">${Math.round(discount)}% OFF</span>${campaignName ? `<span class="buyer-price-campaign">${escapeHtml(campaignName)}</span>` : ''}</span>`;
+};
+
 function reviewProductId(product) {
     if (!product || product.live !== true) return 0;
     const raw = String(product.product_id ?? product.id ?? '');
@@ -324,7 +335,7 @@ function initialize() {
     const dataElement = document.getElementById('home-data');
     if (!dataElement) return;
 
-    const { categories, products } = JSON.parse(dataElement.textContent);
+    const { categories, products, live = false } = JSON.parse(dataElement.textContent);
     const $ = id => document.getElementById(id);
 
     const state = {
@@ -399,14 +410,15 @@ function initialize() {
         for (const char of seedText) seed = (seed * 31 + char.charCodeAt(0)) >>> 0;
 
         const ratingValue = Number(product.rating);
+        const liveProduct = product.live === true;
         const rating = Number.isFinite(ratingValue) && ratingValue > 0
             ? ratingValue.toFixed(1)
-            : (4.7 + (seed % 3) / 10).toFixed(1);
+            : (liveProduct ? '' : (4.7 + (seed % 3) / 10).toFixed(1));
 
         const soldRaw = product.sold;
         const sold = soldRaw !== undefined && soldRaw !== null && soldRaw !== ''
             ? String(soldRaw).replace(/\s*sold$/i, '')
-            : `${(1.2 + (seed % 28) / 10).toFixed(1)}k`;
+            : (liveProduct ? '' : `${(1.2 + (seed % 28) / 10).toFixed(1)}k`);
 
         return { rating, sold };
     };
@@ -424,8 +436,8 @@ function initialize() {
                 <div class="product-copy">
                     <span class="product-category">${escapeHtml(product.category)}</span>
                     <h3>${escapeHtml(product.name)}</h3>
-                    <div class="discovery-meta"><span><b>★ ${metrics.rating}</b></span><span>(${escapeHtml(metrics.sold)} sold)</span></div>
-                    <strong class="product-price">${peso(product.price)}</strong>
+                    ${metrics.rating || metrics.sold ? `<div class="discovery-meta">${metrics.rating ? `<span><b>★ ${metrics.rating}</b></span>` : ''}${metrics.sold ? `<span>(${escapeHtml(metrics.sold)} sold)</span>` : ''}</div>` : ''}
+                    <div class="buyer-price-line discovery-price-line"><strong class="product-price">${peso(product.price)}</strong>${buyerPriceMetaMarkup(product)}</div>
                 </div>
             </button>
             <button type="button" class="discovery-like" data-discovery-like aria-label="Save ${escapeHtml(product.name)}"><span class="material-symbols-outlined">favorite</span></button>
@@ -536,7 +548,7 @@ function initialize() {
 
         $('results-caption').hidden = !filtered;
         $('results-caption').textContent = filtered
-            ? `${results.length} sample ${results.length === 1 ? 'find' : 'finds'}${
+            ? `${results.length} ${live ? (results.length === 1 ? 'product' : 'products') : `sample ${results.length === 1 ? 'find' : 'finds'}`}${
                 state.search ? ` for “${state.search}”` : ''
             }`
             : '';
@@ -549,7 +561,7 @@ function initialize() {
         $('load-more').hidden = visible.length >= results.length;
 
         $('result-count').textContent =
-            `Showing ${visible.length} of ${results.length} sample products`;
+            `Showing ${visible.length} of ${results.length} ${live ? 'products' : 'sample products'}`;
 
         $('view-all').hidden = false;
         $('view-all').innerHTML = filtered
@@ -1907,6 +1919,11 @@ function initialize() {
 
             if (!product) return;
 
+            if (product.live) {
+                window.location.href = `/products/${product.id}`;
+                return;
+            }
+
             showHomeProduct(product);
         }
 
@@ -2751,6 +2768,10 @@ if (
 
 function init() {
     const $ = id => document.getElementById(id);
+    const usingLiveCatalog = document.body.dataset.liveCatalog === 'true';
+    const catalogNoun = count => usingLiveCatalog
+        ? (count === 1 ? 'product' : 'products')
+        : (count === 1 ? 'sample product' : 'sample products');
 
     const products = catalogWithFilterGroups(
         JSON.parse($('bc-data').textContent),
@@ -2790,9 +2811,10 @@ function init() {
         }
 
         const ratingValue = Number(product.rating);
+        const liveProduct = product.live === true;
         const rating = Number.isFinite(ratingValue) && ratingValue > 0
             ? Math.min(5, ratingValue).toFixed(1)
-            : '4.5';
+            : (liveProduct ? '' : '4.5');
 
         const soldText = String(product.sold ?? '').trim().toLowerCase();
         const soldValue = soldText.endsWith('k')
@@ -2800,7 +2822,7 @@ function init() {
             : Number(soldText);
         const soldCount = Number.isFinite(soldValue) && soldValue >= 0
             ? Math.round(soldValue)
-            : 180 + (seed % 4621);
+            : (liveProduct ? 0 : 180 + (seed % 4621));
         const sold = soldCount >= 1000
             ? `${(soldCount / 1000).toFixed(1)}k`
             : String(soldCount);
@@ -3029,6 +3051,12 @@ function init() {
             return;
         }
 
+        if (usingLiveCatalog) {
+            element.style.backgroundImage = 'none';
+            element.style.backgroundColor = '#f4eee5';
+            return;
+        }
+
         const photoIndex = Math.max(
             0,
             Number(product.photo) || 0
@@ -3100,16 +3128,20 @@ function init() {
             card.querySelector('h2').textContent =
                 product.name;
 
-            card.querySelector(
-                '.card-rating-value'
-            ).textContent = metrics.rating;
+            const ratingNode = card.querySelector('.card-rating');
+            if (ratingNode) {
+                ratingNode.style.display = metrics.rating ? '' : 'none';
+                if (metrics.rating) {
+                    card.querySelector(
+                        '.card-rating-value'
+                    ).textContent = metrics.rating;
 
-            card.querySelector(
-                '.card-rating'
-            ).setAttribute(
-                'aria-label',
-                `${metrics.rating} out of 5 stars`
-            );
+                    ratingNode.setAttribute(
+                        'aria-label',
+                        `${metrics.rating} out of 5 stars`
+                    );
+                }
+            }
 
             card.querySelector(
                 '.card-sold'
@@ -3119,12 +3151,43 @@ function init() {
                 '.price-row strong'
             ).textContent = price(product.price);
 
+            const regularPrice = Number(product.regular_price) || Number(product.price) || 0;
+            const discountPercent = Number(product.discount_percent) || 0;
+            const hasDiscount = discountPercent > 0 && regularPrice > Number(product.price);
+            const priceMeta = card.querySelector('[data-price-meta]');
+            const regularAmount = card.querySelector('[data-price-regular-amount]');
+            const discountBadge = card.querySelector('[data-price-badge]');
+            let campaignLabel = priceMeta?.querySelector('[data-price-campaign]');
+            if (priceMeta && !campaignLabel) {
+                campaignLabel = document.createElement('span');
+                campaignLabel.className = 'buyer-price-campaign';
+                campaignLabel.dataset.priceCampaign = '';
+                campaignLabel.hidden = true;
+                priceMeta.append(campaignLabel);
+            }
+            const campaignName = String(product.product_discount_name || '').trim();
+
+            if (priceMeta) priceMeta.hidden = !hasDiscount;
+            if (regularAmount) regularAmount.textContent = price(regularPrice);
+            if (discountBadge) discountBadge.textContent = hasDiscount ? `${Math.round(discountPercent)}% OFF` : '';
+            if (campaignLabel) {
+                campaignLabel.textContent = campaignName;
+                campaignLabel.hidden = !hasDiscount || !campaignName;
+            }
+
             card.querySelector(
                 '.image-open'
             )?.setAttribute(
                 'aria-label',
-                `Open ${product.name} preview`
+                usingLiveCatalog
+                    ? `View ${product.name}`
+                    : `Open ${product.name} preview`
             );
+
+            const quickOpen = card.querySelector('[data-quick]');
+            if (quickOpen && usingLiveCatalog) {
+                quickOpen.dataset.liveUrl = `/products/${product.id}`;
+            }
 
             const heart =
                 card.querySelector('[data-save]');
@@ -3154,10 +3217,10 @@ function init() {
         );
 
         $('bc-count').textContent =
-            `${filtered.length} sample products`;
+            `${filtered.length} ${catalogNoun(filtered.length)}`;
 
         $('bc-status').textContent =
-            `Showing ${shown.length} of ${filtered.length} sample products`;
+            `Showing ${shown.length} of ${filtered.length} ${catalogNoun(filtered.length)}`;
 
         $('bc-empty').hidden =
             filtered.length > 0;
@@ -4818,6 +4881,11 @@ function init() {
                     'data-quick'
                 )
             ) {
+                if (button.dataset.liveUrl) {
+                    window.location.assign(button.dataset.liveUrl);
+                    return;
+                }
+
                 const product =
                     products.find(
                         item =>
@@ -6634,7 +6702,7 @@ function initBearlyCategoryRankingPage(page) {
 
         return `<article class="top-product-card${podium}" data-top-product data-key="${escapeHtml(key)}" data-product-id="${escapeHtml(productId)}" data-name="${escapeHtml(product.name)}" data-price="${Number(product.price || 0)}" data-image="${escapeHtml(product.image || '')}" data-top-category="${escapeHtml(product.category || '')}" data-rating="${metrics.rating.toFixed(1)}" data-sold="${metrics.sales}">
             <div class="top-product-image"><img src="${escapeHtml(product.image || '')}" alt="${escapeHtml(product.name)}" loading="lazy"><span class="top-rank">#${rank}</span><button type="button" class="top-like" data-top-like aria-label="Save ${escapeHtml(product.name)}"><span class="material-symbols-outlined">favorite</span></button></div>
-            <div class="top-product-copy"><small>${escapeHtml(product.category || '')}</small><h3>${escapeHtml(product.name)}</h3><div class="top-product-meta"><span><b>★ ${metrics.rating.toFixed(1)}</b></span><span>${formatSold(metrics.sales)} sold</span></div><div class="top-product-bottom"><strong>${escapeHtml(peso(product.price || 0))}</strong></div></div>
+            <div class="top-product-copy"><small>${escapeHtml(product.category || '')}</small><h3>${escapeHtml(product.name)}</h3><div class="top-product-meta"><span><b>★ ${metrics.rating.toFixed(1)}</b></span><span>${formatSold(metrics.sales)} sold</span></div><div class="top-product-bottom"><span class="top-product-price-line"><strong>${escapeHtml(peso(product.price || 0))}</strong>${buyerPriceMetaMarkup(product)}</span></div></div>
         </article>`;
     };
 

@@ -1025,15 +1025,8 @@
     font-size: 17px !important;
 }
 
-.promotion-panel-heading p,
 .campaign-card > p,
-.campaign-card dt,
-.pricing-info-pill,
-.pricing-switch,
-.pricing-form-grid label > span,
-.campaign-form label > span,
-.pricing-calculation div,
-.pricing-form-note {
+.campaign-card dt {
     font-size: 11.5px !important;
 }
 
@@ -1043,12 +1036,6 @@
 
 .campaign-card dd {
     font-size: 13px !important;
-}
-
-.pricing-form-grid input,
-.campaign-form input,
-.campaign-form select {
-    font-size: 12.5px !important;
 }
 
 /* =========================================================

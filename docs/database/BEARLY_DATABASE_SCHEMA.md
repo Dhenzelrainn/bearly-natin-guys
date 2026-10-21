@@ -2266,6 +2266,9 @@ Zones use `deleted_at` for the archive/restore lifecycle. Permanent deletion is 
 | `voucher_amount_minor` | `bigint unsigned` | YES | — |  |
 | `starts_on` | `date` | NO | — |  |
 | `ends_on` | `date` | NO | — |  |
+| `starts_time` | `time` | NO | `00:00:00` |  |
+| `ends_time` | `time` | NO | `23:59:59` |  |
+| `buyer_campaign_name` | `varchar(80)` | YES | — |  |
 | `minimum_spend_minor` | `bigint unsigned` | NO | 0 |  |
 | `redemption_limit` | `int unsigned` | YES | — |  |
 | `per_buyer_limit` | `smallint unsigned` | NO | 1 |  |

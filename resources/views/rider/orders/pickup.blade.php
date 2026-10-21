@@ -106,19 +106,41 @@
             </div>
 
             <div class="panel-body">
-                @if (is_numeric($job['latitude'] ?? null) && is_numeric($job['longitude'] ?? null))
-                    <div class="destination-map" data-destination-map data-latitude="{{ $job['latitude'] }}" data-longitude="{{ $job['longitude'] }}" data-map-tile-url="{{ config('maps.tile_url') }}" data-map-attribution="{{ config('maps.tile_attribution') }}"></div>
-                    <a class="osm-destination-link" href="https://www.openstreetmap.org/?mlat={{ rawurlencode($job['latitude']) }}&amp;mlon={{ rawurlencode($job['longitude']) }}#map=17/{{ rawurlencode($job['latitude']) }}/{{ rawurlencode($job['longitude']) }}" target="_blank" rel="noopener noreferrer">Open destination in OpenStreetMap <i data-lucide="external-link"></i></a>
-                @else
-                    <div class="route-map">
-                        <span class="map-pin"><i data-lucide="store"></i></span>
-                    </div>
-                @endif
+                @php
+                    $mapAddress = $job['map_address'] ?? [];
+                    $hasMapCoordinates = is_numeric($job['latitude'] ?? null)
+                        && is_numeric($job['longitude'] ?? null);
+                    $osmLink = $hasMapCoordinates
+                        ? 'https://www.openstreetmap.org/?mlat='.rawurlencode($job['latitude'])
+                            .'&mlon='.rawurlencode($job['longitude'])
+                            .'#map=17/'.rawurlencode($job['latitude'])
+                            .'/'.rawurlencode($job['longitude'])
+                        : 'https://www.openstreetmap.org/search?query='.rawurlencode($job['address']);
+                @endphp
 
-                <div class="map-meta">
+                <div class="pickup-map-shell">
+                    <div
+                        class="destination-map"
+                        data-destination-map
+                        data-latitude="{{ $job['latitude'] ?? '' }}"
+                        data-longitude="{{ $job['longitude'] ?? '' }}"
+                        data-map-tile-url="{{ config('maps.tile_url') }}"
+                        data-map-attribution="{{ config('maps.tile_attribution') }}"
+                        data-map-forward-geocode-url="{{ route('maps.forward-geocode') }}"
+                        data-map-street="{{ $mapAddress['street'] ?? '' }}"
+                        data-map-barangay="{{ $mapAddress['barangay'] ?? '' }}"
+                        data-map-city="{{ $mapAddress['city'] ?? '' }}"
+                        data-map-province="{{ $mapAddress['province'] ?? '' }}"
+                        data-map-postal="{{ $mapAddress['postal'] ?? '' }}"
+                        data-map-status-target="#pickup-map-status"
+                        data-map-osm-link-target="#pickup-osm-link"
+                        aria-label="Pickup location on OpenStreetMap"
+                    ></div>
+
+                    <div class="map-meta">
                         <span>
                             <strong>
-                                 {{ $job['contact_name'] ?? $job['seller'] }}
+                                {{ $job['contact_name'] ?? $job['seller'] }}
                             </strong>
 
                             <br>
@@ -133,9 +155,27 @@
 
                             <br>
 
-                             {{ str_contains(strtolower($job['seller']), 'return pickup') ? 'Buyer contact' : 'Seller contact' }}
+                            {{ str_contains(strtolower($job['seller']), 'return pickup') ? 'Buyer contact' : 'Seller contact' }}
                         </span>
+                    </div>
                 </div>
+
+                <p id="pickup-map-status" class="destination-map-status" role="status">
+                    {{ $hasMapCoordinates
+                        ? 'Pickup location pinned on OpenStreetMap.'
+                        : 'Locating the pickup address on OpenStreetMap.' }}
+                </p>
+
+                <a
+                    id="pickup-osm-link"
+                    class="osm-destination-link"
+                    href="{{ $osmLink }}"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                >
+                    Open pickup location in OpenStreetMap
+                    <i data-lucide="external-link"></i>
+                </a>
             </div>
         </article>
 
@@ -261,6 +301,7 @@
                             $job['id']
                         ) }}"
                         style="width:100%;"
+                        data-single-submit
                     >
                         @csrf
 
@@ -302,6 +343,7 @@
                                 'rider.orders.pickup.confirm',
                                 $job['id']
                             ) }}"
+                            data-single-submit
                         >
                             @csrf
                             <label class="rider-waybill-scan-field">

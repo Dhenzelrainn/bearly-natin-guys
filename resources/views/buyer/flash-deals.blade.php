@@ -45,6 +45,7 @@ foreach($categoryProductSources as $slug=>$source){
 ])
 <main class="flash-page-main">
     <a class="flash-back" href="{{ url('/home') }}"><span class="material-symbols-outlined">arrow_back</span> Back to Home</a>
+    @include('buyer.partials.live-offers', ['promotions' => $activePromotions ?? collect()])
     <section class="flash-hero">
         <div><p class="flash-kicker"><span class="material-symbols-outlined">bolt</span> Bearly Flash Deals</p><h1>Catch it before the clock runs out.</h1><p>Sample products, prices, and availability for the frontend preview. These deals are not connected to the live cart or checkout.</p></div>
         <div><small>Deals refresh in</small><div class="flash-countdown flash-countdown-large" data-flash-countdown><span data-hours>00</span><b>:</b><span data-minutes>00</span><b>:</b><span data-seconds>00</span></div></div>

@@ -239,7 +239,7 @@
                     <img class="vouchers-title-icon" src="{{ asset('images/vouchers/Bearly-voucher-icon.png') }}" alt="">
                     <div>
                         <h1>My Vouchers</h1>
-                        <p>Collect platform and shop vouchers and use them on eligible purchases.</p>
+                        <p>Collect platform and Store vouchers. Public Free Shipping offers appear here too and may apply automatically.</p>
                     </div>
                 </div>
             </div>
@@ -251,8 +251,20 @@
             </div>
             <div class="voucher-banner-copy">
                 <h2>Save more with Bearly Vouchers</h2>
-                <p>Claim platform or shop discounts now and choose an eligible voucher when you check out.</p>
+                <p>Claim eligible vouchers here and choose them at checkout. Some public Free Shipping offers apply automatically.</p>
             </div>
+        </div>
+        <div class="voucher-code-entry">
+            <div class="voucher-code-copy">
+                <strong>Have a voucher code?</strong>
+                <span>Enter a platform or Store voucher code to add it to My Vouchers.</span>
+            </div>
+            <div class="voucher-code-control">
+                <label class="sr-only" for="voucher-code-input">Voucher code</label>
+                <input id="voucher-code-input" type="text" maxlength="40" placeholder="Enter voucher code" autocomplete="off" spellcheck="false">
+                <button id="voucher-code-claim" type="button">Claim code</button>
+            </div>
+            <p id="voucher-code-status" class="voucher-code-status" role="status" aria-live="polite" hidden></p>
         </div>
         <div class="voucher-content-stack">
         <nav class="voucher-tabs" role="tablist" aria-label="Voucher filters">

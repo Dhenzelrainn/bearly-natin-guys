@@ -16,6 +16,13 @@
   const select = root.querySelector('[data-detail-variant]');
   const quantity = root.querySelector('[data-detail-quantity]');
   const price = root.querySelector('[data-detail-price]');
+  const priceMeta = root.querySelector('[data-price-meta]');
+  const priceRegularAmount = root.querySelector('[data-price-regular-amount]');
+  const priceBadge = root.querySelector('[data-price-badge]');
+  const priceCaption = root.querySelector('[data-detail-price-caption]');
+  const promotionNote = root.querySelector('[data-detail-promotion]');
+  const promotionName = root.querySelector('[data-detail-promotion-name]');
+  const promotionPeriod = root.querySelector('[data-detail-promotion-period]');
   const stock = root.querySelector('[data-detail-stock]');
   const stockSpec = document.querySelector('[data-detail-stock-spec]');
   const sku = document.querySelector('[data-detail-sku]');
@@ -55,6 +62,13 @@
   };
   const optionValue = (variant, group) => variantOptions(variant)[normalizeGroupKey(group)] || '';
   const money = value => `₱${Number(value || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const formatPht = value => {
+    if (!value || Number.isNaN(Date.parse(value))) return '';
+    return new Intl.DateTimeFormat('en-PH', {
+      timeZone: data.timeZone || 'Asia/Manila',
+      month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit',
+    }).format(new Date(value));
+  };
   const setToast = (message, isError = false) => {
     if (!toast) return;
     toast.textContent = message;
@@ -127,6 +141,21 @@
     const quantityValue = Math.max(1, Number.parseInt(quantity?.value || '1', 10) || 1);
     const spec = specs[String(variant.id)] || {};
     if (price) price.textContent = money(variant.price);
+
+    const regular = Number(variant.regular_price) || Number(variant.price) || 0;
+    const discount = Number(variant.discount_percent) || 0;
+    const hasDiscount = discount > 0 && regular > Number(variant.price);
+    if (priceMeta) priceMeta.hidden = !hasDiscount;
+    if (priceRegularAmount) priceRegularAmount.textContent = money(regular);
+    if (priceBadge) priceBadge.textContent = hasDiscount ? `${discount}% OFF` : '';
+    if (priceCaption) priceCaption.hidden = hasDiscount;
+    const saleName = String(variant.product_discount_name || '').trim();
+    const saleStart = formatPht(variant.product_discount_starts_at);
+    const saleEnd = formatPht(variant.product_discount_ends_at);
+    const showSaleName = hasDiscount && saleName !== '' && saleStart !== '' && saleEnd !== '';
+    if (promotionName) promotionName.textContent = saleName;
+    if (promotionPeriod) promotionPeriod.textContent = showSaleName ? `${saleStart} – ${saleEnd} PHT` : '';
+    if (promotionNote) promotionNote.hidden = !showSaleName;
     if (stock) {
       stock.textContent = available > 0 ? `${available} available` : 'Out of stock';
       stock.classList.toggle('is-unavailable', available < 1);

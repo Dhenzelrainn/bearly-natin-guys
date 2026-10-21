@@ -27,4 +27,9 @@ class OrderItem extends Model
     {
         return $this->belongsTo(ProductVariant::class, 'product_variant_id')->withTrashed();
     }
+
+    public function promotionAllocations()
+    {
+        return $this->hasMany(PromotionRedemptionAllocation::class);
+    }
 }

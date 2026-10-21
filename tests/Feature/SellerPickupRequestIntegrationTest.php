@@ -19,11 +19,12 @@ use App\Models\Store;
 use App\Models\User;
 use App\Models\Waybill;
 use App\Notifications\WorkflowNotification;
-use App\Services\SellerPickupRequestService;
+use App\Services\SellerFulfillmentService;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
 class SellerPickupRequestIntegrationTest extends TestCase
@@ -49,13 +50,17 @@ class SellerPickupRequestIntegrationTest extends TestCase
             $this->readySellerOrder($store, 'second'),
         ];
 
+        foreach ($sellerOrders as $sellerOrder) {
+            $this->fulfillSellerOrder($sellerOrder, $seller, $provider['profile']);
+        }
+
         $this->actingAs($seller)
             ->get(route('seller.fulfillment.pickups'))
             ->assertOk()
             ->assertSee($sellerOrders[0]->seller_order_no)
             ->assertSee($sellerOrders[1]->seller_order_no)
             ->assertSee('name="order_ids[]"', false)
-            ->assertSee('waybill generated on submission');
+            ->assertSee('printed');
 
         $this->actingAs($seller)
             ->post(route('seller.fulfillment.pickups.store'), [
@@ -132,6 +137,19 @@ class SellerPickupRequestIntegrationTest extends TestCase
             ])
             ->assertRedirect();
 
+        $this->actingAs($seller)
+            ->get(route('seller.fulfillment.pickups'))
+            ->assertOk()
+            ->assertSee($rider->user->name)
+            ->assertSee('Location unavailable');
+
+        $this->actingAs($provider['user'])
+            ->get(route('logistics.pickups.index'))
+            ->assertOk()
+            ->assertSee($rider->user->name)
+            ->assertSee('Rider profile #'.$rider->id)
+            ->assertSee('Location unavailable');
+
         $this->actingAs($rider->user)
             ->post(route('rider.orders.pickup.accept', $pickup->pickup_no))
             ->assertRedirect();
@@ -162,6 +180,85 @@ class SellerPickupRequestIntegrationTest extends TestCase
             ->assertSee($pickup->pickup_no)
             ->assertSee('Rider Collected')
             ->assertSee('No orders are currently eligible for a new pickup request.');
+
+        $pickup->activeAssignment()->firstOrFail()->update([
+            'status' => 'cancelled',
+            'cancelled_at' => now(),
+        ]);
+
+        $this->actingAs($seller)
+            ->get(route('seller.fulfillment.pickups'))
+            ->assertOk()
+            ->assertSee('Awaiting Rider Assignment')
+            ->assertSee('Awaiting assignment')
+            ->assertDontSee('Rider Collected');
+    }
+
+    public function test_pickup_provider_is_derived_from_the_seller_city_and_client_mismatches_are_rejected(): void
+    {
+        [$seller, $store] = $this->seller();
+        $primary = $this->provider('city-primary');
+        $foreign = $this->provider('city-foreign', '0403422000');
+        $sellerOrder = $this->readySellerOrder($store, 'city-provider');
+        $this->fulfillSellerOrder($sellerOrder, $seller, $primary['profile']);
+
+        $this->actingAs($seller)
+            ->get(route('seller.fulfillment.pickups'))
+            ->assertOk()
+            ->assertSee($primary['profile']->display_name)
+            ->assertDontSee('name="logistics_profile_id"', false);
+
+        $payload = [
+            'order_ids' => [$sellerOrder->id],
+            'logistics_profile_id' => $foreign['profile']->id,
+            'requested_date' => today()->addDay()->toDateString(),
+            'pickup_window' => '10:00-12:00',
+        ];
+
+        $this->actingAs($seller)
+            ->postJson(route('seller.fulfillment.pickups.store'), $payload)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('logistics_profile_id');
+
+        $this->assertDatabaseCount('pickup_requests', 0);
+
+        unset($payload['logistics_profile_id']);
+
+        $this->actingAs($seller)
+            ->post(route('seller.fulfillment.pickups.store'), $payload)
+            ->assertRedirect(route('seller.fulfillment.pickups'));
+
+        $this->assertSame(
+            $primary['profile']->id,
+            (int) PickupRequest::query()->sole()->logistics_profile_id,
+        );
+    }
+
+    public function test_provider_resolution_fails_safely_when_the_city_has_no_active_provider(): void
+    {
+        [$seller] = $this->seller();
+        $address = $seller->sellerProfile->pickupAddress;
+        $fulfillment = app(SellerFulfillmentService::class);
+
+        try {
+            $fulfillment->providerForPickupAddress($address);
+            $this->fail('Provider resolution should fail without an active city provider.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('pickup_address', $exception->errors());
+        }
+
+        $provider = $this->provider('inactive-resolver');
+        $provider['profile']->update(['status' => 'inactive']);
+
+        try {
+            $fulfillment->providerForPickupAddress($address);
+            $this->fail('Inactive providers must not be used for pickup.');
+        } catch (ValidationException $exception) {
+            $this->assertStringContainsString(
+                'No active Logistics provider',
+                (string) $exception->errors()['pickup_address'][0],
+            );
+        }
     }
 
     public function test_seller_can_save_optional_coordinates_for_the_registered_pickup_address(): void
@@ -195,6 +292,7 @@ class SellerPickupRequestIntegrationTest extends TestCase
         $provider = $this->provider('scope');
         $ownedOrder = $this->readySellerOrder($store, 'owned');
         $foreignOrder = $this->readySellerOrder($foreignStore, 'foreign');
+        $this->fulfillSellerOrder($ownedOrder, $seller, $provider['profile']);
 
         $payload = [
             'order_ids' => [$foreignOrder->id],
@@ -215,9 +313,9 @@ class SellerPickupRequestIntegrationTest extends TestCase
             ->assertConflict();
 
         $this->assertDatabaseCount('pickup_requests', 0);
-        $this->assertDatabaseCount('shipments', 0);
-        $this->assertDatabaseCount('waybills', 0);
-        $this->assertDatabaseCount('parcels', 0);
+        $this->assertDatabaseCount('shipments', 1);
+        $this->assertDatabaseCount('waybills', 1);
+        $this->assertDatabaseCount('parcels', 1);
     }
 
     public function test_replaying_a_pickup_submission_cannot_duplicate_fulfillment_records(): void
@@ -225,6 +323,7 @@ class SellerPickupRequestIntegrationTest extends TestCase
         [$seller, $store] = $this->seller();
         $provider = $this->provider('replay');
         $sellerOrder = $this->readySellerOrder($store, 'replay');
+        $this->fulfillSellerOrder($sellerOrder, $seller, $provider['profile']);
         $payload = [
             'order_ids' => [$sellerOrder->id],
             'logistics_profile_id' => $provider['profile']->id,
@@ -244,7 +343,7 @@ class SellerPickupRequestIntegrationTest extends TestCase
         $this->assertDatabaseCount('shipments', 1);
         $this->assertDatabaseCount('waybills', 1);
         $this->assertDatabaseCount('parcels', 1);
-        $this->assertDatabaseCount('shipment_events', 1);
+        $this->assertDatabaseCount('shipment_events', 2);
     }
 
     public function test_seller_order_tracking_shows_live_delivery_without_marking_it_completed(): void
@@ -350,11 +449,9 @@ class SellerPickupRequestIntegrationTest extends TestCase
         $provider = $this->provider('waybills');
         $ownedOrder = $this->readySellerOrder($store, 'waybill-owned');
         $foreignOrder = $this->readySellerOrder($foreignStore, 'waybill-foreign');
-        $pickupRequests = app(SellerPickupRequestService::class);
-        $pickupDate = today()->addDay()->toDateString();
 
-        $pickupRequests->create($seller, $provider['profile']->id, [$ownedOrder->id], $pickupDate, '10:00-12:00');
-        $pickupRequests->create($foreignSeller, $provider['profile']->id, [$foreignOrder->id], $pickupDate, '13:00-15:00');
+        $this->fulfillSellerOrder($ownedOrder, $seller, $provider['profile'], printed: false);
+        $this->fulfillSellerOrder($foreignOrder, $foreignSeller, $provider['profile'], printed: false);
 
         $ownedWaybill = Waybill::query()
             ->whereHas('shipment.sellerOrder', fn ($query) => $query->whereKey($ownedOrder->id))
@@ -508,7 +605,7 @@ class SellerPickupRequestIntegrationTest extends TestCase
     }
 
     /** @return array{user: User, profile: LogisticsProfile} */
-    private function provider(string $suffix): array
+    private function provider(string $suffix, string $cityCode = '0403428000'): array
     {
         $user = User::factory()->create([
             'name' => "Logistics {$suffix}",
@@ -525,10 +622,44 @@ class SellerPickupRequestIntegrationTest extends TestCase
             'legal_name' => "Logistics {$suffix} Inc.",
             'display_name' => "Logistics {$suffix}",
             'contact_phone' => '+639171234567',
+            'psgc_city_code' => $cityCode,
             'status' => 'active',
+        ]);
+        Address::query()->create([
+            'user_id' => $user->id,
+            'label' => 'Sorting Center',
+            'recipient_name' => $user->name,
+            'phone' => '+639171234567',
+            'house_number' => '1',
+            'street' => 'Logistics Avenue',
+            'barangay' => 'Balibago',
+            'city_municipality' => 'Santa Rosa',
+            'province' => 'Laguna',
+            'postal_code' => '4026',
+            'psgc_city_code' => '0403428000',
         ]);
 
         return compact('user', 'profile');
+    }
+
+    private function fulfillSellerOrder(
+        SellerOrder $sellerOrder,
+        User $seller,
+        LogisticsProfile $provider,
+        bool $printed = true,
+    ): void {
+        $fulfillment = app(SellerFulfillmentService::class);
+        $shipment = $fulfillment->createShipmentFor(
+            $sellerOrder,
+            $seller,
+            $provider,
+            $seller->sellerProfile->pickupAddress,
+        );
+
+        if ($printed) {
+            $shipment->waybill->update(['printed_at' => now()]);
+            $fulfillment->markShipmentReady($sellerOrder, $seller);
+        }
     }
 
     /** @param array{user: User, profile: LogisticsProfile} $provider */

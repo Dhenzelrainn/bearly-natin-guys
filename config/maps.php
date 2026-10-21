@@ -10,4 +10,8 @@ return [
     'geocoder_email' => env('MAPS_GEOCODER_EMAIL'),
     'maptiler_api_key' => env('MAPTILER_API_KEY'),
     'forward_geocoding_url' => env('MAPS_FORWARD_GEOCODING_URL', 'https://api.maptiler.com/geocoding'),
+    'forward_geocoding_search_url' => env(
+        'MAPS_FORWARD_GEOCODING_SEARCH_URL',
+        'https://nominatim.openstreetmap.org/search'
+    ),
 ];

@@ -88,7 +88,15 @@
                             <div class="buyer-search-product-copy">
                                 <p>{{ $product['category'] }}</p>
                                 <h3><a href="{{ route('products.show', ['product' => $product['id']]) }}">{{ $product['name'] }}</a></h3>
-                                <strong class="buyer-search-price">₱{{ number_format((float) $product['price'], 2) }}</strong>
+                                <div class="buyer-search-price-line">
+                                    <strong class="buyer-search-price">₱{{ number_format((float) $product['price'], 2) }}</strong>
+                                    @include('buyer.partials.product-price-meta', [
+                                        'current' => (float) $product['price'],
+                                        'regular' => (float) ($product['regular_price'] ?? $product['price']),
+                                        'discount' => (int) ($product['discount_percent'] ?? 0),
+                                        'campaign_name' => $product['product_discount_name'] ?? null,
+                                    ])
+                                </div>
                                 @if ($product['store_slug'])
                                     <a class="buyer-search-seller" href="{{ route('stores.show', ['store' => $product['store_slug']]) }}">
                                         Sold by {{ $product['seller_name'] }}

@@ -336,18 +336,21 @@ class SellerProductService
                 }
 
                 $intent = (string) $data['intent'];
-                $product->fill([
+                $productAttributes = [
                     'name' => trim((string) $data['name']),
                     'description' => trim((string) ($data['description'] ?? '')) ?: null,
                     'product_status' => $intent === 'publish' ? 'pending_review' : 'draft',
                     'compliance_status' => 'pending_scan',
-                    'voucher_eligible' => (bool) ($data['voucher_eligible'] ?? false),
                     'payment_methods' => $paymentMethods,
                     'published_at' => null,
                     'archived_at' => null,
                     'archived_previous_status' => null,
                     'archived_previous_published_at' => null,
-                ]);
+                ];
+                if (array_key_exists('voucher_eligible', $data)) {
+                    $productAttributes['voucher_eligible'] = (bool) $data['voucher_eligible'];
+                }
+                $product->fill($productAttributes);
                 $product->save();
 
                 $this->syncVariants($product, $data, $user);
@@ -683,6 +686,8 @@ class SellerProductService
                     'label' => $variant->name,
                     'sku' => $variant->sku,
                     'price' => $regular / 100,
+                    'sale_price' => ((int) $variant->price_minor) / 100,
+                    'legacy_discount_percent' => $this->discountPercentForVariant($variant),
                     'stock' => (int) $variant->stock_on_hand,
                     'low_stock_threshold' => (int) $variant->low_stock_threshold,
                     'reserved_stock' => (int) $variant->stock_reserved,
@@ -854,14 +859,15 @@ class SellerProductService
                 'package_height_cm' => $data['package_height_cm'],
             ]];
         } elseif ($submittedRows === []) {
-            $rows = $activeVariants->isNotEmpty()
-                ? $activeVariants->map(fn (ProductVariant $variant): array => $this->variantRow($variant))->all()
-                : [[
-                    'label' => 'Default',
-                    'sku' => (string) ($data['sku'] ?? '') ?: null,
-                    'price' => $data['price'],
-                    'stock' => $data['stock'],
-                ]];
+            if ($activeVariants->isEmpty()) {
+                throw ValidationException::withMessages([
+                    'variants' => 'Add at least one variant with its own regular price.',
+                ]);
+            }
+
+            $rows = $activeVariants
+                ->map(fn (ProductVariant $variant): array => $this->variantRow($variant))
+                ->all();
         } else {
             $submittedLabels = collect($submittedRows)
                 ->map(fn (array $variant): string => trim((string) ($variant['label'] ?? '')))
@@ -895,7 +901,6 @@ class SellerProductService
             ->keyBy(fn (ProductVariant $variant): string => Str::lower(trim($variant->name)));
         $activeSkus = [];
         $usedVariantIds = [];
-        $discount = $this->discountPercentForVariant($activeVariants->first());
         $globalThreshold = filled($data['low_stock_threshold'] ?? null)
             ? max(0, (int) $data['low_stock_threshold'])
             : null;
@@ -954,13 +959,26 @@ class SellerProductService
                 ]);
             }
 
-            $variantPrice = $row['price'] ?? null;
-            $regularMinor = $this->moneyToMinor(
-                $variantPrice === null || $variantPrice === ''
-                    ? $data['price']
-                    : $variantPrice
-            );
-            $saleMinor = $this->discountedMinor($regularMinor, $discount);
+            $variantPrice = $row['price'] ?? ($data['product_mode'] === 'single' ? ($data['price'] ?? null) : null);
+            if ($variantPrice === null || $variantPrice === '') {
+                throw ValidationException::withMessages([
+                    'variants' => "Enter a regular price for {$label}.",
+                ]);
+            }
+            $regularMinor = $this->moneyToMinor($variantPrice);
+            $existingRegularMinor = $variant
+                ? (int) ($variant->compare_at_price_minor ?: $variant->price_minor)
+                : null;
+            $legacyDiscount = $this->discountPercentForVariant($variant);
+            if ($variant && $regularMinor === $existingRegularMinor) {
+                $saleMinor = (int) $variant->price_minor;
+                $compareAtMinor = $variant->compare_at_price_minor !== null
+                    ? (int) $variant->compare_at_price_minor
+                    : null;
+            } else {
+                $saleMinor = $this->discountedMinor($regularMinor, $legacyDiscount);
+                $compareAtMinor = $legacyDiscount > 0 ? $regularMinor : null;
+            }
             $stock = max(0, (int) ($row['stock'] ?? 0));
 
             if ($variant && in_array($variant->id, $usedVariantIds, true)) {
@@ -991,7 +1009,7 @@ class SellerProductService
                 'name' => $label,
                 'options' => $this->optionsForLabel($data, $label),
                 'price_minor' => $saleMinor,
-                'compare_at_price_minor' => $discount > 0 ? $regularMinor : null,
+                'compare_at_price_minor' => $compareAtMinor,
                 'stock_on_hand' => $stock,
                 'low_stock_threshold' => $threshold,
                 'package_weight_kg' => $row['package_weight_kg'],
@@ -1036,6 +1054,8 @@ class SellerProductService
             'label' => $variant->name,
             'sku' => $variant->sku,
             'price' => number_format($regularMinor / 100, 2, '.', ''),
+            'sale_price' => number_format((int) $variant->price_minor / 100, 2, '.', ''),
+            'legacy_discount_percent' => $this->discountPercentForVariant($variant),
             'stock' => (int) $variant->stock_on_hand,
             'low_stock_threshold' => (int) $variant->low_stock_threshold,
             'package_weight_kg' => $variant->package_weight_kg ?? '',

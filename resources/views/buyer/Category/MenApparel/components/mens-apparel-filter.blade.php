@@ -125,7 +125,7 @@
             </label>
         </div>
         <small>
-            Sample ratings for filter testing
+            {{ $usingLiveCatalog ? 'Only rated products match this filter' : 'Sample ratings for filter testing' }}
         </small>
     </details>
 </section>

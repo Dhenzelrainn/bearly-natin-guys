@@ -1,5 +1,6 @@
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import './leaflet-default-icon.js';
 
 function coordinatePair(latitude, longitude) {
     const parse = (value, minimum, maximum) => {

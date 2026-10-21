@@ -17,6 +17,7 @@
     @vite([
         'resources/css/logistics.css',
         'resources/js/logistics.js',
+        'resources/js/application-pending.js',
     ])
     @include('partials.session-safety')
 </head>
@@ -37,21 +38,36 @@
         </span>
     </a>
 
-    @if (session('registration_pending') || session('logistics_application'))
-        <section class="registration-card" style="display:block">
+    @if (session('registration_pending') || session('logistics_application') || ($applicationReview ?? null))
+        @php
+            $review = $applicationReview ?? null;
+            $state = $review['state'] ?? 'pending';
+            $approved = $state === 'approved';
+            $final = (bool) ($review['final'] ?? false);
+            $statusLabel = $review['status_label'] ?? 'Pending review';
+            $heading = $review['heading'] ?? 'Application received';
+            $message = $review['message'] ?? 'Your Logistics partner application has been received. Bearly Admin will review your identity and business documents before dashboard access is activated.';
+            $businessName = $review['company'] ?? session('logistics_application.business_name', 'Submitted logistics facility');
+            $authority = $review['authority'] ?? 'Bearly Administrator';
+            $reviewNote = $review['review_note'] ?? null;
+        @endphp
+        <section
+            class="registration-card"
+            style="display:block"
+            data-application-status
+            data-final="{{ $final ? '1' : '0' }}"
+            data-poll-interval="12000"
+            @if($review) data-status-url="{{ route('application.pending.status') }}" @endif
+        >
             <div class="pending-state">
                 <span class="metric-icon">
-                    <i data-lucide="clock-3"></i>
+                    <i data-lucide="{{ $approved ? 'badge-check' : 'clock-3' }}"></i>
                 </span>
 
-                <p class="page-kicker">Application submitted</p>
-                <h2>Pending Administrator Approval</h2>
+                <p class="page-kicker">{{ $approved ? 'Account Verified' : 'Application submitted' }}</p>
+                <h2>{{ $heading }}</h2>
 
-                <p>
-                    Your Logistics partner application has been received.
-                    Bearly Admin will review your identity and business
-                    documents before your dashboard access is activated.
-                </p>
+                <p>{{ $message }}</p>
 
                 <div
                     class="detail-list"
@@ -59,25 +75,40 @@
                 >
                     <div class="detail-item">
                         <small>Business</small>
-                        <strong>
-                            {{ session(
-                                'logistics_application.business_name',
-                                'Submitted logistics facility'
-                            ) }}
-                        </strong>
+                        <strong>{{ $businessName }}</strong>
                     </div>
 
                     <div class="detail-item">
                         <small>Status</small>
-                        <strong>Pending Administrator Approval</strong>
+                        <strong>{{ $statusLabel }}</strong>
                     </div>
+
+                    <div class="detail-item">
+                        <small>Reviewed by</small>
+                        <strong>{{ $authority }}</strong>
+                    </div>
+
+                    @if(!empty($review['submitted_at']))
+                        <div class="detail-item">
+                            <small>Submitted</small>
+                            <strong>{{ $review['submitted_at'] }}</strong>
+                        </div>
+                    @endif
                 </div>
+
+                @if($reviewNote)
+                    <p role="note"><strong>{{ $state === 'needs_revision' ? 'What needs updating' : 'Decision note' }}:</strong> {{ $reviewNote }}</p>
+                @endif
+
+                @if(! $final && $review)
+                    <p data-application-live aria-live="polite">Checking for a review decision automatically.</p>
+                @endif
 
                 <a
                     class="button button-primary"
                     href="{{ route('login') }}"
                 >
-                    Return to main login
+                    {{ $approved ? 'Proceed to Sign In' : 'Return to main login' }}
                 </a>
             </div>
         </section>

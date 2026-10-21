@@ -58,4 +58,9 @@ class SellerOrder extends Model
             ->whereNotIn('status', ['resolved', 'closed'])
             ->latestOfMany();
     }
+
+    public function promotionAllocations()
+    {
+        return $this->hasMany(PromotionRedemptionAllocation::class);
+    }
 }

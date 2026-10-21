@@ -194,6 +194,9 @@
                         @php
                             $reviewSummary = $product['review_summary'];
                             $initialVariant = collect($product['variants'])->firstWhere('id', $product['default_variant_id']) ?: ($product['variants'][0] ?? null);
+                            $initialPrice = (float) ($initialVariant['price'] ?? $product['price']);
+                            $initialRegularPrice = (float) ($initialVariant['regular_price'] ?? $initialPrice);
+                            $initialDiscount = (int) ($initialVariant['discount_percent'] ?? 0);
                         @endphp
                         <article class="store-product" data-store-product data-product-name="{{ $product['name'] }}" data-product-category="{{ $product['category'] }} {{ $product['seller_subcategory'] ?? '' }}" data-price="{{ $initialVariant['price'] ?? $product['price'] }}" data-position="{{ $loop->index }}">
                             <a class="store-product-link" href="{{ route('products.show', $product['id']) }}" aria-label="View {{ $product['name'] }}">
@@ -205,13 +208,21 @@
                                 <div class="store-product-rating" role="img" aria-label="{{ $reviewSummary['count'] > 0 ? number_format($reviewSummary['average'], 1).' out of 5, '.$reviewSummary['count'].' reviews' : 'No ratings yet' }}">
                                     @if ($reviewSummary['count'] > 0)<span class="store-stars" aria-hidden="true">{{ str_repeat('★', (int) round($reviewSummary['average'])) }}{{ str_repeat('☆', 5 - (int) round($reviewSummary['average'])) }}</span><strong>{{ number_format($reviewSummary['average'], 1) }}</strong><span>({{ $reviewSummary['count'] }})</span>@else<span>No ratings yet</span>@endif
                                 </div>
-                                <span class="store-product-price" data-store-price>₱{{ number_format($initialVariant['price'] ?? $product['price'], 2) }}</span>
+                                <div class="store-product-price-line">
+                                    <span class="store-product-price" data-store-price>₱{{ number_format($initialPrice, 2) }}</span>
+                                    @include('buyer.partials.product-price-meta', [
+                                        'current' => $initialPrice,
+                                        'regular' => $initialRegularPrice,
+                                        'discount' => $initialDiscount,
+                                        'campaign_name' => $initialVariant['product_discount_name'] ?? null,
+                                    ])
+                                </div>
                                 <span class="store-product-stock" data-store-stock>{{ (int) ($initialVariant['stock'] ?? $product['stock']) }} available</span>
                                 @if (count($product['variants']) > 1)
                                     <label class="store-variant-field" for="store-variant-{{ $product['id'] }}">Choose variation
                                         <select class="store-product-variant" id="store-variant-{{ $product['id'] }}" data-store-variant>
                                             @foreach ($product['variants'] as $variant)
-                                                <option value="{{ $variant['id'] }}" data-price="{{ $variant['price'] }}" data-stock="{{ $variant['stock'] }}" @selected((int) $variant['id'] === (int) ($initialVariant['id'] ?? 0))>{{ $variant['name'] }} · ₱{{ number_format($variant['price'], 2) }}@if ($variant['stock'] < 1) · Out of stock @endif</option>
+                                                <option value="{{ $variant['id'] }}" data-price="{{ $variant['price'] }}" data-regular-price="{{ $variant['regular_price'] ?? $variant['price'] }}" data-discount="{{ $variant['discount_percent'] ?? 0 }}" data-campaign-name="{{ $variant['product_discount_name'] ?? '' }}" data-stock="{{ $variant['stock'] }}" @selected((int) $variant['id'] === (int) ($initialVariant['id'] ?? 0))>{{ $variant['name'] }} · ₱{{ number_format($variant['price'], 2) }}@if ($variant['stock'] < 1) · Out of stock @endif</option>
                                             @endforeach
                                         </select>
                                     </label>
@@ -243,17 +254,36 @@
             const cards = [...grid.querySelectorAll('[data-store-product]')];
             const priceText = value => `₱${Number(value || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+            const syncPriceMeta = (card, price, regular, discount, option = null) => {
+                const meta = card.querySelector('[data-price-meta]');
+                const regularAmount = card.querySelector('[data-price-regular-amount]');
+                const badge = card.querySelector('[data-price-badge]');
+                const campaign = card.querySelector('[data-price-campaign]');
+                const hasDiscount = Number(discount) > 0 && Number(regular) > Number(price);
+
+                if (meta) meta.hidden = !hasDiscount;
+                if (regularAmount) regularAmount.textContent = priceText(regular > 0 ? regular : price);
+                if (badge) badge.textContent = hasDiscount ? `${Number(discount) || 0}% OFF` : '';
+                if (campaign) {
+                    campaign.textContent = option?.dataset.campaignName || '';
+                    campaign.hidden = !hasDiscount || !campaign.textContent;
+                }
+            };
+
             const syncVariant = (card, select) => {
                 const option = select.selectedOptions[0];
                 if (!option) return;
 
                 const price = Number(option.dataset.price) || 0;
+                const regular = Number(option.dataset.regularPrice) || price;
+                const discount = Number(option.dataset.discount) || 0;
                 const stock = Number(option.dataset.stock) || 0;
                 const button = card.querySelector('[data-store-add]');
                 const priceNode = card.querySelector('[data-store-price]');
                 const stockNode = card.querySelector('[data-store-stock]');
                 card.dataset.price = String(price);
                 if (priceNode) priceNode.textContent = priceText(price);
+                syncPriceMeta(card, price, regular, discount, option);
                 if (stockNode) stockNode.textContent = `${stock} available`;
                 if (button) {
                     button.dataset.variantId = option.value;

@@ -255,7 +255,7 @@
                                 <div class="case-recovery-details">
                                     <strong>Recoverable Seller balance</strong>
                                     <p>₱{{ number_format($case['refund']['seller_recovery']['amount_minor'] / 100, 2) }} assigned · ₱{{ number_format($case['refund']['seller_recovery']['recovered_amount_minor'] / 100, 2) }} recovered · ₱{{ number_format($case['refund']['seller_recovery']['outstanding_minor'] / 100, 2) }} outstanding.</p>
-                                    <small>This is tracked separately and is not automatically deducted from your settlements.</small>
+                                    <small>Seller-liable refunds completed on or after the wallet cutoff are deducted automatically when this sale has funds in Seller Wallet. Any remaining balance blocks new withdrawals until it is settled.</small>
                                     @if (count($case['refund']['seller_recovery']['events']))
                                         <ul>
                                             @foreach ($case['refund']['seller_recovery']['events'] as $recoveryEvent)

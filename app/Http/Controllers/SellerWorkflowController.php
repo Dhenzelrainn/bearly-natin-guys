@@ -12,10 +12,12 @@ use App\Models\SellerOrder;
 use App\Models\SellerPayout;
 use App\Models\SellerProfile;
 use App\Models\Shipment;
+use App\Models\Waybill;
 use App\Services\AuditService;
 use App\Services\BuyerCatalogService;
 use App\Services\ReturnRefundService;
 use App\Services\SellerEarningsService;
+use App\Services\SellerFulfillmentService;
 use App\Services\SellerIdentityService;
 use App\Services\SellerInventoryService;
 use App\Services\SellerNotificationService;
@@ -608,6 +610,18 @@ class SellerWorkflowController extends Controller
         $requestedStatus = (string) $request->query('status', 'all');
         $defaultStatus = in_array($requestedStatus, $allowed, true) ? $requestedStatus : 'all';
         $count = fn (string $status) => collect($orders)->where('status_key', $status)->count();
+        $storeId = (int) ($request->user()->sellerProfile?->store?->id ?? 0);
+        $waybillCount = $storeId > 0
+            ? Waybill::query()
+                ->whereNull('printed_at')
+                ->whereNull('voided_at')
+                ->where('status', '!=', 'voided')
+                ->whereHas('shipment', fn ($query) => $query
+                    ->where('purpose', 'outbound')
+                    ->whereHas('sellerOrder', fn ($sellerOrders) => $sellerOrders
+                        ->where('store_id', $storeId)))
+                ->count()
+            : 0;
 
         return view('seller.Orders.orders', [
             'seller' => $this->seller(),
@@ -616,7 +630,7 @@ class SellerWorkflowController extends Controller
             'orderQueue' => [
                 ['key' => 'new', 'label' => 'New orders', 'count' => $count('new'), 'note' => 'Awaiting Seller review', 'icon' => 'clipboard-list', 'tone' => 'gold'],
                 ['key' => 'to-prepare', 'label' => 'To prepare', 'count' => $count('to-prepare'), 'note' => 'Confirmed and preparing', 'icon' => 'package', 'tone' => 'olive'],
-                ['key' => 'waybill', 'label' => 'Waybill to print', 'count' => 0, 'note' => 'Waybill workflow is not connected yet', 'icon' => 'printer', 'tone' => 'blue'],
+                ['key' => 'waybill', 'label' => 'Waybill to print', 'count' => $waybillCount, 'note' => 'Print and attach before marking ready', 'icon' => 'printer', 'tone' => 'blue'],
                 ['key' => 'ready-pickup', 'label' => 'Ready for pickup', 'count' => $count('ready-pickup'), 'note' => 'Schedule collection with Logistics', 'icon' => 'truck', 'tone' => 'brown'],
             ],
             'orderTabs' => [
@@ -651,7 +665,7 @@ class SellerWorkflowController extends Controller
 
         $message = match ($validated['action']) {
             'confirm' => 'Order confirmed. You can now prepare it.',
-            'start_preparing' => 'Order moved to preparation.',
+            'start_preparing' => 'Order moved to preparation. Print and attach its waybill, then confirm it in Fulfillment → Waybills.',
             'mark_ready' => 'Order marked ready for pickup.',
             'cancel' => 'Seller Order cancelled and its reserved stock released.',
         };
@@ -662,7 +676,9 @@ class SellerWorkflowController extends Controller
             'cancelled' => 'cancelled-returned',
             default => 'all',
         };
-        $redirectTo = route('seller.orders', ['status' => $statusFilter]);
+        $redirectTo = $validated['action'] === 'start_preparing'
+            ? route('seller.fulfillment.waybills', ['status' => 'ready'])
+            : route('seller.orders', ['status' => $statusFilter]);
 
         $request->session()->flash('success', $message);
 
@@ -704,7 +720,7 @@ class SellerWorkflowController extends Controller
 
     public function pickupRequests(
         Request $request,
-        SellerPickupRequestService $pickupService,
+        SellerFulfillmentService $fulfillment,
         BuyerCatalogService $catalog,
     ): View {
         $user = $request->user();
@@ -716,42 +732,80 @@ class SellerWorkflowController extends Controller
 
         abort_unless($sellerProfile && $store, 404, 'Seller Store not found.');
 
-        $eligibleOrders = SellerOrder::query()
-            ->where('store_id', $store->id)
-            ->where('status', 'ready_for_pickup')
-            ->whereDoesntHave('shipments')
-            ->whereHas('order', fn ($query) => $query->where('status', '!=', 'cancelled'))
-            ->with('order')
-            ->orderBy('ready_at')
-            ->orderBy('id')
-            ->get()
-            ->map(function (SellerOrder $sellerOrder): array {
-                $quote = (array) $sellerOrder->shipping_quote;
-                $weight = $quote['actual_weight_kg'] ?? null;
-                $order = $sellerOrder->order;
+        $provider = null;
+        $providerError = null;
 
-                return [
-                    'id' => (int) $sellerOrder->id,
-                    'order' => '#'.$sellerOrder->seller_order_no,
-                    'packages' => 1,
-                    'weight' => is_numeric($weight) && (float) $weight > 0
-                        ? number_format((float) $weight, 3).' kg actual weight'
-                        : 'Package details unavailable',
-                    'destination' => $order
-                        ? implode(', ', array_filter([
-                            $order->city_municipality,
-                            $order->province,
-                        ]))
-                        : 'Destination unavailable',
-                ];
-            });
+        if (! $sellerProfile->pickupAddress) {
+            $providerError = 'Add a valid pickup address to your Seller profile before scheduling collection.';
+        } else {
+            try {
+                $provider = $fulfillment->providerForPickupAddress($sellerProfile->pickupAddress);
+            } catch (ValidationException $exception) {
+                $providerError = collect($exception->errors())->flatten()->first();
+            }
+        }
+
+        $eligibleOrders = collect();
+
+        if ($provider) {
+            $eligibleOrders = SellerOrder::query()
+                ->where('store_id', $store->id)
+                ->where('status', 'ready_for_pickup')
+                ->whereHas('order', fn ($query) => $query->where('status', '!=', 'cancelled'))
+                ->whereHas('shipments', fn ($query) => $query
+                    ->where('purpose', 'outbound')
+                    ->where('logistics_profile_id', $provider->id)
+                    ->where('status', ShipmentStatus::ReadyForPickup->value)
+                    ->whereHas('waybill', fn ($waybills) => $waybills
+                        ->whereNotNull('printed_at')
+                        ->whereNull('voided_at')
+                        ->where('status', '!=', 'voided'))
+                    ->whereHas('parcels'))
+                ->whereDoesntHave('shipments.parcels.pickupRequests', fn ($query) => $query
+                    ->whereIn('pickup_requests.status', ['requested', 'verified', 'scheduled']))
+                ->with([
+                    'order',
+                    'shipments' => fn ($query) => $query
+                        ->where('purpose', 'outbound')
+                        ->with(['waybill', 'parcels']),
+                ])
+                ->orderBy('ready_at')
+                ->orderBy('id')
+                ->get()
+                ->map(function (SellerOrder $sellerOrder): array {
+                    $quote = (array) $sellerOrder->shipping_quote;
+                    $shipment = $sellerOrder->shipments->first();
+                    $parcel = $shipment?->parcels->first();
+                    $weight = $parcel?->weight_kg ?? ($quote['actual_weight_kg'] ?? null);
+                    $order = $sellerOrder->order;
+                    $packages = max(1, (int) ($shipment?->parcels->count() ?? 0));
+
+                    return [
+                        'id' => (int) $sellerOrder->id,
+                        'order' => '#'.$sellerOrder->seller_order_no,
+                        'packages' => $packages,
+                        'weight' => is_numeric($weight) && (float) $weight > 0
+                            ? number_format((float) $weight, 3).' kg actual weight'
+                            : 'Package details unavailable',
+                        'waybill' => $shipment?->waybill?->waybill_no ?? 'Waybill unavailable',
+                        'destination' => $order
+                            ? implode(', ', array_filter([
+                                $order->city_municipality,
+                                $order->province,
+                            ]))
+                            : 'Destination unavailable',
+                    ];
+                });
+        }
 
         $pickupRequests = PickupRequest::query()
             ->where('store_id', $store->id)
             ->with([
                 'logisticsProfile',
                 'pickupAddress',
-                'latestAssignment.riderProfile.user',
+                'activeAssignment.riderProfile.user',
+                'activeAssignment.riderProfile.currentZone.sortingCenter',
+                'activeAssignment.riderProfile.homeSortingCenter',
                 'parcels.waybill',
                 'parcels.shipment.sellerOrder.items.product.images.variant',
                 'parcels.shipment.sellerOrder.items.variant',
@@ -777,6 +831,7 @@ class SellerWorkflowController extends Controller
                 $dateKey = $date?->isToday()
                     ? 'today'
                     : ($date?->isTomorrow() ? 'tomorrow' : 'other');
+                $rider = $pickupRequest->activeAssignment?->riderProfile;
 
                 return [
                     'id' => $pickupRequest->pickup_no,
@@ -796,7 +851,9 @@ class SellerWorkflowController extends Controller
                     'schedule' => ($date?->format('M j, Y') ?? 'Date unavailable').' · '.($start?->format('g:i A') ?? '—').'–'.($end?->format('g:i A') ?? '—'),
                     'date_key' => $dateKey,
                     'address' => $this->sellerPickupAddressLabel($pickupRequest->pickupAddress),
-                    'rider' => $pickupRequest->latestAssignment?->riderProfile?->user?->name ?? 'Awaiting assignment',
+                    'rider' => $rider?->user?->name ?? 'Awaiting assignment',
+                    'rider_location' => $rider?->serviceLocationLabel() ?? 'Awaiting assignment',
+                    'rider_profile_id' => $rider?->id,
                     'instructions' => $pickupRequest->seller_instructions ?: 'No pickup instructions.',
                     'status' => $status,
                     'status_key' => $statusKey,
@@ -809,7 +866,8 @@ class SellerWorkflowController extends Controller
             'notifications' => $this->notifications(),
             'eligibleOrders' => $eligibleOrders->all(),
             'requests' => $requests->all(),
-            'providers' => $pickupService->activeProviders(),
+            'provider' => $provider,
+            'providerError' => $providerError,
             'pickupAddress' => $this->sellerPickupAddressLabel($sellerProfile->pickupAddress),
             'pickupPhone' => $sellerProfile->pickupAddress?->phone,
         ]);
@@ -820,7 +878,7 @@ class SellerWorkflowController extends Controller
         $validated = $request->validate([
             'order_ids' => ['required', 'array', 'min:1', 'max:30'],
             'order_ids.*' => ['required', 'integer', 'min:1', 'distinct'],
-            'logistics_profile_id' => ['required', 'integer', 'min:1'],
+            'logistics_profile_id' => ['nullable', 'integer', 'min:1'],
             'requested_date' => ['required', 'date_format:Y-m-d', 'after_or_equal:today'],
             'pickup_window' => ['required', 'string', Rule::in(array_keys(SellerPickupRequestService::PICKUP_WINDOWS))],
             'instructions' => ['nullable', 'string', 'max:1000'],
@@ -828,7 +886,9 @@ class SellerWorkflowController extends Controller
 
         $pickupRequest = $pickupService->create(
             $request->user(),
-            (int) $validated['logistics_profile_id'],
+            isset($validated['logistics_profile_id'])
+                ? (int) $validated['logistics_profile_id']
+                : null,
             array_map('intval', $validated['order_ids']),
             $validated['requested_date'],
             $validated['pickup_window'],
@@ -846,9 +906,11 @@ class SellerWorkflowController extends Controller
         return match ($pickupRequest->status) {
             'requested' => ['Pending Approval', 'pending'],
             'verified' => ['Verified · Awaiting Rider', 'pending'],
-            'scheduled' => $pickupRequest->latestAssignment?->status === 'picked_up'
-                ? ['Rider Collected', 'picked-up']
-                : ['Rider Assigned', 'assigned'],
+            'scheduled' => $pickupRequest->activeAssignment === null
+                ? ['Awaiting Rider Assignment', 'pending']
+                : ($pickupRequest->activeAssignment->status === 'picked_up'
+                    ? ['Rider Collected', 'picked-up']
+                    : ['Rider Assigned', 'assigned']),
             'completed' => ['Received at Sorting Center', 'picked-up'],
             'cancelled' => ['Rejected', 'cancelled'],
             'failed' => ['Pickup Failed', 'cancelled'],
@@ -1314,7 +1376,8 @@ class SellerWorkflowController extends Controller
         $legacySellerDebit = abs((int) ($refund?->sellerTransactions->where('type', 'refund_reversal')->sum('amount_minor') ?? 0));
         $sellerRecoveryMinor = (int) ($sellerRecovery?->amount_minor ?? $legacySellerDebit);
         $sellerRecoveredMinor = (int) ($sellerRecovery?->recovered_amount_minor ?? 0);
-        $sellerRecoveryOutstandingMinor = max(0, $sellerRecoveryMinor - $sellerRecoveredMinor);
+        $sellerRecoveryOutstandingMinor = $sellerRecovery?->outstandingMinor() ?? 0;
+        $walletOffset = $sellerRecovery?->events->contains(fn ($event): bool => $event->method === 'wallet_offset') ?? false;
         $commissionEffect = $refund?->status === 'completed'
             ? ($refund->financially_responsible_party === 'platform'
                 ? 'Platform-funded refund; no Seller commission reversal'
@@ -1324,7 +1387,9 @@ class SellerWorkflowController extends Controller
             ? ($refund->financially_responsible_party === 'platform'
                 ? 'No Seller recovery; Platform is responsible'
                 : ($sellerRecoveryMinor > 0
-                    ? $this->money($sellerRecoveryOutstandingMinor / 100).' recoverable from Seller'.($sellerRecoveredMinor > 0 ? ' · '.$this->money($sellerRecoveredMinor / 100).' recovered' : ' · not automatically deducted')
+                    ? ($sellerRecoveryOutstandingMinor > 0
+                        ? $this->money($sellerRecoveryOutstandingMinor / 100).' recoverable from Seller'.($sellerRecoveredMinor > 0 ? ' · '.$this->money($sellerRecoveredMinor / 100).' recovered' : ' · not yet deducted')
+                        : ($walletOffset ? 'Deducted automatically from Seller Wallet' : $this->money($sellerRecoveredMinor / 100).' recovered'))
                     : 'No Seller recovery recorded'))
             : 'No finalized financial adjustment';
         $productNames = $items->map(fn ($item): string => trim(
@@ -1411,7 +1476,7 @@ class SellerWorkflowController extends Controller
                 'seller_recovery' => $sellerRecovery ? [
                     'amount_minor' => (int) $sellerRecovery->amount_minor,
                     'recovered_amount_minor' => (int) $sellerRecovery->recovered_amount_minor,
-                    'outstanding_minor' => max(0, (int) $sellerRecovery->amount_minor - (int) $sellerRecovery->recovered_amount_minor),
+                    'outstanding_minor' => $sellerRecovery->outstandingMinor(),
                     'status' => $sellerRecovery->status,
                     'events' => $sellerRecovery->events->map(fn ($event): array => [
                         'method' => $event->method,

@@ -1,3 +1,5 @@
+@import './chat-receipts.css';
+@import './chat-presence.css';
 /* Shared messaging visual language.
  * Role-specific controllers and endpoints remain unchanged; this sheet keeps
  * Buyer, Seller, Logistics, Rider, and Admin message workspaces visually

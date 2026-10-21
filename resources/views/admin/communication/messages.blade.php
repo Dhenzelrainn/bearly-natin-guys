@@ -136,7 +136,7 @@
                     data-time="{{ $conversation['time'] }}"
                 >
 
-                    <span class="avatar avatar-soft">
+                    <span class="avatar avatar-soft chat-presence-target" data-presence-conversation="{{ $conversation['database_id'] }}" data-presence-users="{{ implode(',', $conversation['presence_user_ids'] ?? []) }}">
                         {{ $conversation['initials'] }}
                     </span>
 
@@ -221,8 +221,10 @@
             <div class="identity-cell">
 
                 <span
-                    class="avatar avatar-warm"
+                    class="avatar avatar-warm chat-presence-target"
                     data-chat-avatar
+                    data-presence-conversation="{{ $activeConversation['database_id'] ?? '' }}"
+                    data-presence-users="{{ implode(',', $activeConversation['presence_user_ids'] ?? []) }}"
                 >
                     {{ $activeInitials }}
                 </span>
@@ -310,16 +312,39 @@
                     <div
                         class="message-row
                         message-{{ $message['from'] }}"
+                        data-message-id="{{ $message['id'] }}"
                     >
 
                         <div class="message-bubble">
 
-                            <p>
-                                {{ $message['text'] }}
-                            </p>
+                            @if (($message['text'] ?? '') !== '')
+                                <p>
+                                    {{ $message['text'] }}
+                                </p>
+                            @endif
 
-                            <span>
+                            @foreach (($message['attachments'] ?? []) as $attachment)
+                                @if (! empty($attachment['is_image']))
+                                    <a class="message-attachment is-image" href="{{ $attachment['download_url'] }}" target="_blank" rel="noopener"><img class="message-attachment-preview" src="{{ $attachment['download_url'] }}" alt="{{ $attachment['name'] }}" loading="lazy"></a>
+                                @elseif (! empty($attachment['is_video']))
+                                    <span class="message-attachment is-video">
+                                        <video class="message-attachment-preview" src="{{ $attachment['download_url'] }}" controls preload="metadata"></video>
+                                        <a class="chat-attachment-open" href="{{ $attachment['download_url'] }}" target="_blank" rel="noopener">{{ $attachment['name'] }}</a>
+                                    </span>
+                                @else
+                                    <a class="message-attachment" href="{{ $attachment['download_url'] }}" download>
+                                        <i data-lucide="paperclip"></i>
+                                        <span><strong>{{ $attachment['name'] }}</strong><small>{{ number_format(((int) ($attachment['size_bytes'] ?? 0)) / 1024, 1) }} KB</small></span>
+                                        <i data-lucide="download"></i>
+                                    </a>
+                                @endif
+                            @endforeach
+
+                            <span class="message-meta" data-chat-meta>
                                 {{ $message['time'] }}
+                                @if ($message['from'] === 'me' && ! empty($message['receipt']))
+                                    @include('partials.chat-receipt', ['receipt' => $message['receipt']])
+                                @endif
                             </span>
 
                         </div>
@@ -388,6 +413,7 @@
                 type="file"
                 data-chat-attachment
                 hidden
+                accept=".jpg,.jpeg,.png,.webp,.mp4,.mov,.webm,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.zip"
                 @if (! $hasConversations) disabled @endif
             >
 
@@ -636,6 +662,8 @@
                 'status' => $conversation['status'] ?? 'open',
 
                 'type' => $conversation['type'] ?? 'direct',
+
+                'presence_user_ids' => $conversation['presence_user_ids'] ?? [],
 
                 'send_url' => route(
                     'admin.messages.send',

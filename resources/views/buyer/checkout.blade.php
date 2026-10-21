@@ -25,6 +25,9 @@
 @csrf
 <input type="hidden" name="checkout_request_key" value="{{ $checkoutRequestKey }}">
 <input type="hidden" name="payment_method" value="cod">
+<input type="hidden" name="platform_voucher_id" id="checkout-platform-voucher-id" value="">
+<input type="hidden" name="store_voucher_id" id="checkout-store-voucher-id" value="">
+<input type="hidden" name="voucher_code" id="checkout-voucher-code" value="">
 <input type="hidden" name="address_id" id="checkout-address-id" value="">
 <input type="hidden" name="quote_token" id="checkout-quote-token" value="">
 <div id="checkout-cart-item-ids"></div>
@@ -51,9 +54,42 @@
 
 <section class="checkout-card payment-card">
 <div class="payment-head"><h2>Payment Method</h2><div class="cod-payment"><span class="material-symbols-outlined">payments</span><span><strong id="payment-label">Cash on Delivery</strong><small>Pay the confirmed order total in cash when it is delivered.</small></span></div></div>
+<div class="checkout-voucher-box" aria-labelledby="checkout-voucher-title">
+    <div class="checkout-voucher-heading">
+        <div>
+            <h3 id="checkout-voucher-title">Vouchers</h3>
+            <p>One platform voucher and one Store voucher can be applied to this order.</p>
+        </div>
+        <button id="checkout-voucher-clear" class="checkout-voucher-clear" type="button" hidden>Clear</button>
+    </div>
+    <div class="checkout-voucher-fields">
+        <label>
+            <span>Platform voucher</span>
+            <select id="checkout-platform-voucher">
+                <option value="">No platform voucher</option>
+            </select>
+        </label>
+        <label>
+            <span>Store voucher</span>
+            <select id="checkout-store-voucher">
+                <option value="">No Store voucher</option>
+            </select>
+        </label>
+    </div>
+    <div class="checkout-voucher-code">
+        <label for="checkout-voucher-code-input" class="sr-only">Voucher code</label>
+        <input id="checkout-voucher-code-input" type="text" maxlength="40" placeholder="Or enter a voucher code" autocomplete="off" spellcheck="false">
+        <button id="checkout-voucher-code-apply" type="button">Apply code</button>
+    </div>
+    <p id="checkout-voucher-status" class="checkout-voucher-status" role="status" aria-live="polite" hidden></p>
+    <div id="checkout-applied-vouchers" class="checkout-applied-vouchers"></div>
+</div>
 <div class="summary">
 <div><span>Merchandise Subtotal</span><strong id="summary-subtotal">₱0.00</strong></div>
 <div><span>Estimated Shipping</span><strong id="summary-shipping">—</strong></div>
+<div id="summary-seller-discount-row" hidden><span>Store voucher</span><strong id="summary-seller-discount">—</strong></div>
+<div id="summary-platform-discount-row" hidden><span>Platform discount</span><strong id="summary-platform-discount">—</strong></div>
+<div id="summary-shipping-discount-row" hidden><span>Shipping discount</span><strong id="summary-shipping-discount">—</strong></div>
 <div class="payment-total"><span>Total Due on Delivery</span><strong id="summary-total">—</strong></div>
 </div>
 <div id="shipping-breakdown" class="shipping-breakdown" aria-live="polite"></div>

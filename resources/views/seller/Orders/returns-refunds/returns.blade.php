@@ -105,7 +105,7 @@
         </table>
         <div class="returns-empty" data-returns-empty hidden><i data-lucide="search-x"></i><strong>No matching cases</strong><span>Try changing the status, type, or search term.</span></div>
     </div>
-    <footer class="returns-footer"><span class="returns-footer-count">Showing <strong data-return-count>{{ count($returns) }}</strong> of {{ count($returns) }} cases</span><span class="returns-footer-note"><i data-lucide="info" aria-hidden="true"></i><span>Seller-liable refunds may create a recoverable balance; no settlement is automatically deducted.</span></span></footer>
+    <footer class="returns-footer"><span class="returns-footer-count">Showing <strong data-return-count>{{ count($returns) }}</strong> of {{ count($returns) }} cases</span><span class="returns-footer-note"><i data-lucide="info" aria-hidden="true"></i><span>Seller-liable refunds may be deducted from Seller Wallet after the refund is completed; any remaining recovery blocks new withdrawals.</span></span></footer>
 </section>
 </div>
 @endsection

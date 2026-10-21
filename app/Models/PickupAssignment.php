@@ -2,11 +2,19 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 
 class PickupAssignment extends Model
 {
     protected $guarded = [];
+
+    public function scopeActive(Builder $query): Builder
+    {
+        return $query
+            ->whereNull('cancelled_at')
+            ->where('status', '!=', 'cancelled');
+    }
 
     protected function casts(): array
     {

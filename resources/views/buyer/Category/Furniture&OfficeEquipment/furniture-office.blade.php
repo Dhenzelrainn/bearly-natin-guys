@@ -23,6 +23,11 @@
         'Storage & Organization',
         'Lighting',
     ];
+    $liveCatalog = $liveCatalog ?? [];
+    $usingLiveCatalog = ! empty($liveCatalog);
+    if ($usingLiveCatalog) {
+        $catalog = $liveCatalog;
+    }
 @endphp
 
 <!DOCTYPE html>
@@ -62,7 +67,7 @@
 
 </head>
 
-<body class="bc" data-category="furniture-and-office-equipment" style="--catalog-image:url('{{ asset('images/furniture-office-catalog-atlas.png') }}')">
+<body class="bc" data-category="furniture-and-office-equipment" style="--catalog-image:url('{{ asset('images/furniture-office-catalog-atlas.png') }}')" data-live-catalog="{{ $usingLiveCatalog ? 'true' : 'false' }}">
     <a href="#bc-main" class="skip">Skip to products</a>
 
     @include('buyer.partials.buyer-header', [
@@ -123,11 +128,11 @@
             </p>
 
             <p class="preview">
-                Frontend catalog · Sample products, prices and ratings
+                {{ $usingLiveCatalog ? 'Live products and prices from Bearly sellers' : 'Frontend catalog · Sample products, prices and ratings' }}
             </p>
 
             <div class="toolbar">
-                <strong id="bc-count">{{ count($catalog) }} sample products</strong>
+                <strong id="bc-count">{{ count($catalog) }} {{ $usingLiveCatalog ? Str::plural('product', count($catalog)) : Str::plural('sample product', count($catalog)) }}</strong>
 
                 <button class="mobile-filter button outline" id="bc-open-filters">
                     <i class="mi" aria-hidden="true">tune</i>
@@ -191,7 +196,7 @@
             <div class="catalog-grid" id="bc-grid"></div>
 
             <noscript>
-                <p>Enable JavaScript to explore the sample catalog and filters.</p>
+                <p>{{ $usingLiveCatalog ? 'Enable JavaScript to browse live products and filters.' : 'Enable JavaScript to explore the sample catalog and filters.' }}</p>
             </noscript>
 
             <section id="bc-empty" class="empty" hidden>

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\SellerBankAccount;
 use App\Models\SellerProfile;
+use App\Models\SellerRefundRecovery;
 use App\Models\SellerWalletTransaction;
 use App\Models\SellerWithdrawal;
 use App\Models\SellerWithdrawalTransfer;
@@ -93,12 +94,21 @@ class SellerWalletController extends Controller
             ->orderBy('id')
             ->get();
 
+        $recoveries = SellerRefundRecovery::query()
+            ->where('seller_profile_id', $sellerProfile->id)
+            ->whereIn('status', ['pending', 'partially_recovered'])
+            ->with(['refund.returnRequest.sellerOrder'])
+            ->latest('id')
+            ->get();
+
         return view('seller.Finance.wallet', [
             'seller' => $request->user(),
             'wallet' => $wallet,
             'transactions' => $transactions,
             'withdrawals' => $withdrawals,
             'bankAccounts' => $bankAccounts,
+            'recoveries' => $recoveries,
+            'outstandingRecoveryMinor' => $recoveries->sum(fn (SellerRefundRecovery $recovery): int => $recovery->outstandingMinor()),
             'idempotencyKey' => old('idempotency_key', (string) Str::uuid()),
         ]);
     }

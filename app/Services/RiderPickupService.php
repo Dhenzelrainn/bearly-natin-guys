@@ -41,32 +41,43 @@ class RiderPickupService
                             'rider_profile_id',
                             $profile->id
                         )
+                        ->whereIn('status', [
+                            'assigned',
+                            'accepted',
+                            'arrived',
+                            'picked_up',
+                            'completed',
+                        ])
                         ->whereHas(
                             'pickupRequest',
-                            fn ($query) =>
-                                $query->where(
-                                    'pickup_no',
-                                    $pickupNo
-                                )
+                            fn ($query) => $query->where(
+                                'pickup_no',
+                                $pickupNo
+                            )
                         )
+                        ->orderByDesc('id')
                         ->lockForUpdate()
                         ->firstOrFail();
 
+                /*
+                * The accept form can be replayed by a double click, a stale
+                * tab, or a retried request. Once accepted, return the existing
+                * assignment instead of surfacing a 409 error page.
+                */
                 if (
                     $assignment->status
                     !== 'assigned'
                 ) {
-                    throw new ConflictHttpException(
-                        'This pickup assignment can no longer be accepted.'
-                    );
+                    return $assignment
+                        ->fresh([
+                            'pickupRequest',
+                        ]);
                 }
 
                 $assignment->update([
-                    'status' =>
-                        'accepted',
+                    'status' => 'accepted',
 
-                    'accepted_at' =>
-                        now(),
+                    'accepted_at' => now(),
                 ]);
 
                 $this->notifySellerOfPickupUpdate(
@@ -111,11 +122,10 @@ class RiderPickupService
                         )
                         ->whereHas(
                             'pickupRequest',
-                            fn ($query) =>
-                                $query->where(
-                                    'pickup_no',
-                                    $pickupNo
-                                )
+                            fn ($query) => $query->where(
+                                'pickup_no',
+                                $pickupNo
+                            )
                         )
                         ->with(
                             'pickupRequest'
@@ -250,47 +260,36 @@ class RiderPickupService
                         $parcel->status;
 
                     $parcel->update([
-                        'status' =>
-                            ParcelStatus::PickedUp->value,
+                        'status' => ParcelStatus::PickedUp->value,
 
-                        'last_event_at' =>
-                            $pickedUpAt,
+                        'last_event_at' => $pickedUpAt,
                     ]);
 
                     $parcel
                         ->shipment
                         ->events()
                         ->create([
-                            'parcel_id' =>
-                                $parcel->id,
+                            'parcel_id' => $parcel->id,
 
-                            'event_type' =>
-                                'parcel_picked_up',
+                            'event_type' => 'parcel_picked_up',
 
-                            'from_status' =>
-                                $fromStatus,
+                            'from_status' => $fromStatus,
 
-                            'to_status' =>
-                                ParcelStatus::PickedUp->value,
+                            'to_status' => ParcelStatus::PickedUp->value,
 
-                            'actor_user_id' =>
-                                $rider->id,
+                            'actor_user_id' => $rider->id,
 
-                            'source' =>
-                                'rider',
+                            'source' => 'rider',
 
                             'metadata' => [
-                                'pickup_request_id' =>
-                                    $pickup->id,
+                                'pickup_request_id' => $pickup->id,
 
-                                'pickup_assignment_id' =>
-                                    $assignment->id,
+                                'pickup_assignment_id' => $assignment->id,
 
                                 'scan_method' => $scanMethod,
                             ],
 
-                            'occurred_at' =>
-                                $pickedUpAt,
+                            'occurred_at' => $pickedUpAt,
                         ]);
                 }
 
@@ -318,40 +317,31 @@ class RiderPickupService
                         $shipment->status;
 
                     $shipment->update([
-                        'status' =>
-                            ShipmentStatus::PickedUp->value,
+                        'status' => ShipmentStatus::PickedUp->value,
                     ]);
 
                     $shipment
                         ->events()
                         ->create([
-                            'event_type' =>
-                                'shipment_picked_up',
+                            'event_type' => 'shipment_picked_up',
 
-                            'from_status' =>
-                                $fromStatus,
+                            'from_status' => $fromStatus,
 
-                            'to_status' =>
-                                ShipmentStatus::PickedUp->value,
+                            'to_status' => ShipmentStatus::PickedUp->value,
 
-                            'actor_user_id' =>
-                                $rider->id,
+                            'actor_user_id' => $rider->id,
 
-                            'source' =>
-                                'rider',
+                            'source' => 'rider',
 
                             'metadata' => [
-                                'pickup_request_id' =>
-                                    $pickup->id,
+                                'pickup_request_id' => $pickup->id,
 
-                                'pickup_assignment_id' =>
-                                    $assignment->id,
+                                'pickup_assignment_id' => $assignment->id,
 
                                 'scan_method' => $scanMethod,
                             ],
 
-                            'occurred_at' =>
-                                $pickedUpAt,
+                            'occurred_at' => $pickedUpAt,
                         ]);
 
                     if ($shipment->purpose === 'return' && $returns) {
@@ -376,11 +366,9 @@ class RiderPickupService
                 );
 
                 $assignment->update([
-                    'status' =>
-                        'picked_up',
+                    'status' => 'picked_up',
 
-                    'picked_up_at' =>
-                        $pickedUpAt,
+                    'picked_up_at' => $pickedUpAt,
                 ]);
 
                 $this->notifySellerOfPickupUpdate(
@@ -403,7 +391,7 @@ class RiderPickupService
      * Move the Seller Order out of its pickup-ready state when the Rider
      * confirms custody of the shipment, preserving the transition audit.
      *
-     * @param array<int, int|string> $sellerOrderIds
+     * @param  array<int, int|string>  $sellerOrderIds
      */
     private function recordSellerHandoffs(
         array $sellerOrderIds,

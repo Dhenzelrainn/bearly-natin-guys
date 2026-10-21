@@ -7,6 +7,7 @@ use App\Models\Address;
 use App\Models\Conversation;
 use App\Models\StorePromotion;
 use App\Models\StorePromotionalBanner;
+use App\Services\CampaignService;
 use App\Services\ConversationService;
 use App\Services\InternationalPhone;
 use App\Services\NotificationPreferenceService;
@@ -15,7 +16,7 @@ use App\Services\SellerEarningsService;
 use App\Services\SellerIdentityService;
 use App\Services\SellerInventoryService;
 use App\Services\SellerNotificationService;
-use App\Services\SellerPricingService;
+use App\Services\SellerProductDiscountService;
 use App\Services\SellerProductService;
 use App\Services\SellerPromotionService;
 use App\Services\StoreAppearanceService;
@@ -587,40 +588,6 @@ class SellerController extends Controller
         ], $inventory->inventoryFor($request->user())));
     }
 
-    public function updateProductPricing(Request $request, string $product, SellerPricingService $pricing): JsonResponse
-    {
-        $validated = $request->validate([
-            'regular_price' => ['required', 'string', 'regex:/^\d{1,10}(?:\.\d{1,2})?$/D'],
-            'discount_percent' => ['sometimes', 'nullable', 'integer', 'between:0,90'],
-        ]);
-
-        return response()->json([
-            'data' => $pricing->updateProductPricing(
-                $request->user(),
-                $product,
-                $validated['regular_price'],
-                (int) ($validated['discount_percent'] ?? 0),
-            ),
-            'message' => 'Product pricing saved.',
-        ]);
-    }
-
-    public function updateVoucherEligibility(Request $request, string $product, SellerPricingService $pricing): JsonResponse
-    {
-        $validated = $request->validate([
-            'voucher_eligible' => ['required', 'boolean'],
-        ]);
-
-        return response()->json([
-            'data' => $pricing->setVoucherEligibility(
-                $request->user(),
-                $product,
-                (bool) $validated['voucher_eligible'],
-            ),
-            'message' => 'Voucher eligibility saved.',
-        ]);
-    }
-
     public function adjustInventory(Request $request, SellerInventoryService $inventory): RedirectResponse
     {
         $validated = $request->validate([
@@ -1154,23 +1121,20 @@ class SellerController extends Controller
 
     public function pricing(
         Request $request,
-        SellerProductService $productService,
         SellerPromotionService $promotionService,
+        SellerProductDiscountService $productDiscountService,
+        CampaignService $campaignService,
     ): View {
-        $products = $productService->productsForSeller($request->user());
         $promotionListing = $promotionService->listingFor($request->user());
+        $discountListing = $productDiscountService->listingFor($request->user());
+        $bearlyCampaigns = $campaignService->availableFor($request->user());
 
         return view('seller.Products.pricing', [
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
-            'products' => $products,
-            'summary' => [
-                ['label' => 'Active Promotions', 'value' => (string) $promotionListing['active_count'], 'note' => 'Seller-side campaign schedule', 'icon' => 'badge-percent', 'tone' => 'gold'],
-                ['label' => 'Discounted Products', 'value' => (string) $products->where('discount_percent', '>', 0)->count(), 'note' => 'Current sale prices', 'icon' => 'tags', 'tone' => 'olive'],
-                ['label' => 'Voucher Eligible', 'value' => (string) $products->where('voucher_eligible', true)->count(), 'note' => 'Can join store vouchers', 'icon' => 'ticket-percent', 'tone' => 'brown'],
-                ['label' => 'Ending Soon', 'value' => (string) $promotionListing['ending_soon_count'], 'note' => 'Within the next two days', 'icon' => 'clock-3', 'tone' => 'warning'],
-            ],
-            'campaigns' => $promotionListing['campaigns'],
+            'discountListing' => $discountListing,
+            'voucherListing' => $promotionListing,
+            'bearlyCampaigns' => $bearlyCampaigns,
         ]);
     }
 
@@ -1185,23 +1149,50 @@ class SellerController extends Controller
 
     public function storePromotion(Request $request, SellerPromotionService $promotionService): RedirectResponse
     {
+        $request->merge([
+            'start_time' => $request->input('start_time', '00:00'),
+            'end_time' => $request->input('end_time', '23:59'),
+        ]);
+
         $validated = $request->validate([
-            'name' => ['required', 'string', 'max:80'],
+            'name' => ['nullable', 'string', 'max:80'],
             'type' => ['required', Rule::in([StorePromotion::TYPE_STORE_VOUCHER])],
-            'value' => ['required', 'string', 'regex:/^\d{1,10}(?:\.\d{1,2})?$/D'],
+            'code' => [
+                'nullable',
+                'string',
+                'max:40',
+                'regex:/^[A-Za-z0-9_-]+$/',
+                Rule::unique('store_promotions', 'code'),
+                Rule::unique('platform_promotions', 'code'),
+            ],
+            'discount_type' => ['required', Rule::in([StorePromotion::DISCOUNT_FIXED, StorePromotion::DISCOUNT_PERCENT])],
+            'value' => ['nullable', 'required_if:discount_type,fixed', 'string', 'regex:/^\d{1,10}(?:\.\d{1,2})?$/D'],
+            'discount_percent' => ['nullable', 'required_if:discount_type,percent', 'integer', 'between:1,100'],
+            'max_discount' => ['nullable', 'string', 'regex:/^\d{1,10}(?:\.\d{1,2})?$/D'],
             'start_date' => ['required', 'date_format:Y-m-d'],
             'end_date' => ['required', 'date_format:Y-m-d', 'after_or_equal:start_date'],
+            'start_time' => ['required', 'date_format:H:i'],
+            'end_time' => ['required', 'date_format:H:i'],
             'products' => ['required', 'array', 'min:1', 'max:100'],
             'products.*' => ['required', 'integer', 'distinct'],
             'minimum_spend' => ['nullable', 'string', 'regex:/^\d{1,10}(?:\.\d{1,2})?$/D'],
             'redemption_limit' => ['nullable', 'integer', 'min:1', 'max:4294967295'],
-            'buyer_limit' => ['required', 'integer', 'between:1,3'],
+            'buyer_limit' => ['required', 'integer', 'between:1,10'],
+            'terms' => ['nullable', 'string', 'max:2000'],
+            'is_public' => ['sometimes', 'boolean'],
         ]);
+
+        if (StorePromotion::dateTimeFromInput($validated['end_date'], $validated['end_time'], true)
+            ->lessThan(StorePromotion::dateTimeFromInput($validated['start_date'], $validated['start_time']))) {
+            throw ValidationException::withMessages([
+                'end_time' => 'The end time must be after the start time.',
+            ]);
+        }
 
         $promotionService->create($request->user(), $validated);
 
         return redirect()
-            ->route('seller.products.pricing', ['tab' => 'campaigns'])
-            ->with('success', 'Promotion saved in Seller Center. It does not change Buyer prices or voucher redemption yet.');
+            ->route('seller.products.pricing', ['tab' => 'store-vouchers'])
+            ->with('success', 'Store voucher saved and published for Buyer claims.');
     }
 }

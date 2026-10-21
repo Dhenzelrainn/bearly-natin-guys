@@ -60,6 +60,11 @@ class Refund extends Model
         return $this->hasOne(SellerRefundRecovery::class);
     }
 
+    public function walletTransactions()
+    {
+        return $this->hasMany(SellerWalletTransaction::class);
+    }
+
     public function cashPayout()
     {
         return $this->hasOne(RefundCashPayout::class);

@@ -37,7 +37,7 @@
                 @foreach($pickups as $pickup)
                     <tr data-row data-record-row data-record-type="pickups" data-record-id="{{ $pickup['id'] }}" data-status="{{ $pickup['status'] }}">
                         <td><strong>{{ $pickup['id'] }}</strong></td>
-                        <td><span class="cell-title"><strong>{{ $pickup['seller'] }}</strong><small>{{ $pickup['pickup_type'] === 'return' ? 'Buyer return pickup' : 'Verified marketplace seller' }}</small></span></td>
+                        <td><span class="cell-title"><strong>{{ $pickup['seller'] }}</strong><small>{{ $pickup['pickup_type'] === 'return' ? 'Buyer return pickup' : 'Verified marketplace seller' }} · {{ $pickup['provider'] }}</small></span></td>
                         <td>{{ $pickup['location'] }}</td>
                         <td class="pickup-products-cell">@include('partials.order-item-preview-list', ['items' => $pickup['products']])</td>
                         <td>{{ $pickup['parcels'] }}</td>
@@ -137,6 +137,22 @@
                         <div class="pickup-location-row">
                             <dt><i data-lucide="clock-3" aria-hidden="true"></i>Seller operating hours</dt>
                             <dd>{{ $pickup['operating_hours'] }}</dd>
+                        </div>
+                        <div class="pickup-location-row">
+                            <dt><i data-lucide="building-2" aria-hidden="true"></i>Logistics provider</dt>
+                            <dd>{{ $pickup['provider'] }}<small>{{ $pickup['provider_city'] }}</small></dd>
+                        </div>
+                        <div class="pickup-location-row">
+                            <dt><i data-lucide="bike" aria-hidden="true"></i>Assigned Rider</dt>
+                            <dd>
+                                {{ $pickup['rider']['name'] }}
+                                <small>
+                                    {{ $pickup['rider']['location'] }}
+                                    @if ($pickup['rider']['profile_id'])
+                                        · Rider profile #{{ $pickup['rider']['profile_id'] }}
+                                    @endif
+                                </small>
+                            </dd>
                         </div>
                     </dl>
                 </section>
@@ -251,7 +267,7 @@
                             <select id="pickup-rider-{{ $pickup['database_id'] }}" name="rider_profile_id" required>
                                 <option value="">Select available Rider</option>
                                 @foreach($availableRiders as $rider)
-                                    <option value="{{ $rider['id'] }}">{{ $rider['name'] }} · {{ $rider['vehicle'] }}@if($rider['plate']) · {{ $rider['plate'] }}@endif</option>
+                                    <option value="{{ $rider['id'] }}">{{ $rider['name'] }} · {{ $rider['vehicle'] }}@if($rider['plate']) · {{ $rider['plate'] }}@endif · {{ $rider['location'] }}</option>
                                 @endforeach
                             </select>
                         </label>

@@ -9,6 +9,7 @@ use App\Models\Cart;
 use App\Models\CartItem;
 use App\Models\Conversation;
 use App\Models\Order;
+use App\Models\PlatformPromotion;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\Store;
@@ -18,7 +19,9 @@ use App\Services\BuyerOrderConfirmationService;
 use App\Services\ConversationService;
 use App\Services\InternationalPhone;
 use App\Services\PostalCodeLookup;
+use App\Services\ProductPricingService;
 use App\Services\ProductReviewService;
+use App\Services\PromotionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -33,6 +36,8 @@ use Illuminate\View\View;
 
 class BuyerController extends Controller
 {
+    public function __construct(private readonly ProductPricingService $pricing) {}
+
     private function hasBuyerTables(): bool
     {
         return Schema::hasTable('products')
@@ -282,14 +287,25 @@ class BuyerController extends Controller
         }
 
         $items = $sellerOrders->flatMap(fn ($sellerOrder) => $sellerOrder->items->map(function ($item) use ($catalog, $sellerOrder): array {
+            $quantity = max(1, (int) $item->quantity);
+            $buyerLineTotalMinor = max(
+                0,
+                (int) $item->subtotal_minor
+                    - (int) ($item->discount_minor ?? 0)
+                    - (int) ($item->platform_discount_minor ?? 0)
+                    - (int) ($item->campaign_platform_discount_minor ?? 0),
+            );
+            $buyerUnitPriceMinor = intdiv($buyerLineTotalMinor + intdiv($quantity, 2), $quantity);
+
             return [
                 'name' => (string) $item->product_name,
                 'variation' => (string) ($item->variant_name ?: 'Standard'),
                 'qty' => (int) $item->quantity,
                 'order_item_id' => (int) $item->id,
                 'seller_order_id' => (int) $sellerOrder->id,
-                'price' => ((int) $item->unit_price_minor) / 100,
-                'price_minor' => (int) $item->unit_price_minor,
+                'price' => $buyerUnitPriceMinor / 100,
+                'price_minor' => $buyerUnitPriceMinor,
+                'line_total_minor' => $buyerLineTotalMinor,
                 'image' => $catalog->orderItemImageUrl($item),
                 'store_url' => $sellerOrder->store?->slug
                     ? route('stores.show', $sellerOrder->store->slug, false)
@@ -638,7 +654,7 @@ class BuyerController extends Controller
         ];
     }
 
-    public function home(Request $request, BuyerCatalogService $catalog): View|RedirectResponse
+    public function home(Request $request, BuyerCatalogService $catalog, PromotionService $promotions): View|RedirectResponse
     {
         $dedicatedCategories = [
             'electronics-and-gadgets',
@@ -894,9 +910,28 @@ class BuyerController extends Controller
             'bestSellers' => $bestSellers,
             'featuredShops' => $featuredShops,
             'liveCatalog' => $catalog->cards(
-                $catalog->publishedProducts(),
+                $catalog->publishedProducts()->take(60),
                 $request->user(),
             ),
+            'activePromotions' => $promotions->publicOffers([
+                PlatformPromotion::KIND_VOUCHER,
+                PlatformPromotion::KIND_AUTOMATIC_DISCOUNT,
+                PlatformPromotion::KIND_FREE_SHIPPING,
+                PlatformPromotion::KIND_FLASH_DEAL,
+                PlatformPromotion::KIND_SELLER_CAMPAIGN,
+            ], true)->take(4),
+        ]);
+    }
+
+    public function flashDeals(PromotionService $promotions): View
+    {
+        return view('buyer.flash-deals', [
+            'activePromotions' => $promotions->publicOffers([
+                PlatformPromotion::KIND_FLASH_DEAL,
+                PlatformPromotion::KIND_SELLER_CAMPAIGN,
+                PlatformPromotion::KIND_AUTOMATIC_DISCOUNT,
+                PlatformPromotion::KIND_FREE_SHIPPING,
+            ])->take(4),
         ]);
     }
 
@@ -932,7 +967,7 @@ class BuyerController extends Controller
         if (isset($categoryViews[$category])) {
             return view($categoryViews[$category], [
                 'liveCatalog' => $catalog->cards(
-                    $catalog->publishedProducts($category),
+                    $catalog->publishedProducts($category)->take(160),
                     $request->user(),
                 ),
             ]);
@@ -994,7 +1029,7 @@ class BuyerController extends Controller
             'products' => $products,
             'categories' => $categories,
             'liveCatalog' => $catalog->cards(
-                $catalog->publishedProducts('men-s-apparel'),
+                $catalog->publishedProducts('men-s-apparel')->take(160),
                 $request->user(),
             ),
         ]);
@@ -1567,6 +1602,9 @@ class BuyerController extends Controller
             : null;
         $imagePath = (string) ($primaryImage?->path ?? '');
         $imageDisk = (string) ($primaryImage?->disk ?: 'public');
+        $price = $product && $variant
+            ? $this->pricing->priceForVariant($product, $variant, (int) $item->quantity)
+            : null;
 
         return [
             'id' => $item->id,
@@ -1575,7 +1613,10 @@ class BuyerController extends Controller
             'name' => $product?->name ?? 'Product',
             'variant_name' => $variant?->name ?? '',
             'options' => $variant?->options ?? [],
-            'price_minor' => (int) ($variant?->price_minor ?? 0),
+            'price_minor' => (int) ($price['unit_price_minor'] ?? $variant?->price_minor ?? 0),
+            'regular_price_minor' => (int) ($price['regular_unit_price_minor'] ?? $variant?->price_minor ?? 0),
+            'discount_percent' => (int) ($price['discount_percent'] ?? 0),
+            'campaign_name' => $price['campaign_name'] ?? null,
             'quantity' => (int) $item->quantity,
             'selected' => (bool) $item->selected,
             'image' => filled($variantImageUrl)
@@ -1606,13 +1647,18 @@ class BuyerController extends Controller
                 $variant = $product?->variants?->first();
                 $imagePath = (string) ($image?->path ?? '');
                 $imageDisk = (string) ($image?->disk ?: 'public');
+                $price = $product && $variant
+                    ? $this->pricing->priceForVariant($product, $variant)
+                    : null;
 
                 return [
                     'id' => $item->id,
                     'product_id' => $product?->id,
                     'product_variant_id' => $variant?->id,
                     'name' => $product?->name ?? 'Product',
-                    'price_minor' => (int) ($variant?->price_minor ?? 0),
+                    'price_minor' => (int) ($price['unit_price_minor'] ?? $variant?->price_minor ?? 0),
+                    'regular_price_minor' => (int) ($price['regular_unit_price_minor'] ?? $variant?->price_minor ?? 0),
+                    'discount_percent' => (int) ($price['discount_percent'] ?? 0),
                     'category' => $product?->category?->name ?? 'Product',
                     'image' => $imagePath === ''
                         ? ''

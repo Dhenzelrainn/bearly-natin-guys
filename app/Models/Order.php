@@ -23,4 +23,9 @@ class Order extends Model
     {
         return $this->hasMany(Payment::class);
     }
+
+    public function promotionRedemptions(): HasMany
+    {
+        return $this->hasMany(PromotionRedemption::class);
+    }
 }

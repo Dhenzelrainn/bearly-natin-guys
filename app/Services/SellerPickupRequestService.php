@@ -2,24 +2,17 @@
 
 namespace App\Services;
 
-use App\Enums\ParcelStatus;
 use App\Enums\ShipmentStatus;
-use App\Enums\UserRole;
-use App\Models\Address;
-use App\Models\LogisticsProfile;
 use App\Models\Order;
-use App\Models\Parcel;
-use App\Models\Payment;
 use App\Models\PickupRequest;
 use App\Models\SellerOrder;
-use App\Models\SellerProfile;
 use App\Models\Shipment;
 use App\Models\Store;
 use App\Models\User;
 use App\Models\Waybill;
 use App\Notifications\WorkflowNotification;
 use Carbon\CarbonImmutable;
-use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -28,6 +21,7 @@ class SellerPickupRequestService
 {
     public function __construct(
         private readonly NotificationService $notifications,
+        private readonly SellerFulfillmentService $fulfillment,
     ) {}
 
     /** @var array<string, array{start: string, end: string, label: string}> */
@@ -37,31 +31,16 @@ class SellerPickupRequestService
         '15:00-17:00' => ['start' => '15:00:00', 'end' => '17:00:00', 'label' => '3:00–5:00 PM'],
     ];
 
-    /** @return Collection<int, LogisticsProfile> */
-    public function activeProviders(): Collection
-    {
-        return LogisticsProfile::query()
-            ->where('status', 'active')
-            ->whereHas('user', fn ($query) => $query
-                ->where('status', 'active')
-                ->where(fn ($roles) => $roles
-                    ->where('role', UserRole::Logistics->value)
-                    ->orWhereHas('roles', fn ($roleQuery) => $roleQuery
-                        ->where('roles.name', UserRole::Logistics->value))))
-            ->with('user:id,name,status,role')
-            ->orderBy('display_name')
-            ->get();
-    }
-
     /**
-     * Create one Seller pickup request and its authoritative fulfillment records.
-     * The submitted order IDs and provider are re-scoped under row locks.
+     * Create one Seller pickup request using the authoritative Shipment,
+     * Waybill, and Parcel records already created when preparation started.
+     * Submitted order IDs and the provider are re-scoped under row locks.
      *
      * @param  list<int>  $sellerOrderIds
      */
     public function create(
         User $actor,
-        int $logisticsProfileId,
+        ?int $logisticsProfileId,
         array $sellerOrderIds,
         string $requestedDate,
         string $pickupWindow,
@@ -75,47 +54,20 @@ class SellerPickupRequestService
             $pickupWindow,
             $instructions,
         ): PickupRequest {
-            $sellerProfile = SellerProfile::query()
-                ->where('user_id', $actor->id)
-                ->lockForUpdate()
-                ->first();
+            $storeId = (int) ($actor->sellerProfile?->store?->id ?? 0);
 
-            abort_unless($sellerProfile, 403, 'Your Seller account does not have a Store.');
-
-            $store = Store::query()
-                ->where('seller_profile_id', $sellerProfile->id)
-                ->lockForUpdate()
-                ->firstOrFail();
-
-            $pickupAddress = Address::query()
-                ->whereKey($sellerProfile->pickup_address_id)
-                ->where('user_id', $actor->id)
-                ->lockForUpdate()
-                ->first();
-
-            abort_unless($pickupAddress, 409, 'Set a valid Seller pickup address before requesting collection.');
-
-            $provider = LogisticsProfile::query()
-                ->whereKey($logisticsProfileId)
-                ->where('status', 'active')
-                ->whereHas('user', fn ($query) => $query
-                    ->where('status', 'active')
-                    ->where(fn ($roles) => $roles
-                        ->where('role', UserRole::Logistics->value)
-                        ->orWhereHas('roles', fn ($roleQuery) => $roleQuery
-                            ->where('roles.name', UserRole::Logistics->value))))
-                ->lockForUpdate()
-                ->firstOrFail();
+            abort_unless($storeId > 0, 403, 'Your Seller account does not have a Store.');
 
             $targets = SellerOrder::query()
-                ->where('store_id', $store->id)
+                ->where('store_id', $storeId)
                 ->whereIn('id', $sellerOrderIds)
                 ->orderBy('id')
                 ->get(['id', 'order_id']);
 
             abort_unless($targets->count() === count($sellerOrderIds), 404);
 
-            // Match the Seller Order workflow's lock order: marketplace Orders, then Seller Orders.
+            // Match the Seller Order workflow's lock order: marketplace Orders,
+            // then Seller Orders, before resolving the city-based provider.
             $orders = Order::query()
                 ->whereIn('id', $targets->pluck('order_id')->unique())
                 ->orderBy('id')
@@ -124,13 +76,35 @@ class SellerPickupRequestService
                 ->keyBy('id');
 
             $sellerOrders = SellerOrder::query()
-                ->where('store_id', $store->id)
+                ->where('store_id', $storeId)
                 ->whereIn('id', $sellerOrderIds)
                 ->orderBy('id')
                 ->lockForUpdate()
                 ->get();
 
             abort_unless($sellerOrders->count() === count($sellerOrderIds), 404);
+
+            $pickupAddress = $this->fulfillment->pickupAddressFor($actor, lock: true);
+
+            abort_unless(
+                $pickupAddress,
+                409,
+                'Set a valid Seller pickup address before requesting collection.',
+            );
+
+            $provider = $this->fulfillment->providerForPickupAddress($pickupAddress, lock: true);
+
+            if (
+                $logisticsProfileId !== null
+                && (int) $logisticsProfileId !== (int) $provider->id
+            ) {
+                throw ValidationException::withMessages([
+                    'logistics_profile_id' => 'The submitted Logistics provider does not serve the Seller pickup city. Refresh the page and try again.',
+                ]);
+            }
+
+            /** @var Collection<int, Shipment> $shipments */
+            $shipments = collect();
 
             foreach ($sellerOrders as $sellerOrder) {
                 $order = $orders->get($sellerOrder->order_id);
@@ -144,16 +118,79 @@ class SellerPickupRequestService
                     "Seller Order {$sellerOrder->seller_order_no} is not ready for pickup.",
                 );
 
-                abort_if(
-                    Shipment::query()->where('seller_order_id', $sellerOrder->id)->exists(),
+                $orderShipments = Shipment::query()
+                    ->where('seller_order_id', $sellerOrder->id)
+                    ->where('purpose', 'outbound')
+                    ->orderBy('id')
+                    ->lockForUpdate()
+                    ->get();
+
+                abort_unless(
+                    $orderShipments->count() === 1,
                     409,
-                    "Seller Order {$sellerOrder->seller_order_no} already has a shipment or pickup request.",
+                    "Seller Order {$sellerOrder->seller_order_no} does not have one authoritative shipment. Start preparation again or contact support.",
                 );
 
-                $this->packageSnapshot($sellerOrder);
+                $shipment = $orderShipments->first();
+
+                abort_unless(
+                    $shipment->status === ShipmentStatus::ReadyForPickup->value
+                        && (int) $shipment->logistics_profile_id === (int) $provider->id
+                        && (int) $shipment->origin_logistics_profile_id === (int) $provider->id,
+                    409,
+                    "The shipment for {$sellerOrder->seller_order_no} is not ready with the Logistics provider serving your pickup city.",
+                );
+
+                $waybill = Waybill::query()
+                    ->where('shipment_id', $shipment->id)
+                    ->lockForUpdate()
+                    ->first();
+
+                abort_unless(
+                    $waybill,
+                    409,
+                    "The waybill for {$sellerOrder->seller_order_no} is missing. Contact support.",
+                );
+                abort_if(
+                    $waybill->voided_at || $waybill->status === 'voided',
+                    409,
+                    "The waybill for {$sellerOrder->seller_order_no} is voided. Contact support.",
+                );
+                abort_unless(
+                    $waybill->printed_at,
+                    409,
+                    "Print and confirm the waybill for {$sellerOrder->seller_order_no} in Fulfillment → Waybills before requesting pickup.",
+                );
+
+                $parcels = $shipment->parcels()
+                    ->orderBy('id')
+                    ->lockForUpdate()
+                    ->get();
+
+                abort_unless(
+                    $parcels->isNotEmpty(),
+                    409,
+                    "The parcel records for {$sellerOrder->seller_order_no} are missing. Contact support.",
+                );
+
+                $hasActivePickup = PickupRequest::query()
+                    ->whereIn('status', ['requested', 'verified', 'scheduled'])
+                    ->whereHas('parcels', fn ($query) => $query
+                        ->whereIn('parcels.id', $parcels->pluck('id')))
+                    ->lockForUpdate()
+                    ->exists();
+
+                abort_if(
+                    $hasActivePickup,
+                    409,
+                    "Seller Order {$sellerOrder->seller_order_no} is already included in an active pickup request.",
+                );
+
+                $shipments->put($shipment->id, $shipment);
             }
 
             $window = self::PICKUP_WINDOWS[$pickupWindow] ?? null;
+
             if (! $window) {
                 throw ValidationException::withMessages([
                     'pickup_window' => 'Choose one of the available pickup windows.',
@@ -162,6 +199,13 @@ class SellerPickupRequestService
 
             $timezone = (string) config('app.timezone');
             $date = CarbonImmutable::createFromFormat('!Y-m-d', $requestedDate, $timezone);
+
+            if (! $date) {
+                throw ValidationException::withMessages([
+                    'requested_date' => 'Choose a valid pickup date.',
+                ]);
+            }
+
             $windowStart = $date->setTimeFromTimeString($window['start']);
             $windowEnd = $date->setTimeFromTimeString($window['end']);
 
@@ -174,7 +218,7 @@ class SellerPickupRequestService
             $now = now();
             $pickupRequest = PickupRequest::query()->create([
                 'pickup_no' => $this->number('PU'),
-                'store_id' => $store->id,
+                'store_id' => $storeId,
                 'logistics_profile_id' => $provider->id,
                 'pickup_address_id' => $pickupAddress->id,
                 'status' => 'requested',
@@ -184,82 +228,17 @@ class SellerPickupRequestService
                 'seller_instructions' => filled($instructions) ? trim($instructions) : null,
             ]);
 
-            $payments = Payment::query()
-                ->whereIn('order_id', $orders->keys())
-                ->orderBy('id')
-                ->lockForUpdate()
-                ->get()
-                ->groupBy('order_id');
+            $parcels = $shipments
+                ->flatMap(fn (Shipment $shipment): Collection => $shipment->parcels()
+                    ->orderBy('id')
+                    ->get())
+                ->values();
 
-            foreach ($sellerOrders as $sellerOrder) {
-                $order = $sellerOrder->order;
-                $snapshot = $this->packageSnapshot($sellerOrder);
-                $isCod = $payments
-                    ->get($order->id, collect())
-                    ->contains(fn (Payment $payment): bool => $payment->method === 'cod' && $payment->status !== 'cancelled');
-
-                $shipment = Shipment::query()->create([
-                    'shipment_no' => $this->number('SHP'),
-                    'seller_order_id' => $sellerOrder->id,
-                    'logistics_profile_id' => $provider->id,
-                    'origin_logistics_profile_id' => $provider->id,
-                    'origin_address_id' => $pickupAddress->id,
-                    'destination_address_id' => $order->shipping_address_id,
-                    'destination_city_code' => $order->psgc_city_code,
-                    'purpose' => 'outbound',
-                    'status' => ShipmentStatus::ReadyForPickup->value,
-                    'shipping_fee_minor' => (int) $sellerOrder->shipping_fee_minor,
-                    'cod_amount_minor' => $isCod ? (int) $sellerOrder->total_minor : 0,
-                ]);
-
-                $waybillNo = $this->number('BRLY');
-                $waybill = Waybill::query()->create([
-                    'shipment_id' => $shipment->id,
-                    'waybill_no' => $waybillNo,
-                    'scan_token' => Str::random(64),
-                    'barcode_value' => $waybillNo,
-                    'piece_count' => 1,
-                    'total_weight_kg' => $snapshot['weight'],
-                    'length_cm' => $snapshot['length'],
-                    'width_cm' => $snapshot['width'],
-                    'height_cm' => $snapshot['height'],
-                    'status' => 'generated',
-                    'generated_by' => $actor->id,
-                    'generated_at' => $now,
-                ]);
-
-                $parcel = Parcel::query()->create([
-                    'shipment_id' => $shipment->id,
-                    'waybill_id' => $waybill->id,
-                    'parcel_no' => $this->number('PCL'),
-                    'piece_sequence' => 1,
-                    'weight_kg' => $snapshot['weight'],
-                    'length_cm' => $snapshot['length'],
-                    'width_cm' => $snapshot['width'],
-                    'height_cm' => $snapshot['height'],
-                    'status' => ParcelStatus::Created->value,
-                    'last_event_at' => $now,
-                ]);
-
+            foreach ($parcels as $parcel) {
                 $pickupRequest->parcels()->attach($parcel->id, ['added_at' => $now]);
-
-                $shipment->events()->create([
-                    'parcel_id' => $parcel->id,
-                    'event_type' => 'shipment_ready_for_pickup',
-                    'from_status' => null,
-                    'to_status' => ShipmentStatus::ReadyForPickup->value,
-                    'actor_user_id' => $actor->id,
-                    'source' => 'seller',
-                    'notes' => "Shipment created through pickup request {$pickupRequest->pickup_no}.",
-                    'metadata' => [
-                        'seller_order_id' => $sellerOrder->id,
-                        'pickup_request_id' => $pickupRequest->id,
-                    ],
-                    'occurred_at' => $now,
-                ]);
             }
 
-            $this->notifyProviderOfPickup($pickupRequest, $store, $requestedDate);
+            $this->notifyProviderOfPickup($pickupRequest, $storeId, $requestedDate);
 
             return $pickupRequest->fresh([
                 'logisticsProfile',
@@ -270,11 +249,12 @@ class SellerPickupRequestService
         }, attempts: 3);
     }
 
-    private function notifyProviderOfPickup(PickupRequest $pickupRequest, Store $store, string $requestedDate): void
+    private function notifyProviderOfPickup(PickupRequest $pickupRequest, int $storeId, string $requestedDate): void
     {
         $providerUser = $pickupRequest->logisticsProfile?->user;
+        $store = Store::query()->find($storeId);
 
-        if (! $providerUser) {
+        if (! $providerUser || ! $store) {
             return;
         }
 
@@ -288,49 +268,8 @@ class SellerPickupRequestService
         ));
     }
 
-    /** @return array{weight: float, length: float, width: float, height: float} */
-    private function packageSnapshot(SellerOrder $sellerOrder): array
-    {
-        $quote = (array) $sellerOrder->shipping_quote;
-        foreach ([$quote['provider_key'] ?? null, $sellerOrder->delivery_provider_key] as $providerKey) {
-            if ($providerKey !== null && $providerKey !== config('shipping.provider_key')) {
-                throw ValidationException::withMessages([
-                    'order_ids' => "{$sellerOrder->seller_order_no} uses a shipping provider that is not available for pickup requests.",
-                ]);
-            }
-        }
-
-        $dimensions = (array) ($quote['parcel_dimensions_cm'] ?? []);
-        $weight = $quote['actual_weight_kg'] ?? null;
-        $length = $dimensions['length'] ?? null;
-        $width = $dimensions['width'] ?? null;
-        $height = $dimensions['height'] ?? null;
-
-        if (
-            ! is_numeric($weight)
-            || (float) $weight <= 0
-            || ! is_numeric($length)
-            || (float) $length <= 0
-            || ! is_numeric($width)
-            || (float) $width <= 0
-            || ! is_numeric($height)
-            || (float) $height <= 0
-        ) {
-            throw ValidationException::withMessages([
-                'order_ids' => "Shipping package details are missing for {$sellerOrder->seller_order_no}. Refresh the order before requesting pickup.",
-            ]);
-        }
-
-        return [
-            'weight' => (float) $weight,
-            'length' => (float) $length,
-            'width' => (float) $width,
-            'height' => (float) $height,
-        ];
-    }
-
     private function number(string $prefix): string
     {
-        return $prefix.'-'.Str::upper(Str::random(20));
+        return $prefix.'-'.strtoupper(Str::random(20));
     }
 }

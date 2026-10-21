@@ -29,6 +29,15 @@
         <div class="summary confirmation-totals">
             <div><span>Merchandise subtotal</span><strong>₱{{ number_format($order->subtotal_minor / 100, 2) }}</strong></div>
             <div><span>Estimated shipping</span><strong>₱{{ number_format($order->shipping_fee_minor / 100, 2) }}</strong></div>
+            @if ((int) $order->discount_minor > 0)
+                <div><span>Voucher discounts</span><strong>−₱{{ number_format($order->discount_minor / 100, 2) }}</strong></div>
+            @endif
+            @if ((int) $order->platform_shipping_discount_minor > 0)
+                <div><span>Shipping discount</span><strong>−₱{{ number_format($order->platform_shipping_discount_minor / 100, 2) }}</strong></div>
+            @endif
+            @if ((int) $order->campaign_platform_discount_minor > 0)
+                <div class="confirmation-campaign-savings"><span>Bearly campaign savings (included in item prices)</span><strong>₱{{ number_format($order->campaign_platform_discount_minor / 100, 2) }}</strong></div>
+            @endif
             <div class="payment-total"><span>Total due on delivery</span><strong>₱{{ number_format($order->total_minor / 100, 2) }}</strong></div>
         </div>
     </section>
@@ -38,6 +47,14 @@
             <div class="section-title"><span class="material-symbols-outlined">storefront</span>{{ $sellerOrder->store?->name ?? 'Seller' }}</div>
             <p>Seller Order {{ $sellerOrder->seller_order_no }} · {{ $fulfillmentLabels[$sellerOrder->id] ?? str_replace('_', ' ', ucfirst($sellerOrder->status)) }}</p>
             @foreach ($sellerOrder->items as $item)
+                @php
+                    $buyerLineTotalMinor = max(0, (int) $item->subtotal_minor
+                        - (int) ($item->discount_minor ?? 0)
+                        - (int) ($item->platform_discount_minor ?? 0)
+                        - (int) ($item->campaign_platform_discount_minor ?? 0));
+                    $itemQuantity = max(1, (int) $item->quantity);
+                    $buyerUnitPriceMinor = intdiv($buyerLineTotalMinor + intdiv($itemQuantity, 2), $itemQuantity);
+                @endphp
                 <article class="confirmation-product">
                     @if (!empty($itemImages[$item->id] ?? ''))
                         <img src="{{ $itemImages[$item->id] }}" alt="{{ $item->product_name }}" loading="lazy" onerror="this.onerror=null;this.src='/images/bearly-logo.png'">
@@ -50,8 +67,8 @@
                         <small>SKU: {{ $item->sku }}</small>
                     </div>
                     <div class="confirmation-product-side">
-                        <small>₱{{ number_format($item->unit_price_minor / 100, 2) }} each</small>
-                        <strong>₱{{ number_format($item->subtotal_minor / 100, 2) }}</strong>
+                        <small>₱{{ number_format($buyerUnitPriceMinor / 100, 2) }} each</small>
+                        <strong>₱{{ number_format($buyerLineTotalMinor / 100, 2) }}</strong>
                     </div>
                 </article>
             @endforeach

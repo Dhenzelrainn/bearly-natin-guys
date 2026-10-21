@@ -3,32 +3,34 @@
 namespace App\Http\Controllers;
 
 use App\Enums\AccountStatus;
+use App\Enums\DeliveryAttemptOutcome;
 use App\Enums\ParcelStatus;
 use App\Enums\ShipmentStatus;
-use App\Enums\DeliveryAttemptOutcome;
 use App\Enums\UserRole;
+use App\Models\AccountApplication;
+use App\Models\Address;
+use App\Models\Conversation;
+use App\Models\DispatchBatch;
+use App\Models\LogisticsProfile;
+use App\Models\Message;
+use App\Models\MessageAttachment;
+use App\Models\OrderItem;
 use App\Models\Parcel;
 use App\Models\PickupAssignment;
 use App\Models\PickupRequest;
-use App\Models\SortingCenter;
-use App\Models\SortingZone;
-use App\Models\AccountApplication;
-use App\Models\LogisticsProfile;
-use App\Models\OrderItem;
 use App\Models\RiderProfile;
 use App\Models\Shipment;
 use App\Models\ShipmentEvent;
 use App\Models\ShipmentTransfer;
-use App\Models\DispatchBatch;
+use App\Models\SortingCenter;
+use App\Models\SortingZone;
 use App\Models\User;
-use App\Models\Conversation;
-use App\Models\Message;
-use App\Models\MessageAttachment;
 use App\Models\Waybill;
 use App\Notifications\WorkflowNotification;
-use App\Services\DispatchService;
+use App\Services\ApplicationReviewService;
 use App\Services\BuyerCatalogService;
 use App\Services\ConversationService;
+use App\Services\DispatchService;
 use App\Services\EmailVerificationService;
 use App\Services\InternationalPhone;
 use App\Services\NotificationService;
@@ -38,21 +40,21 @@ use App\Services\RegistrationLifecycleService;
 use App\Services\RiderZoneAssignmentService;
 use App\Services\ShipmentHandoffService;
 use App\Services\SortingZoneMatcher;
-use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Carbon;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
-use Illuminate\View\View;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
-use Throwable;
+use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Throwable;
 
 class LogisticsController extends Controller
 {
@@ -164,17 +166,13 @@ class LogisticsController extends Controller
         string $status
     ): string {
         return match ($status) {
-            AccountStatus::Active->value =>
-                'Active',
+            AccountStatus::Active->value => 'Active',
 
-            AccountStatus::Suspended->value =>
-                'Suspended',
+            AccountStatus::Suspended->value => 'Suspended',
 
-            AccountStatus::Deactivated->value =>
-                'Deactivated',
+            AccountStatus::Deactivated->value => 'Deactivated',
 
-            AccountStatus::Rejected->value =>
-                'Rejected',
+            AccountStatus::Rejected->value => 'Rejected',
 
             default => ucwords(
                 str_replace('_', ' ', $status)
@@ -183,7 +181,7 @@ class LogisticsController extends Controller
     }
 
     private function formattedAddress(
-        ?\App\Models\Address $address
+        ?Address $address
     ): string {
         if (! $address) {
             return 'Not provided';
@@ -280,20 +278,17 @@ class LogisticsController extends Controller
                 'name' => $name,
                 'initials' => $initials ?: 'BL',
                 'email' => $operator?->email ?: '',
-                'contact' =>
-                    $operator?->contact_number
+                'contact' => $operator?->contact_number
                     ?: $operator?->phone
                     ?: '',
                 'role' => 'Logistics Operator',
-                'business_name' =>
-                    $activeFacility?->name
+                'business_name' => $activeFacility?->name
                     ?: $operator?->business_name
                     ?: $name,
             ],
             'activeFacility' => [
                 'id' => $activeFacility?->id,
-                'name' =>
-                    $activeFacility?->name
+                'name' => $activeFacility?->name
                     ?: $operator?->business_name
                     ?: $name,
                 'code' => $activeFacility?->code,
@@ -315,9 +310,11 @@ class LogisticsController extends Controller
         return view('logistics.landing.index');
     }
 
-    public function register()
+    public function register(Request $request, ApplicationReviewService $reviews)
     {
-        return view('logistics.applications.create');
+        return view('logistics.applications.create', [
+            'applicationReview' => $reviews->forSession($request),
+        ]);
     }
 
     public function submitRegistration(Request $request)
@@ -503,6 +500,7 @@ class LogisticsController extends Controller
                 'status' => 'Pending Administrator Approval',
             ],
         ]);
+        app(ApplicationReviewService::class)->remember($request, $user);
 
         return redirect()
             ->route('logistics.register')
@@ -533,19 +531,18 @@ class LogisticsController extends Controller
         $sortingExceptionCount = 0;
 
         if ($profile && $center) {
-            $ownedParcels = fn () =>
-                Parcel::query()
-                    ->where(
-                        'current_sorting_center_id',
-                        $center->id
+            $ownedParcels = fn () => Parcel::query()
+                ->where(
+                    'current_sorting_center_id',
+                    $center->id
+                )
+                ->whereHas(
+                    'shipment',
+                    fn ($query) => $query->where(
+                        'logistics_profile_id',
+                        $profile->id
                     )
-                    ->whereHas(
-                        'shipment',
-                        fn ($query) => $query->where(
-                            'logistics_profile_id',
-                            $profile->id
-                        )
-                    );
+                );
 
             $sortingExceptionCount =
                 $ownedParcels()
@@ -680,8 +677,7 @@ class LogisticsController extends Controller
                     ])
                     ->groupBy('current_zone_id')
                     ->map(
-                        fn ($riders) =>
-                            $riders->count()
+                        fn ($riders) => $riders->count()
                     );
 
             $zones = $zoneModels
@@ -692,27 +688,26 @@ class LogisticsController extends Controller
                     $profile,
                     $availableRidersByZone
                 ): array {
-                    $parcelQuery = fn () =>
-                        Parcel::query()
-                            ->where(
-                                'current_sorting_center_id',
-                                $center->id
+                    $parcelQuery = fn () => Parcel::query()
+                        ->where(
+                            'current_sorting_center_id',
+                            $center->id
+                        )
+                        ->where(
+                            'current_zone_id',
+                            $zone->id
+                        )
+                        ->where(
+                            'status',
+                            ParcelStatus::Sorted->value
+                        )
+                        ->whereHas(
+                            'shipment',
+                            fn ($query) => $query->where(
+                                'logistics_profile_id',
+                                $profile->id
                             )
-                            ->where(
-                                'current_zone_id',
-                                $zone->id
-                            )
-                            ->where(
-                                'status',
-                                ParcelStatus::Sorted->value
-                            )
-                            ->whereHas(
-                                'shipment',
-                                fn ($query) => $query->where(
-                                    'logistics_profile_id',
-                                    $profile->id
-                                )
-                            );
+                        );
 
                     $parcelCount =
                         $parcelQuery()->count();
@@ -733,40 +728,33 @@ class LogisticsController extends Controller
                             )
                             ->whereDoesntHave(
                                 'dispatchBatches',
-                                fn ($query) =>
-                                    $query->whereNotIn(
-                                        'dispatch_batches.status',
-                                        [
-                                            'completed',
-                                            'cancelled',
-                                        ]
-                                    )
+                                fn ($query) => $query->whereNotIn(
+                                    'dispatch_batches.status',
+                                    [
+                                        'completed',
+                                        'cancelled',
+                                    ]
+                                )
                             )
                             ->count();
 
                     return [
-                        'id' =>
-                            $zone->id,
+                        'id' => $zone->id,
 
-                        'zone' =>
-                            $zone->name
+                        'zone' => $zone->name
                             ?: $zone->code,
 
-                        'code' =>
-                            $zone->code,
+                        'code' => $zone->code,
 
-                        'parcels' =>
-                            $parcelCount,
+                        'parcels' => $parcelCount,
 
-                        'ready' =>
-                            $readyCount,
+                        'ready' => $readyCount,
 
-                        'riders' =>
-                            (int) $availableRidersByZone
-                                ->get(
-                                    $zone->id,
-                                    0
-                                ),
+                        'riders' => (int) $availableRidersByZone
+                            ->get(
+                                $zone->id,
+                                0
+                            ),
                     ];
                 })
                 ->values();
@@ -808,23 +796,19 @@ class LogisticsController extends Controller
                             ?? $application->created_at;
 
                         return [
-                            'time' =>
-                                $occurredAt
-                                    ?->diffForHumans()
+                            'time' => $occurredAt
+                                ?->diffForHumans()
                                 ?? 'Recently',
 
-                            'title' =>
-                                'Rider application received',
+                            'title' => 'Rider application received',
 
-                            'detail' =>
-                                ($application->user?->name
+                            'detail' => ($application->user?->name
                                     ?: 'Unknown Rider')
                                 .' • '
                                 .($application->user?->vehicle_type
                                     ?: 'Vehicle not specified'),
 
-                            'occurred_at' =>
-                                $occurredAt,
+                            'occurred_at' => $occurredAt,
                         ];
                     });
         }
@@ -867,38 +851,28 @@ class LogisticsController extends Controller
                         $title = match (
                             $event->event_type
                         ) {
-                            'received_at_center' =>
-                                'Parcel received at center',
+                            'received_at_center' => 'Parcel received at center',
 
-                            'parcel_sorted' =>
-                                'Parcel sorted',
+                            'parcel_sorted' => 'Parcel sorted',
 
-                            'parcel_resorted' =>
-                                'Parcel reassigned to zone',
+                            'parcel_resorted' => 'Parcel reassigned to zone',
 
-                            'pickup_assigned' =>
-                                'Pickup assigned',
+                            'pickup_assigned' => 'Pickup assigned',
 
-                            'parcel_dispatched' =>
-                                'Parcel dispatched',
+                            'parcel_dispatched' => 'Parcel dispatched',
 
-                            'parcel_out_for_delivery' =>
-                                'Parcel out for delivery',
+                            'parcel_out_for_delivery' => 'Parcel out for delivery',
 
-                            'parcel_delivered' =>
-                                'Parcel delivered',
+                            'parcel_delivered' => 'Parcel delivered',
 
-                            'parcel_delivery_failed' =>
-                                'Delivery attempt failed',
+                            'parcel_delivery_failed' => 'Delivery attempt failed',
 
-                            'parcel_delivery_retried' =>
-                                'Delivery retry started',
+                            'parcel_delivery_retried' => 'Delivery retry started',
 
-                            default =>
-                                str($event->event_type)
-                                    ->replace('_', ' ')
-                                    ->title()
-                                    ->toString(),
+                            default => str($event->event_type)
+                                ->replace('_', ' ')
+                                ->title()
+                                ->toString(),
                         };
 
                         $reference =
@@ -907,22 +881,18 @@ class LogisticsController extends Controller
                             ?: 'Shipment activity';
 
                         return [
-                            'time' =>
-                                $event->occurred_at
-                                    ?->diffForHumans()
+                            'time' => $event->occurred_at
+                                ?->diffForHumans()
                                 ?? 'Recently',
 
-                            'title' =>
-                                $title,
+                            'title' => $title,
 
-                            'detail' =>
-                                $reference
+                            'detail' => $reference
                                 .($event->notes
                                     ? ' • '.$event->notes
                                     : ''),
 
-                            'occurred_at' =>
-                                $event->occurred_at
+                            'occurred_at' => $event->occurred_at
                                 ?? $event->created_at,
                         ];
                     });
@@ -934,9 +904,8 @@ class LogisticsController extends Controller
                     $recentFulfillmentActivity
                 )
                 ->sortByDesc(
-                    fn (array $item) =>
-                        $item['occurred_at']
-                            ?->timestamp
+                    fn (array $item) => $item['occurred_at']
+                        ?->timestamp
                         ?? 0
                 )
                 ->take(6)
@@ -970,24 +939,21 @@ class LogisticsController extends Controller
                     'label' => 'Incoming Parcels',
                     'value' => $receivedTodayCount,
                     'icon' => 'package-open',
-                    'trend' =>
-                        $awaitingSortingCount
+                    'trend' => $awaitingSortingCount
                         .' awaiting sorting',
                 ],
                 [
                     'label' => 'Active Sorting Queue',
                     'value' => $awaitingSortingCount,
                     'icon' => 'truck',
-                    'trend' =>
-                        $sortedReadyCount
+                    'trend' => $sortedReadyCount
                         .' sorted & ready',
                 ],
                 [
                     'label' => 'Dispatched Shipments',
                     'value' => $dispatchedShipmentCount,
                     'icon' => 'route',
-                    'trend' =>
-                        $activeRouteCount
+                    'trend' => $activeRouteCount
                         .' active '
                         .($activeRouteCount === 1
                             ? 'route'
@@ -1050,41 +1016,32 @@ class LogisticsController extends Controller
                         ->first();
 
                     return [
-                        'id' =>
-                            $application->application_no,
+                        'id' => $application->application_no,
 
-                        'application_id' =>
-                            $application->id,
+                        'application_id' => $application->id,
 
-                        'user_id' =>
-                            $application->user_id,
+                        'user_id' => $application->user_id,
 
-                        'name' =>
-                            $user?->name
+                        'name' => $user?->name
                             ?: 'Unknown Rider',
 
-                        'vehicle' =>
-                            $user?->vehicle_type
+                        'vehicle' => $user?->vehicle_type
                             ?: 'Not specified',
 
-                        'plate' =>
-                            $user?->plate_number
+                        'plate' => $user?->plate_number
                             ?: '—',
 
-                        'area' =>
-                            $address?->city_municipality
+                        'area' => $address?->city_municipality
                             ?: $user?->city
                             ?: '—',
 
-                        'submitted' =>
-                            $application->submitted_at
-                                ?->format('M j, Y')
+                        'submitted' => $application->submitted_at
+                            ?->format('M j, Y')
                             ?? 'Recently',
 
-                        'status' =>
-                            $this->riderApplicationStatus(
-                                $application->status
-                            ),
+                        'status' => $this->riderApplicationStatus(
+                            $application->status
+                        ),
                     ];
                 });
 
@@ -1124,22 +1081,17 @@ class LogisticsController extends Controller
                         * logistics.riders.show currently
                         * accepts the Rider user ID.
                         */
-                        'id' =>
-                            $rider->user_id,
+                        'id' => $rider->user_id,
 
-                        'profile_id' =>
-                            $rider->id,
+                        'profile_id' => $rider->id,
 
-                        'name' =>
-                            $rider->user?->name
+                        'name' => $rider->user?->name
                             ?: 'Unknown Rider',
 
-                        'vehicle' =>
-                            $rider->vehicle_type
+                        'vehicle' => $rider->vehicle_type
                             ?: 'Not specified',
 
-                        'zone' =>
-                            $rider->currentZone?->name
+                        'zone' => $rider->currentZone?->name
                             ?: 'Not assigned',
 
                         /*
@@ -1149,23 +1101,20 @@ class LogisticsController extends Controller
                         'jobs' => 0,
                         'rating' => null,
 
-                        'status' =>
-                            $this->riderAccountStatus(
-                                $rider->user?->status
-                                ?? AccountStatus::Active->value
-                            ),
+                        'status' => $this->riderAccountStatus(
+                            $rider->user?->status
+                            ?? AccountStatus::Active->value
+                        ),
 
-                        'availability_status' =>
-                            $availability,
+                        'availability_status' => $availability,
 
-                        'availability' =>
-                            ucwords(
-                                str_replace(
-                                    '_',
-                                    ' ',
-                                    $availability
-                                )
-                            ),
+                        'availability' => ucwords(
+                            str_replace(
+                                '_',
+                                ' ',
+                                $availability
+                            )
+                        ),
                     ];
                 });
         }
@@ -1173,11 +1122,9 @@ class LogisticsController extends Controller
         return view(
             'logistics.riders.index',
             $this->shared() + [
-                'applications' =>
-                    $applications->all(),
+                'applications' => $applications->all(),
 
-                'riders' =>
-                    $riders->all(),
+                'riders' => $riders->all(),
             ]
         );
     }
@@ -1243,54 +1190,43 @@ class LogisticsController extends Controller
                 $accountApplication
             ): array {
                 return [
-                    'id' =>
-                        $document->id,
+                    'id' => $document->id,
 
-                    'application_id' =>
-                        $accountApplication->id,
+                    'application_id' => $accountApplication->id,
 
-                    'type' =>
-                        $document->document_type,
+                    'type' => $document->document_type,
 
                     'label' => match (
                         $document->document_type
                     ) {
-                        'driver_license' =>
-                            "Driver's License / ID",
+                        'driver_license' => "Driver's License / ID",
 
-                        'or_cr' =>
-                            'Vehicle OR/CR',
+                        'or_cr' => 'Vehicle OR/CR',
 
-                        default =>
-                            ucwords(
-                                str_replace(
-                                    '_',
-                                    ' ',
-                                    $document
-                                        ->document_type
-                                )
-                            ),
+                        default => ucwords(
+                            str_replace(
+                                '_',
+                                ' ',
+                                $document
+                                    ->document_type
+                            )
+                        ),
                     },
 
-                    'filename' =>
-                        $document->original_name,
+                    'filename' => $document->original_name,
 
                     'status' => match (
                         $document
                             ->verification_status
                     ) {
-                        'verified' =>
-                            'Verified',
+                        'verified' => 'Verified',
 
-                        'rejected' =>
-                            'Rejected',
+                        'rejected' => 'Rejected',
 
-                        default =>
-                            'Pending',
+                        default => 'Pending',
                     },
 
-                    'rejection_reason' =>
-                        $document->rejection_reason,
+                    'rejection_reason' => $document->rejection_reason,
                 ];
             })
             ->values()
@@ -1331,38 +1267,30 @@ class LogisticsController extends Controller
                     SortingCenter $center
                 ) use ($zoneMatcher): array {
                     return [
-                        'id' =>
-                            $center->id,
+                        'id' => $center->id,
 
-                        'name' =>
-                            $center->name,
+                        'name' => $center->name,
 
-                        'code' =>
-                            $center->code,
+                        'code' => $center->code,
 
-                        'zones' =>
-                            $center->zones
-                                ->map(
-                                    fn (
-                                        SortingZone $zone
-                                    ): array => [
-                                        'id' =>
-                                            $zone->id,
+                        'zones' => $center->zones
+                            ->map(
+                                fn (
+                                    SortingZone $zone
+                                ): array => [
+                                    'id' => $zone->id,
 
-                                        'name' =>
-                                            $zone->name,
+                                    'name' => $zone->name,
 
-                                        'code' =>
-                                            $zone->code,
+                                    'code' => $zone->code,
 
-                                        'coverage' =>
-                                            $zoneMatcher->coverageLabel(
-                                                $zone->destination_rules
-                                            ),
-                                    ]
-                                )
-                                ->values()
-                                ->all(),
+                                    'coverage' => $zoneMatcher->coverageLabel(
+                                        $zone->destination_rules
+                                    ),
+                                ]
+                            )
+                            ->values()
+                            ->all(),
                     ];
                 })
                 ->values()
@@ -1372,33 +1300,25 @@ class LogisticsController extends Controller
             'logistics.riders.show',
             $this->shared() + [
                 'application' => [
-                    'id' =>
-                        $accountApplication
-                            ->application_no,
+                    'id' => $accountApplication
+                        ->application_no,
 
-                    'application_id' =>
-                        $accountApplication->id,
+                    'application_id' => $accountApplication->id,
 
-                    'user_id' =>
-                        $user->id,
+                    'user_id' => $user->id,
 
-                    'name' =>
-                        $user->name,
+                    'name' => $user->name,
 
-                    'email' =>
-                        $user->email,
+                    'email' => $user->email,
 
-                    'contact' =>
-                        $user->contact_number
+                    'contact' => $user->contact_number
                         ?: '—',
 
-                    'birthday' =>
-                        $user->birthday
-                            ?->format('F j, Y')
+                    'birthday' => $user->birthday
+                        ?->format('F j, Y')
                         ?? 'Not provided',
 
-                    'sex' =>
-                        $user->sex
+                    'sex' => $user->sex
                             ? ucwords(
                                 str_replace(
                                     '_',
@@ -1408,68 +1328,55 @@ class LogisticsController extends Controller
                             )
                             : 'Not provided',
 
-                    'address' =>
-                        $this->formattedAddress(
-                            $address
-                        ),
+                    'address' => $this->formattedAddress(
+                        $address
+                    ),
 
-                    'vehicle' =>
-                        $riderProfile?->vehicle_type
+                    'vehicle' => $riderProfile?->vehicle_type
                         ?: $user->vehicle_type
                         ?: 'Not specified',
 
-                    'plate' =>
-                        $riderProfile?->plate_number
+                    'plate' => $riderProfile?->plate_number
                         ?: $user->plate_number
                         ?: '—',
 
-                    'area' =>
-                        $riderProfile
-                            ?->currentZone
-                            ?->name
+                    'area' => $riderProfile
+                        ?->currentZone
+                        ?->name
                         ?: $address
                             ?->city_municipality
                         ?: $user->city
                         ?: '—',
 
-                    'submitted' =>
-                        $accountApplication
-                            ->submitted_at
-                            ?->format('M j, Y')
+                    'submitted' => $accountApplication
+                        ->submitted_at
+                        ?->format('M j, Y')
                         ?? 'Recently',
 
-                    'status' =>
-                        $displayStatus,
+                    'status' => $displayStatus,
 
-                    'home_sorting_center_id' =>
-                        $riderProfile?->home_sorting_center_id,
+                    'home_sorting_center_id' => $riderProfile?->home_sorting_center_id,
 
-                    'current_zone_id' =>
-                        $riderProfile?->current_zone_id,
+                    'current_zone_id' => $riderProfile?->current_zone_id,
 
-                    'home_sorting_center' =>
-                        $riderProfile
-                            ?->homeSortingCenter
-                            ?->name
+                    'home_sorting_center' => $riderProfile
+                        ?->homeSortingCenter
+                        ?->name
                         ?? 'Not assigned',
 
-                    'current_zone' =>
-                        $riderProfile
-                            ?->currentZone
-                            ?->name
+                    'current_zone' => $riderProfile
+                        ?->currentZone
+                        ?->name
                         ?? 'Not assigned',
 
-                    'can_manage_assignment' =>
-                        $accountApplication->status === 'approved'
+                    'can_manage_assignment' => $accountApplication->status === 'approved'
                         && $user->status === AccountStatus::Active->value
                         && $riderProfile !== null,
 
-                    'documents' =>
-                        $documents,
+                    'documents' => $documents,
                 ],
 
-                'assignmentCenters' =>
-                    $assignmentCenters,
+                'assignmentCenters' => $assignmentCenters,
             ]
         );
     }
@@ -1531,18 +1438,21 @@ class LogisticsController extends Controller
                 'store.sellerProfile.user',
                 'returnRequest.buyer',
                 'pickupAddress',
+                'logisticsProfile.user',
+                'logisticsProfile.serviceAddress',
                 'verifier',
-                'latestAssignment',
+                'activeAssignment.riderProfile.user',
+                'activeAssignment.riderProfile.currentZone.sortingCenter',
+                'activeAssignment.riderProfile.homeSortingCenter',
                 'assignments.assignedBy',
                 'assignments.riderProfile.user',
                 'parcels' => fn ($query) => $query
                     ->whereHas(
                         'shipment',
-                        fn ($shipmentQuery) =>
-                            $shipmentQuery->where(
-                                'logistics_profile_id',
-                                $profile->id
-                            )
+                        fn ($shipmentQuery) => $shipmentQuery->where(
+                            'logistics_profile_id',
+                            $profile->id
+                        )
                     )
                     ->with([
                         'waybill',
@@ -1557,8 +1467,7 @@ class LogisticsController extends Controller
             ->get();
 
         $pickups = $pickupRequests
-            ->map(fn (PickupRequest $pickupRequest): array =>
-                $this->pickupRequestViewData($pickupRequest, $catalog)
+            ->map(fn (PickupRequest $pickupRequest): array => $this->pickupRequestViewData($pickupRequest, $catalog)
             )
             ->values();
 
@@ -1573,10 +1482,13 @@ class LogisticsController extends Controller
                     AccountStatus::Active->value
                 )
             )
-            ->with('user')
+            ->with([
+                'user',
+                'currentZone.sortingCenter',
+                'homeSortingCenter',
+            ])
             ->get()
-            ->sortBy(fn (RiderProfile $rider) =>
-                strtolower($rider->user?->name ?? '')
+            ->sortBy(fn (RiderProfile $rider) => strtolower($rider->user?->name ?? '')
             )
             ->map(fn (RiderProfile $rider): array => [
                 'id' => $rider->id,
@@ -1584,6 +1496,7 @@ class LogisticsController extends Controller
                     ?: 'Unknown Rider',
                 'vehicle' => $rider->vehicle_type,
                 'plate' => $rider->plate_number,
+                'location' => $rider->serviceLocationLabel(),
             ])
             ->values()
             ->all();
@@ -1594,67 +1507,53 @@ class LogisticsController extends Controller
                 'pickups' => $pickups->all(),
                 'availableRiders' => $availableRiders,
                 'pickupMetrics' => [
-                    'awaiting_review' =>
-                        $pickupRequests
-                            ->where('status', 'requested')
-                            ->count(),
-                    'awaiting_assignment' =>
-                        $pickupRequests
-                            ->where('status', 'verified')
-                            ->count(),
-                    'scheduled_today' =>
-                        $pickupRequests
-                            ->filter(fn ($pickup) =>
-                                $pickup->status === 'scheduled'
-                                && $pickup->requested_date
-                                    ?->isToday()
+                    'awaiting_review' => $pickupRequests
+                        ->where('status', 'requested')
+                        ->count(),
+                    'awaiting_assignment' => $pickupRequests
+                        ->where('status', 'verified')
+                        ->count(),
+                    'scheduled_today' => $pickupRequests
+                        ->filter(fn ($pickup) => $pickup->status === 'scheduled'
+                            && $pickup->requested_date
+                                ?->isToday()
+                        )
+                        ->count(),
+                    'scheduled_parcels' => $pickupRequests
+                        ->filter(fn ($pickup) => $pickup->status === 'scheduled'
+                            && $pickup->requested_date
+                                ?->isToday()
+                        )
+                        ->sum(fn ($pickup) => $pickup->parcels->count()
+                        ),
+                    'in_pickup' => $pickupRequests
+                        ->filter(fn ($pickup) => $pickup->status === 'scheduled'
+                            && in_array(
+                                $pickup->activeAssignment?->status,
+                                [
+                                    'accepted',
+                                    'arrived',
+                                    'picked_up',
+                                ],
+                                true
                             )
-                            ->count(),
-                    'scheduled_parcels' =>
-                        $pickupRequests
-                            ->filter(fn ($pickup) =>
-                                $pickup->status === 'scheduled'
-                                && $pickup->requested_date
-                                    ?->isToday()
-                            )
-                            ->sum(fn ($pickup) =>
-                                $pickup->parcels->count()
-                            ),
-                    'in_pickup' =>
-                        $pickupRequests
-                            ->filter(fn ($pickup) =>
-                                $pickup->status === 'scheduled'
-                                && in_array(
-                                    $pickup->latestAssignment?->status,
-                                    [
-                                        'accepted',
-                                        'arrived',
-                                        'picked_up',
-                                    ],
-                                    true
-                                )
-                            )
-                            ->count(),
-                    'collected_today' =>
-                        $pickupRequests
-                            ->filter(fn ($pickup) =>
-                                $pickup->status === 'completed'
-                                && $pickup->completed_at
-                                    ?->isToday()
-                            )
-                            ->sum(fn ($pickup) =>
-                                $pickup->parcels->count()
-                            ),
-                    'completed_sellers' =>
-                        $pickupRequests
-                            ->filter(fn ($pickup) =>
-                                $pickup->status === 'completed'
-                                && $pickup->completed_at
-                                    ?->isToday()
-                            )
-                            ->pluck('store_id')
-                            ->unique()
-                            ->count(),
+                        )
+                        ->count(),
+                    'collected_today' => $pickupRequests
+                        ->filter(fn ($pickup) => $pickup->status === 'completed'
+                            && $pickup->completed_at
+                                ?->isToday()
+                        )
+                        ->sum(fn ($pickup) => $pickup->parcels->count()
+                        ),
+                    'completed_sellers' => $pickupRequests
+                        ->filter(fn ($pickup) => $pickup->status === 'completed'
+                            && $pickup->completed_at
+                                ?->isToday()
+                        )
+                        ->pluck('store_id')
+                        ->unique()
+                        ->count(),
                 ],
             ]
         );
@@ -1671,8 +1570,7 @@ class LogisticsController extends Controller
         BuyerCatalogService $catalog,
     ): array {
         $eligibleParcels = $pickupRequest->parcels
-            ->filter(fn (Parcel $parcel) =>
-                (int) $parcel->shipment?->logistics_profile_id
+            ->filter(fn (Parcel $parcel) => (int) $parcel->shipment?->logistics_profile_id
                     === (int) $pickupRequest->logistics_profile_id
                 && (int) $parcel->shipment?->sellerOrder?->store_id
                     === (int) $pickupRequest->store_id
@@ -1702,6 +1600,15 @@ class LogisticsController extends Controller
         $assignments = $pickupRequest->assignments
             ->sortBy('assigned_at')
             ->values();
+        $activeAssignment = $pickupRequest->activeAssignment;
+        $activeRider = $activeAssignment?->riderProfile;
+        $providerCity = $pickupRequest->logisticsProfile?->serviceAddress?->city_municipality;
+        $providerCity = filled($providerCity)
+            ? trim(implode(', ', array_filter([
+                $providerCity,
+                $pickupRequest->logisticsProfile?->serviceAddress?->province,
+            ])))
+            : 'Location unavailable';
 
         $shipments = $eligibleParcels
             ->map(fn (Parcel $parcel) => $parcel->shipment)
@@ -1720,12 +1627,10 @@ class LogisticsController extends Controller
                 $waybill = $shipmentParcels->first()?->waybill;
 
                 return [
-                    'seller_order_no' =>
-                        $shipment->sellerOrder?->seller_order_no
+                    'seller_order_no' => $shipment->sellerOrder?->seller_order_no
                         ?: 'Not available',
                     'shipment_no' => $shipment->shipment_no,
-                    'waybill_no' =>
-                        $waybill?->waybill_no
+                    'waybill_no' => $waybill?->waybill_no
                         ?: 'Not generated',
                     'cod_amount' => (int) $shipment->cod_amount_minor > 0
                         ? $this->formatPickupMoney(
@@ -1795,6 +1700,18 @@ class LogisticsController extends Controller
             'id' => $pickupRequest->pickup_no,
             'seller' => $isReturnPickup ? 'Buyer return pickup' : ($seller?->name ?: 'Unknown seller'),
             'pickup_type' => $isReturnPickup ? 'return' : 'outbound',
+            'provider' => $pickupRequest->logisticsProfile?->display_name
+                ?: ($pickupRequest->logisticsProfile?->user?->business_name ?: 'Provider unavailable'),
+            'provider_city' => $providerCity,
+            'rider' => [
+                'name' => $activeRider?->user?->name ?: 'Awaiting assignment',
+                'profile_id' => $activeRider?->id,
+                'location' => $activeRider?->serviceLocationLabel()
+                    ?? 'Awaiting assignment',
+                'assignment_status' => $activeAssignment?->status
+                    ? Str::headline(str_replace('_', ' ', $activeAssignment->status))
+                    : 'Awaiting assignment',
+            ],
             'location' => $pickupLocation,
             'latitude' => $isReturnPickup
                 ? ($addressSnapshot['latitude'] ?? null)
@@ -1811,8 +1728,7 @@ class LogisticsController extends Controller
             'seller_email' => $isReturnPickup
                 ? 'Not provided'
                 : ($seller?->contact_email ?: ($sellerUser?->email ?: 'Not provided')),
-            'operating_hours' =>
-                $seller?->operating_hours
+            'operating_hours' => $seller?->operating_hours
                 ?: 'Not provided',
             'requested_date' => $pickupRequest->requested_date?->format('M j, Y')
                 ?: 'Not scheduled',
@@ -1839,8 +1755,7 @@ class LogisticsController extends Controller
             'status_key' => $pickupRequest->status,
             'instructions' => $pickupRequest->seller_instructions
                 ?: ($isReturnPickup ? 'Buyer return pickup. No return-shipping fee is collected.' : 'No seller instructions.'),
-            'cancellation_reason' =>
-                $pickupRequest->cancellation_reason,
+            'cancellation_reason' => $pickupRequest->cancellation_reason,
             'fulfillment_groups' => $fulfillmentGroups,
             'products' => $this->orderItemPreviewData($orderItems, $catalog),
             'activity' => $this->pickupRequestActivity(
@@ -2039,11 +1954,10 @@ class LogisticsController extends Controller
                         )
                         ->whereHas(
                             'sellerOrder',
-                            fn ($sellerOrderQuery) =>
-                                $sellerOrderQuery->where(
-                                    'store_id',
-                                    $pickupRequest->store_id
-                                )
+                            fn ($sellerOrderQuery) => $sellerOrderQuery->where(
+                                'store_id',
+                                $pickupRequest->store_id
+                            )
                         )
                 )
                 ->exists(),
@@ -2176,11 +2090,45 @@ class LogisticsController extends Controller
             $validated,
             $profile
         ): void {
+            $lockedPickupRequest = PickupRequest::query()
+                ->whereKey($pickupRequest->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            abort_unless(
+                $lockedPickupRequest->status === 'verified',
+                409,
+                'This pickup request has already been scheduled or is no longer assignable.'
+            );
+
+            abort_if(
+                PickupAssignment::query()
+                    ->where('pickup_request_id', $lockedPickupRequest->id)
+                    ->active()
+                    ->lockForUpdate()
+                    ->exists(),
+                409,
+                'This pickup request already has an active Rider assignment.'
+            );
+
+            $lockedRider = RiderProfile::query()
+                ->whereKey($rider->id)
+                ->where('logistics_profile_id', $profile->id)
+                ->where('verification_status', 'approved')
+                ->where('availability_status', 'available')
+                ->whereHas(
+                    'user',
+                    fn ($query) => $query->where(
+                        'status',
+                        AccountStatus::Active->value
+                    )
+                )
+                ->lockForUpdate()
+                ->firstOrFail();
+
             PickupAssignment::query()->create([
-                'pickup_request_id' =>
-                    $pickupRequest->id,
-                'rider_profile_id' =>
-                    $rider->id,
+                'pickup_request_id' => $lockedPickupRequest->id,
+                'rider_profile_id' => $lockedRider->id,
                 'status' => 'assigned',
                 'assigned_by' => $operator->id,
                 'assigned_at' => now(),
@@ -2208,11 +2156,10 @@ class LogisticsController extends Controller
                         )
                         ->whereHas(
                             'sellerOrder',
-                            fn ($sellerOrderQuery) =>
-                                $sellerOrderQuery->where(
-                                    'store_id',
-                                    $pickupRequest->store_id
-                                )
+                            fn ($sellerOrderQuery) => $sellerOrderQuery->where(
+                                'store_id',
+                                $pickupRequest->store_id
+                            )
                         )
                 )
                 ->with('shipment')
@@ -2225,25 +2172,20 @@ class LogisticsController extends Controller
                 $fromStatus = $shipment->status;
 
                 $shipment->update([
-                    'status' =>
-                        ShipmentStatus::PickupAssigned->value,
+                    'status' => ShipmentStatus::PickupAssigned->value,
                 ]);
 
                 ShipmentEvent::query()->create([
                     'shipment_id' => $shipment->id,
                     'event_type' => 'pickup_assigned',
                     'from_status' => $fromStatus,
-                    'to_status' =>
-                        ShipmentStatus::PickupAssigned->value,
+                    'to_status' => ShipmentStatus::PickupAssigned->value,
                     'actor_user_id' => $operator->id,
                     'source' => 'logistics',
-                    'notes' =>
-                        "Assigned through {$pickupRequest->pickup_no}.",
+                    'notes' => "Assigned through {$pickupRequest->pickup_no}.",
                     'metadata' => [
-                        'pickup_request_id' =>
-                            $pickupRequest->id,
-                        'rider_profile_id' =>
-                            $rider->id,
+                        'pickup_request_id' => $pickupRequest->id,
+                        'rider_profile_id' => $rider->id,
                     ],
                     'occurred_at' => now(),
                 ]);
@@ -2372,8 +2314,7 @@ class LogisticsController extends Controller
                 ? 'Exception'
                 : ($parcels->isNotEmpty()
                     && $parcels->every(
-                        fn (Parcel $parcel) =>
-                            $parcel->status === ParcelStatus::Sorted->value
+                        fn (Parcel $parcel) => $parcel->status === ParcelStatus::Sorted->value
                     )
                         ? 'Sorted'
                         : 'Received');
@@ -2753,8 +2694,7 @@ class LogisticsController extends Controller
 
             $zone = SortingZone::query()
                 ->whereKey($sortingZone)
-                ->whereHas('sortingCenter', fn ($query) =>
-                    $query->where('logistics_profile_id', $profile->id)
+                ->whereHas('sortingCenter', fn ($query) => $query->where('logistics_profile_id', $profile->id)
                 )
                 ->lockForUpdate()
                 ->firstOrFail();
@@ -2800,8 +2740,7 @@ class LogisticsController extends Controller
 
             $zone = SortingZone::withTrashed()
                 ->whereKey($sortingZone)
-                ->whereHas('sortingCenter', fn ($query) =>
-                    $query->where('logistics_profile_id', $profile->id)
+                ->whereHas('sortingCenter', fn ($query) => $query->where('logistics_profile_id', $profile->id)
                 )
                 ->lockForUpdate()
                 ->firstOrFail();
@@ -2863,8 +2802,7 @@ class LogisticsController extends Controller
 
             $zone = SortingZone::withTrashed()
                 ->whereKey($sortingZone)
-                ->whereHas('sortingCenter', fn ($query) =>
-                    $query->where('logistics_profile_id', $profile->id)
+                ->whereHas('sortingCenter', fn ($query) => $query->where('logistics_profile_id', $profile->id)
                 )
                 ->lockForUpdate()
                 ->firstOrFail();
@@ -2906,7 +2844,7 @@ class LogisticsController extends Controller
             : null;
         $centerIds = $sortingCenter ? collect([$sortingCenter->id]) : collect();
 
-        $eligibleShipments = Shipment::query()
+        $candidateShipments = Shipment::query()
             ->where('logistics_profile_id', $profile->id)
             ->where('status', ShipmentStatus::AtSortingCenter->value)
             ->whereDoesntHave('transfer')
@@ -2923,32 +2861,37 @@ class LogisticsController extends Controller
             ->orderByDesc('id')
             ->get()
             ->filter(function (Shipment $shipment) use ($profile, $handoffs): bool {
-                if (
-                    $shipment->parcels->isEmpty()
-                    || $shipment->parcels->contains(fn (Parcel $parcel): bool =>
-                        $parcel->status !== ParcelStatus::Received->value
-                        || ! $parcel->currentSortingCenter
-                        || (int) $parcel->currentSortingCenter->logistics_profile_id !== (int) $profile->id
-                    )
-                ) {
+                if (! $handoffs->isCrossCityFor($shipment, $profile)) {
                     return false;
                 }
 
-                $target = $handoffs->destinationProviderFor($shipment);
+                return $shipment->parcels->isNotEmpty()
+                    && ! $shipment->parcels->contains(fn (Parcel $parcel): bool => $parcel->status !== ParcelStatus::Received->value
+                        || ! $parcel->currentSortingCenter
+                        || (int) $parcel->currentSortingCenter->logistics_profile_id !== (int) $profile->id);
+            });
 
-                return $target
+        $shipmentRows = $candidateShipments
+            ->map(function (Shipment $shipment) use ($handoffs, $profile): array {
+                $target = $handoffs->destinationProviderFor($shipment);
+                $ready = $target
                     && (int) $target->id !== (int) $profile->id
                     && $handoffs->hasSingleActiveSortingCenter($target);
-            })
-            ->map(function (Shipment $shipment) use ($handoffs): array {
-                $target = $handoffs->destinationProviderFor($shipment);
-                $order = $shipment->sellerOrder?->order;
                 $destinationSnapshot = $shipment->purpose === 'return'
                     ? $shipment->destination_address_snapshot
                     : null;
                 $destinationAddress = $shipment->purpose === 'return'
                     ? $shipment->destinationAddress
                     : null;
+                $destination = ($destinationSnapshot['city_municipality'] ?? null)
+                    ?: $destinationAddress?->city_municipality
+                    ?: $shipment->sellerOrder?->order?->city_municipality
+                    ?: 'Destination city unavailable';
+                $province = ($destinationSnapshot['province'] ?? null)
+                    ?: $destinationAddress?->province
+                    ?: $shipment->sellerOrder?->order?->province
+                    ?: '';
+                $destinationLabel = collect([$destination, $province])->filter()->implode(', ');
 
                 return [
                     'id' => $shipment->id,
@@ -2956,18 +2899,25 @@ class LogisticsController extends Controller
                     'seller_order' => $shipment->sellerOrder?->seller_order_no ?? '—',
                     'seller' => $shipment->sellerOrder?->store?->name ?? 'Unknown Seller',
                     'purpose' => $shipment->purpose === 'return' ? 'Return to Seller' : 'Buyer delivery',
-                    'destination' => ($destinationSnapshot['city_municipality'] ?? null)
-                        ?: $destinationAddress?->city_municipality
-                        ?: $order?->city_municipality
-                        ?: 'Destination city unavailable',
-                    'province' => ($destinationSnapshot['province'] ?? null)
-                        ?: $destinationAddress?->province
-                        ?: $order?->province
-                        ?: '',
-                    'target' => $target?->display_name ?? 'Destination Logistics',
+                    'destination' => $destination,
+                    'province' => $province,
+                    'target' => $target?->display_name ?? 'No destination account',
+                    'handoff_ready' => (bool) $ready,
+                    'handoff_issue' => $ready
+                        ? null
+                        : ($target
+                            ? $target->display_name.' needs exactly one active Sorting Center before it can receive this handoff.'
+                            : 'No active Logistics account is registered for '.($destinationLabel ?: 'this destination').'.'),
                     'pieces' => $shipment->parcels->count(),
                 ];
             })
+            ->values();
+
+        $eligibleShipments = $shipmentRows
+            ->where('handoff_ready', true)
+            ->values();
+        $unroutableShipments = $shipmentRows
+            ->where('handoff_ready', false)
             ->values();
 
         $outgoing = ShipmentTransfer::query()
@@ -3010,6 +2960,7 @@ class LogisticsController extends Controller
 
         return view('logistics.transfers.index', $this->shared() + [
             'eligibleShipments' => $eligibleShipments,
+            'unroutableShipments' => $unroutableShipments,
             'outgoingTransfers' => $outgoing,
             'incomingTransfers' => $incoming,
             'recentTransfers' => $recent,
@@ -3117,8 +3068,7 @@ class LogisticsController extends Controller
         $barangays = collect($validated['barangays'])
             ->map(fn (string $barangay): string => trim($barangay))
             ->filter()
-            ->unique(fn (string $barangay): string =>
-                $zoneMatcher->normalizeLabel($barangay)
+            ->unique(fn (string $barangay): string => $zoneMatcher->normalizeLabel($barangay)
             )
             ->values();
 
@@ -3135,8 +3085,7 @@ class LogisticsController extends Controller
         }
 
         if ($barangays->isEmpty() || $barangays->contains(
-            fn (string $barangay): bool =>
-                $zoneMatcher->normalizeLabel($barangay) === ''
+            fn (string $barangay): bool => $zoneMatcher->normalizeLabel($barangay) === ''
         )) {
             throw ValidationException::withMessages([
                 'barangays' => 'Select valid barangay names from the location list.',
@@ -3165,8 +3114,7 @@ class LogisticsController extends Controller
         $zones = SortingZone::query()
             ->whereIn('sorting_center_id', $centerIds)
             ->where('status', 'active')
-            ->when($exceptZoneId, fn ($query) =>
-                $query->whereKeyNot($exceptZoneId)
+            ->when($exceptZoneId, fn ($query) => $query->whereKeyNot($exceptZoneId)
             )
             ->get();
 
@@ -3199,8 +3147,8 @@ class LogisticsController extends Controller
         ];
 
         return $zone->parcels()
-                ->whereNotIn('status', $finalStatuses)
-                ->exists()
+            ->whereNotIn('status', $finalStatuses)
+            ->exists()
             || $zone->dispatchBatches()
                 ->whereNotIn('status', ['completed', 'cancelled'])
                 ->exists();
@@ -3214,8 +3162,7 @@ class LogisticsController extends Controller
             ->map(fn (mixed $barangay): string => is_array($barangay)
                 ? (string) ($barangay['name'] ?? '')
                 : (string) $barangay)
-            ->map(fn (string $barangay): string =>
-                $zoneMatcher->normalizeLabel($barangay)
+            ->map(fn (string $barangay): string => $zoneMatcher->normalizeLabel($barangay)
             )
             ->filter()
             ->unique()
@@ -3242,9 +3189,9 @@ class LogisticsController extends Controller
 
     public function sorting(
         Request $request,
-        SortingZoneMatcher $zoneMatcher
-    ): View
-    {
+        SortingZoneMatcher $zoneMatcher,
+        ShipmentHandoffService $handoffs
+    ): View {
         $profile = request()->user()->logisticsProfile;
 
         abort_unless($profile, 404);
@@ -3296,10 +3243,8 @@ class LogisticsController extends Controller
         $zoneQuery = SortingZone::query()
             ->whereIn('sorting_center_id', $centerIds)
             ->withCount([
-                'parcels as non_final_parcels_count' => fn ($query) =>
-                    $query->whereNotIn('status', $finalParcelStatuses),
-                'dispatchBatches as active_dispatch_batches_count' => fn ($query) =>
-                    $query->whereNotIn('status', ['completed', 'cancelled']),
+                'parcels as non_final_parcels_count' => fn ($query) => $query->whereNotIn('status', $finalParcelStatuses),
+                'dispatchBatches as active_dispatch_batches_count' => fn ($query) => $query->whereNotIn('status', ['completed', 'cancelled']),
             ]);
 
         if ($zoneView === 'archived') {
@@ -3352,22 +3297,64 @@ class LogisticsController extends Controller
             ->latest('last_event_at')
             ->get();
 
+        $handoffTargets = [];
+
         $parcels = $parcelRecords->map(function (Parcel $parcel) use (
             $exceptionStatuses,
             $zonesByCenter,
-            $zoneMatcher
+            $zoneMatcher,
+            $handoffs,
+            $profile,
+            &$handoffTargets
         ): array {
             $destinationAddress = $parcel->shipment?->purpose === 'return'
                 ? $parcel->shipment->destinationAddress
                 : null;
             $destination = $zoneMatcher->destinationFor($parcel);
+            $requiresHandoff = $parcel->shipment
+                ? $handoffs->isCrossCityFor($parcel->shipment, $profile)
+                : false;
+            $handoffTarget = null;
+            $handoffReady = false;
+            $handoffNote = '';
+
+            if ($requiresHandoff) {
+                $shipmentId = (int) $parcel->shipment->id;
+
+                if (! array_key_exists($shipmentId, $handoffTargets)) {
+                    $target = $handoffs->destinationProviderFor($parcel->shipment);
+
+                    $handoffTargets[$shipmentId] = [
+                        'target' => $target,
+                        'ready' => $target
+                            && (int) $target->id !== (int) $profile->id
+                            && $handoffs->hasSingleActiveSortingCenter($target),
+                    ];
+                }
+
+                $handoffTarget = $handoffTargets[$shipmentId]['target'];
+                $handoffReady = $handoffTargets[$shipmentId]['ready'];
+                $destinationLabel = collect([
+                    $destination['city_municipality'],
+                    $destination['province'],
+                ])->filter()->implode(', ');
+
+                $handoffNote = match (true) {
+                    ! $handoffTarget => 'No active Logistics account is registered for '
+                        .($destinationLabel ?: 'this destination').'.',
+                    ! $handoffReady => $handoffTarget->display_name
+                        .' needs exactly one active Sorting Center before it can receive this parcel.',
+                    default => 'Send this parcel through City Handoffs. Custody stays with you until '
+                        .$handoffTarget->display_name.' scans and accepts it.',
+                };
+            }
+
             $centerZones = $zonesByCenter->get(
                 (int) $parcel->current_sorting_center_id,
                 collect()
             );
             $matchingZones = $centerZones
-                ->filter(fn (SortingZone $zone): bool =>
-                    $zoneMatcher->matches($zone, $parcel)
+                ->filter(fn (SortingZone $zone): bool => $zoneMatcher->matches($zone, $parcel)
                 )
                 ->values();
             $isException = in_array(
@@ -3419,9 +3406,15 @@ class LogisticsController extends Controller
                     : ucfirst($parcel->status),
                 'status_label' => $isException
                     ? 'Inspection required'
-                    : ($isUnmatched ? 'No matching zone' : ucfirst($parcel->status)),
+                    : ($requiresHandoff
+                        ? ($handoffReady ? 'Transfer required' : 'Handoff unavailable')
+                        : ($isUnmatched ? 'No matching zone' : ucfirst($parcel->status))),
+                'requires_handoff' => $requiresHandoff,
+                'handoff_target' => $handoffTarget?->display_name,
+                'handoff_ready' => $handoffReady,
+                'handoff_note' => $handoffNote,
                 'has_matching_zone' => ! $isUnmatched,
-                'can_sort' => ! $isException && ! $isUnmatched,
+                'can_sort' => ! $isException && ! $isUnmatched && ! $requiresHandoff,
             ];
         })->values();
 
@@ -3495,16 +3488,20 @@ class LogisticsController extends Controller
                     ->whereDate('occurred_at', today())
                     ->count(),
                 'active_zones' => $sortingCenters
-                    ->sum(fn (SortingCenter $center) =>
-                        $center->zones
-                            ->where('status', 'active')
-                            ->count()
+                    ->sum(fn (SortingCenter $center) => $center->zones
+                        ->where('status', 'active')
+                        ->count()
                     ),
                 'exceptions' => $parcelRecords
                     ->whereIn('status', $exceptionStatuses)
                     ->count(),
-                'unmatched' => $parcels
+                'zone_gaps' => $parcels
                     ->where('has_matching_zone', false)
+                    ->where('requires_handoff', false)
+                    ->where('status', '!=', 'Exception')
+                    ->count(),
+                'handoff_required' => $parcels
+                    ->where('requires_handoff', true)
                     ->where('status', '!=', 'Exception')
                     ->count(),
             ],
@@ -3645,16 +3642,15 @@ class LogisticsController extends Controller
             )
             ->with([
                 'user',
-                'dispatchBatches' => fn ($query) =>
-                    $query
-                        ->whereNotIn(
-                            'status',
-                            [
-                                'completed',
-                                'cancelled',
-                            ]
-                        )
-                        ->withCount('parcels'),
+                'dispatchBatches' => fn ($query) => $query
+                    ->whereNotIn(
+                        'status',
+                        [
+                            'completed',
+                            'cancelled',
+                        ]
+                    )
+                    ->withCount('parcels'),
             ])
             ->orderBy('id')
             ->get()
@@ -3670,24 +3666,19 @@ class LogisticsController extends Controller
                 return [
                     'id' => $rider->id,
 
-                    'zone_id' =>
-                        $rider->current_zone_id,
+                    'zone_id' => $rider->current_zone_id,
 
-                    'name' =>
-                        $rider->user?->name
+                    'name' => $rider->user?->name
                         ?? 'Unnamed rider',
 
-                    'load' =>
-                        $activeLoad,
+                    'load' => $activeLoad,
 
-                    'capacity' =>
-                        $capacity,
+                    'capacity' => $capacity,
 
-                    'remaining' =>
-                        max(
-                            0,
-                            $capacity - $activeLoad
-                        ),
+                    'remaining' => max(
+                        0,
+                        $capacity - $activeLoad
+                    ),
                 ];
             });
 
@@ -3734,20 +3725,18 @@ class LogisticsController extends Controller
                     )
                     ->whereDoesntHave(
                         'dispatchBatches',
-                        fn ($query) =>
-                            $query->whereNotIn(
-                                'dispatch_batches.status',
-                                [
-                                    'completed',
-                                    'cancelled',
-                                ]
-                            )
+                        fn ($query) => $query->whereNotIn(
+                            'dispatch_batches.status',
+                            [
+                                'completed',
+                                'cancelled',
+                            ]
+                        )
                     )
                     ->get();
 
                 $matchingParcels = $readyParcels
-                    ->filter(fn (Parcel $parcel): bool =>
-                        $zoneMatcher->matches($zone, $parcel)
+                    ->filter(fn (Parcel $parcel): bool => $zoneMatcher->matches($zone, $parcel)
                     )
                     ->values();
                 $routingIssues = $readyParcels->count()
@@ -3766,8 +3755,7 @@ class LogisticsController extends Controller
                     )
                 )
                     ->filter(
-                        fn (array $rider) =>
-                            $ready > 0
+                        fn (array $rider) => $ready > 0
                             && $rider['remaining'] >= $ready
                     )
                     ->values();
@@ -3836,27 +3824,20 @@ class LogisticsController extends Controller
             $this->shared() + [
                 'zones' => $zones,
 
-                'riderCapacities' =>
-                    $riders->values(),
+                'riderCapacities' => $riders->values(),
 
-                'dispatchCenter' =>
-                    $center,
+                'dispatchCenter' => $center,
 
                 'metrics' => [
-                    'ready' =>
-                        $readyTotal,
+                    'ready' => $readyTotal,
 
-                    'ready_zones' =>
-                        $readyZoneCount,
+                    'ready_zones' => $readyZoneCount,
 
-                    'available_riders' =>
-                        $availableRiderCount,
+                    'available_riders' => $availableRiderCount,
 
-                    'active_routes' =>
-                        $activeRoutes,
+                    'active_routes' => $activeRoutes,
 
-                    'in_transit' =>
-                        $inTransit,
+                    'in_transit' => $inTransit,
                 ],
             ]
         );
@@ -3948,8 +3929,7 @@ class LogisticsController extends Controller
                 'parcels',
                 'parcels.shipment.sellerOrder.items.product.images.variant',
                 'parcels.shipment.sellerOrder.items.variant',
-                'deliveryAttempts' => fn ($query) =>
-                    $query->orderBy('attempted_at'),
+                'deliveryAttempts' => fn ($query) => $query->orderBy('attempted_at'),
             ])
             ->orderByDesc('dispatched_at')
             ->orderByDesc('id')
@@ -3983,51 +3963,42 @@ class LogisticsController extends Controller
                         ->first();
 
                 return [
-                    'id' =>
-                        $batch->batch_no,
+                    'id' => $batch->batch_no,
 
-                    'rider' =>
-                        $batch
-                            ->riderProfile
-                            ?->user
-                            ?->name
+                    'rider' => $batch
+                        ->riderProfile
+                        ?->user
+                        ?->name
                         ?? 'Unassigned rider',
 
-                    'zone' =>
-                        $batch
-                            ->sortingZone
-                            ?->code
+                    'zone' => $batch
+                        ->sortingZone
+                        ?->code
                         ?? 'No zone',
 
-                    'area' =>
-                        $batch
-                            ->sortingZone
-                            ?->name
+                    'area' => $batch
+                        ->sortingZone
+                        ?->name
                         ?? '',
 
-                    'parcels' =>
-                        $parcels->count(),
+                    'parcels' => $parcels->count(),
 
                     'products' => $this->orderItemPreviewData($items, $catalog),
 
-                    'progress' =>
-                        $progress,
+                    'progress' => $progress,
 
-                    'status' =>
-                        $stage,
+                    'status' => $stage,
 
-                    'last' =>
-                        $latestUpdate
+                    'last' => $latestUpdate
                             ? $latestUpdate['label']
                                 .' • '
                                 .$latestUpdate['time']
                             : 'No recorded updates',
 
-                    'timeline' =>
-                        collect($timeline)
-                            ->sortBy('sort_at')
-                            ->values()
-                            ->all(),
+                    'timeline' => collect($timeline)
+                        ->sortBy('sort_at')
+                        ->values()
+                        ->all(),
                 ];
             })
             ->values();
@@ -4106,24 +4077,18 @@ class LogisticsController extends Controller
         return view(
             'logistics.dispatch.monitoring',
             $this->shared() + [
-                'deliveries' =>
-                    $deliveries,
+                'deliveries' => $deliveries,
 
                 'metrics' => [
-                    'assigned' =>
-                        $assigned,
+                    'assigned' => $assigned,
 
-                    'out_for_delivery_parcels' =>
-                        $outForDeliveryParcels,
+                    'out_for_delivery_parcels' => $outForDeliveryParcels,
 
-                    'out_for_delivery_routes' =>
-                        $outForDeliveryRoutes,
+                    'out_for_delivery_routes' => $outForDeliveryRoutes,
 
-                    'delivered_today' =>
-                        $deliveredToday,
+                    'delivered_today' => $deliveredToday,
 
-                    'exceptions' =>
-                        $exceptions,
+                    'exceptions' => $exceptions,
                 ],
             ]
         );
@@ -4154,8 +4119,7 @@ class LogisticsController extends Controller
         ];
 
         $allDelivered = $statuses->every(
-            fn ($status) =>
-                $status
+            fn ($status) => $status
                 === ParcelStatus::Delivered->value
         );
 
@@ -4263,15 +4227,12 @@ class LogisticsController extends Controller
 
         if ($batch->assigned_at) {
             $timeline->push([
-                'time' =>
-                    $batch->assigned_at
-                        ->format('M j, g:i A'),
+                'time' => $batch->assigned_at
+                    ->format('M j, g:i A'),
 
-                'label' =>
-                    'Assigned to rider',
+                'label' => 'Assigned to rider',
 
-                'detail' =>
-                    'Dispatch manifest assigned to '
+                'detail' => 'Dispatch manifest assigned to '
                     .(
                         $batch
                             ->riderProfile
@@ -4281,22 +4242,18 @@ class LogisticsController extends Controller
                     )
                     .'.',
 
-                'sort_at' =>
-                    $batch->assigned_at->timestamp,
+                'sort_at' => $batch->assigned_at->timestamp,
             ]);
         }
 
         if ($batch->dispatched_at) {
             $timeline->push([
-                'time' =>
-                    $batch->dispatched_at
-                        ->format('M j, g:i A'),
+                'time' => $batch->dispatched_at
+                    ->format('M j, g:i A'),
 
-                'label' =>
-                    'Released for delivery',
+                'label' => 'Released for delivery',
 
-                'detail' =>
-                    "{$batch->parcels->count()} "
+                'detail' => "{$batch->parcels->count()} "
                     .str(
                         'parcel'
                     )->plural(
@@ -4304,8 +4261,7 @@ class LogisticsController extends Controller
                     )
                     .' released from the sorting center.',
 
-                'sort_at' =>
-                    $batch->dispatched_at->timestamp,
+                'sort_at' => $batch->dispatched_at->timestamp,
             ]);
         }
 
@@ -4327,13 +4283,11 @@ class LogisticsController extends Controller
             );
 
             $timeline->push([
-                'time' =>
-                    $eventAt->format(
-                        'M j, g:i A'
-                    ),
+                'time' => $eventAt->format(
+                    'M j, g:i A'
+                ),
 
-                'label' =>
-                    $parcel->parcel_no
+                'label' => $parcel->parcel_no
                     .': '
                     .str(
                         $parcel->status
@@ -4341,11 +4295,9 @@ class LogisticsController extends Controller
                         ->replace('_', ' ')
                         ->title(),
 
-                'detail' =>
-                    'Latest recorded parcel status.',
+                'detail' => 'Latest recorded parcel status.',
 
-                'sort_at' =>
-                    $eventAt->timestamp,
+                'sort_at' => $eventAt->timestamp,
             ]);
         }
 
@@ -4354,8 +4306,7 @@ class LogisticsController extends Controller
         * in the Logistics monitoring timeline.
         */
         foreach (
-            $batch->deliveryAttempts
-            as $attempt
+            $batch->deliveryAttempts as $attempt
         ) {
             $attemptAt =
                 $attempt->attempted_at
@@ -4366,13 +4317,11 @@ class LogisticsController extends Controller
             }
 
             $timeline->push([
-                'time' =>
-                    $attemptAt->format(
-                        'M j, g:i A'
-                    ),
+                'time' => $attemptAt->format(
+                    'M j, g:i A'
+                ),
 
-                'label' =>
-                    'Delivery attempt #'
+                'label' => 'Delivery attempt #'
                     .$attempt->attempt_no
                     .': '
                     .str(
@@ -4381,8 +4330,7 @@ class LogisticsController extends Controller
                         ->replace('_', ' ')
                         ->title(),
 
-                'detail' =>
-                    $attempt->notes
+                'detail' => $attempt->notes
                     ?: (
                         $attempt->failure_reason
                             ? 'Reason: '
@@ -4390,8 +4338,7 @@ class LogisticsController extends Controller
                             : 'Delivery attempt recorded.'
                     ),
 
-                'sort_at' =>
-                    $attemptAt->timestamp,
+                'sort_at' => $attemptAt->timestamp,
             ]);
         }
 
@@ -4445,8 +4392,7 @@ class LogisticsController extends Controller
             return redirect()
                 ->route('logistics.reports.index')
                 ->withErrors([
-                    'to' =>
-                        'The end date must be on or after the start date.',
+                    'to' => 'The end date must be on or after the start date.',
                 ]);
         }
 
@@ -4463,15 +4409,14 @@ class LogisticsController extends Controller
         * All report event queries are scoped through the
         * authenticated Logistics provider's shipments.
         */
-        $ownedEventQuery = fn () =>
-            ShipmentEvent::query()
-                ->whereHas(
-                    'shipment',
-                    fn ($query) => $query->where(
-                        'logistics_profile_id',
-                        $profile->id
-                    )
-                );
+        $ownedEventQuery = fn () => ShipmentEvent::query()
+            ->whereHas(
+                'shipment',
+                fn ($query) => $query->where(
+                    'logistics_profile_id',
+                    $profile->id
+                )
+            );
 
         /*
         * Throughput represents unique parcels received by
@@ -4647,11 +4592,10 @@ class LogisticsController extends Controller
                     )
                 )
                     ->filter(
-                        fn (ShipmentEvent $event) =>
-                            $event->occurred_at
-                                ->lte(
-                                    $sortEvent->occurred_at
-                                )
+                        fn (ShipmentEvent $event) => $event->occurred_at
+                            ->lte(
+                                $sortEvent->occurred_at
+                            )
                     )
                     ->sortByDesc('occurred_at')
                     ->first();
@@ -4667,8 +4611,7 @@ class LogisticsController extends Controller
                     );
             })
             ->filter(
-                fn ($minutes) =>
-                    $minutes !== null
+                fn ($minutes) => $minutes !== null
             );
 
         $averageSortTime =
@@ -4684,18 +4627,16 @@ class LogisticsController extends Controller
         */
         $dailyVolumeByDate = $throughputEvents
             ->groupBy(
-                fn (ShipmentEvent $event) =>
-                    $event->occurred_at
-                        ->copy()
-                        ->timezone('Asia/Manila')
-                        ->format('Y-m-d')
+                fn (ShipmentEvent $event) => $event->occurred_at
+                    ->copy()
+                    ->timezone('Asia/Manila')
+                    ->format('Y-m-d')
             )
             ->map(
-                fn ($events) =>
-                    $events
-                        ->pluck('parcel_id')
-                        ->unique()
-                        ->count()
+                fn ($events) => $events
+                    ->pluck('parcel_id')
+                    ->unique()
+                    ->count()
             );
 
         $dailyVolumes = [];
@@ -4728,17 +4669,13 @@ class LogisticsController extends Controller
         * same parcel is subsequently retried.
         */
         $statusLabels = [
-            ParcelStatus::Delivered->value =>
-                'Delivered',
+            ParcelStatus::Delivered->value => 'Delivered',
 
-            ParcelStatus::OutForDelivery->value =>
-                'Out for Delivery',
+            ParcelStatus::OutForDelivery->value => 'Out for Delivery',
 
-            ParcelStatus::Failed->value =>
-                'Delivery Failed',
+            ParcelStatus::Failed->value => 'Delivery Failed',
 
-            ParcelStatus::Returned->value =>
-                'Returned',
+            ParcelStatus::Returned->value => 'Returned',
         ];
 
         $latestDeliveryStatuses =
@@ -4765,8 +4702,7 @@ class LogisticsController extends Controller
                 ])
                 ->groupBy('parcel_id')
                 ->map(
-                    fn ($events) =>
-                        $events->last()->to_status
+                    fn ($events) => $events->last()->to_status
                 );
 
         $statusTotal =
@@ -4784,8 +4720,7 @@ class LogisticsController extends Controller
                     $value =
                         $latestDeliveryStatuses
                             ->filter(
-                                fn ($currentStatus) =>
-                                    $currentStatus === $status
+                                fn ($currentStatus) => $currentStatus === $status
                             )
                             ->count();
 
@@ -4794,8 +4729,7 @@ class LogisticsController extends Controller
 
                         'value' => $value,
 
-                        'share' =>
-                            $statusTotal > 0
+                        'share' => $statusTotal > 0
                                 ? round(
                                     ($value / $statusTotal)
                                     * 100,
@@ -4831,55 +4765,50 @@ class LogisticsController extends Controller
                 $query
                     ->whereHas(
                         'dispatchBatches',
-                        fn ($batchQuery) =>
-                            $batchQuery
-                                ->whereNotNull(
-                                    'assigned_at'
-                                )
-                                ->whereBetween(
-                                    'assigned_at',
-                                    [
-                                        $reportFrom,
-                                        $reportTo,
-                                    ]
-                                )
-                                ->where(
-                                    'status',
-                                    '!=',
-                                    'cancelled'
-                                )
+                        fn ($batchQuery) => $batchQuery
+                            ->whereNotNull(
+                                'assigned_at'
+                            )
+                            ->whereBetween(
+                                'assigned_at',
+                                [
+                                    $reportFrom,
+                                    $reportTo,
+                                ]
+                            )
+                            ->where(
+                                'status',
+                                '!=',
+                                'cancelled'
+                            )
                     )
                     ->orWhereHas(
                         'deliveryAttempts',
-                        fn ($attemptQuery) =>
-                            $attemptQuery
-                                ->whereBetween(
-                                    'attempted_at',
-                                    [
-                                        $reportFrom,
-                                        $reportTo,
-                                    ]
-                                )
-                                ->whereIn(
-                                    'outcome',
-                                    [
-                                        DeliveryAttemptOutcome
-                                            ::Delivered
-                                            ->value,
+                        fn ($attemptQuery) => $attemptQuery
+                            ->whereBetween(
+                                'attempted_at',
+                                [
+                                    $reportFrom,
+                                    $reportTo,
+                                ]
+                            )
+                            ->whereIn(
+                                'outcome',
+                                [
+                                    DeliveryAttemptOutcome::Delivered
+                                        ->value,
 
-                                        DeliveryAttemptOutcome
-                                            ::Failed
-                                            ->value,
-                                    ]
+                                    DeliveryAttemptOutcome::Failed
+                                        ->value,
+                                ]
+                            )
+                            ->whereHas(
+                                'parcel.shipment',
+                                fn ($shipmentQuery) => $shipmentQuery->where(
+                                    'logistics_profile_id',
+                                    $profile->id
                                 )
-                                ->whereHas(
-                                    'parcel.shipment',
-                                    fn ($shipmentQuery) =>
-                                        $shipmentQuery->where(
-                                            'logistics_profile_id',
-                                            $profile->id
-                                        )
-                                )
+                            )
                     );
             })
             ->with([
@@ -4907,15 +4836,13 @@ class LogisticsController extends Controller
                             'cancelled'
                         )
                         ->with([
-                            'parcels' => fn ($parcelQuery) =>
-                                $parcelQuery->whereHas(
-                                    'shipment',
-                                    fn ($shipmentQuery) =>
-                                        $shipmentQuery->where(
-                                            'logistics_profile_id',
-                                            $profile->id
-                                        )
-                                ),
+                            'parcels' => fn ($parcelQuery) => $parcelQuery->whereHas(
+                                'shipment',
+                                fn ($shipmentQuery) => $shipmentQuery->where(
+                                    'logistics_profile_id',
+                                    $profile->id
+                                )
+                            ),
                         ]);
                 },
 
@@ -4937,22 +4864,19 @@ class LogisticsController extends Controller
                         ->whereIn(
                             'outcome',
                             [
-                                DeliveryAttemptOutcome
-                                    ::Delivered
+                                DeliveryAttemptOutcome::Delivered
                                     ->value,
 
-                                DeliveryAttemptOutcome
-                                    ::Failed
+                                DeliveryAttemptOutcome::Failed
                                     ->value,
                             ]
                         )
                         ->whereHas(
                             'parcel.shipment',
-                            fn ($shipmentQuery) =>
-                                $shipmentQuery->where(
-                                    'logistics_profile_id',
-                                    $profile->id
-                                )
+                            fn ($shipmentQuery) => $shipmentQuery->where(
+                                'logistics_profile_id',
+                                $profile->id
+                            )
                         );
                 },
             ])
@@ -4963,8 +4887,7 @@ class LogisticsController extends Controller
                 $assigned = $rider
                     ->dispatchBatches
                     ->flatMap(
-                        fn (DispatchBatch $batch) =>
-                            $batch->parcels
+                        fn (DispatchBatch $batch) => $batch->parcels
                     )
                     ->pluck('id')
                     ->unique()
@@ -4974,8 +4897,7 @@ class LogisticsController extends Controller
                     ->deliveryAttempts
                     ->where(
                         'outcome',
-                        DeliveryAttemptOutcome
-                            ::Delivered
+                        DeliveryAttemptOutcome::Delivered
                             ->value
                     )
                     ->count();
@@ -4984,8 +4906,7 @@ class LogisticsController extends Controller
                     ->deliveryAttempts
                     ->where(
                         'outcome',
-                        DeliveryAttemptOutcome
-                            ::Failed
+                        DeliveryAttemptOutcome::Failed
                             ->value
                     )
                     ->count();
@@ -5003,29 +4924,23 @@ class LogisticsController extends Controller
                         : 0;
 
                 return [
-                    'name' =>
-                        $rider->user?->name
+                    'name' => $rider->user?->name
                         ?: 'Unknown Rider',
 
-                    'assigned' =>
-                        $assigned,
+                    'assigned' => $assigned,
 
-                    'delivered' =>
-                        $delivered,
+                    'delivered' => $delivered,
 
-                    'failed' =>
-                        $failed,
+                    'failed' => $failed,
 
-                    'rate' =>
-                        number_format(
-                            $rate,
-                            1
-                        ).'%',
+                    'rate' => number_format(
+                        $rate,
+                        1
+                    ).'%',
                 ];
             })
             ->sortBy(
-                fn (array $rider) =>
-                    strtolower($rider['name'])
+                fn (array $rider) => strtolower($rider['name'])
             )
             ->values()
             ->all();
@@ -5200,24 +5115,19 @@ class LogisticsController extends Controller
             )
             ->get()
             ->filter(
-                fn (User $user): bool =>
-                    $user->hasRole(
-                        UserRole::Admin->value
-                    )
+                fn (User $user): bool => $user->hasRole(
+                    UserRole::Admin->value
+                )
             )
             ->map(
                 fn (User $user): array => [
-                    'id' =>
-                        $user->id,
+                    'id' => $user->id,
 
-                    'name' =>
-                        $user->name,
+                    'name' => $user->name,
 
-                    'role' =>
-                        UserRole::Admin->value,
+                    'role' => UserRole::Admin->value,
 
-                    'label' =>
-                        'Administrator',
+                    'label' => 'Administrator',
                 ]
             );
 
@@ -5238,17 +5148,15 @@ class LogisticsController extends Controller
             ->map(
                 fn (
                     PickupRequest $pickupRequest
-                ) =>
-                    $pickupRequest
-                        ->store
-                        ?->sellerProfile
-                        ?->user
+                ) => $pickupRequest
+                    ->store
+                    ?->sellerProfile
+                    ?->user
             )
             ->filter(
-                fn ($user): bool =>
-                    $user instanceof User
+                fn ($user): bool => $user instanceof User
                     && $user->status
-                        === AccountStatus::Active->value
+                    === AccountStatus::Active->value
                     && $user->hasRole(
                         UserRole::Seller->value
                     )
@@ -5256,17 +5164,13 @@ class LogisticsController extends Controller
             ->unique('id')
             ->map(
                 fn (User $user): array => [
-                    'id' =>
-                        $user->id,
+                    'id' => $user->id,
 
-                    'name' =>
-                        $user->name,
+                    'name' => $user->name,
 
-                    'role' =>
-                        UserRole::Seller->value,
+                    'role' => UserRole::Seller->value,
 
-                    'label' =>
-                        'Seller',
+                    'label' => 'Seller',
                 ]
             );
 
@@ -5293,12 +5197,10 @@ class LogisticsController extends Controller
             ->map(
                 fn (
                     RiderProfile $rider
-                ) =>
-                    $rider->user
+                ) => $rider->user
             )
             ->filter(
-                fn ($user): bool =>
-                    $user instanceof User
+                fn ($user): bool => $user instanceof User
                     && $user->status
                         === AccountStatus::Active->value
                     && $user->hasRole(
@@ -5308,17 +5210,13 @@ class LogisticsController extends Controller
             ->unique('id')
             ->map(
                 fn (User $user): array => [
-                    'id' =>
-                        $user->id,
+                    'id' => $user->id,
 
-                    'name' =>
-                        $user->name,
+                    'name' => $user->name,
 
-                    'role' =>
-                        UserRole::Rider->value,
+                    'role' => UserRole::Rider->value,
 
-                    'label' =>
-                        'Rider',
+                    'label' => 'Rider',
                 ]
             );
 
@@ -5327,8 +5225,7 @@ class LogisticsController extends Controller
             ->concat($riders)
             ->unique('id')
             ->sortBy(
-                fn (array $recipient): string =>
-                    $recipient['role']
+                fn (array $recipient): string => $recipient['role']
                     .'|'
                     .strtolower(
                         $recipient['name']
@@ -5351,22 +5248,23 @@ class LogisticsController extends Controller
         $records = Conversation::query()
             ->whereHas(
                 'participants',
-                fn ($query) =>
-                    $query->where(
-                        'users.id',
-                        $operator->id
-                    )
+                fn ($query) => $query->where(
+                    'users.id',
+                    $operator->id
+                )
             )
             ->with([
                 'participants',
 
                 'latestMessage',
 
-                'messages' => fn ($query) =>
-                    $query
-                        ->with('attachments')
-                        ->orderBy('sent_at')
-                        ->orderBy('id'),
+                'messages' => fn ($query) => $query
+                    ->with([
+                        'attachments',
+                        'receipts',
+                    ])
+                    ->orderBy('sent_at')
+                    ->orderBy('id'),
             ])
             ->orderByDesc('last_message_at')
             ->orderByDesc('id')
@@ -5382,8 +5280,7 @@ class LogisticsController extends Controller
                     $conversation
                         ->participants
                         ->first(
-                            fn (User $participant): bool =>
-                                (int) $participant->id
+                            fn (User $participant): bool => (int) $participant->id
                                 === (int) $operator->id
                         );
 
@@ -5391,8 +5288,7 @@ class LogisticsController extends Controller
                     $conversation
                         ->participants
                         ->first(
-                            fn (User $participant): bool =>
-                                (int) $participant->id
+                            fn (User $participant): bool => (int) $participant->id
                                 !== (int) $operator->id
                         );
 
@@ -5407,29 +5303,23 @@ class LogisticsController extends Controller
                 );
 
                 $role = match ($participantRole) {
-                    'admin' =>
-                        'Administrator',
+                    'admin' => 'Administrator',
 
-                    'buyer' =>
-                        'Buyer',
+                    'buyer' => 'Buyer',
 
-                    'seller' =>
-                        'Seller',
+                    'seller' => 'Seller',
 
-                    'logistics' =>
-                        'Logistics',
+                    'logistics' => 'Logistics',
 
-                    'rider' =>
-                        'Rider',
+                    'rider' => 'Rider',
 
-                    default =>
-                        ucwords(
-                            str_replace(
-                                '_',
-                                ' ',
-                                $participantRole
-                            )
-                        ),
+                    default => ucwords(
+                        str_replace(
+                            '_',
+                            ' ',
+                            $participantRole
+                        )
+                    ),
                 };
 
                 $name =
@@ -5445,14 +5335,13 @@ class LogisticsController extends Controller
                     ->filter()
                     ->take(2)
                     ->map(
-                        fn (string $part): string =>
-                            strtoupper(
-                                substr(
-                                    $part,
-                                    0,
-                                    1
-                                )
+                        fn (string $part): string => strtoupper(
+                            substr(
+                                $part,
+                                0,
+                                1
                             )
+                        )
                     )
                     ->implode('');
 
@@ -5515,20 +5404,15 @@ class LogisticsController extends Controller
                 );
 
                 return [
-                    'id' =>
-                        $conversation->id,
+                    'id' => $conversation->id,
 
-                    'name' =>
-                        $name,
+                    'name' => $name,
 
-                    'role' =>
-                        $role,
+                    'role' => $role,
 
-                    'initials' =>
-                        $initials,
+                    'initials' => $initials,
 
-                    'preview' =>
-                        $latestBody !== ''
+                    'preview' => $latestBody !== ''
                             ? $latestBody
                             : (
                                 $latestMessage
@@ -5536,63 +5420,66 @@ class LogisticsController extends Controller
                                     : 'No messages yet.'
                             ),
 
-                    'time' =>
-                        $latestMessage
-                            ?->sent_at
-                            ?->copy()
-                            ->timezone(
-                                'Asia/Manila'
-                            )
-                            ->format(
-                                'M j, g:i A'
-                            )
+                    'time' => $latestMessage
+                        ?->sent_at
+                        ?->copy()
+                        ->timezone(
+                            'Asia/Manila'
+                        )
+                        ->format(
+                            'M j, g:i A'
+                        )
                         ?? '',
 
-                    'unread' =>
-                        $unread,
+                    'unread' => $unread,
 
-                    'subject' =>
-                        $conversation->subject,
+                    'subject' => $conversation->subject,
 
-                    'status' =>
-                        $conversation->status,
+                    'status' => $conversation->status,
 
-                    'type' =>
-                        $conversation->type,
+                    'type' => $conversation->type,
 
-                    'send_url' =>
-                        route(
-                            'logistics.messages.send',
-                            $conversation
+                    'presence_user_ids' => app(ConversationService::class)
+                        ->presenceUserIds(
+                            $conversation,
+                            $operator
                         ),
 
-                    'read_url' =>
-                        route(
-                            'logistics.messages.read',
-                            $conversation
-                        ),
-
-                    'thread_url' =>
-                        route(
-                            'logistics.messages.thread',
-                            $conversation
-                        ),
-
-                    'messages' =>
+                    'send_url' => route(
+                        'logistics.messages.send',
                         $conversation
-                            ->messages
-                            ->map(
-                                fn (
-                                    Message $message
-                                ): array =>
-                                    $this
-                                        ->messageThreadEntry(
-                                            $operator,
-                                            $message
-                                        )
-                            )
-                            ->values()
-                            ->all(),
+                    ),
+
+                    'read_url' => route(
+                        'logistics.messages.read',
+                        $conversation
+                    ),
+
+                    'thread_url' => route(
+                        'logistics.messages.thread',
+                        $conversation
+                    ),
+
+                    'delivery_url' => route(
+                        'messages.delivered',
+                        $conversation
+                    ),
+
+                    'messages' => $conversation
+                        ->messages
+                        ->map(
+                            fn (
+                                Message $message
+                            ): array => $this
+                                ->messageThreadEntry(
+                                    $operator,
+                                    $message,
+                                    $conversation
+                                        ->participants
+                                )
+                        )
+                        ->values()
+                        ->all(),
                 ];
             })
             ->values();
@@ -5600,16 +5487,13 @@ class LogisticsController extends Controller
         return view(
             'logistics.messages.index',
             $this->shared() + [
-                'conversations' =>
-                    $conversations->all(),
+                'conversations' => $conversations->all(),
 
-                'conversationData' =>
-                    $conversations
-                        ->keyBy('id')
-                        ->all(),
+                'conversationData' => $conversations
+                    ->keyBy('id')
+                    ->all(),
 
-                'messageRecipients' =>
-                    $messageRecipients->all(),
+                'messageRecipients' => $messageRecipients->all(),
             ]
         );
     }
@@ -5654,18 +5538,24 @@ class LogisticsController extends Controller
                 ?? 0
             );
 
+        $conversation->loadMissing(
+            'participants'
+        );
+
         $messages =
             $conversation
                 ->messages()
-                ->with('attachments')
+                ->with([
+                    'attachments',
+                    'receipts',
+                ])
                 ->when(
                     $after > 0,
-                    fn ($query) =>
-                        $query->where(
-                            'id',
-                            '>',
-                            $after
-                        )
+                    fn ($query) => $query->where(
+                        'id',
+                        '>',
+                        $after
+                    )
                 )
                 ->orderBy('sent_at')
                 ->orderBy('id')
@@ -5673,81 +5563,108 @@ class LogisticsController extends Controller
                 ->map(
                     fn (
                         Message $message
-                    ): array =>
-                        $this
-                            ->messageThreadEntry(
-                                $operator,
-                                $message
-                            )
+                    ): array => $this
+                        ->messageThreadEntry(
+                            $operator,
+                            $message,
+                            $conversation
+                                ->participants
+                        )
                 )
                 ->values()
                 ->all();
 
         return response()->json([
-            'message' =>
-                'Thread loaded.',
+            'message' => 'Thread loaded.',
 
             'data' => [
-                'messages' =>
-                    $messages,
+                'messages' => $messages,
+
+                'receipt_updates' => $after > 0
+                        ? $this->conversations
+                            ->receiptUpdatesForViewer(
+                                $conversation,
+                                $operator
+                            )
+                        : [],
             ],
         ]);
     }
 
+    /**
+     * @param  Collection<int, User>|null  $participants
+     * @return array<string, mixed>
+     */
     private function messageThreadEntry(
         User $operator,
-        Message $message
+        Message $message,
+        $participants = null
     ): array {
         return [
-            'id' =>
-                $message->id,
+            'id' => $message->id,
 
-            'mine' =>
-                (int) $message->sender_id
+            'mine' => (int) $message->sender_id
                 === (int) $operator->id,
 
-            'text' =>
-                $message->body,
+            'text' => $message->body,
 
-            'attachments' =>
-                $message
-                    ->attachments
-                    ->map(
-                        fn (
-                            MessageAttachment $attachment
-                        ): array => [
-                            'id' =>
-                                $attachment->id,
+            'receipt' => $this->conversations
+                ->receiptPayload(
+                    $message,
+                    $operator,
+                    $participants
+                ),
 
-                            'name' =>
-                                $attachment->original_name,
+            'attachments' => $message
+                ->attachments
+                ->map(
+                    fn (
+                        MessageAttachment $attachment
+                    ): array => [
+                        'id' => $attachment->id,
 
-                            'mime_type' =>
-                                $attachment->mime_type,
+                        'name' => $attachment->original_name,
 
-                            'size_bytes' =>
-                                $attachment->size_bytes,
+                        'mime_type' => $attachment->mime_type,
 
-                            'download_url' =>
-                                route(
-                                    'logistics.messages.attachments.download',
-                                    $attachment
-                                ),
-                        ]
-                    )
-                    ->values()
-                    ->all(),
+                        'size_bytes' => $attachment->size_bytes,
 
-            'time' =>
-                $message
-                    ->sent_at
-                    ?->copy()
-                    ->timezone(
-                        'Asia/Manila'
-                    )
-                    ->format(
-                        'M j, g:i A'
-                    )
+                        'is_image' => str_starts_with(
+                            (string) $attachment
+                                ->mime_type,
+                            'image/'
+                        ),
+
+                        'is_video' => str_starts_with(
+                            (string) $attachment
+                                ->mime_type,
+                            'video/'
+                        ),
+
+                        'is_previewable' => $this->conversations
+                            ->isPreviewableMime(
+                                $attachment
+                                    ->mime_type
+                            ),
+
+                        'download_url' => route(
+                            'logistics.messages.attachments.download',
+                            $attachment
+                        ),
+                    ]
+                )
+                ->values()
+                ->all(),
+
+            'time' => $message
+                ->sent_at
+                ?->copy()
+                ->timezone(
+                    'Asia/Manila'
+                )
+                ->format(
+                    'M j, g:i A'
+                )
                 ?? '',
         ];
     }
@@ -5783,8 +5700,7 @@ class LogisticsController extends Controller
             === (int) $operator->id
         ) {
             throw ValidationException::withMessages([
-                'recipient_id' =>
-                    'You cannot start a conversation with yourself.',
+                'recipient_id' => 'You cannot start a conversation with yourself.',
             ]);
         }
 
@@ -5796,8 +5712,7 @@ class LogisticsController extends Controller
                 ->first(
                     fn (
                         array $recipient
-                    ): bool =>
-                        (int) $recipient['id']
+                    ): bool => (int) $recipient['id']
                         === (int) $validated[
                             'recipient_id'
                         ]
@@ -5805,8 +5720,7 @@ class LogisticsController extends Controller
 
         if (! $allowedRecipient) {
             throw ValidationException::withMessages([
-                'recipient_id' =>
-                    'The selected user is not an available Logistics messaging contact.',
+                'recipient_id' => 'The selected user is not an available Logistics messaging contact.',
             ]);
         }
 
@@ -5816,8 +5730,7 @@ class LogisticsController extends Controller
 
         if ($body === '') {
             throw ValidationException::withMessages([
-                'message' =>
-                    'Please enter a message.',
+                'message' => 'Please enter a message.',
             ]);
         }
 
@@ -5849,22 +5762,17 @@ class LogisticsController extends Controller
 
                 $conversation =
                     Conversation::query()->create([
-                        'subject' =>
-                            $subject !== ''
+                        'subject' => $subject !== ''
                                 ? $subject
                                 : null,
 
-                        'type' =>
-                            'direct',
+                        'type' => 'direct',
 
-                        'status' =>
-                            'open',
+                        'status' => 'open',
 
-                        'created_by' =>
-                            $operator->id,
+                        'created_by' => $operator->id,
 
-                        'last_message_at' =>
-                            $now,
+                        'last_message_at' => $now,
                     ]);
 
                 $conversation
@@ -5872,15 +5780,12 @@ class LogisticsController extends Controller
                     ->attach(
                         $operator->id,
                         [
-                            'participant_role' =>
-                                UserRole::Logistics
-                                    ->value,
+                            'participant_role' => UserRole::Logistics
+                                ->value,
 
-                            'last_read_at' =>
-                                $now,
+                            'last_read_at' => $now,
 
-                            'joined_at' =>
-                                $now,
+                            'joined_at' => $now,
                         ]
                     );
 
@@ -5889,16 +5794,13 @@ class LogisticsController extends Controller
                     ->attach(
                         $recipient->id,
                         [
-                            'participant_role' =>
-                                $allowedRecipient[
+                            'participant_role' => $allowedRecipient[
                                     'role'
                                 ],
 
-                            'last_read_at' =>
-                                null,
+                            'last_read_at' => null,
 
-                            'joined_at' =>
-                                $now,
+                            'joined_at' => $now,
                         ]
                     );
 
@@ -5906,17 +5808,13 @@ class LogisticsController extends Controller
                     $conversation
                         ->messages()
                         ->create([
-                            'sender_id' =>
-                                $operator->id,
+                            'sender_id' => $operator->id,
 
-                            'body' =>
-                                $body,
+                            'body' => $body,
 
-                            'message_type' =>
-                                'text',
+                            'message_type' => 'text',
 
-                            'sent_at' =>
-                                $now,
+                            'sent_at' => $now,
                         ]);
 
                 $this->conversations
@@ -5935,32 +5833,25 @@ class LogisticsController extends Controller
 
         return response()->json(
             [
-                'message' =>
-                    'Conversation started successfully.',
+                'message' => 'Conversation started successfully.',
 
                 'conversation' => [
-                    'id' =>
-                        $conversation->id,
+                    'id' => $conversation->id,
 
-                    'recipient_id' =>
-                        $recipient->id,
+                    'recipient_id' => $recipient->id,
 
-                    'recipient_name' =>
-                        $recipient->name,
+                    'recipient_name' => $recipient->name,
 
-                    'recipient_role' =>
-                        $allowedRecipient[
+                    'recipient_role' => $allowedRecipient[
                             'role'
                         ],
 
-                    'latest_message' =>
-                        $message->body,
+                    'latest_message' => $message->body,
                 ],
 
-                'redirect_url' =>
-                    route(
-                        'logistics.messages.index'
-                    ),
+                'redirect_url' => route(
+                    'logistics.messages.index'
+                ),
             ],
             201
         );
@@ -5997,11 +5888,9 @@ class LogisticsController extends Controller
         );
 
         return response()->json([
-            'message' =>
-                'Conversation marked as read.',
+            'message' => 'Conversation marked as read.',
 
-            'unread' =>
-                0,
+            'unread' => 0,
         ]);
     }
 
@@ -6024,7 +5913,7 @@ class LogisticsController extends Controller
                 'nullable',
                 'file',
                 'max:10240',
-                'mimes:jpg,jpeg,png,webp,pdf,doc,docx,xls,xlsx,txt,csv,zip',
+                'mimes:jpg,jpeg,png,webp,mp4,mov,webm,pdf,doc,docx,xls,xlsx,txt,csv,zip',
             ],
         ]);
 
@@ -6070,8 +5959,7 @@ class LogisticsController extends Controller
                         !== 'open'
                     ) {
                         throw ValidationException::withMessages([
-                            'message' =>
-                                'Messages cannot be sent to a closed conversation.',
+                            'message' => 'Messages cannot be sent to a closed conversation.',
                         ]);
                     }
 
@@ -6094,17 +5982,13 @@ class LogisticsController extends Controller
                         $lockedConversation
                             ->messages()
                             ->create([
-                                'sender_id' =>
-                                    $operator->id,
+                                'sender_id' => $operator->id,
 
-                                'body' =>
-                                    $body,
+                                'body' => $body,
 
-                                'message_type' =>
-                                    $messageType,
+                                'message_type' => $messageType,
 
-                                'sent_at' =>
-                                    $now,
+                                'sent_at' => $now,
                             ]);
 
                     if ($uploadedFile) {
@@ -6117,28 +6001,23 @@ class LogisticsController extends Controller
                         $message
                             ->attachments()
                             ->create([
-                                'file_path' =>
-                                    $storedPath,
+                                'file_path' => $storedPath,
 
-                                'original_name' =>
-                                    $uploadedFile
-                                        ->getClientOriginalName(),
+                                'original_name' => $uploadedFile
+                                    ->getClientOriginalName(),
 
-                                'mime_type' =>
-                                    $uploadedFile
-                                        ->getMimeType()
+                                'mime_type' => $uploadedFile
+                                    ->getMimeType()
                                     ?: 'application/octet-stream',
 
-                                'size_bytes' =>
-                                    $uploadedFile
-                                        ->getSize(),
+                                'size_bytes' => $uploadedFile
+                                    ->getSize(),
                             ]);
                     }
 
                     $lockedConversation
                         ->update([
-                            'last_message_at' =>
-                                $now,
+                            'last_message_at' => $now,
                         ]);
 
                     DB::table(
@@ -6153,8 +6032,7 @@ class LogisticsController extends Controller
                             $operator->id
                         )
                         ->update([
-                            'last_read_at' =>
-                                $now,
+                            'last_read_at' => $now,
                         ]);
 
                     $this->conversations
@@ -6167,7 +6045,7 @@ class LogisticsController extends Controller
                     return $message;
                 }
             );
-        } catch (\Throwable $exception) {
+        } catch (Throwable $exception) {
             if ($storedPath) {
                 Storage::disk('local')
                     ->delete(
@@ -6182,6 +6060,10 @@ class LogisticsController extends Controller
             'attachments'
         );
 
+        $conversation->loadMissing(
+            'participants'
+        );
+
         $attachments =
             $message
                 ->attachments
@@ -6189,61 +6071,74 @@ class LogisticsController extends Controller
                     fn (
                         MessageAttachment $attachment
                     ): array => [
-                        'id' =>
-                            $attachment->id,
+                        'id' => $attachment->id,
 
-                        'name' =>
-                            $attachment->original_name,
+                        'name' => $attachment->original_name,
 
-                        'mime_type' =>
-                            $attachment->mime_type,
+                        'mime_type' => $attachment->mime_type,
 
-                        'size_bytes' =>
-                            $attachment->size_bytes,
+                        'size_bytes' => $attachment->size_bytes,
 
-                        'download_url' =>
-                            route(
-                                'logistics.messages.attachments.download',
-                                $attachment
+                        'is_image' => str_starts_with(
+                            (string) $attachment
+                                ->mime_type,
+                            'image/'
+                        ),
+
+                        'is_video' => str_starts_with(
+                            (string) $attachment
+                                ->mime_type,
+                            'video/'
+                        ),
+
+                        'is_previewable' => $this->conversations
+                            ->isPreviewableMime(
+                                $attachment->mime_type
                             ),
+
+                        'download_url' => route(
+                            'logistics.messages.attachments.download',
+                            $attachment
+                        ),
                     ]
                 )
                 ->values()
                 ->all();
 
         return response()->json([
-            'message' =>
-                'Message sent successfully.',
+            'message' => 'Message sent successfully.',
 
             'data' => [
-                'id' =>
-                    $message->id,
+                'id' => $message->id,
 
-                'mine' =>
-                    true,
+                'mine' => true,
 
-                'text' =>
-                    $message->body,
+                'text' => $message->body,
 
-                'preview' =>
-                    $message->body !== ''
+                'preview' => $message->body !== ''
                         ? $message->body
                         : 'Attachment',
 
-                'time' =>
-                    $message
-                        ->sent_at
-                        ?->copy()
-                        ->timezone(
-                            'Asia/Manila'
-                        )
-                        ->format(
-                            'M j, g:i A'
-                        )
+                'time' => $message
+                    ->sent_at
+                    ?->copy()
+                    ->timezone(
+                        'Asia/Manila'
+                    )
+                    ->format(
+                        'M j, g:i A'
+                    )
                     ?? '',
 
-                'attachments' =>
-                    $attachments,
+                'receipt' => $this->conversations
+                    ->receiptPayload(
+                        $message,
+                        $operator,
+                        $conversation
+                            ->participants
+                    ),
+
+                'attachments' => $attachments,
             ],
         ]);
     }
@@ -6291,16 +6186,8 @@ class LogisticsController extends Controller
             404
         );
 
-        return Storage::disk('local')
-            ->download(
-                $attachment->file_path,
-                $attachment->original_name,
-                [
-                    'Content-Type' =>
-                        $attachment->mime_type
-                        ?: 'application/octet-stream',
-                ]
-            );
+        return $this->conversations
+            ->attachmentDownload($attachment);
     }
 
     public function account(): View
@@ -6317,27 +6204,22 @@ class LogisticsController extends Controller
             $this->shared() + [
                 'facility' => [
                     'id' => $center?->id,
-                    'business_name' =>
-                        $center?->name
+                    'business_name' => $center?->name
                         ?: $operator->business_name
                         ?: $operator->name,
                     'code' => $center?->code ?: '',
-                    'contact' =>
-                        $center?->contact_phone
+                    'contact' => $center?->contact_phone
                         ?: $operator->contact_number
                         ?: '',
                     'address' => $this->facilityAddress(
                         $center,
                         $operator
                     ),
-                    'operating_hours' =>
-                        $center?->operating_hours
+                    'operating_hours' => $center?->operating_hours
                         ?: '',
-                    'daily_capacity' =>
-                        $center?->daily_capacity
+                    'daily_capacity' => $center?->daily_capacity
                         ?: '',
-                    'status' =>
-                        $center?->status
+                    'status' => $center?->status
                         ?: 'active',
                 ],
             ]
@@ -6387,7 +6269,7 @@ class LogisticsController extends Controller
         ]);
 
         return redirect(
-            route('logistics.profile.index') . '#profile'
+            route('logistics.profile.index').'#profile'
         )->with(
             'success',
             'Operator profile updated successfully.'
@@ -6417,10 +6299,9 @@ class LogisticsController extends Controller
             $operator->password
         )) {
             return redirect(
-                route('logistics.profile.index') . '#security'
+                route('logistics.profile.index').'#security'
             )->withErrors([
-                'current_password' =>
-                    'The current password is incorrect.',
+                'current_password' => 'The current password is incorrect.',
             ]);
         }
 
@@ -6431,7 +6312,7 @@ class LogisticsController extends Controller
         ]);
 
         return redirect(
-            route('logistics.profile.index') . '#security'
+            route('logistics.profile.index').'#security'
         )->with(
             'success',
             'Password updated successfully.'
@@ -6482,12 +6363,11 @@ class LogisticsController extends Controller
             'operating_hours' => trim(
                 $validated['operating_hours']
             ),
-            'daily_capacity' =>
-                $validated['daily_capacity'],
+            'daily_capacity' => $validated['daily_capacity'],
         ]);
 
         return redirect(
-            route('logistics.profile.index') . '#facility'
+            route('logistics.profile.index').'#facility'
         )->with(
             'success',
             'Facility settings updated successfully.'

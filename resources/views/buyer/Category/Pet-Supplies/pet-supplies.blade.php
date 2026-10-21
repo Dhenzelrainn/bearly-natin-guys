@@ -15,6 +15,11 @@
 
     $petCategory = collect($taxonomy)->firstWhere('slug', 'pet-supplies');
     $subcategories = $petCategory['subcategories'];
+    $liveCatalog = $liveCatalog ?? [];
+    $usingLiveCatalog = ! empty($liveCatalog);
+    if ($usingLiveCatalog) {
+        $catalog = $liveCatalog;
+    }
 @endphp
 
 <!DOCTYPE html>
@@ -54,7 +59,7 @@
 
 </head>
 
-<body class="bc pet-supplies" data-category="pet-supplies" style="--catalog-image:url('{{ asset('images/pet-supplies-catalog-atlas.png') }}')">
+<body class="bc pet-supplies" data-category="pet-supplies" style="--catalog-image:url('{{ asset('images/pet-supplies-catalog-atlas.png') }}')" data-live-catalog="{{ $usingLiveCatalog ? 'true' : 'false' }}">
     <a href="#bc-main" class="skip">Skip to products</a>
 
     @include('buyer.partials.buyer-header', [
@@ -107,10 +112,10 @@
 
             <h1>Pet Supplies</h1>
             <p class="subtitle">Everyday essentials for happy, healthy pets.</p>
-            <p class="preview">Frontend catalog · Sample products, prices and ratings</p>
+            <p class="preview">{{ $usingLiveCatalog ? 'Live products and prices from Bearly sellers' : 'Frontend catalog · Sample products, prices and ratings' }}</p>
 
             <div class="toolbar">
-                <strong id="bc-count">{{ count($catalog) }} sample products</strong>
+                <strong id="bc-count">{{ count($catalog) }} {{ $usingLiveCatalog ? Str::plural('product', count($catalog)) : Str::plural('sample product', count($catalog)) }}</strong>
 
                 <button class="mobile-filter button outline" id="bc-open-filters">
                     <i class="mi">tune</i> Filters

@@ -1,5 +1,13 @@
 import { isValidPhilippineMobile } from './registration-phone.js';
 import './notification-center.js';
+import {
+    acknowledgeConversation,
+    acknowledgeIncoming,
+    applyReceiptUpdates,
+    attachmentPreviewHtml,
+    receiptMarkup,
+    updateReceiptElements,
+} from './chat-receipts.js';
 
 const RIDER_STATE_KEY = 'bearlyRiderStateV1';
 const readState = () => { try { return JSON.parse(localStorage.getItem(RIDER_STATE_KEY)) || {}; } catch { return {}; } };
@@ -236,15 +244,16 @@ function setupChat() {
 
         messagesTarget.innerHTML = thread.length
             ? thread.map((message) => `
-                <div class="message-bubble ${message.mine ? 'is-mine' : ''}">
+                <div class="message-bubble ${message.mine ? 'is-mine' : ''}" data-message-id="${Number(message.id || 0)}">
                     ${message.text ? `<div class="message-text">${escapeHtml(message.text)}</div>` : ''}
-                    ${(Array.isArray(message.attachments) ? message.attachments : []).map((attachment) => `
-                        <a class="message-attachment" href="${escapeHtml(attachment.download_url)}" download>
-                            <span aria-hidden="true">📎</span>
-                            <span>${escapeHtml(attachment.name)}</span>
-                        </a>
-                    `).join('')}
-                    <small>${escapeHtml(message.time)}</small>
+                    ${(Array.isArray(message.attachments) ? message.attachments : []).map((attachment) => attachmentPreviewHtml(attachment, {
+                        linkClass: 'message-attachment',
+                        mediaClass: 'message-attachment-preview',
+                    })).join('')}
+                    <small class="message-meta" data-chat-meta>
+                        ${escapeHtml(message.time)}
+                        ${message.mine && message.receipt ? receiptMarkup(message.receipt) : ''}
+                    </small>
                 </div>
             `).join('')
             : '<div class="table-empty">No messages yet.</div>';
@@ -264,7 +273,7 @@ function setupChat() {
     const markActiveRead = () => {
         const conversation = activeConversation();
 
-        if (!conversation?.read_url || !(Number(conversation.unread || 0) > 0)) {
+        if (document.hidden || !conversation?.read_url) {
             return;
         }
 
@@ -284,8 +293,16 @@ function setupChat() {
         if (nameTarget) nameTarget.textContent = conversation?.name || 'Conversation';
         if (roleTarget) roleTarget.textContent = conversation?.role || '';
 
+        const presence = document.querySelector('[data-chat-presence]');
+        if (presence) {
+            presence.dataset.presenceConversation = String(conversation?.id || '');
+            presence.dataset.presenceUsers = (Array.isArray(conversation?.presence_user_ids) ? conversation.presence_user_ids : []).join(',');
+        }
+
         updateButtons();
         renderMessages();
+        window.BearlyPresence?.refresh?.();
+        acknowledgeConversation(conversation, csrfToken).catch(() => {});
         markActiveRead();
     };
 
@@ -384,12 +401,24 @@ function setupChat() {
             if (!response.ok) return;
 
             const payload = await response.json();
+
+            const receiptUpdates = Array.isArray(payload?.data?.receipt_updates)
+                ? payload.data.receipt_updates
+                : [];
+
+            if (receiptUpdates.length) {
+                applyReceiptUpdates(conversation.messages || [], receiptUpdates);
+                updateReceiptElements(receiptUpdates, messagesTarget);
+            }
+
             const incoming = unseenMessages(conversation.messages, payload?.data?.messages || []);
 
             if (!incoming.length) return;
 
             conversation.messages = [...(conversation.messages || []), ...incoming];
             renderMessages();
+
+            acknowledgeIncoming(conversation, incoming, csrfToken).catch(() => {});
 
             const unreadIncoming = incoming.filter((message) => !message.mine).length;
 
@@ -404,7 +433,10 @@ function setupChat() {
 
     window.setInterval(pollActiveThread, 15000);
     document.addEventListener('visibilitychange', () => {
-        if (!document.hidden) pollActiveThread();
+        if (!document.hidden) {
+            pollActiveThread();
+            markActiveRead();
+        }
     });
 
     if (active) {
@@ -417,6 +449,20 @@ function setupChat() {
         const conversationId = String(event.detail?.conversation_id || '');
         if (conversationId !== active) return;
         pollActiveThread().catch(() => {});
+    });
+
+    window.addEventListener('bearly:message-receipt', (event) => {
+        const receipts = Array.isArray(event.detail?.receipts) ? event.detail.receipts : [];
+
+        if (!receipts.length) return;
+
+        const conversation = activeConversation();
+
+        if (conversation?.messages) {
+            applyReceiptUpdates(conversation.messages, receipts);
+        }
+
+        updateReceiptElements(receipts, messagesTarget);
     });
 }
 
@@ -469,6 +515,45 @@ function setupDeliveryConfirmation() {
             submitButton.setAttribute('aria-busy', 'true');
             submitLabel.textContent = 'Saving delivery…';
         });
+    });
+}
+
+function setupSingleSubmitForms() {
+    document.querySelectorAll('form[data-single-submit]').forEach((form) => {
+        form.addEventListener('submit', (event) => {
+            if (form.dataset.submitting === 'true') {
+                event.preventDefault();
+                return;
+            }
+
+            form.dataset.submitting = 'true';
+
+            const submitButton = form.querySelector(
+                'button[type="submit"]'
+            );
+
+            if (submitButton) {
+                submitButton.disabled = true;
+                submitButton.setAttribute('aria-busy', 'true');
+            }
+        });
+    });
+
+    window.addEventListener('pageshow', () => {
+        document
+            .querySelectorAll('form[data-single-submit]')
+            .forEach((form) => {
+                form.dataset.submitting = 'false';
+
+                const submitButton = form.querySelector(
+                    'button[type="submit"]'
+                );
+
+                if (submitButton) {
+                    submitButton.disabled = false;
+                    submitButton.removeAttribute('aria-busy');
+                }
+            });
     });
 }
 
@@ -2079,6 +2164,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupHistoryDetails();
     setupChat();
     setupForms();
+    setupSingleSubmitForms();
     setupDeliveryConfirmation();
     setupRegistration();
     refreshIcons();

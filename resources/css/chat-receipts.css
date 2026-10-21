@@ -1,0 +1,142 @@
+/*
+ * Shared message receipt + attachment preview styles. Loaded by the buyer
+ * chat stylesheet and the shared messages-standard stylesheet so every role
+ * renders the same sent/delivered/seen language and media previews.
+ */
+
+.chat-receipt {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 9px;
+    font-weight: 600;
+    line-height: 1;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+.chat-receipt-icon {
+    width: 13px;
+    height: 13px;
+    flex: none;
+}
+
+.chat-receipt.is-sent {
+    color: #9a8b82;
+}
+
+.chat-receipt.is-delivered {
+    color: #8d7f76;
+}
+
+.chat-receipt.is-seen {
+    color: #2f8a63;
+}
+
+.bearly-message.me .chat-receipt.is-sent,
+.bearly-message.me .chat-receipt.is-delivered,
+.message-bubble.is-mine .chat-receipt.is-sent,
+.message-bubble.is-mine .chat-receipt.is-delivered,
+.chat-bubble.is-mine .chat-receipt.is-sent,
+.chat-bubble.is-mine .chat-receipt.is-delivered,
+.bubble.is-mine .chat-receipt.is-sent,
+.bubble.is-mine .chat-receipt.is-delivered {
+    color: rgba(255, 255, 255, .72);
+}
+
+.bearly-message.me .chat-receipt.is-seen,
+.message-bubble.is-mine .chat-receipt.is-seen,
+.chat-bubble.is-mine .chat-receipt.is-seen,
+.bubble.is-mine .chat-receipt.is-seen {
+    color: #86e2ae;
+}
+
+/*
+ * Admin wraps every bubble span in a typography rule. Restore the inline
+ * receipt layout and give the dark own-bubble its sent/seen colours.
+ */
+.message-bubble .chat-receipt {
+    display: inline-flex;
+    margin-top: 0;
+    font-size: 9px;
+    text-align: left;
+}
+
+.message-bubble .chat-receipt-label {
+    display: inline;
+    margin-top: 0;
+    font-size: 9px;
+    color: inherit;
+}
+
+.message-row.message-me .message-bubble .chat-receipt .chat-receipt-label {
+    color: inherit;
+}
+
+.message-row.message-me .message-bubble .chat-receipt.is-sent,
+.message-row.message-me .message-bubble .chat-receipt.is-delivered {
+    color: rgba(255, 255, 255, .72);
+}
+
+.message-row.message-me .message-bubble .chat-receipt.is-seen {
+    color: #86e2ae;
+}
+
+.message-bubble small.message-meta {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+}
+
+.message-attachment-preview,
+.bearly-chat-attachment-preview,
+.chat-attachment-preview {
+    display: block;
+    width: auto;
+    max-width: min(240px, 62vw);
+    max-height: 260px;
+    border-radius: 10px;
+    object-fit: cover;
+    background: #efe6df;
+}
+
+a.is-image,
+.chat-bubble-row .chat-attachment.is-image,
+.message-attachment.is-image,
+.bearly-chat-attachment.is-image,
+.chat-attachment.is-image {
+    display: block;
+    padding: 0;
+    border: 0;
+    background: none;
+    line-height: 0;
+}
+
+.chat-bubble-row .chat-attachment.is-video,
+.message-attachment.is-video,
+.bearly-chat-attachment.is-video,
+.chat-attachment.is-video {
+    display: block;
+    padding: 4px;
+}
+
+.chat-attachment-open {
+    display: block;
+    margin-top: 4px;
+    font-size: 10px;
+    color: inherit;
+    text-decoration: underline;
+    word-break: break-word;
+}
+
+.bearly-message-meta,
+.message-meta,
+.message-bubble-meta,
+.chat-bubble-meta {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-top: 4px;
+}

@@ -112,8 +112,8 @@ class AdminReturnRefundController extends Controller
             'note' => ['required', 'string', 'min:5', 'max:1000'],
             'seller_payout_id' => [Rule::requiredIf(fn (): bool => $request->input('method') === 'seller_payout_offset'), 'nullable', 'integer', 'exists:seller_payouts,id'],
         ], [
-            'recovery_confirmed.required' => 'Confirm that the Seller collection or payout offset has already occurred.',
-            'recovery_confirmed.accepted' => 'Confirm that the Seller collection or payout offset has already occurred.',
+            'recovery_confirmed.required' => 'Confirm that this legacy collection or payout offset has already occurred.',
+            'recovery_confirmed.accepted' => 'Confirm that this legacy collection or payout offset has already occurred.',
             'seller_payout_id.required' => 'Select the paid Seller payout where the offset was applied.',
         ]);
 
@@ -129,7 +129,7 @@ class AdminReturnRefundController extends Controller
             $request,
         );
 
-        return back()->with('success', 'Verified Seller recovery recorded. ₱'.number_format((int) $recovery->recovered_amount_minor / 100, 2).' recovered; the remaining balance is ₱'.number_format(((int) $recovery->amount_minor - (int) $recovery->recovered_amount_minor) / 100, 2).'.');
+        return back()->with('success', 'Verified Seller recovery recorded. ₱'.number_format((int) $recovery->recovered_amount_minor / 100, 2).' recovered; the remaining balance is ₱'.number_format($recovery->outstandingMinor() / 100, 2).'.');
     }
 
     public function downloadPayoutReceipt(Request $request, Refund $refund, AuditService $audit): BinaryFileResponse

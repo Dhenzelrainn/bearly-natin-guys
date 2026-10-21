@@ -460,10 +460,13 @@ class AdminMessageController extends Controller
             (int) $request->query('after', 0)
         );
 
+        $conversation->loadMissing('participants');
+
         $messages = $conversation
             ->messages()
             ->with([
                 'attachments',
+                'receipts',
             ])
             ->when(
                 $afterId > 0,
@@ -492,6 +495,12 @@ class AdminMessageController extends Controller
 
                     'message_type' => $message->message_type,
 
+                    'receipt' => $this->conversations->receiptPayload(
+                        $message,
+                        $admin,
+                        $conversation->participants
+                    ),
+
                     'attachments' => $message->attachments
                         ->map(
                             fn (MessageAttachment $attachment) => [
@@ -502,6 +511,19 @@ class AdminMessageController extends Controller
                                 'mime_type' => $attachment->mime_type,
 
                                 'size_bytes' => $attachment->size_bytes,
+
+                                'is_image' => str_starts_with(
+                                    (string) $attachment->mime_type,
+                                    'image/'
+                                ),
+
+                                'is_video' => str_starts_with(
+                                    (string) $attachment->mime_type,
+                                    'video/'
+                                ),
+
+                                'is_previewable' => $this->conversations
+                                    ->isPreviewableMime($attachment->mime_type),
 
                                 'download_url' => route(
                                     'admin.messages.attachments.download',
@@ -524,6 +546,13 @@ class AdminMessageController extends Controller
                 ],
 
                 'messages' => $messages,
+
+                'receipt_updates' => $afterId > 0
+                    ? $this->conversations->receiptUpdatesForViewer(
+                        $conversation,
+                        $admin
+                    )
+                    : [],
             ],
 
             'message' => 'Thread loaded.',
@@ -548,7 +577,7 @@ class AdminMessageController extends Controller
                 'nullable',
                 'file',
                 'max:10240',
-                'mimes:jpg,jpeg,png,webp,pdf,doc,docx,xls,xlsx,txt,csv,zip',
+                'mimes:jpg,jpeg,png,webp,mp4,mov,webm,pdf,doc,docx,xls,xlsx,txt,csv,zip',
             ],
         ]);
 
@@ -677,6 +706,7 @@ class AdminMessageController extends Controller
         }
 
         $message->load('attachments');
+        $conversation->loadMissing('participants');
 
         return response()->json([
             'message' => 'Message sent successfully.',
@@ -694,6 +724,12 @@ class AdminMessageController extends Controller
                 'sent_at' => $message->sent_at
                     ?->toIso8601String(),
 
+                'receipt' => $this->conversations->receiptPayload(
+                    $message,
+                    $admin,
+                    $conversation->participants
+                ),
+
                 'attachments' => $message
                     ->attachments
                     ->map(
@@ -705,6 +741,19 @@ class AdminMessageController extends Controller
                             'mime_type' => $attachment->mime_type,
 
                             'size_bytes' => $attachment->size_bytes,
+
+                            'is_image' => str_starts_with(
+                                (string) $attachment->mime_type,
+                                'image/'
+                            ),
+
+                            'is_video' => str_starts_with(
+                                (string) $attachment->mime_type,
+                                'video/'
+                            ),
+
+                            'is_previewable' => $this->conversations
+                                ->isPreviewableMime($attachment->mime_type),
 
                             'download_url' => route(
                                 'admin.messages.attachments.download',
@@ -757,15 +806,7 @@ class AdminMessageController extends Controller
             404
         );
 
-        return Storage::disk('local')
-            ->download(
-                $attachment->file_path,
-                $attachment->original_name,
-                [
-                    'Content-Type' => $attachment->mime_type
-                        ?: 'application/octet-stream',
-                ]
-            );
+        return $this->conversations->attachmentDownload($attachment);
     }
 
     public function markRead(

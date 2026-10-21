@@ -55,6 +55,18 @@ class ShipmentHandoffService
             ->first();
     }
 
+    public function isCrossCityFor(
+        Shipment $shipment,
+        LogisticsProfile $profile
+    ): bool {
+        $destinationCityCode = $this->destinationCityCode($shipment);
+        $profileCityCode = trim((string) $profile->psgc_city_code);
+
+        return filled($destinationCityCode)
+            && $profileCityCode !== ''
+            && trim((string) $destinationCityCode) !== $profileCityCode;
+    }
+
     public function send(Shipment $shipment, User $actor): ShipmentTransfer
     {
         return DB::transaction(function () use ($shipment, $actor): ShipmentTransfer {

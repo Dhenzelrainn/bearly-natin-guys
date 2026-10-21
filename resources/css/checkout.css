@@ -123,3 +123,38 @@ body.checkout-page .checkout-header .account-avatar .material-symbols-outlined{f
     .checkout-page .confirmation-product-side{grid-column:2;text-align:left}
     .checkout-page .confirmation-meta{grid-template-columns:1fr;padding:16px}
 }
+
+/* Voucher selection */
+.checkout-voucher-box{padding:18px 28px;border-bottom:1px solid #eee8e4;background:#fffdfa}
+.checkout-voucher-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.checkout-voucher-heading h3{margin:0;color:#5a2c17;font-size:14px;font-weight:600}
+.checkout-voucher-heading p{margin:3px 0 0;color:#8a7c74;font-size:10px}
+.checkout-voucher-clear{border:0;background:transparent;color:#9a5727;font:inherit;font-size:10px;font-weight:700;cursor:pointer;padding:2px 0;text-decoration:underline}
+.checkout-voucher-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:13px}
+.checkout-voucher-fields label{display:flex;flex-direction:column;gap:5px;color:#75685f;font-size:10px;font-weight:600}
+.checkout-voucher-fields select{width:100%;height:38px;padding:0 10px;border:1px solid #ddd3cd;border-radius:5px;background:#fff;color:#2b1a12;font:inherit;font-size:11px;outline:none}
+.checkout-voucher-fields select:focus{border-color:#b87937;box-shadow:0 0 0 3px #b8793720}
+.checkout-voucher-code{display:flex;gap:8px;margin-top:10px}
+.checkout-voucher-code input{flex:1;height:36px;padding:0 11px;border:1px solid #ddd3cd;border-radius:5px;background:#fff;color:#2b1a12;font:inherit;font-size:11px;text-transform:uppercase;outline:none}
+.checkout-voucher-code input:focus{border-color:#b87937;box-shadow:0 0 0 3px #b8793720}
+.checkout-voucher-code button{height:36px;padding:0 13px;border:1px solid #5a2c17;border-radius:5px;background:#5a2c17;color:#fff;font:inherit;font-size:10px;font-weight:700;cursor:pointer}
+.checkout-voucher-code button:disabled{opacity:.55;cursor:wait}
+.checkout-voucher-status{margin:9px 0 0;font-size:10px;line-height:1.45}
+.checkout-voucher-status[data-tone="error"]{color:#a33a2c}
+.checkout-voucher-status[data-tone="success"]{color:#397a4c}
+.checkout-applied-vouchers{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.checkout-applied-voucher{display:inline-flex;align-items:center;gap:5px;padding:5px 8px;border:1px solid #e6d4c3;border-radius:999px;background:#fff;color:#6b3b1e;font-size:10px}
+.checkout-applied-voucher .material-symbols-outlined{font-size:14px;color:#b26721}
+.checkout-applied-voucher strong{color:#397a4c;font-size:10px}
+.checkout-voucher-empty{color:#9b8c83;font-size:10px}
+.checkout-voucher-box .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.summary>div[hidden]{display:none}
+.checkout-page .summary #summary-seller-discount,.checkout-page .summary #summary-platform-discount{color:#397a4c}
+.checkout-page .summary #summary-shipping-discount{color:#397a4c}
+.checkout-page .summary .confirmation-campaign-savings strong{color:#397a4c}
+.checkout-page .checkout-campaign-label{display:block;margin-top:3px;color:#397a4c;font-size:9px;font-weight:600;line-height:1.35}
+@media(max-width:720px){
+  .checkout-voucher-box{padding:15px 14px}
+  .checkout-voucher-fields{grid-template-columns:1fr}
+  .checkout-voucher-code input{min-width:0}
+}

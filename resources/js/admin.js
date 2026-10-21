@@ -1,4 +1,12 @@
 import './notification-center.js';
+import {
+    acknowledgeConversation,
+    acknowledgeIncoming,
+    applyReceiptUpdates,
+    attachmentPreviewHtml,
+    receiptMarkup,
+    updateReceiptElements,
+} from './chat-receipts.js';
 
     const ready = (callback) => {
         if (document.readyState === 'loading') {
@@ -6115,7 +6123,15 @@ import './notification-center.js';
                 <div class="message-attachments">
                     ${attachments
                         .map(
-                            (attachment) => `
+                            (attachment) => {
+                                if (attachment.is_image || attachment.is_video) {
+                                    return attachmentPreviewHtml(attachment, {
+                                        linkClass: 'message-attachment',
+                                        mediaClass: 'message-attachment-preview',
+                                    });
+                                }
+
+                                return `
                                 <a
                                     class="message-attachment"
                                     href="${escapeChatHtml(
@@ -6154,7 +6170,8 @@ import './notification-center.js';
                                         data-lucide="download"
                                     ></i>
                                 </a>
-                            `
+                            `;
+                            }
                         )
                         .join('')}
                 </div>
@@ -6246,6 +6263,9 @@ import './notification-center.js';
                                             : 'them'
                                     }
                                 "
+                                data-message-id="${Number(
+                                    message.id || 0
+                                )}"
                             >
 
                                 <div
@@ -6268,10 +6288,18 @@ import './notification-center.js';
                                         message.attachments || []
                                     )}
 
-                                    <span>
+                                    <span class="message-meta" data-chat-meta>
                                         ${escapeChatHtml(
                                             message.time
                                         )}
+                                        ${
+                                            message.from === 'me' &&
+                                            message.receipt
+                                                ? receiptMarkup(
+                                                    message.receipt
+                                                )
+                                                : ''
+                                        }
                                     </span>
 
                                 </div>
@@ -6345,11 +6373,23 @@ import './notification-center.js';
             if (avatar) {
                 avatar.textContent =
                     conversation.initials || '';
+                avatar.dataset.presenceConversation =
+                    String(conversation.database_id || '');
+                avatar.dataset.presenceUsers =
+                    (
+                        Array.isArray(conversation.presence_user_ids)
+                            ? conversation.presence_user_ids
+                            : []
+                    ).join(',');
             }
+
+            window.BearlyPresence?.refresh?.();
 
             clearAttachmentPreview();
 
             renderChatThread(id);
+
+            acknowledgeConversation(conversation, csrfToken).catch(() => {});
 
 
             /*
@@ -6358,7 +6398,7 @@ import './notification-center.js';
             |--------------------------------------------------------------------------
             */
 
-            if (!conversation.read_url) {
+            if (document.hidden || !conversation.read_url) {
                 return;
             }
 
@@ -6768,6 +6808,24 @@ import './notification-center.js';
 
             const result = await response.json();
 
+            const receiptUpdates = Array.isArray(
+                result?.data?.receipt_updates
+            )
+                ? result.data.receipt_updates
+                : [];
+
+            if (receiptUpdates.length) {
+                applyReceiptUpdates(
+                    conversation.messages || [],
+                    receiptUpdates
+                );
+
+                updateReceiptElements(
+                    receiptUpdates,
+                    messageThread || document
+                );
+            }
+
             const incoming = unseenChatMessages(
                 messages,
                 result?.data?.messages || []
@@ -6789,6 +6847,12 @@ import './notification-center.js';
             ];
 
             renderChatThread(String(conversation.database_id));
+
+            acknowledgeIncoming(
+                conversation,
+                incoming,
+                csrfToken
+            ).catch(() => {});
 
             if (!nearBottom && messageThread) {
                 messageThread.scrollTop = previousScrollTop;
@@ -6859,6 +6923,18 @@ import './notification-center.js';
 
                 pollAdminThread().catch(() => {});
                 refreshAdminInbox().catch(() => {});
+
+                const active = getActiveConversation();
+
+                if (active?.read_url) {
+                    fetch(active.read_url, {
+                        method: 'POST',
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken,
+                        },
+                    }).catch(() => {});
+                }
             };
 
             document.addEventListener(
@@ -6869,6 +6945,29 @@ import './notification-center.js';
 
         startAdminPolling();
 
+        const initialAdminConversation = getActiveConversation();
+        if (initialAdminConversation) {
+            acknowledgeConversation(initialAdminConversation, csrfToken).catch(() => {});
+
+            if (!document.hidden) {
+                const initialItem = getActiveConversationItem();
+                if (initialAdminConversation.read_url) {
+                    fetch(initialAdminConversation.read_url, {
+                        method: 'POST',
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken,
+                        },
+                    }).then((response) => {
+                        if (response.ok) {
+                            initialAdminConversation.unread = 0;
+                            setConversationUnread(initialItem, 0);
+                        }
+                    }).catch(() => {});
+                }
+            }
+        }
+
         window.addEventListener('bearly:message-created', (event) => {
             const conversationId = String(event.detail?.conversation_id || '');
             const activeId = getConversationId(getActiveConversationItem());
@@ -6878,6 +6977,23 @@ import './notification-center.js';
             } else {
                 refreshAdminInbox().catch(() => {});
             }
+        });
+
+        window.addEventListener('bearly:message-receipt', (event) => {
+            const receipts = Array.isArray(event.detail?.receipts)
+                ? event.detail.receipts
+                : [];
+
+            if (!receipts.length) {
+                return;
+            }
+
+            const active = getActiveConversation();
+            if (active?.messages) {
+                applyReceiptUpdates(active.messages, receipts);
+            }
+
+            updateReceiptElements(receipts, messageThread || document);
         });
 
 

@@ -1,4 +1,13 @@
 /* Bearly buyer chat: persisted conversations for the /chat page and the compact drawer. */
+import {
+    acknowledgeConversation,
+    acknowledgeIncoming,
+    applyReceiptUpdates,
+    attachmentPreviewHtml,
+    receiptMarkup,
+    updateReceiptElements,
+} from './chat-receipts.js';
+
 (() => {
     const rootStates = new WeakMap();
 
@@ -24,6 +33,22 @@
         .toUpperCase() || 'B';
 
     const csrfToken = () => document.querySelector('meta[name="csrf-token"]')?.content ?? '';
+
+    /*
+     * Seen receipts only advance while the conversation is both on screen and
+     * in an open surface. A page-level root is visible whenever the tab is;
+     * the compact drawer must also be open.
+     */
+    const rootVisible = (root) => {
+        if (document.hidden) return false;
+
+        if (root.dataset.chatMode === 'compact') {
+            const drawer = root.closest('[data-bearly-chat-drawer]');
+            return Boolean(drawer && drawer.classList.contains('is-open'));
+        }
+
+        return true;
+    };
 
     const requestHeaders = (json = false) => ({
         Accept: 'application/json',
@@ -216,6 +241,12 @@
             const previousMeta = JSON.stringify(state.thread.conversation);
             state.thread.conversation = payload.conversation;
 
+            const receiptUpdates = Array.isArray(payload.receipt_updates) ? payload.receipt_updates : [];
+            if (receiptUpdates.length) {
+                applyReceiptUpdates(state.thread.messages, receiptUpdates);
+                updateReceiptElements(receiptUpdates, root);
+            }
+
             const incoming = unseenMessages(state.thread.messages, payload.messages);
             if (incoming.length) {
                 const container = root.querySelector('[data-chat-messages]');
@@ -236,7 +267,9 @@
                 renderMessages(root);
                 if (container && nearBottom) container.scrollTop = container.scrollHeight;
 
-                if (entry && incoming.some((message) => message.from === 'them')) {
+                acknowledgeIncoming(payload.conversation, incoming, csrfToken()).catch(() => {});
+
+                if (entry && incoming.some((message) => message.from === 'them') && rootVisible(root)) {
                     markRead(root, entry, true);
                 }
             } else if (previousMeta !== JSON.stringify(payload.conversation)) {
@@ -263,6 +296,9 @@
             if (document.hidden || state.sending) return;
             pollThread(root);
             refreshInbox(root);
+
+            const conversation = conversationOf(root, state.activeId);
+            if (conversation && rootVisible(root)) markRead(root, conversation, true);
         };
 
         document.addEventListener('visibilitychange', state.visibilityHandler);
@@ -287,7 +323,6 @@
         state.activeId = Number(id);
         state.sendError = null;
         state.lastMessageId = 0;
-        markRead(root, conversation);
 
         state.threadLoading = true;
         state.threadError = null;
@@ -304,6 +339,16 @@
 
             state.thread = result.data || null;
             state.lastMessageId = lastMessageIdOf(state.thread);
+
+            if (state.thread) {
+                acknowledgeIncoming(
+                    state.thread.conversation || conversation,
+                    state.thread.messages,
+                    csrfToken(),
+                ).catch(() => {});
+
+                if (rootVisible(root)) markRead(root, conversation, true);
+            }
         } catch (error) {
             state.threadError = error.message || 'Unable to load this conversation.';
         } finally {
@@ -334,13 +379,16 @@
             const avatar = conversation.image_url
                 ? `<img src="${escapeHtml(safeHref(conversation.image_url))}" alt="">`
                 : escapeHtml(conversation.avatar || initials(conversation.title));
+            const presenceUsers = Array.isArray(conversation.presence_user_ids)
+                ? conversation.presence_user_ids.join(',')
+                : '';
             const disputeBadge = dispute
                 ? `<span class="bearly-chat-item-dispute"><span class="material-symbols-outlined" aria-hidden="true">gavel</span>Complaint &amp; Dispute</span>`
                 : '';
 
             return `
                 <button type="button" class="bearly-chat-item ${active ? 'is-active' : ''}" data-chat-id="${escapeHtml(conversation.id)}" aria-pressed="${active}">
-                    <span class="bearly-chat-avatar" aria-hidden="true">${avatar}</span>
+                    <span class="bearly-chat-avatar chat-presence-target" aria-hidden="true" data-presence-conversation="${escapeHtml(conversation.id)}" data-presence-users="${escapeHtml(presenceUsers)}">${avatar}</span>
                     <span class="bearly-chat-item-copy">
                         <span class="bearly-chat-item-meta">
                             <strong>${escapeHtml(conversation.title)}</strong>
@@ -400,10 +448,14 @@
         const avatar = image
             ? `<img src="${escapeHtml(safeHref(image))}" alt="">`
             : escapeHtml(entry?.avatar || conversation.initials || initials(conversation.title));
+        const presenceUsers = Array.isArray(conversation.presence_user_ids)
+            ? conversation.presence_user_ids.join(',')
+            : (Array.isArray(entry?.presence_user_ids) ? entry.presence_user_ids.join(',') : '');
+        const presenceTarget = `class="bearly-chat-avatar chat-presence-target" data-presence-conversation="${escapeHtml(conversation.id)}" data-presence-users="${escapeHtml(presenceUsers)}"`;
 
         if (!isPage) {
             head.innerHTML = `
-                <span class="bearly-chat-avatar">${avatar}</span>
+                <span ${presenceTarget} aria-hidden="true">${avatar}</span>
                 <div>
                     <strong>${escapeHtml(conversation.title)}</strong>
                     <small>${escapeHtml(dispute ? `Complaint & Dispute · ${dispute.number}` : conversation.context)}</small>
@@ -421,7 +473,7 @@
 
         head.innerHTML = `
             <div class="bearly-chat-thread-person">
-                <span class="bearly-chat-avatar" aria-hidden="true">${avatar}</span>
+                <span ${presenceTarget} aria-hidden="true">${avatar}</span>
                 <div>
                     <strong>${escapeHtml(conversation.title)}</strong>
                     <small>${escapeHtml(subtitle)}</small>
@@ -448,6 +500,10 @@
         const avatar = image
             ? `<img src="${escapeHtml(safeHref(image))}" alt="">`
             : escapeHtml(entry?.avatar || conversation.initials || initials(conversation.title));
+        const presenceUsers = Array.isArray(conversation.presence_user_ids)
+            ? conversation.presence_user_ids.join(',')
+            : (Array.isArray(entry?.presence_user_ids) ? entry.presence_user_ids.join(',') : '');
+        const presenceTarget = `class="bearly-chat-avatar chat-presence-target" data-presence-conversation="${escapeHtml(conversation.id)}" data-presence-users="${escapeHtml(presenceUsers)}"`;
         const since = conversation.counterpart?.since_label;
         const caption = conversation.counterpart?.since_caption || 'Seller on Bearly since';
         const dispute = conversation.dispute;
@@ -502,7 +558,7 @@
         details.innerHTML = `
             <h3>Conversation details</h3>
             <div class="bearly-chat-details-person">
-                <span class="bearly-chat-avatar" aria-hidden="true">${avatar}</span>
+                <span ${presenceTarget} aria-hidden="true">${avatar}</span>
                 <div>
                     <strong>${escapeHtml(conversation.title)}</strong>
                     <small>${escapeHtml(personMeta)}</small>
@@ -554,18 +610,22 @@
             const dayDivider = message.day_label && (!previous || previous.day_label !== message.day_label)
                 ? `<div class="bearly-chat-day-divider"><span>${escapeHtml(message.day_label)}</span></div>`
                 : '';
-            const attachments = (message.attachments || []).map((attachment) => `
-                <a class="bearly-chat-attachment" href="${escapeHtml(safeHref(attachment.download_url))}">
-                    <span class="material-symbols-outlined" aria-hidden="true">${attachment.is_image ? 'image' : 'attach_file'}</span>
-                    <span>${escapeHtml(attachment.name)}</span>
-                </a>`).join('');
+            const attachments = (message.attachments || []).map((attachment) => attachmentPreviewHtml(attachment, {
+                linkClass: 'bearly-chat-attachment',
+                mediaClass: 'bearly-chat-attachment-preview',
+            })).join('');
+            const receipt = message.from === 'me' && message.receipt ? receiptMarkup(message.receipt) : '';
+            const messageId = Number(message.id || 0);
 
             if (!isPage) {
                 return dayDivider + `
-                    <div class="bearly-message ${message.from}">
+                    <div class="bearly-message ${message.from}" data-message-id="${messageId}">
                         ${message.text ? escapeHtml(message.text) : ''}
                         ${attachments}
-                        <span class="bearly-message-time">${escapeHtml(message.time_label)}</span>
+                        <span class="bearly-message-meta" data-chat-meta>
+                            <span class="bearly-message-time">${escapeHtml(message.time_label)}</span>
+                            ${receipt}
+                        </span>
                     </div>
                 `;
             }
@@ -575,12 +635,15 @@
                 : '';
 
             return dayDivider + `
-                <div class="bearly-message-row ${message.from}">
+                <div class="bearly-message-row ${message.from}" data-message-id="${messageId}">
                     ${bubbleAvatar}
                     <div class="bearly-message-stack">
                         ${message.text ? `<div class="bearly-message ${message.from}">${escapeHtml(message.text)}</div>` : ''}
                         ${attachments}
-                        <span class="bearly-message-time">${escapeHtml(message.time_label)}</span>
+                        <span class="bearly-message-meta" data-chat-meta>
+                            <span class="bearly-message-time">${escapeHtml(message.time_label)}</span>
+                            ${receipt}
+                        </span>
                     </div>
                 </div>
             `;
@@ -617,6 +680,7 @@
         renderMessages(root);
         renderComposerState(root);
         renderDetails(root);
+        window.BearlyPresence?.refresh?.();
     }
 
     function fileChip(root) {
@@ -843,7 +907,14 @@
         bootstrapRoot(root);
 
         if (root.dataset.chatMode === 'page') {
-            if (state.activeId) markRead(root, conversationOf(root, state.activeId));
+            const conversation = conversationOf(root, state.activeId);
+
+            if (conversation) {
+                acknowledgeConversation(conversation, csrfToken()).catch(() => {});
+
+                if (rootVisible(root)) markRead(root, conversation, true);
+            }
+
             startPolling(root);
         }
 
@@ -862,6 +933,17 @@
             } else {
                 refreshInbox(root).catch(() => {});
             }
+        });
+    });
+
+    window.addEventListener('bearly:message-receipt', (event) => {
+        const receipts = Array.isArray(event.detail?.receipts) ? event.detail.receipts : [];
+        if (!receipts.length) return;
+
+        document.querySelectorAll('[data-bearly-chat-root]').forEach((root) => {
+            const state = rootState(root);
+            if (state.thread) applyReceiptUpdates(state.thread.messages, receipts);
+            updateReceiptElements(receipts, root);
         });
     });
 

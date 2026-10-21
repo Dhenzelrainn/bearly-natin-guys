@@ -19,6 +19,10 @@
 
             <div class="price-row">
                 <strong></strong>
+                <span class="buyer-price-meta" data-price-meta hidden>
+                    <s class="buyer-price-regular" data-price-regular><span class="sr-only">Regular price </span><span data-price-regular-amount></span></s>
+                    <span class="buyer-price-badge" data-price-badge></span>
+                </span>
             </div>
         </div>
     </article>

@@ -68,7 +68,7 @@ Illuminate\Support\Facades\Storage::disk('local')->delete($user->valid_id_path);
 check(!Illuminate\Support\Facades\Cache::has($service->key($reg)),'Successful registration consumes proof');
 $data['email']='second@example.com';$reg=Illuminate\Http\Request::create('/register','POST',$data,[],$files);$reg->setLaravelSession($session);
 rejected(fn()=>$controller->register($reg),'Registration cannot bypass email proof');
-$data['role']='seller';$data['business_name']='Test Store';$data['business_category']='Books and Media';$files['business_permit']=Illuminate\Http\UploadedFile::fake()->create('permit.pdf', 10, 'application/pdf');
+$data['role']='seller';$data['contact_number']='09181234567';$data['business_name']='Test Store';$data['business_category']='Books and Media';$files['business_permit']=Illuminate\Http\UploadedFile::fake()->create('permit.pdf', 10, 'application/pdf');
 $reg=Illuminate\Http\Request::create('/register','POST',$data,[],$files);$reg->setLaravelSession($session);
 $service->send($reg,$data['email']);$service->check($reg,$data['email'],$mail->code);
 $controller->register($reg);$seller=App\Models\User::where('role','seller')->first();

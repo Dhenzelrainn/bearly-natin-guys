@@ -1,4 +1,10 @@
 import './notification-center.js';
+import {
+    acknowledgeIncoming,
+    attachmentPreviewHtml,
+    receiptMarkup,
+    updateReceiptElements,
+} from './chat-receipts.js';
 
 const bootSeller = () => {
     window.lucide?.createIcons();
@@ -1273,7 +1279,7 @@ const bootSeller = () => {
     document.querySelectorAll('[data-pickup-view]').forEach((button) => button.addEventListener('click', () => {
         const item = JSON.parse(button.dataset.pickup); const modal = document.querySelector('[data-modal="pickup-details"]'); if (!modal) return;
         const set = (selector, value) => { const node = modal.querySelector(selector); if (node) node.textContent = value; };
-        set('[data-pickup-id]', item.id); set('[data-pickup-status]', item.status); set('[data-pickup-orders]', `${item.orders} (${item.order_numbers || 'Order details unavailable'}) · ${item.packages} ${item.packages === 1 ? 'parcel' : 'parcels'}`); set('[data-pickup-provider]', item.provider); set('[data-pickup-schedule]', item.schedule); set('[data-pickup-rider]', item.rider); set('[data-pickup-address]', item.address); set('[data-pickup-instructions]', item.instructions);
+        set('[data-pickup-id]', item.id); set('[data-pickup-status]', item.status); set('[data-pickup-orders]', `${item.orders} (${item.order_numbers || 'Order details unavailable'}) · ${item.packages} ${item.packages === 1 ? 'parcel' : 'parcels'}`); set('[data-pickup-provider]', item.provider); set('[data-pickup-schedule]', item.schedule); set('[data-pickup-rider]', item.rider); set('[data-pickup-rider-location]', item.rider_location || 'Awaiting assignment'); set('[data-pickup-address]', item.address); set('[data-pickup-instructions]', item.instructions);
         modal.hidden = false; document.body.style.overflow = 'hidden';
     }));
 
@@ -1460,73 +1466,186 @@ const bootSeller = () => {
 
     /* Product pricing and promotion workspace. */
     const pricingWorkspace = document.querySelector('[data-pricing-workspace]');
-    const showPricingToast = (message) => {
-        if (!toast) return;
-        toast.textContent = message;
-        toast.classList.add('is-visible');
-        window.clearTimeout(window.sellerToastTimer);
-        window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3400);
-    };
     const formatPricingMoney = (minor) => `₱${(Number(minor) / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    let applyPricingFilters = () => {};
-    const updatePricingSummary = () => {
-        if (!pricingWorkspace) return;
-        const summaryDiscounted = pricingWorkspace.querySelector('[data-pricing-summary="discounted"]');
-        const summaryVoucherEligible = pricingWorkspace.querySelector('[data-pricing-summary="voucher-eligible"]');
-        if (summaryDiscounted) {
-            summaryDiscounted.textContent = pricingWorkspace.querySelectorAll('[data-pricing-row][data-state="discounted"]').length;
-        }
-        if (summaryVoucherEligible) {
-            summaryVoucherEligible.textContent = pricingWorkspace.querySelectorAll('[data-voucher-toggle]:checked').length;
-        }
-    };
-    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
-    const sendPricingMutation = async (endpoint, body) => {
-        const response = await fetch(endpoint, {
-            method: 'PATCH',
-            headers: {
-                Accept: 'application/json',
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': csrfToken,
-            },
-            body: JSON.stringify(body),
-        });
-        const result = await response.json().catch(() => ({}));
-
-        if (!response.ok) {
-            throw new Error(result.message && result.message !== 'The given data was invalid.'
-                ? result.message
-                : Object.values(result.errors || {}).flat()[0] || 'Unable to save pricing changes.');
-        }
-
-        return result;
-    };
 
     if (pricingWorkspace) {
-        const pricingRows = [...pricingWorkspace.querySelectorAll('[data-pricing-row]')];
-        const pricingSearch = pricingWorkspace.querySelector('[data-pricing-search]');
-        const pricingStatus = pricingWorkspace.querySelector('[data-pricing-status]');
-        const pricingCount = pricingWorkspace.querySelector('[data-pricing-count]');
-        const pricingEmpty = pricingWorkspace.querySelector('[data-pricing-empty]');
-        applyPricingFilters = () => {
-            const query = pricingSearch?.value.trim().toLowerCase() ?? '';
-            const status = pricingStatus?.value ?? '';
-            let visible = 0;
-            pricingRows.forEach((row) => {
-                const match = (!query || row.dataset.search.includes(query)) && (!status || row.dataset.state === status);
-                row.hidden = !match;
-                if (match) visible += 1;
+        const discountRows = [...pricingWorkspace.querySelectorAll('[data-product-discount-row]')];
+        const discountBody = discountRows[0]?.closest('tbody');
+        const discountSearch = pricingWorkspace.querySelector('[data-discount-search]');
+        const discountCategory = pricingWorkspace.querySelector('[data-discount-category]');
+        const discountStatus = pricingWorkspace.querySelector('[data-discount-status]');
+        const discountRange = pricingWorkspace.querySelector('[data-discount-range]');
+        const discountEmpty = pricingWorkspace.querySelector('[data-discount-empty]');
+        const discountPagination = pricingWorkspace.querySelector('[data-discount-pagination]');
+        const discountSortButtons = [...pricingWorkspace.querySelectorAll('[data-discount-sort]')];
+        const initialOrder = new Map(discountRows.map((row, index) => [row, index]));
+        const perPage = 10;
+        let currentPage = 1;
+        let sortKey = '';
+        let sortDirection = 'asc';
+
+        const filteredDiscountRows = () => {
+            const query = discountSearch?.value.trim().toLowerCase() ?? '';
+            const category = discountCategory?.value ?? '';
+            const status = discountStatus?.value ?? '';
+            const rows = discountRows.filter((row) => {
+                const matchesSearch = !query || row.dataset.search.includes(query);
+                const matchesCategory = !category || row.dataset.category === category;
+                const matchesStatus = !status || row.dataset.status === status;
+
+                return matchesSearch && matchesCategory && matchesStatus;
             });
-            if (pricingCount) pricingCount.textContent = visible;
-            if (pricingEmpty) pricingEmpty.hidden = pricingRows.length === 0 || visible > 0;
+
+            return rows.sort((first, second) => {
+                if (!sortKey) return initialOrder.get(first) - initialOrder.get(second);
+                const direction = sortDirection === 'asc' ? 1 : -1;
+                if (sortKey === 'price') {
+                    return (Number(first.dataset.price) - Number(second.dataset.price)) * direction;
+                }
+
+                return first.dataset.name.localeCompare(second.dataset.name) * direction;
+            });
         };
-        pricingSearch?.addEventListener('input', applyPricingFilters);
-        pricingStatus?.addEventListener('change', applyPricingFilters);
-        pricingWorkspace.querySelector('[data-pricing-reset]')?.addEventListener('click', () => {
-            if (pricingSearch) pricingSearch.value = '';
-            if (pricingStatus) pricingStatus.value = '';
-            applyPricingFilters();
+
+        const renderPagination = (totalRows) => {
+            if (!discountPagination) return;
+            const totalPages = Math.max(1, Math.ceil(totalRows / perPage));
+            discountPagination.replaceChildren();
+
+            const addButton = (label, page, options = {}) => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'pricing-page-button';
+                button.textContent = label;
+                button.dataset.discountPage = String(page);
+                if (options.label) button.setAttribute('aria-label', options.label);
+                if (options.current) {
+                    button.classList.add('is-current');
+                    button.setAttribute('aria-current', 'page');
+                }
+                if (options.disabled) button.disabled = true;
+                discountPagination.appendChild(button);
+            };
+
+            addButton('‹', currentPage - 1, { label: 'Previous page', disabled: currentPage <= 1 });
+
+            const windowSize = 5;
+            let windowStart = Math.max(1, currentPage - 2);
+            let windowEnd = Math.min(totalPages, windowStart + windowSize - 1);
+            windowStart = Math.max(1, windowEnd - windowSize + 1);
+
+            if (windowStart > 1) {
+                addButton('1', 1);
+                if (windowStart > 2) {
+                    const gap = document.createElement('span');
+                    gap.className = 'pricing-page-gap';
+                    gap.textContent = '…';
+                    discountPagination.appendChild(gap);
+                }
+            }
+
+            for (let page = windowStart; page <= windowEnd; page += 1) {
+                addButton(String(page), page, { current: page === currentPage });
+            }
+
+            if (windowEnd < totalPages) {
+                if (windowEnd < totalPages - 1) {
+                    const gap = document.createElement('span');
+                    gap.className = 'pricing-page-gap';
+                    gap.textContent = '…';
+                    discountPagination.appendChild(gap);
+                }
+                addButton(String(totalPages), totalPages);
+            }
+
+            addButton('›', currentPage + 1, { label: 'Next page', disabled: currentPage >= totalPages });
+        };
+
+        const renderDiscountRows = () => {
+            const rows = filteredDiscountRows();
+            const totalPages = Math.max(1, Math.ceil(rows.length / perPage));
+            currentPage = Math.min(Math.max(1, currentPage), totalPages);
+
+            const pageStart = (currentPage - 1) * perPage;
+            const visibleRows = new Set(rows.slice(pageStart, pageStart + perPage));
+
+            rows.forEach((row) => discountBody?.insertBefore(row, discountEmpty));
+            discountRows.forEach((row) => {
+                row.hidden = !visibleRows.has(row);
+            });
+
+            if (discountEmpty) {
+                discountEmpty.hidden = discountRows.length === 0 || rows.length > 0;
+            }
+
+            if (discountRange) {
+                const first = rows.length === 0 ? 0 : pageStart + 1;
+                const last = Math.min(pageStart + perPage, rows.length);
+                discountRange.textContent = rows.length === 0
+                    ? 'Showing 0 of 0 products'
+                    : `Showing ${first} to ${last} of ${rows.length} products`;
+            }
+
+            renderPagination(rows.length);
+        };
+
+        discountSearch?.addEventListener('input', () => {
+            currentPage = 1;
+            renderDiscountRows();
         });
+        discountCategory?.addEventListener('change', () => {
+            currentPage = 1;
+            renderDiscountRows();
+        });
+        discountStatus?.addEventListener('change', () => {
+            currentPage = 1;
+            renderDiscountRows();
+        });
+
+        discountPagination?.addEventListener('click', (event) => {
+            const button = event.target.closest('[data-discount-page]');
+            if (!button || button.disabled) return;
+            const page = Number(button.dataset.discountPage);
+            if (!Number.isFinite(page)) return;
+            currentPage = page;
+            renderDiscountRows();
+        });
+
+        discountSortButtons.forEach((button) => {
+            button.addEventListener('click', () => {
+                const key = button.dataset.discountSort;
+                if (sortKey === key) {
+                    sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+                } else {
+                    sortKey = key;
+                    sortDirection = 'asc';
+                }
+                currentPage = 1;
+                renderDiscountRows();
+
+                discountSortButtons.forEach((item) => {
+                    const heading = item.closest('th');
+                    if (!heading) return;
+                    if (item.dataset.discountSort === sortKey) {
+                        heading.setAttribute('aria-sort', sortDirection === 'asc' ? 'ascending' : 'descending');
+                    } else {
+                        heading.setAttribute('aria-sort', 'none');
+                    }
+                });
+            });
+        });
+
+        pricingWorkspace.querySelectorAll('[data-pricing-menu]').forEach((menu) => {
+            menu.addEventListener('toggle', () => {
+                if (!menu.open) return;
+                pricingWorkspace.querySelectorAll('[data-pricing-menu][open]').forEach((other) => {
+                    if (other !== menu) other.open = false;
+                });
+            });
+        });
+
+        renderDiscountRows();
+
         pricingWorkspace.querySelectorAll('[data-pricing-tab]').forEach((tab) => tab.addEventListener('click', () => {
             pricingWorkspace.querySelectorAll('[data-pricing-tab]').forEach((item) => {
                 const active = item === tab;
@@ -1536,205 +1655,120 @@ const bootSeller = () => {
             pricingWorkspace.querySelectorAll('[data-pricing-panel]').forEach((panel) => {
                 panel.hidden = panel.dataset.pricingPanel !== tab.dataset.pricingTab;
             });
+            pricingWorkspace.querySelectorAll('[data-pricing-menu][open]').forEach((menu) => {
+                menu.open = false;
+            });
         }));
     }
 
-    const pricingParams = new URLSearchParams(window.location.search);
-    const requestedPricingTab = pricingParams.get('tab');
-    if (pricingWorkspace && requestedPricingTab) {
-        pricingWorkspace.querySelector('[data-pricing-tab="' + requestedPricingTab + '"]')?.click();
-    }
-    const priceModal = document.querySelector('[data-modal="pricing-price"]');
-    const campaignModal = document.querySelector('[data-modal="pricing-campaign"]');
-    let activePricingButton = null;
-    let activePricingProduct = null;
-    const calculatePrice = () => {
-        if (!priceModal) return;
-        const regular = Math.max(0, Number(priceModal.querySelector('[data-price-regular]')?.value || 0));
-        const discount = Math.min(90, Math.max(0, Number(priceModal.querySelector('[data-price-discount]')?.value || 0)));
-        const sale = regular * (1 - discount / 100);
-        const fee = sale * .10;
-        const format = (value) => `₱${value.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-        priceModal.querySelector('[data-price-sale]').textContent = format(sale);
-        priceModal.querySelector('[data-price-fee]').textContent = `−${format(fee)}`;
-        priceModal.querySelector('[data-price-net]').textContent = format(sale - fee);
-    };
-    document.querySelectorAll('[data-pricing-open]').forEach((button) => button.addEventListener('click', () => {
-        const isPrice = button.dataset.pricingOpen === 'price';
-        const modal = isPrice ? priceModal : campaignModal;
-        if (!modal) return;
-        if (isPrice) {
-            const product = JSON.parse(button.dataset.product);
-            activePricingButton = button;
-            activePricingProduct = product;
-            modal.querySelector('[data-price-product]').textContent = product.name;
-            modal.querySelector('[data-price-regular]').value = product.price;
-            const discountInput = modal.querySelector('[data-price-discount]');
-            const currentDiscount = Number(product.discount_percent || 0);
-            discountInput.value = currentDiscount > 0 ? String(currentDiscount) : '';
-            modal.querySelector('[data-price-variant-count]').textContent = product.variants?.length || 0;
-            calculatePrice();
-        }
-        modal.hidden = false;
-        document.body.style.overflow = 'hidden';
-    }));
-    priceModal?.querySelectorAll('[data-price-regular],[data-price-discount]').forEach((input) => input.addEventListener('input', calculatePrice));
-    priceModal?.querySelector('[data-price-save]')?.addEventListener('click', async (event) => {
-        const button = event.currentTarget;
-        const regularInput = priceModal.querySelector('[data-price-regular]');
-        const discountInput = priceModal.querySelector('[data-price-discount]');
-
-        if (!regularInput?.reportValidity() || (discountInput && !discountInput.reportValidity()) || !activePricingButton) return;
-
-        const discountPercent = Number(discountInput?.value || 0);
-
-        const endpoint = activePricingButton.dataset.pricingUrl;
-        const originalLabel = button.textContent;
-        button.disabled = true;
-        button.textContent = 'Saving…';
-
-        try {
-            const result = await sendPricingMutation(endpoint, {
-                regular_price: regularInput.value,
-                discount_percent: discountPercent,
-            });
-            const data = result.data || {};
-            const productId = String(data.product_id);
-            const pricingRow = [...pricingWorkspace?.querySelectorAll('[data-pricing-row]') || []]
-                .find((row) => row.dataset.productId === productId);
-            const voucherRow = [...pricingWorkspace?.querySelectorAll('[data-voucher-row]') || []]
-                .find((row) => row.dataset.productId === productId);
-
-            if (pricingRow) {
-                const saleDisplay = pricingRow.querySelector('[data-price-sale-display]');
-                const regularDisplay = pricingRow.querySelector('[data-price-regular-display]');
-                const discountDisplay = pricingRow.querySelector('[data-price-discount-display]');
-                const hasDiscount = Number(data.discount_percent) > 0;
-
-                if (regularDisplay) regularDisplay.textContent = formatPricingMoney(data.regular_price_minor);
-                if (saleDisplay) saleDisplay.textContent = formatPricingMoney(data.sale_price_minor);
-                if (discountDisplay) {
-                    discountDisplay.textContent = hasDiscount ? `${data.discount_percent}% off` : '—';
-                    discountDisplay.classList.toggle('pricing-discount-text', hasDiscount);
-                    discountDisplay.classList.toggle('pricing-muted', !hasDiscount);
-                }
-                pricingRow.dataset.state = hasDiscount ? 'discounted' : 'regular';
-                activePricingProduct.price = Number(data.regular_price_minor) / 100;
-                activePricingProduct.discount_percent = Number(data.discount_percent);
-                activePricingButton.dataset.product = JSON.stringify(activePricingProduct);
-                applyPricingFilters();
-            }
-
-            const voucherRegularDisplay = voucherRow?.querySelector('[data-voucher-regular-display]');
-            if (voucherRegularDisplay) voucherRegularDisplay.textContent = formatPricingMoney(data.regular_price_minor);
-
-            updatePricingSummary();
-
-            priceModal.hidden = true;
-            document.body.style.overflow = '';
-            showPricingToast(result.message || 'Product pricing saved.');
-        } catch (error) {
-            showPricingToast(error.message || 'Unable to save product pricing.');
-        } finally {
-            button.disabled = false;
-            button.textContent = originalLabel;
-        }
+    document.addEventListener('click', (event) => {
+        if (!pricingWorkspace || event.target.closest('[data-pricing-menu]')) return;
+        pricingWorkspace.querySelectorAll('[data-pricing-menu][open]').forEach((menu) => {
+            menu.open = false;
+        });
     });
-    campaignModal?.querySelector('[data-campaign-save]')?.addEventListener('click', () => {
-        const name = campaignModal.querySelector('[data-campaign-name]');
-        if (!name?.value.trim()) { name?.focus(); name?.reportValidity(); return; }
-        campaignModal.hidden = true;
-        document.body.style.overflow = '';
-        if (toast) {
-            toast.textContent = `${name.value.trim()} preview is ready; it was not saved.`;
-            toast.classList.add('is-visible');
-            window.clearTimeout(window.sellerToastTimer);
-            window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3200);
-        }
-    });
-    document.querySelectorAll('[data-voucher-toggle]').forEach((toggle) => toggle.addEventListener('change', async () => {
-        const previousValue = !toggle.checked;
-        const wasDisabled = toggle.disabled;
-        const label = toggle.closest('.pricing-switch')?.querySelector('span');
-        toggle.disabled = true;
 
-        try {
-            const result = await sendPricingMutation(toggle.dataset.voucherUrl, {
-                voucher_eligible: toggle.checked,
-            });
-            toggle.checked = Boolean(result.data?.voucher_eligible);
-            if (label) label.textContent = toggle.checked ? 'Eligible' : 'Not eligible';
-            const productId = toggle.closest('[data-voucher-row]')?.dataset.productId;
-            const pricingRow = [...pricingWorkspace?.querySelectorAll('[data-pricing-row]') || []]
-                .find((row) => row.dataset.productId === productId);
-            const voucherState = pricingRow?.querySelector('.pricing-voucher-state');
-            if (voucherState) {
-                voucherState.classList.toggle('is-eligible', toggle.checked);
-                voucherState.classList.toggle('is-ineligible', !toggle.checked);
-                const voucherLabel = voucherState.querySelector('span');
-                if (voucherLabel) voucherLabel.textContent = toggle.checked ? 'Eligible' : 'Not eligible';
-            }
-            updatePricingSummary();
-            showPricingToast(result.message || 'Voucher eligibility saved.');
-        } catch (error) {
-            toggle.checked = previousValue;
-            if (label) label.textContent = previousValue ? 'Eligible' : 'Not eligible';
-            updatePricingSummary();
-            showPricingToast(error.message || 'Unable to save voucher eligibility.');
-        } finally {
-            toggle.disabled = wasDisabled;
-        }
-    }));
     const promotionForm = document.querySelector('[data-promotion-form]');
     if (promotionForm) {
         const value = promotionForm.querySelector('[data-promotion-value]');
+        const percent = promotionForm.querySelector('[data-promotion-percent]');
+        const discountType = promotionForm.querySelector('[data-promotion-discount-type]');
+        const fixedField = promotionForm.querySelector('[data-promotion-fixed-field]');
+        const percentField = promotionForm.querySelector('[data-promotion-percent-field]');
         const name = promotionForm.querySelector('[data-promotion-name]');
         const start = promotionForm.querySelector('[data-promotion-start]');
         const end = promotionForm.querySelector('[data-promotion-end]');
+        const startTime = promotionForm.querySelector('[data-promotion-start-time]');
+        const endTime = promotionForm.querySelector('[data-promotion-end-time]');
         const checks = [...promotionForm.querySelectorAll('[data-promotion-product]')];
+        const eligibleChecks = checks.filter((check) => !check.disabled);
         const selectAll = promotionForm.querySelector('[data-promotion-select-all]');
+
+        const syncPromotionTypeFields = () => {
+            const isPercent = discountType?.value === 'percent';
+            if (fixedField) fixedField.hidden = isPercent;
+            if (percentField) percentField.hidden = !isPercent;
+        };
 
         const syncPromotionSummary = () => {
             const currentValue = Math.max(0, Number(value?.value || 0));
-            const selected = checks.filter((check) => check.checked).length;
+            const currentPercent = Math.min(100, Math.max(0, Number(percent?.value || 0)));
+            const selected = eligibleChecks.filter((check) => check.checked).length;
             const summaryName = promotionForm.querySelector('[data-promotion-summary-name]');
             const summaryValue = promotionForm.querySelector('[data-promotion-summary-value]');
             const summaryProducts = promotionForm.querySelector('[data-promotion-summary-products]');
             const summarySchedule = promotionForm.querySelector('[data-promotion-summary-schedule]');
 
-            if (summaryName) summaryName.textContent = name?.value.trim() || 'Untitled promotion';
-            if (summaryValue) summaryValue.textContent = currentValue > 0
-                ? '₱' + currentValue.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' voucher'
-                : 'Enter voucher amount';
+            if (summaryName) summaryName.textContent = name?.value.trim() || 'Offer-based voucher';
+            if (summaryValue) {
+                summaryValue.textContent = discountType?.value === 'percent'
+                    ? (currentPercent > 0 ? currentPercent + '% off voucher' : 'Enter discount percentage')
+                    : (currentValue > 0
+                        ? '₱' + currentValue.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' voucher'
+                        : 'Enter voucher amount');
+            }
             if (summaryProducts) summaryProducts.textContent = selected + ' selected';
-            if (summarySchedule) summarySchedule.textContent = start?.value && end?.value ? start.value + ' to ' + end.value : 'Not set';
+            if (summarySchedule) {
+                const startsAt = start?.value && startTime?.value ? `${start.value} ${startTime.value}` : '';
+                const endsAt = end?.value && endTime?.value ? `${end.value} ${endTime.value}` : '';
+                summarySchedule.textContent = startsAt && endsAt ? `${startsAt} to ${endsAt} PHT` : 'Not set';
+            }
 
             if (selectAll) {
-                selectAll.checked = checks.length > 0 && selected === checks.length;
-                selectAll.indeterminate = selected > 0 && selected < checks.length;
+                selectAll.disabled = eligibleChecks.length === 0;
+                selectAll.checked = eligibleChecks.length > 0 && selected === eligibleChecks.length;
+                selectAll.indeterminate = selected > 0 && selected < eligibleChecks.length;
             }
         };
 
-        [value, name, start, end].forEach((field) => {
+        [value, percent, name, start, end, startTime, endTime].forEach((field) => {
             field?.addEventListener('input', syncPromotionSummary);
             field?.addEventListener('change', syncPromotionSummary);
         });
+        discountType?.addEventListener('change', () => {
+            syncPromotionTypeFields();
+            syncPromotionSummary();
+        });
         checks.forEach((check) => check.addEventListener('change', syncPromotionSummary));
         selectAll?.addEventListener('change', () => {
-            checks.forEach((check) => { check.checked = selectAll.checked; });
+            eligibleChecks.forEach((check) => { check.checked = selectAll.checked; });
             syncPromotionSummary();
         });
 
         promotionForm.addEventListener('submit', (event) => {
-            if (!checks.some((check) => check.checked)) {
+            const showToast = (message, focus) => {
                 event.preventDefault();
                 if (toast) {
-                    toast.textContent = 'Select at least one eligible product.';
+                    toast.textContent = message;
                     toast.classList.add('is-visible');
                     window.clearTimeout(window.sellerToastTimer);
                     window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3000);
                 }
-                checks[0]?.focus();
+                focus?.focus();
+            };
+
+            if (!eligibleChecks.some((check) => check.checked)) {
+                showToast('Select at least one product enabled for Store Vouchers in Product Management.', eligibleChecks[0] || checks[0]);
+                return;
+            }
+
+            if (start?.value && end?.value && startTime?.value && endTime?.value) {
+                const startsAt = `${start.value}T${startTime.value}`;
+                const endsAt = `${end.value}T${endTime.value}`;
+                if (endsAt < startsAt) {
+                    showToast('The end date and time must be after the start date and time.', endTime);
+                    return;
+                }
+            }
+
+            if (discountType?.value === 'percent') {
+                const percentValue = Number(percent?.value || 0);
+                if (percentValue < 1 || percentValue > 100) {
+                    showToast('Enter a discount percentage between 1 and 100.', percent);
+                    return;
+                }
+            } else if (Number(value?.value || 0) <= 0) {
+                showToast('Enter a voucher amount greater than zero.', value);
                 return;
             }
 
@@ -1745,6 +1779,7 @@ const bootSeller = () => {
             }
         });
 
+        syncPromotionTypeFields();
         syncPromotionSummary();
     }
 
@@ -1832,7 +1867,10 @@ const bootSeller = () => {
             const disputeBadge = conversation.dispute
                 ? '<span class="conversation-dispute-badge"><i data-lucide="gavel"></i>Complaint &amp; Dispute</span>'
                 : '';
-            row.innerHTML = `<span class="conversation-avatar">${esc(conversation.initials)}</span><span class="conversation-copy"><span><strong>${esc(conversation.buyer)}</strong><time>${esc(conversation.time_label)}</time></span><em>${esc(conversation.preview)}</em>${disputeBadge}<span class="conversation-chip"><i data-lucide="${conversation.order ? 'receipt' : 'package'}"></i>${esc(conversation.order ? `Order #${conversation.order}` : conversation.context)}</span></span>${unread ? `<b class="conversation-unread">${unread}</b>` : ''}`;
+            const presenceUsers = Array.isArray(conversation.presence_user_ids)
+                ? conversation.presence_user_ids.join(',')
+                : '';
+            row.innerHTML = `<span class="conversation-avatar chat-presence-target" data-presence-conversation="${esc(conversation.id)}" data-presence-users="${esc(presenceUsers)}">${esc(conversation.initials)}</span><span class="conversation-copy"><span><strong>${esc(conversation.buyer)}</strong><time>${esc(conversation.time_label)}</time></span><em>${esc(conversation.preview)}</em>${disputeBadge}<span class="conversation-chip"><i data-lucide="${conversation.order ? 'receipt' : 'package'}"></i>${esc(conversation.order ? `Order #${conversation.order}` : conversation.context)}</span></span>${unread ? `<b class="conversation-unread">${unread}</b>` : ''}`;
             return row;
         };
         const renderConversationRows = () => {
@@ -1848,6 +1886,7 @@ const bootSeller = () => {
             activeRow = conversationRows.find((row) => Number(rowPayload(row).id) === activeId) ?? activeRow;
             applyConversationFilter();
             window.lucide?.createIcons();
+            window.BearlyPresence?.refresh?.();
         };
         const refreshInbox = async () => {
             if (!inboxUrl || sending) return;
@@ -1863,9 +1902,11 @@ const bootSeller = () => {
                 refreshUnreadTotals();
             } catch { /* keep the current list when a background refresh fails */ }
         };
-        const markRowRead = async (row) => {
-            if (!row || Number(row.dataset.unread || 0) === 0) return;
+        const markRowRead = async (row, force = false) => {
+            if (!row) return;
             const payload = rowPayload(row);
+            if (!payload.read_url) return;
+            if (!force && Number(row.dataset.unread || 0) === 0) return;
             try {
                 await requestJson(payload.read_url, { method: 'POST' });
                 row.dataset.unread = '0';
@@ -1913,17 +1954,23 @@ const bootSeller = () => {
                 body.append(copy);
             }
             (message.attachments || []).forEach((attachment) => {
-                const link = document.createElement('a');
-                link.className = 'chat-attachment';
-                link.href = attachment.download_url;
-                const icon = document.createElement('i');
-                icon.setAttribute('data-lucide', 'paperclip');
-                link.append(icon, document.createTextNode(attachment.name));
-                body.append(link);
+                const wrapper = document.createElement('span');
+                wrapper.innerHTML = attachmentPreviewHtml(attachment, {
+                    linkClass: 'chat-attachment',
+                    mediaClass: 'chat-attachment-preview',
+                });
+                body.append(...wrapper.childNodes);
             });
             const time = document.createElement('time');
             time.textContent = message.time_label;
-            body.append(time);
+            const meta = document.createElement('span');
+            meta.className = 'chat-bubble-meta';
+            meta.setAttribute('data-chat-meta', '');
+            meta.append(time);
+            if (message.from === 'me' && message.receipt) {
+                meta.insertAdjacentHTML('beforeend', receiptMarkup(message.receipt));
+            }
+            body.append(meta);
             row.append(body);
             return row;
         };
@@ -1995,6 +2042,15 @@ const bootSeller = () => {
                 if (url) strip.setAttribute('href', url); else strip.removeAttribute('href');
                 strip.classList.toggle('is-static', !url);
             }
+            const avatar = messageWorkspace.querySelector('[data-chat-initials]');
+            if (avatar) {
+                const presenceUsers = Array.isArray(conversation?.presence_user_ids)
+                    ? conversation.presence_user_ids
+                    : (Array.isArray(payload?.presence_user_ids) ? payload.presence_user_ids : []);
+                avatar.dataset.presenceConversation = String(payload?.id ?? conversation?.id ?? '');
+                avatar.dataset.presenceUsers = presenceUsers.join(',');
+            }
+            window.BearlyPresence?.refresh?.();
         };
         const renderDetails = (payload, conversation = null) => {
             setText('[data-detail-initials]', payload.initials ?? 'B');
@@ -2077,16 +2133,19 @@ const bootSeller = () => {
             try {
                 const result = await requestJson(activePayload.thread_url);
                 const conversation = result.data?.conversation ?? null;
-                renderThread(result.data?.messages ?? [], activePayload.initials ?? 'B');
+                const messages = result.data?.messages ?? [];
+                renderThread(messages, activePayload.initials ?? 'B');
                 renderThreadHeader(activePayload, conversation);
                 renderDetails(activePayload, conversation);
+
+                acknowledgeIncoming(conversation || activePayload, messages, csrfToken).catch(() => {});
             } catch (error) {
                 if (thread) {
                     thread.replaceChildren();
                     thread.append(threadNote(error.message || 'Unable to load this conversation.'));
                 }
             }
-            await markRowRead(row);
+            if (!document.hidden) await markRowRead(row, true);
         };
         const applyConversationFilter = () => {
             const query = search?.value.trim().toLowerCase() ?? '';
@@ -2140,6 +2199,14 @@ const bootSeller = () => {
                 if (conversation && Number(conversation.id) !== Number(activePayload.id)) return;
                 renderThreadHeader(activePayload, conversation);
                 renderDetails(activePayload, conversation);
+
+                const receiptUpdates = Array.isArray(result.data?.receipt_updates)
+                    ? result.data.receipt_updates
+                    : [];
+                if (receiptUpdates.length) {
+                    updateReceiptElements(receiptUpdates, thread || messageWorkspace);
+                }
+
                 const incoming = Array.isArray(result.data?.messages) ? result.data.messages : [];
                 if (incoming.length === 0) return;
                 const nearBottom = thread
@@ -2150,7 +2217,8 @@ const bootSeller = () => {
                 window.lucide?.createIcons();
                 if (thread && nearBottom) thread.scrollTop = thread.scrollHeight;
                 updateRowPreview(activePayload.id, incoming[incoming.length - 1]);
-                if (incoming.some((message) => message.from === 'them')) await markRowRead(activeRow);
+                acknowledgeIncoming(conversation || activePayload, incoming, csrfToken).catch(() => {});
+                if (!document.hidden && incoming.some((message) => message.from === 'them')) await markRowRead(activeRow, true);
             } catch { /* transient polling failures are ignored; the next tick retries */ }
         };
         const startPolling = () => {
@@ -2166,6 +2234,7 @@ const bootSeller = () => {
                 if (document.hidden || sending) return;
                 pollThread();
                 refreshInbox();
+                markRowRead(activeRow, true);
             };
 
             document.addEventListener('visibilitychange', visibilityHandler);
@@ -2230,7 +2299,7 @@ const bootSeller = () => {
         seedState();
         syncRenderedThreadState();
         refreshUnreadTotals();
-        markRowRead(activeRow);
+        if (!document.hidden) markRowRead(activeRow, true);
         startPolling();
 
         window.addEventListener('bearly:message-created', (event) => {
@@ -2240,6 +2309,11 @@ const bootSeller = () => {
             } else {
                 refreshInbox().catch(() => {});
             }
+        });
+
+        window.addEventListener('bearly:message-receipt', (event) => {
+            const receipts = Array.isArray(event.detail?.receipts) ? event.detail.receipts : [];
+            if (receipts.length) updateReceiptElements(receipts, thread || messageWorkspace);
         });
     }
 
@@ -2377,6 +2451,113 @@ const bootSeller = () => {
     document.addEventListener('keydown', (event) => {
         if (event.key === 'Escape' && documentPreviewModal && !documentPreviewModal.hidden) closeDocumentPreview();
     });
+
+    /* Product discount form preview. */
+    const productDiscountForm = document.querySelector('[data-product-discount-form]');
+    if (productDiscountForm) {
+        const percentInput = productDiscountForm.querySelector('[data-discount-percent]');
+        const productRows = [...productDiscountForm.querySelectorAll('[data-discount-product]')];
+        const selectedCount = productDiscountForm.querySelector('[data-selected-product-count]');
+        const previewDiscount = () => {
+            const percent = Math.min(90, Math.max(0, Number(percentInput?.value || 0)));
+            productRows.forEach((row) => {
+                const regular = Number(row.dataset.price || 0);
+                const preview = row.querySelector('[data-discount-preview]');
+                if (preview) preview.textContent = `Promo ${formatPricingMoney(Math.round(regular * (1 - percent / 100) * 100))}`;
+            });
+            if (selectedCount) {
+                selectedCount.textContent = productRows.filter((row) => row.querySelector('input[type="checkbox"]')?.checked).length;
+            }
+        };
+        percentInput?.addEventListener('input', previewDiscount);
+        productRows.forEach((row) => row.querySelector('input[type="checkbox"]')?.addEventListener('change', previewDiscount));
+        previewDiscount();
+    }
+
+    /* Bearly campaign product selection and net preview. */
+    const campaignJoinForm = document.querySelector('[data-campaign-join-form]');
+    if (campaignJoinForm) {
+        const funding = campaignJoinForm.dataset.funding;
+        const rows = [...campaignJoinForm.querySelectorAll('[data-campaign-product]')];
+        const renumberRows = () => {
+            let index = 0;
+            rows.forEach((row) => {
+                const checkbox = row.querySelector('[data-campaign-product-checkbox]');
+                const price = row.querySelector('[data-campaign-price]');
+                const stock = row.querySelector('[data-campaign-stock]');
+                const buyerLimit = row.querySelector('[data-campaign-buyer-limit]');
+                const net = row.querySelector('[data-campaign-net]');
+                const regular = Number(row.dataset.regularMinor || 0) / 100;
+                const checked = Boolean(checkbox?.checked);
+
+                [price, stock, buyerLimit].forEach((input) => { if (input) input.disabled = !checked; });
+                if (checkbox) {
+                    checkbox.name = checked ? `items[${index}][product_id]` : '';
+                    checkbox.disabled = false;
+                }
+                if (checked && price) {
+                    price.name = `items[${index}][campaign_price]`;
+                    price.required = true;
+                    if (!price.value) price.value = (regular * .9).toFixed(2);
+                } else if (price) {
+                    price.name = '';
+                    price.required = false;
+                }
+                if (stock) stock.name = checked ? `items[${index}][stock_limit]` : '';
+                if (buyerLimit) buyerLimit.name = checked ? `items[${index}][per_buyer_limit]` : '';
+
+                if (net) {
+                    const campaignPrice = Number(price?.value || 0);
+                    const effective = funding === 'platform'
+                        ? regular
+                        : (campaignPrice > 0 ? campaignPrice : regular);
+                    net.textContent = formatPricingMoney(Math.round(effective * 100));
+                }
+
+                if (checked) index += 1;
+            });
+        };
+
+        rows.forEach((row) => {
+            row.querySelector('[data-campaign-product-checkbox]')?.addEventListener('change', renumberRows);
+            row.querySelector('[data-campaign-price]')?.addEventListener('input', renumberRows);
+        });
+        campaignJoinForm.addEventListener('submit', (event) => {
+            const checked = rows.filter((row) => row.querySelector('[data-campaign-product-checkbox]')?.checked);
+            if (checked.length === 0) {
+                event.preventDefault();
+                window.alert('Select at least one product for this campaign.');
+                return;
+            }
+            const invalid = checked.find((row) => Number(row.querySelector('[data-campaign-price]')?.value || 0) < 0.01);
+            if (invalid) {
+                event.preventDefault();
+                window.alert('Enter a campaign price for every selected product.');
+                invalid.querySelector('[data-campaign-price]')?.focus();
+            }
+        });
+        renumberRows();
+    }
+
+    /* Campaign list filter. */
+    const campaignFilter = document.querySelector('[data-campaign-filter]');
+    if (campaignFilter) {
+        const cards = [...document.querySelectorAll('[data-campaign-card]')];
+        const empty = document.querySelector('[data-campaign-empty]');
+        const applyCampaignFilter = () => {
+            const value = campaignFilter.value;
+            let visible = 0;
+            cards.forEach((card) => {
+                const matches = !value
+                    || (value === 'joined' ? card.dataset.joined === 'true' : card.dataset.status === value);
+                card.hidden = !matches;
+                if (matches) visible += 1;
+            });
+            if (empty) empty.hidden = cards.length === 0 || visible > 0;
+        };
+        campaignFilter.addEventListener('change', applyCampaignFilter);
+        applyCampaignFilter();
+    }
 
     const serverToast = document.querySelector('[data-server-toast]');
     if (serverToast) window.setTimeout(() => serverToast.classList.remove('is-visible'), 3200);

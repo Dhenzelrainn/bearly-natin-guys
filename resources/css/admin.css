@@ -1057,7 +1057,7 @@ body.sidebar-collapsed .sidebar-logout { justify-content: center; }
     height: 8px;
     border: 2px solid #fff;
     border-radius: 50%;
-    background: #e5a72f;
+    background: #d54a32;
 }
 
 .admin-topbar-divider {
@@ -10827,4 +10827,185 @@ table {
 
 .admin-body .report-breakdown .text-button {
     margin-top: 8px;
+}
+
+/* Platform promotions */
+.promotion-admin-panel {
+    margin-bottom: 18px;
+}
+
+.promotion-admin-note {
+    max-width: 420px;
+    margin: 0;
+    color: #7d6c62;
+    font-size: 11px;
+    line-height: 1.6;
+}
+
+.promotion-admin-form {
+    padding: 0 20px 20px;
+}
+
+.promotion-form-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0 16px;
+}
+
+.promotion-field-wide {
+    grid-column: span 3;
+}
+
+.promotion-multi-select {
+    height: auto;
+    min-height: 118px;
+    padding: 8px 10px;
+}
+
+.promotion-admin-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 22px;
+    margin-top: 4px;
+    padding: 14px 0;
+    border-top: 1px solid var(--line-soft);
+    border-bottom: 1px solid var(--line-soft);
+}
+
+.promotion-admin-options label {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    color: #5f5048;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.promotion-admin-options .promotion-admin-claimable-copy { display: grid; gap: 3px; }
+.promotion-admin-options .promotion-admin-claimable-copy small { max-width: 310px; color: var(--muted); font-size: 9px; font-weight: 400; line-height: 1.35; }
+
+.promotion-admin-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding-top: 16px;
+}
+
+.promotion-admin-actions p {
+    max-width: 460px;
+    margin: 0;
+    color: #8a7970;
+    font-size: 10.5px;
+    line-height: 1.6;
+    text-align: right;
+}
+
+.promotion-status-button {
+    min-height: 32px;
+    padding: 0 10px;
+    font-size: 10px;
+}
+
+@media (max-width: 900px) {
+    .promotion-form-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .promotion-field-wide {
+        grid-column: span 2;
+    }
+
+    .promotion-admin-actions {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .promotion-admin-actions p {
+        text-align: left;
+    }
+}
+
+@media (max-width: 620px) {
+    .promotion-form-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .promotion-field-wide {
+        grid-column: span 1;
+    }
+}
+
+/* Bearly campaign administration */
+.admin-body .promotion-admin-actions { flex-wrap: wrap; }
+.admin-body .promotion-admin-actions form { margin: 0; }
+.admin-body .admin-detail-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1px;
+    overflow: hidden;
+    border: 1px solid var(--line-soft);
+    border-radius: 8px;
+    background: var(--line-soft);
+}
+.admin-body .admin-detail-grid > div {
+    display: grid;
+    gap: 5px;
+    padding: 14px 15px;
+    background: #fff;
+}
+.admin-body .admin-detail-grid > div > span {
+    color: #8a7970;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+}
+.admin-body .admin-detail-grid > div > strong {
+    color: #4a3b33;
+    font-size: 11px;
+    line-height: 1.4;
+}
+.admin-body .campaign-terms {
+    margin-top: 16px;
+    padding: 13px 15px;
+    border: 1px solid var(--line-soft);
+    border-radius: 8px;
+    color: #63564e;
+    background: #fbfaf8;
+    font-size: 11px;
+    line-height: 1.65;
+    white-space: pre-line;
+}
+.admin-body .campaign-form-note {
+    margin: 0;
+    padding: 10px 12px;
+    border: 1px solid var(--line-soft);
+    border-radius: 7px;
+    color: #746860;
+    background: #fbfaf8;
+    font-size: 10.5px;
+    line-height: 1.55;
+}
+.admin-body .campaign-participation-item {
+    display: grid;
+    gap: 2px;
+    padding: 3px 0;
+}
+.admin-body .campaign-participation-item strong { color: #4a3b33; font-size: 10.5px; }
+.admin-body .campaign-participation-item small { color: #8a7970; font-size: 9.5px; }
+.admin-body .campaign-review-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+.admin-body .campaign-review-form label { min-width: 160px; flex: 1 1 160px; }
+.admin-body .campaign-review-form .text-field { min-height: 34px; font-size: 10px; }
+.admin-body .campaign-review-form .button { min-height: 34px; padding: 0 10px; font-size: 9.5px; }
+@media (max-width: 1000px) {
+    .admin-body .admin-detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 620px) {
+    .admin-body .admin-detail-grid { grid-template-columns: 1fr; }
 }

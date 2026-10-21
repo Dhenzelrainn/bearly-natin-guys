@@ -37,10 +37,18 @@ class BuyerCheckoutController extends Controller
             'address_id' => ['required', 'integer', 'min:1'],
             'cart_item_ids' => ['required', 'array', 'min:1', 'max:100'],
             'cart_item_ids.*' => ['required', 'integer', 'min:1', 'distinct'],
+            'platform_voucher_id' => ['nullable', 'integer', 'min:1'],
+            'store_voucher_id' => ['nullable', 'integer', 'min:1'],
+            'voucher_code' => ['nullable', 'string', 'max:40', 'regex:/^[A-Za-z0-9_-]+$/'],
         ]);
 
         return response()->json([
-            'data' => $checkout->quote($request->user(), $data['cart_item_ids'], (int) $data['address_id']),
+            'data' => $checkout->quote(
+                $request->user(),
+                $data['cart_item_ids'],
+                (int) $data['address_id'],
+                $this->promotionSelection($data),
+            ),
             'message' => 'Shipping estimate calculated.',
         ]);
     }
@@ -55,6 +63,9 @@ class BuyerCheckoutController extends Controller
             'quote_token' => ['required', 'string', 'max:8192'],
             'seller_note' => ['nullable', 'string', 'max:120'],
             'payment_method' => ['required', 'in:cod'],
+            'platform_voucher_id' => ['nullable', 'integer', 'min:1'],
+            'store_voucher_id' => ['nullable', 'integer', 'min:1'],
+            'voucher_code' => ['nullable', 'string', 'max:40', 'regex:/^[A-Za-z0-9_-]+$/'],
         ]);
 
         $order = $checkout->place(
@@ -64,6 +75,7 @@ class BuyerCheckoutController extends Controller
             (string) $data['checkout_request_key'],
             (string) $data['quote_token'],
             filled($data['seller_note'] ?? null) ? trim((string) $data['seller_note']) : null,
+            $this->promotionSelection($data),
         );
 
         return redirect()->route('checkout.confirmation', $order->order_no);
@@ -104,6 +116,17 @@ class BuyerCheckoutController extends Controller
                 $order->postal_code,
             ])) ?: '—',
         ]);
+    }
+
+    private function promotionSelection(array $data): array
+    {
+        return [
+            'platform_voucher_id' => $data['platform_voucher_id'] ?? null,
+            'store_voucher_id' => $data['store_voucher_id'] ?? null,
+            'voucher_code' => filled($data['voucher_code'] ?? null)
+                ? strtoupper(trim((string) $data['voucher_code']))
+                : null,
+        ];
     }
 
     private function fulfillmentLabel($sellerOrder): string

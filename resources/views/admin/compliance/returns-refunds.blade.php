@@ -589,14 +589,14 @@
             @if ($case['seller_recovery'] && $case['seller_recovery']['outstanding_minor'] > 0)
                 <section class="return-seller-recovery-action" aria-labelledby="seller-recovery-heading-{{ $loop->index }}">
                     <h3 id="seller-recovery-heading-{{ $loop->index }}">Seller recoverable balance</h3>
-                    <p>₱{{ number_format($case['seller_recovery']['outstanding_minor'] / 100, 2) }} remains outstanding. Do not use this action until you have verified that the Seller paid or the offset was applied to a paid settlement. Bearly will not deduct or transfer funds.</p>
+                    <p>₱{{ number_format($case['seller_recovery']['outstanding_minor'] / 100, 2) }} remains outstanding. Post-cutoff Seller-liable refunds are deducted automatically from the Seller Wallet when funds are available. Use this action only for a verified legacy or external collection, or an offset already applied to a paid settlement; this form does not perform a deduction.</p>
                     <details class="return-payout-disclosure">
                         <summary class="return-payout-disclosure-trigger"><i data-lucide="wallet-cards" aria-hidden="true"></i>Record verified Seller recovery</summary>
                         <form method="POST" action="{{ route('admin.compliance.returns-refunds.seller-recovery', $case['refund_id']) }}" class="return-payout-form return-recovery-form">
                             @csrf
                             <label class="return-payout-confirmation" for="recovery-confirmed-{{ $loop->index }}">
                                 <input id="recovery-confirmed-{{ $loop->index }}" type="checkbox" name="recovery_confirmed" value="1" required>
-                                <span class="return-payout-confirmation-copy"><strong>I verified that this Seller recovery already occurred.</strong><small>This only records a completed collection or an offset already applied to a paid Seller payout. It does not perform a deduction.</small></span>
+                                <span class="return-payout-confirmation-copy"><strong>I verified that this legacy or external Seller recovery already occurred.</strong><small>This only records a completed collection or an offset already applied to a paid Seller payout. It does not perform a deduction.</small></span>
                             </label>
                             <label for="recovery-amount-{{ $loop->index }}">Amount recovered (₱)<input id="recovery-amount-{{ $loop->index }}" name="amount" type="number" inputmode="decimal" min="0.01" max="{{ number_format($case['seller_recovery']['outstanding_minor'] / 100, 2, '.', '') }}" step="0.01" required></label>
                             <label for="recovery-method-{{ $loop->index }}">Recovery method<select id="recovery-method-{{ $loop->index }}" name="method" required><option value="">Choose method</option><option value="external_collection">External collection from Seller</option><option value="seller_payout_offset">Offset already applied to paid Seller payout</option></select></label>

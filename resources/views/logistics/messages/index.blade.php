@@ -69,7 +69,7 @@
                     data-role="{{ $conversation['role'] }}"
                     data-unread="{{ $conversation['unread'] }}"
                 >
-                    <span class="avatar">
+                    <span class="avatar chat-presence-target" data-presence-conversation="{{ $conversation['id'] }}" data-presence-users="{{ implode(',', $conversation['presence_user_ids'] ?? []) }}">
                         {{ $conversation['initials'] }}
                     </span>
 
@@ -97,11 +97,24 @@
         <div class="chat-main">
             <header class="chat-head">
                 <span class="chat-person">
-                    <strong data-chat-name>
-                        @if(empty($conversations))
-                            No conversation selected
-                        @endif
-                    </strong>
+                    <span class="chat-person-name">
+                        <strong data-chat-name>
+                            @if(empty($conversations))
+                                No conversation selected
+                            @endif
+                        </strong>
+
+                        <span
+                            class="chat-presence-indicator"
+                            data-chat-presence
+                            data-presence-conversation=""
+                            data-presence-users=""
+                            role="status"
+                            aria-live="polite"
+                            aria-label="Offline"
+                            hidden
+                        ></span>
+                    </span>
 
                     <small data-chat-role></small>
                 </span>
@@ -148,7 +161,7 @@
                 <input
                     type="file"
                     data-chat-attachment
-                    accept=".jpg,.jpeg,.png,.webp,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.zip"
+                    accept=".jpg,.jpeg,.png,.webp,.mp4,.mov,.webm,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.zip"
                     hidden
                     @if(empty($conversations))
                         disabled

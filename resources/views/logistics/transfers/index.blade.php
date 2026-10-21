@@ -39,11 +39,11 @@
     </form>
 </section>
 
-<section class="panel" data-table-scope>
+<section class="panel" id="ready-to-send" data-table-scope>
     <div class="panel-header">
         <div>
             <h3>Ready to send</h3>
-            <p>Only received, unsorted shipments with an active destination-city Logistics account can be sent.</p>
+            <p>Receiving Logistics is detected automatically from the destination city. Only active accounts with one active Sorting Center can receive a handoff.</p>
         </div>
     </div>
     <div class="table-wrap">
@@ -55,7 +55,7 @@
                         <td><span class="cell-title"><strong>{{ $shipment['waybill'] }}</strong><small>{{ $shipment['seller_order'] }} · {{ $shipment['purpose'] }}</small></span></td>
                         <td>{{ $shipment['seller'] }}</td>
                         <td>{{ $shipment['destination'] }}{{ $shipment['province'] ? ', '.$shipment['province'] : '' }}</td>
-                        <td>{{ $shipment['target'] }}</td>
+                        <td><span class="cell-title"><strong>{{ $shipment['target'] }}</strong><small>Detected from destination city</small></span></td>
                         <td>{{ $shipment['pieces'] }}</td>
                         <td>
                             <form method="POST" action="{{ route('logistics.transfers.send', $shipment['id']) }}" data-transfer-send-form>
@@ -71,6 +71,33 @@
         </table>
     </div>
 </section>
+
+@if($unroutableShipments->isNotEmpty())
+<section class="panel" id="needs-destination">
+    <div class="panel-header">
+        <div>
+            <h3>Needs destination Logistics</h3>
+            <p>These received cross-city parcels cannot be sent until the destination city has an active Logistics account with one active Sorting Center.</p>
+        </div>
+    </div>
+    <div class="table-wrap">
+        <table class="data-table">
+            <thead><tr><th>Waybill / Seller Order</th><th>Seller</th><th>Destination</th><th>Receiving Logistics</th><th>Issue</th></tr></thead>
+            <tbody>
+                @foreach($unroutableShipments as $shipment)
+                    <tr>
+                        <td><span class="cell-title"><strong>{{ $shipment['waybill'] }}</strong><small>{{ $shipment['seller_order'] }} · {{ $shipment['purpose'] }}</small></span></td>
+                        <td>{{ $shipment['seller'] }}</td>
+                        <td>{{ $shipment['destination'] }}{{ $shipment['province'] ? ', '.$shipment['province'] : '' }}</td>
+                        <td>{{ $shipment['target'] }}</td>
+                        <td><span class="zone-routing-note is-unmatched">{{ $shipment['handoff_issue'] }}</span></td>
+                    </tr>
+                @endforeach
+            </tbody>
+        </table>
+    </div>
+</section>
+@endif
 
 <div class="section-grid">
     <section class="panel">

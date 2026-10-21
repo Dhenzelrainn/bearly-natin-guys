@@ -211,26 +211,30 @@
             </section>
 
             <section class="seller-panel product-form-section">
-                <div class="product-form-section-heading"><span class="product-section-icon"><i data-lucide="badge-percent"></i></span><div><h3>Pricing</h3><p>Set the regular price here. Manage seller discounts in Pricing &amp; Promotions.</p></div></div>
+                <div class="product-form-section-heading"><span class="product-section-icon"><i data-lucide="badge-percent"></i></span><div><h3>Pricing</h3><p>Set a single-SKU regular price here, or edit each variant's price below. Manage scheduled discounts in Pricing &amp; Promotions.</p></div></div>
                 <div class="product-form-grid product-pricing-grid">
-                    <label class="seller-field">
+                    <label class="seller-field" data-single-price-control @if ($hasVariantMatrix) hidden @endif>
                         <span>Regular Price (₱) <em>*</em></span>
-                        <input type="number" name="price" value="{{ old('price', $product['price']) }}" min="0" step="0.01" placeholder="0.00" data-product-price required>
+                        <input type="number" name="price" value="{{ old('price', $product['price']) }}" min="0" step="0.01" placeholder="0.00" data-product-price @if ($hasVariantMatrix) disabled @else required @endif>
                         @error('price')<small class="field-error">{{ $message }}</small>@enderror
                     </label>
-                    <div class="sale-price-preview">
+                    <div class="sale-price-preview" data-single-price-preview @if ($hasVariantMatrix) hidden @endif>
                         <span>Buyer price preview</span>
                         <strong data-sale-price>₱{{ number_format($formSalePrice, 2) }}</strong>
                         <small>
                             @if ($formDiscount > 0)
-                                Existing seller discount: {{ $formDiscount }}%. It stays in place when you save this form; change it in Pricing &amp; Promotions.
+                                Existing compare-at pricing is preserved. Create and manage scheduled Product Discounts in Pricing &amp; Promotions.
                             @else
-                                No seller discount is set. Add one in Pricing &amp; Promotions after saving.
+                                Set scheduled Product Discounts in Pricing &amp; Promotions after saving.
                             @endif
                         </small>
                     </div>
+                    <div class="product-variant-pricing-note" data-variant-pricing-note @unless ($hasVariantMatrix) hidden @endunless>
+                        <strong>Regular price is set per SKU</strong>
+                        <span>Enter a price for each variant below. Saving product details keeps each SKU's price and existing compare-at sale separate.</span>
+                    </div>
                 </div>
-                <div class="product-commission-preview">
+                <div class="product-commission-preview" data-single-commission-preview @if ($hasVariantMatrix) hidden @endif>
                     <div><span>Estimated commissionable amount</span><strong data-product-commissionable>—</strong></div>
                     <div><span>Estimated platform commission (10%)</span><strong data-product-commission>—</strong></div>
                     <div><span>Estimated seller earnings</span><strong data-product-net>—</strong></div>
@@ -256,7 +260,7 @@
                 <label class="product-toggle-field">
                     <input type="hidden" name="voucher_eligible" value="0">
                     <input type="checkbox" name="voucher_eligible" value="1" @checked(old('voucher_eligible', $product['voucher_eligible']))>
-                    <span><strong>Allow platform vouchers</strong><small>Buyers may apply eligible Bearly vouchers to this product.</small></span>
+                    <span><strong>Eligible for all Store Vouchers</strong><small>Product-wide gate: this lets the product be selected in any Store Voucher; it does not add the product to each voucher. The voucher’s own product selection and checkout rules still apply. Applicable Bearly product vouchers also require this setting.</small></span>
                 </label>
             </section>
 
@@ -409,7 +413,12 @@
                     @foreach (['package_weight_kg' => 'Packaged weight', 'package_length_cm' => 'Packaged length', 'package_width_cm' => 'Packaged width', 'package_height_cm' => 'Packaged height'] as $packageField => $packageLabel)
                         @error("variants.*.{$packageField}")<small class="field-error">{{ $packageLabel }} is required for every SKU.</small>@enderror
                     @endforeach
-                    <small class="field-error" id="variant-client-error" data-variant-client-error role="alert" hidden>Generate at least one variant row before saving or publishing.</small>
+                    @foreach ($errors->getMessages() as $key => $messages)
+                        @if (preg_match('/^variants\.\d+\.price$/', $key))
+                            @foreach ($messages as $message)<small class="field-error" role="alert">{{ $message }}</small>@endforeach
+                        @endif
+                    @endforeach
+                    <small class="field-error" id="variant-client-error" data-variant-client-error role="alert" hidden>Generate at least one variant row and enter a regular price for every SKU before saving or publishing.</small>
                     </section>
 
                     <script type="application/json" data-existing-variants>@json(old('variants', $product['variants'] ?? []))</script>

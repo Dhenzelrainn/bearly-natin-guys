@@ -17,6 +17,7 @@
     @vite([
         'resources/css/rider.css',
         'resources/js/rider.js',
+        'resources/js/application-pending.js',
     ])
     @include('partials.session-safety')
 </head>
@@ -37,26 +38,36 @@
         </span>
     </a>
 
-    @if (session('registration_pending') || session('rider_application'))
+    @if (session('registration_pending') || session('rider_application') || ($applicationReview ?? null))
+        @php
+            $review = $applicationReview ?? null;
+            $state = $review['state'] ?? 'pending';
+            $approved = $state === 'approved';
+            $final = (bool) ($review['final'] ?? false);
+            $statusLabel = $review['status_label'] ?? 'Pending review';
+            $heading = $review['heading'] ?? 'Application received';
+            $message = $review['message'] ?? 'Your selected Logistics partner will review your identity, vehicle, OR/CR, and license documents. Rider dashboard access is activated after approval.';
+            $applicant = $review['name'] ?? session('rider_application.full_name', 'Submitted rider');
+            $authority = $review['authority'] ?? session('rider_application.logistics_partner', 'Selected Logistics / Sorting Center');
+            $reviewNote = $review['review_note'] ?? null;
+        @endphp
         <section
             class="registration-card rider-registration"
             style="display:block"
+            data-application-status
+            data-final="{{ $final ? '1' : '0' }}"
+            data-poll-interval="12000"
+            @if($review) data-status-url="{{ route('application.pending.status') }}" @endif
         >
             <div class="pending-state">
                 <span class="metric-icon">
-                    <i data-lucide="mail-check"></i>
+                    <i data-lucide="{{ $approved ? 'badge-check' : 'mail-check' }}"></i>
                 </span>
 
-                <p class="page-kicker">Application submitted</p>
-                <h2>
-                    Awaiting Logistics / Sorting Center Approval via Email
-                </h2>
+                <p class="page-kicker">{{ $approved ? 'Account Verified' : 'Application submitted' }}</p>
+                <h2>{{ $heading }}</h2>
 
-                <p>
-                    Your selected Logistics partner will review your identity,
-                    vehicle, OR/CR, and license documents. You will receive an
-                    email when Rider dashboard access is activated.
-                </p>
+                <p>{{ $message }}</p>
 
                 <div
                     class="detail-list"
@@ -64,27 +75,40 @@
                 >
                     <div class="detail-item">
                         <small>Applicant</small>
-                        <strong>
-                            {{ session(
-                                'rider_application.full_name',
-                                'Submitted rider'
-                            ) }}
-                        </strong>
+                        <strong>{{ $applicant }}</strong>
                     </div>
 
                     <div class="detail-item">
                         <small>Approval authority</small>
-                        <strong>
-                            Selected Logistics / Sorting Center
-                        </strong>
+                        <strong>{{ $authority }}</strong>
                     </div>
+
+                    <div class="detail-item">
+                        <small>Status</small>
+                        <strong>{{ $statusLabel }}</strong>
+                    </div>
+
+                    @if(!empty($review['submitted_at']))
+                        <div class="detail-item">
+                            <small>Submitted</small>
+                            <strong>{{ $review['submitted_at'] }}</strong>
+                        </div>
+                    @endif
                 </div>
+
+                @if($reviewNote)
+                    <p role="note"><strong>{{ $state === 'needs_revision' ? 'What needs updating' : 'Decision note' }}:</strong> {{ $reviewNote }}</p>
+                @endif
+
+                @if(! $final && $review)
+                    <p data-application-live aria-live="polite">Checking for a review decision automatically.</p>
+                @endif
 
                 <a
                     class="button button-primary"
                     href="{{ route('login') }}"
                 >
-                    Return to main login
+                    {{ $approved ? 'Proceed to Sign In' : 'Return to main login' }}
                 </a>
             </div>
         </section>

@@ -67,6 +67,13 @@ class PickupRequest extends Model
             ->latestOfMany();
     }
 
+    public function activeAssignment()
+    {
+        return $this->hasOne(PickupAssignment::class)
+            ->active()
+            ->latestOfMany();
+    }
+
     public function scopeForLogisticsProfile(
         Builder $query,
         int $logisticsProfileId

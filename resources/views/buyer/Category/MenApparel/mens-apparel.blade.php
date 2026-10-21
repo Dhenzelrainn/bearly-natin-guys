@@ -3,6 +3,11 @@
     $taxonomy = json_decode(file_get_contents(resource_path('data/buyer-categories.json')), true, 512, JSON_THROW_ON_ERROR);
     $mensCategory = collect($taxonomy)->firstWhere('slug', 'men-s-apparel');
     $subcategories = $mensCategory['subcategories'];
+    $liveCatalog = $liveCatalog ?? [];
+    $usingLiveCatalog = ! empty($liveCatalog);
+    if ($usingLiveCatalog) {
+        $catalog = $liveCatalog;
+    }
 @endphp
 <!DOCTYPE html>
 <html lang="en">
@@ -40,7 +45,7 @@
 </style>
 
 </head>
-    <body class="bc" data-category="men-s-apparel" data-catalog-rows="4" style="--catalog-image:url('{{ asset('images/mens-catalog-atlas.png') }}');--catalog-image-height:400%">
+    <body class="bc" data-category="men-s-apparel" data-catalog-rows="4" style="--catalog-image:url('{{ asset('images/mens-catalog-atlas.png') }}');--catalog-image-height:400%" data-live-catalog="{{ $usingLiveCatalog ? 'true' : 'false' }}">
         <a href="#bc-main" class="skip">
             Skip to products
         </a>
@@ -110,11 +115,11 @@
                     Everyday staples. Your own style.
                 </p>
                 <p class="preview">
-                    Concept catalog · Sample products, prices and ratings
+                    {{ $usingLiveCatalog ? 'Live products and prices from Bearly sellers' : 'Concept catalog · Sample products, prices and ratings' }}
                 </p>
                 <div class="toolbar">
                     <strong id="bc-count">
-                        48 sample products
+                        {{ count($catalog) }} {{ $usingLiveCatalog ? Str::plural('product', count($catalog)) : Str::plural('sample product', count($catalog)) }}
                     </strong>
                     <button class="mobile-filter button outline" id="bc-open-filters">
                         <i class="mi" aria-hidden="true">
@@ -182,7 +187,7 @@
                 </div>
                 <noscript>
                     <p>
-                        Enable JavaScript to explore the sample catalog and filters.
+                        {{ $usingLiveCatalog ? 'Enable JavaScript to browse live products and filters.' : 'Enable JavaScript to explore the sample catalog and filters.' }}
                     </p>
                 </noscript>
                 <section id="bc-empty" class="empty" hidden>

@@ -46,7 +46,6 @@ class SellerBuyerCatalogIntegrationTest extends TestCase
                 'new_subcategory_name' => 'Summer Shorts',
                 'sku' => 'LIVE-SHIRT-001',
                 'price' => '1299.00',
-                'discount_percent' => 10,
                 'voucher_eligible' => 1,
                 'stock' => 4,
                 'package_weight_kg' => '0.250',

@@ -24,6 +24,7 @@ use App\Services\SellerWalletService;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
@@ -43,6 +44,13 @@ class SellerWalletWithdrawalTest extends TestCase
         parent::setUp();
         $this->seed(DatabaseSeeder::class);
         $this->admin = User::query()->where('email', 'admin@bearly.test')->firstOrFail();
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+
+        parent::tearDown();
     }
 
     public function test_paid_earnings_remain_pending_during_the_return_window_and_open_refund_case(): void
@@ -307,7 +315,7 @@ class SellerWalletWithdrawalTest extends TestCase
             'status' => 'completed',
             'financially_responsible_party' => 'seller',
             'method' => 'cash',
-            'completed_at' => now()->subDays(2),
+            'completed_at' => Carbon::parse('2026-10-20 12:00:00'),
         ]);
         SellerRefundRecovery::query()->create([
             'refund_id' => $refund->id,
@@ -324,6 +332,228 @@ class SellerWalletWithdrawalTest extends TestCase
         $this->assertSame(0, (int) $wallet->pending_balance_minor);
         $this->assertSame('pending', $refund->sellerRecovery->status);
         $this->assertSame(27_000, app(SellerWalletService::class)->ledgerTotals($wallet)['available']);
+    }
+
+    public function test_completed_seller_refund_after_cutoff_deducts_pending_wallet_before_release(): void
+    {
+        Carbon::setTestNow('2026-10-22 12:00:00');
+        [$seller, $profile, $store] = $this->sellerFixture('Post-cutoff pending refund seller');
+        [$order, $sellerOrder, $payment, $transaction] = $this->saleFixture(
+            $profile,
+            $store,
+            'post-cutoff-pending-refund',
+            completedDaysAgo: 10,
+            method: 'gcash',
+        );
+        [$returnRequest, $refund, $recovery] = $this->completedSellerRefund(
+            $profile,
+            $order,
+            $sellerOrder,
+            $payment,
+            amountMinor: 10_000,
+            recoveryMinor: 9_000,
+        );
+
+        $wallet = app(SellerWalletService::class)->refreshForSeller($profile);
+
+        $this->assertSame(81_000, (int) $wallet->available_balance_minor);
+        $this->assertSame(0, (int) $wallet->pending_balance_minor);
+        $this->assertDatabaseHas('seller_wallet_transactions', [
+            'seller_transaction_id' => $transaction->id,
+            'refund_id' => $refund->id,
+            'type' => 'refund_adjustment',
+            'amount_minor' => 9_000,
+            'pending_delta_minor' => -9_000,
+            'available_delta_minor' => 0,
+        ]);
+        $this->assertDatabaseHas('seller_wallet_transactions', [
+            'seller_transaction_id' => $transaction->id,
+            'type' => 'sale_earning_available',
+            'amount_minor' => 81_000,
+        ]);
+        $this->assertDatabaseHas('seller_refund_recoveries', [
+            'id' => $recovery->id,
+            'status' => 'recovered',
+            'recovered_amount_minor' => 9_000,
+        ]);
+        $this->assertDatabaseHas('seller_refund_recovery_events', [
+            'seller_refund_recovery_id' => $recovery->id,
+            'method' => 'wallet_offset',
+            'amount_minor' => 9_000,
+        ]);
+
+        app(SellerWalletService::class)->recordRefundAdjustment($refund->fresh(), $this->admin);
+        $this->assertSame(1, SellerWalletTransaction::query()
+            ->where('refund_id', $refund->id)
+            ->where('type', 'refund_adjustment')
+            ->count());
+    }
+
+    public function test_completed_seller_refund_after_cutoff_deducts_available_wallet(): void
+    {
+        Carbon::setTestNow('2026-10-22 12:00:00');
+        [$seller, $profile, $store] = $this->sellerFixture('Post-cutoff available refund seller');
+        [$order, $sellerOrder, $payment] = $this->saleFixture(
+            $profile,
+            $store,
+            'post-cutoff-available-refund',
+            completedDaysAgo: 10,
+            method: 'gcash',
+        );
+        $wallet = app(SellerWalletService::class)->refreshForSeller($profile);
+        $this->assertSame(90_000, (int) $wallet->available_balance_minor);
+
+        [, $refund] = $this->completedSellerRefund(
+            $profile,
+            $order,
+            $sellerOrder,
+            $payment,
+            amountMinor: 10_000,
+            recoveryMinor: 9_000,
+        );
+
+        app(SellerWalletService::class)->recordRefundAdjustment($refund, $this->admin);
+        $wallet->refresh();
+
+        $this->assertSame(81_000, (int) $wallet->available_balance_minor);
+        $this->assertSame(0, (int) $wallet->pending_balance_minor);
+        $this->assertDatabaseHas('seller_wallet_transactions', [
+            'refund_id' => $refund->id,
+            'type' => 'refund_adjustment',
+            'amount_minor' => 9_000,
+            'available_delta_minor' => -9_000,
+            'pending_delta_minor' => 0,
+        ]);
+    }
+
+    public function test_completed_refund_before_cutoff_remains_legacy_and_is_not_auto_deducted(): void
+    {
+        Carbon::setTestNow('2026-10-22 12:00:00');
+        [$seller, $profile, $store] = $this->sellerFixture('Pre-cutoff refund seller');
+        [$order, $sellerOrder, $payment] = $this->saleFixture(
+            $profile,
+            $store,
+            'pre-cutoff-refund',
+            completedDaysAgo: 10,
+            method: 'gcash',
+        );
+        [$returnRequest, $refund, $recovery] = $this->completedSellerRefund(
+            $profile,
+            $order,
+            $sellerOrder,
+            $payment,
+            amountMinor: 10_000,
+            recoveryMinor: 9_000,
+            completedAt: Carbon::parse('2026-10-20 12:00:00'),
+        );
+
+        $wallet = app(SellerWalletService::class)->refreshForSeller($profile);
+
+        $this->assertSame(90_000, (int) $wallet->available_balance_minor);
+        $this->assertDatabaseMissing('seller_wallet_transactions', [
+            'refund_id' => $refund->id,
+            'type' => 'refund_adjustment',
+        ]);
+        $this->assertDatabaseHas('seller_refund_recoveries', [
+            'id' => $recovery->id,
+            'status' => 'pending',
+        ]);
+    }
+
+    public function test_outstanding_recovery_blocks_new_withdrawals_until_covered(): void
+    {
+        Carbon::setTestNow('2026-10-22 12:00:00');
+        [$seller, $profile, $store] = $this->sellerFixture('Outstanding recovery withdrawal seller');
+        [$order, $sellerOrder, $payment] = $this->saleFixture(
+            $profile,
+            $store,
+            'outstanding-recovery-sale',
+            completedDaysAgo: 10,
+            method: 'gcash',
+            grossMinor: 5_000,
+            netMinor: 5_000,
+        );
+        $wallet = app(SellerWalletService::class)->refreshForSeller($profile);
+        $this->assertSame(5_000, (int) $wallet->available_balance_minor);
+
+        [$returnRequest, $refund, $recovery] = $this->completedSellerRefund(
+            $profile,
+            $order,
+            $sellerOrder,
+            $payment,
+            amountMinor: 6_000,
+            recoveryMinor: 5_500,
+        );
+
+        app(SellerWalletService::class)->recordRefundAdjustment($refund, $this->admin);
+        $wallet->refresh();
+
+        $this->assertSame(5_000, (int) $wallet->available_balance_minor);
+        $this->assertDatabaseMissing('seller_wallet_transactions', [
+            'refund_id' => $refund->id,
+            'type' => 'refund_adjustment',
+        ]);
+        $this->assertSame(5_500, $recovery->fresh()->outstandingMinor());
+
+        $account = $this->createBankAccount($seller, '5555666677778888');
+        $this->actingAs($seller)
+            ->post(route('seller.finance.withdrawals.store'), [
+                'amount' => '50.00',
+                'seller_bank_account_id' => $account->id,
+                'idempotency_key' => (string) Str::uuid(),
+            ])
+            ->assertSessionHasErrors('amount');
+
+        $this->assertSame(0, SellerWithdrawal::query()->count());
+    }
+
+    public function test_legacy_void_command_closes_pre_cutoff_refund_and_pending_balance(): void
+    {
+        Carbon::setTestNow('2026-10-22 12:00:00');
+        [$seller, $profile, $store] = $this->sellerFixture('Legacy void refund seller');
+        [$order, $sellerOrder, $payment, $transaction] = $this->saleFixture(
+            $profile,
+            $store,
+            'legacy-void-refund',
+            completedDaysAgo: 2,
+            method: 'gcash',
+        );
+        $wallet = app(SellerWalletService::class)->refreshForSeller($profile);
+        $this->assertSame(90_000, (int) $wallet->pending_balance_minor);
+
+        [, $refund, $recovery] = $this->completedSellerRefund(
+            $profile,
+            $order,
+            $sellerOrder,
+            $payment,
+            amountMinor: 10_000,
+            recoveryMinor: 9_000,
+            completedAt: Carbon::parse('2026-10-20 12:00:00'),
+        );
+
+        $this->artisan('seller-wallet:void-legacy-refund', [
+            'refund' => $refund->id,
+            '--apply' => true,
+            '--actor' => $this->admin->id,
+            '--reason' => 'Legacy test data was already paid outside the wallet.',
+        ])->assertSuccessful();
+
+        $wallet->refresh();
+        $this->assertSame(0, (int) $wallet->pending_balance_minor);
+        $this->assertSame(0, (int) $wallet->available_balance_minor);
+        $this->assertSame('voided', $recovery->fresh()->status);
+        $this->assertSame(0, $recovery->fresh()->outstandingMinor());
+        $this->assertDatabaseHas('seller_wallet_transactions', [
+            'seller_transaction_id' => $transaction->id,
+            'refund_id' => $refund->id,
+            'type' => 'manual_adjustment',
+            'amount_minor' => 90_000,
+            'pending_delta_minor' => -90_000,
+        ]);
+        $this->assertDatabaseHas('seller_refund_recovery_events', [
+            'seller_refund_recovery_id' => $recovery->id,
+            'method' => 'legacy_void',
+        ]);
     }
 
     public function test_cod_earnings_require_every_outbound_cod_shipment_to_be_finance_reconciled(): void
@@ -795,6 +1025,55 @@ class SellerWalletWithdrawalTest extends TestCase
         ]);
 
         return [$order, $sellerOrder, $payment, $transaction];
+    }
+
+    private function completedSellerRefund(
+        SellerProfile $profile,
+        Order $order,
+        SellerOrder $sellerOrder,
+        Payment $payment,
+        int $amountMinor,
+        int $recoveryMinor,
+        ?Carbon $completedAt = null,
+    ): array {
+        $completedAt ??= now();
+        $returnRequest = ReturnRequest::query()->create([
+            'return_no' => 'RET-'.Str::upper(Str::random(12)),
+            'order_id' => $order->id,
+            'seller_order_id' => $sellerOrder->id,
+            'buyer_id' => $order->buyer_id,
+            'store_id' => $sellerOrder->store_id,
+            'request_type' => 'refund_only',
+            'reason_code' => 'item_arrived_damaged',
+            'status' => 'resolved',
+            'requested_amount_minor' => $amountMinor,
+            'submitted_at' => $completedAt->copy()->subDay(),
+            'resolved_at' => $completedAt,
+        ]);
+        $refund = Refund::query()->create([
+            'refund_no' => 'RFD-'.Str::upper(Str::random(12)),
+            'return_request_id' => $returnRequest->id,
+            'payment_id' => $payment->id,
+            'order_id' => $order->id,
+            'amount_minor' => $amountMinor,
+            'payout_amount_minor' => $amountMinor,
+            'status' => 'completed',
+            'financially_responsible_party' => 'seller',
+            'financial_responsibility_reason' => 'Item not as described',
+            'method' => 'gcash',
+            'approved_at' => $completedAt,
+            'processed_at' => $completedAt,
+            'completed_at' => $completedAt,
+        ]);
+        $recovery = SellerRefundRecovery::query()->create([
+            'refund_id' => $refund->id,
+            'seller_profile_id' => $profile->id,
+            'amount_minor' => $recoveryMinor,
+            'recovered_amount_minor' => 0,
+            'status' => 'pending',
+        ]);
+
+        return [$returnRequest, $refund, $recovery];
     }
 
     private function createBankAccount(User $seller, string $accountNumber)

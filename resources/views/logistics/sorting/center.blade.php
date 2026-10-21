@@ -9,7 +9,7 @@
     <div>
         <p class="page-kicker">Parcel routing</p>
         <h2>Sort parcels by delivery zone</h2>
-                <p>Set barangay coverage for your city’s Sorting Center, then route parcels only to zones that cover their destination.</p>
+                <p>Set barangay coverage for your city’s Sorting Center. Parcels for another city must be transferred through City Handoffs instead of being sorted here.</p>
     </div>
     <div class="page-actions">
         <a class="button" href="{{ route('logistics.sorting.incoming') }}">
@@ -36,7 +36,7 @@
     </article>
     <article class="metric-item">
         <span class="metric-icon"><i data-lucide="map-pin-off"></i></span>
-        <span class="metric-copy"><small>No matching zone</small><strong>{{ $sortingMetrics['unmatched'] }}</strong><span>Coverage must be configured</span></span>
+        <span class="metric-copy"><small>Routing attention</small><strong>{{ $sortingMetrics['zone_gaps'] + $sortingMetrics['handoff_required'] }}</strong><span>{{ $sortingMetrics['zone_gaps'] }} zone gaps · {{ $sortingMetrics['handoff_required'] }} city handoffs</span></span>
     </article>
     <article class="metric-item">
         <span class="metric-icon"><i data-lucide="triangle-alert"></i></span>
@@ -293,20 +293,33 @@
                                         @endforeach
                                     </select>
                                 </form>
-                            @else
-                                <span class="zone-routing-note {{ $parcel['has_matching_zone'] ? '' : 'is-unmatched' }}">
-                                    {{ $parcel['status'] === 'Exception' ? 'Inspection required' : 'No matching zone' }}
+                            @elseif($parcel['status'] === 'Exception')
+                                <span class="zone-routing-note is-unmatched">Inspection required</span>
+                            @elseif($parcel['requires_handoff'])
+                                <span class="zone-routing-note is-handoff">
+                                    <strong>{{ $parcel['handoff_target'] ? 'Transfer to '.$parcel['handoff_target'] : 'No destination account' }}</strong>
+                                    <small>{{ $parcel['handoff_note'] }}</small>
                                 </span>
+                            @else
+                                <span class="zone-routing-note is-unmatched">No matching zone</span>
                             @endif
                         </td>
                         <td><span class="status-badge {{ $parcel['has_matching_zone'] ? '' : 'is-warning' }}" data-status-badge data-status="{{ $parcel['status'] }}">{{ $parcel['status_label'] }}</span></td>
                         <td>
                             @if($parcel['can_sort'])
                                 <button class="button button-small button-primary" type="submit" form="sort-parcel-{{ $parcel['id'] }}">{{ $parcel['status'] === 'Sorted' ? 'Update zone' : 'Mark sorted' }}</button>
-                            @elseif(! $parcel['has_matching_zone'] && $parcel['status'] !== 'Exception')
-                                <a class="button button-small" href="#delivery-zones">Review coverage</a>
-                            @else
+                            @elseif($parcel['status'] === 'Exception')
                                 <span>Inspection required</span>
+                            @elseif($parcel['requires_handoff'])
+                                @if($parcel['handoff_ready'])
+                                    <a class="button button-small button-primary" href="{{ route('logistics.transfers.index') }}#ready-to-send">
+                                        <i data-lucide="arrow-left-right"></i>Go to City Handoffs
+                                    </a>
+                                @else
+                                    <span class="zone-routing-note is-unmatched">Destination account unavailable</span>
+                                @endif
+                            @else
+                                <a class="button button-small" href="#delivery-zones">Review coverage</a>
                             @endif
                         </td>
                     </tr>

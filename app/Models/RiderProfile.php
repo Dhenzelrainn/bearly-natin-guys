@@ -37,6 +37,17 @@ class RiderProfile extends Model
         );
     }
 
+    public function serviceLocationLabel(): string
+    {
+        $zone = $this->currentZone;
+        $center = $zone?->sortingCenter ?? $this->homeSortingCenter;
+
+        return collect([
+            $zone?->name,
+            $center?->name,
+        ])->filter()->unique()->implode(' · ') ?: 'Location unavailable';
+    }
+
     public function earnings()
     {
         return $this->hasMany(RiderEarning::class);

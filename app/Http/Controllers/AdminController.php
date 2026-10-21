@@ -12,6 +12,7 @@ use App\Models\ReturnRequest;
 use App\Models\SellerPayout;
 use App\Models\User;
 use App\Services\BuyerCatalogService;
+use App\Services\ConversationService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -1235,7 +1236,7 @@ class AdminController extends Controller
                     'seller_recovery' => $refund?->sellerRecovery ? [
                         'amount_minor' => (int) $refund->sellerRecovery->amount_minor,
                         'recovered_amount_minor' => (int) $refund->sellerRecovery->recovered_amount_minor,
-                        'outstanding_minor' => max(0, (int) $refund->sellerRecovery->amount_minor - (int) $refund->sellerRecovery->recovered_amount_minor),
+                        'outstanding_minor' => $refund->sellerRecovery->outstandingMinor(),
                         'status' => $refund->sellerRecovery->status,
                         'events' => $refund->sellerRecovery->events->map(fn ($event): array => [
                             'method' => $event->method,
@@ -1301,7 +1302,7 @@ class AdminController extends Controller
         );
     }
 
-    public function messages(Request $request): View
+    public function messages(Request $request, ConversationService $conversations): View
     {
         $admin = $request->user();
 
@@ -1372,6 +1373,7 @@ class AdminController extends Controller
                     ->with([
                         'sender',
                         'attachments',
+                        'receipts',
                     ])
                     ->orderBy('sent_at'),
             ])
@@ -1387,7 +1389,7 @@ class AdminController extends Controller
             ->get();
 
         $conversations = $records
-            ->map(function (Conversation $conversation) use ($admin): array {
+            ->map(function (Conversation $conversation) use ($admin, $conversations): array {
                 $adminParticipant = $conversation
                     ->participants
                     ->firstWhere('id', $admin->id);
@@ -1502,6 +1504,16 @@ class AdminController extends Controller
 
                     'type' => $conversation->type,
 
+                    'presence_user_ids' => $conversations->presenceUserIds(
+                        $conversation,
+                        $admin
+                    ),
+
+                    'delivery_url' => route(
+                        'messages.delivered',
+                        ['conversation' => $conversation->id]
+                    ),
+
                     'messages' => $conversation
                         ->messages
                         ->map(
@@ -1520,6 +1532,12 @@ class AdminController extends Controller
 
                                 'message_type' => $message->message_type,
 
+                                'receipt' => $conversations->receiptPayload(
+                                    $message,
+                                    $admin,
+                                    $conversation->participants
+                                ),
+
                                 'attachments' => $message->attachments
                                     ->map(
                                         fn ($attachment) => [
@@ -1530,6 +1548,19 @@ class AdminController extends Controller
                                             'mime_type' => $attachment->mime_type,
 
                                             'size_bytes' => $attachment->size_bytes,
+
+                                            'is_image' => str_starts_with(
+                                                (string) $attachment->mime_type,
+                                                'image/'
+                                            ),
+
+                                            'is_video' => str_starts_with(
+                                                (string) $attachment->mime_type,
+                                                'video/'
+                                            ),
+
+                                            'is_previewable' => $conversations
+                                                ->isPreviewableMime($attachment->mime_type),
 
                                             'download_url' => route(
                                                 'admin.messages.attachments.download',

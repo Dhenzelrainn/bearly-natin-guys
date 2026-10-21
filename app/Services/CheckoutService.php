@@ -33,15 +33,25 @@ class CheckoutService
         private readonly InventoryReservationService $reservations,
         private readonly PostalCodeLookup $postalCodes,
         private readonly NotificationService $notifications,
+        private readonly PromotionService $promotions,
+        private readonly ProductPricingService $pricing,
     ) {}
 
-    public function quote(User $buyer, array $cartItemIds, int $addressId): array
+    public function quote(User $buyer, array $cartItemIds, int $addressId, array $promotionSelection = []): array
     {
         [$destination, $groups] = $this->prepare($buyer, $cartItemIds, $addressId, false);
         $totals = $this->totals($destination, $groups);
+        $totals = $this->applyPromotions($buyer, $totals['_groups'], $totals, $promotionSelection, false);
         $groups = $totals['_groups'];
-        unset($totals['_groups']);
-        $context = $this->quoteContext($buyer, $destination, $groups, $totals, $cartItemIds);
+        unset($totals['_groups'], $totals['_resolved_promotions']);
+        $context = $this->quoteContext(
+            $buyer,
+            $destination,
+            $groups,
+            $totals,
+            $cartItemIds,
+            $this->normalizePromotionSelection($totals['promotion_selection'] ?? $promotionSelection),
+        );
         $expiresAt = now()->addMinutes(10);
 
         $totals['items'] = $context['items'];
@@ -78,6 +88,7 @@ class CheckoutService
         string $requestKey,
         string $quoteToken,
         ?string $sellerNote = null,
+        array $promotionSelection = [],
     ): Order {
         $existing = $this->existingRequest($buyer, $requestKey);
         if ($existing) {
@@ -85,7 +96,7 @@ class CheckoutService
         }
 
         try {
-            return DB::transaction(function () use ($buyer, $cartItemIds, $addressId, $requestKey, $quoteToken, $sellerNote): Order {
+            return DB::transaction(function () use ($buyer, $cartItemIds, $addressId, $requestKey, $quoteToken, $sellerNote, $promotionSelection): Order {
                 User::query()->whereKey($buyer->id)->lockForUpdate()->firstOrFail();
                 $existing = $this->existingRequest($buyer, $requestKey, true);
                 if ($existing) {
@@ -98,8 +109,10 @@ class CheckoutService
                     return $existing;
                 }
                 $totals = $this->totals($destination, $groups, true);
+                $totals = $this->applyPromotions($buyer, $totals['_groups'], $totals, $promotionSelection, true);
                 $groups = $totals['_groups'];
-                unset($totals['_groups']);
+                $resolvedPromotions = $totals['_resolved_promotions'];
+                unset($totals['_groups'], $totals['_resolved_promotions']);
                 $this->assertQuoteIsCurrent(
                     $buyer,
                     $destination,
@@ -107,9 +120,12 @@ class CheckoutService
                     $totals,
                     $cartItems->pluck('id')->all(),
                     $quoteToken,
+                    $this->normalizePromotionSelection($totals['promotion_selection'] ?? $promotionSelection),
                 );
                 $now = now();
                 $createdSellerOrders = [];
+                $sellerOrdersByStoreId = [];
+                $orderItemsByCartItemId = [];
 
                 $order = Order::query()->create([
                     'order_no' => $this->number('BRY'),
@@ -129,7 +145,10 @@ class CheckoutService
                     'currency' => 'PHP',
                     'subtotal_minor' => $totals['subtotal_minor'],
                     'shipping_fee_minor' => $totals['shipping_fee_minor'],
-                    'discount_minor' => 0,
+                    'discount_minor' => $totals['discount_minor'],
+                    'platform_discount_minor' => $totals['platform_discount_minor'],
+                    'campaign_platform_discount_minor' => $totals['campaign_platform_discount_minor'] ?? 0,
+                    'platform_shipping_discount_minor' => $totals['shipping_discount_minor'],
                     'total_minor' => $totals['total_minor'],
                     'status' => 'processing',
                     'payment_status' => 'unpaid',
@@ -143,16 +162,20 @@ class CheckoutService
                         'order_id' => $order->id,
                         'store_id' => $storeId,
                         'status' => 'pending',
-                        'subtotal_minor' => $group['subtotal_minor'],
-                        'discount_minor' => 0,
+                        'subtotal_minor' => $group['seller_subtotal_minor'] ?? $group['subtotal_minor'],
+                        'discount_minor' => $group['seller_discount_minor'],
+                        'platform_discount_minor' => $group['platform_discount_minor'],
+                        'campaign_platform_discount_minor' => $group['campaign_platform_discount_minor'] ?? 0,
+                        'platform_shipping_discount_minor' => $group['platform_shipping_discount_minor'],
                         'shipping_fee_minor' => $group['quote']['shipping_fee_minor'],
-                        'total_minor' => $group['subtotal_minor'] + $group['quote']['shipping_fee_minor'],
+                        'total_minor' => $group['seller_total_minor'] ?? $group['total_minor'],
                         'seller_note' => $sellerNote,
                         'delivery_provider_key' => $group['quote']['provider_key'],
                         'shipping_quote' => $group['quote'],
                     ]);
 
                     $createdSellerOrders[] = $sellerOrder;
+                    $sellerOrdersByStoreId[(int) $storeId] = $sellerOrder;
 
                     foreach ($group['items'] as $line) {
                         /** @var ProductVariant $variant */
@@ -176,7 +199,7 @@ class CheckoutService
                             'occurred_at' => $now,
                         ]);
 
-                        $sellerOrder->items()->create([
+                        $orderItem = $sellerOrder->items()->create([
                             'product_id' => $line['product']->id,
                             'product_variant_id' => $variant->id,
                             'product_name' => $line['product']->name,
@@ -187,13 +210,25 @@ class CheckoutService
                             'product_image_path' => $productImage?->path,
                             'category_id_snapshot' => $category?->id,
                             'category_name_snapshot' => $category?->name,
-                            'unit_price_minor' => (int) $variant->price_minor,
+                            'unit_price_minor' => (int) ($line['seller_unit_price_minor'] ?? $variant->price_minor),
                             'quantity' => $line['quantity'],
-                            'discount_minor' => 0,
-                            'subtotal_minor' => $line['subtotal_minor'],
+                            'discount_minor' => $line['seller_discount_minor'],
+                            'platform_discount_minor' => $line['platform_discount_minor'],
+                            'campaign_platform_discount_minor' => (int) ($line['campaign_platform_discount_minor'] ?? 0),
+                            'platform_campaign_participation_item_id' => $line['campaign_participation_item_id'] ?? null,
+                            'subtotal_minor' => (int) ($line['seller_subtotal_minor'] ?? $line['subtotal_minor']),
                         ]);
+                        $orderItemsByCartItemId[(int) $line['cart_item_id']] = $orderItem->id;
                     }
                 }
+
+                $this->promotions->recordRedemptions(
+                    $order,
+                    $buyer,
+                    $resolvedPromotions,
+                    $orderItemsByCartItemId,
+                    $sellerOrdersByStoreId,
+                );
 
                 Payment::query()->create([
                     'payment_no' => $this->number('PAY'),
@@ -313,11 +348,58 @@ class CheckoutService
                 'cancel_reason' => $reason,
             ]);
             $order->payments()->where('status', 'pending')->update(['status' => 'cancelled']);
+            $this->promotions->releaseForOrder($order);
 
             $this->notifySellersOfCancellation($order, $activeSellerOrders, $buyer, $reason);
 
             return $order->fresh(['sellerOrders.items', 'payments']);
         });
+    }
+
+    private function applyPromotions(
+        User $buyer,
+        array $groups,
+        array $totals,
+        array $promotionSelection,
+        bool $lock,
+    ): array {
+        $resolved = $this->promotions->resolve($buyer, $groups, $promotionSelection, $lock);
+        $groups = $resolved['groups'];
+
+        $totals = array_merge($totals, $resolved['totals']);
+        $totals['seller_orders'] = array_values(array_map(static fn (array $group): array => [
+            'store_name' => $group['store']->name,
+            'item_count' => array_sum(array_column($group['items'], 'quantity')),
+            'subtotal_minor' => (int) ($group['seller_subtotal_minor'] ?? $group['subtotal_minor']),
+            'discount_minor' => (int) $group['seller_discount_minor'],
+            'platform_discount_minor' => (int) $group['platform_discount_minor'],
+            'campaign_platform_discount_minor' => (int) ($group['campaign_platform_discount_minor'] ?? 0),
+            'platform_shipping_discount_minor' => (int) $group['platform_shipping_discount_minor'],
+            'shipping_fee_minor' => (int) $group['quote']['shipping_fee_minor'],
+            'total_minor' => (int) ($group['seller_total_minor'] ?? $group['total_minor']),
+            'buyer_total_minor' => (int) $group['buyer_total_minor'],
+            'quote' => $group['quote'],
+        ], $groups));
+        $totals['promotions'] = $resolved['options'];
+        $totals['promotion_selection'] = $resolved['selection'];
+        $totals['applied_promotions'] = $resolved['totals']['applied'] ?? [];
+        $totals['_groups'] = $groups;
+        $totals['_resolved_promotions'] = $resolved;
+
+        return $totals;
+    }
+
+    private function normalizePromotionSelection(array $selection): array
+    {
+        $platformId = (int) ($selection['platform_voucher_id'] ?? 0);
+        $storeId = (int) ($selection['store_voucher_id'] ?? 0);
+        $code = strtoupper(trim((string) ($selection['voucher_code'] ?? '')));
+
+        return [
+            'platform_voucher_id' => $platformId > 0 ? $platformId : null,
+            'store_voucher_id' => $storeId > 0 ? $storeId : null,
+            'voucher_code' => $code !== '' ? $code : null,
+        ];
     }
 
     private function prepare(User $buyer, array $cartItemIds, int $addressId, bool $lock): array
@@ -519,13 +601,19 @@ class CheckoutService
             }
 
             $storeId = (int) $store->id;
-            $unitPriceMinor = (int) $variant->price_minor;
-            if ($unitPriceMinor < 0 || $unitPriceMinor > intdiv(PHP_INT_MAX, $quantity)) {
+            $price = $this->pricing->priceForVariant($product, $variant, $quantity, $lock, null, $buyer);
+            $sellerUnitPriceMinor = (int) $price['seller_unit_price_minor'];
+            $buyerUnitPriceMinor = (int) $price['unit_price_minor'];
+            $campaignPlatformDiscountMinor = (int) $price['platform_unit_discount_minor'] * $quantity;
+            if ($sellerUnitPriceMinor < 0 || $buyerUnitPriceMinor < 0
+                || $sellerUnitPriceMinor > intdiv(PHP_INT_MAX, $quantity)
+                || $buyerUnitPriceMinor > intdiv(PHP_INT_MAX, $quantity)) {
                 throw ValidationException::withMessages([
                     'cart_item_ids' => "The current price for {$product->name} exceeds the supported order total.",
                 ]);
             }
-            $lineSubtotal = $unitPriceMinor * $quantity;
+            $sellerLineSubtotal = $sellerUnitPriceMinor * $quantity;
+            $lineSubtotal = $buyerUnitPriceMinor * $quantity;
             $currentStoreSubtotal = (int) ($groups[$storeId]['subtotal_minor'] ?? 0);
             if ($currentStoreSubtotal > PHP_INT_MAX - $lineSubtotal) {
                 throw ValidationException::withMessages([
@@ -538,11 +626,29 @@ class CheckoutService
                 'product' => $product,
                 'variant' => $variant,
                 'quantity' => $quantity,
+                'unit_price_minor' => $buyerUnitPriceMinor,
+                'seller_unit_price_minor' => $sellerUnitPriceMinor,
+                'seller_subtotal_minor' => $sellerLineSubtotal,
                 'subtotal_minor' => $lineSubtotal,
+                'platform_discount_minor' => 0,
+                'campaign_platform_discount_minor' => $campaignPlatformDiscountMinor,
+                'campaign_participation_item_id' => $price['campaign_participation_item_id'] ?? null,
+                'campaign_name' => $price['campaign_name'] ?? null,
+                'campaign_funding' => $price['campaign_funding'] ?? null,
             ];
-            $groups[$storeId] ??= ['store' => $store, 'items' => [], 'subtotal_minor' => 0];
+            $groups[$storeId] ??= [
+                'store' => $store,
+                'items' => [],
+                'subtotal_minor' => 0,
+                'seller_subtotal_minor' => 0,
+                'platform_discount_minor' => 0,
+                'campaign_platform_discount_minor' => 0,
+            ];
             $groups[$storeId]['items'][] = $line;
             $groups[$storeId]['subtotal_minor'] += $line['subtotal_minor'];
+            $groups[$storeId]['seller_subtotal_minor'] += $line['seller_subtotal_minor'];
+            $groups[$storeId]['platform_discount_minor'] += $line['platform_discount_minor'];
+            $groups[$storeId]['campaign_platform_discount_minor'] += $line['campaign_platform_discount_minor'];
         }
 
         return [$destination, $groups, $cartItems];
@@ -551,6 +657,8 @@ class CheckoutService
     private function totals(Address $destination, array $groups, bool $lockConfiguration = false): array
     {
         $subtotal = 0;
+        $sellerSubtotal = 0;
+        $campaignPlatformDiscount = 0;
         $shippingFee = 0;
 
         if ($lockConfiguration && $groups !== []) {
@@ -564,6 +672,8 @@ class CheckoutService
                 ]);
             }
             $subtotal += $group['subtotal_minor'];
+            $sellerSubtotal += (int) ($group['seller_subtotal_minor'] ?? $group['subtotal_minor']);
+            $campaignPlatformDiscount += (int) ($group['campaign_platform_discount_minor'] ?? 0);
             $group['quote'] = $this->shipping->quote(
                 $group['store'],
                 $destination,
@@ -588,14 +698,26 @@ class CheckoutService
 
         return [
             'subtotal_minor' => $subtotal,
+            'seller_subtotal_minor' => $sellerSubtotal,
             'shipping_fee_minor' => $shippingFee,
+            'seller_discount_minor' => 0,
+            'platform_discount_minor' => 0,
+            'campaign_platform_discount_minor' => $campaignPlatformDiscount,
+            'shipping_discount_minor' => 0,
             'discount_minor' => 0,
+            'total_discount_minor' => 0,
             'total_minor' => $subtotal + $shippingFee,
             'seller_orders' => array_values(array_map(static fn (array $group): array => [
                 'store_name' => $group['store']->name,
                 'item_count' => array_sum(array_column($group['items'], 'quantity')),
-                'subtotal_minor' => $group['subtotal_minor'],
+                'subtotal_minor' => (int) ($group['seller_subtotal_minor'] ?? $group['subtotal_minor']),
+                'discount_minor' => 0,
+                'platform_discount_minor' => (int) ($group['platform_discount_minor'] ?? 0),
+                'campaign_platform_discount_minor' => (int) ($group['campaign_platform_discount_minor'] ?? 0),
+                'platform_shipping_discount_minor' => 0,
                 'shipping_fee_minor' => $group['quote']['shipping_fee_minor'],
+                'total_minor' => (int) ($group['seller_subtotal_minor'] ?? $group['subtotal_minor']) + $group['quote']['shipping_fee_minor'],
+                'buyer_total_minor' => max(0, (int) $group['subtotal_minor'] + $group['quote']['shipping_fee_minor']),
                 'quote' => $group['quote'],
             ], $groups)),
             '_groups' => $groups,
@@ -608,6 +730,7 @@ class CheckoutService
         array $groups,
         array $totals,
         array $cartItemIds,
+        array $promotionSelection = [],
     ): array {
         $items = [];
         $sellerOrders = [];
@@ -626,8 +749,15 @@ class CheckoutService
                     'sku' => (string) $variant->sku,
                     'options' => $variant->options ?? [],
                     'quantity' => (int) $line['quantity'],
-                    'unit_price_minor' => (int) $variant->price_minor,
+                    'unit_price_minor' => (int) ($line['unit_price_minor'] ?? $line['seller_unit_price_minor'] ?? $variant->price_minor),
+                    'seller_unit_price_minor' => (int) ($line['seller_unit_price_minor'] ?? $variant->price_minor),
                     'subtotal_minor' => (int) $line['subtotal_minor'],
+                    'seller_subtotal_minor' => (int) ($line['seller_subtotal_minor'] ?? $line['subtotal_minor']),
+                    'discount_minor' => (int) ($line['seller_discount_minor'] ?? 0),
+                    'platform_discount_minor' => (int) ($line['platform_discount_minor'] ?? 0),
+                    'campaign_platform_discount_minor' => (int) ($line['campaign_platform_discount_minor'] ?? 0),
+                    'campaign_name' => $line['campaign_name'] ?? null,
+                    'campaign_funding' => $line['campaign_funding'] ?? null,
                     'seller_name' => (string) $group['store']->name,
                 ];
             }
@@ -638,8 +768,14 @@ class CheckoutService
             $sellerOrders[] = [
                 'store_id' => (int) $storeId,
                 'store_name' => (string) $group['store']->name,
-                'subtotal_minor' => (int) $group['subtotal_minor'],
+                'subtotal_minor' => (int) ($group['seller_subtotal_minor'] ?? $group['subtotal_minor']),
+                'discount_minor' => (int) ($group['seller_discount_minor'] ?? 0),
+                'platform_discount_minor' => (int) ($group['platform_discount_minor'] ?? 0),
+                'campaign_platform_discount_minor' => (int) ($group['campaign_platform_discount_minor'] ?? 0),
+                'platform_shipping_discount_minor' => (int) ($group['platform_shipping_discount_minor'] ?? 0),
                 'shipping_fee_minor' => (int) $quote['shipping_fee_minor'],
+                'total_minor' => (int) ($group['seller_total_minor'] ?? $group['total_minor'] ?? ($group['subtotal_minor'] + $quote['shipping_fee_minor'])),
+                'buyer_total_minor' => (int) ($group['buyer_total_minor'] ?? ($group['subtotal_minor'] + $quote['shipping_fee_minor'])),
                 'quote' => $quote,
             ];
         }
@@ -666,10 +802,17 @@ class CheckoutService
             'items' => $items,
             'totals' => [
                 'subtotal_minor' => (int) $totals['subtotal_minor'],
+                'seller_subtotal_minor' => (int) ($totals['seller_subtotal_minor'] ?? $totals['subtotal_minor']),
                 'shipping_fee_minor' => (int) $totals['shipping_fee_minor'],
+                'seller_discount_minor' => (int) ($totals['seller_discount_minor'] ?? 0),
+                'platform_discount_minor' => (int) ($totals['platform_discount_minor'] ?? 0),
+                'campaign_platform_discount_minor' => (int) ($totals['campaign_platform_discount_minor'] ?? 0),
+                'shipping_discount_minor' => (int) ($totals['shipping_discount_minor'] ?? 0),
                 'discount_minor' => (int) $totals['discount_minor'],
+                'total_discount_minor' => (int) ($totals['total_discount_minor'] ?? $totals['discount_minor']),
                 'total_minor' => (int) $totals['total_minor'],
             ],
+            'promotion_selection' => $promotionSelection,
             'seller_orders' => $sellerOrders,
         ];
     }
@@ -686,6 +829,7 @@ class CheckoutService
         array $totals,
         array $cartItemIds,
         string $quoteToken,
+        array $promotionSelection = [],
     ): void {
         try {
             $accepted = json_decode(Crypt::decryptString($quoteToken), true, flags: JSON_THROW_ON_ERROR);
@@ -693,7 +837,7 @@ class CheckoutService
             $accepted = null;
         }
 
-        $context = $this->quoteContext($buyer, $destination, $groups, $totals, $cartItemIds);
+        $context = $this->quoteContext($buyer, $destination, $groups, $totals, $cartItemIds, $promotionSelection);
         $valid = is_array($accepted)
             && (int) ($accepted['buyer_id'] ?? 0) === (int) $buyer->id
             && (int) ($accepted['address_id'] ?? 0) === (int) $destination->id

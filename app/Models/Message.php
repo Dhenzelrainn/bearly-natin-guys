@@ -36,4 +36,9 @@ class Message extends Model
             MessageAttachment::class
         );
     }
+
+    public function receipts()
+    {
+        return $this->hasMany(MessageReceipt::class);
+    }
 }

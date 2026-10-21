@@ -95,6 +95,14 @@ for ($round = 0; $round < 5; $round++) {
 
 }
 
+$usingLiveCatalog = ! empty($liveCatalog);
+
+if ($usingLiveCatalog) {
+
+    $homeProducts = array_slice($liveCatalog, 0, 60);
+
+}
+
 
 
 
@@ -297,6 +305,8 @@ $homeFlashDeals = [
 <div id="editorial">
 
 
+
+@include('buyer.partials.live-offers', ['promotions' => $activePromotions ?? collect()])
 
 <section class="bearly-promo-slider" id="bearly-promo-slider" aria-roledescription="carousel" aria-label="Bearly promotions">
 
@@ -661,7 +671,7 @@ $homeFlashDeals = [
 
 
 
-<noscript><p>Enable JavaScript to browse this homepage’s sample catalog.</p></noscript>
+<noscript><p>Enable JavaScript to browse this homepage’s {{ $usingLiveCatalog ? 'live product catalog' : 'sample catalog' }}.</p></noscript>
 
 
 
@@ -756,7 +766,7 @@ $homeFlashDeals = [
 
 <dialog id="info-dialog" aria-labelledby="info-title"><button class="dialog-close icon-button" data-close aria-label="Close"><span class="material-symbols-outlined" aria-hidden="true">close</span></button><h2 id="info-title"></h2><div id="info-copy"></div><div class="info-actions" id="info-actions"></div></dialog>
 
-<script id="home-data" type="application/json">{!! json_encode(['categories' => $homeCategories, 'products' => $homeProducts], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR) !!}</script>
+<script id="home-data" type="application/json">{!! json_encode(['categories' => $homeCategories, 'products' => $homeProducts, 'live' => $usingLiveCatalog], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR) !!}</script>
 <script id="featured-product-data" type="application/json">{!! json_encode($featuredProducts, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR) !!}</script>
 
 

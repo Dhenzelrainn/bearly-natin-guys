@@ -7682,7 +7682,12 @@ body:not(.bc).bh .buyer-notification-menu .notification-header-trigger.active,
 body.bc .buyer-global-header.bc-header .buyer-notification-menu .notification-header-trigger:hover,
 body.bc .buyer-global-header.bc-header .buyer-notification-menu .notification-header-trigger:focus-visible,
 body.bc .buyer-global-header.bc-header .buyer-notification-menu .notification-header-trigger.active{color:#f4b13a}
-.notification-header-trigger .material-symbols-outlined{font-size:21px}
+.notification-header-trigger > .notification-bell-icon{
+    display:block;
+    width:21px;
+    height:21px;
+    flex:0 0 auto;
+}
 .notification-header-trigger .notification-badge{
     top:-5px;
     right:1px;
@@ -8000,3 +8005,98 @@ body.bc .buyer-global-header.bc-header .header-actions .buyer-notification-popov
 @media (max-width:1100px){.buyer-search-page .buyer-search-product-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media (max-width:820px){.buyer-search-page .buyer-search-shell{width:min(calc(100% - 32px),1320px);padding-top:22px}.buyer-search-page .buyer-search-product-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media (max-width:580px){.buyer-search-page .buyer-search-shell{width:calc(100% - 24px);padding-bottom:48px}.buyer-search-page .buyer-search-heading{padding-bottom:19px}.buyer-search-page .buyer-search-stores,.buyer-search-page .buyer-search-products{margin-top:23px}.buyer-search-page .buyer-search-section-heading{align-items:flex-start}.buyer-search-page .buyer-search-section-heading h2{font-size:18px}.buyer-search-page .buyer-search-store-card{align-items:flex-start;flex-direction:column}.buyer-search-page .buyer-search-store-link{margin-left:68px}.buyer-search-page .buyer-search-product-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.buyer-search-page .buyer-search-product-copy{padding:10px}.buyer-search-page .buyer-search-price{font-size:14px}}
+
+/* Live platform offers on Home and Flash Deals. */
+.live-platform-offers{margin:0 0 16px;padding:17px 18px;border:1px solid #e8dacb;border-radius:10px;background:#fffdfa}
+.live-platform-offers-head{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;margin-bottom:12px}
+.live-platform-offers-head p{margin:0 0 3px;color:#99501f;font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}
+.live-platform-offers-head h2{margin:0;color:#39251b;font-size:17px;font-weight:700;letter-spacing:-.01em}
+.live-platform-offers-head a{display:inline-flex;align-items:center;gap:4px;color:#75451f;font-size:11px;font-weight:700;text-decoration:none;white-space:nowrap}
+.live-platform-offers-head a:hover{color:#4d2a15}
+.live-platform-offers-head a .material-symbols-outlined{font-size:16px}
+.live-platform-offers-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}
+.live-platform-offer{display:flex;align-items:flex-start;gap:10px;min-width:0;padding:11px;border:1px solid #eadfd4;border-radius:9px;background:#fffaf4;color:inherit;text-decoration:none;transition:border-color .18s ease,transform .18s ease}
+.live-platform-offer:hover{border-color:#c69a69;transform:translateY(-1px)}
+.live-platform-offer img{width:48px;height:48px;flex:0 0 48px;object-fit:cover;border-radius:7px;background:#eee1d4}
+.live-platform-offer-icon{display:grid;place-items:center;width:42px;height:42px;flex:0 0 42px;border-radius:8px;background:#f4e4d1;color:#9c5b22;font-size:22px}
+.live-platform-offer-copy{display:flex;min-width:0;flex-direction:column;gap:2px}
+.live-platform-offer-copy small{color:#9a7148;font-size:8px;font-weight:800;letter-spacing:.09em;text-transform:uppercase}
+.live-platform-offer-copy strong{overflow:hidden;color:#39251b;font-size:12px;font-weight:700;text-overflow:ellipsis;white-space:nowrap}
+.live-platform-offer-copy>span{color:#755a45;font-size:10px}
+.live-platform-offer-copy .live-platform-offer-description{display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2;color:#8c7a6d;font-size:10px;line-height:1.4}
+.live-platform-offer-copy code{align-self:flex-start;margin-top:2px;padding:2px 5px;border-radius:4px;background:#f0e2d1;color:#6b3b1e;font-size:9px;font-weight:700;letter-spacing:.07em}
+@media (max-width:720px){
+  .live-platform-offers{padding:14px}
+  .live-platform-offers-head{align-items:flex-start;flex-direction:column;gap:6px}
+  .live-platform-offers-grid{grid-template-columns:1fr}
+}
+
+/* Buyer product pricing and active discount metadata */
+.buyer-price-line{
+    display:flex;
+    align-items:baseline;
+    flex-wrap:wrap;
+    gap:4px 7px;
+}
+.buyer-price-meta{
+    display:inline-flex;
+    align-items:center;
+    flex-wrap:wrap;
+    gap:4px 6px;
+}
+.buyer-price-meta[hidden]{display:none!important}
+.buyer-price-regular{
+    display:inline-block;
+    color:#8e7f73;
+    font-size:11px;
+    font-weight:500;
+    line-height:1.3;
+    text-decoration:line-through;
+    text-decoration-thickness:1px;
+    white-space:nowrap;
+}
+.buyer-price-badge{
+    display:inline-flex;
+    align-items:center;
+    min-height:18px;
+    padding:1px 6px;
+    border:1px solid #ead1a9;
+    border-radius:4px;
+    background:#fff5e5;
+    color:#8a5412;
+    font-size:10px;
+    font-weight:700;
+    line-height:1.2;
+    letter-spacing:.01em;
+    white-space:nowrap;
+}
+.buyer-price-campaign{
+    flex:0 0 100%;
+    color:#78502b;
+    font-size:10px;
+    font-weight:600;
+    line-height:1.35;
+}
+.buyer-price-campaign[hidden]{display:none!important}
+body.bc .price-row{
+    align-items:baseline;
+    justify-content:flex-start;
+    gap:4px 6px;
+}
+body.bc[data-live-catalog="true"] .subcategories,
+body.bc[data-live-catalog="true"] .shortcuts{display:none!important}
+body.bc .price-row .buyer-price-meta{gap:3px 5px}
+body.bc .price-row .buyer-price-regular{font-size:10px}
+body.bc .price-row .buyer-price-badge{min-height:17px;padding:0 5px;font-size:9px}
+.buyer-search-page .buyer-search-price-line{display:flex;align-items:baseline;flex-wrap:wrap;gap:5px 7px}
+.store-product-price-line{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 7px;margin-top:8px}
+.store-product-price-line .store-product-price{margin-top:0}
+body:not(.bc).bh .discovery-price-line{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 6px;margin-top:2px}
+body:not(.bc).bh .discovery-price-line .product-price{margin-top:0}
+body:not(.bc).bh .top-product-price-line{display:flex;align-items:baseline;flex-wrap:wrap;gap:3px 6px}
+body:not(.bc).bh .top-product-price-line .buyer-price-badge{min-height:16px;padding:0 4px;font-size:9px}
+body.product-detail-page .related-price-line{display:flex;align-items:baseline;flex-wrap:wrap;gap:5px 7px;margin-top:7px}
+body.product-detail-page .related-copy .related-price-current{color:#5b3827;font-size:15px;font-weight:700}
+body.product-detail-page .related-copy .buyer-price-meta{display:inline-flex;gap:4px 6px;margin:0}
+body.product-detail-page .related-copy .buyer-price-regular{display:inline-block;margin:0;color:#8e7f73;font-size:11px;font-weight:500}
+body.product-detail-page .related-copy .buyer-price-badge{display:inline-flex;margin:0}

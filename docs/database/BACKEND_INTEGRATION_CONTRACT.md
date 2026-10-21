@@ -55,20 +55,45 @@ This file is the shared contract for backend, UI, and database work. The executa
 
 ## Seller pricing and campaigns
 
-- Persist Seller campaigns in `store_promotions` and scope every campaign and
-  selected product to the authenticated Seller's Store.
-- Persist promotion types as `product_discount` or `store_voucher`. Voucher and
-  minimum-spend amounts use integer centavos; promotion dates are calendar dates.
-- New Seller campaign creation accepts `store_voucher` only. Product discounts
-  are managed through Product Pricing; existing `product_discount` campaign rows
-  remain readable for compatibility but cannot be created through the campaign form.
-- Campaign lifecycle (`scheduled`, `active`, `ended`) is derived from its date
-  range until a pause/cancel workflow is introduced.
-- When Buyer pricing integration is implemented, an active Product Discount
-  replaces the regular Seller discount; the two must not stack.
-- Seller-side campaign persistence alone does not change Buyer prices or redeem
-  vouchers. Do not imply either behavior until Buyer pricing and transactional
-  checkout validation are implemented.
+- Seller Product Discounts and Store Vouchers are `store_promotions` with types
+  `product_discount` and `store_voucher`. Store Voucher and minimum-spend amounts
+  use integer centavos. Promotion schedules combine `starts_on`/`ends_on` with
+  `starts_time`/`ends_time` in the `Asia/Manila` timezone. Existing date-only
+  records default to midnight starts and 11:59:59 PM ends; newly selected end
+  times include the selected minute. New voucher creation accepts
+  `store_voucher` only; existing `product_discount` rows remain readable.
+- Store Voucher names may be generated from their offer when the Seller leaves
+  the optional internal label blank. Product Discounts retain a Seller-only
+  internal name and may carry a separate optional `buyer_campaign_name`; show
+  that label only while the corresponding Product Discount is active. Buyer
+  pricing and checkout must continue to resolve from the authoritative promotion
+  window, not from display metadata.
+- Product Discounts are Seller-funded scheduled pricing offers. An active
+  Product Discount replaces (does not stack with) the regular Seller discount.
+  Reject overlapping scheduled/active Product Discounts for the same Store
+  product/SKU. Store Vouchers remain checkout discounts and use the existing
+  claim, redemption, cancellation, and refund restoration workflow.
+- Bearly Campaign events reuse `platform_promotions`; do not create a parallel
+  campaign engine. Campaign-specific event fields are additive. Seller opt-ins
+  live in `platform_campaign_participations` and selected product/SKU pricing,
+  stock, and per-Buyer limits live in `platform_campaign_participation_items`.
+- Campaign events use `draft`, `open`, `active`, `paused`, and `ended`; Seller
+  participations use `pending_review`, `approved`, `rejected`, and `withdrawn`.
+  Join, review, status, and price-affecting checkout operations are transactional
+  and lock the campaign/participation/item rows in a consistent order.
+- Campaign funding is exactly `seller` or `platform`; shared funding is not
+  supported. Seller-funded campaign prices reduce Seller proceeds. A
+  platform-funded price difference is recorded in separate
+  `campaign_platform_discount_minor` snapshots on Orders, Seller Orders, and
+  Order Items and does not reduce the Seller earnings/commission basis.
+- Campaign pricing does not stack: use the best eligible effective price. The
+  campaign price is already reflected in the Buyer item price/subtotal; do not
+  subtract the same campaign difference a second time from checkout totals.
+  Revalidate campaign dates, approval, stock limits, per-Buyer limits, and
+  Bearly budget under checkout locks. Order Item prices and discounts remain
+  immutable snapshots if campaign terms later change.
+- Campaign banners are stored on Laravel disks; database rows store disk/path
+  metadata, not file contents.
 
 ## Required status vocabulary
 
@@ -99,6 +124,8 @@ Use constants or PHP backed enums in application code, while columns remain stri
 | Seller bank account | `active`, `inactive` |
 | Seller withdrawal | `pending_review`, `approved`, `processing`, `completed`, `rejected`, `failed` |
 | Seller withdrawal transfer | `pending_verification`, `verified`, `failed` |
+| Bearly campaign | `draft`, `open`, `active`, `paused`, `ended` |
+| Campaign participation | `pending_review`, `approved`, `rejected`, `withdrawn` |
 
 Do not add synonymous values (for example both `shipped` and `dispatched`) without updating this contract and every consumer.
 

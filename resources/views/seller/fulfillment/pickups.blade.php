@@ -6,9 +6,9 @@
     $pickupRequests = collect($requests);
     $readyCount = count($eligibleOrders);
     $pickupTabs = ['all' => 'All Requests', 'pending' => 'Pending Logistics', 'assigned' => 'Rider Assigned', 'picked-up' => 'Collected / Received', 'cancelled' => 'Cancelled'];
-    $providers = collect($providers);
     $providerNames = $pickupRequests->pluck('provider')->filter()->unique()->implode(', ');
     $hasPickupAddress = $pickupAddress !== 'Pickup address not set';
+    $hasProvider = $provider !== null;
 @endphp
 
 <div class="pickups-page">
@@ -17,7 +17,7 @@
             <h2>Pickup Requests</h2>
             <p>Send ready Seller Orders to Logistics for review and Rider assignment.</p>
         </div>
-        <button class="seller-primary-button" type="button" data-modal-open="pickup-create" @disabled($readyCount === 0 || $providers->isEmpty() || ! $hasPickupAddress)>
+        <button class="seller-primary-button" type="button" data-modal-open="pickup-create" @disabled($readyCount === 0 || ! $hasProvider || ! $hasPickupAddress)>
             <i data-lucide="plus" aria-hidden="true"></i>Create Pickup Request
         </button>
     </div>
@@ -40,12 +40,12 @@
             <p>
                 @if (! $hasPickupAddress)
                     Add a valid pickup address to your Seller profile before scheduling collection.
-                @elseif ($providers->isEmpty())
-                    No active Logistics provider is available. Contact an administrator before scheduling collection.
+                @elseif (! $hasProvider)
+                    {{ $providerError ?: 'No active Logistics provider is available for your pickup city. Contact an administrator before scheduling collection.' }}
                 @elseif ($readyCount)
-                    Select orders and a pickup window. Bearly will create the shipment label and send the request to your selected Logistics provider.
+                    Select packed orders with printed waybills and a pickup window. The request goes to {{ $provider->display_name }}, the provider serving your pickup city.
                 @else
-                    Only ready orders without an existing shipment can be submitted for pickup.
+                    Mark an order ready after you print and confirm its waybill in Fulfillment → Waybills. Only those packed orders appear here.
                 @endif
             </p>
         </div>
@@ -85,7 +85,7 @@
                         </td>
                         <td><span>{{ $schedule[0] }}</span>@if (isset($schedule[1]))<small>{{ $schedule[1] }}</small>@endif</td>
                         <td><span>{{ $address[0] }}</span>@if (isset($address[1]))<small>{{ trim($address[1]) }}</small>@endif</td>
-                        <td><span>{{ $item['rider'] }}</span></td>
+                        <td><span>{{ $item['rider'] }}</span><small>{{ $item['rider_location'] }}</small></td>
                         <td><span class="fulfillment-status is-{{ $item['status_key'] }}">{{ $item['status'] }}</span></td>
                         <td><button class="fulfillment-row-action" type="button" data-pickup-view data-pickup='@json($item)' aria-label="View {{ $item['id'] }} details">View Details</button></td>
                     </tr>
@@ -95,7 +95,7 @@
             <div class="fulfillment-empty" data-pickup-empty @if ($pickupRequests->isNotEmpty()) hidden @endif>
                 <i data-lucide="package-search" aria-hidden="true"></i>
                 <strong>No pickup requests yet</strong>
-                <span>Mark an order ready, then submit it here so Logistics can review and assign a Rider.</span>
+                <span>Print and confirm a packed order's waybill, mark it ready, then submit it here so Logistics can review and assign a Rider.</span>
             </div>
         </div>
         <footer class="fulfillment-footer">
@@ -118,7 +118,7 @@
                     @forelse ($eligibleOrders as $order)
                         <label class="pickup-order-option">
                             <input type="checkbox" name="order_ids[]" value="{{ $order['id'] }}" data-pickup-order @checked(in_array($order['id'], (array) old('order_ids', [])))>
-                            <span><strong>{{ $order['order'] }}</strong><small>1 parcel · {{ $order['weight'] }} · {{ $order['destination'] }} · waybill generated on submission</small></span>
+                            <span><strong>{{ $order['order'] }}</strong><small>{{ $order['packages'] }} {{ $order['packages'] === 1 ? 'parcel' : 'parcels' }} · {{ $order['weight'] }} · {{ $order['destination'] }} · Waybill {{ $order['waybill'] }} printed</small></span>
                         </label>
                     @empty
                         <p>No orders are currently eligible for a new pickup request.</p>
@@ -128,12 +128,8 @@
                 <div class="pickup-form-grid">
                     <label>
                         <span>Logistics provider</span>
-                        <select name="logistics_profile_id" required>
-                            <option value="">Choose a provider</option>
-                            @foreach ($providers as $provider)
-                                <option value="{{ $provider->id }}" @selected((string) old('logistics_profile_id') === (string) $provider->id)>{{ $provider->display_name }}</option>
-                            @endforeach
-                        </select>
+                        <input type="text" value="{{ $provider?->display_name ?? 'No provider available' }}" readonly aria-describedby="pickup-provider-note">
+                        <small id="pickup-provider-note">Assigned automatically from your Seller pickup city. You cannot choose another provider.</small>
                     </label>
                     <label><span>Pickup date</span><input type="date" name="requested_date" min="{{ now()->toDateString() }}" value="{{ old('requested_date') }}" required></label>
                     <label>
@@ -155,7 +151,7 @@
 
                 <div class="modal-actions">
                     <button class="draft-button" type="button" data-modal-close>Cancel</button>
-                    <button class="seller-primary-button" type="submit" @disabled($readyCount === 0 || $providers->isEmpty() || ! $hasPickupAddress)>Submit to Logistics</button>
+                    <button class="seller-primary-button" type="submit" @disabled($readyCount === 0 || ! $hasProvider || ! $hasPickupAddress)>Submit to Logistics</button>
                 </div>
             </form>
         </section>
@@ -171,6 +167,7 @@
                 <div><dt>Logistics provider</dt><dd data-pickup-provider>—</dd></div>
                 <div><dt>Schedule</dt><dd data-pickup-schedule>—</dd></div>
                 <div><dt>Rider</dt><dd data-pickup-rider>—</dd></div>
+                <div><dt>Rider service area</dt><dd data-pickup-rider-location>—</dd></div>
                 <div><dt>Pickup address</dt><dd data-pickup-address>—</dd></div>
                 <div><dt>Instructions</dt><dd data-pickup-instructions>—</dd></div>
             </dl>

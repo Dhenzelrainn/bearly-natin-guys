@@ -7,6 +7,7 @@ use App\Models\Cart;
 use App\Models\CartItem;
 use App\Models\Category;
 use App\Models\InventoryMovement;
+use App\Models\LogisticsProfile;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\ProductImage;
@@ -262,6 +263,8 @@ class OrdersCheckoutIntegrationTest extends TestCase
         $destination = $this->address($buyer, 'Santa Rosa');
         $category = $this->category();
         [$seller, $store] = $this->sellerAndStore($category, 'orders-transitions');
+        $this->logisticsProviderFor('0403422000');
+        $provider = $this->logisticsProviderFor((string) $destination->psgc_city_code);
         $variant = $this->variant($this->product($store, $category, 'Transition Item'), 'TRANSITION-001', 2500, 4);
         $cartItem = $this->cartItem($buyer, $variant, 2);
         $quoteToken = $this->quoteToken($buyer, [$cartItem->id], $destination->id);
@@ -285,14 +288,50 @@ class OrdersCheckoutIntegrationTest extends TestCase
 
         $this->actingAs($seller)->patchJson($endpoint, ['action' => 'start_preparing'])
             ->assertOk()
-            ->assertJsonPath('data.status', 'packing');
+            ->assertJsonPath('data.status', 'packing')
+            ->assertJsonPath('data.redirect_to', route('seller.fulfillment.waybills', ['status' => 'ready']));
         $this->assertNotNull($sellerOrder->fresh()->preparing_at);
+        $this->assertDatabaseCount('shipments', 1);
+        $this->assertDatabaseCount('waybills', 1);
+        $this->assertDatabaseCount('parcels', 1);
+
+        $this->actingAs($seller)->patchJson($endpoint, ['action' => 'start_preparing'])
+            ->assertConflict();
+
+        $this->assertDatabaseCount('shipments', 1);
+        $this->assertDatabaseCount('waybills', 1);
+        $this->assertDatabaseCount('parcels', 1);
+
+        $shipment = $sellerOrder->fresh()->shipments()->sole();
+        $this->assertSame($provider->id, $shipment->logistics_profile_id);
+        $this->assertSame($provider->id, $shipment->origin_logistics_profile_id);
+        $this->assertSame('pending', $shipment->status);
+        $this->assertSame('generated', $shipment->waybill->status);
+        $this->assertNull($shipment->waybill->printed_at);
+        $this->assertDatabaseHas('shipment_events', [
+            'shipment_id' => $shipment->id,
+            'event_type' => 'waybill_generated',
+            'to_status' => 'pending',
+            'actor_user_id' => $seller->id,
+            'source' => 'seller',
+        ]);
+
+        $this->actingAs($seller)->patchJson($endpoint, ['action' => 'mark_ready'])
+            ->assertConflict();
+
+        $shipment->waybill->update(['printed_at' => now()]);
 
         $this->actingAs($seller)->patchJson($endpoint, ['action' => 'mark_ready'])
             ->assertOk()
             ->assertJsonPath('data.status', 'ready_for_pickup')
             ->assertJsonPath('data.redirect_to', route('seller.orders', ['status' => 'ready-pickup']));
         $this->assertNotNull($sellerOrder->fresh()->ready_at);
+        $this->assertSame('ready_for_pickup', $shipment->fresh()->status);
+        $this->assertDatabaseHas('shipment_events', [
+            'shipment_id' => $shipment->id,
+            'event_type' => 'shipment_ready_for_pickup',
+            'to_status' => 'ready_for_pickup',
+        ]);
 
         $this->assertDatabaseCount('seller_order_status_histories', 3);
         $this->assertDatabaseHas('seller_order_status_histories', [
@@ -823,6 +862,20 @@ class OrdersCheckoutIntegrationTest extends TestCase
     }
 
     /** @return array{0: User, 1: Store} */
+    private function logisticsProviderFor(string $cityCode): LogisticsProfile
+    {
+        $user = $this->user('logistics');
+
+        return LogisticsProfile::query()->create([
+            'user_id' => $user->id,
+            'legal_name' => 'Bearly Test Logistics Inc.',
+            'display_name' => 'Bearly Test Logistics',
+            'contact_phone' => '+639171234567',
+            'psgc_city_code' => $cityCode,
+            'status' => 'active',
+        ]);
+    }
+
     private function sellerAndStore(Category $category, string $slug): array
     {
         $seller = $this->user('seller');

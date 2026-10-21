@@ -20,7 +20,7 @@
     <div>
         <span class="section-kicker">Bearly platform rule</span>
         <h3>{{ $commissionRateLabel }}% Platform Commission</h3>
-        <p>Only posted transactions with confirmed payments are included in earnings. Refund and Seller recovery entries remain visible in the ledger; outstanding recoveries are not automatically deducted from Wallet balances.</p>
+        <p>Only posted transactions with confirmed payments are included in earnings. Completed Seller-liable refunds after the wallet cutoff are deducted automatically when the related sale has Wallet funds; any remaining recovery stays visible and blocks new withdrawals.</p>
     </div>
 </section>
 

@@ -148,6 +148,22 @@ $adminNavGroups = [
     ],
 
     [
+        'label' => 'Marketing',
+        'items' => [
+            [
+                'label' => 'Platform Vouchers & Offers',
+                'route' => 'admin.promotions',
+                'icon' => 'badge-percent',
+            ],
+            [
+                'label' => 'Bearly Campaigns',
+                'route' => 'admin.campaigns',
+                'icon' => 'calendar-range',
+            ],
+        ],
+    ],
+
+    [
         'label' => 'Communication',
         'items' => [
             [

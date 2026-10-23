@@ -84,16 +84,17 @@ class MobileAuthController extends Controller
             'message' => 'Login successful.',
             'token_type' => 'Bearer',
             'token' => $token,
+            'user' => $this->userPayload($user),
+        ]);
+    }
 
-            'user' => [
-                'id' => $user->id,
-                'name' => $user->name,
-                'first_name' => $user->first_name,
-                'last_name' => $user->last_name,
-                'email' => $user->email,
-                'role' => $user->role,
-                'status' => $user->status,
-            ],
+    public function me(Request $request): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        return response()->json([
+            'user' => $this->userPayload($user),
         ]);
     }
 
@@ -137,5 +138,19 @@ class MobileAuthController extends Controller
             default =>
                 'Your account is not currently available.',
         };
+    }
+
+    /** @return array{id: int, name: string, first_name: ?string, last_name: ?string, email: string, role: string, status: string} */
+    private function userPayload(User $user): array
+    {
+        return [
+            'id' => $user->id,
+            'name' => $user->name,
+            'first_name' => $user->first_name,
+            'last_name' => $user->last_name,
+            'email' => $user->email,
+            'role' => $user->role,
+            'status' => $user->status,
+        ];
     }
 }

@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\MobileAuthController;
 use App\Http\Controllers\Api\MobileRegistrationController;
+use App\Http\Middleware\EnsureMobileAccountIsEligible;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -13,7 +14,12 @@ Route::post('/mobile/login', [
 Route::post('/mobile/logout', [
     MobileAuthController::class,
     'logout',
-])->middleware('auth:sanctum');
+])->middleware(['auth:sanctum', EnsureMobileAccountIsEligible::class]);
+
+Route::get('/mobile/me', [
+    MobileAuthController::class,
+    'me',
+])->middleware(['auth:sanctum', EnsureMobileAccountIsEligible::class]);
 
 Route::post('/mobile/register/email/send', [
     MobileRegistrationController::class,
@@ -32,4 +38,4 @@ Route::post('/mobile/register/buyer', [
 
 Route::get('/user', function (Request $request) {
     return $request->user();
-})->middleware('auth:sanctum');
+})->middleware(['auth:sanctum', EnsureMobileAccountIsEligible::class]);

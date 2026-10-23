@@ -243,6 +243,57 @@ class BuyerCatalogService
             ?: $images->first(fn (ProductImage $image): bool => $image->variant_id === null);
     }
 
+    public function publicImageUrl(?ProductImage $image): ?string
+    {
+        if (! $image) {
+            return null;
+        }
+
+        $diskName = (string) ($image->disk ?: 'public');
+        $diskConfig = config("filesystems.disks.{$diskName}");
+        if (! is_array($diskConfig)) {
+            return null;
+        }
+
+        $isPublicDisk = $diskName === 'public'
+            || ($diskConfig['visibility'] ?? null) === 'public'
+            || filled($diskConfig['url'] ?? null);
+        if (! $isPublicDisk) {
+            return null;
+        }
+
+        $path = trim((string) $image->path);
+        if ($path === '') {
+            return null;
+        }
+
+        if (preg_match('~^https?://~i', $path) === 1) {
+            return preg_replace('~^http://~i', 'https://', $path) ?: $path;
+        }
+
+        if (str_starts_with($path, '//')) {
+            return 'https:'.$path;
+        }
+
+        $diskUrl = (string) ($diskConfig['url'] ?? '');
+        $basePath = trim((string) (parse_url($diskUrl, PHP_URL_PATH) ?: ''), '/');
+        $path = ltrim($path, '/');
+        if ($basePath !== '' && ($path === $basePath || str_starts_with($path, $basePath.'/'))) {
+            $path = ltrim(substr($path, strlen($basePath)), '/');
+        }
+
+        $url = Storage::disk($diskName)->url($path);
+        if (! Str::startsWith($url, ['http://', 'https://', '//'])) {
+            $url = url('/'.ltrim($url, '/'));
+        }
+
+        if (Str::startsWith($url, '//')) {
+            return 'https:'.$url;
+        }
+
+        return preg_replace('~^http://~i', 'https://', $url) ?: $url;
+    }
+
     /**
      * Resolve the display image for an immutable order-item snapshot,
      * preferring the snapshot path recorded at checkout before falling back

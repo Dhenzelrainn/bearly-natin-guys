@@ -1288,13 +1288,10 @@ class BuyerController extends Controller
 
     public function cartData(Request $request, BuyerCatalogService $catalog): JsonResponse
     {
-        $cart = $this->currentCart($request->user(), false);
+        $cartState = $this->cartState($request->user(), $catalog);
 
         return response()->json([
-            'data' => [
-                'items' => $cart ? $this->cartPayload($cart, $catalog) : [],
-                'cart_count' => $this->cartCount($request->user()),
-            ],
+            'data' => $cartState,
             'message' => 'Cart retrieved successfully.',
         ]);
     }
@@ -1326,6 +1323,16 @@ class BuyerController extends Controller
             }
 
             $variant = $variantQuery->lockForUpdate()->firstOrFail();
+
+            if (
+                ! empty($data['product_id'])
+                && (int) $variant->product_id !== (int) $data['product_id']
+            ) {
+                throw ValidationException::withMessages([
+                    'product_variant_id' => 'The selected variation does not belong to this product.',
+                ]);
+            }
+
             $product = Product::query()
                 ->visibleToBuyers()
                 ->whereKey($variant->product_id)
@@ -1349,7 +1356,8 @@ class BuyerController extends Controller
                 $existingItem->update(['quantity' => $quantity]);
 
                 return $existingItem->fresh([
-                    'variant.product.store',
+                    'variant.product.store.sellerProfile.user',
+                    'variant.product.variants' => fn ($variants) => $variants->where('is_active', true),
                     'variant.product.images.variant',
                 ]);
             }
@@ -1359,16 +1367,17 @@ class BuyerController extends Controller
                 'quantity' => (int) $data['quantity'],
                 'selected' => true,
             ])->load([
-                'variant.product.store',
+                'variant.product.store.sellerProfile.user',
+                'variant.product.variants' => fn ($variants) => $variants->where('is_active', true),
                 'variant.product.images.variant',
             ]);
         });
 
         return response()->json([
-            'data' => [
-                'item' => $this->cartItemPayload($item, $catalog),
-                'cart_count' => $this->cartCount($request->user()),
-            ],
+            'data' => array_merge(
+                $this->cartState($request->user(), $catalog),
+                ['item' => $this->cartItemPayload($item, $catalog)],
+            ),
             'message' => 'Product added to cart',
         ]);
     }
@@ -1445,7 +1454,8 @@ class BuyerController extends Controller
         $cartItem = DB::transaction(function () use ($cart, $cartItem, $data) {
             $item = $cart->items()
                 ->with([
-                    'variant.product.store',
+                    'variant.product.store.sellerProfile.user',
+                    'variant.product.variants' => fn ($variants) => $variants->where('is_active', true),
                     'variant.product.images.variant',
                 ])
                 ->lockForUpdate()
@@ -1466,22 +1476,26 @@ class BuyerController extends Controller
             $item->update(['quantity' => (int) $data['quantity']]);
 
             return $item->fresh([
-                'variant.product.store',
+                'variant.product.store.sellerProfile.user',
+                'variant.product.variants' => fn ($variants) => $variants->where('is_active', true),
                 'variant.product.images.variant',
             ]);
         });
 
         return response()->json([
-            'data' => [
-                'item' => $this->cartItemPayload($cartItem, $catalog),
-                'cart_count' => $this->cartCount($request->user()),
-            ],
+            'data' => array_merge(
+                $this->cartState($request->user(), $catalog),
+                ['item' => $this->cartItemPayload($cartItem, $catalog)],
+            ),
             'message' => 'Cart updated',
         ]);
     }
 
-    public function removeFromCart(Request $request, CartItem $cartItem): JsonResponse
-    {
+    public function removeFromCart(
+        Request $request,
+        CartItem $cartItem,
+        BuyerCatalogService $catalog,
+    ): JsonResponse {
         $cart = $this->currentCart($request->user(), false);
         abort_unless($cart && (int) $cartItem->cart_id === (int) $cart->id, 404);
         DB::transaction(function () use ($cart, $cartItem): void {
@@ -1489,7 +1503,7 @@ class BuyerController extends Controller
         });
 
         return response()->json([
-            'data' => ['cart_count' => $this->cartCount($request->user())],
+            'data' => $this->cartState($request->user(), $catalog),
             'message' => 'Item removed from cart',
         ]);
     }
@@ -1561,6 +1575,10 @@ class BuyerController extends Controller
             return $query->latest('id')->first();
         }
 
+        // The schema has no unique user/status index for active carts.
+        // Serialize cart creation so parallel adds cannot create two active carts.
+        DB::table('users')->where('id', $user->id)->lockForUpdate()->first();
+
         return $query->first() ?? Cart::firstOrCreate([
             'user_id' => $user->id,
             'status' => 'active',
@@ -1576,11 +1594,26 @@ class BuyerController extends Controller
             : 0;
     }
 
+    private function cartState($user, BuyerCatalogService $catalog): array
+    {
+        $cart = $this->currentCart($user, false);
+        $items = $cart ? $this->cartPayload($cart, $catalog) : [];
+
+        return [
+            'items' => $items,
+            'cart_count' => (int) array_sum(array_column($items, 'quantity')),
+            'subtotal_minor' => (int) array_sum(array_column($items, 'line_subtotal_minor')),
+            'currency' => 'PHP',
+        ];
+    }
+
     private function cartPayload(Cart $cart, BuyerCatalogService $catalog): array
     {
         return $cart->items()
             ->with([
                 'variant.product.store',
+                'variant.product.store.sellerProfile.user',
+                'variant.product.variants' => fn ($variants) => $variants->where('is_active', true),
                 'variant.product.images.variant',
             ])
             ->orderBy('id')
@@ -1594,38 +1627,73 @@ class BuyerController extends Controller
     {
         $variant = $item->variant;
         $product = $variant?->product;
-        $productImages = $product?->images;
-        $primaryImage = $productImages?->whereNull('variant_id')->firstWhere('is_primary', true)
-            ?: $productImages?->whereNull('variant_id')->first();
-        $variantImageUrl = $product && $variant
-            ? $catalog->variantImageUrl($product, $variant)
-            : null;
-        $imagePath = (string) ($primaryImage?->path ?? '');
-        $imageDisk = (string) ($primaryImage?->disk ?: 'public');
         $price = $product && $variant
             ? $this->pricing->priceForVariant($product, $variant, (int) $item->quantity)
             : null;
+        $quantity = (int) $item->quantity;
+        $unitPriceMinor = (int) ($price['unit_price_minor'] ?? $variant?->price_minor ?? 0);
+        $availableStock = 0;
+        $store = $product?->store;
+        $sellerProfile = $store?->sellerProfile;
+        $hasActiveVariants = $product && $product->relationLoaded('variants')
+            ? $product->variants->isNotEmpty()
+            : (bool) $product?->variants()->where('is_active', true)->exists();
+        $productIsVisible = $product
+            && $product->product_status === 'active'
+            && $product->compliance_status === 'clear'
+            && $product->removed_at === null
+            && $hasActiveVariants
+            && $store?->publication_status === 'published'
+            && $sellerProfile?->standing_status === 'good_standing'
+            && $sellerProfile?->user?->status === 'active';
+        $variantIsActive = (bool) $variant?->is_active;
+
+        if ($productIsVisible && $variantIsActive) {
+            $availableStock = max(0, (int) $variant->available_stock);
+        }
+
+        $isAvailable = $productIsVisible
+            && $variantIsActive
+            && $availableStock >= $quantity;
+        $imageRecord = $productIsVisible && $product && $variant
+            ? $catalog->orderImageRecord($product, $variant)
+            : null;
+        $imageUrl = $catalog->publicImageUrl($imageRecord);
+        $productData = $product
+            ? ['id' => (int) $product->id, 'name' => (string) $product->name]
+            : null;
+        $variantData = $variant
+            ? [
+                'id' => (int) $variant->id,
+                'name' => (string) $variant->name,
+                'options' => (array) ($variant->options ?? []),
+            ]
+            : null;
+        $storeName = $productIsVisible ? $store?->name : null;
 
         return [
             'id' => $item->id,
             'product_id' => $product?->id,
             'product_variant_id' => $variant?->id,
+            'product' => $productData,
+            'variant' => $variantData,
             'name' => $product?->name ?? 'Product',
             'variant_name' => $variant?->name ?? '',
             'options' => $variant?->options ?? [],
-            'price_minor' => (int) ($price['unit_price_minor'] ?? $variant?->price_minor ?? 0),
+            'price_minor' => $unitPriceMinor,
+            'unit_price_minor' => $unitPriceMinor,
+            'line_subtotal_minor' => $unitPriceMinor * $quantity,
             'regular_price_minor' => (int) ($price['regular_unit_price_minor'] ?? $variant?->price_minor ?? 0),
             'discount_percent' => (int) ($price['discount_percent'] ?? 0),
             'campaign_name' => $price['campaign_name'] ?? null,
-            'quantity' => (int) $item->quantity,
+            'quantity' => $quantity,
             'selected' => (bool) $item->selected,
-            'image' => filled($variantImageUrl)
-                ? $variantImageUrl
-                : ($imagePath === ''
-                ? ''
-                : (Str::startsWith($imagePath, ['http://', 'https://', '/'])
-                    ? $imagePath
-                    : Storage::disk($imageDisk)->url($imagePath))),
+            'image' => $imageUrl ?? '',
+            'image_url' => $imageUrl,
+            'available_stock' => $availableStock,
+            'in_stock' => $availableStock > 0,
+            'is_available' => $isAvailable,
+            'store_name' => $storeName,
             'seller_name' => $product?->store?->name ?? 'Bearly seller',
         ];
     }

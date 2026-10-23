@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\MobileAuthController;
 use App\Http\Controllers\Api\MobileBuyerCatalogController;
 use App\Http\Controllers\Api\MobileRegistrationController;
+use App\Http\Controllers\BuyerController;
 use App\Http\Middleware\EnsureMobileAccountIsEligible;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -51,4 +52,18 @@ Route::prefix('/mobile/buyer')
             ->name('products.show');
         Route::get('/categories', [MobileBuyerCatalogController::class, 'categories'])
             ->name('categories.index');
+        Route::get('/cart', [BuyerController::class, 'cartData'])
+            ->middleware('throttle:60,1')
+            ->name('cart.index');
+        Route::post('/cart/items', [BuyerController::class, 'addToCart'])
+            ->middleware('throttle:60,1')
+            ->name('cart.items.store');
+        Route::patch('/cart/items/{cartItem}', [BuyerController::class, 'updateCart'])
+            ->whereNumber('cartItem')
+            ->middleware('throttle:60,1')
+            ->name('cart.items.update');
+        Route::delete('/cart/items/{cartItem}', [BuyerController::class, 'removeFromCart'])
+            ->whereNumber('cartItem')
+            ->middleware('throttle:60,1')
+            ->name('cart.items.destroy');
     });

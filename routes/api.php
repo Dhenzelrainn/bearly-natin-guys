@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\MobileAuthController;
 use App\Http\Controllers\Api\MobileBuyerCatalogController;
+use App\Http\Controllers\Api\MobileBuyerCheckoutQuoteController;
 use App\Http\Controllers\Api\MobileBuyerWishlistController;
 use App\Http\Controllers\Api\MobileRegistrationController;
 use App\Http\Controllers\BuyerController;
@@ -85,6 +86,9 @@ Route::prefix('/mobile/buyer')
         Route::get('/cart', [BuyerController::class, 'cartData'])
             ->middleware('throttle:60,1')
             ->name('cart.index');
+        Route::post('/checkout/quote', MobileBuyerCheckoutQuoteController::class)
+            ->middleware('throttle:60,1')
+            ->name('checkout.quote');
         Route::post('/cart/items', [BuyerController::class, 'addToCart'])
             ->middleware('throttle:60,1')
             ->name('cart.items.store');

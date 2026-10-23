@@ -368,6 +368,7 @@ class CheckoutService
 
         $totals = array_merge($totals, $resolved['totals']);
         $totals['seller_orders'] = array_values(array_map(static fn (array $group): array => [
+            'store_id' => (int) $group['store']->id,
             'store_name' => $group['store']->name,
             'item_count' => array_sum(array_column($group['items'], 'quantity')),
             'subtotal_minor' => (int) ($group['seller_subtotal_minor'] ?? $group['subtotal_minor']),
@@ -708,6 +709,7 @@ class CheckoutService
             'total_discount_minor' => 0,
             'total_minor' => $subtotal + $shippingFee,
             'seller_orders' => array_values(array_map(static fn (array $group): array => [
+                'store_id' => (int) $group['store']->id,
                 'store_name' => $group['store']->name,
                 'item_count' => array_sum(array_column($group['items'], 'quantity')),
                 'subtotal_minor' => (int) ($group['seller_subtotal_minor'] ?? $group['subtotal_minor']),

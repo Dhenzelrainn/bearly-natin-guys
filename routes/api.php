@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\MobileAuthController;
 use App\Http\Controllers\Api\MobileBuyerCatalogController;
+use App\Http\Controllers\Api\MobileBuyerWishlistController;
 use App\Http\Controllers\Api\MobileRegistrationController;
 use App\Http\Controllers\BuyerController;
 use App\Http\Middleware\EnsureMobileAccountIsEligible;
@@ -52,6 +53,17 @@ Route::prefix('/mobile/buyer')
             ->name('products.show');
         Route::get('/categories', [MobileBuyerCatalogController::class, 'categories'])
             ->name('categories.index');
+        Route::get('/wishlist', [MobileBuyerWishlistController::class, 'index'])
+            ->middleware('throttle:60,1')
+            ->name('wishlist.index');
+        Route::put('/wishlist/{product}', [MobileBuyerWishlistController::class, 'store'])
+            ->whereNumber('product')
+            ->middleware('throttle:60,1')
+            ->name('wishlist.store');
+        Route::delete('/wishlist/{product}', [MobileBuyerWishlistController::class, 'destroy'])
+            ->whereNumber('product')
+            ->middleware('throttle:60,1')
+            ->name('wishlist.destroy');
         Route::get('/cart', [BuyerController::class, 'cartData'])
             ->middleware('throttle:60,1')
             ->name('cart.index');

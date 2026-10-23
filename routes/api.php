@@ -64,6 +64,24 @@ Route::prefix('/mobile/buyer')
             ->whereNumber('product')
             ->middleware('throttle:60,1')
             ->name('wishlist.destroy');
+        Route::get('/addresses', [BuyerController::class, 'addressData'])
+            ->middleware('throttle:60,1')
+            ->name('addresses.index');
+        Route::post('/addresses', [BuyerController::class, 'storeAddress'])
+            ->middleware('throttle:60,1')
+            ->name('addresses.store');
+        Route::patch('/addresses/{address}', [BuyerController::class, 'updateMobileAddress'])
+            ->whereNumber('address')
+            ->middleware('throttle:60,1')
+            ->name('addresses.update');
+        Route::delete('/addresses/{address}', [BuyerController::class, 'deleteMobileAddress'])
+            ->whereNumber('address')
+            ->middleware('throttle:60,1')
+            ->name('addresses.destroy');
+        Route::patch('/addresses/{address}/default', [BuyerController::class, 'setMobileDefaultAddress'])
+            ->whereNumber('address')
+            ->middleware('throttle:60,1')
+            ->name('addresses.default');
         Route::get('/cart', [BuyerController::class, 'cartData'])
             ->middleware('throttle:60,1')
             ->name('cart.index');

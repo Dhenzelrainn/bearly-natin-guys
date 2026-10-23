@@ -13,6 +13,7 @@ use App\Models\PlatformPromotion;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\Store;
+use App\Models\User;
 use App\Models\Wishlist;
 use App\Services\BuyerCatalogService;
 use App\Services\BuyerOrderConfirmationService;
@@ -486,8 +487,9 @@ class BuyerController extends Controller
 
         $address = DB::transaction(function () use ($request, $data) {
             $user = $request->user();
+            $this->lockAddressOwner($user);
             $phone = $this->normalizePhone($data['phone']);
-            $makeDefault = (bool) $data['is_default'] || ! $user->addresses()->exists();
+            $makeDefault = (bool) ($data['is_default'] ?? false) || ! $user->addresses()->exists();
 
             if ($makeDefault) {
                 $user->addresses()->update(['is_default_shipping' => false]);
@@ -523,7 +525,12 @@ class BuyerController extends Controller
 
         $address = DB::transaction(function () use ($request, $address, $data) {
             $user = $request->user();
-            $makeDefault = (bool) $data['is_default']
+            $this->lockAddressOwner($user);
+            $address = $user->addresses()
+                ->whereKey($address->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $makeDefault = (bool) ($data['is_default'] ?? false)
                 || $address->is_default_shipping
                 || ! $user->addresses()->where('is_default_shipping', true)->exists();
 
@@ -564,11 +571,17 @@ class BuyerController extends Controller
         abort_unless((int) $address->user_id === (int) $request->user()->id, 404);
 
         DB::transaction(function () use ($request, $address) {
+            $user = $request->user();
+            $this->lockAddressOwner($user);
+            $address = $user->addresses()
+                ->whereKey($address->id)
+                ->lockForUpdate()
+                ->firstOrFail();
             $wasDefault = (bool) $address->is_default_shipping;
             $address->delete();
 
             if ($wasDefault) {
-                $request->user()->addresses()
+                $user->addresses()
                     ->orderBy('id')
                     ->first()
                     ?->update(['is_default_shipping' => true]);
@@ -585,15 +598,111 @@ class BuyerController extends Controller
     {
         abort_unless((int) $address->user_id === (int) $request->user()->id, 404);
 
-        DB::transaction(function () use ($request, $address) {
-            $request->user()->addresses()->update(['is_default_shipping' => false]);
+        $address = DB::transaction(function () use ($request, $address) {
+            $user = $request->user();
+            $this->lockAddressOwner($user);
+            $address = $user->addresses()
+                ->whereKey($address->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $user->addresses()
+                ->where('id', '!=', $address->id)
+                ->update(['is_default_shipping' => false]);
             $address->update(['is_default_shipping' => true]);
+
+            return $address->fresh();
         });
 
         return response()->json([
-            'data' => $this->addressPayload($address->fresh()),
+            'data' => $this->addressPayload($address),
             'message' => 'Default address updated successfully.',
         ]);
+    }
+
+    public function updateMobileAddress(Request $request, int $address): JsonResponse
+    {
+        return DB::transaction(function () use ($request, $address): JsonResponse {
+            $user = $request->user();
+            $this->lockAddressOwner($user);
+            $ownedAddress = $user->addresses()
+                ->whereKey($address)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $this->mergeAddressPatch($request, $ownedAddress);
+
+            return $this->updateAddress($request, $ownedAddress);
+        });
+    }
+
+    public function deleteMobileAddress(Request $request, int $address): JsonResponse
+    {
+        return DB::transaction(function () use ($request, $address): JsonResponse {
+            $user = $request->user();
+            $this->lockAddressOwner($user);
+            $ownedAddress = $user->addresses()
+                ->whereKey($address)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            return $this->deleteAddress($request, $ownedAddress);
+        });
+    }
+
+    public function setMobileDefaultAddress(Request $request, int $address): JsonResponse
+    {
+        return DB::transaction(function () use ($request, $address): JsonResponse {
+            $user = $request->user();
+            $this->lockAddressOwner($user);
+            $ownedAddress = $user->addresses()
+                ->whereKey($address)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            return $this->setDefaultAddress($request, $ownedAddress);
+        });
+    }
+
+    private function mergeAddressPatch(Request $request, Address $address): void
+    {
+        $provinceChanged = $request->exists('province')
+            && (string) $request->input('province') !== (string) $address->province;
+        $cityChanged = $request->exists('city')
+            && (string) $request->input('city') !== (string) $address->city_municipality;
+
+        foreach ([
+            'name' => $address->recipient_name,
+            'phone' => $address->phone,
+            'province' => $address->province,
+            'city' => $address->city_municipality,
+            'barangay' => $address->barangay,
+            'postal' => $address->postal_code,
+            'street' => $address->street,
+            'label' => $address->label,
+            'is_default' => (bool) $address->is_default_shipping,
+            'latitude' => $address->latitude,
+            'longitude' => $address->longitude,
+        ] as $key => $value) {
+            if (! $request->exists($key)) {
+                $request->merge([$key => $value]);
+            }
+        }
+
+        if (! $request->exists('city_code')) {
+            $request->merge([
+                'city_code' => $provinceChanged || $cityChanged
+                    ? null
+                    : $address->psgc_city_code,
+            ]);
+        }
+    }
+
+    private function lockAddressOwner(User $user): void
+    {
+        DB::table('users')
+            ->where('id', $user->id)
+            ->lockForUpdate()
+            ->first();
     }
 
     private function validateAddress(Request $request): array

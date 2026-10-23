@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\MobileAuthController;
+use App\Http\Controllers\Api\MobileBuyerCatalogController;
 use App\Http\Controllers\Api\MobileRegistrationController;
 use App\Http\Middleware\EnsureMobileAccountIsEligible;
 use Illuminate\Http\Request;
@@ -39,3 +40,15 @@ Route::post('/mobile/register/buyer', [
 Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware(['auth:sanctum', EnsureMobileAccountIsEligible::class]);
+
+Route::prefix('/mobile/buyer')
+    ->middleware(['auth:sanctum', EnsureMobileAccountIsEligible::class, 'role:buyer'])
+    ->name('mobile.buyer.')
+    ->group(function (): void {
+        Route::get('/products', [MobileBuyerCatalogController::class, 'index'])
+            ->name('products.index');
+        Route::get('/products/{product}', [MobileBuyerCatalogController::class, 'show'])
+            ->name('products.show');
+        Route::get('/categories', [MobileBuyerCatalogController::class, 'categories'])
+            ->name('categories.index');
+    });

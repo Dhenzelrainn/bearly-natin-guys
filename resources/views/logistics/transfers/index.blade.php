@@ -43,7 +43,7 @@
     <div class="panel-header">
         <div>
             <h3>Ready to send</h3>
-            <p>Receiving Logistics is detected automatically from the destination city. Only active accounts with one active Sorting Center can receive a handoff.</p>
+            <p>Receiving Logistics is detected automatically from the destination city. The destination account must have one active Sorting Center and an active zone covering the destination barangay.</p>
         </div>
     </div>
     <div class="table-wrap">
@@ -76,8 +76,8 @@
 <section class="panel" id="needs-destination">
     <div class="panel-header">
         <div>
-            <h3>Needs destination Logistics</h3>
-            <p>These received cross-city parcels cannot be sent until the destination city has an active Logistics account with one active Sorting Center.</p>
+            <h3>Needs destination setup</h3>
+            <p>These received cross-city parcels cannot be sent until the destination has an active Logistics account, one active Sorting Center, and an active zone covering the destination barangay.</p>
         </div>
     </div>
     <div class="table-wrap">

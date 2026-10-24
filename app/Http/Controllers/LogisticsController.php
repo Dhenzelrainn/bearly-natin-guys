@@ -28,6 +28,7 @@ use App\Models\User;
 use App\Models\Waybill;
 use App\Notifications\WorkflowNotification;
 use App\Services\ApplicationReviewService;
+use App\Services\AuditService;
 use App\Services\BuyerCatalogService;
 use App\Services\ConversationService;
 use App\Services\DispatchService;
@@ -39,6 +40,7 @@ use App\Services\PostalCodeLookup;
 use App\Services\RegistrationLifecycleService;
 use App\Services\RiderZoneAssignmentService;
 use App\Services\ShipmentHandoffService;
+use App\Services\SortingZoneCoverageGuard;
 use App\Services\SortingZoneMatcher;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -2431,6 +2433,7 @@ class LogisticsController extends Controller
     public function storeSortingZone(
         Request $request,
         SortingZoneMatcher $zoneMatcher,
+        AuditService $audit,
         RiderZoneAssignmentService $riderAssignment,
     ): RedirectResponse {
         $profile = $request->user()->logisticsProfile;
@@ -2446,6 +2449,8 @@ class LogisticsController extends Controller
             $profile,
             $validated,
             $zoneMatcher,
+            $audit,
+            $request,
             $riderAssignment,
         ): array {
             LogisticsProfile::query()
@@ -2486,12 +2491,28 @@ class LogisticsController extends Controller
                     ->where('code', $code)
                     ->exists());
 
-                $zones[] = $center->zones()->create([
+                $zone = $center->zones()->create([
                     'code' => $code,
                     'name' => $this->sortingZoneName($zoneCoverage),
                     'destination_rules' => $zoneCoverage,
                     'status' => 'active',
                 ]);
+                $zones[] = $zone;
+
+                $audit->record(
+                    action: 'logistics.sorting_zone.created',
+                    module: 'Logistics',
+                    subject: $zone,
+                    description: 'A Logistics Sorting Zone was created.',
+                    newValues: [
+                        'sorting_center_id' => (int) $center->id,
+                        'code' => $zone->code,
+                        'status' => $zone->status,
+                        'destination_rules' => $zoneCoverage,
+                    ],
+                    request: $request,
+                    actor: $request->user(),
+                );
             }
 
             $riderAssignment->syncForProfile($profile);
@@ -2513,6 +2534,8 @@ class LogisticsController extends Controller
         Request $request,
         SortingZone $sortingZone,
         SortingZoneMatcher $zoneMatcher,
+        SortingZoneCoverageGuard $coverageGuard,
+        AuditService $audit,
         RiderZoneAssignmentService $riderAssignment,
     ): RedirectResponse {
         $profile = $request->user()->logisticsProfile;
@@ -2529,6 +2552,9 @@ class LogisticsController extends Controller
             $sortingZone,
             $validated,
             $zoneMatcher,
+            $coverageGuard,
+            $audit,
+            $request,
             $riderAssignment,
         ): SortingZone {
             LogisticsProfile::query()
@@ -2560,6 +2586,17 @@ class LogisticsController extends Controller
                 $zoneMatcher
             );
 
+            if ($coverageChanged && $zone->status === 'active') {
+                $coverageGuard->assertZoneChangePreservesCoverage(
+                    $profile,
+                    $center,
+                    $zone,
+                    willBeActive: true,
+                    replacementCoverage: $coverage,
+                    errorKey: 'barangays',
+                );
+            }
+
             if ($coverageChanged && $this->sortingZoneIsInUse($zone)) {
                 throw ValidationException::withMessages([
                     'barangays' => 'Coverage cannot be edited while non-final parcels or active dispatch batches use this zone. Clear those operational assignments first; Rider home-area matches refresh automatically.',
@@ -2573,12 +2610,29 @@ class LogisticsController extends Controller
                 $zone->id
             );
 
+            $oldCoverage = $zone->destination_rules;
             $zone->update([
                 'name' => $coverageChanged
                     ? $this->sortingZoneName($coverage)
                     : $zone->name,
                 'destination_rules' => $coverage,
             ]);
+
+            if ($coverageChanged) {
+                $audit->record(
+                    action: 'logistics.sorting_zone.coverage_updated',
+                    module: 'Logistics',
+                    subject: $zone,
+                    description: 'Logistics Sorting Zone destination coverage was updated.',
+                    oldValues: ['destination_rules' => $oldCoverage],
+                    newValues: [
+                        'destination_rules' => $coverage,
+                        'status' => $zone->status,
+                    ],
+                    request: $request,
+                    actor: $request->user(),
+                );
+            }
 
             $riderAssignment->syncForProfile($profile);
 
@@ -2594,6 +2648,8 @@ class LogisticsController extends Controller
         Request $request,
         SortingZone $sortingZone,
         SortingZoneMatcher $zoneMatcher,
+        SortingZoneCoverageGuard $coverageGuard,
+        AuditService $audit,
         RiderZoneAssignmentService $riderAssignment,
     ): RedirectResponse {
         $validated = $request->validate([
@@ -2608,6 +2664,9 @@ class LogisticsController extends Controller
             $sortingZone,
             $validated,
             $zoneMatcher,
+            $coverageGuard,
+            $audit,
+            $request,
             $riderAssignment,
         ): SortingZone {
             LogisticsProfile::query()
@@ -2626,6 +2685,16 @@ class LogisticsController extends Controller
                 ->findOrFail($sortingZone->id);
 
             if ($validated['status'] === 'inactive') {
+                if ($zone->status === 'active') {
+                    $coverageGuard->assertZoneChangePreservesCoverage(
+                        $profile,
+                        $center,
+                        $zone,
+                        willBeActive: false,
+                        replacementCoverage: null,
+                    );
+                }
+
                 if ($this->sortingZoneIsInUse($zone)) {
                     throw ValidationException::withMessages([
                         'status' => 'This zone cannot be deactivated while non-final parcels or active dispatch batches use it. Clear those operational assignments first; Rider home-area matches refresh automatically.',
@@ -2657,7 +2726,21 @@ class LogisticsController extends Controller
                 );
             }
 
+            $oldStatus = $zone->status;
             $zone->update(['status' => $validated['status']]);
+
+            if ($oldStatus !== $zone->status) {
+                $audit->record(
+                    action: 'logistics.sorting_zone.status_changed',
+                    module: 'Logistics',
+                    subject: $zone,
+                    description: 'Logistics Sorting Zone status was changed.',
+                    oldValues: ['status' => $oldStatus],
+                    newValues: ['status' => $zone->status],
+                    request: $request,
+                    actor: $request->user(),
+                );
+            }
 
             $riderAssignment->syncForProfile($profile);
 
@@ -2676,6 +2759,8 @@ class LogisticsController extends Controller
     public function archiveSortingZone(
         Request $request,
         int $sortingZone,
+        SortingZoneCoverageGuard $coverageGuard,
+        AuditService $audit,
         RiderZoneAssignmentService $riderAssignment,
     ): RedirectResponse {
         $profile = $request->user()->logisticsProfile;
@@ -2685,6 +2770,9 @@ class LogisticsController extends Controller
         $zone = DB::transaction(function () use (
             $profile,
             $sortingZone,
+            $coverageGuard,
+            $audit,
+            $request,
             $riderAssignment,
         ): SortingZone {
             LogisticsProfile::query()
@@ -2699,14 +2787,45 @@ class LogisticsController extends Controller
                 ->lockForUpdate()
                 ->firstOrFail();
 
+            if ($zone->status === 'active') {
+                $center = SortingCenter::query()
+                    ->whereKey($zone->sorting_center_id)
+                    ->where('logistics_profile_id', $profile->id)
+                    ->where('status', 'active')
+                    ->lockForUpdate()
+                    ->firstOrFail();
+                $coverageGuard->assertZoneChangePreservesCoverage(
+                    $profile,
+                    $center,
+                    $zone,
+                    willBeActive: false,
+                    replacementCoverage: null,
+                );
+            }
+
             if ($this->sortingZoneIsInUse($zone)) {
                 throw ValidationException::withMessages([
                     'status' => 'This zone cannot be archived while non-final parcels or active dispatch batches use it. Clear those operational assignments first.',
                 ]);
             }
 
+            $oldValues = [
+                'status' => $zone->status,
+                'destination_rules' => $zone->destination_rules,
+            ];
             $zone->update(['status' => 'inactive']);
             $zone->delete();
+
+            $audit->record(
+                action: 'logistics.sorting_zone.archived',
+                module: 'Logistics',
+                subject: $zone,
+                description: 'A Logistics Sorting Zone was archived.',
+                oldValues: $oldValues,
+                newValues: ['status' => 'archived'],
+                request: $request,
+                actor: $request->user(),
+            );
             $riderAssignment->syncForProfile($profile);
 
             return $zone;
@@ -2721,6 +2840,7 @@ class LogisticsController extends Controller
         Request $request,
         int $sortingZone,
         SortingZoneMatcher $zoneMatcher,
+        AuditService $audit,
         RiderZoneAssignmentService $riderAssignment,
     ): RedirectResponse {
         $profile = $request->user()->logisticsProfile;
@@ -2731,6 +2851,8 @@ class LogisticsController extends Controller
             $profile,
             $sortingZone,
             $zoneMatcher,
+            $audit,
+            $request,
             $riderAssignment,
         ): SortingZone {
             LogisticsProfile::query()
@@ -2773,6 +2895,21 @@ class LogisticsController extends Controller
 
             $zone->restore();
             $zone->update(['status' => 'active']);
+
+            $audit->record(
+                action: 'logistics.sorting_zone.restored',
+                module: 'Logistics',
+                subject: $zone,
+                description: 'An archived Logistics Sorting Zone was restored and activated.',
+                oldValues: ['status' => 'archived'],
+                newValues: [
+                    'status' => 'active',
+                    'destination_rules' => $coverage,
+                ],
+                request: $request,
+                actor: $request->user(),
+            );
+
             $riderAssignment->syncForProfile($profile);
 
             return $zone;
@@ -2786,6 +2923,8 @@ class LogisticsController extends Controller
     public function forceDeleteSortingZone(
         Request $request,
         int $sortingZone,
+        SortingZoneCoverageGuard $coverageGuard,
+        AuditService $audit,
     ): RedirectResponse {
         $profile = $request->user()->logisticsProfile;
 
@@ -2794,6 +2933,9 @@ class LogisticsController extends Controller
         $zoneCode = DB::transaction(function () use (
             $profile,
             $sortingZone,
+            $coverageGuard,
+            $audit,
+            $request,
         ): string {
             LogisticsProfile::query()
                 ->whereKey($profile->id)
@@ -2809,6 +2951,17 @@ class LogisticsController extends Controller
 
             abort_unless($zone->trashed(), 404);
 
+            $center = SortingCenter::query()
+                ->whereKey($zone->sorting_center_id)
+                ->where('logistics_profile_id', $profile->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $coverageGuard->assertArchivedZoneCanBePurged(
+                $profile,
+                $center,
+                $zone,
+            );
+
             if ($this->sortingZoneIsInUse($zone)) {
                 throw ValidationException::withMessages([
                     'status' => 'This zone cannot be permanently deleted while non-final parcels or active dispatch batches use it.',
@@ -2816,6 +2969,20 @@ class LogisticsController extends Controller
             }
 
             $code = $zone->code;
+            $audit->record(
+                action: 'logistics.sorting_zone.purged',
+                module: 'Logistics',
+                subject: $zone,
+                description: 'An archived Logistics Sorting Zone was permanently deleted.',
+                oldValues: [
+                    'code' => $code,
+                    'destination_rules' => $zone->destination_rules,
+                    'status' => $zone->status,
+                ],
+                newValues: ['status' => 'purged'],
+                request: $request,
+                actor: $request->user(),
+            );
             $zone->forceDelete();
 
             return $code;
@@ -2828,7 +2995,8 @@ class LogisticsController extends Controller
 
     public function transfers(
         Request $request,
-        ShipmentHandoffService $handoffs
+        ShipmentHandoffService $handoffs,
+        SortingZoneCoverageGuard $coverageGuard,
     ): View {
         $profile = $request->user()->logisticsProfile;
 
@@ -2872,11 +3040,17 @@ class LogisticsController extends Controller
             });
 
         $shipmentRows = $candidateShipments
-            ->map(function (Shipment $shipment) use ($handoffs, $profile): array {
+            ->map(function (Shipment $shipment) use ($handoffs, $coverageGuard, $profile): array {
                 $target = $handoffs->destinationProviderFor($shipment);
-                $ready = $target
+                $targetCenter = $target
+                    ? $handoffs->activeSortingCenterFor($target)
+                    : null;
+                $providerReady = $target
                     && (int) $target->id !== (int) $profile->id
-                    && $handoffs->hasSingleActiveSortingCenter($target);
+                    && $targetCenter !== null;
+                $coverageReady = $providerReady
+                    && $coverageGuard->coversAllParcels($targetCenter, $shipment->parcels);
+                $ready = $providerReady && $coverageReady;
                 $destinationSnapshot = $shipment->purpose === 'return'
                     ? $shipment->destination_address_snapshot
                     : null;
@@ -2906,7 +3080,9 @@ class LogisticsController extends Controller
                     'handoff_issue' => $ready
                         ? null
                         : ($target
-                            ? $target->display_name.' needs exactly one active Sorting Center before it can receive this handoff.'
+                            ? ($targetCenter
+                                ? 'The destination barangay is not covered by an active zone at the destination Sorting Center.'
+                                : $target->display_name.' needs exactly one active Sorting Center before it can receive this handoff.')
                             : 'No active Logistics account is registered for '.($destinationLabel ?: 'this destination').'.'),
                     'pieces' => $shipment->parcels->count(),
                 ];

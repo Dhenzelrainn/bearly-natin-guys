@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Address;
+use App\Models\AuditLog;
 use App\Models\Cart;
 use App\Models\CartItem;
 use App\Models\Category;
@@ -420,80 +421,261 @@ class CrossCityCodHandoffIntegrationTest extends TestCase
         $this->assertSame('received', $scenario['parcel']->fresh()->status);
     }
 
-    public function test_destination_without_matching_barangay_zone_accepts_then_cannot_sort_the_parcel(): void
+    public function test_destination_without_matching_barangay_zone_is_rejected_before_handoff_send(): void
     {
         $scenario = $this->placeAndPrepareOrder($this->scenario(['Other Barangay']));
         $scenario = $this->requestAndCompletePickup($scenario);
         $scenario = $this->receiveAtOriginCenter($scenario);
+
+        $this->actingAs($scenario['originUser'])
+            ->post(route('logistics.transfers.send', $scenario['shipment']))
+            ->assertConflict();
+
+        $shipment = $scenario['shipment']->fresh();
+        $parcel = $scenario['parcel']->fresh();
+        $this->assertSame(0, ShipmentTransfer::query()->where('shipment_id', $shipment->id)->count());
+        $this->assertSame($scenario['originProfile']->id, (int) $shipment->logistics_profile_id);
+        $this->assertSame('at_sorting_center', $shipment->status);
+        $this->assertSame('received', $parcel->status);
+        $this->assertSame($scenario['originCenter']->id, (int) $parcel->current_sorting_center_id);
+        $this->assertNull($parcel->current_zone_id);
+        $this->assertSame(0, $shipment->events()->where('event_type', 'logistics_handoff_sent')->count());
+    }
+
+    public function test_acceptance_rechecks_coverage_and_original_transfer_can_be_retried_after_restoration(): void
+    {
+        $scenario = $this->placeAndPrepareOrder($this->scenario());
+        $scenario = $this->requestAndCompletePickup($scenario);
+        $scenario = $this->receiveAtOriginCenter($scenario);
+        $scenario = $this->sendHandoff($scenario);
+
+        $this->actingAs($scenario['destinationUser'])
+            ->from(route('logistics.sorting.center'))
+            ->patch(route('logistics.sorting.zones.status', $scenario['destinationZone']), [
+                'status' => 'inactive',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasErrors('status');
+        $this->assertSame('active', $scenario['destinationZone']->fresh()->status);
+
+        // Simulate legacy or out-of-band coverage loss, then verify acceptance rechecks it.
+        $scenario['destinationZone']->update(['status' => 'inactive']);
+        $this->actingAs($scenario['destinationUser'])
+            ->post(route('logistics.transfers.accept'), [
+                'identifier' => $scenario['waybill']->waybill_no,
+                'scan_method' => 'barcode',
+            ])
+            ->assertConflict();
+
+        $this->assertSame('inactive', $scenario['destinationZone']->fresh()->status);
+        $this->assertSame('sent', $scenario['transfer']->fresh()->status);
+        $this->assertNull($scenario['transfer']->fresh()->accepted_at);
+        $this->assertSame('handoff_pending', $scenario['shipment']->fresh()->status);
+        $this->assertSame($scenario['originProfile']->id, (int) $scenario['shipment']->fresh()->logistics_profile_id);
+        $this->assertSame('in_transit', $scenario['parcel']->fresh()->status);
+        $this->assertSame($scenario['originCenter']->id, (int) $scenario['parcel']->fresh()->current_sorting_center_id);
+        $this->assertSame(0, $scenario['shipment']->events()->where('event_type', 'logistics_handoff_accepted')->count());
+
+        $this->actingAs($scenario['destinationUser'])
+            ->patch(route('logistics.sorting.zones.status', $scenario['destinationZone']), [
+                'status' => 'active',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+        $scenario = $this->acceptHandoff($scenario);
+        $this->assertSame(1, ShipmentTransfer::query()->where('shipment_id', $scenario['shipment']->id)->count());
+    }
+
+    public function test_zone_deactivation_is_blocked_for_an_accepted_unsorted_parcel(): void
+    {
+        $scenario = $this->placeAndPrepareOrder($this->scenario());
+        $scenario = $this->requestAndCompletePickup($scenario);
+        $scenario = $this->receiveAtOriginCenter($scenario);
         $scenario = $this->sendHandoff($scenario);
         $scenario = $this->acceptHandoff($scenario);
+
+        $this->actingAs($scenario['destinationUser'])
+            ->from(route('logistics.sorting.center'))
+            ->patch(route('logistics.sorting.zones.status', $scenario['destinationZone']), ['status' => 'inactive'])
+            ->assertRedirect()
+            ->assertSessionHasErrors('status');
+
+        $this->assertSame('active', $scenario['destinationZone']->fresh()->status);
+        $this->actingAs($scenario['destinationUser'])
+            ->get(route('logistics.sorting.center'))
+            ->assertOk()
+            ->assertSee('This change would remove the last active zone covering an in-progress shipment.');
+        $this->actingAs($scenario['destinationUser'])
+            ->patch(route('logistics.sorting.parcels.update', $scenario['parcel']), [
+                'sorting_zone_id' => $scenario['destinationZone']->id,
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+        $this->assertSame('accepted', $scenario['transfer']->fresh()->status);
+        $this->assertSame('sorted', $scenario['shipment']->fresh()->status);
+        $this->assertSame('sorted', $scenario['parcel']->fresh()->status);
+    }
+
+    public function test_coverage_edit_and_archive_cannot_remove_the_last_match_for_a_sent_transfer(): void
+    {
+        $scenario = $this->placeAndPrepareOrder($this->scenario());
+        $scenario = $this->requestAndCompletePickup($scenario);
+        $scenario = $this->receiveAtOriginCenter($scenario);
+        $scenario = $this->sendHandoff($scenario);
+
+        $this->actingAs($scenario['destinationUser'])
+            ->from(route('logistics.sorting.center'))
+            ->patch(route('logistics.sorting.zones.update', $scenario['destinationZone']), [
+                'city_code' => $scenario['destinationProfile']->psgc_city_code,
+                'province' => 'Laguna',
+                'city_municipality' => 'Pila',
+                'barangays' => ['Other Barangay'],
+            ])
+            ->assertRedirect()
+            ->assertSessionHasErrors('barangays');
+        $this->actingAs($scenario['destinationUser'])
+            ->get(route('logistics.sorting.center'))
+            ->assertOk()
+            ->assertSee('This change would remove the last active zone covering an in-progress shipment.');
+
+        $this->actingAs($scenario['destinationUser'])
+            ->from(route('logistics.sorting.center'))
+            ->patch(route('logistics.sorting.zones.archive', $scenario['destinationZone']))
+            ->assertRedirect()
+            ->assertSessionHasErrors('status');
+
+        $this->assertSame(['Pinagbayanan'], $scenario['destinationZone']->fresh()->destination_rules['barangays']);
+        $this->assertSame('active', $scenario['destinationZone']->fresh()->status);
+        $this->assertSame('sent', $scenario['transfer']->fresh()->status);
+        $this->assertSame('handoff_pending', $scenario['shipment']->fresh()->status);
+    }
+
+    public function test_removing_one_redundant_active_zone_is_allowed_when_another_still_covers_the_transfer(): void
+    {
+        $scenario = $this->placeAndPrepareOrder($this->scenario());
+        $scenario = $this->requestAndCompletePickup($scenario);
+        $scenario = $this->receiveAtOriginCenter($scenario);
+        $scenario = $this->sendHandoff($scenario);
+
+        $redundantZone = SortingZone::query()->create([
+            'sorting_center_id' => $scenario['destinationCenter']->id,
+            'name' => 'M4E.2B redundant Pila coverage',
+            'code' => 'M4E2B-REDUNDANT-'.Str::upper(Str::random(6)),
+            'destination_rules' => $scenario['destinationZone']->destination_rules,
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($scenario['destinationUser'])
+            ->patch(route('logistics.sorting.zones.status', $scenario['destinationZone']), [
+                'status' => 'inactive',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame('inactive', $scenario['destinationZone']->fresh()->status);
+        $this->assertSame('active', $redundantZone->fresh()->status);
+        $scenario = $this->acceptHandoff($scenario);
+
+        $this->actingAs($scenario['destinationUser'])
+            ->patch(route('logistics.sorting.parcels.update', $scenario['parcel']), [
+                'sorting_zone_id' => $redundantZone->id,
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame($redundantZone->id, (int) $scenario['parcel']->fresh()->current_zone_id);
+    }
+
+    public function test_archived_zone_with_only_recoverable_coverage_cannot_be_permanently_purged(): void
+    {
+        $scenario = $this->placeAndPrepareOrder($this->scenario());
+        $scenario = $this->requestAndCompletePickup($scenario);
+        $scenario = $this->receiveAtOriginCenter($scenario);
+        $scenario = $this->sendHandoff($scenario);
+        $scenario = $this->acceptHandoff($scenario);
+
+        // Build a legacy archived state directly so the purge guard is tested
+        // independently of the archive endpoint's earlier protection.
+        $scenario['destinationZone']->update(['status' => 'inactive']);
+        $scenario['destinationZone']->delete();
+
+        $this->actingAs($scenario['destinationUser'])
+            ->from(route('logistics.sorting.center', ['zone_view' => 'archived']))
+            ->delete(route('logistics.sorting.zones.destroy', $scenario['destinationZone']->id))
+            ->assertRedirect()
+            ->assertSessionHasErrors('status');
+
+        $this->assertSoftDeleted('sorting_zones', ['id' => $scenario['destinationZone']->id]);
+        $this->assertSame('accepted', $scenario['transfer']->fresh()->status);
+        $this->assertSame($scenario['destinationProfile']->id, (int) $scenario['shipment']->fresh()->logistics_profile_id);
+        $this->assertSame('received', $scenario['parcel']->fresh()->status);
+        $this->assertNull($scenario['parcel']->fresh()->current_zone_id);
+    }
+
+    public function test_accepted_uncovered_parcel_recovers_through_authorized_zone_creation_and_normal_sorting(): void
+    {
+        $scenario = $this->placeAndPrepareOrder($this->scenario());
+        $scenario = $this->requestAndCompletePickup($scenario);
+        $scenario = $this->receiveAtOriginCenter($scenario);
+        $scenario = $this->sendHandoff($scenario);
+        $scenario = $this->acceptHandoff($scenario);
+        $transferId = (int) $scenario['transfer']->id;
+        $acceptedAt = $scenario['transfer']->accepted_at;
+
+        // Reproduce an already-accepted uncovered state from the M4E.2A audit.
+        $scenario['destinationZone']->update([
+            'destination_rules' => [
+                ...$scenario['destinationZone']->destination_rules,
+                'barangays' => ['Other Barangay'],
+            ],
+        ]);
 
         $this->actingAs($scenario['destinationUser'])
             ->patch(route('logistics.sorting.parcels.update', $scenario['parcel']), [
                 'sorting_zone_id' => $scenario['destinationZone']->id,
             ])
             ->assertConflict();
-
-        $transfer = $scenario['transfer']->fresh();
-        $shipment = $scenario['shipment']->fresh();
-        $parcel = $scenario['parcel']->fresh();
-        $this->assertSame('accepted', $transfer->status);
-        $this->assertSame($scenario['destinationProfile']->id, (int) $shipment->logistics_profile_id);
-        $this->assertSame('at_sorting_center', $shipment->status);
-        $this->assertSame('received', $parcel->status);
-        $this->assertSame($scenario['destinationCenter']->id, (int) $parcel->current_sorting_center_id);
-        $this->assertNull($parcel->current_zone_id);
-        $this->assertSame(1, ShipmentTransfer::query()->where('shipment_id', $shipment->id)->count());
-        $this->assertSame(0, DispatchBatch::query()->whereHas('parcels', fn ($query) => $query->whereKey($parcel->id))->count());
-    }
-
-    public function test_inactive_zone_before_acceptance_is_not_revalidated_and_leaves_an_unsortable_received_parcel(): void
-    {
-        $scenario = $this->placeAndPrepareOrder($this->scenario());
-        $scenario = $this->requestAndCompletePickup($scenario);
-        $scenario = $this->receiveAtOriginCenter($scenario);
-        $scenario = $this->sendHandoff($scenario);
-
-        $this->actingAs($scenario['destinationUser'])
-            ->patch(route('logistics.sorting.zones.status', $scenario['destinationZone']), ['status' => 'inactive'])
-            ->assertRedirect()
-            ->assertSessionHasNoErrors();
-
-        $scenario = $this->acceptHandoff($scenario);
-        $this->actingAs($scenario['destinationUser'])
-            ->patch(route('logistics.sorting.parcels.update', $scenario['parcel']), [
-                'sorting_zone_id' => $scenario['destinationZone']->id,
-            ])
-            ->assertNotFound();
-
-        $this->assertSame('inactive', $scenario['destinationZone']->fresh()->status);
-        $this->assertSame('accepted', $scenario['transfer']->fresh()->status);
-        $this->assertSame('at_sorting_center', $scenario['shipment']->fresh()->status);
         $this->assertSame('received', $scenario['parcel']->fresh()->status);
-        $this->assertSame($scenario['destinationCenter']->id, (int) $scenario['parcel']->fresh()->current_sorting_center_id);
         $this->assertNull($scenario['parcel']->fresh()->current_zone_id);
-    }
-
-    public function test_inactivating_zone_after_acceptance_blocks_sort_without_changing_transfer_custody(): void
-    {
-        $scenario = $this->placeAndPrepareOrder($this->scenario());
-        $scenario = $this->requestAndCompletePickup($scenario);
-        $scenario = $this->receiveAtOriginCenter($scenario);
-        $scenario = $this->sendHandoff($scenario);
-        $scenario = $this->acceptHandoff($scenario);
 
         $this->actingAs($scenario['destinationUser'])
-            ->patch(route('logistics.sorting.zones.status', $scenario['destinationZone']), ['status' => 'inactive'])
-            ->assertRedirect()
+            ->post(route('logistics.sorting.zones.store'), [
+                'city_code' => $scenario['destinationProfile']->psgc_city_code,
+                'province' => 'Laguna',
+                'city_municipality' => 'Pila',
+                'barangays' => ['Pinagbayanan'],
+            ])
+            ->assertRedirect(route('logistics.sorting.center'))
             ->assertSessionHasNoErrors();
+
+        $restoredZone = SortingZone::query()
+            ->where('sorting_center_id', $scenario['destinationCenter']->id)
+            ->where('id', '<>', $scenario['destinationZone']->id)
+            ->where('status', 'active')
+            ->firstOrFail();
+        $zoneAudit = AuditLog::query()
+            ->where('actor_user_id', $scenario['destinationUser']->id)
+            ->where('action', 'logistics.sorting_zone.created')
+            ->where('auditable_type', $restoredZone->getMorphClass())
+            ->where('auditable_id', $restoredZone->id)
+            ->sole();
+        $this->assertSame($scenario['destinationCenter']->id, $zoneAudit->new_values['sorting_center_id']);
+        $this->assertSame(['Pinagbayanan'], $zoneAudit->new_values['destination_rules']['barangays']);
+
         $this->actingAs($scenario['destinationUser'])
             ->patch(route('logistics.sorting.parcels.update', $scenario['parcel']), [
-                'sorting_zone_id' => $scenario['destinationZone']->id,
+                'sorting_zone_id' => $restoredZone->id,
             ])
-            ->assertNotFound();
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame('sorted', $scenario['parcel']->fresh()->status);
+        $this->assertSame($restoredZone->id, (int) $scenario['parcel']->fresh()->current_zone_id);
+        $this->assertSame($transferId, (int) $scenario['transfer']->fresh()->id);
         $this->assertSame('accepted', $scenario['transfer']->fresh()->status);
-        $this->assertSame('at_sorting_center', $scenario['shipment']->fresh()->status);
-        $this->assertSame('received', $scenario['parcel']->fresh()->status);
+        $this->assertEquals($acceptedAt, $scenario['transfer']->fresh()->accepted_at);
+        $this->assertSame(1, ShipmentTransfer::query()->where('shipment_id', $scenario['shipment']->id)->count());
+        $this->assertSame(1, $scenario['shipment']->events()->where('event_type', 'logistics_handoff_accepted')->count());
     }
 
     public function test_destination_center_deactivation_after_send_blocks_acceptance_without_custody_change(): void

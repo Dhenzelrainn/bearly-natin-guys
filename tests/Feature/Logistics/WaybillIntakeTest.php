@@ -612,6 +612,7 @@ class WaybillIntakeTest extends TestCase
     public function test_sorting_center_directs_cross_city_parcels_to_city_handoffs(): void
     {
         $record = $this->makeCrossCityShipment('CROSS-CITY-GUIDE');
+        $this->makePilaZone();
 
         $this->actingAs($this->logisticsA)
             ->get(route('logistics.sorting.center'))
@@ -648,9 +649,21 @@ class WaybillIntakeTest extends TestCase
         $this->actingAs($this->logisticsA)
             ->get(route('logistics.transfers.index'))
             ->assertOk()
-            ->assertSee('Needs destination Logistics')
+            ->assertSee('Needs destination setup')
             ->assertSee($record['waybill']->waybill_no)
             ->assertSee($issue);
+    }
+
+    public function test_city_handoffs_displays_missing_destination_barangay_coverage(): void
+    {
+        $record = $this->makeCrossCityShipment('CROSS-CITY-NO-ZONE');
+
+        $this->actingAs($this->logisticsA)
+            ->get(route('logistics.transfers.index'))
+            ->assertOk()
+            ->assertSee($record['waybill']->waybill_no)
+            ->assertSee('The destination barangay is not covered by an active zone at the destination Sorting Center.')
+            ->assertDontSee('Send handoff');
     }
 
     public function test_logistics_can_sort_an_owned_received_parcel(): void
@@ -842,6 +855,7 @@ class WaybillIntakeTest extends TestCase
             'status' => ParcelStatus::Received->value,
             'current_sorting_center_id' => $this->centerA->id,
         ]);
+        $this->makePilaZone();
 
         $this->actingAs($this->logisticsA)
             ->post(route('logistics.transfers.send', $record['shipment']))
@@ -934,6 +948,7 @@ class WaybillIntakeTest extends TestCase
             'status' => ParcelStatus::Received->value,
             'current_sorting_center_id' => $this->centerA->id,
         ]);
+        $this->makePilaZone();
 
         $transfer = app(ShipmentHandoffService::class)
             ->send($record['shipment'], $this->logisticsA);
@@ -958,6 +973,7 @@ class WaybillIntakeTest extends TestCase
             'status' => ParcelStatus::Received->value,
             'current_sorting_center_id' => $this->centerA->id,
         ]);
+        $this->makePilaZone();
 
         $service = app(ShipmentHandoffService::class);
         $service->send($record['shipment'], $this->logisticsA);
@@ -1040,6 +1056,22 @@ class WaybillIntakeTest extends TestCase
                 'city_municipality' => 'San Pablo City',
                 'psgc_city_code' => '0403424000',
                 'barangays' => ['San Rafael'],
+            ],
+            'status' => 'active',
+        ]);
+    }
+
+    private function makePilaZone(): SortingZone
+    {
+        return SortingZone::query()->create([
+            'sorting_center_id' => $this->centerB->id,
+            'name' => 'Pila / Pinagbayanan',
+            'code' => 'PILA-HANDOFF',
+            'destination_rules' => [
+                'province' => 'Laguna',
+                'city_municipality' => 'Pila',
+                'psgc_city_code' => $this->profileB->psgc_city_code,
+                'barangays' => ['Pinagbayanan', 'San Rafael'],
             ],
             'status' => 'active',
         ]);

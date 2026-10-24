@@ -22,17 +22,26 @@ class ShipmentHandoffService
 {
     public function __construct(
         private readonly NotificationService $notifications,
+        private readonly SortingZoneCoverageGuard $coverageGuard,
     ) {}
 
     public function hasSingleActiveSortingCenter(LogisticsProfile $profile): bool
+    {
+        return $this->activeSortingCenterFor($profile) !== null;
+    }
+
+    public function activeSortingCenterFor(LogisticsProfile $profile): ?SortingCenter
     {
         $centers = $profile->sortingCenters()
             ->orderBy('id')
             ->limit(2)
             ->get();
 
-        return $centers->count() === 1
-            && $centers->first()->status === 'active';
+        if ($centers->count() !== 1 || $centers->first()->status !== 'active') {
+            return null;
+        }
+
+        return $centers->first();
     }
 
     public function destinationProviderFor(Shipment $shipment): ?LogisticsProfile
@@ -78,13 +87,10 @@ class ShipmentHandoffService
                 ->lockForUpdate()
                 ->findOrFail($shipment->id);
 
-            $origin = LogisticsProfile::query()
-                ->whereKey($shipment->logistics_profile_id)
-                ->lockForUpdate()
-                ->firstOrFail();
+            $originProfileId = (int) $shipment->logistics_profile_id;
             $actorProfileId = (int) ($actor->logisticsProfile?->id ?? 0);
 
-            if ($actorProfileId < 1 || $actorProfileId !== (int) $origin->id) {
+            if ($actorProfileId < 1 || $actorProfileId !== $originProfileId) {
                 throw new AuthorizationException(
                     'You cannot transfer a shipment owned by another Logistics account.'
                 );
@@ -112,27 +118,50 @@ class ShipmentHandoffService
                 );
             }
 
-            if ((int) $target->id === (int) $origin->id) {
+            if ((int) $target->id === $originProfileId) {
                 throw new ConflictHttpException(
                     'This shipment is already assigned to the Logistics account serving its destination city.'
                 );
             }
 
-            $target = LogisticsProfile::query()
-                ->whereKey($target->id)
+            $targetProfileId = (int) $target->id;
+            $lockedProfiles = LogisticsProfile::query()
+                ->whereIn('id', [$originProfileId, $targetProfileId])
+                ->orderBy('id')
                 ->lockForUpdate()
-                ->firstOrFail();
+                ->get()
+                ->keyBy('id');
+            $origin = $lockedProfiles->get($originProfileId);
+            $target = $lockedProfiles->get($targetProfileId);
+
+            if (! $origin || ! $target) {
+                throw new ConflictHttpException(
+                    'The origin or destination Logistics account is no longer available for this handoff.'
+                );
+            }
+
+            if (
+                $actorProfileId !== (int) $origin->id
+                || $this->destinationCityCode($shipment) !== trim((string) $target->psgc_city_code)
+            ) {
+                throw new ConflictHttpException(
+                    'The destination Logistics account no longer serves this shipment city.'
+                );
+            }
+
             $targetUser = User::query()
                 ->whereKey($target->user_id)
                 ->lockForUpdate()
                 ->first();
+
+            $targetCenter = $this->singleActiveSortingCenterForUpdate($target);
 
             if (
                 $target->status !== 'active'
                 || ! $targetUser
                 || $targetUser->status !== 'active'
                 || ! $targetUser->hasRole(UserRole::Logistics->value)
-                || ! $this->singleActiveSortingCenterForUpdate($target)
+                || ! $targetCenter
             ) {
                 throw new ConflictHttpException(
                     'The destination Logistics account is not currently able to receive parcels.'
@@ -173,6 +202,12 @@ class ShipmentHandoffService
                     'The shipment is not at an active Sorting Center owned by the current Logistics account.'
                 );
             }
+
+            $this->coverageGuard->assertParcelsCovered(
+                $targetCenter,
+                $parcels,
+                'The destination barangay is not covered by an active zone at the destination Sorting Center. Restore valid coverage before sending this handoff.'
+            );
 
             $now = now();
             $transfer = ShipmentTransfer::query()->create([
@@ -340,6 +375,12 @@ class ShipmentHandoffService
                     'The transfer contents or last recorded Sorting Center no longer match this handoff.'
                 );
             }
+
+            $this->coverageGuard->assertParcelsCovered(
+                $center,
+                $parcels,
+                'Destination zone coverage changed and no longer covers the shipment barangay. Restore active coverage before accepting this handoff.'
+            );
 
             $now = now();
             $shipment->update([

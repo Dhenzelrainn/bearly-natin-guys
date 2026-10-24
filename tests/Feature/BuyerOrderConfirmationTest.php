@@ -4,8 +4,11 @@ namespace Tests\Feature;
 
 use App\Enums\UserRole;
 use App\Models\Address;
+use App\Models\DeliveryAttempt;
+use App\Models\DeliveryProof;
 use App\Models\LogisticsProfile;
 use App\Models\Order;
+use App\Models\Parcel;
 use App\Models\Payment;
 use App\Models\RiderProfile;
 use App\Models\Role;
@@ -14,9 +17,11 @@ use App\Models\SellerProfile;
 use App\Models\Shipment;
 use App\Models\Store;
 use App\Models\User;
+use App\Models\Waybill;
 use App\Services\CodCashCollectionService;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -31,6 +36,7 @@ class BuyerOrderConfirmationTest extends TestCase
         parent::setUp();
 
         $this->seed(DatabaseSeeder::class);
+        Storage::fake('local');
     }
 
     public function test_buyer_can_confirm_fully_delivered_order_and_everything_completes(): void
@@ -344,13 +350,70 @@ class BuyerOrderConfirmationTest extends TestCase
     /** @param array{user: User, profile: LogisticsProfile} $provider */
     private function shipment(SellerOrder $sellerOrder, array $provider, string $suffix, string $status): Shipment
     {
-        return Shipment::query()->create([
+        $shipment = Shipment::query()->create([
             'shipment_no' => 'CONFIRM-'.Str::slug($suffix).'-'.Str::upper(Str::random(8)),
             'seller_order_id' => $sellerOrder->id,
             'logistics_profile_id' => $provider['profile']->id,
             'purpose' => 'outbound',
             'status' => $status,
             'cod_amount_minor' => (int) $sellerOrder->total_minor,
+        ]);
+
+        if ($status === 'delivered') {
+            $this->attachDeliveredEvidence($shipment, $sellerOrder, $provider);
+        }
+
+        return $shipment;
+    }
+
+    /** @param array{user: User, profile: LogisticsProfile} $provider */
+    private function attachDeliveredEvidence(Shipment $shipment, SellerOrder $sellerOrder, array $provider): void
+    {
+        $waybill = Waybill::query()->create([
+            'shipment_id' => $shipment->id,
+            'waybill_no' => 'CONFIRM-WB-'.Str::upper(Str::random(12)),
+            'scan_token' => hash('sha256', Str::random(64)),
+            'barcode_value' => 'CONFIRM-BC-'.Str::upper(Str::random(12)),
+            'piece_count' => 1,
+            'total_weight_kg' => 1,
+            'generated_at' => now(),
+        ]);
+        $parcel = Parcel::query()->create([
+            'shipment_id' => $shipment->id,
+            'waybill_id' => $waybill->id,
+            'parcel_no' => 'CONFIRM-PARCEL-'.Str::upper(Str::random(12)),
+            'piece_sequence' => 1,
+            'weight_kg' => 1,
+            'status' => 'delivered',
+            'last_event_at' => now(),
+        ]);
+        $rider = User::factory()->create([
+            'role' => UserRole::Rider->value,
+            'status' => 'active',
+        ]);
+        $riderProfile = RiderProfile::query()->create([
+            'user_id' => $rider->id,
+            'logistics_profile_id' => $provider['profile']->id,
+            'vehicle_type' => 'motorcycle',
+            'availability_status' => 'available',
+            'verification_status' => 'approved',
+        ]);
+        $attempt = DeliveryAttempt::query()->create([
+            'parcel_id' => $parcel->id,
+            'rider_profile_id' => $riderProfile->id,
+            'attempt_no' => 1,
+            'outcome' => 'delivered',
+            'attempted_at' => now(),
+        ]);
+        $proofPath = 'delivery-proofs/confirm-'.Str::lower(Str::random(16)).'.webp';
+        Storage::disk('local')->put($proofPath, 'test-only persisted delivery photo fixture');
+        DeliveryProof::query()->create([
+            'delivery_attempt_id' => $attempt->id,
+            'type' => 'photo',
+            'file_path' => $proofPath,
+            'recipient_name' => (string) $sellerOrder->order->recipient_name,
+            'captured_at' => now(),
+            'uploaded_by' => $rider->id,
         ]);
     }
 

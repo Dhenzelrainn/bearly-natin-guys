@@ -2,17 +2,36 @@
 
 namespace App\Services;
 
+use App\Enums\DeliveryAttemptOutcome;
+use App\Enums\ParcelStatus;
+use App\Enums\ReturnRequestStatus;
 use App\Enums\SellerOrderStatus;
 use App\Enums\ShipmentStatus;
+use App\Models\DeliveryAttempt;
+use App\Models\DeliveryProof;
 use App\Models\Order;
+use App\Models\Parcel;
 use App\Models\Payment;
+use App\Models\Refund;
+use App\Models\ReturnRequest;
+use App\Models\SellerOrder;
 use App\Models\SellerOrderStatusHistory;
+use App\Models\Shipment;
 use App\Models\User;
 use App\Notifications\WorkflowNotification;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 class BuyerOrderConfirmationService
 {
+    /**
+     * Refund service excludes these states from refund capacity because no
+     * refund amount is active in either state.
+     *
+     * @var list<string>
+     */
+    private const INACTIVE_REFUND_STATUSES = ['failed', 'cancelled'];
+
     public function __construct(
         private readonly CodCashCollectionService $codCash,
         private readonly NotificationService $notifications,
@@ -21,10 +40,10 @@ class BuyerOrderConfirmationService
     /**
      * Confirm buyer receipt of a fully delivered marketplace order.
      *
-     * Every non-cancelled Seller Order must already be completed or have all
-     * of its shipments delivered; otherwise the confirmation is rejected so a
-     * partial delivery can never complete the order. Repeating the call after
-     * a successful confirmation is a no-op success without duplicate history.
+     * First-time confirmation is limited to an in-progress parent order whose
+     * active Seller Orders each have delivered outbound parcels and normal
+     * Rider delivery evidence. Repeating a completed parent confirmation is
+     * a read-only success, even if its payment was later refunded.
      */
     public function confirmReceipt(User $buyer, int $orderId): Order
     {
@@ -35,48 +54,31 @@ class BuyerOrderConfirmationService
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            abort_if($order->status === 'cancelled', 409, 'This order was cancelled and cannot be confirmed as received.');
-
-            $payments = Payment::query()
-                ->where('order_id', $order->id)
-                ->lockForUpdate()
-                ->get();
-            $codPayment = $payments->first(fn (Payment $payment): bool => $payment->method === 'cod');
-            if ($codPayment) {
-                $this->codCash->assertPaymentCaptured($order);
-            }
-
             $sellerOrders = $order->sellerOrders()->orderBy('id')->lockForUpdate()->get();
-            $active = $sellerOrders->reject(fn ($sellerOrder): bool => $sellerOrder->status === SellerOrderStatus::Cancelled->value);
+            $activeSellerOrders = $this->activeSellerOrders($sellerOrders);
 
-            abort_if($active->isEmpty(), 409, 'This order has no active Seller Orders to confirm.');
+            abort_if($activeSellerOrders->isEmpty(), 409, 'This order has no active Seller Orders to confirm.');
 
-            // A fulfilled parent with every active Seller Order completed is a
-            // true replay. Return its recorded state before writing timestamps,
-            // payment state, histories, or notifications again.
-            if ($order->status === 'fulfilled'
-                && $active->every(fn ($sellerOrder): bool => $sellerOrder->status === SellerOrderStatus::Completed->value)) {
+            // A fulfilled parent with all active Seller Orders completed is a
+            // legitimate replay. Keep it ahead of payment, return, and proof
+            // checks so later refund activity cannot rewrite completed history.
+            if ($this->isConfirmedState($order, $activeSellerOrders)) {
                 return $this->confirmationResult($order->fresh(['sellerOrders.items', 'payments']), true);
             }
 
-            foreach ($active as $sellerOrder) {
-                if ($sellerOrder->status === SellerOrderStatus::Completed->value) {
-                    continue;
-                }
+            $payments = Payment::query()
+                ->where('order_id', $order->id)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get();
 
-                $shipmentStatuses = $sellerOrder->shipments()->orderBy('id')->lockForUpdate()->pluck('status');
-
-                abort_if(
-                    $shipmentStatuses->isEmpty() || $shipmentStatuses->contains(fn (string $status): bool => $status !== ShipmentStatus::Delivered->value),
-                    409,
-                    'This order cannot be confirmed yet because not every parcel has been delivered.'
-                );
-            }
+            $blockMessage = $this->firstConfirmationBlockMessage($order, $sellerOrders, $payments, true);
+            abort_if($blockMessage !== null, 409, $blockMessage);
 
             $now = now();
             $completedNow = [];
 
-            foreach ($active as $sellerOrder) {
+            foreach ($activeSellerOrders as $sellerOrder) {
                 if ($sellerOrder->status === SellerOrderStatus::Completed->value) {
                     continue;
                 }
@@ -101,10 +103,10 @@ class BuyerOrderConfirmationService
             $order->update([
                 'status' => 'fulfilled',
                 'payment_status' => 'paid',
-                // Legacy rows can already carry a completion timestamp. Keep
-                // it rather than replacing it during a repair/partial finish.
+                // Keep any pre-existing timestamp rather than rewriting it.
                 'completed_at' => $order->completed_at ?? $now,
             ]);
+
             $pendingNonCod = $payments->where('status', 'pending')->where('method', '!=', 'cod');
             foreach ($pendingNonCod as $payment) {
                 $payment->update(['status' => 'paid', 'paid_at' => $now]);
@@ -118,9 +120,8 @@ class BuyerOrderConfirmationService
 
     private function confirmationResult(Order $order, bool $alreadyConfirmed): Order
     {
-        // Keep the existing Order return contract used by the Web controller,
-        // while giving the mobile response an outcome captured under the same
-        // row lock (so a concurrent replay is reported accurately).
+        // Keep the Order return contract used by Web and expose the replay
+        // outcome to Mobile from the same transaction and row lock.
         $order->setAttribute('_receipt_already_confirmed', $alreadyConfirmed);
         $order->makeHidden('_receipt_already_confirmed');
 
@@ -151,38 +152,190 @@ class BuyerOrderConfirmationService
     }
 
     /**
-     * Whether the buyer-owned order currently offers a receipt confirmation.
+     * Whether the buyer-owned order currently offers a first-time confirmation.
      */
     public function canConfirm(Order $order): bool
     {
-        if ($order->status === 'cancelled') {
-            return false;
-        }
+        $sellerOrders = $order->relationLoaded('sellerOrders')
+            ? $order->sellerOrders
+            : $order->sellerOrders()->orderBy('id')->get();
+        $payments = $order->relationLoaded('payments')
+            ? $order->payments
+            : $order->payments()->orderBy('id')->get();
 
-        $pending = $order->sellerOrders
-            ->reject(fn ($sellerOrder): bool => in_array($sellerOrder->status, [SellerOrderStatus::Cancelled->value, SellerOrderStatus::Completed->value], true));
-
-        if ($pending->isEmpty()) {
-            return false;
-        }
-
-        if ($order->payments()->where('method', 'cod')->exists() && ! $this->codCash->hasPaymentCaptured($order)) {
-            return false;
-        }
-
-        return $pending->every(fn ($sellerOrder): bool => $sellerOrder->shipments->isNotEmpty()
-            && $sellerOrder->shipments->every(fn ($shipment): bool => $shipment->status === ShipmentStatus::Delivered->value));
+        return $this->firstConfirmationBlockMessage($order, $sellerOrders, $payments, false) === null;
     }
 
     /**
-     * Whether every active Seller Order in the buyer-owned order is complete.
+     * Whether every active Seller Order belongs to a completed parent order.
      */
     public function isConfirmed(Order $order): bool
     {
-        $active = $order->sellerOrders
-            ->reject(fn ($sellerOrder): bool => $sellerOrder->status === SellerOrderStatus::Cancelled->value);
+        $sellerOrders = $order->relationLoaded('sellerOrders')
+            ? $order->sellerOrders
+            : $order->sellerOrders()->orderBy('id')->get();
 
-        return $active->isNotEmpty()
-            && $active->every(fn ($sellerOrder): bool => $sellerOrder->status === SellerOrderStatus::Completed->value);
+        return $this->isConfirmedState($order, $this->activeSellerOrders($sellerOrders));
+    }
+
+    /**
+     * @param  Collection<int, SellerOrder>  $sellerOrders
+     * @return Collection<int, SellerOrder>
+     */
+    private function activeSellerOrders(Collection $sellerOrders): Collection
+    {
+        return collect($sellerOrders)
+            ->reject(fn (SellerOrder $sellerOrder): bool => $sellerOrder->status === SellerOrderStatus::Cancelled->value)
+            ->values();
+    }
+
+    /**
+     * @param  Collection<int, SellerOrder>  $activeSellerOrders
+     */
+    private function isConfirmedState(Order $order, Collection $activeSellerOrders): bool
+    {
+        return $order->status === 'fulfilled'
+            && $activeSellerOrders->isNotEmpty()
+            && $activeSellerOrders->every(fn (SellerOrder $sellerOrder): bool => $sellerOrder->status === SellerOrderStatus::Completed->value);
+    }
+
+    /**
+     * @param  Collection<int, SellerOrder>  $sellerOrders
+     * @param  Collection<int, Payment>  $payments
+     */
+    private function firstConfirmationBlockMessage(
+        Order $order,
+        Collection $sellerOrders,
+        Collection $payments,
+        bool $lockEvidence,
+    ): ?string {
+        if ($order->status === 'cancelled') {
+            return 'This order was cancelled and cannot be confirmed as received.';
+        }
+
+        // CheckoutService creates new orders as processing. Unknown, pending,
+        // or already-final parent states are not first-time receipt candidates.
+        if ($order->status !== 'processing') {
+            return 'This order is not eligible for receipt confirmation.';
+        }
+
+        $activeSellerOrders = $this->activeSellerOrders($sellerOrders);
+        if ($activeSellerOrders->isEmpty()) {
+            return 'This order has no active Seller Orders to confirm.';
+        }
+
+        if ($this->hasUnresolvedReturnOrRefund($order)) {
+            return 'This order has an unresolved return, refund, or dispute case and cannot be confirmed as received.';
+        }
+
+        if ($payments->contains(fn (Payment $payment): bool => $payment->method === 'cod')
+            && ! $this->codCash->hasPaymentCaptured($order)) {
+            return 'The COD payment cannot be completed until every required Rider cash collection is recorded.';
+        }
+
+        foreach ($activeSellerOrders as $sellerOrder) {
+            if (! $this->hasDeliveredOutboundEvidence($sellerOrder, $lockEvidence)) {
+                return 'This order cannot be confirmed yet because not every parcel has been delivered.';
+            }
+        }
+
+        return null;
+    }
+
+    private function hasUnresolvedReturnOrRefund(Order $order): bool
+    {
+        $hasUnresolvedReturnOrDispute = ReturnRequest::query()
+            ->where('order_id', $order->id)
+            ->where(function ($query): void {
+                $query->whereNotIn('status', [
+                    ReturnRequestStatus::Resolved->value,
+                    ReturnRequestStatus::Rejected->value,
+                ])->orWhereHas('disputes', fn ($disputes) => $disputes->whereNotIn('status', ['resolved', 'closed']));
+            })
+            ->exists();
+
+        if ($hasUnresolvedReturnOrDispute) {
+            return true;
+        }
+
+        // Pending, completed, and unknown refund states represent money or a
+        // refund workflow that must not be combined with a new order completion.
+        // Failed/cancelled are the refund service's explicitly inactive states.
+        return Refund::query()
+            ->where('order_id', $order->id)
+            ->whereNotIn('status', self::INACTIVE_REFUND_STATUSES)
+            ->exists();
+    }
+
+    private function hasDeliveredOutboundEvidence(SellerOrder $sellerOrder, bool $lockRows): bool
+    {
+        $shipmentQuery = Shipment::query()
+            ->where('seller_order_id', $sellerOrder->id)
+            ->where('purpose', 'outbound')
+            ->orderBy('id');
+        if ($lockRows) {
+            $shipmentQuery->lockForUpdate();
+        }
+        $shipments = $shipmentQuery->get();
+
+        if ($shipments->isEmpty()) {
+            return false;
+        }
+
+        foreach ($shipments as $shipment) {
+            if ($shipment->status !== ShipmentStatus::Delivered->value) {
+                return false;
+            }
+
+            $parcelQuery = Parcel::query()
+                ->where('shipment_id', $shipment->id)
+                ->orderBy('id');
+            if ($lockRows) {
+                $parcelQuery->lockForUpdate();
+            }
+            $parcels = $parcelQuery->get();
+
+            if ($parcels->isEmpty()) {
+                return false;
+            }
+
+            foreach ($parcels as $parcel) {
+                if ($parcel->status !== ParcelStatus::Delivered->value) {
+                    return false;
+                }
+
+                $attemptQuery = DeliveryAttempt::query()
+                    ->where('parcel_id', $parcel->id)
+                    ->orderByDesc('attempted_at')
+                    ->orderByDesc('id');
+                if ($lockRows) {
+                    $attemptQuery->lockForUpdate();
+                }
+                $attempt = $attemptQuery->first();
+
+                if (! $attempt || $attempt->outcome !== DeliveryAttemptOutcome::Delivered->value) {
+                    return false;
+                }
+
+                $proofQuery = DeliveryProof::query()
+                    ->where('delivery_attempt_id', $attempt->id)
+                    ->where('type', 'photo')
+                    ->orderBy('id');
+                if ($lockRows) {
+                    $proofQuery->lockForUpdate();
+                }
+
+                $hasRequiredProof = $proofQuery->get(['file_path', 'recipient_name', 'captured_at'])
+                    ->contains(fn (DeliveryProof $proof): bool => filled($proof->file_path)
+                        && filled($proof->recipient_name)
+                        && $proof->captured_at !== null);
+
+                if (! $hasRequiredProof) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
     }
 }

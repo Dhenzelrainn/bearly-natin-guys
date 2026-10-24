@@ -89,7 +89,9 @@ class MobileBuyerConfirmReceiptController extends Controller
     {
         return match ($message) {
             'This order was cancelled and cannot be confirmed as received.' => 'order_cancelled',
+            'This order is not eligible for receipt confirmation.' => 'order_state_ineligible',
             'This order has no active Seller Orders to confirm.' => 'no_active_seller_orders',
+            'This order has an unresolved return, refund, or dispute case and cannot be confirmed as received.' => 'return_refund_in_progress',
             'This order cannot be confirmed yet because not every parcel has been delivered.' => 'order_not_fully_delivered',
             'The COD payment cannot be completed until every required Rider cash collection is recorded.' => 'cod_cash_collection_incomplete',
             default => 'receipt_confirmation_blocked',

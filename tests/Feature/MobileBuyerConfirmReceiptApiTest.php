@@ -2,11 +2,18 @@
 
 namespace Tests\Feature;
 
+use App\Enums\ReturnRequestStatus;
 use App\Enums\UserRole;
 use App\Models\Address;
+use App\Models\DeliveryAttempt;
+use App\Models\DeliveryProof;
+use App\Models\Dispute;
 use App\Models\LogisticsProfile;
 use App\Models\Order;
+use App\Models\Parcel;
 use App\Models\Payment;
+use App\Models\Refund;
+use App\Models\ReturnRequest;
 use App\Models\RiderProfile;
 use App\Models\Role;
 use App\Models\SellerOrder;
@@ -15,12 +22,14 @@ use App\Models\SellerProfile;
 use App\Models\Shipment;
 use App\Models\Store;
 use App\Models\User;
+use App\Models\Waybill;
 use App\Notifications\WorkflowNotification;
 use App\Services\CodCashCollectionService;
 use App\Services\NotificationService;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Mockery;
 use Tests\TestCase;
@@ -36,6 +45,7 @@ class MobileBuyerConfirmReceiptApiTest extends TestCase
         parent::setUp();
 
         $this->seed(DatabaseSeeder::class);
+        Storage::fake('local');
     }
 
     public function test_buyer_can_confirm_and_replay_without_rewriting_timestamp_or_repeating_effects(): void
@@ -276,6 +286,404 @@ class MobileBuyerConfirmReceiptApiTest extends TestCase
         $this->assertSame(0, $sellerOrder->statusHistory()->count());
     }
 
+    public function test_only_processing_parent_orders_allow_first_confirmation_and_get_matches_post(): void
+    {
+        $valid = $this->receiptFixture('eligible-processing');
+        $this->collectCod($valid['shipment'], $valid['provider']);
+
+        $this->actingAs($valid['buyer'])
+            ->getJson('/api/mobile/buyer/orders/'.$valid['order']->id)
+            ->assertOk()
+            ->assertJsonPath('data.buyer_actions.can_confirm_receipt', true);
+        $this->actingAs($valid['buyer'])
+            ->postJson('/api/mobile/buyer/orders/'.$valid['order']->id.'/confirm-receipt')
+            ->assertOk()
+            ->assertJsonPath('data.status', 'fulfilled');
+
+        foreach (['pending_payment', 'in_transit', 'fulfilled', 'cancelled'] as $status) {
+            $fixture = $this->receiptFixture('ineligible-'.$status);
+            $fixture['order']->update(['status' => $status]);
+
+            $this->actingAs($fixture['buyer'])
+                ->getJson('/api/mobile/buyer/orders/'.$fixture['order']->id)
+                ->assertOk()
+                ->assertJsonPath('data.buyer_actions.can_confirm_receipt', false);
+
+            $expectedCode = $status === 'cancelled' ? 'order_cancelled' : 'order_state_ineligible';
+            $this->actingAs($fixture['buyer'])
+                ->postJson('/api/mobile/buyer/orders/'.$fixture['order']->id.'/confirm-receipt')
+                ->assertStatus(409)
+                ->assertJsonPath('error.code', $expectedCode);
+        }
+    }
+
+    public function test_each_active_seller_order_needs_delivered_parcels_and_latest_rider_proof(): void
+    {
+        $mutations = [
+            'shipment-without-parcels' => function (array $fixture): void {
+                $parcelIds = $fixture['shipment']->parcels()->pluck('id');
+                DeliveryAttempt::query()->whereIn('parcel_id', $parcelIds)->delete();
+                Parcel::query()->whereIn('id', $parcelIds)->delete();
+            },
+            'missing-successful-attempt' => function (array $fixture): void {
+                DeliveryAttempt::query()
+                    ->whereIn('parcel_id', $fixture['shipment']->parcels()->pluck('id'))
+                    ->delete();
+            },
+            'missing-proof-record' => function (array $fixture): void {
+                $attempt = DeliveryAttempt::query()
+                    ->whereIn('parcel_id', $fixture['shipment']->parcels()->pluck('id'))
+                    ->sole();
+                $attempt->proofs()->delete();
+            },
+            'missing-recipient-name' => function (array $fixture): void {
+                $attempt = DeliveryAttempt::query()
+                    ->whereIn('parcel_id', $fixture['shipment']->parcels()->pluck('id'))
+                    ->sole();
+                $attempt->proofs()->sole()->update(['recipient_name' => null]);
+            },
+            'blank-recipient-name' => function (array $fixture): void {
+                $attempt = DeliveryAttempt::query()
+                    ->whereIn('parcel_id', $fixture['shipment']->parcels()->pluck('id'))
+                    ->sole();
+                $attempt->proofs()->sole()->update(['recipient_name' => '   ']);
+            },
+            'missing-photo-file' => function (array $fixture): void {
+                $attempt = DeliveryAttempt::query()
+                    ->whereIn('parcel_id', $fixture['shipment']->parcels()->pluck('id'))
+                    ->sole();
+                $attempt->proofs()->sole()->update(['file_path' => ' ']);
+            },
+            'latest-attempt-not-delivered' => function (array $fixture): void {
+                $parcel = $fixture['shipment']->parcels()->sole();
+                $attempt = DeliveryAttempt::query()->create([
+                    'parcel_id' => $parcel->id,
+                    'rider_profile_id' => DeliveryAttempt::query()->where('parcel_id', $parcel->id)->sole()->rider_profile_id,
+                    'attempt_no' => 2,
+                    'outcome' => 'failed',
+                    'attempted_at' => now()->addSecond(),
+                ]);
+                $this->assertSame('failed', $attempt->outcome);
+            },
+            'one-undelivered-parcel' => function (array $fixture): void {
+                $parcel = $fixture['shipment']->parcels()->sole();
+                $waybill = $parcel->waybill;
+                $waybill->update(['piece_count' => 2]);
+                Parcel::query()->create([
+                    'shipment_id' => $fixture['shipment']->id,
+                    'waybill_id' => $waybill->id,
+                    'parcel_no' => 'MOBILE-UNDELIVERED-'.Str::upper(Str::random(12)),
+                    'piece_sequence' => 2,
+                    'weight_kg' => 1,
+                    'status' => 'out_for_delivery',
+                ]);
+            },
+        ];
+
+        foreach ($mutations as $suffix => $mutate) {
+            $fixture = $this->receiptFixture($suffix);
+            $this->useNonCodPayment($fixture['order']);
+            $mutate($fixture);
+
+            $this->actingAs($fixture['buyer'])
+                ->getJson('/api/mobile/buyer/orders/'.$fixture['order']->id)
+                ->assertOk()
+                ->assertJsonPath('data.buyer_actions.can_confirm_receipt', false);
+            $this->actingAs($fixture['buyer'])
+                ->postJson('/api/mobile/buyer/orders/'.$fixture['order']->id.'/confirm-receipt')
+                ->assertStatus(409)
+                ->assertJsonPath('error.code', 'order_not_fully_delivered');
+            $this->assertSame('processing', $fixture['order']->fresh()->status);
+            $this->assertSame('handed_to_logistics', $fixture['seller_order']->fresh()->status);
+            $this->assertSame(0, $fixture['seller_order']->statusHistory()->count());
+        }
+    }
+
+    public function test_delivery_from_another_seller_or_an_undelivered_seller_order_cannot_complete_parent(): void
+    {
+        $buyer = $this->user(UserRole::Buyer, 'multi-delivery');
+        [, $firstStore] = $this->seller();
+        [, $secondStore] = $this->seller();
+        $provider = $this->provider();
+        $order = $this->marketplaceOrder($buyer, 'multi-delivery');
+        $deliveredSellerOrder = $this->sellerOrder($order, $firstStore, 'handed_to_logistics');
+        $undeliveredSellerOrder = $this->sellerOrder($order, $secondStore, 'handed_to_logistics');
+        $this->shipment($deliveredSellerOrder, $provider, 'delivered');
+        $undeliveredShipment = $this->shipment($undeliveredSellerOrder, $provider, 'out_for_delivery');
+        $this->useNonCodPayment($order);
+
+        $this->actingAs($buyer)
+            ->postJson('/api/mobile/buyer/orders/'.$order->id.'/confirm-receipt')
+            ->assertStatus(409)
+            ->assertJsonPath('error.code', 'order_not_fully_delivered');
+
+        $this->assertSame('processing', $order->fresh()->status);
+        $this->assertSame('handed_to_logistics', $deliveredSellerOrder->fresh()->status);
+        $this->assertSame('handed_to_logistics', $undeliveredSellerOrder->fresh()->status);
+        $this->assertSame('out_for_delivery', $undeliveredShipment->fresh()->status);
+        $this->assertSame(0, SellerOrderStatusHistory::query()->count());
+    }
+
+    public function test_active_seller_order_without_an_outbound_shipment_is_ineligible(): void
+    {
+        $fixture = $this->receiptFixture('no-outbound', withShipment: false);
+        $this->useNonCodPayment($fixture['order']);
+
+        $this->actingAs($fixture['buyer'])
+            ->getJson('/api/mobile/buyer/orders/'.$fixture['order']->id)
+            ->assertOk()
+            ->assertJsonPath('data.buyer_actions.can_confirm_receipt', false);
+        $this->actingAs($fixture['buyer'])
+            ->postJson('/api/mobile/buyer/orders/'.$fixture['order']->id.'/confirm-receipt')
+            ->assertStatus(409)
+            ->assertJsonPath('error.code', 'order_not_fully_delivered');
+    }
+
+    public function test_admin_delivered_status_override_without_rider_records_does_not_authorize_receipt(): void
+    {
+        $fixture = $this->receiptFixture('admin-override', shipmentStatus: 'out_for_delivery');
+        $this->useNonCodPayment($fixture['order']);
+        $admin = $this->user(UserRole::Admin, 'fulfillment-override');
+
+        $this->actingAs($admin)
+            ->patch(route('admin.fulfillment.override', $fixture['shipment']), [
+                'status' => 'delivered',
+                'note' => 'Manually corrected delivery label.',
+            ])
+            ->assertRedirect();
+        $this->assertDatabaseHas('shipment_events', [
+            'shipment_id' => $fixture['shipment']->id,
+            'event_type' => 'admin_override',
+            'source' => 'admin',
+            'to_status' => 'delivered',
+        ]);
+
+        $this->actingAs($fixture['buyer'])
+            ->getJson('/api/mobile/buyer/orders/'.$fixture['order']->id)
+            ->assertOk()
+            ->assertJsonPath('data.buyer_actions.can_confirm_receipt', false);
+        $this->actingAs($fixture['buyer'])
+            ->postJson('/api/mobile/buyer/orders/'.$fixture['order']->id.'/confirm-receipt')
+            ->assertStatus(409)
+            ->assertJsonPath('error.code', 'order_not_fully_delivered');
+    }
+
+    public function test_completed_seller_order_does_not_skip_delivery_evidence_for_unconfirmed_parent(): void
+    {
+        $fixture = $this->receiptFixture('completed-child');
+        $this->useNonCodPayment($fixture['order']);
+        $fixture['seller_order']->update([
+            'status' => 'completed',
+            'completed_at' => now(),
+        ]);
+        $attempt = DeliveryAttempt::query()
+            ->whereIn('parcel_id', $fixture['shipment']->parcels()->pluck('id'))
+            ->sole();
+        $attempt->delete();
+
+        $this->actingAs($fixture['buyer'])
+            ->postJson('/api/mobile/buyer/orders/'.$fixture['order']->id.'/confirm-receipt')
+            ->assertStatus(409)
+            ->assertJsonPath('error.code', 'order_not_fully_delivered');
+        $this->assertSame('processing', $fixture['order']->fresh()->status);
+        $this->assertSame('completed', $fixture['seller_order']->fresh()->status);
+        $this->assertSame(0, $fixture['seller_order']->statusHistory()->count());
+    }
+
+    public function test_unresolved_return_states_and_open_return_disputes_block_first_confirmation(): void
+    {
+        foreach (ReturnRequestStatus::cases() as $status) {
+            if (in_array($status, [ReturnRequestStatus::Resolved, ReturnRequestStatus::Rejected], true)) {
+                continue;
+            }
+
+            $fixture = $this->receiptFixture('return-'.$status->value);
+            $this->useNonCodPayment($fixture['order']);
+            $this->createReturnRequest($fixture, $status->value);
+
+            $this->actingAs($fixture['buyer'])
+                ->getJson('/api/mobile/buyer/orders/'.$fixture['order']->id)
+                ->assertOk()
+                ->assertJsonPath('data.buyer_actions.can_confirm_receipt', false);
+            $this->actingAs($fixture['buyer'])
+                ->postJson('/api/mobile/buyer/orders/'.$fixture['order']->id.'/confirm-receipt')
+                ->assertStatus(409)
+                ->assertJsonPath('error.code', 'return_refund_in_progress');
+        }
+
+        $fixture = $this->receiptFixture('resolved-return-dispute');
+        $this->useNonCodPayment($fixture['order']);
+        $return = $this->createReturnRequest($fixture, ReturnRequestStatus::Resolved->value);
+        Dispute::query()->create([
+            'dispute_no' => 'DSP-'.Str::upper(Str::random(12)),
+            'seller_order_id' => $fixture['seller_order']->id,
+            'return_request_id' => $return->id,
+            'opened_by' => $fixture['buyer']->id,
+            'subject' => 'Refund dispute',
+            'description' => 'Dispute remains open after the return state changed.',
+            'priority' => 'normal',
+            'status' => 'open',
+            'opened_at' => now(),
+        ]);
+
+        $this->actingAs($fixture['buyer'])
+            ->postJson('/api/mobile/buyer/orders/'.$fixture['order']->id.'/confirm-receipt')
+            ->assertStatus(409)
+            ->assertJsonPath('error.code', 'return_refund_in_progress');
+    }
+
+    public function test_pending_completed_and_unknown_refunds_block_new_confirmation_but_inactive_refund_states_do_not(): void
+    {
+        foreach (['pending', 'completed', 'under_review'] as $status) {
+            $fixture = $this->receiptFixture('refund-'.$status);
+            $this->useNonCodPayment($fixture['order']);
+            $this->createRefund($fixture['order'], $status);
+
+            $this->actingAs($fixture['buyer'])
+                ->getJson('/api/mobile/buyer/orders/'.$fixture['order']->id)
+                ->assertOk()
+                ->assertJsonPath('data.buyer_actions.can_confirm_receipt', false);
+            $this->actingAs($fixture['buyer'])
+                ->postJson('/api/mobile/buyer/orders/'.$fixture['order']->id.'/confirm-receipt')
+                ->assertStatus(409)
+                ->assertJsonPath('error.code', 'return_refund_in_progress');
+        }
+
+        foreach (['failed', 'cancelled'] as $status) {
+            $fixture = $this->receiptFixture('inactive-refund-'.$status);
+            $this->useNonCodPayment($fixture['order']);
+            $this->createRefund($fixture['order'], $status);
+
+            $this->actingAs($fixture['buyer'])
+                ->getJson('/api/mobile/buyer/orders/'.$fixture['order']->id)
+                ->assertOk()
+                ->assertJsonPath('data.buyer_actions.can_confirm_receipt', true);
+            $this->actingAs($fixture['buyer'])
+                ->postJson('/api/mobile/buyer/orders/'.$fixture['order']->id.'/confirm-receipt')
+                ->assertOk()
+                ->assertJsonPath('data.status', 'fulfilled');
+        }
+    }
+
+    public function test_confirmed_order_replay_is_read_only_after_a_later_completed_refund(): void
+    {
+        $fixture = $this->receiptFixture('replay-after-refund');
+        $this->collectCod($fixture['shipment'], $fixture['provider']);
+        $route = '/api/mobile/buyer/orders/'.$fixture['order']->id.'/confirm-receipt';
+        $first = $this->actingAs($fixture['buyer'])
+            ->postJson($route)
+            ->assertOk()
+            ->assertJsonPath('data.already_confirmed', false);
+        $originalCompletedAt = $first->json('data.completed_at');
+        $historyCount = $fixture['seller_order']->statusHistory()->count();
+
+        $return = $this->createReturnRequest($fixture, ReturnRequestStatus::Resolved->value);
+        $this->createRefund($fixture['order'], 'completed', $return);
+        $fixture['order']->payments()->sole()->update([
+            'status' => 'partially_refunded',
+            'refunded_at' => now(),
+        ]);
+        $fixture['order']->update(['payment_status' => 'partially_refunded']);
+
+        $notifications = Mockery::mock(NotificationService::class);
+        $notifications->shouldNotReceive('sendAfterCommit');
+        $this->app->instance(NotificationService::class, $notifications);
+
+        $this->actingAs($fixture['buyer'])
+            ->postJson($route)
+            ->assertOk()
+            ->assertJsonPath('data.already_confirmed', true)
+            ->assertJsonPath('data.completed_at', $originalCompletedAt);
+
+        $this->assertSame($originalCompletedAt, Carbon::parse($fixture['order']->fresh()->completed_at)->toIso8601String());
+        $this->assertSame('partially_refunded', $fixture['order']->fresh()->payment_status);
+        $this->assertSame('partially_refunded', $fixture['order']->payments()->sole()->status);
+        $this->assertSame($historyCount, $fixture['seller_order']->statusHistory()->count());
+        $this->assertSame('resolved', $return->fresh()->status);
+        $this->assertSame('completed', Refund::query()->where('order_id', $fixture['order']->id)->sole()->status);
+    }
+
+    public function test_cancelled_seller_orders_remain_excluded_from_a_valid_confirmation(): void
+    {
+        $fixture = $this->receiptFixture('cancelled-child');
+        [, $cancelledStore] = $this->seller();
+        $cancelledSellerOrder = $this->sellerOrder($fixture['order'], $cancelledStore, 'cancelled');
+        $this->collectCod($fixture['shipment'], $fixture['provider']);
+
+        $this->actingAs($fixture['buyer'])
+            ->postJson('/api/mobile/buyer/orders/'.$fixture['order']->id.'/confirm-receipt')
+            ->assertOk()
+            ->assertJsonPath('data.receipt_confirmed', true);
+
+        $this->assertSame('completed', $fixture['seller_order']->fresh()->status);
+        $this->assertSame('cancelled', $cancelledSellerOrder->fresh()->status);
+        $this->assertSame(0, $cancelledSellerOrder->statusHistory()->count());
+    }
+
+    /**
+     * @return array{buyer: User, provider: array{user: User, profile: LogisticsProfile}, order: Order, seller_order: SellerOrder, shipment: ?Shipment}
+     */
+    private function receiptFixture(string $suffix, bool $withShipment = true, string $shipmentStatus = 'delivered'): array
+    {
+        $buyer = $this->user(UserRole::Buyer, $suffix);
+        [, $store] = $this->seller();
+        $provider = $this->provider();
+        $order = $this->marketplaceOrder($buyer, $suffix);
+        $sellerOrder = $this->sellerOrder($order, $store, 'handed_to_logistics');
+        $shipment = $withShipment ? $this->shipment($sellerOrder, $provider, $shipmentStatus) : null;
+
+        return [
+            'buyer' => $buyer,
+            'provider' => $provider,
+            'order' => $order,
+            'seller_order' => $sellerOrder,
+            'shipment' => $shipment,
+        ];
+    }
+
+    private function useNonCodPayment(Order $order): void
+    {
+        $order->payments()->sole()->update([
+            'method' => 'online',
+            'provider' => 'fixture',
+            'status' => 'paid',
+            'paid_at' => now(),
+            'metadata' => ['collection_method' => 'online'],
+        ]);
+        $order->update(['payment_status' => 'paid']);
+    }
+
+    /** @param array{buyer: User, order: Order, seller_order: SellerOrder} $fixture */
+    private function createReturnRequest(array $fixture, string $status): ReturnRequest
+    {
+        return ReturnRequest::query()->create([
+            'return_no' => 'RR-'.Str::upper(Str::random(12)),
+            'order_id' => $fixture['order']->id,
+            'seller_order_id' => $fixture['seller_order']->id,
+            'buyer_id' => $fixture['buyer']->id,
+            'store_id' => $fixture['seller_order']->store_id,
+            'request_type' => 'return_refund',
+            'reason_code' => 'item_arrived_damaged',
+            'status' => $status,
+            'requested_amount_minor' => 1000,
+            'submitted_at' => now(),
+        ]);
+    }
+
+    private function createRefund(Order $order, string $status, ?ReturnRequest $return = null): Refund
+    {
+        return Refund::query()->create([
+            'refund_no' => 'RFD-'.Str::upper(Str::random(12)),
+            'return_request_id' => $return?->id,
+            'payment_id' => $order->payments()->sole()->id,
+            'order_id' => $order->id,
+            'amount_minor' => 1000,
+            'status' => $status,
+            'method' => 'manual',
+            'completed_at' => $status === 'completed' ? now() : null,
+        ]);
+    }
+
     private function user(UserRole $role, string $suffix, string $status = 'active'): User
     {
         $user = User::factory()->create([
@@ -406,13 +814,67 @@ class MobileBuyerConfirmReceiptApiTest extends TestCase
     /** @param array{user: User, profile: LogisticsProfile} $provider */
     private function shipment(SellerOrder $sellerOrder, array $provider, string $status): Shipment
     {
-        return Shipment::query()->create([
+        $shipment = Shipment::query()->create([
             'shipment_no' => 'MOBILE-CONFIRM-'.Str::upper(Str::random(12)),
             'seller_order_id' => $sellerOrder->id,
             'logistics_profile_id' => $provider['profile']->id,
             'purpose' => 'outbound',
             'status' => $status,
             'cod_amount_minor' => (int) $sellerOrder->total_minor,
+        ]);
+
+        if ($status === 'delivered') {
+            $this->attachDeliveredEvidence($shipment, $sellerOrder, $provider);
+        }
+
+        return $shipment;
+    }
+
+    /** @param array{user: User, profile: LogisticsProfile} $provider */
+    private function attachDeliveredEvidence(Shipment $shipment, SellerOrder $sellerOrder, array $provider): void
+    {
+        $waybill = Waybill::query()->create([
+            'shipment_id' => $shipment->id,
+            'waybill_no' => 'MOBILE-CONFIRM-WB-'.Str::upper(Str::random(12)),
+            'scan_token' => hash('sha256', Str::random(64)),
+            'barcode_value' => 'MOBILE-CONFIRM-BC-'.Str::upper(Str::random(12)),
+            'piece_count' => 1,
+            'total_weight_kg' => 1,
+            'generated_at' => now(),
+        ]);
+        $parcel = Parcel::query()->create([
+            'shipment_id' => $shipment->id,
+            'waybill_id' => $waybill->id,
+            'parcel_no' => 'MOBILE-CONFIRM-PARCEL-'.Str::upper(Str::random(12)),
+            'piece_sequence' => 1,
+            'weight_kg' => 1,
+            'status' => 'delivered',
+            'last_event_at' => now(),
+        ]);
+        $rider = $this->user(UserRole::Rider, 'delivery-proof');
+        $riderProfile = RiderProfile::query()->create([
+            'user_id' => $rider->id,
+            'logistics_profile_id' => $provider['profile']->id,
+            'vehicle_type' => 'motorcycle',
+            'availability_status' => 'available',
+            'verification_status' => 'approved',
+        ]);
+        $attempt = DeliveryAttempt::query()->create([
+            'parcel_id' => $parcel->id,
+            'rider_profile_id' => $riderProfile->id,
+            'attempt_no' => 1,
+            'outcome' => 'delivered',
+            'attempted_at' => now(),
+        ]);
+        $proofPath = 'delivery-proofs/mobile-confirm-'.Str::lower(Str::random(16)).'.webp';
+        Storage::disk('local')->put($proofPath, 'test-only persisted delivery photo fixture');
+        DeliveryProof::query()->create([
+            'delivery_attempt_id' => $attempt->id,
+            'type' => 'photo',
+            'file_path' => $proofPath,
+            'recipient_name' => (string) $sellerOrder->order->recipient_name,
+            'captured_at' => now(),
+            'uploaded_by' => $rider->id,
         ]);
     }
 

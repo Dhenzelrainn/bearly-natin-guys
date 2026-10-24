@@ -51,6 +51,14 @@ class BuyerOrderConfirmationService
 
             abort_if($active->isEmpty(), 409, 'This order has no active Seller Orders to confirm.');
 
+            // A fulfilled parent with every active Seller Order completed is a
+            // true replay. Return its recorded state before writing timestamps,
+            // payment state, histories, or notifications again.
+            if ($order->status === 'fulfilled'
+                && $active->every(fn ($sellerOrder): bool => $sellerOrder->status === SellerOrderStatus::Completed->value)) {
+                return $this->confirmationResult($order->fresh(['sellerOrders.items', 'payments']), true);
+            }
+
             foreach ($active as $sellerOrder) {
                 if ($sellerOrder->status === SellerOrderStatus::Completed->value) {
                     continue;
@@ -93,7 +101,9 @@ class BuyerOrderConfirmationService
             $order->update([
                 'status' => 'fulfilled',
                 'payment_status' => 'paid',
-                'completed_at' => $now,
+                // Legacy rows can already carry a completion timestamp. Keep
+                // it rather than replacing it during a repair/partial finish.
+                'completed_at' => $order->completed_at ?? $now,
             ]);
             $pendingNonCod = $payments->where('status', 'pending')->where('method', '!=', 'cod');
             foreach ($pendingNonCod as $payment) {
@@ -102,8 +112,19 @@ class BuyerOrderConfirmationService
 
             $this->notifySellersOfCompletion($order, $completedNow, $buyer);
 
-            return $order->fresh(['sellerOrders.items', 'payments']);
+            return $this->confirmationResult($order->fresh(['sellerOrders.items', 'payments']), false);
         }, attempts: 3);
+    }
+
+    private function confirmationResult(Order $order, bool $alreadyConfirmed): Order
+    {
+        // Keep the existing Order return contract used by the Web controller,
+        // while giving the mobile response an outcome captured under the same
+        // row lock (so a concurrent replay is reported accurately).
+        $order->setAttribute('_receipt_already_confirmed', $alreadyConfirmed);
+        $order->makeHidden('_receipt_already_confirmed');
+
+        return $order;
     }
 
     /**

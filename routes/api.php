@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\MobileAuthController;
 use App\Http\Controllers\Api\MobileBuyerCatalogController;
 use App\Http\Controllers\Api\MobileBuyerCheckoutPlaceController;
 use App\Http\Controllers\Api\MobileBuyerCheckoutQuoteController;
+use App\Http\Controllers\Api\MobileBuyerConfirmReceiptController;
 use App\Http\Controllers\Api\MobileBuyerOrderController;
 use App\Http\Controllers\Api\MobileBuyerWishlistController;
 use App\Http\Controllers\Api\MobileRegistrationController;
@@ -101,6 +102,10 @@ Route::prefix('/mobile/buyer')
             ->whereNumber('order')
             ->middleware('throttle:60,1')
             ->name('orders.tracking');
+        Route::post('/orders/{order}/confirm-receipt', MobileBuyerConfirmReceiptController::class)
+            ->whereNumber('order')
+            ->middleware('throttle:10,1')
+            ->name('orders.confirm-receipt');
         Route::get('/orders/{order}', [MobileBuyerOrderController::class, 'show'])
             ->whereNumber('order')
             ->middleware('throttle:60,1')

@@ -89,22 +89,38 @@ class CheckoutService
         string $quoteToken,
         ?string $sellerNote = null,
         array $promotionSelection = [],
+        string $paymentMethod = 'cod',
     ): Order {
-        $existing = $this->existingRequest($buyer, $requestKey);
+        $requestFingerprint = $this->requestFingerprint(
+            $buyer,
+            $cartItemIds,
+            $addressId,
+            $quoteToken,
+            $sellerNote,
+            $promotionSelection,
+            $paymentMethod,
+        );
+        $existing = $this->existingRequest($buyer, $requestKey, $requestFingerprint);
         if ($existing) {
             return $existing;
         }
 
+        if ($paymentMethod !== 'cod') {
+            throw ValidationException::withMessages([
+                'payment_method' => 'The selected payment method is not available for checkout.',
+            ]);
+        }
+
         try {
-            return DB::transaction(function () use ($buyer, $cartItemIds, $addressId, $requestKey, $quoteToken, $sellerNote, $promotionSelection): Order {
+            return DB::transaction(function () use ($buyer, $cartItemIds, $addressId, $requestKey, $quoteToken, $sellerNote, $promotionSelection, $requestFingerprint, $paymentMethod): Order {
                 User::query()->whereKey($buyer->id)->lockForUpdate()->firstOrFail();
-                $existing = $this->existingRequest($buyer, $requestKey, true);
+                $existing = $this->existingRequest($buyer, $requestKey, $requestFingerprint, true);
                 if ($existing) {
                     return $existing;
                 }
 
                 [$destination, $groups, $cartItems] = $this->prepare($buyer, $cartItemIds, $addressId, true);
-                $existing = $this->existingRequest($buyer, $requestKey, true);
+                $existing = $this->existingRequest($buyer, $requestKey, $requestFingerprint, true);
                 if ($existing) {
                     return $existing;
                 }
@@ -153,6 +169,7 @@ class CheckoutService
                     'status' => 'processing',
                     'payment_status' => 'unpaid',
                     'checkout_request_key' => $requestKey,
+                    'checkout_request_fingerprint' => $requestFingerprint,
                     'placed_at' => $now,
                 ]);
 
@@ -233,7 +250,7 @@ class CheckoutService
                 Payment::query()->create([
                     'payment_no' => $this->number('PAY'),
                     'order_id' => $order->id,
-                    'method' => 'cod',
+                    'method' => $paymentMethod,
                     'provider' => null,
                     'amount_minor' => $totals['total_minor'],
                     'status' => 'pending',
@@ -249,7 +266,7 @@ class CheckoutService
             }, attempts: 3);
         } catch (QueryException $exception) {
             // A concurrent retry may win the unique buyer/request-key index.
-            $existing = $this->existingRequest($buyer, $requestKey);
+            $existing = $this->existingRequest($buyer, $requestKey, $requestFingerprint);
             if ($existing) {
                 return $existing;
             }
@@ -855,7 +872,41 @@ class CheckoutService
         }
     }
 
-    private function existingRequest(User $buyer, string $requestKey, bool $lock = false): ?Order
+    private function requestFingerprint(
+        User $buyer,
+        array $cartItemIds,
+        int $addressId,
+        string $quoteToken,
+        ?string $sellerNote,
+        array $promotionSelection,
+        string $paymentMethod,
+    ): string {
+        $canonicalRequest = [
+            'version' => 1,
+            'buyer_id' => (int) $buyer->id,
+            'cart_item_ids' => collect($cartItemIds)
+                ->map(fn ($id): int => (int) $id)
+                ->unique()
+                ->sort()
+                ->values()
+                ->all(),
+            'address_id' => $addressId,
+            'payment_method' => $paymentMethod,
+            'promotion_selection' => $this->normalizePromotionSelection($promotionSelection),
+            'seller_note' => filled($sellerNote) ? trim($sellerNote) : null,
+            // A different issued token is a different attempt, even when its
+            // quoted business context happens to be identical. Only this digest
+            // is retained; the encrypted token itself is never persisted.
+            'quote_token_sha256' => hash('sha256', $quoteToken),
+        ];
+
+        return hash('sha256', json_encode(
+            $canonicalRequest,
+            JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION | JSON_THROW_ON_ERROR,
+        ));
+    }
+
+    private function existingRequest(User $buyer, string $requestKey, string $requestFingerprint, bool $lock = false): ?Order
     {
         $query = Order::query()
             ->where('buyer_id', $buyer->id)
@@ -864,7 +915,18 @@ class CheckoutService
             $query->lockForUpdate();
         }
 
-        return $query->with(['sellerOrders.items', 'payments'])->first();
+        $order = $query->with(['sellerOrders.items', 'payments'])->first();
+
+        if (! $order) {
+            return null;
+        }
+
+        $storedFingerprint = $order->checkout_request_fingerprint;
+        if (! is_string($storedFingerprint) || ! hash_equals($storedFingerprint, $requestFingerprint)) {
+            abort(409, 'This checkout request key was already used for a different or unverifiable checkout. Start a new checkout attempt or contact support.');
+        }
+
+        return $order;
     }
 
     private function number(string $prefix): string

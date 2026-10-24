@@ -18,13 +18,16 @@ use App\Models\Store;
 use App\Models\SystemSetting;
 use App\Models\User;
 use App\Notifications\WorkflowNotification;
+use App\Services\CheckoutService;
 use App\Services\PostalCodeLookup;
 use App\Services\ShippingQuoteService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
 
 class OrdersCheckoutIntegrationTest extends TestCase
@@ -59,6 +62,8 @@ class OrdersCheckoutIntegrationTest extends TestCase
 
         $order = Order::query()->with(['sellerOrders.items', 'payments'])->firstOrFail();
         $response->assertRedirect(route('checkout.confirmation', $order->order_no));
+        $this->assertMatchesRegularExpression('/^[a-f0-9]{64}$/', (string) $order->checkout_request_fingerprint);
+        $this->assertArrayNotHasKey('checkout_request_fingerprint', $order->toArray());
         $this->assertSame(2, $order->sellerOrders->count());
         $this->assertSame(22502, (int) $order->subtotal_minor);
         $this->assertSame(10000, (int) $order->shipping_fee_minor);
@@ -89,12 +94,14 @@ class OrdersCheckoutIntegrationTest extends TestCase
         $this->actingAs($buyer)->post(route('checkout.place'), [
             'checkout_request_key' => $requestKey,
             'address_id' => $destination->id,
-            'cart_item_ids' => [$firstCartItem->id, $secondCartItem->id],
+            'cart_item_ids' => [$secondCartItem->id, $firstCartItem->id],
             'quote_token' => $quoteToken,
             'payment_method' => 'cod',
         ])->assertRedirect(route('checkout.confirmation', $order->order_no));
 
         $this->assertSame(1, Order::query()->count());
+        $this->assertSame(2, SellerOrder::query()->count());
+        $this->assertSame(1, $order->payments()->count());
         $this->assertSame(2, InventoryMovement::query()->where('type', 'order_reserved')->count());
 
         Notification::assertSentTo(
@@ -108,6 +115,189 @@ class OrdersCheckoutIntegrationTest extends TestCase
             fn (WorkflowNotification $notification): bool => $notification->eventKey() === 'seller_order_updates',
         );
         Notification::assertSentToTimes($firstSeller, WorkflowNotification::class, 1);
+        Notification::assertSentToTimes($secondSeller, WorkflowNotification::class, 1);
+    }
+
+    public function test_checkout_conflicting_retry_payloads_return_conflict_without_side_effects(): void
+    {
+        Notification::fake();
+
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'Santa Rosa');
+        $otherDestination = $this->address($buyer, 'Biñan');
+        $category = $this->category();
+        [, $store] = $this->sellerAndStore($category, 'checkout-conflict');
+        $variant = $this->variant($this->product($store, $category, 'Conflict Item'), 'CONFLICT-001', 10000, 5);
+        $otherVariant = $this->variant($this->product($store, $category, 'Other Conflict Item'), 'CONFLICT-002', 10000, 5);
+        $cartItem = $this->cartItem($buyer, $variant, 1);
+        $otherCartItem = $this->cartItem($buyer, $otherVariant, 1);
+        $requestKey = (string) Str::uuid();
+        $quoteToken = $this->quoteToken($buyer, [$cartItem->id], $destination->id);
+        $original = [
+            'checkout_request_key' => $requestKey,
+            'address_id' => $destination->id,
+            'cart_item_ids' => [$cartItem->id],
+            'quote_token' => $quoteToken,
+            'payment_method' => 'cod',
+            'seller_note' => 'Leave at the front gate',
+        ];
+
+        $this->actingAs($buyer)->post(route('checkout.place'), $original)->assertRedirect();
+
+        foreach ([
+            ['cart_item_ids' => [$otherCartItem->id]],
+            ['address_id' => $otherDestination->id],
+            ['seller_note' => 'Call before delivery'],
+            ['platform_voucher_id' => 999],
+            ['voucher_code' => 'DIFFERENT'],
+        ] as $changedFields) {
+            $this->actingAs($buyer)
+                ->post(route('checkout.place'), array_merge($original, $changedFields))
+                ->assertStatus(409);
+        }
+
+        // COD is the only supported payment method. A different method is
+        // rejected by the existing request validation before placement.
+        $this->actingAs($buyer)
+            ->post(route('checkout.place'), array_merge($original, ['payment_method' => 'online']))
+            ->assertSessionHasErrors('payment_method');
+
+        try {
+            app(CheckoutService::class)->place(
+                $buyer,
+                [$cartItem->id],
+                (int) $destination->id,
+                $requestKey,
+                $quoteToken,
+                'Leave at the front gate',
+                [],
+                'online',
+            );
+            $this->fail('A changed payment method must conflict with the existing checkout key.');
+        } catch (HttpException $exception) {
+            $this->assertSame(409, $exception->getStatusCode());
+        }
+
+        $this->assertSame(1, Order::query()->count());
+        $this->assertSame(1, SellerOrder::query()->count());
+        $this->assertSame(1, DB::table('payments')->count());
+        $this->assertSame(1, InventoryMovement::query()->where('type', 'order_reserved')->count());
+        $this->assertSame(1, (int) $variant->fresh()->stock_reserved);
+        $this->assertDatabaseHas('cart_items', ['id' => $otherCartItem->id]);
+    }
+
+    public function test_identical_checkout_retry_returns_committed_order_after_quote_expiry(): void
+    {
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'Santa Rosa');
+        $category = $this->category();
+        [, $store] = $this->sellerAndStore($category, 'checkout-expired-retry');
+        $variant = $this->variant($this->product($store, $category, 'Expired Retry Item'), 'RETRY-001', 10000, 5);
+        $cartItem = $this->cartItem($buyer, $variant, 1);
+        $request = [
+            'checkout_request_key' => (string) Str::uuid(),
+            'address_id' => $destination->id,
+            'cart_item_ids' => [$cartItem->id],
+            'quote_token' => $this->quoteToken($buyer, [$cartItem->id], $destination->id),
+            'payment_method' => 'cod',
+        ];
+
+        $this->actingAs($buyer)->post(route('checkout.place'), $request)->assertRedirect();
+        $order = Order::query()->firstOrFail();
+
+        $this->travel(11)->minutes();
+
+        $this->actingAs($buyer)
+            ->post(route('checkout.place'), $request)
+            ->assertRedirect(route('checkout.confirmation', $order->order_no));
+
+        $this->assertSame(1, Order::query()->count());
+        $this->assertSame(1, $order->payments()->count());
+        $this->assertSame(1, InventoryMovement::query()->where('type', 'order_reserved')->count());
+    }
+
+    public function test_legacy_order_without_fingerprint_conflicts_without_guessing(): void
+    {
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'Santa Rosa');
+        $category = $this->category();
+        [, $store] = $this->sellerAndStore($category, 'checkout-legacy-fingerprint');
+        $variant = $this->variant($this->product($store, $category, 'Legacy Item'), 'LEGACY-001', 10000, 5);
+        $cartItem = $this->cartItem($buyer, $variant, 1);
+        $request = [
+            'checkout_request_key' => (string) Str::uuid(),
+            'address_id' => $destination->id,
+            'cart_item_ids' => [$cartItem->id],
+            'quote_token' => $this->quoteToken($buyer, [$cartItem->id], $destination->id),
+            'payment_method' => 'cod',
+        ];
+
+        $this->actingAs($buyer)->post(route('checkout.place'), $request)->assertRedirect();
+        $order = Order::query()->firstOrFail();
+        $order->update(['checkout_request_fingerprint' => null]);
+
+        $this->actingAs($buyer)->post(route('checkout.place'), $request)->assertStatus(409);
+
+        $this->assertSame(1, Order::query()->count());
+        $this->assertSame(1, SellerOrder::query()->count());
+        $this->assertSame(1, $order->payments()->count());
+        $this->assertSame(1, InventoryMovement::query()->where('type', 'order_reserved')->count());
+    }
+
+    public function test_expired_quote_cannot_create_a_new_order_or_retain_a_fingerprint(): void
+    {
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'Santa Rosa');
+        $category = $this->category();
+        [, $store] = $this->sellerAndStore($category, 'checkout-expired-new');
+        $variant = $this->variant($this->product($store, $category, 'Expired New Item'), 'EXPIRED-001', 10000, 5);
+        $cartItem = $this->cartItem($buyer, $variant, 1);
+        $request = [
+            'checkout_request_key' => (string) Str::uuid(),
+            'address_id' => $destination->id,
+            'cart_item_ids' => [$cartItem->id],
+            'quote_token' => $this->quoteToken($buyer, [$cartItem->id], $destination->id),
+            'payment_method' => 'cod',
+        ];
+
+        $this->travel(11)->minutes();
+
+        $this->actingAs($buyer)
+            ->post(route('checkout.place'), $request)
+            ->assertSessionHasErrors('quote_token');
+
+        $this->assertSame(0, Order::query()->count());
+        $this->assertSame(0, InventoryMovement::query()->where('type', 'order_reserved')->count());
+        $this->assertSame(0, (int) $variant->fresh()->stock_reserved);
+        $this->assertDatabaseHas('cart_items', ['id' => $cartItem->id]);
+    }
+
+    public function test_checkout_request_keys_are_scoped_to_authenticated_buyer(): void
+    {
+        Notification::fake();
+
+        $category = $this->category();
+        [, $store] = $this->sellerAndStore($category, 'checkout-buyer-scope');
+        $variant = $this->variant($this->product($store, $category, 'Buyer Scope Item'), 'BUYER-SCOPE-001', 10000, 5);
+        $requestKey = (string) Str::uuid();
+
+        foreach (['buyer', 'buyer'] as $index => $role) {
+            $buyer = $this->user($role);
+            $destination = $this->address($buyer, 'Santa Rosa');
+            $cartItem = $this->cartItem($buyer, $variant, 1);
+            $request = [
+                'checkout_request_key' => $requestKey,
+                'address_id' => $destination->id,
+                'cart_item_ids' => [$cartItem->id],
+                'quote_token' => $this->quoteToken($buyer, [$cartItem->id], $destination->id),
+                'payment_method' => 'cod',
+            ];
+
+            $this->actingAs($buyer)->post(route('checkout.place'), $request)->assertRedirect();
+        }
+
+        $this->assertSame(2, Order::query()->count());
+        $this->assertSame(2, Order::query()->where('checkout_request_key', $requestKey)->pluck('buyer_id')->unique()->count());
     }
 
     public function test_quote_uses_combined_parcel_and_flat_fee_for_over_one_kg(): void

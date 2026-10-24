@@ -74,7 +74,8 @@ class PromotionEngineTest extends TestCase
         $this->assertSame(500, (int) $quote['seller_orders'][0]['platform_discount_minor']);
         $this->assertCount(2, $quote['applied_promotions']);
 
-        $order = $this->place($buyer, [$cartItem->id], $destination->id, $quote['quote_token'], $quote['promotion_selection']);
+        $requestKey = (string) Str::uuid();
+        $order = $this->place($buyer, [$cartItem->id], $destination->id, $quote['quote_token'], $quote['promotion_selection'], $requestKey);
 
         $this->assertSame(1500, (int) $order->discount_minor);
         $this->assertSame(500, (int) $order->platform_discount_minor);
@@ -107,6 +108,11 @@ class PromotionEngineTest extends TestCase
             'store_promotion_id' => $storeVoucher->id,
             'status' => PromotionClaim::STATUS_USED,
         ]);
+
+        $retriedOrder = $this->place($buyer, [$cartItem->id], $destination->id, $quote['quote_token'], $quote['promotion_selection'], $requestKey);
+
+        $this->assertSame($order->id, $retriedOrder->id);
+        $this->assertSame(2, PromotionRedemption::query()->count());
     }
 
     public function test_platform_voucher_suppresses_automatic_merchandise_discount(): void
@@ -1075,10 +1081,10 @@ class PromotionEngineTest extends TestCase
         return $response->json('data');
     }
 
-    private function place(User $buyer, array $cartItemIds, int $addressId, string $quoteToken, array $selection = []): Order
+    private function place(User $buyer, array $cartItemIds, int $addressId, string $quoteToken, array $selection = [], ?string $requestKey = null): Order
     {
         $this->actingAs($buyer)->postJson(route('checkout.place'), array_merge([
-            'checkout_request_key' => (string) Str::uuid(),
+            'checkout_request_key' => $requestKey ?? (string) Str::uuid(),
             'address_id' => $addressId,
             'cart_item_ids' => $cartItemIds,
             'quote_token' => $quoteToken,

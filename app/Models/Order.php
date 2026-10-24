@@ -9,6 +9,8 @@ class Order extends Model
 {
     protected $guarded = [];
 
+    protected $hidden = ['checkout_request_fingerprint'];
+
     public function buyer()
     {
         return $this->belongsTo(User::class, 'buyer_id');

@@ -76,6 +76,7 @@ class BuyerCheckoutController extends Controller
             (string) $data['quote_token'],
             filled($data['seller_note'] ?? null) ? trim((string) $data['seller_note']) : null,
             $this->promotionSelection($data),
+            (string) $data['payment_method'],
         );
 
         return redirect()->route('checkout.confirmation', $order->order_no);

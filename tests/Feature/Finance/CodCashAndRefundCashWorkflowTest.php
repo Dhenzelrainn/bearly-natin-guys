@@ -4,9 +4,11 @@ namespace Tests\Feature\Finance;
 
 use App\Enums\UserRole;
 use App\Models\AuditLog;
+use App\Models\CodCashCollection;
 use App\Models\LogisticsProfile;
 use App\Models\Order;
 use App\Models\Payment;
+use App\Models\PlatformCommission;
 use App\Models\Refund;
 use App\Models\RefundCashPayout;
 use App\Models\RefundCashPayoutEvent;
@@ -18,10 +20,13 @@ use App\Models\SellerPayout;
 use App\Models\SellerPayoutItem;
 use App\Models\SellerProfile;
 use App\Models\SellerTransaction;
+use App\Models\SellerWalletTransaction;
 use App\Models\Shipment;
 use App\Models\Store;
 use App\Models\User;
 use App\Services\CodCashCollectionService;
+use App\Services\CommissionLedgerService;
+use App\Services\RefundCashPayoutService;
 use App\Services\SellerPayoutService;
 use App\Services\SellerWalletService;
 use Database\Seeders\DatabaseSeeder;
@@ -29,6 +34,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use RuntimeException;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 use Tests\TestCase;
 
@@ -39,6 +45,58 @@ class CodCashAndRefundCashWorkflowTest extends TestCase
     private User $admin;
 
     private int $sequence = 0;
+
+    /**
+     * Refuse to run these financial workflow tests unless the process and
+     * effective connection/cache are isolated from shared application data.
+     */
+    public function createApplication()
+    {
+        parent::prepareIsolatedTestEnvironment();
+
+        foreach ([
+            'APP_ENV' => 'testing',
+            'DB_CONNECTION' => 'sqlite',
+            'DB_DATABASE' => ':memory:',
+            'DB_URL' => '',
+            'CACHE_STORE' => 'array',
+        ] as $key => $expected) {
+            if (getenv($key) !== $expected) {
+                throw new RuntimeException("COD audit tests require {$key}={$expected}; refusing to boot the test application.");
+            }
+        }
+
+        $configCachePath = getenv('APP_CONFIG_CACHE');
+        $temporaryPrefix = rtrim(str_replace(['/', '\\'], DIRECTORY_SEPARATOR, sys_get_temp_dir()), DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR;
+        $normalizedConfigCachePath = str_replace(['/', '\\'], DIRECTORY_SEPARATOR, (string) $configCachePath);
+        if ($configCachePath === false
+            || $configCachePath === ''
+            || file_exists($configCachePath)
+            || ! str_starts_with(strtolower($normalizedConfigCachePath), strtolower($temporaryPrefix))) {
+            throw new RuntimeException('COD audit tests require a non-shared temporary APP_CONFIG_CACHE path; refusing to boot the test application.');
+        }
+
+        $app = parent::createApplication();
+        $config = $app['config'];
+        $sqlite = $config->get('database.connections.sqlite', []);
+
+        if ($config->get('app.env') !== 'testing'
+            || $config->get('database.default') !== 'sqlite'
+            || ($sqlite['database'] ?? null) !== ':memory:'
+            || filled($sqlite['url'] ?? null)
+            || $config->get('cache.default') !== 'array') {
+            throw new RuntimeException('COD audit tests require effective SQLite :memory: and array-cache configuration; refusing to run migrations.');
+        }
+
+        $connection = $app['db']->connection();
+        if ($connection->getDriverName() !== 'sqlite'
+            || $connection->getDatabaseName() !== ':memory:'
+            || $connection->getPdo()->getAttribute(\PDO::ATTR_DRIVER_NAME) !== 'sqlite') {
+            throw new RuntimeException('COD audit tests could not verify an in-memory PDO SQLite connection; refusing to run migrations.');
+        }
+
+        return $app;
+    }
 
     protected function setUp(): void
     {
@@ -514,6 +572,272 @@ class CodCashAndRefundCashWorkflowTest extends TestCase
         $this->assertSame('pending', $scenario['payment']->fresh()->status);
     }
 
+    public function test_short_collection_remains_unresolved_through_cash_custody_and_blocks_payment_receipt_and_seller_funds(): void
+    {
+        $scenario = $this->scenario('audit-short-collection');
+        $rider = $this->rider($scenario['provider'], 'audit short collection');
+        $cash = app(CodCashCollectionService::class);
+        $collection = $cash->recordRiderCollection($scenario['shipment'], $rider, 17500);
+
+        $this->assertSame(20000, (int) $collection->amount_due_minor);
+        $this->assertSame(17500, (int) $collection->amount_collected_minor);
+        $this->assertSame(-2500, (int) $collection->discrepancy_minor);
+        $this->assertSame('disputed', $collection->status);
+        $this->assertSame('pending', $scenario['payment']->fresh()->status);
+        $this->assertSame('unpaid', $scenario['order']->fresh()->payment_status);
+        $this->assertFalse($cash->hasPaymentCaptured($scenario['order']->fresh()));
+
+        $this->actingAs($scenario['buyer'])
+            ->postJson('/api/mobile/buyer/orders/'.$scenario['order']->id.'/confirm-receipt')
+            ->assertConflict()
+            ->assertJsonPath('error.code', 'cod_cash_collection_incomplete');
+        $this->assertSame('processing', $scenario['order']->fresh()->status);
+
+        $outsider = $this->provider('audit-short-outsider');
+        $this->actingAs($outsider['user'])
+            ->post(route('logistics.cash.cod.receive', $collection), ['actual_amount' => '175.00'])
+            ->assertForbidden();
+        $this->assertSame('disputed', $collection->fresh()->status);
+
+        $this->actingAs($scenario['provider_user'])
+            ->post(route('logistics.cash.cod.receive', $collection), ['actual_amount' => '175.01'])
+            ->assertSessionHasErrors('received_amount');
+        $this->assertSame('disputed', $collection->fresh()->status);
+        $this->actingAs($scenario['provider_user'])
+            ->post(route('logistics.cash.cod.receive', $collection), ['actual_amount' => '175.00'])
+            ->assertRedirect();
+        $this->assertSame('received_by_logistics', $collection->fresh()->status);
+        $this->assertSame(-2500, (int) $collection->fresh()->discrepancy_minor);
+
+        $this->actingAs($scenario['provider_user'])
+            ->post(route('logistics.cash.cod.remit', $collection), ['actual_amount' => '174.99'])
+            ->assertSessionHasErrors('amount');
+        $this->assertSame('received_by_logistics', $collection->fresh()->status);
+        $this->actingAs($scenario['provider_user'])
+            ->post(route('logistics.cash.cod.remit', $collection), ['actual_amount' => '175.00'])
+            ->assertRedirect();
+        $this->assertSame('remitted_to_finance', $collection->fresh()->status);
+
+        $this->actingAs($this->admin)
+            ->post(route('admin.payments.cod.reconcile', $collection), ['received_amount' => '175.00'])
+            ->assertSessionHasErrors('cash_received_confirmed');
+        $this->actingAs($this->admin)
+            ->post(route('admin.payments.cod.reconcile', $collection), [
+                'received_amount' => '175.01',
+                'cash_received_confirmed' => '1',
+            ])
+            ->assertSessionHasErrors('received_amount');
+        $this->assertSame('remitted_to_finance', $collection->fresh()->status);
+        $this->actingAs($this->admin)
+            ->post(route('admin.payments.cod.reconcile', $collection), [
+                'received_amount' => '175.00',
+                'cash_received_confirmed' => '1',
+            ])
+            ->assertRedirect();
+
+        $collection = $collection->fresh();
+        $events = $collection->events;
+        $this->assertSame('reconciled', $collection->status);
+        $this->assertSame(17500, (int) $collection->amount_received_by_logistics_minor);
+        $this->assertSame(17500, (int) $collection->amount_remitted_to_finance_minor);
+        $this->assertSame(17500, (int) $collection->amount_reconciled_minor);
+        $this->assertSame(-2500, (int) $collection->discrepancy_minor);
+        $this->assertSame('pending', $scenario['payment']->fresh()->status);
+        $this->assertSame('unpaid', $scenario['order']->fresh()->payment_status);
+        $this->assertFalse($cash->hasPaymentCaptured($scenario['order']->fresh()));
+        $this->assertSame([
+            'cash_collection_discrepancy_recorded',
+            'disputed_cash_received_by_logistics',
+            'cash_remitted_to_finance',
+            'cash_reconciled_by_finance',
+        ], $events->pluck('event_type')->all());
+        $this->assertSame(
+            [$rider->id, $scenario['provider_user']->id, $scenario['provider_user']->id, $this->admin->id],
+            $events->pluck('actor_user_id')->map(fn ($id): int => (int) $id)->all(),
+        );
+        $this->assertSame([17500, 17500, 17500, 17500], $events->pluck('amount_minor')->map(fn ($amount): int => (int) $amount)->all());
+        $this->assertSame(
+            'Cash handoff acknowledges actual cash; the amount due discrepancy remains unresolved.',
+            $events[1]->note,
+        );
+
+        $wallet = app(SellerWalletService::class)->refreshForSeller($scenario['seller_profile']);
+        $this->assertSame(0, (int) $wallet->available_balance_minor);
+        $this->assertSame(0, (int) $wallet->pending_balance_minor);
+        $this->assertDatabaseCount('platform_commissions', 0);
+        $this->assertDatabaseCount('seller_transactions', 0);
+        $this->assertSame(0, $collection->events()->where('event_type', 'cash_discrepancy_resolved')->count());
+    }
+
+    public function test_overcollection_can_be_counted_at_each_cash_stage_but_does_not_capture_or_refund_the_excess(): void
+    {
+        $scenario = $this->scenario('audit-overcollection');
+        $cash = app(CodCashCollectionService::class);
+        $collection = $cash->recordRiderCollection(
+            $scenario['shipment'],
+            $this->rider($scenario['provider'], 'audit overcollection'),
+            20500,
+        );
+
+        $this->assertSame(20000, (int) $collection->amount_due_minor);
+        $this->assertSame(20500, (int) $collection->amount_collected_minor);
+        $this->assertSame(500, (int) $collection->discrepancy_minor);
+        $this->assertSame('disputed', $collection->status);
+        $this->assertSame('pending', $scenario['payment']->fresh()->status);
+
+        $refund = $this->refund($scenario, 500);
+        $this->assertCount(0, app(RefundCashPayoutService::class)->refundsReadyForCashDispatch());
+        $this->actingAs($this->admin)
+            ->post(route('admin.payments.refunds.issue-cash', $refund), ['cash_issued_confirmed' => '1'])
+            ->assertRedirect()
+            ->assertSessionHasErrors('refund');
+        $this->assertDatabaseMissing('refund_cash_payouts', ['refund_id' => $refund->id]);
+
+        $this->actingAs($scenario['provider_user'])
+            ->post(route('logistics.cash.cod.receive', $collection), ['actual_amount' => '205.00'])
+            ->assertRedirect();
+        $this->actingAs($scenario['provider_user'])
+            ->post(route('logistics.cash.cod.remit', $collection), ['actual_amount' => '205.00'])
+            ->assertRedirect();
+        $this->actingAs($this->admin)
+            ->post(route('admin.payments.cod.reconcile', $collection), [
+                'received_amount' => '205.00',
+                'cash_received_confirmed' => '1',
+            ])
+            ->assertRedirect();
+
+        $collection = $collection->fresh();
+        $this->assertSame('reconciled', $collection->status);
+        $this->assertSame(20500, (int) $collection->amount_received_by_logistics_minor);
+        $this->assertSame(20500, (int) $collection->amount_remitted_to_finance_minor);
+        $this->assertSame(20500, (int) $collection->amount_reconciled_minor);
+        $this->assertSame(500, (int) $collection->discrepancy_minor);
+        $this->assertSame('pending', $scenario['payment']->fresh()->status);
+        $this->assertSame('unpaid', $scenario['order']->fresh()->payment_status);
+        $this->assertFalse($cash->hasPaymentCaptured($scenario['order']->fresh()));
+        $this->assertSame(4, $collection->events()->count());
+        $this->assertSame(0, $collection->events()->where('event_type', 'cash_discrepancy_resolved')->count());
+        $this->assertDatabaseCount('platform_commissions', 0);
+        $this->assertDatabaseCount('seller_transactions', 0);
+
+        $wallet = app(SellerWalletService::class)->refreshForSeller($scenario['seller_profile']);
+        $this->assertSame(0, (int) $wallet->available_balance_minor);
+        $this->assertSame(0, (int) $wallet->pending_balance_minor);
+    }
+
+    public function test_multi_seller_cod_stays_unpaid_when_one_shipment_is_exact_and_another_is_disputed(): void
+    {
+        $scenario = $this->scenario('audit-multi-seller');
+        $scenario['seller_order']->update([
+            'subtotal_minor' => 9000,
+            'shipping_fee_minor' => 1000,
+            'total_minor' => 10000,
+        ]);
+        $scenario['shipment']->update(['cod_amount_minor' => 10000]);
+
+        $secondSeller = $this->user(UserRole::Seller, 'Second Seller audit multi seller');
+        $secondProfile = SellerProfile::query()->create([
+            'user_id' => $secondSeller->id,
+            'legal_business_name' => 'Second Seller audit multi seller',
+            'commission_rate_bps' => 1000,
+            'standing_status' => 'good_standing',
+            'approved_at' => now(),
+        ]);
+        $secondStore = Store::query()->create([
+            'seller_profile_id' => $secondProfile->id,
+            'name' => 'Second Store audit multi seller',
+            'slug' => 'second-store-audit-'.$secondProfile->id,
+            'publication_status' => 'published',
+            'published_at' => now(),
+        ]);
+        $secondSellerOrder = SellerOrder::query()->create([
+            'seller_order_no' => 'SO-'.Str::upper(Str::random(12)),
+            'order_id' => $scenario['order']->id,
+            'store_id' => $secondStore->id,
+            'status' => 'completed',
+            'subtotal_minor' => 9000,
+            'discount_minor' => 0,
+            'shipping_fee_minor' => 1000,
+            'total_minor' => 10000,
+            'completed_at' => now(),
+        ]);
+        $secondShipment = Shipment::query()->create([
+            'shipment_no' => 'SHP-'.Str::upper(Str::random(12)),
+            'seller_order_id' => $secondSellerOrder->id,
+            'logistics_profile_id' => $scenario['provider']->id,
+            'purpose' => 'outbound',
+            'status' => 'delivered',
+            'cod_amount_minor' => 10000,
+            'delivered_at' => now(),
+        ]);
+        $rider = $this->rider($scenario['provider'], 'audit multi seller');
+        $cash = app(CodCashCollectionService::class);
+
+        $exact = $cash->recordRiderCollection($scenario['shipment'], $rider, 10000);
+        $this->assertSame('collected', $exact->status);
+        $this->assertSame('pending', $scenario['payment']->fresh()->status);
+
+        $disputed = $cash->recordRiderCollection($secondShipment, $rider, 9000);
+        $this->assertSame(10000, (int) $disputed->amount_due_minor);
+        $this->assertSame(9000, (int) $disputed->amount_collected_minor);
+        $this->assertSame(-1000, (int) $disputed->discrepancy_minor);
+        $this->assertSame('disputed', $disputed->status);
+        $this->assertSame(2, CodCashCollection::query()->where('order_id', $scenario['order']->id)->count());
+        $this->assertSame('pending', $scenario['payment']->fresh()->status);
+        $this->assertSame('unpaid', $scenario['order']->fresh()->payment_status);
+        $this->assertFalse($cash->hasPaymentCaptured($scenario['order']->fresh()));
+        $this->assertDatabaseCount('platform_commissions', 0);
+        $this->assertDatabaseCount('seller_transactions', 0);
+
+        $this->actingAs($scenario['buyer'])
+            ->postJson('/api/mobile/buyer/orders/'.$scenario['order']->id.'/confirm-receipt')
+            ->assertConflict()
+            ->assertJsonPath('error.code', 'cod_cash_collection_incomplete');
+    }
+
+    public function test_duplicate_exact_rider_collection_is_same_actor_idempotent_and_conflicts_do_not_duplicate_ledger_effects(): void
+    {
+        $scenario = $this->scenario('audit-idempotent-collection');
+        $rider = $this->rider($scenario['provider'], 'audit idempotent collection');
+        $cash = app(CodCashCollectionService::class);
+        $first = $cash->recordRiderCollection($scenario['shipment'], $rider, 20000);
+        $replay = $cash->recordRiderCollection($scenario['shipment'], $rider, 20000);
+
+        $this->assertSame($first->id, $replay->id);
+        $this->assertCodConflict(fn () => $cash->recordRiderCollection($scenario['shipment'], $rider, 19999));
+        $otherRider = $this->rider($scenario['provider'], 'audit alternate rider');
+        $this->assertCodConflict(fn () => $cash->recordRiderCollection($scenario['shipment'], $otherRider, 20000));
+        $this->assertDatabaseCount('cod_cash_collections', 1);
+        $this->assertSame(1, $first->events()->count());
+        $this->assertSame('paid', $scenario['payment']->fresh()->status);
+
+        $ledger = app(CommissionLedgerService::class);
+        $ledger->finalize($scenario['payment']->fresh());
+        $ledger->finalize($scenario['payment']->fresh());
+
+        $commission = PlatformCommission::query()
+            ->where('seller_order_id', $scenario['seller_order']->id)
+            ->where('type', 'sale')
+            ->sole();
+        $sellerTransaction = SellerTransaction::query()
+            ->where('seller_order_id', $scenario['seller_order']->id)
+            ->where('payment_id', $scenario['payment']->id)
+            ->where('type', 'sale')
+            ->sole();
+        $this->assertSame('finalized', $commission->status);
+        $this->assertSame('posted', $sellerTransaction->status);
+        $this->assertSame(1, PlatformCommission::query()->where('seller_order_id', $scenario['seller_order']->id)->where('type', 'sale')->count());
+        $this->assertSame(1, SellerTransaction::query()->where('seller_order_id', $scenario['seller_order']->id)->where('payment_id', $scenario['payment']->id)->where('type', 'sale')->count());
+
+        $wallet = app(SellerWalletService::class)->refreshForSeller($scenario['seller_profile']);
+        $this->assertSame(0, (int) $wallet->available_balance_minor);
+        $this->assertSame((int) $sellerTransaction->amount_minor, (int) $wallet->pending_balance_minor);
+        $this->assertSame(1, SellerWalletTransaction::query()
+            ->where('seller_transaction_id', $sellerTransaction->id)
+            ->where('type', 'sale_earning_pending')
+            ->count());
+    }
+
     public function test_unpaid_cod_refund_cannot_enter_cash_custody(): void
     {
         $scenario = $this->scenario('unpaid refund');
@@ -893,6 +1217,19 @@ class CodCashAndRefundCashWorkflowTest extends TestCase
             'amount_minor' => 5000,
         ]);
         $this->assertDatabaseMissing('seller_refund_recoveries', ['refund_id' => $refund->id]);
+    }
+
+    private function assertCodConflict(callable $operation): void
+    {
+        try {
+            $operation();
+        } catch (ConflictHttpException $exception) {
+            $this->assertSame(409, $exception->getStatusCode());
+
+            return;
+        }
+
+        $this->fail('The COD operation should have returned a conflict.');
     }
 
     /** @return array<string, mixed> */

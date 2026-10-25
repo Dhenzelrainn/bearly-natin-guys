@@ -38,7 +38,7 @@ return [
     'mailers' => [
 
         'smtp' => [
-            'transport' => 'smtp',
+            'transport' => env('APP_ENV') === 'testing' ? 'array' : 'smtp',
             'scheme' => env('MAIL_SCHEME'),
             'url' => env('MAIL_URL'),
             'host' => env('MAIL_HOST', '127.0.0.1'),
@@ -50,11 +50,11 @@ return [
         ],
 
         'ses' => [
-            'transport' => 'ses',
+            'transport' => env('APP_ENV') === 'testing' ? 'array' : 'ses',
         ],
 
         'postmark' => [
-            'transport' => 'postmark',
+            'transport' => env('APP_ENV') === 'testing' ? 'array' : 'postmark',
             // 'message_stream_id' => env('POSTMARK_MESSAGE_STREAM_ID'),
             // 'client' => [
             //     'timeout' => 5,
@@ -62,16 +62,16 @@ return [
         ],
 
         'resend' => [
-            'transport' => 'resend',
+            'transport' => env('APP_ENV') === 'testing' ? 'array' : 'resend',
         ],
 
         'sendmail' => [
-            'transport' => 'sendmail',
+            'transport' => env('APP_ENV') === 'testing' ? 'array' : 'sendmail',
             'path' => env('MAIL_SENDMAIL_PATH', '/usr/sbin/sendmail -bs -i'),
         ],
 
         'log' => [
-            'transport' => 'log',
+            'transport' => env('APP_ENV') === 'testing' ? 'array' : 'log',
             'channel' => env('MAIL_LOG_CHANNEL'),
         ],
 
@@ -80,7 +80,7 @@ return [
         ],
 
         'failover' => [
-            'transport' => 'failover',
+            'transport' => env('APP_ENV') === 'testing' ? 'array' : 'failover',
             'mailers' => [
                 'smtp',
                 'log',
@@ -89,7 +89,7 @@ return [
         ],
 
         'roundrobin' => [
-            'transport' => 'roundrobin',
+            'transport' => env('APP_ENV') === 'testing' ? 'array' : 'roundrobin',
             'mailers' => [
                 'ses',
                 'postmark',

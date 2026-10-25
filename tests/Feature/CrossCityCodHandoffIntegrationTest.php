@@ -51,6 +51,8 @@ class CrossCityCodHandoffIntegrationTest extends TestCase
      */
     public function createApplication()
     {
+        parent::prepareIsolatedTestEnvironment();
+
         foreach ([
             'APP_ENV' => 'testing',
             'DB_CONNECTION' => 'sqlite',

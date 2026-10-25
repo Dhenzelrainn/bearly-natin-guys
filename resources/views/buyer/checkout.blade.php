@@ -18,7 +18,7 @@
 
 <main class="checkout-shell">
 <a class="checkout-back" href="{{ url('/cart') }}"><span class="material-symbols-outlined">arrow_back</span> Back to Cart</a>
-<p class="preview-notice">Shipping is a flat fee for each seller parcel. Multi-seller checkouts are charged once per seller. Package dimensions are for delivery planning and do not change the fee.</p>
+<p class="preview-notice">Shipping is charged once per combined Seller Order shipment. The zone uses verified PSGC locations; package dimensions are for delivery planning and do not change the fee.</p>
 <p id="local-preview-warning" class="checkout-warning" hidden>Browser-only preview items are not saved as Bearly cart products and will not be included in this order.</p>
 
 <form id="checkout-form" method="post" action="{{ route('checkout.place') }}">
@@ -26,6 +26,7 @@
 <input type="hidden" name="checkout_request_key" value="{{ $checkoutRequestKey }}">
 <input type="hidden" name="payment_method" value="cod">
 <input type="hidden" name="platform_voucher_id" id="checkout-platform-voucher-id" value="">
+<input type="hidden" name="platform_shipping_voucher_id" id="checkout-platform-shipping-voucher-id" value="">
 <input type="hidden" name="store_voucher_id" id="checkout-store-voucher-id" value="">
 <input type="hidden" name="voucher_code" id="checkout-voucher-code" value="">
 <input type="hidden" name="address_id" id="checkout-address-id" value="">
@@ -47,7 +48,7 @@
 <div id="checkout-products"></div>
 <div class="seller-options">
 <div class="message-box"><label for="seller-message">Message for Sellers (optional):</label><input id="seller-message" name="seller_note" maxlength="120" placeholder="Add a short note for the Sellers"></div>
-<div class="shipping-box"><div><strong>Shipping Option</strong><span id="shipping-label">Bearly Logistics</span><small id="shipping-method-note">Flat fee per Seller Order; one fee per seller parcel</small></div><strong id="shipping-price">—</strong></div>
+<div class="shipping-box"><div><strong>Shipping Option</strong><span id="shipping-label">Bearly Logistics</span><small id="shipping-method-note">Zone-based fee per combined Seller Order shipment</small></div><strong id="shipping-price">—</strong></div>
 </div>
 <div class="order-total-line">Order Total (<span id="order-items">0</span> item): <strong id="order-total">₱0.00</strong></div>
 </section>
@@ -58,15 +59,21 @@
     <div class="checkout-voucher-heading">
         <div>
             <h3 id="checkout-voucher-title">Vouchers</h3>
-            <p>One platform voucher and one Store voucher can be applied to this order.</p>
+            <p>Apply up to one merchandise voucher, one shipping voucher, and one Store voucher. Eligible automatic offers are checked too.</p>
         </div>
         <button id="checkout-voucher-clear" class="checkout-voucher-clear" type="button" hidden>Clear</button>
     </div>
     <div class="checkout-voucher-fields">
         <label>
-            <span>Platform voucher</span>
+            <span>Platform merchandise voucher</span>
             <select id="checkout-platform-voucher">
-                <option value="">No platform voucher</option>
+                <option value="">No merchandise voucher</option>
+            </select>
+        </label>
+        <label>
+            <span>Platform shipping voucher</span>
+            <select id="checkout-platform-shipping-voucher">
+                <option value="">No shipping voucher</option>
             </select>
         </label>
         <label>
@@ -83,13 +90,14 @@
     </div>
     <p id="checkout-voucher-status" class="checkout-voucher-status" role="status" aria-live="polite" hidden></p>
     <div id="checkout-applied-vouchers" class="checkout-applied-vouchers"></div>
+    <div id="checkout-automatic-offer-notes" class="checkout-automatic-offer-notes" aria-live="polite" hidden></div>
 </div>
 <div class="summary">
 <div><span>Merchandise Subtotal</span><strong id="summary-subtotal">₱0.00</strong></div>
-<div><span>Estimated Shipping</span><strong id="summary-shipping">—</strong></div>
+<div><span>Original shipping</span><strong id="summary-shipping">—</strong></div>
 <div id="summary-seller-discount-row" hidden><span>Store voucher</span><strong id="summary-seller-discount">—</strong></div>
-<div id="summary-platform-discount-row" hidden><span>Platform discount</span><strong id="summary-platform-discount">—</strong></div>
-<div id="summary-shipping-discount-row" hidden><span>Shipping discount</span><strong id="summary-shipping-discount">—</strong></div>
+<div id="summary-platform-discount-row" hidden><span>Platform merchandise discount</span><strong id="summary-platform-discount">—</strong></div>
+<div id="summary-shipping-discount-row" hidden><span>Bearly shipping voucher</span><strong id="summary-shipping-discount">—</strong></div>
 <div class="payment-total"><span>Total Due on Delivery</span><strong id="summary-total">—</strong></div>
 </div>
 <div id="shipping-breakdown" class="shipping-breakdown" aria-live="polite"></div>

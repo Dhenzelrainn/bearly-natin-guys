@@ -21,6 +21,7 @@ export default defineConfig({
                 'resources/css/buyer.css',
                 'resources/css/product-detail.css',
                 'resources/js/buyer.js',
+                'resources/js/buyer-flash-deals.js',
                 'resources/js/product-detail.js',
                 'resources/js/buyer-notifications.js',
                 // Buyer promo slider

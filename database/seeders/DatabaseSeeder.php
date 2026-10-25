@@ -13,6 +13,8 @@ class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
+        $categoryMismatchRuntimeTerms = config('product_compliance.category_mismatch_runtime_terms', []);
+
         foreach (['admin' => 'Administrator', 'buyer' => 'Buyer', 'seller' => 'Seller', 'logistics' => 'Logistics', 'rider' => 'Rider'] as $name => $label) {
             Role::firstOrCreate(['name' => $name], ['display_name' => $label]);
         }
@@ -20,6 +22,7 @@ class DatabaseSeeder extends Seeder
         foreach ($categories as $i => $name) {
             Category::firstOrCreate(['slug' => str($name)->slug()], ['name' => $name, 'position' => $i + 1]);
         }
+        $this->call(MarketplaceTaxonomySeeder::class);
         $rules = [
             ['code' => 'PROHIBITED_FIREARMS', 'name' => 'Firearms and ammunition', 'rule_type' => 'keyword', 'target_field' => 'name_description', 'pattern' => 'firearm|handgun|pistol|rifle|shotgun|ammunition|live rounds', 'severity' => 'critical', 'default_action' => 'block'],
             [
@@ -52,12 +55,12 @@ class DatabaseSeeder extends Seeder
                 'configuration' => [
                     'managed_by_migration' => '2026_10_11_000003_add_product_compliance_detection_rules',
                     'mismatched_terms_by_category_slug' => [
-                        'electronics-and-gadgets' => [
+                        'electronics-and-gadgets' => array_merge([
                             'shirt', 'shirts', 't-shirt', 't-shirts', 'tshirt', 'tshirts',
                             'polo shirt', 'polo shirts', 'shorts', 'short pants', 'bermuda shorts',
                             'dress', 'dresses', 'skirt', 'skirts', 'blouse', 'blouses',
                             'jeans', 'trousers',
-                        ],
+                        ], $categoryMismatchRuntimeTerms['CATEGORY_MISMATCH_ELECTRONICS_APPAREL']['electronics-and-gadgets'] ?? []),
                     ],
                 ],
                 'is_active' => true,

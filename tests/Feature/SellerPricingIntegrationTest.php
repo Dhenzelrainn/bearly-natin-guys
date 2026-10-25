@@ -465,7 +465,7 @@ class SellerPricingIntegrationTest extends TestCase
             'option_one_values' => 'Small, Large',
             'option_two_name' => '',
             'option_two_values' => '',
-            'payment_methods' => ['cod', 'online'],
+            'payment_methods' => ['cod'],
             'variants' => [
                 [
                     'label' => 'Small',

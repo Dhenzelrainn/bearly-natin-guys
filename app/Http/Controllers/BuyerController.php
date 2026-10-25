@@ -16,6 +16,7 @@ use App\Models\Store;
 use App\Models\Wishlist;
 use App\Services\BuyerCatalogService;
 use App\Services\BuyerOrderConfirmationService;
+use App\Services\CampaignService;
 use App\Services\ConversationService;
 use App\Services\InternationalPhone;
 use App\Services\PostalCodeLookup;
@@ -46,6 +47,15 @@ class BuyerController extends Controller
             && Schema::hasTable('carts')
             && Schema::hasTable('cart_items')
             && Schema::hasTable('wishlists');
+    }
+
+    private function hasMarketplaceTaxonomyTables(): bool
+    {
+        return $this->hasBuyerTables()
+            && Schema::hasTable('marketplace_categories')
+            && Schema::hasTable('marketplace_subcategories')
+            && Schema::hasTable('marketplace_category_business_categories')
+            && Schema::hasColumn('products', 'marketplace_subcategory_id');
     }
 
     /**
@@ -86,9 +96,11 @@ class BuyerController extends Controller
         ]);
     }
 
-    public function profile(): View
+    public function profile(Request $request): View
     {
-        return view('buyer.profile');
+        return view('buyer.profile', [
+            'wishlistItems' => $this->wishlistPayload($request->user()),
+        ]);
     }
 
     public function updateProfile(Request $request): JsonResponse
@@ -265,7 +277,7 @@ class BuyerController extends Controller
     {
         $sellerOrders = $order->sellerOrders;
         $active = $sellerOrders->reject(fn ($sellerOrder): bool => $sellerOrder->status === SellerOrderStatus::Cancelled->value);
-        $outboundShipments = $sellerOrders->flatMap(fn ($sellerOrder) => $sellerOrder->shipments->where('purpose', 'outbound'));
+        $outboundShipments = $active->flatMap(fn ($sellerOrder) => $sellerOrder->shipments->where('purpose', 'outbound'));
         $stores = $sellerOrders->map(fn ($sellerOrder): string => (string) ($sellerOrder->store?->name ?? ''))->filter()->unique()->values();
 
         if ($order->status === 'cancelled' || ($sellerOrders->isNotEmpty() && $active->isEmpty())) {
@@ -322,8 +334,8 @@ class BuyerController extends Controller
         $deliveredAt = $this->purchaseDeliveredAt($order);
         $canConfirm = $confirmation->canConfirm($order);
         $canCancel = $order->status === 'processing'
-            && $sellerOrders->isNotEmpty()
-            && $sellerOrders->every(fn ($sellerOrder): bool => $sellerOrder->status === 'pending');
+            && $active->isNotEmpty()
+            && $active->every(fn ($sellerOrder): bool => $sellerOrder->status === SellerOrderStatus::Pending->value);
 
         return [
             'id' => (string) $order->order_no,
@@ -342,6 +354,8 @@ class BuyerController extends Controller
                 'number' => (string) $sellerOrder->seller_order_no,
                 'store' => (string) ($sellerOrder->store?->name ?? 'Seller'),
                 'status' => (string) $sellerOrder->status,
+                'delivery_status' => $this->sellerOrderDeliveryState($sellerOrder),
+                'outbound_shipment_count' => $sellerOrder->shipments->where('purpose', 'outbound')->count(),
                 'dispute_url' => $sellerOrder->activeDispute
                     ? route('buyer.disputes.show', $sellerOrder->activeDispute)
                     : route('buyer.disputes.create', $sellerOrder->id),
@@ -381,7 +395,7 @@ class BuyerController extends Controller
             'trackingEvents' => $outboundShipments
                 ->flatMap(fn ($shipment) => $shipment->events->map(fn ($event): array => [
                     'label' => $this->trackingEventLabel((string) $event->event_type, (string) $event->to_status),
-                    'note' => (string) ($event->notes ?? ''),
+                    'note' => $this->buyerSafeTrackingEventNote((string) $event->event_type),
                     'date' => $event->occurred_at ? Carbon::parse($event->occurred_at)->toIso8601String() : null,
                 ]))
                 ->filter(fn (array $event): bool => filled($event['date']))
@@ -400,18 +414,30 @@ class BuyerController extends Controller
      */
     private function purchaseDeliveryState(Order $order): string
     {
-        $statuses = $order->sellerOrders
+        $activeSellerOrders = $order->sellerOrders
             ->reject(fn ($sellerOrder): bool => $sellerOrder->status === SellerOrderStatus::Cancelled->value)
-            ->flatMap(fn ($sellerOrder) => $sellerOrder->shipments->where('purpose', 'outbound')->pluck('status'))
+            ->values();
+
+        if ($activeSellerOrders->isEmpty()) {
+            return 'preparing';
+        }
+
+        $outboundBySellerOrder = $activeSellerOrders->map(fn ($sellerOrder) => $sellerOrder->shipments
+            ->where('purpose', 'outbound')
+            ->pluck('status'));
+        $statuses = $outboundBySellerOrder
+            ->flatten()
             ->filter()
             ->unique()
             ->values();
 
-        if ($statuses->isEmpty()) {
+        if ($statuses->isEmpty() || $outboundBySellerOrder->contains(fn ($sellerStatuses): bool => $sellerStatuses->isEmpty())) {
             return 'preparing';
         }
 
-        if ($statuses->every(fn (string $status): bool => $status === ShipmentStatus::Delivered->value)) {
+        if ($outboundBySellerOrder->every(fn ($sellerStatuses): bool => $sellerStatuses->every(
+            fn (string $status): bool => $status === ShipmentStatus::Delivered->value,
+        ))) {
             return 'delivered';
         }
 
@@ -433,6 +459,10 @@ class BuyerController extends Controller
 
     private function purchaseDeliveredAt(Order $order): ?Carbon
     {
+        if ($this->purchaseDeliveryState($order) !== 'delivered') {
+            return null;
+        }
+
         $occurredAt = $order->sellerOrders
             ->flatMap(fn ($sellerOrder) => $sellerOrder->shipments
                 ->where('purpose', 'outbound')
@@ -458,8 +488,12 @@ class BuyerController extends Controller
         return match ($bucket) {
             'to-pay' => 'Order Placed',
             'to-ship' => 'Preparing to Ship',
-            'to-receive' => 'Out for Delivery',
-            'completed' => 'Delivered',
+            'to-receive' => match ($deliveryState) {
+                'out_for_delivery' => 'Out for Delivery',
+                'in_transit' => 'In Transit',
+                default => 'Seller shipments in progress',
+            },
+            'completed' => $deliveryState === 'delivered' ? 'Delivered' : 'Delivery status needs review',
             'cancelled' => 'Cancelled',
             default => 'Order update',
         };
@@ -478,6 +512,55 @@ class BuyerController extends Controller
             'shipment_delivery_failed', 'parcel_delivery_failed' => 'Delivery attempt unsuccessful',
             default => Str::of($toStatus ?: $eventType)->replace(['_', '-'], ' ')->title()->toString(),
         };
+    }
+
+    private function buyerSafeTrackingEventNote(string $eventType): string
+    {
+        return match ($eventType) {
+            'shipment_ready_for_pickup' => 'The seller prepared this parcel for pickup.',
+            'parcel_picked_up', 'shipment_picked_up' => 'The parcel was picked up by Bearly Logistics.',
+            'received_at_center' => 'The parcel arrived at a sorting center.',
+            'parcel_sorted', 'shipment_sorted' => 'The parcel was sorted for its next delivery step.',
+            'parcel_dispatched', 'shipment_dispatched' => 'The parcel left the sorting center for delivery.',
+            'shipment_out_for_delivery', 'parcel_out_for_delivery' => 'The parcel is with a delivery rider.',
+            'shipment_delivered', 'parcel_delivered' => 'The parcel was marked delivered.',
+            'shipment_delivery_failed', 'parcel_delivery_failed' => 'The delivery attempt was unsuccessful.',
+            default => '',
+        };
+    }
+
+    private function sellerOrderDeliveryState($sellerOrder): string
+    {
+        if ($sellerOrder->status === SellerOrderStatus::Cancelled->value) {
+            return 'cancelled';
+        }
+
+        $statuses = $sellerOrder->shipments
+            ->where('purpose', 'outbound')
+            ->pluck('status');
+
+        if ($statuses->isEmpty()) {
+            return 'preparing';
+        }
+
+        if ($statuses->every(fn (string $status): bool => $status === ShipmentStatus::Delivered->value)) {
+            return 'delivered';
+        }
+
+        if ($statuses->contains(ShipmentStatus::OutForDelivery->value)) {
+            return 'out_for_delivery';
+        }
+
+        if ($statuses->contains(fn (string $status): bool => in_array($status, [
+            ShipmentStatus::PickedUp->value,
+            ShipmentStatus::AtSortingCenter->value,
+            ShipmentStatus::Sorted->value,
+            ShipmentStatus::Dispatched->value,
+        ], true))) {
+            return 'in_transit';
+        }
+
+        return 'preparing';
     }
 
     public function storeAddress(Request $request): JsonResponse
@@ -608,16 +691,25 @@ class BuyerController extends Controller
             'street' => ['required', 'string', 'max:180'],
             'label' => ['required', 'string', 'in:Home,Work'],
             'is_default' => ['nullable', 'boolean'],
-            'city_code' => ['nullable', 'regex:/^[0-9]{6,10}$/D'],
+            'city_code' => ['required', 'string', 'regex:/^[0-9]{10}$/D'],
             'latitude' => ['nullable', 'numeric', 'between:-90,90', 'required_with:longitude'],
             'longitude' => ['nullable', 'numeric', 'between:-180,180', 'required_with:latitude'],
         ]);
 
-        $data['city_code'] = app(PostalCodeLookup::class)->canonicalCityCode(
-            $data['city_code'] ?? null,
+        $postalCodes = app(PostalCodeLookup::class);
+        $cityCode = $postalCodes->canonicalCityCode(
+            $data['city_code'],
             $data['province'],
             $data['city'],
         );
+
+        if (! $cityCode || ! $postalCodes->findByCanonicalCityCode($cityCode)) {
+            throw ValidationException::withMessages([
+                'city' => 'Select a municipality/city from the PSGC list before saving this address. Legacy addresses must be re-verified by selecting their city again.',
+            ]);
+        }
+
+        $data['city_code'] = $cityCode;
 
         return $data;
     }
@@ -645,6 +737,8 @@ class BuyerController extends Controller
             'phone' => $address->phone,
             'province' => $address->province,
             'city' => $address->city_municipality,
+            'cityCode' => $address->psgc_city_code,
+            'cityVerified' => $this->addressCityVerified($address),
             'barangay' => $address->barangay,
             'postal' => $address->postal_code,
             'street' => $address->street,
@@ -654,8 +748,31 @@ class BuyerController extends Controller
         ];
     }
 
-    public function home(Request $request, BuyerCatalogService $catalog, PromotionService $promotions): View|RedirectResponse
+    private function addressCityVerified(Address $address): bool
     {
+        $cityCode = trim((string) $address->psgc_city_code);
+        if ($cityCode === '') {
+            return false;
+        }
+
+        try {
+            return app(PostalCodeLookup::class)->canonicalCityCode(
+                $cityCode,
+                (string) $address->province,
+                (string) $address->city_municipality,
+            ) !== null;
+        } catch (ValidationException) {
+            return false;
+        }
+    }
+
+    public function home(
+        Request $request,
+        BuyerCatalogService $catalog,
+        PromotionService $promotions,
+        CampaignService $campaigns,
+        ProductReviewService $reviews,
+    ): View|RedirectResponse {
         $dedicatedCategories = [
             'electronics-and-gadgets',
             'books-and-media',
@@ -716,154 +833,9 @@ class BuyerController extends Controller
             ],
         ];
 
-        $recommendedProducts = [
-            [
-                'id' => 1,
-                'name' => 'Sony WH-1000XM5 Wireless Noise-Canceling Headphones',
-                'price' => 899,
-                'old_price' => 1299,
-                'discount' => 31,
-                'rating' => 4.9,
-                'sold' => '3,240',
-                'location' => 'Kuala Lumpur',
-                'badge' => 'Best Seller',
-                'shipping' => true,
-                'shop' => 'TechHub Official',
-            ],
-            [
-                'id' => 2,
-                'name' => 'Nike Air Max 270 Men\'s Running Shoes',
-                'price' => 389,
-                'old_price' => 520,
-                'discount' => 25,
-                'rating' => 4.8,
-                'sold' => '8,750',
-                'location' => 'Penang',
-                'badge' => 'Flash Deal',
-                'shipping' => true,
-                'shop' => 'SneakerVault',
-            ],
-            [
-                'id' => 3,
-                'name' => 'Scandinavian Oak Coffee Table with Storage',
-                'price' => 649,
-                'old_price' => 890,
-                'discount' => 27,
-                'rating' => 4.7,
-                'sold' => '1,820',
-                'location' => 'Johor Bahru',
-                'badge' => 'Voucher',
-                'shipping' => false,
-                'shop' => 'HomeNest Co.',
-            ],
-            [
-                'id' => 4,
-                'name' => 'Logitech MX Master 3S Wireless Mouse',
-                'price' => 219,
-                'old_price' => 299,
-                'discount' => 27,
-                'rating' => 4.9,
-                'sold' => '5,600',
-                'location' => 'Kuala Lumpur',
-                'badge' => 'Best Seller',
-                'shipping' => true,
-                'shop' => 'TechHub Official',
-            ],
-            [
-                'id' => 5,
-                'name' => 'COSRX Advanced Snail 96 Mucin Power Essence',
-                'price' => 55,
-                'old_price' => 79,
-                'discount' => 30,
-                'rating' => 4.8,
-                'sold' => '18,900',
-                'location' => 'Shah Alam',
-                'badge' => null,
-                'shipping' => true,
-                'shop' => 'BeautyBox MY',
-            ],
-            [
-                'id' => 6,
-                'name' => 'MacBook Pro 14" M3 Pro',
-                'price' => 8499,
-                'old_price' => 9499,
-                'discount' => 11,
-                'rating' => 4.9,
-                'sold' => '2,100',
-                'location' => 'Kuala Lumpur',
-                'badge' => 'Official Store',
-                'shipping' => true,
-                'shop' => 'TechHub Official',
-            ],
-        ];
-
-        $bestSellers = [
-            [
-                'id' => 7,
-                'name' => 'Adidas Ultraboost 22 Running Shoes',
-                'price' => 349,
-                'old_price' => 499,
-                'discount' => 30,
-                'rating' => 4.7,
-                'sold' => '4,320',
-                'location' => 'Penang',
-                'badge' => 'New',
-                'shipping' => true,
-                'shop' => 'SneakerVault',
-            ],
-            [
-                'id' => 8,
-                'name' => 'Luxury Velvet Throw Pillow Set (4 pcs)',
-                'price' => 89,
-                'old_price' => 129,
-                'discount' => 31,
-                'rating' => 4.5,
-                'sold' => '6,700',
-                'location' => 'Johor Bahru',
-                'badge' => null,
-                'shipping' => true,
-                'shop' => 'HomeNest Co.',
-            ],
-            [
-                'id' => 9,
-                'name' => 'Minimalist Linen Sofa 3-Seater — Warm Beige',
-                'price' => 2499,
-                'old_price' => 3200,
-                'discount' => 22,
-                'rating' => 4.6,
-                'sold' => '930',
-                'location' => 'Johor Bahru',
-                'badge' => null,
-                'shipping' => false,
-                'shop' => 'HomeNest Co.',
-            ],
-            [
-                'id' => 10,
-                'name' => 'Samsung Galaxy S24 Ultra',
-                'price' => 4899,
-                'old_price' => 5499,
-                'discount' => 11,
-                'rating' => 4.8,
-                'sold' => '3,400',
-                'location' => 'Kuala Lumpur',
-                'badge' => 'Best Seller',
-                'shipping' => true,
-                'shop' => 'TechHub Official',
-            ],
-            [
-                'id' => 11,
-                'name' => 'SK-II Facial Treatment Essence 160ml',
-                'price' => 189,
-                'old_price' => 269,
-                'discount' => 30,
-                'rating' => 4.9,
-                'sold' => '5,234',
-                'location' => 'Kuala Lumpur',
-                'badge' => 'Best Seller',
-                'shipping' => true,
-                'shop' => 'BeautyBox MY',
-            ],
-        ];
+        $rankings = $catalog->homepageRankings($request->user());
+        $rankings['popular'] = $this->withRankingReviewSummaries($rankings['popular'], $reviews);
+        $rankings['top_sales'] = $this->withRankingReviewSummaries($rankings['top_sales'], $reviews);
 
         $featuredShops = [
             [
@@ -904,13 +876,16 @@ class BuyerController extends Controller
             ],
         ];
 
+        $homeFlashDealGroups = $this->buyerFlashDealProductGroups($request, $campaigns, $catalog, 4);
+
         return view('buyer.Dashboard.home', [
             'categories' => $categories,
-            'recommendedProducts' => $recommendedProducts,
-            'bestSellers' => $bestSellers,
+            'popularRankingProducts' => $rankings['popular'],
+            'topSalesRankingProducts' => $rankings['top_sales'],
+            'defaultRankingKind' => $rankings['popular'] !== [] ? 'popular' : 'top_sales',
             'featuredShops' => $featuredShops,
             'liveCatalog' => $catalog->cards(
-                $catalog->publishedProducts()->take(60),
+                $catalog->publishedProducts(limit: 60),
                 $request->user(),
             ),
             'activePromotions' => $promotions->publicOffers([
@@ -920,18 +895,175 @@ class BuyerController extends Controller
                 PlatformPromotion::KIND_FLASH_DEAL,
                 PlatformPromotion::KIND_SELLER_CAMPAIGN,
             ], true)->take(4),
+            'liveCampaigns' => $campaigns->activeBuyerCampaigns()
+                ->map(fn (PlatformPromotion $campaign): array => $campaigns->buyerCampaignSummaryPayload($campaign))
+                ->values(),
+            'liveFlashDealGroups' => $homeFlashDealGroups,
         ]);
     }
 
-    public function flashDeals(PromotionService $promotions): View
+    public function topProducts(Request $request, BuyerCatalogService $catalog, ProductReviewService $reviews): View
     {
+        return $this->rankingPage($request, $catalog, $reviews, 'popular');
+    }
+
+    public function topSales(Request $request, BuyerCatalogService $catalog, ProductReviewService $reviews): View
+    {
+        return $this->rankingPage($request, $catalog, $reviews, 'top_sales');
+    }
+
+    private function rankingPage(
+        Request $request,
+        BuyerCatalogService $catalog,
+        ProductReviewService $reviews,
+        string $rankingType,
+    ): View {
+        $categories = $catalog->rankingCategories($rankingType);
+        $filters = $request->validate([
+            'category' => [
+                'nullable',
+                'string',
+                'max:100',
+                Rule::in($categories->pluck('slug')->all()),
+            ],
+        ]);
+        $selectedCategory = $filters['category'] ?? null;
+        $rankedProducts = $catalog->rankedProductsPage(
+            $request->user(),
+            $rankingType,
+            $selectedCategory,
+        );
+        $rankingCards = $rankedProducts->getCollection();
+        $reviewSummaries = $reviews->productSummaries($rankingCards->map(
+            fn (array $product): int => (int) $product['id'],
+        )->all());
+        $rankedProducts->setCollection($rankedProducts->getCollection()->map(
+            fn (array $product): array => $this->withRankingReviewSummary(
+                $product,
+                $reviewSummaries[(int) $product['id']] ?? null,
+            ),
+        ));
+
+        return view($rankingType === 'popular' ? 'buyer.top-products' : 'buyer.top-sales', [
+            'rankingType' => $rankingType,
+            'rankingProducts' => $rankedProducts,
+            'rankingCategories' => $categories,
+            'selectedRankingCategory' => $selectedCategory,
+        ]);
+    }
+
+    /** @param array<int, array<string, mixed>> $products
+     *  @return array<int, array<string, mixed>>
+     */
+    private function withRankingReviewSummaries(array $products, ProductReviewService $reviews): array
+    {
+        if ($products === []) {
+            return [];
+        }
+
+        $summaries = $reviews->productSummaries(array_map(
+            fn (array $product): int => (int) $product['id'],
+            $products,
+        ));
+
+        return array_map(fn (array $product): array => $this->withRankingReviewSummary(
+            $product,
+            $summaries[(int) $product['id']] ?? null,
+        ), $products);
+    }
+
+    /** @param array<string, mixed>|null $summary
+     *  @return array<string, mixed>
+     */
+    private function withRankingReviewSummary(array $product, ?array $summary): array
+    {
+        if (($summary['count'] ?? 0) > 0) {
+            $product['review_summary'] = [
+                'count' => (int) $summary['count'],
+                'average' => (float) $summary['average'],
+            ];
+        }
+
+        return $product;
+    }
+
+    public function flashDeals(Request $request, CampaignService $campaigns, PromotionService $promotions, BuyerCatalogService $catalog): View
+    {
+        $flashDealGroups = $this->buyerFlashDealProductGroups($request, $campaigns, $catalog, 12);
+
+        $otherOffers = $promotions->publicOffers([
+            PlatformPromotion::KIND_VOUCHER,
+            PlatformPromotion::KIND_AUTOMATIC_DISCOUNT,
+            PlatformPromotion::KIND_FREE_SHIPPING,
+            PlatformPromotion::KIND_SELLER_CAMPAIGN,
+        ])->reject(fn (array $offer): bool => ($offer['campaign_type'] ?? null) === PlatformPromotion::CAMPAIGN_FLASH_DEAL)
+            ->take(4)
+            ->values();
+
         return view('buyer.flash-deals', [
-            'activePromotions' => $promotions->publicOffers([
-                PlatformPromotion::KIND_FLASH_DEAL,
-                PlatformPromotion::KIND_SELLER_CAMPAIGN,
-                PlatformPromotion::KIND_AUTOMATIC_DISCOUNT,
-                PlatformPromotion::KIND_FREE_SHIPPING,
-            ])->take(4),
+            'flashDealGroups' => $flashDealGroups,
+            'otherOffers' => $otherOffers,
+        ]);
+    }
+
+    /**
+     * @return array<int, array{campaign: array<string, mixed>, products: array<int, array<string, mixed>>}>
+     */
+    private function buyerFlashDealProductGroups(
+        Request $request,
+        CampaignService $campaigns,
+        BuyerCatalogService $catalog,
+        int $productsPerCampaign,
+    ): array {
+        return $campaigns->activeBuyerFlashDealCampaigns()
+            ->map(function (PlatformPromotion $campaign) use ($campaigns, $catalog, $request, $productsPerCampaign): ?array {
+                $products = $campaigns->buyerCampaignProductPreview($campaign, $productsPerCampaign);
+                if ($products->isEmpty()) {
+                    return null;
+                }
+
+                $expectedCampaignItems = $products->mapWithKeys(fn (Product $product): array => [
+                    (int) $product->id => (int) $product->getAttribute('buyer_campaign_participation_item_id'),
+                ]);
+                $productCards = $catalog->cards($products, $request->user(), includeCampaignItemId: true);
+                $productCards = array_values(array_filter($productCards, function (array $card) use ($expectedCampaignItems): bool {
+                    $productId = (int) ($card['product_id'] ?? 0);
+                    $campaignItemId = (int) ($card['campaign_participation_item_id'] ?? 0);
+
+                    return ($card['price_source'] ?? null) === 'campaign'
+                        && $campaignItemId > 0
+                        && $campaignItemId === (int) ($expectedCampaignItems->get($productId) ?? 0);
+                }));
+                foreach ($productCards as &$productCard) {
+                    unset($productCard['campaign_participation_item_id']);
+                }
+                unset($productCard);
+
+                if ($productCards === []) {
+                    return null;
+                }
+
+                return [
+                    'campaign' => $campaigns->buyerCampaignPayload($campaign),
+                    'products' => $productCards,
+                ];
+            })
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    public function showCampaign(
+        PlatformPromotion $campaign,
+        CampaignService $campaigns,
+        BuyerCatalogService $catalog,
+    ): View {
+        $campaign = $campaigns->buyerCampaignDetail($campaign);
+        $products = $campaigns->buyerCampaignProducts($campaign);
+
+        return view('buyer.campaigns.show', [
+            'campaign' => $campaigns->buyerCampaignPayload($campaign),
+            'productCards' => $catalog->cards($products, request()->user()),
         ]);
     }
 
@@ -965,11 +1097,44 @@ class BuyerController extends Controller
         $category = $request->query('category');
 
         if (isset($categoryViews[$category])) {
+            if ($this->hasMarketplaceTaxonomyTables()) {
+                $marketplaceCategory = $catalog->marketplaceCategoryForSlug((string) $category);
+                $marketplaceSubcategories = $marketplaceCategory
+                    ? $catalog->marketplaceSubcategoriesForBuyer($marketplaceCategory)
+                    : collect();
+                $subcategorySlug = $request->query('sub');
+                $subcategorySlug = is_string($subcategorySlug) && trim($subcategorySlug) !== ''
+                    ? trim($subcategorySlug)
+                    : null;
+                $categoryProducts = $marketplaceCategory
+                    ? $catalog->publishedProductsForMarketplaceCategory($marketplaceCategory, $subcategorySlug)
+                    : null;
+                $subcategorySlugs = $marketplaceSubcategories->mapWithKeys(fn ($subcategory): array => [
+                    (string) $subcategory->name => (string) $subcategory->slug,
+                ])->all();
+                $subcategoryIds = $marketplaceSubcategories->mapWithKeys(fn ($subcategory): array => [
+                    (string) $subcategory->name => (int) $subcategory->id,
+                ])->all();
+
+                return view($categoryViews[$category], [
+                    'canonicalMarketplaceTaxonomy' => true,
+                    'marketplaceCategory' => $marketplaceCategory,
+                    'marketplaceSubcategories' => $marketplaceSubcategories,
+                    'marketplaceSubcategorySlugs' => $subcategorySlugs,
+                    'marketplaceSubcategoryIds' => $subcategoryIds,
+                    'categoryPagination' => $categoryProducts,
+                    'liveCatalog' => $categoryProducts
+                        ? $catalog->cards($categoryProducts->getCollection(), $request->user())
+                        : [],
+                ]);
+            }
+
+            $categoryProducts = $catalog->publishedProductsPage($category);
+
             return view($categoryViews[$category], [
-                'liveCatalog' => $catalog->cards(
-                    $catalog->publishedProducts($category)->take(160),
-                    $request->user(),
-                ),
+                'canonicalMarketplaceTaxonomy' => false,
+                'categoryPagination' => $categoryProducts,
+                'liveCatalog' => $catalog->cards($categoryProducts->getCollection(), $request->user()),
             ]);
         }
 
@@ -980,7 +1145,8 @@ class BuyerController extends Controller
         $query = Product::query()
             ->with(['store', 'variants' => fn ($variants) => $variants->where('is_active', true)])
             ->withMin('variants', 'price_minor')
-            ->visibleToBuyers();
+            ->visibleToBuyers()
+            ->acceptsCashOnDelivery();
 
         if ($request->category && $request->category !== 'All') {
             $query->whereHas('category', function ($categories) use ($request) {
@@ -1029,7 +1195,7 @@ class BuyerController extends Controller
             'products' => $products,
             'categories' => $categories,
             'liveCatalog' => $catalog->cards(
-                $catalog->publishedProducts('men-s-apparel')->take(160),
+                $catalog->publishedProducts('men-s-apparel', limit: 60),
                 $request->user(),
             ),
         ]);
@@ -1067,29 +1233,20 @@ class BuyerController extends Controller
                 'variants' => fn ($variants) => $variants->where('is_active', true)->orderBy('position'),
             ])
             ->visibleToBuyers()
+            ->acceptsCashOnDelivery()
             ->where(function ($matches) use ($like) {
                 $matches->where('products.name', 'like', $like)
                     ->orWhere('products.description', 'like', $like)
                     ->orWhereHas('category', fn ($categories) => $categories
                         ->where('name', 'like', $like)
                         ->orWhere('slug', 'like', $like))
-                    ->orWhereHas('subcategory', fn ($subcategories) => $subcategories
-                        ->where('name', 'like', $like))
                     ->orWhereHas('store', fn ($stores) => $stores
                         ->visibleToBuyers()
                         ->where('name', 'like', $like));
             });
 
         if ($categoryFilter !== '' && strtolower($categoryFilter) !== 'all') {
-            $category = $catalog->categoryForSlug($categoryFilter);
-
-            if ($category) {
-                $productQuery->where('category_id', $category->id);
-            } else {
-                $productQuery->whereHas('category', fn ($categories) => $categories
-                    ->where('slug', $categoryFilter)
-                    ->orWhere('name', $categoryFilter));
-            }
+            $catalog->filterByBuyerCategory($productQuery, $categoryFilter);
         }
 
         $products = $productQuery
@@ -1112,7 +1269,10 @@ class BuyerController extends Controller
         $product->load('store');
 
         if (! $this->hasBuyerTables() ||
-            ! Product::query()->visibleToBuyers()->whereKey($product->getKey())->exists()) {
+            ! Product::query()->visibleToBuyers()
+                ->acceptsCashOnDelivery()
+                ->whereKey($product->getKey())
+                ->exists()) {
             abort(404);
         }
 
@@ -1125,10 +1285,7 @@ class BuyerController extends Controller
         ]);
 
         $relatedProducts = $catalog->cards(
-            $catalog->publishedProducts()
-                ->where('category_id', $product->category_id)
-                ->where('id', '!=', $product->id)
-                ->take(4),
+            $catalog->relatedProducts($product, 4),
             request()->user(),
         );
         $productCard = $catalog->card($product);
@@ -1154,10 +1311,7 @@ class BuyerController extends Controller
                 ->all(),
             'detailVariantSpecs' => $detailVariantSpecs,
             'storeReviewSummary' => $reviews->storeSummary((int) $store->id),
-            'storeProductCount' => Product::query()
-                ->visibleToBuyers()
-                ->where('store_id', $store->id)
-                ->count(),
+            'storeProductCount' => $catalog->publishedProductsQuery(null, $store)->count(),
             'storeLogoUrl' => $store->logo_path
                 ? Storage::disk('public')->url($store->logo_path)
                 : null,
@@ -1177,16 +1331,7 @@ class BuyerController extends Controller
             'sellerProfile.approvedCategory',
             'promotionalBanners' => fn ($banners) => $banners->where('is_active', true),
         ]);
-        $products = $catalog->publishedProducts(null, $store);
-        $publishedProductCount = $products->count();
-        $productReviewSummaries = $reviews->productSummaries($products->pluck('id')->map(fn ($id): int => (int) $id)->all());
-        $storeReviewSummary = $reviews->storeSummary((int) $store->id);
-        $storeSubcategories = $products
-            ->pluck('subcategory')
-            ->filter()
-            ->unique('id')
-            ->sortBy('name')
-            ->values();
+        $storeSubcategories = $catalog->storeSubcategoriesForBuyer($store);
         $selectedSubcategoryId = null;
 
         if ($request->filled('subcategory')) {
@@ -1201,11 +1346,23 @@ class BuyerController extends Controller
             if (! $storeSubcategories->contains('id', $selectedSubcategoryId)) {
                 abort(404);
             }
-
-            $products = $products
-                ->where('subcategory_id', $selectedSubcategoryId)
-                ->values();
         }
+
+        $storeProductsQuery = $catalog->publishedProductsQuery(null, $store);
+        $publishedProductCount = (clone $storeProductsQuery)->count();
+
+        if ($selectedSubcategoryId !== null) {
+            $storeProductsQuery->where('subcategory_id', $selectedSubcategoryId);
+        }
+
+        $storeProductsPage = $storeProductsQuery
+            ->orderByDesc('published_at')
+            ->orderByDesc('id')
+            ->paginate(24)
+            ->withQueryString();
+        $products = $storeProductsPage->getCollection();
+        $productReviewSummaries = $reviews->productSummaries($products->pluck('id')->map(fn ($id): int => (int) $id)->all());
+        $storeReviewSummary = $reviews->storeSummary((int) $store->id);
         $promoBanners = $store->promotionalBanners
             ->map(fn ($banner): array => [
                 'path' => $banner->image_path,
@@ -1251,6 +1408,7 @@ class BuyerController extends Controller
             'storeSubcategories' => $storeSubcategories,
             'selectedSubcategoryId' => $selectedSubcategoryId,
             'publishedProductCount' => $publishedProductCount,
+            'productPaginator' => $storeProductsPage,
             'storeReviewSummary' => $storeReviewSummary,
             'products' => $productCards,
         ]);
@@ -1332,6 +1490,12 @@ class BuyerController extends Controller
                 ->lockForUpdate()
                 ->firstOrFail();
 
+            if (! $product->acceptsCashOnDelivery()) {
+                throw ValidationException::withMessages([
+                    'product_variant_id' => 'This product does not accept the currently supported Cash on Delivery checkout.',
+                ]);
+            }
+
             $cart = $this->currentCart($request->user());
             $existingItem = $cart->items()
                 ->where('product_variant_id', $variant->id)
@@ -1387,11 +1551,17 @@ class BuyerController extends Controller
                 ->whereKey($data['product_variant_id'])
                 ->lockForUpdate()
                 ->firstOrFail();
-            Product::query()
+            $product = Product::query()
                 ->visibleToBuyers()
                 ->whereKey($variant->product_id)
                 ->lockForUpdate()
                 ->firstOrFail();
+
+            if (! $product->acceptsCashOnDelivery()) {
+                throw ValidationException::withMessages([
+                    'product_variant_id' => 'This product does not accept the currently supported Cash on Delivery checkout.',
+                ]);
+            }
 
             if ((int) $data['quantity'] > $variant->available_stock) {
                 throw ValidationException::withMessages([
@@ -1452,11 +1622,17 @@ class BuyerController extends Controller
                 ->findOrFail($cartItem->id);
 
             abort_unless($item->variant && $item->variant->is_active, 404);
-            Product::query()
+            $product = Product::query()
                 ->visibleToBuyers()
                 ->whereKey($item->variant->product_id)
                 ->lockForUpdate()
                 ->firstOrFail();
+
+            if (! $product->acceptsCashOnDelivery()) {
+                throw ValidationException::withMessages([
+                    'quantity' => 'This product is no longer available for the currently supported Cash on Delivery checkout. Remove it from your cart.',
+                ]);
+            }
 
             if ((int) $data['quantity'] > $item->variant->available_stock) {
                 throw ValidationException::withMessages([
@@ -1627,24 +1803,59 @@ class BuyerController extends Controller
                     ? $imagePath
                     : Storage::disk($imageDisk)->url($imagePath))),
             'seller_name' => $product?->store?->name ?? 'Bearly seller',
+            'orderable' => $product?->acceptsCashOnDelivery() ?? false,
+            'unavailable_reason' => $product && ! $product->acceptsCashOnDelivery()
+                ? 'This item is no longer orderable with the currently supported Cash on Delivery checkout. Remove it before checkout.'
+                : null,
         ];
     }
 
     private function wishlistPayload($user): array
     {
-        return Wishlist::query()
+        $hasMarketplaceTaxonomy = $this->hasMarketplaceTaxonomyTables();
+        $wishlist = Wishlist::query()
             ->where('user_id', $user->id)
             ->whereHas('product', function ($products) {
                 $products->visibleToBuyers();
             })
-            ->with(['product.store', 'product.category', 'product.images', 'product.variants' => fn ($variants) => $variants->where('is_active', true)->orderBy('position')])
+            ->with([
+                'product.store',
+                'product.category',
+                'product.images',
+                'product.variants' => fn ($variants) => $variants->where('is_active', true)->orderBy('position'),
+            ]);
+
+        if ($hasMarketplaceTaxonomy) {
+            $wishlist->with([
+                'product.marketplaceSubcategory.marketplaceCategory',
+                'product.category.marketplaceCategories' => fn ($categories) => $categories
+                    ->where('marketplace_categories.is_active', true),
+            ]);
+        }
+
+        return $wishlist
             ->latest('id')
             ->get()
-            ->map(function (Wishlist $item) {
+            ->map(function (Wishlist $item) use ($hasMarketplaceTaxonomy): array {
                 $product = $item->product;
                 $image = $product?->images?->firstWhere('is_primary', true)
                     ?: $product?->images?->first();
-                $variant = $product?->variants?->first();
+                $variant = $product?->variants?->first(fn (ProductVariant $variant): bool => $variant->available_stock > 0)
+                    ?: $product?->variants?->first();
+                $marketplaceSubcategory = $product && $hasMarketplaceTaxonomy
+                    ? $product->marketplaceSubcategory
+                    : null;
+                $marketplaceCategory = $marketplaceSubcategory?->is_active
+                    && $marketplaceSubcategory->marketplaceCategory?->is_active
+                    ? $marketplaceSubcategory->marketplaceCategory
+                    : null;
+                if (! $marketplaceCategory && $hasMarketplaceTaxonomy) {
+                    $legacyCategory = $product?->category;
+                    $mappedCategories = $legacyCategory?->marketplaceCategories;
+                    if ($legacyCategory?->is_active && $mappedCategories?->count() === 1) {
+                        $marketplaceCategory = $mappedCategories->first();
+                    }
+                }
                 $imagePath = (string) ($image?->path ?? '');
                 $imageDisk = (string) ($image?->disk ?: 'public');
                 $price = $product && $variant
@@ -1659,7 +1870,12 @@ class BuyerController extends Controller
                     'price_minor' => (int) ($price['unit_price_minor'] ?? $variant?->price_minor ?? 0),
                     'regular_price_minor' => (int) ($price['regular_unit_price_minor'] ?? $variant?->price_minor ?? 0),
                     'discount_percent' => (int) ($price['discount_percent'] ?? 0),
-                    'category' => $product?->category?->name ?? 'Product',
+                    'category' => $marketplaceCategory?->name ?? $product?->category?->name ?? 'Product',
+                    'category_slug' => $hasMarketplaceTaxonomy
+                        ? $marketplaceCategory?->slug
+                        : $this->buyerCategorySlug($product?->category),
+                    'orderable' => $product?->acceptsCashOnDelivery() ?? false,
+                    'stock' => (int) $product?->variants?->sum(fn (ProductVariant $candidate): int => $candidate->available_stock),
                     'image' => $imagePath === ''
                         ? ''
                         : (Str::startsWith($imagePath, ['http://', 'https://', '/'])

@@ -8,6 +8,15 @@ class PromotionRedemptionAllocation extends Model
 {
     protected $guarded = [];
 
+    protected function casts(): array
+    {
+        return [
+            'amount_minor' => 'integer',
+            'released_amount_minor' => 'integer',
+            'released_at' => 'datetime',
+        ];
+    }
+
     public function redemption()
     {
         return $this->belongsTo(PromotionRedemption::class, 'promotion_redemption_id');

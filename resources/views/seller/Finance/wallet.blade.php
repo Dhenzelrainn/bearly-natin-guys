@@ -23,7 +23,7 @@
     <div>
         <span class="section-kicker">Seller Finance</span>
         <h2>Seller Wallet</h2>
-        <p>Available funds can be requested for bank transfer. New COD earnings stay pending until delivery, Finance reconciliation, and the return period are complete.</p>
+        <p>Paid earnings may move to Available after the 3-calendar-day return/refund period ends, counted from Seller Order completion. Payment, open cases, and COD reconciliation can keep funds pending longer.</p>
     </div>
     <div class="wallet-heading-actions">
         <a class="seller-secondary-button" href="{{ route('seller.finance.bank-accounts') }}"><i data-lucide="landmark" aria-hidden="true"></i>Bank Accounts</a>
@@ -40,7 +40,7 @@
         <small>Eligible to request for withdrawal</small>
     </div>
     <dl class="seller-wallet-secondary-balances">
-        <div><dt>Pending Balance</dt><dd>{{ $money((int) $wallet->pending_balance_minor) }}</dd><small>Waiting for settlement conditions</small></div>
+        <div><dt>Pending Balance</dt><dd>{{ $money((int) $wallet->pending_balance_minor) }}</dd><small>Return period: 3 calendar days after order completion; other checks may extend the wait.</small></div>
         <div><dt>Reserved for Withdrawal</dt><dd>{{ $money((int) $wallet->reserved_balance_minor) }}</dd><small>Held on open requests</small></div>
         <div><dt>Total Withdrawn</dt><dd>{{ $money((int) $wallet->total_withdrawn_minor) }}</dd><small>Verified payouts, including legacy history</small></div>
     </dl>
@@ -149,6 +149,7 @@
                     $status = $transaction->type === 'sale_earning_pending'
                         ? 'Pending eligibility'
                         : ($transaction->type === 'sale_earning_available' ? 'Available' : ($withdrawal ? $statusLabel($withdrawal->status) : $ledgerStatus($transaction->type)));
+                    $returnWindowEndsAt = $transaction->return_window_ends_at;
                 @endphp
                 <tr>
                     <td><strong>{{ $transaction->transaction_no }}</strong><small>{{ $transaction->reference ?: $transaction->description ?: '—' }}</small></td>
@@ -165,7 +166,22 @@
                     <td>{{ $statusLabel($transaction->type) }}</td>
                     <td class="{{ $amountSign === '−' ? 'is-negative' : '' }}">{{ $amountSign }}{{ $money((int) $transaction->amount_minor) }}</td>
                     <td>{{ $transaction->created_at?->format('M j, Y g:i A') }}</td>
-                    <td><span class="wallet-status wallet-status--{{ str_replace('_', '-', $transaction->type) }}">{{ $status }}</span></td>
+                    <td>
+                        <span class="wallet-status wallet-status--{{ str_replace('_', '-', $transaction->type) }}">{{ $status }}</span>
+                        @if($transaction->type === 'sale_earning_pending')
+                            <small class="wallet-next-step">
+                                @if($returnWindowEndsAt)
+                                    @if(now()->greaterThan($returnWindowEndsAt))
+                                        Return period ended {{ $returnWindowEndsAt->format('M j, Y') }}; other settlement checks may still be pending.
+                                    @else
+                                        Return period ends {{ $returnWindowEndsAt->format('M j, Y') }}; may become Available after that if all other checks pass.
+                                    @endif
+                                @else
+                                    Waiting for Seller Order completion before the return-period date can be determined.
+                                @endif
+                            </small>
+                        @endif
+                    </td>
                 </tr>
             @empty
                 <tr><td colspan="6"><p class="seller-wallet-empty">Wallet ledger entries will appear when paid Seller earnings or withdrawal activity is recorded.</p></td></tr>

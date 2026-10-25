@@ -17,9 +17,9 @@ class ProductVariant extends Model
             'options' => 'array',
             'is_active' => 'boolean',
             'package_weight_kg' => 'decimal:3',
-            'package_length_cm' => 'decimal:2',
-            'package_width_cm' => 'decimal:2',
-            'package_height_cm' => 'decimal:2',
+            'package_length_cm' => 'decimal:3',
+            'package_width_cm' => 'decimal:3',
+            'package_height_cm' => 'decimal:3',
         ];
     }
 

@@ -10,6 +10,7 @@ use App\Services\AuditService;
 use App\Services\BuyerCatalogService;
 use App\Services\CommissionLedgerService;
 use App\Services\NotificationService;
+use App\Services\PromotionService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -42,10 +43,17 @@ class AdminCommerceController extends Controller
         return view('admin.finance.orders', $this->base($request) + compact('orders'));
     }
 
-    public function confirmPayment(Request $request, Payment $payment, CommissionLedgerService $ledger, AuditService $audit, NotificationService $notifications): RedirectResponse
+    public function confirmPayment(
+        Request $request,
+        Payment $payment,
+        CommissionLedgerService $ledger,
+        PromotionService $promotions,
+        AuditService $audit,
+        NotificationService $notifications,
+    ): RedirectResponse
     {
         $data = $request->validate(['provider_reference' => ['required', 'string', 'max:150']]);
-        $confirmed = DB::transaction(function () use ($request, $payment, $data, $ledger, $audit): bool {
+        $confirmed = DB::transaction(function () use ($request, $payment, $data, $ledger, $promotions, $audit): bool {
             $paymentStub = Payment::query()->findOrFail($payment->id);
             $order = Order::query()->whereKey($paymentStub->order_id)->lockForUpdate()->firstOrFail();
             $payment = Payment::query()->whereKey($paymentStub->id)->where('order_id', $order->id)->lockForUpdate()->firstOrFail();
@@ -70,6 +78,7 @@ class AdminCommerceController extends Controller
             $old = $payment->status;
             $payment->update(['status' => 'paid', 'provider_reference' => trim($data['provider_reference']), 'authorized_at' => $payment->authorized_at ?? now(), 'paid_at' => now()]);
             $order->update(['payment_status' => 'paid']);
+            $promotions->markOrderPaid($order);
             $ledger->finalize($payment);
             $audit->record('payment.confirmed', 'finance', $payment, 'Administrator confirmed an order payment.', ['status' => $old], ['status' => 'paid', 'reference' => trim($data['provider_reference'])], 'warning', $request);
 

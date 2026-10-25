@@ -321,10 +321,15 @@ const bootSeller = () => {
     const inventoryWorkspace = document.querySelector('[data-inventory-workspace]');
 
     if (inventoryWorkspace) {
-        let activeInventoryStatus = 'all';
+        let activeInventoryStatus = inventoryWorkspace.dataset.inventoryInitialStatus || 'all';
         const inventoryRows = [...inventoryWorkspace.querySelectorAll('[data-inventory-row]')];
         const inventorySearch = inventoryWorkspace.querySelector('[data-inventory-search]');
-        const inventorySubcategory = inventoryWorkspace.querySelector('[data-inventory-subcategory]');
+        const inventoryStoreSection = inventoryWorkspace.querySelector('[data-inventory-store-section]');
+        const inventoryMarketplaceSubcategory = inventoryWorkspace.querySelector('[data-inventory-marketplace-subcategory]');
+        const inventoryFilterForm = inventoryWorkspace.querySelector('[data-inventory-filter-form]');
+        const inventorySearchState = inventoryWorkspace.querySelector('[data-inventory-search-state]');
+        const inventoryStatusState = inventoryWorkspace.querySelector('[data-inventory-status-state]');
+        const inventoryVariationsState = inventoryWorkspace.querySelector('[data-inventory-variations-state]');
         const showVariations = inventoryWorkspace.querySelector('[data-inventory-variations]');
         const checkAll = inventoryWorkspace.querySelector('[data-inventory-check-all]');
         const selectedCount = inventoryWorkspace.querySelector('[data-inventory-selected-count]');
@@ -338,6 +343,16 @@ const bootSeller = () => {
         const adjustMode = adjustForm?.querySelector('[data-adjust-mode]');
         const adjustQuantity = adjustForm?.querySelector('[data-adjust-quantity]');
         const adjustCurrent = adjustForm?.querySelector('[data-adjust-current]');
+
+        const submitInventoryFilterForm = () => {
+            if (!inventoryFilterForm) return;
+
+            if (inventorySearchState) inventorySearchState.value = inventorySearch?.value.trim() ?? '';
+            if (inventoryStatusState) inventoryStatusState.value = activeInventoryStatus;
+            if (inventoryVariationsState) inventoryVariationsState.value = showVariations?.checked ? '1' : '0';
+
+            inventoryFilterForm.requestSubmit();
+        };
 
         if ((adjustModal && !adjustModal.hidden) || (thresholdModal && !thresholdModal.hidden)) {
             document.body.style.overflow = 'hidden';
@@ -435,7 +450,8 @@ const bootSeller = () => {
 
         const applyInventoryFilters = () => {
             const search = inventorySearch?.value.trim().toLowerCase() ?? '';
-            const subcategory = inventorySubcategory?.value ?? '';
+            const storeSection = inventoryStoreSection?.value ?? '';
+            const marketplaceSubcategory = inventoryMarketplaceSubcategory?.value ?? '';
             const variationsVisible = showVariations?.checked ?? true;
             let visible = 0;
 
@@ -443,13 +459,14 @@ const bootSeller = () => {
                 const matchesStatus = activeInventoryStatus === 'all'
                     ? row.dataset.status !== 'archived'
                     : activeInventoryStatus === 'needs-restocking'
-                        ? ['low-stock', 'out-of-stock'].includes(row.dataset.status)
-                        : activeInventoryStatus === 'needs-review'
-                            ? ['held-for-review', 'pending-review'].includes(row.dataset.status)
+                    ? ['low-stock', 'out-of-stock'].includes(row.dataset.status)
+                    : activeInventoryStatus === 'needs-review'
+                        ? ['held-for-review', 'pending-review'].includes(row.dataset.status)
                         : row.dataset.status === activeInventoryStatus;
                 const matches = matchesStatus
                     && (!search || row.dataset.search.includes(search))
-                    && (!subcategory || row.dataset.subcategory === subcategory)
+                    && (!storeSection || row.dataset.storeSection === storeSection)
+                    && (!marketplaceSubcategory || row.dataset.marketplaceSubcategory === marketplaceSubcategory)
                     && (variationsVisible || row.dataset.variationRow !== 'true');
 
                 row.hidden = !matches;
@@ -478,12 +495,15 @@ const bootSeller = () => {
         });
 
         inventorySearch?.addEventListener('input', applyInventoryFilters);
-        inventorySubcategory?.addEventListener('change', applyInventoryFilters);
+        inventoryStoreSection?.addEventListener('change', submitInventoryFilterForm);
+        inventoryMarketplaceSubcategory?.addEventListener('change', submitInventoryFilterForm);
         showVariations?.addEventListener('change', applyInventoryFilters);
 
         inventoryWorkspace.querySelector('[data-inventory-reset]')?.addEventListener('click', () => {
+            const shouldReload = Boolean(inventoryStoreSection?.value || inventoryMarketplaceSubcategory?.value);
             if (inventorySearch) inventorySearch.value = '';
-            if (inventorySubcategory) inventorySubcategory.value = '';
+            if (inventoryStoreSection) inventoryStoreSection.value = '';
+            if (inventoryMarketplaceSubcategory) inventoryMarketplaceSubcategory.value = '';
             if (showVariations) showVariations.checked = true;
             activeInventoryStatus = 'all';
             clearInventorySelection();
@@ -494,16 +514,24 @@ const bootSeller = () => {
                 tab.setAttribute('aria-selected', String(active));
             });
 
+            if (shouldReload) {
+                submitInventoryFilterForm();
+                return;
+            }
+
             applyInventoryFilters();
         });
 
         document.querySelector('[data-inventory-alerts]')?.addEventListener('click', () => {
+            const shouldReload = Boolean(inventoryStoreSection?.value || inventoryMarketplaceSubcategory?.value);
             if (inventorySearch) inventorySearch.value = '';
-            if (inventorySubcategory) inventorySubcategory.value = '';
+            if (inventoryStoreSection) inventoryStoreSection.value = '';
+            if (inventoryMarketplaceSubcategory) inventoryMarketplaceSubcategory.value = '';
             if (showVariations) showVariations.checked = true;
             clearInventorySelection();
 
             inventoryWorkspace.querySelector('[data-inventory-tab="needs-restocking"]')?.click();
+            if (shouldReload) submitInventoryFilterForm();
             inventoryWorkspace.scrollIntoView({ behavior: 'smooth', block: 'start' });
         });
 
@@ -2478,41 +2506,62 @@ const bootSeller = () => {
     const campaignJoinForm = document.querySelector('[data-campaign-join-form]');
     if (campaignJoinForm) {
         const funding = campaignJoinForm.dataset.funding;
+        const minimumDiscount = Math.min(90, Math.max(1, Number(campaignJoinForm.dataset.minimumDiscount || 1)));
         const rows = [...campaignJoinForm.querySelectorAll('[data-campaign-product]')];
         const renumberRows = () => {
             let index = 0;
             rows.forEach((row) => {
                 const checkbox = row.querySelector('[data-campaign-product-checkbox]');
-                const price = row.querySelector('[data-campaign-price]');
+                const discount = row.querySelector('[data-campaign-discount]');
                 const stock = row.querySelector('[data-campaign-stock]');
                 const buyerLimit = row.querySelector('[data-campaign-buyer-limit]');
-                const net = row.querySelector('[data-campaign-net]');
-                const regular = Number(row.dataset.regularMinor || 0) / 100;
+                const error = row.querySelector('[data-campaign-discount-error]');
                 const checked = Boolean(checkbox?.checked);
 
-                [price, stock, buyerLimit].forEach((input) => { if (input) input.disabled = !checked; });
+                [discount, stock, buyerLimit].forEach((input) => { if (input) input.disabled = !checked; });
                 if (checkbox) {
                     checkbox.name = checked ? `items[${index}][product_id]` : '';
                     checkbox.disabled = false;
                 }
-                if (checked && price) {
-                    price.name = `items[${index}][campaign_price]`;
-                    price.required = true;
-                    if (!price.value) price.value = (regular * .9).toFixed(2);
-                } else if (price) {
-                    price.name = '';
-                    price.required = false;
+                if (checked && discount) {
+                    discount.name = `items[${index}][discount_percent]`;
+                    discount.required = true;
+                    if (!discount.value) discount.value = String(minimumDiscount);
+                } else if (discount) {
+                    discount.name = '';
+                    discount.required = false;
                 }
                 if (stock) stock.name = checked ? `items[${index}][stock_limit]` : '';
                 if (buyerLimit) buyerLimit.name = checked ? `items[${index}][per_buyer_limit]` : '';
 
-                if (net) {
-                    const campaignPrice = Number(price?.value || 0);
-                    const effective = funding === 'platform'
-                        ? regular
-                        : (campaignPrice > 0 ? campaignPrice : regular);
-                    net.textContent = formatPricingMoney(Math.round(effective * 100));
+                const percent = discount?.value === '' ? minimumDiscount : Number(discount?.value);
+                const validDiscount = Number.isInteger(percent) && percent >= minimumDiscount && percent <= 90;
+                if (discount) {
+                    discount.min = String(minimumDiscount);
+                    discount.max = '90';
+                    discount.setCustomValidity(checked && !validDiscount
+                        ? `Enter a whole discount from ${minimumDiscount}% to 90%.`
+                        : '');
                 }
+                if (error) error.hidden = !checked || validDiscount;
+
+                row.querySelectorAll('[data-campaign-variant]').forEach((variant) => {
+                    const baseline = Number(variant.dataset.baselineMinor || 0);
+                    const campaignPrice = validDiscount
+                        ? Math.max(1, Math.floor((baseline * (100 - percent) + 50) / 100))
+                        : null;
+                    const pricePreview = variant.querySelector('[data-campaign-price-preview]');
+                    const netPreview = variant.querySelector('[data-campaign-net]');
+                    if (pricePreview) {
+                        pricePreview.textContent = campaignPrice === null ? '—' : formatPricingMoney(campaignPrice);
+                    }
+                    if (netPreview) {
+                        const sellerNet = campaignPrice === null
+                            ? null
+                            : (funding === 'platform' ? baseline : campaignPrice);
+                        netPreview.textContent = sellerNet === null ? '—' : formatPricingMoney(sellerNet);
+                    }
+                });
 
                 if (checked) index += 1;
             });
@@ -2520,20 +2569,26 @@ const bootSeller = () => {
 
         rows.forEach((row) => {
             row.querySelector('[data-campaign-product-checkbox]')?.addEventListener('change', renumberRows);
-            row.querySelector('[data-campaign-price]')?.addEventListener('input', renumberRows);
+            row.querySelector('[data-campaign-discount]')?.addEventListener('input', renumberRows);
         });
         campaignJoinForm.addEventListener('submit', (event) => {
             const checked = rows.filter((row) => row.querySelector('[data-campaign-product-checkbox]')?.checked);
             if (checked.length === 0) {
                 event.preventDefault();
                 window.alert('Select at least one product for this campaign.');
+                rows[0]?.querySelector('[data-campaign-product-checkbox]')?.focus();
                 return;
             }
-            const invalid = checked.find((row) => Number(row.querySelector('[data-campaign-price]')?.value || 0) < 0.01);
+            const invalid = checked.find((row) => {
+                const discount = row.querySelector('[data-campaign-discount]');
+                const percent = Number(discount?.value);
+                return !Number.isInteger(percent) || percent < minimumDiscount || percent > 90;
+            });
             if (invalid) {
                 event.preventDefault();
-                window.alert('Enter a campaign price for every selected product.');
-                invalid.querySelector('[data-campaign-price]')?.focus();
+                const discount = invalid.querySelector('[data-campaign-discount]');
+                discount?.focus();
+                discount?.reportValidity();
             }
         });
         renumberRows();

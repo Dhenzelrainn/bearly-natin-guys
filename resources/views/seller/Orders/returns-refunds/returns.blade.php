@@ -9,7 +9,7 @@
     <details class="returns-guide">
         <summary>How returns work</summary>
         <ol class="returns-guide-steps">
-            <li><strong>The Buyer asks for help.</strong> Within 7 days after Bearly marks the order complete, they can ask for <em>Return &amp; Refund</em> or <em>Refund Only</em>. They can add photos or files.</li>
+            <li><strong>The Buyer asks for help.</strong> Within 3 days after Bearly marks the order complete, they can ask for <em>Return &amp; Refund</em> or <em>Refund Only</em>. They can add photos or files.</li>
             <li><strong>You reply.</strong> Open the case, explain what happened, and attach at least one helpful file before the deadline shown.</li>
             <li><strong>Admin checks the case.</strong> Admin reads both sides and may ask the Buyer, you, or both for more proof. Then Admin approves or declines the request.</li>
             <li><strong>If an item must come back,</strong> Logistics picks it up and brings it to you. When it arrives, check each item and record its condition. Only items that are okay to sell and marked <em>Restock</em> go back into stock.</li>

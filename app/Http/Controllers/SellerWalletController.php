@@ -10,8 +10,10 @@ use App\Models\SellerWithdrawal;
 use App\Models\SellerWithdrawalTransfer;
 use App\Services\AuditService;
 use App\Services\BuyerCatalogService;
+use App\Services\ReturnRefundService;
 use App\Services\SellerWalletService;
 use App\Services\SellerWithdrawalService;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -47,8 +49,18 @@ class SellerWalletController extends Controller
         $transactions->getCollection()->each(function (SellerWalletTransaction $transaction) use ($catalog): void {
             $sellerOrders = collect();
 
-            if ($transaction->sellerTransaction?->sellerOrder) {
-                $sellerOrders->push($transaction->sellerTransaction->sellerOrder);
+            $sellerOrder = $transaction->sellerTransaction?->sellerOrder;
+            $transaction->setAttribute(
+                'return_window_ends_at',
+                $transaction->type === 'sale_earning_pending' && $sellerOrder?->completed_at
+                    ? CarbonImmutable::parse($sellerOrder->completed_at)
+                        ->addDays(ReturnRefundService::RETURN_WINDOW_DAYS)
+                        ->endOfDay()
+                    : null,
+            );
+
+            if ($sellerOrder) {
+                $sellerOrders->push($sellerOrder);
             } elseif ($transaction->legacyPayout) {
                 foreach ($transaction->legacyPayout->items as $item) {
                     if ($item->transaction?->sellerOrder) {

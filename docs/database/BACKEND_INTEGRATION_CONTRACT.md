@@ -23,6 +23,9 @@ This file is the shared contract for backend, UI, and database work. The executa
 | Seller organization | `seller_profiles`, `stores` |
 | Seller campaign rules | `store_promotions`, `store_promotion_products` |
 | Product offer | `products`, `product_variants`, `product_images` |
+| Seller-approved business category and compliance classification | `categories`, `seller_profiles.approved_category_id`, `products.category_id` |
+| Buyer marketplace category/subcategory | `marketplace_categories`, `marketplace_subcategories`, `marketplace_category_business_categories`, `products.marketplace_subcategory_id` |
+| Seller Store section/collection | `store_subcategories`, `products.subcategory_id` |
 | Stock history | `inventory_movements`; variant stock is the current cached balance |
 | Buyer purchase | `orders`; one marketplace checkout may contain multiple `seller_orders` |
 | Seller fulfillment | `seller_orders`, `order_items` |
@@ -81,14 +84,38 @@ This file is the shared contract for backend, UI, and database work. The executa
   participations use `pending_review`, `approved`, `rejected`, and `withdrawn`.
   Join, review, status, and price-affecting checkout operations are transactional
   and lock the campaign/participation/item rows in a consistent order.
+- New campaigns require an Admin-configured `minimum_discount_percent` from 1
+  through 90. The nullable column is reserved for legacy campaigns without a
+  configured minimum. Seller submissions provide a whole discount percentage
+  per product; the server resolves the effective pre-campaign Seller price for
+  every eligible active SKU, computes the campaign price in integer centavos,
+  and snapshots the baseline, percentage, and computed price. Admin may add or
+  raise a minimum on an existing campaign only when every pending/approved
+  participation item already meets it; existing submitted prices are never
+  rewritten. Admin activation remains required before Buyer pricing is live.
+  At checkout, a configured minimum is rechecked against the current effective
+  Seller price; campaign pricing is skipped if a Seller price change makes the
+  discount fall below the minimum. For Bearly-funded campaigns, pricing is also
+  skipped if the effective Seller price has risen above the submitted baseline,
+  preventing an unapproved subsidy increase. Legacy campaigns without a
+  configured minimum retain their existing behavior.
 - Campaign funding is exactly `seller` or `platform`; shared funding is not
-  supported. Seller-funded campaign prices reduce Seller proceeds. A
+  supported. New Admin-created Bearly campaigns are `platform`-funded and
+  require a positive `budget_minor`; Admin cannot create uncapped or
+  Seller-funded campaign events. Existing uncapped/Seller-funded campaign rows
+  remain readable, and legacy Seller-funded rows remain editable without
+  changing their funding or Seller-proceeds behavior. Seller-managed Product
+  Discounts and Store Vouchers remain independent Seller promotions. Campaign
+  funding is immutable after creation. Seller-funded campaign prices reduce
+  Seller proceeds. A
   platform-funded price difference is recorded in separate
   `campaign_platform_discount_minor` snapshots on Orders, Seller Orders, and
   Order Items and does not reduce the Seller earnings/commission basis.
 - Campaign pricing does not stack: use the best eligible effective price. The
   campaign price is already reflected in the Buyer item price/subtotal; do not
   subtract the same campaign difference a second time from checkout totals.
+  Buyer campaign pricing requires an approved participation and an active,
+  public campaign within its configured schedule.
   Revalidate campaign dates, approval, stock limits, per-Buyer limits, and
   Bearly budget under checkout locks. Order Item prices and discounts remain
   immutable snapshots if campaign terms later change.
@@ -119,15 +146,27 @@ Use constants or PHP backed enums in application code, while columns remain stri
 | COD cash custody | `collected`, `disputed`, `received_by_logistics`, `remitted_to_finance`, `reconciled` |
 | Refund cash custody | `awaiting_logistics_receipt`, `awaiting_rider_assignment`, `assigned_to_rider`, `cash_with_rider`, `out_for_delivery`, `cash_return_pending`, `logistics_return_verification`, `delivered_pending_verification`, `awaiting_finance_completion`, `completed` |
 | Dispute | `open`, `under_review`, `awaiting_response`, `escalated`, `resolved`, `closed` |
-| Commission/transaction/earning | `pending`, `available`, `held`, `processing`, `paid`, `reversed`, `cancelled` |
+| Commission/transaction/earning | `pending`, `posted`, `available`, `held`, `processing`, `paid`, `reversed`, `cancelled` |
+| Shipping settlement | `pending`, `remitted` |
 | Seller refund recovery | `pending`, `partially_recovered`, `recovered` |
 | Seller bank account | `active`, `inactive` |
 | Seller withdrawal | `pending_review`, `approved`, `processing`, `completed`, `rejected`, `failed` |
 | Seller withdrawal transfer | `pending_verification`, `verified`, `failed` |
 | Bearly campaign | `draft`, `open`, `active`, `paused`, `ended` |
 | Campaign participation | `pending_review`, `approved`, `rejected`, `withdrawn` |
+| Marketplace subcategory request | `pending_review`, `approved`, `rejected` |
 
 Do not add synonymous values (for example both `shipped` and `dispatched`) without updating this contract and every consumer.
+
+## Marketplace taxonomy
+
+- `categories` and `products.category_id` retain the Seller-approved business/compliance meaning. Buyer navigation is persisted separately in `marketplace_categories`; the many-to-many mapping table only identifies which Buyer branches Sellers in an approved business category may classify into.
+- `categories.is_registration_option` marks the exact 12 active Buyer-label Category rows selectable for new Seller registrations. Registration submits a Category ID, validates that it is active and mapped to its matching Buyer root, and persists that ID to `account_applications.business_category_id`; `users.business_category` remains a database-derived display/legacy text mirror. Other legacy Category rows remain active and non-selectable. Preserve existing legacy mappings; do not infer aliases. Historical application/profile/product IDs are not rewritten.
+- `products.marketplace_subcategory_id` is nullable and points to one canonical Buyer subcategory. It is separate from both `products.category_id` and `products.subcategory_id`; no automatic legacy text-matching/backfill is allowed.
+- A product may have at most one marketplace subcategory. Active Seller choices must be mapped to the authenticated Seller Profile's active `approved_category_id`; never accept a submitted business-category ID as authority. Fashion and Apparel can map to Women’s or Men’s Apparel, but each product receives exactly one branch.
+- Buyer category pages use canonical IDs/slugs, show only active subcategories that have Buyer-visible products, and may include unassigned legacy products in All items only for one-to-one business-category mappings. Ambiguous Fashion products remain out of both Buyer branches until classified.
+- Seller-created `store_subcategories` remain optional Store-only sections. They must never populate global Buyer category navigation or be used to filter products across stores.
+- Seller requests persist a server-derived business category, suggested name/reason, lowercase lifecycle status, reviewer user ID, decision timestamp/reason, and the approved/reused canonical IDs. Admin decisions and taxonomy edits retain audit actor/history. Used entries are deactivated rather than hard-deleted.
 
 ## Service contracts
 
@@ -153,8 +192,8 @@ Input: buyer, Buyer-owned persisted cart items, selected address, COD payment me
 
 - Record Rider-reported cash for each outbound COD shipment in `cod_cash_collections`, including the amount due, actual amount, signed difference, assigned Rider, owning Logistics provider, and collection time. A mismatch is preserved as `disputed`; it must not capture the marketplace payment or qualify Seller proceeds for settlement.
 - The cash custody sequence is Rider collection → the same Logistics provider acknowledges the exact Rider-recorded amount → Logistics physically hands off and records the exact cash amount → Admin/Finance physically counts and confirms the exact remitted amount. On acknowledgment, Bearly derives a unique `CODH-` Rider-to-Logistics reference from the collection number. On new Logistics remittances, Bearly derives a distinct `L2F-` Logistics-to-Finance reference from that same unique collection number; existing remittance-reference values are preserved. On new Finance reconciliation, Bearly generates a `BFR-<year>-<collection-id>` internal Finance cash receipt number, stores it in `finance_reference`, and offers a print/save-as-PDF view on Admin Seller Payments. Retrying the same reconciliation is idempotent and must not create a second event or receipt number. Existing Finance references are preserved. The printed Bearly record is not a BIR/tax invoice or bank deposit receipt. Store the three custody references separately (`logistics_reference`, `finance_remittance_reference`, and `finance_reference`). Every state transition appends a `cod_cash_collection_events` row with actor, amount, reference, and occurrence time; receipt views are Admin-only and audited.
-- Each positive posted Seller sale transaction not already linked to a legacy `seller_payout_items` row receives one immutable `sale_earning_pending` wallet-ledger entry. Wallet counters are integer centavos and must reconcile to append-only movement deltas and balance-after snapshots; lock the Seller wallet for every movement. Duplicate posting/release must not create a second credit.
-- Pending sale earnings become Available only after the Seller Order is completed, the original payment has `paid_at` and status `paid`, `partially_refunded`, or `refunded`, the seven-calendar-day return window has ended, and no return/refund case or refund payout remains open or processing. The release transaction locks the marketplace Order and Seller Order before current reads of case/refund state so a return request cannot race the eligibility check. For COD, every associated outbound shipment with a positive COD amount must have a Finance-reconciled collection whose `amount_reconciled_minor` exactly matches that shipment's COD amount. Finance reconciliation alone never releases earnings. `CODH-`, `L2F-`, and `BFR-` remain distinct cash-custody references and are never used as Seller bank-transfer references.
+- Each positive posted Seller sale transaction not already linked to a legacy `seller_payout_items` row receives one immutable `sale_earning_pending` wallet-ledger entry. For new `zone_based_v1` quotes only, the commission base and Seller sale proceeds exclude the original shipping fee; commission remains at the configured merchandise rate. `SellerOrder.total_minor`, Buyer totals, and COD due retain the full original shipping amount. Existing `flat_per_seller_order` and historical commission/proceeds snapshots are never rewritten. Wallet counters are integer centavos and must reconcile to append-only movement deltas and balance-after snapshots; lock the Seller wallet for every movement. Duplicate posting/release must not create a second credit.
+- Pending sale earnings become Available only after the Seller Order is completed, the original payment has `paid_at` and status `paid`, `partially_refunded`, or `refunded`, the three-calendar-day return window has ended, and no return/refund case or refund payout remains open or processing. The release transaction locks the marketplace Order and Seller Order before current reads of case/refund state so a return request cannot race the eligibility check. For COD, every associated outbound shipment with a positive COD amount must have a Finance-reconciled collection whose `amount_reconciled_minor` exactly matches that shipment's COD amount. Finance reconciliation alone never releases earnings. `CODH-`, `L2F-`, and `BFR-` remain distinct cash-custody references and are never used as Seller bank-transfer references.
 - Seller refund recoveries remain separate receivables. A closed refund case does not create an automatic wallet offset; recovery is recorded and collected through its separate recovery workflow. Existing `seller_payouts` and `seller_payout_items` remain auditable legacy records; wallet crediting excludes linked transactions. Historical paid payouts are represented in lifetime-withdrawn wallet history without crediting their sale transactions again. Legacy pending batches may only be completed after Finance verifies the external bank transfer; no new Seller payout batches are generated for wallet-ledger earnings.
 - Completing a legacy bank-transfer payout requires Finance to record the Seller's `receiving_bank_name` alongside the transfer reference and proof. Store that destination bank name on the payout and in its audit values; never use the field for an account number or COD custody reference.
 - Bank account numbers are encrypted at rest and masked to their last four digits in Seller lists. The owning active Seller and authorized Admin/Finance review may access the full number; access is restricted, and full account numbers are never copied into audit values. A withdrawal request stores bank/account snapshots, a Seller-scoped idempotency key, and an atomic reservation of Available funds. It creates status history, audit records, and a Seller notification.
@@ -174,15 +213,23 @@ Input: buyer, Buyer-owned persisted cart items, selected address, COD payment me
 - The owning Store may post one public response of up to 400 characters per review; cross-store replies are forbidden.
 - Public surfaces expose only `is_visible` reviews with masked buyer names. The Seller feedback list shows full buyer identity and is scoped to the authenticated Seller's Store.
 
-### Bearly shipping estimate
+### Zone-based Buyer shipping and quote snapshots
 
-- New or edited SKUs require packaged weight and L×W×H; legacy SKUs with null package data cannot be quoted.
+- New or edited SKUs require packaged weight and L×W×H; weight and each package dimension are stored to three decimal places. Legacy SKUs with null package data cannot be quoted.
 - Quote one combined parcel per `SellerOrder` using the deterministic `greedy_minimum_bounding_box_v1` estimate. Billable weight is `ceil(max(actual_weight, parcel_volume / divisor))`, with a one-kilogram minimum; package measurements remain in the quote for delivery planning.
-- New checkout quotes charge one flat standard fee per `SellerOrder`, independent of destination route and billable weight. The default is 5000 integer centavos; an Admin may revise the shared amount through `system_settings.shipping.seller_order_fee_minor` with an audit actor and reason. Marketplace shipping is the sum of the per-`SellerOrder` fees.
-- The divisor defaults to 5000 and can be changed through `system_settings.shipping.volumetric_divisor`. It changes the informational billable-weight estimate, not the Buyer fee.
-- Former route-tier `shipping_rates` rows are retained as legacy configuration/history and are not used to price new quotes. Existing `SellerOrder` fee snapshots are immutable and are not rewritten when the standard fee changes.
-- The Buyer quote is integrity-protected and expires after ten minutes. At placement, revalidate the cart, address, item snapshots, package estimate, and current flat fee against that accepted quote; changed terms require a refreshed quote. Persist the applied provider, pricing rule, quote inputs, and fee on each `SellerOrder`.
-- The applied fee is fixed after checkout. No remeasurement surcharge, waybill, dispatch, or extra Buyer charge is part of this phase.
+- New checkout quotes price one fee per combined `SellerOrder` shipment, never per product, quantity, or parcel. `zone_based_v1` defaults to a 5000-centavo base plus 500 centavos per zone level: zone 0 same municipality ₱50; zone 1 different municipality/same province ₱55; zone 2 different province/same region ₱60; zone 3 different region/same island group ₱65; zone 4 different island groups ₱70. Billable weight does not change the Buyer fee.
+- Zone classification uses the exact persisted 10-digit PSGC city code, the validated PSGC province-parent code when available, the versioned `resources/data/psgc-shipping-zones.json` province/region map, and its region-to-island-group mapping. The snapshot is sourced from PSGC Cloud `/regions` and `/provinces` data; island-group assignment is a versioned Bearly shipping classification. City/province display names are never used as geographic identity. Missing, unknown, mismatched, or same-region locations without a reliable province parent fail validation; no GPS, routing, or name-only fallback is permitted.
+- Admin edits the existing shipping settings: `system_settings.shipping.base_fee_minor`, `shipping.zone_surcharge_per_level_minor`, and `shipping.volumetric_divisor`. The initial base falls back to the old `shipping.seller_order_fee_minor` value if present, then to the 5000-centavo default; new Admin saves write the zone settings and leave legacy configuration/history intact. Changes include an audit actor, reason, and before/after values. Marketplace shipping is the sum of independently priced Seller Orders.
+- The volumetric divisor defaults to 5000 and changes only the informational billable-weight estimate. Former `shipping_rates` rows remain legacy and do not price new quotes.
+- Calculate the original zone fee before eligible vouchers. Preserve original fee, Buyer-paid shipping, platform shipping subsidy, funding source, zone level, base/surcharge, and canonical location inputs on each `SellerOrder` (`shipping_fee_minor`, `buyer_paid_shipping_fee_minor`, `platform_shipping_discount_minor`, `shipping_funding_source`, and `shipping_quote`). A platform shipping voucher is Bearly-funded and does not reduce the Logistics/Rider allocation. Preserve Store Voucher plus platform shipping-voucher stacking and existing eligibility/caps; Buyer-paid fee plus Bearly subsidy must equal the original fee and never be negative.
+- The Buyer quote is integrity-protected and expires after ten minutes. At placement, revalidate the cart, address identifiers, item snapshots, package estimate, zone inputs, current fee settings, and voucher allocations against the accepted quote; changed terms require a refreshed quote. Persist the applied provider, pricing rule, quote inputs, and immutable fee snapshot on each `SellerOrder`. Admin setting changes never rewrite confirmed orders.
+
+### Shipping settlement and Rider payout
+
+- A delivered, completed `zone_based_v1` Seller Order creates at most one `shipping_settlements` row and one linked Rider earning after the shared Seller Wallet eligibility gate passes: payment is paid, the Seller Order is completed, the three-calendar-day return window elapsed, no return/refund remains open or processing, and every positive COD shipment is exactly Finance-reconciled. Failed, cancelled, returned, and undelivered work is not eligible.
+- Split the original shipping fee in integer centavos: Logistics receives `floor(fee × 40 / 100)` and the Rider pool receives the exact remainder. The shares always sum to the original fee. The 40% recipient is the `shipments.logistics_profile_id` current custodian at delivery; the 60% pool goes only to the Rider whose completion made the whole shipment delivered, even when earlier parcels were assigned to other Riders.
+- Admin/Finance records the actual exact remittance of Logistics 40% plus Rider 60% to that provider, with method, reference, date, actor, reason, and an audit log. This remittance is only the shipping allocation; it is never the full COD/product cash. COD custody remains exclusively in the existing Rider → Logistics → Finance `cod_cash_collections` workflow.
+- Rider earnings use `pending` until Finance remits to Logistics, `posted` after that remittance, and `paid` only after the owning Logistics provider records the actual Rider payout. `rider_earning_payouts` is unique per earning and stores exact amount, method, reference, paid date, recording actor, and reason; Logistics can access and pay only its own Riders/records. Retry paths must not duplicate settlements, earnings, remittances, or Rider payouts.
 
 ### Shipment and waybill creation
 
@@ -226,7 +273,7 @@ Input: authenticated logistics user, scan token or waybill number, sorting cente
 
 ## Returns and refunds
 
-- A Buyer may request a return/refund within seven calendar days after the Seller Order's recorded completion time. Requests select immutable order-item quantities; the requested value is calculated from saved item and Seller discount snapshots and cannot exceed the remaining paid order value.
+- A Buyer may request a return/refund within three calendar days after the Seller Order's recorded completion time. Requests select immutable order-item quantities; the requested value is calculated from saved item and Seller discount snapshots and cannot exceed the remaining paid order value.
 - A case moves `awaiting_seller → under_review` only after the Seller submits a response and supporting evidence. Admin may then reject, request Buyer/Seller evidence, or approve; only Admin decides the claim.
 - A physical return is authorized with a zero-fee reverse shipment and pickup request assigned to the active Logistics provider serving the immutable Buyer/order city. Do not select an arbitrary provider or fall back to another provider if it is inactive; block approval until that provider is active. The return destination is the Seller pickup-address city; if different, the Buyer-city provider accepts the pickup and sends the received parcel through the audited inter-Logistics handoff to the Seller-city provider, which completes local sorting/delivery. Return parcel scans use the provider-scoped pickup, intake, sorting, dispatch, and Rider lifecycle; outbound Buyer tracking excludes return-purpose shipments.
 - Physical-return refunds remain pending until the Seller records inspection for every returned item. Only items marked sellable and restock are added to stock, with an `inventory_movements` record. Other inspected units are quarantined or disposed, not added to stock.

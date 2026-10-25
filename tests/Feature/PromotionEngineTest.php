@@ -26,8 +26,11 @@ use App\Services\PostalCodeLookup;
 use App\Services\ProductPricingService;
 use App\Services\PromotionService;
 use App\Services\SellerFulfillmentService;
+use App\Services\SellerOrderWorkflowService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -95,18 +98,223 @@ class PromotionEngineTest extends TestCase
         $this->assertDatabaseHas('promotion_redemptions', [
             'order_id' => $order->id,
             'funding_type' => PlatformPromotion::FUNDING_PLATFORM,
-            'status' => PromotionRedemption::STATUS_REDEEMED,
+            'status' => PromotionRedemption::STATUS_RESERVED,
         ]);
         $this->assertDatabaseHas('promotion_redemptions', [
             'order_id' => $order->id,
             'funding_type' => StorePromotion::FUNDING_SELLER,
-            'status' => PromotionRedemption::STATUS_REDEEMED,
+            'status' => PromotionRedemption::STATUS_RESERVED,
         ]);
         $this->assertDatabaseHas('promotion_claims', [
             'buyer_id' => $buyer->id,
             'store_promotion_id' => $storeVoucher->id,
             'status' => PromotionClaim::STATUS_USED,
         ]);
+    }
+
+    public function test_store_voucher_stacks_with_bearly_shipping_voucher_without_mixing_funding(): void
+    {
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'Santa Rosa');
+        $category = $this->category();
+        [, $store] = $this->sellerAndStore($category, 'promo-store-and-shipping');
+        $product = $this->product($store, $category, 'Store and Shipping Voucher Item');
+        $variant = $this->variant($product, 'STACK-SHIP-001', 10000, 5);
+        $cartItem = $this->cartItem($buyer, $variant, 2);
+        $this->setShippingFeeMinor(5000);
+
+        $storeVoucher = $this->storeVoucher($store, $product, [
+            'name' => 'Seller ₱10 merchandise voucher',
+            'voucher_amount_minor' => 1000,
+            'minimum_spend_minor' => 15000,
+        ]);
+        $shippingVoucher = $this->platformVoucher([
+            'name' => 'Bearly shipping voucher',
+            'kind' => PlatformPromotion::KIND_FREE_SHIPPING,
+            'discount_type' => PlatformPromotion::DISCOUNT_FREE_SHIPPING,
+            'value_minor' => null,
+            'max_discount_minor' => 3000,
+            'minimum_spend_minor' => 15000,
+            'is_claimable' => true,
+        ]);
+        $shippingVoucher->stores()->attach($store->id);
+
+        app(PromotionService::class)->claim($buyer, ['store_promotion_id' => $storeVoucher->id]);
+        app(PromotionService::class)->claim($buyer, ['platform_promotion_id' => $shippingVoucher->id]);
+
+        $quote = $this->quote($buyer, [$cartItem->id], $destination->id, [
+            'store_voucher_id' => $storeVoucher->id,
+            'platform_voucher_id' => $shippingVoucher->id,
+        ]);
+
+        $this->assertSame(20000, (int) $quote['subtotal_minor']);
+        $this->assertSame(1000, (int) $quote['seller_discount_minor']);
+        $this->assertSame(0, (int) $quote['platform_discount_minor']);
+        $this->assertSame(5000, (int) $quote['shipping_fee_minor']);
+        $this->assertSame(3000, (int) $quote['shipping_discount_minor']);
+        $this->assertSame(2000, (int) $quote['buyer_paid_shipping_fee_minor']);
+        $this->assertSame(3000, (int) $quote['platform_shipping_subsidy_minor']);
+        $this->assertSame('buyer_and_platform', $quote['shipping_funding_source']);
+        $this->assertSame([
+            'original_fee_minor' => 5000,
+            'buyer_paid_minor' => 2000,
+            'platform_subsidy_minor' => 3000,
+            'funding_source' => 'buyer_and_platform',
+            'funding_sources' => [
+                ['source' => 'buyer', 'amount_minor' => 2000],
+                ['source' => 'platform', 'amount_minor' => 3000],
+            ],
+        ], $quote['seller_orders'][0]['quote']['shipping_fee_breakdown']);
+        $this->assertSame(21000, (int) $quote['total_minor']);
+        $this->assertSame(24000, (int) $quote['seller_orders'][0]['total_minor']);
+        $this->assertSame(21000, (int) $quote['seller_orders'][0]['buyer_total_minor']);
+
+        $order = $this->place(
+            $buyer,
+            [$cartItem->id],
+            $destination->id,
+            $quote['quote_token'],
+            $quote['promotion_selection'],
+        );
+        $order->load(['sellerOrders.items', 'payments']);
+        $sellerOrder = $order->sellerOrders->firstOrFail();
+        $item = $sellerOrder->items->firstOrFail();
+
+        $this->assertSame(21000, (int) $order->total_minor);
+        $this->assertSame(1000, (int) $order->discount_minor);
+        $this->assertSame(0, (int) $order->platform_discount_minor);
+        $this->assertSame(3000, (int) $order->platform_shipping_discount_minor);
+        $this->assertSame(24000, (int) $sellerOrder->total_minor);
+        $this->assertSame(1000, (int) $sellerOrder->discount_minor);
+        $this->assertSame(5000, (int) $sellerOrder->shipping_fee_minor);
+        $this->assertSame(3000, (int) $sellerOrder->platform_shipping_discount_minor);
+        $this->assertSame(2000, (int) $order->buyer_paid_shipping_fee_minor);
+        $this->assertSame(2000, (int) $sellerOrder->buyer_paid_shipping_fee_minor);
+        $this->assertSame('buyer_and_platform', $order->shipping_funding_source);
+        $this->assertSame('buyer_and_platform', $sellerOrder->shipping_funding_source);
+        $this->assertSame(2000, (int) $sellerOrder->shipping_quote['shipping_fee_breakdown']['buyer_paid_minor']);
+        $this->assertSame(3000, (int) $sellerOrder->shipping_quote['shipping_fee_breakdown']['platform_subsidy_minor']);
+        $this->assertSame(1000, (int) $item->discount_minor);
+        $this->assertSame(0, (int) $item->platform_discount_minor);
+        $this->assertSame(21000, (int) $order->payments->first()->amount_minor);
+
+        $storeRedemption = PromotionRedemption::query()
+            ->where('order_id', $order->id)
+            ->where('store_promotion_id', $storeVoucher->id)
+            ->firstOrFail();
+        $shippingRedemption = PromotionRedemption::query()
+            ->where('order_id', $order->id)
+            ->where('platform_promotion_id', $shippingVoucher->id)
+            ->firstOrFail();
+
+        $this->assertSame(StorePromotion::FUNDING_SELLER, $storeRedemption->funding_type);
+        $this->assertSame(1000, (int) $storeRedemption->discount_minor);
+        $this->assertSame(0, (int) $storeRedemption->shipping_discount_minor);
+        $this->assertSame(PlatformPromotion::FUNDING_PLATFORM, $shippingRedemption->funding_type);
+        $this->assertSame(0, (int) $shippingRedemption->discount_minor);
+        $this->assertSame(3000, (int) $shippingRedemption->shipping_discount_minor);
+        $this->assertSame(PromotionRedemption::STATUS_RESERVED, $storeRedemption->status);
+        $this->assertSame(PromotionRedemption::STATUS_RESERVED, $shippingRedemption->status);
+        $this->assertDatabaseHas('promotion_claims', [
+            'buyer_id' => $buyer->id,
+            'store_promotion_id' => $storeVoucher->id,
+            'status' => PromotionClaim::STATUS_USED,
+        ]);
+        $this->assertDatabaseHas('promotion_claims', [
+            'buyer_id' => $buyer->id,
+            'platform_promotion_id' => $shippingVoucher->id,
+            'status' => PromotionClaim::STATUS_USED,
+        ]);
+
+        $storeAllocation = PromotionRedemptionAllocation::query()
+            ->where('promotion_redemption_id', $storeRedemption->id)
+            ->firstOrFail();
+        $shippingAllocation = PromotionRedemptionAllocation::query()
+            ->where('promotion_redemption_id', $shippingRedemption->id)
+            ->firstOrFail();
+        $this->assertSame((int) $item->id, (int) $storeAllocation->order_item_id);
+        $this->assertSame(1000, (int) $storeAllocation->amount_minor);
+        $this->assertNull($shippingAllocation->order_item_id);
+        $this->assertSame(3000, (int) $shippingAllocation->amount_minor);
+    }
+
+    public function test_one_platform_merchandise_and_shipping_voucher_can_stack_with_one_store_voucher(): void
+    {
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'Santa Rosa');
+        $category = $this->category();
+        [, $store] = $this->sellerAndStore($category, 'three-way-voucher-stack');
+        $product = $this->product($store, $category, 'Three Way Voucher Stack Item');
+        $variant = $this->variant($product, 'STACK-THREE-WAY-001', 20000, 5);
+        $cartItem = $this->cartItem($buyer, $variant, 1);
+
+        $storeVoucher = $this->storeVoucher($store, $product, [
+            'name' => 'Seller ₱5 off',
+            'voucher_amount_minor' => 500,
+        ]);
+        $platformMerchandiseVoucher = $this->platformVoucher([
+            'name' => 'Bearly ₱10 merchandise voucher',
+            'code' => 'MERCH10',
+            'value_minor' => 1000,
+            'is_claimable' => true,
+        ]);
+        $platformShippingVoucher = $this->platformPromotion([
+            'name' => 'Bearly ₱5 shipping voucher',
+            'kind' => PlatformPromotion::KIND_FREE_SHIPPING,
+            'discount_type' => PlatformPromotion::DISCOUNT_FREE_SHIPPING,
+            'value_minor' => null,
+            'max_discount_minor' => 500,
+            'is_claimable' => true,
+        ]);
+
+        app(PromotionService::class)->claim($buyer, ['store_promotion_id' => $storeVoucher->id]);
+        app(PromotionService::class)->claim($buyer, ['platform_promotion_id' => $platformMerchandiseVoucher->id]);
+        app(PromotionService::class)->claim($buyer, ['platform_promotion_id' => $platformShippingVoucher->id]);
+
+        $conflictingMerchandiseVoucher = $this->platformVoucher([
+            'name' => 'Second Bearly merchandise voucher',
+            'code' => 'MERCH20',
+            'value_minor' => 2000,
+        ]);
+        $this->actingAs($buyer)
+            ->postJson(route('checkout.quote'), [
+                'address_id' => $destination->id,
+                'cart_item_ids' => [$cartItem->id],
+                'platform_voucher_id' => $platformMerchandiseVoucher->id,
+                'platform_shipping_voucher_id' => $platformShippingVoucher->id,
+                'store_voucher_id' => $storeVoucher->id,
+                'voucher_code' => $conflictingMerchandiseVoucher->code,
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('voucher_code');
+
+        $quote = $this->quote($buyer, [$cartItem->id], $destination->id, [
+            'platform_voucher_id' => $platformMerchandiseVoucher->id,
+            'platform_shipping_voucher_id' => $platformShippingVoucher->id,
+            'store_voucher_id' => $storeVoucher->id,
+        ]);
+
+        $this->assertSame(1000, (int) $quote['platform_discount_minor']);
+        $this->assertSame(500, (int) $quote['shipping_discount_minor']);
+        $this->assertSame(500, (int) $quote['seller_discount_minor']);
+        $this->assertSame(23000, (int) $quote['total_minor']);
+        $this->assertCount(3, $quote['applied_promotions']);
+        $this->assertSame((int) $platformMerchandiseVoucher->id, (int) $quote['promotion_selection']['platform_voucher_id']);
+        $this->assertSame((int) $platformShippingVoucher->id, (int) $quote['promotion_selection']['platform_shipping_voucher_id']);
+
+        $order = $this->place($buyer, [$cartItem->id], $destination->id, $quote['quote_token'], $quote['promotion_selection']);
+        $sellerOrder = $order->sellerOrders->sole();
+        $this->assertSame(23000, (int) $order->total_minor);
+        $this->assertSame(1500, (int) $order->discount_minor);
+        $this->assertSame(500, (int) $order->platform_shipping_discount_minor);
+        $this->assertSame(24500, (int) $sellerOrder->total_minor);
+        $this->assertSame(500, (int) $sellerOrder->discount_minor);
+        $this->assertSame(1000, (int) $sellerOrder->platform_discount_minor);
+        $this->assertSame(500, (int) $sellerOrder->platform_shipping_discount_minor);
+        $this->assertSame(3, PromotionRedemption::query()->where('order_id', $order->id)->count());
+        $this->assertSame(3, PromotionRedemptionAllocation::query()
+            ->whereIn('promotion_redemption_id', PromotionRedemption::query()->where('order_id', $order->id)->select('id'))
+            ->count());
     }
 
     public function test_platform_voucher_suppresses_automatic_merchandise_discount(): void
@@ -238,7 +446,8 @@ class PromotionEngineTest extends TestCase
         ]);
         $this->assertSame(1500, (int) $selectedQuote['shipping_discount_minor']);
         $this->assertSame(13000, (int) $selectedQuote['total_minor']);
-        $this->assertSame((int) $claimable->id, (int) $selectedQuote['promotion_selection']['platform_voucher_id']);
+        $this->assertNull($selectedQuote['promotion_selection']['platform_voucher_id']);
+        $this->assertSame((int) $claimable->id, (int) $selectedQuote['promotion_selection']['platform_shipping_voucher_id']);
     }
 
     public function test_free_shipping_without_a_cap_covers_actual_quoted_shipping_and_records_allocation(): void
@@ -264,6 +473,9 @@ class PromotionEngineTest extends TestCase
         $quote = $this->quote($buyer, [$cartItem->id], $destination->id);
         $this->assertSame($shippingFeeMinor, (int) $quote['shipping_fee_minor']);
         $this->assertSame($shippingFeeMinor, (int) $quote['shipping_discount_minor']);
+        $this->assertSame(0, (int) $quote['buyer_paid_shipping_fee_minor']);
+        $this->assertSame($shippingFeeMinor, (int) $quote['platform_shipping_subsidy_minor']);
+        $this->assertSame('platform', $quote['shipping_funding_source']);
         $this->assertSame(10000, (int) $quote['total_minor']);
 
         $order = $this->place($buyer, [$cartItem->id], $destination->id, $quote['quote_token'], $quote['promotion_selection']);
@@ -277,9 +489,13 @@ class PromotionEngineTest extends TestCase
             ->firstOrFail();
 
         $this->assertSame($shippingFeeMinor, (int) $order->shipping_fee_minor);
+        $this->assertSame(0, (int) $order->buyer_paid_shipping_fee_minor);
+        $this->assertSame('platform', $order->shipping_funding_source);
         $this->assertSame($shippingFeeMinor, (int) $order->platform_shipping_discount_minor);
         $this->assertSame(10000, (int) $order->total_minor);
         $this->assertSame($shippingFeeMinor, (int) $sellerOrder->shipping_fee_minor);
+        $this->assertSame(0, (int) $sellerOrder->buyer_paid_shipping_fee_minor);
+        $this->assertSame('platform', $sellerOrder->shipping_funding_source);
         $this->assertSame($shippingFeeMinor, (int) $redemption->shipping_discount_minor);
         $this->assertSame(0, (int) $redemption->discount_minor);
         $this->assertNull($allocation->order_item_id);
@@ -586,6 +802,7 @@ class PromotionEngineTest extends TestCase
             'code' => 'CANCEL10',
             'value_minor' => 1000,
             'is_claimable' => true,
+            'budget_minor' => 1000,
         ]);
 
         $this->actingAs($buyer)
@@ -618,6 +835,325 @@ class PromotionEngineTest extends TestCase
             'platform_voucher_id' => $platformVoucher->id,
         ]);
         $this->assertSame(1000, (int) $requote['platform_discount_minor']);
+    }
+
+    public function test_payment_confirmation_redeems_reservations_once(): void
+    {
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'Santa Rosa');
+        $category = $this->category();
+        [, $store] = $this->sellerAndStore($category, 'promotion-payment-confirmation');
+        $product = $this->product($store, $category, 'Promotion Payment Confirmation Item');
+        $variant = $this->variant($product, 'PROMO-PAYMENT-001', 10000, 3);
+        $cartItem = $this->cartItem($buyer, $variant, 1);
+        $voucher = $this->platformVoucher([
+            'name' => 'Payment Confirmation Voucher',
+            'code' => 'PAYMENT-CONFIRM-500',
+            'value_minor' => 500,
+        ]);
+        $quote = $this->quote($buyer, [$cartItem->id], $destination->id, ['voucher_code' => $voucher->code]);
+        $order = $this->place($buyer, [$cartItem->id], $destination->id, $quote['quote_token'], $quote['promotion_selection']);
+        $redemption = PromotionRedemption::query()->where('order_id', $order->id)->sole();
+        $this->assertSame(PromotionRedemption::STATUS_RESERVED, $redemption->status);
+        $this->assertNull($redemption->redeemed_at);
+
+        $payment = $order->payments()->firstOrFail();
+        $payment->update(['method' => 'gcash']);
+        $admin = $this->user('admin');
+        $this->actingAs($admin)
+            ->post(route('admin.orders.payments.confirm', $payment), ['provider_reference' => 'PROMO-PAYMENT-REF-1'])
+            ->assertRedirect();
+
+        $redemption->refresh();
+        $this->assertSame(PromotionRedemption::STATUS_REDEEMED, $redemption->status);
+        $this->assertNotNull($redemption->redeemed_at);
+
+        $this->actingAs($buyer)
+            ->get(route('checkout.confirmation', $order->order_no))
+            ->assertOk()
+            ->assertSee('Offers applied to this order')
+            ->assertSee('Payment Confirmation Voucher')
+            ->assertSee('Applied');
+
+        $this->actingAs($admin)
+            ->get(route('admin.transactions'))
+            ->assertOk()
+            ->assertSee('Bearly offer: Payment Confirmation Voucher')
+            ->assertSee('Merchandise subsidy ₱5.00')
+            ->assertSee('Shipping subsidy ₱0.00');
+
+        $this->actingAs($admin)
+            ->post(route('admin.orders.payments.confirm', $payment), ['provider_reference' => 'PROMO-PAYMENT-REF-1'])
+            ->assertRedirect();
+        $this->assertSame(1, PromotionRedemption::query()->where('order_id', $order->id)->count());
+    }
+
+    public function test_platform_promotion_computed_lifecycle_states_use_manila_schedule_and_usage(): void
+    {
+        $now = now('Asia/Manila');
+        $draft = $this->platformVoucher([
+            'name' => 'Draft Promotion Lifecycle',
+            'status' => PlatformPromotion::STATUS_DRAFT,
+            'starts_on' => $now->copy()->subDay()->toDateString(),
+            'ends_on' => $now->copy()->subDay()->toDateString(),
+        ]);
+        $scheduled = $this->platformVoucher([
+            'name' => 'Scheduled Promotion Lifecycle',
+            'starts_on' => $now->copy()->addDay()->toDateString(),
+            'starts_time' => '00:00:00',
+            'ends_on' => $now->copy()->addDays(2)->toDateString(),
+            'ends_time' => '23:59:59',
+        ]);
+        $paused = $this->platformVoucher([
+            'name' => 'Paused Promotion Lifecycle',
+            'status' => PlatformPromotion::STATUS_PAUSED,
+        ]);
+        $expired = $this->platformVoucher([
+            'name' => 'Expired Promotion Lifecycle',
+            'ends_on' => $now->copy()->subDay()->toDateString(),
+            'ends_time' => '23:59:59',
+        ]);
+        $exhausted = $this->platformVoucher([
+            'name' => 'Exhausted Promotion Lifecycle',
+            'redemption_limit' => 1,
+        ]);
+
+        $this->assertSame(PlatformPromotion::STATUS_DRAFT, $draft->statusKey($now));
+        $this->assertSame(PlatformPromotion::STATUS_SCHEDULED, $scheduled->statusKey($now));
+        $this->assertSame(PlatformPromotion::STATUS_PAUSED, $paused->statusKey($now));
+        $this->assertSame(PlatformPromotion::STATUS_EXPIRED, $expired->statusKey($now));
+        $this->assertTrue($exhausted->isExhausted(1, 0));
+        $this->assertFalse($exhausted->isExhausted(0, 0));
+
+        $expired->update(['status' => PlatformPromotion::STATUS_PAUSED]);
+        $admin = $this->user('admin');
+        $this->actingAs($admin)
+            ->patch(route('admin.promotions.status', $expired), ['status' => PlatformPromotion::STATUS_ACTIVE])
+            ->assertSessionHasErrors('status');
+    }
+
+    public function test_automatic_offers_enforce_per_buyer_total_redemption_and_full_budget_limits(): void
+    {
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'Santa Rosa');
+        $category = $this->category();
+        [, $store] = $this->sellerAndStore($category, 'automatic-usage-limits');
+        $product = $this->product($store, $category, 'Automatic Usage Limit Item');
+        $variant = $this->variant($product, 'AUTO-LIMIT-001', 10000, 10);
+        $promotion = $this->platformPromotion([
+            'name' => 'One Use Per Buyer, Two Total',
+            'kind' => PlatformPromotion::KIND_AUTOMATIC_DISCOUNT,
+            'discount_type' => PlatformPromotion::DISCOUNT_FIXED,
+            'value_minor' => 500,
+            'per_buyer_limit' => 1,
+            'redemption_limit' => 2,
+        ]);
+
+        $firstItem = $this->cartItem($buyer, $variant, 1);
+        $firstQuote = $this->quote($buyer, [$firstItem->id], $destination->id);
+        $this->assertSame(500, (int) $firstQuote['platform_discount_minor']);
+        $firstOrder = $this->place($buyer, [$firstItem->id], $destination->id, $firstQuote['quote_token'], $firstQuote['promotion_selection']);
+        $this->assertSame(PromotionRedemption::STATUS_RESERVED, $firstOrder->promotionRedemptions()->sole()->status);
+
+        $secondItem = $this->cartItem($buyer, $variant, 1);
+        $secondQuote = $this->quote($buyer, [$secondItem->id], $destination->id);
+        $this->assertSame(0, (int) $secondQuote['platform_discount_minor'], 'A reserved order counts against the buyer limit.');
+
+        $secondBuyer = $this->user('buyer');
+        $secondDestination = $this->address($secondBuyer, 'Santa Rosa');
+        $thirdItem = $this->cartItem($secondBuyer, $variant, 1);
+        $thirdQuote = $this->quote($secondBuyer, [$thirdItem->id], $secondDestination->id);
+        $this->assertSame(500, (int) $thirdQuote['platform_discount_minor']);
+        $this->place($secondBuyer, [$thirdItem->id], $secondDestination->id, $thirdQuote['quote_token'], $thirdQuote['promotion_selection']);
+
+        $thirdBuyer = $this->user('buyer');
+        $thirdDestination = $this->address($thirdBuyer, 'Santa Rosa');
+        $fourthItem = $this->cartItem($thirdBuyer, $variant, 1);
+        $fourthQuote = $this->quote($thirdBuyer, [$fourthItem->id], $thirdDestination->id);
+        $this->assertSame(0, (int) $fourthQuote['platform_discount_minor'], 'Reserved redemptions count against the total limit.');
+        $this->assertSame(2, PromotionRedemption::query()->where('platform_promotion_id', $promotion->id)->count());
+
+        $budgeted = $this->platformPromotion([
+            'name' => 'Automatic Hard Budget',
+            'kind' => PlatformPromotion::KIND_AUTOMATIC_DISCOUNT,
+            'discount_type' => PlatformPromotion::DISCOUNT_FIXED,
+            'value_minor' => 500,
+            'per_buyer_limit' => 5,
+            'budget_minor' => 800,
+        ]);
+        $budgetBuyer = $this->user('buyer');
+        $budgetAddress = $this->address($budgetBuyer, 'Santa Rosa');
+        $budgetItem = $this->cartItem($budgetBuyer, $variant, 1);
+        $budgetQuote = $this->quote($budgetBuyer, [$budgetItem->id], $budgetAddress->id);
+        $this->assertSame(500, (int) $budgetQuote['platform_discount_minor']);
+        $this->place($budgetBuyer, [$budgetItem->id], $budgetAddress->id, $budgetQuote['quote_token'], $budgetQuote['promotion_selection']);
+
+        $remainingBudgetBuyer = $this->user('buyer');
+        $remainingBudgetAddress = $this->address($remainingBudgetBuyer, 'Santa Rosa');
+        $remainingBudgetItem = $this->cartItem($remainingBudgetBuyer, $variant, 1);
+        $remainingBudgetQuote = $this->quote($remainingBudgetBuyer, [$remainingBudgetItem->id], $remainingBudgetAddress->id);
+        $this->assertSame(0, (int) $remainingBudgetQuote['platform_discount_minor'], 'An automatic offer is skipped when its full benefit exceeds the remaining budget.');
+        $budgetOffer = collect($remainingBudgetQuote['promotions']['automatic'])->firstWhere('id', (int) $budgeted->id);
+        $this->assertNotNull($budgetOffer);
+        $this->assertFalse($budgetOffer['eligible']);
+        $this->assertStringContainsString('enough budget', $budgetOffer['reason']);
+        $this->assertArrayNotHasKey('budget_minor', $budgetOffer);
+        $this->assertSame(500, (int) PromotionRedemption::query()
+            ->where('platform_promotion_id', $budgeted->id)
+            ->whereIn('status', [PromotionRedemption::STATUS_RESERVED, PromotionRedemption::STATUS_REDEEMED])
+            ->sum('discount_minor'));
+    }
+
+    public function test_checkout_rechecks_redemption_limits_after_a_quote_before_reserving_a_voucher(): void
+    {
+        $category = $this->category();
+        [, $store] = $this->sellerAndStore($category, 'promotion-stale-quote-limit');
+        $product = $this->product($store, $category, 'Limited Voucher Item');
+        $variant = $this->variant($product, 'LIMITED-VOUCHER-001', 10000, 5);
+        $promotion = $this->platformVoucher([
+            'name' => 'One Redemption Voucher',
+            'code' => 'ONE-REDEMPTION',
+            'value_minor' => 500,
+            'redemption_limit' => 1,
+        ]);
+
+        $firstBuyer = $this->user('buyer');
+        $firstAddress = $this->address($firstBuyer, 'Santa Rosa');
+        $firstCartItem = $this->cartItem($firstBuyer, $variant, 1);
+        $firstQuote = $this->quote($firstBuyer, [$firstCartItem->id], $firstAddress->id, [
+            'voucher_code' => $promotion->code,
+        ]);
+
+        $secondBuyer = $this->user('buyer');
+        $secondAddress = $this->address($secondBuyer, 'Santa Rosa');
+        $secondCartItem = $this->cartItem($secondBuyer, $variant, 1);
+        $secondQuote = $this->quote($secondBuyer, [$secondCartItem->id], $secondAddress->id, [
+            'voucher_code' => $promotion->code,
+        ]);
+        $this->assertSame(500, (int) $firstQuote['platform_discount_minor']);
+        $this->assertSame(500, (int) $secondQuote['platform_discount_minor']);
+
+        $firstOrder = $this->place(
+            $firstBuyer,
+            [$firstCartItem->id],
+            $firstAddress->id,
+            $firstQuote['quote_token'],
+            $firstQuote['promotion_selection'],
+        );
+        $this->assertSame(PromotionRedemption::STATUS_RESERVED, $firstOrder->promotionRedemptions()->sole()->status);
+
+        $this->actingAs($secondBuyer)
+            ->postJson(route('checkout.place'), [
+                'checkout_request_key' => (string) Str::uuid(),
+                'address_id' => $secondAddress->id,
+                'cart_item_ids' => [$secondCartItem->id],
+                'quote_token' => $secondQuote['quote_token'],
+                'payment_method' => 'cod',
+                'voucher_code' => $promotion->code,
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('platform_voucher_id');
+
+        $this->assertSame(1, PromotionRedemption::query()->where('platform_promotion_id', $promotion->id)->count());
+    }
+
+    public function test_partial_seller_cancellation_releases_only_that_seller_orders_promotion_allocations(): void
+    {
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'Santa Rosa');
+        $category = $this->category();
+        [$sellerA, $storeA] = $this->sellerAndStore($category, 'partial-promo-cancel-a');
+        [$sellerB, $storeB] = $this->sellerAndStore($category, 'partial-promo-cancel-b');
+        $productA = $this->product($storeA, $category, 'Partial Cancellation Item A');
+        $productB = $this->product($storeB, $category, 'Partial Cancellation Item B');
+        $variantA = $this->variant($productA, 'PARTIAL-PROMO-A-001', 10000, 5);
+        $variantB = $this->variant($productB, 'PARTIAL-PROMO-B-001', 10000, 5);
+        $cartItemA = $this->cartItem($buyer, $variantA, 1);
+        $cartItemB = $this->cartItem($buyer, $variantB, 1);
+
+        $merchandiseVoucher = $this->platformVoucher([
+            'name' => 'Partially Released Merchandise Voucher',
+            'code' => 'PARTIAL-MERCH',
+            'value_minor' => 1000,
+            'per_buyer_limit' => 2,
+            'budget_minor' => 1500,
+        ]);
+        $shippingVoucher = $this->platformPromotion([
+            'name' => 'Partially Released Shipping Voucher',
+            'kind' => PlatformPromotion::KIND_FREE_SHIPPING,
+            'discount_type' => PlatformPromotion::DISCOUNT_FREE_SHIPPING,
+            'value_minor' => null,
+            'per_buyer_limit' => 2,
+            'budget_minor' => 19999,
+            'is_claimable' => true,
+        ]);
+        app(PromotionService::class)->claim($buyer, ['platform_promotion_id' => $shippingVoucher->id]);
+
+        $quote = $this->quote($buyer, [$cartItemA->id, $cartItemB->id], $destination->id, [
+            'platform_shipping_voucher_id' => $shippingVoucher->id,
+            'voucher_code' => $merchandiseVoucher->code,
+        ]);
+        $this->assertSame(1000, (int) $quote['platform_discount_minor']);
+        $this->assertSame(10000, (int) $quote['shipping_discount_minor']);
+        $order = $this->place(
+            $buyer,
+            [$cartItemA->id, $cartItemB->id],
+            $destination->id,
+            $quote['quote_token'],
+            $quote['promotion_selection'],
+        );
+        $sellerOrderA = $order->sellerOrders->firstWhere('store_id', (int) $storeA->id);
+        $sellerOrderB = $order->sellerOrders->firstWhere('store_id', (int) $storeB->id);
+        $this->assertNotNull($sellerOrderA);
+        $this->assertNotNull($sellerOrderB);
+
+        $merchandiseRedemption = PromotionRedemption::query()
+            ->where('order_id', $order->id)
+            ->where('platform_promotion_id', $merchandiseVoucher->id)
+            ->firstOrFail();
+        $shippingRedemption = PromotionRedemption::query()
+            ->where('order_id', $order->id)
+            ->where('platform_promotion_id', $shippingVoucher->id)
+            ->firstOrFail();
+        $allocationsForStoreA = PromotionRedemptionAllocation::query()
+            ->where('seller_order_id', $sellerOrderA->id)
+            ->whereIn('promotion_redemption_id', [$merchandiseRedemption->id, $shippingRedemption->id])
+            ->get();
+        $allocationsForStoreB = PromotionRedemptionAllocation::query()
+            ->where('seller_order_id', $sellerOrderB->id)
+            ->whereIn('promotion_redemption_id', [$merchandiseRedemption->id, $shippingRedemption->id])
+            ->get();
+        $this->assertCount(2, $allocationsForStoreA);
+        $this->assertCount(2, $allocationsForStoreB);
+
+        app(SellerOrderWorkflowService::class)->transition(
+            $sellerA,
+            (int) $sellerOrderA->id,
+            'cancel',
+            'Seller cannot fulfill this order',
+        );
+
+        $merchandiseRedemption->refresh();
+        $shippingRedemption->refresh();
+        $this->assertSame(PromotionRedemption::STATUS_RESERVED, $merchandiseRedemption->status);
+        $this->assertSame(PromotionRedemption::STATUS_RESERVED, $shippingRedemption->status);
+        $this->assertSame(500, (int) $merchandiseRedemption->discount_minor);
+        $this->assertSame(5000, (int) $shippingRedemption->shipping_discount_minor);
+        $this->assertSame(500, (int) $allocationsForStoreA->where('promotion_redemption_id', $merchandiseRedemption->id)->sole()->fresh()->released_amount_minor);
+        $this->assertSame(5000, (int) $allocationsForStoreA->where('promotion_redemption_id', $shippingRedemption->id)->sole()->fresh()->released_amount_minor);
+        $this->assertSame(0, (int) $allocationsForStoreB->sum('released_amount_minor'));
+
+        $nextBuyer = $this->user('buyer');
+        $nextDestination = $this->address($nextBuyer, 'Santa Rosa');
+        app(PromotionService::class)->claim($nextBuyer, ['platform_promotion_id' => $shippingVoucher->id]);
+        $nextItemA = $this->cartItem($nextBuyer, $variantA, 1);
+        $nextItemB = $this->cartItem($nextBuyer, $variantB, 1);
+        $nextQuote = $this->quote($nextBuyer, [$nextItemA->id, $nextItemB->id], $nextDestination->id, [
+            'platform_shipping_voucher_id' => $shippingVoucher->id,
+            'voucher_code' => $merchandiseVoucher->code,
+        ]);
+        $this->assertSame(1000, (int) $nextQuote['platform_discount_minor'], 'Released merchandise allocation restores the corresponding budget.');
+        $this->assertSame(10000, (int) $nextQuote['shipping_discount_minor'], 'Only the cancelled Seller Order share is released from the shipping budget.');
     }
 
     public function test_cod_amount_subtracts_platform_merchandise_and_shipping_discounts(): void
@@ -681,6 +1217,7 @@ class PromotionEngineTest extends TestCase
     public function test_admin_can_create_platform_voucher_and_pause_it(): void
     {
         $admin = $this->user('admin');
+        Storage::fake('public');
         $startsOn = now('Asia/Manila')->toDateString();
         $endsOn = now('Asia/Manila')->addDays(14)->toDateString();
 
@@ -701,7 +1238,12 @@ class PromotionEngineTest extends TestCase
             'is_public' => 1,
             'is_featured' => 1,
             'scope_type' => 'all',
-        ])->assertRedirect(route('admin.promotions'));
+            'banner' => UploadedFile::fake()->create('offer-banner.jpg', 10, 'image/jpeg'),
+            'banner_title' => 'A platform voucher banner',
+            'banner_link' => 'https://example.com/platform-voucher',
+        ])->assertRedirect(route('admin.promotions'))
+            ->assertSessionHas('success_title', 'Promotion created')
+            ->assertSessionHas('success', 'Platform voucher created successfully: Bearly Payday ₱15.50 off.');
 
         $promotion = PlatformPromotion::query()->where('code', 'ADMIN1550')->firstOrFail();
         $this->assertSame(1550, (int) $promotion->value_minor);
@@ -709,7 +1251,12 @@ class PromotionEngineTest extends TestCase
         $this->assertSame('08:15:00', $promotion->starts_time);
         $this->assertSame('23:59:59', $promotion->ends_time);
         $this->assertTrue($promotion->is_claimable);
-        $this->assertTrue($promotion->is_featured);
+        $this->assertFalse($promotion->is_featured);
+        $this->assertNull($promotion->banner_path);
+        $this->assertNull($promotion->banner_disk);
+        $this->assertNull($promotion->banner_title);
+        $this->assertNull($promotion->banner_link);
+        $this->assertSame([], Storage::disk('public')->allFiles());
         $this->assertDatabaseHas('audit_logs', [
             'action' => 'promotion.created',
             'module' => 'marketing',
@@ -721,7 +1268,16 @@ class PromotionEngineTest extends TestCase
         $this->actingAs($admin)
             ->get(route('admin.promotions'))
             ->assertOk()
-            ->assertSee('Bearly Payday ₱15.50 off');
+            ->assertSee('Platform Vouchers &amp; Automatic Offers', false)
+            ->assertDontSee('Platform Vouchers &amp;amp; Automatic Offers', false)
+            ->assertSee('Bearly Payday ₱15.50 off')
+            ->assertSee('data-admin-server-toast', false)
+            ->assertSee('class="toast-stack admin-server-toast-stack"', false)
+            ->assertSeeText('Platform voucher created successfully: Bearly Payday ₱15.50 off.')
+            ->assertDontSee('Banner image')
+            ->assertDontSee('Banner title')
+            ->assertDontSee('Banner link')
+            ->assertDontSee('Feature on the homepage');
 
         $this->actingAs($admin)->patch(route('admin.promotions.status', $promotion), [
             'status' => PlatformPromotion::STATUS_PAUSED,
@@ -752,6 +1308,69 @@ class PromotionEngineTest extends TestCase
         ])->assertSessionHasErrors('code');
     }
 
+    public function test_campaign_banners_are_only_available_on_the_campaign_form(): void
+    {
+        $admin = $this->user('admin');
+
+        $this->actingAs($admin)
+            ->get(route('admin.promotions'))
+            ->assertOk()
+            ->assertDontSee('name="banner"', false)
+            ->assertDontSee('name="banner_title"', false)
+            ->assertDontSee('name="banner_link"', false)
+            ->assertDontSee('name="is_featured"', false)
+            ->assertDontSee('Feature on the homepage');
+
+        $this->actingAs($admin)
+            ->get(route('admin.campaigns.create'))
+            ->assertOk()
+            ->assertSee('name="banner"', false)
+            ->assertSee('name="banner_title"', false)
+            ->assertSee('name="banner_link"', false)
+            ->assertSee('name="is_featured"', false)
+            ->assertSee('Feature on the homepage');
+    }
+
+    public function test_public_offer_payload_only_exposes_banner_creative_for_campaigns(): void
+    {
+        $voucher = $this->platformVoucher([
+            'banner_path' => 'promotions/legacy-voucher.jpg',
+            'banner_disk' => 'public',
+            'banner_title' => 'Legacy voucher banner',
+            'banner_link' => 'https://example.com/legacy-voucher',
+            'is_featured' => true,
+        ]);
+        $campaign = $this->platformPromotion([
+            'name' => 'Payday Campaign Banner',
+            'kind' => PlatformPromotion::KIND_SELLER_CAMPAIGN,
+            'campaign_type' => PlatformPromotion::CAMPAIGN_PAYDAY_SALE,
+            'banner_path' => 'campaigns/payday-banner.jpg',
+            'banner_disk' => 'public',
+            'banner_title' => 'Payday campaign creative',
+            'banner_link' => 'https://example.com/payday-campaign',
+            'is_featured' => true,
+        ]);
+
+        $offers = app(PromotionService::class)
+            ->publicOffers([PlatformPromotion::KIND_VOUCHER, PlatformPromotion::KIND_SELLER_CAMPAIGN])
+            ->keyBy('id');
+
+        $this->assertNull($offers[$voucher->id]['banner_url']);
+        $this->assertNull($offers[$voucher->id]['banner_title']);
+        $this->assertNull($offers[$voucher->id]['banner_link']);
+        $this->assertSame(Storage::disk('public')->url('campaigns/payday-banner.jpg'), $offers[$campaign->id]['banner_url']);
+        $this->assertSame('Payday campaign creative', $offers[$campaign->id]['banner_title']);
+        $this->assertSame('https://example.com/payday-campaign', $offers[$campaign->id]['banner_link']);
+
+        $featuredOffers = app(PromotionService::class)
+            ->publicOffers([PlatformPromotion::KIND_VOUCHER, PlatformPromotion::KIND_SELLER_CAMPAIGN], featuredOnly: true)
+            ->keyBy('id');
+        $this->assertArrayNotHasKey($voucher->id, $featuredOffers);
+        $this->assertArrayHasKey($campaign->id, $featuredOffers);
+        $this->assertFalse($offers[$voucher->id]['is_featured']);
+        $this->assertTrue($offers[$campaign->id]['is_featured']);
+    }
+
     public function test_admin_free_shipping_maximum_is_per_checkout_and_disabled_caps_are_not_stored(): void
     {
         $admin = $this->user('admin');
@@ -762,9 +1381,9 @@ class PromotionEngineTest extends TestCase
             ->get(route('admin.promotions'))
             ->assertOk()
             ->assertSee('Maximum shipping discount (₱)', false)
-            ->assertSee('Optional cap per checkout; blank covers the full eligible shipping cost.', false)
-            ->assertSee('Optional cap per checkout; limits the percentage-based shipping discount.', false)
-            ->assertSee('Checked: buyers claim it in My Vouchers and select it at checkout. Unchecked: it applies automatically when eligible.', false);
+            ->assertSee('Optional cap per checkout. Blank covers the full eligible shipping fee, within the offer budget.', false)
+            ->assertSee('Optional cap per checkout on the shipping discount.', false)
+            ->assertSee('Checked: buyers claim it in My Vouchers. Unchecked: it applies automatically when eligible.', false);
         $this->assertSame(1, preg_match(
             '/<label\b(?=[^>]*data-promotion-max-discount-field)(?=[^>]*\bhidden\b)[^>]*>.*?<input\b(?=[^>]*name="max_discount")(?=[^>]*\bdisabled\b)[^>]*>/s',
             $form->getContent(),
@@ -784,7 +1403,9 @@ class PromotionEngineTest extends TestCase
             'end_time' => '23:59',
             'per_buyer_limit' => 1,
             'scope_type' => 'all',
-        ])->assertRedirect(route('admin.promotions'));
+        ])->assertRedirect(route('admin.promotions'))
+            ->assertSessionHas('success_title', 'Promotion created')
+            ->assertSessionHas('success', 'Free shipping voucher created successfully: Capped Free Shipping.');
 
         $freeShipping = PlatformPromotion::query()->where('name', 'Capped Free Shipping')->firstOrFail();
         $this->assertSame(1234, (int) $freeShipping->max_discount_minor);
@@ -805,10 +1426,91 @@ class PromotionEngineTest extends TestCase
             'end_time' => '23:59',
             'per_buyer_limit' => 1,
             'scope_type' => 'all',
-        ])->assertRedirect(route('admin.promotions'));
+        ])->assertRedirect(route('admin.promotions'))
+            ->assertSessionHas('success_title', 'Promotion created')
+            ->assertSessionHas('success', 'Automatic discount created successfully: Fixed Discount With Tampered Cap.');
 
         $fixed = PlatformPromotion::query()->where('name', 'Fixed Discount With Tampered Cap')->firstOrFail();
         $this->assertNull($fixed->max_discount_minor);
+
+        $this->actingAs($admin)->post(route('admin.promotions.store'), [
+            'name' => 'Disabled Zero Budget Offer',
+            'kind' => PlatformPromotion::KIND_AUTOMATIC_DISCOUNT,
+            'discount_type' => PlatformPromotion::DISCOUNT_FIXED,
+            'value' => '5.00',
+            'budget' => '0.00',
+            'status' => PlatformPromotion::STATUS_ACTIVE,
+            'starts_on' => $startsOn,
+            'start_time' => '00:00',
+            'ends_on' => $endsOn,
+            'end_time' => '23:59',
+            'per_buyer_limit' => 1,
+            'scope_type' => 'all',
+        ])->assertRedirect(route('admin.promotions'));
+        $zeroBudget = PlatformPromotion::query()->where('name', 'Disabled Zero Budget Offer')->firstOrFail();
+        $this->assertSame(0, (int) $zeroBudget->budget_minor);
+        $this->assertTrue($zeroBudget->isExhausted(0, 0));
+
+        $this->actingAs($admin)->post(route('admin.promotions.store'), [
+            'name' => 'Zero Fixed Discount',
+            'kind' => PlatformPromotion::KIND_AUTOMATIC_DISCOUNT,
+            'discount_type' => PlatformPromotion::DISCOUNT_FIXED,
+            'value' => '0.00',
+            'status' => PlatformPromotion::STATUS_ACTIVE,
+            'starts_on' => $startsOn,
+            'start_time' => '00:00',
+            'ends_on' => $endsOn,
+            'end_time' => '23:59',
+            'per_buyer_limit' => 1,
+            'scope_type' => 'all',
+        ])->assertSessionHasErrors('value');
+
+        $this->actingAs($admin)->post(route('admin.promotions.store'), [
+            'name' => 'Percentage With Stale Fixed Value',
+            'kind' => PlatformPromotion::KIND_AUTOMATIC_DISCOUNT,
+            'discount_type' => PlatformPromotion::DISCOUNT_PERCENT,
+            'value' => '999.00',
+            'discount_percent' => 10,
+            'status' => PlatformPromotion::STATUS_ACTIVE,
+            'starts_on' => $startsOn,
+            'start_time' => '00:00',
+            'ends_on' => $endsOn,
+            'end_time' => '23:59',
+            'per_buyer_limit' => 1,
+            'scope_type' => 'all',
+        ])->assertRedirect(route('admin.promotions'));
+
+        $percentage = PlatformPromotion::query()->where('name', 'Percentage With Stale Fixed Value')->firstOrFail();
+        $this->assertNull($percentage->value_minor);
+        $this->assertSame(10, (int) $percentage->discount_percent);
+    }
+
+    public function test_admin_promotion_form_recovers_when_target_lists_are_not_arrays(): void
+    {
+        $admin = $this->user('admin');
+        $startsOn = now('Asia/Manila')->toDateString();
+        $endsOn = now('Asia/Manila')->addDays(2)->toDateString();
+
+        $this->actingAs($admin)
+            ->from(route('admin.promotions'))
+            ->followingRedirects()
+            ->post(route('admin.promotions.store'), [
+                'name' => 'Malformed Target Input',
+                'kind' => PlatformPromotion::KIND_AUTOMATIC_DISCOUNT,
+                'discount_type' => PlatformPromotion::DISCOUNT_FIXED,
+                'value' => '5.00',
+                'status' => PlatformPromotion::STATUS_ACTIVE,
+                'starts_on' => $startsOn,
+                'start_time' => '00:00',
+                'ends_on' => $endsOn,
+                'end_time' => '23:59',
+                'per_buyer_limit' => 1,
+                'scope_type' => 'category',
+                'category_ids' => 'not-an-array',
+            ])
+            ->assertOk()
+            ->assertSee('Check the promotion details.')
+            ->assertSee('name="category_ids[]"', false);
     }
 
     public function test_platform_funded_campaign_keeps_seller_basis_and_order_price_snapshots_immutable(): void
@@ -895,6 +1597,303 @@ class PromotionEngineTest extends TestCase
         $this->assertSame(0, (int) $quote['platform_discount_minor']);
         $this->assertSame(12000, (int) $quote['seller_orders'][0]['total_minor']);
         $this->assertSame(12000, (int) $quote['total_minor']);
+    }
+
+    public function test_configured_campaign_minimum_and_bearly_subsidy_guard_follow_seller_price_changes(): void
+    {
+        $category = $this->category();
+        [$seller, $store] = $this->sellerAndStore($category, 'campaign-price-change-guard');
+        $product = $this->product($store, $category, 'Campaign Price Change Guard Item');
+        $variant = $this->variant($product, 'CAMPAIGN-PRICE-GUARD-001', 10000, 5);
+        $campaign = $this->campaign($store, $seller, $product, $variant, [
+            'funding_type' => PlatformPromotion::FUNDING_PLATFORM,
+            'campaign_price_minor' => 8000,
+            'minimum_discount_percent' => 20,
+        ]);
+
+        $approvedPrice = (new ProductPricingService)->priceForVariant($product->fresh(), $variant->fresh());
+        $this->assertSame('campaign', $approvedPrice['price_source']);
+        $this->assertSame(8000, $approvedPrice['unit_price_minor']);
+        $this->assertSame(2000, $approvedPrice['platform_unit_discount_minor']);
+
+        $variant->update(['price_minor' => 9000]);
+        $belowMinimum = (new ProductPricingService)->priceForVariant($product->fresh(), $variant->fresh());
+        $this->assertSame('regular', $belowMinimum['price_source']);
+        $this->assertSame(9000, $belowMinimum['unit_price_minor']);
+        $this->assertSame(0, $belowMinimum['platform_unit_discount_minor']);
+        $this->assertNull($belowMinimum['campaign_participation_item_id']);
+
+        $variant->update(['price_minor' => 11000]);
+        $expandedSubsidy = (new ProductPricingService)->priceForVariant($product->fresh(), $variant->fresh());
+        $this->assertSame('regular', $expandedSubsidy['price_source']);
+        $this->assertSame(11000, $expandedSubsidy['unit_price_minor']);
+        $this->assertSame(0, $expandedSubsidy['platform_unit_discount_minor']);
+        $this->assertNull($expandedSubsidy['campaign_participation_item_id']);
+        $this->assertSame(10000, (int) $campaign['item']->fresh()->regular_price_minor);
+    }
+
+    public function test_open_draft_paused_ended_private_or_out_of_schedule_campaigns_do_not_reach_buyer_pricing(): void
+    {
+        $category = $this->category();
+        [$seller, $store] = $this->sellerAndStore($category, 'inactive-campaign-pricing');
+        $product = $this->product($store, $category, 'Inactive Campaign Product');
+        $variant = $this->variant($product, 'INACTIVE-CAMPAIGN-001', 10000, 5);
+        $manila = now('Asia/Manila');
+        $cases = [
+            'open' => ['status' => PlatformPromotion::STATUS_OPEN],
+            'draft' => ['status' => PlatformPromotion::STATUS_DRAFT],
+            'paused' => ['status' => PlatformPromotion::STATUS_PAUSED],
+            'ended' => ['status' => PlatformPromotion::STATUS_ENDED],
+            'private' => ['is_public' => false],
+            'future schedule' => ['starts_on' => $manila->copy()->addDay()->toDateString()],
+            'expired schedule' => ['ends_on' => $manila->copy()->subDay()->toDateString()],
+        ];
+
+        foreach ($cases as $label => $overrides) {
+            $this->campaign($store, $seller, $product, $variant, array_merge([
+                'funding_type' => PlatformPromotion::FUNDING_PLATFORM,
+                'campaign_price_minor' => 5000,
+            ], $overrides));
+
+            $price = (new ProductPricingService)->priceForVariant($product->fresh(), $variant->fresh());
+
+            $this->assertSame('regular', $price['price_source'], $label);
+            $this->assertSame(10000, $price['unit_price_minor'], $label);
+            $this->assertSame(0, $price['platform_unit_discount_minor'], $label);
+            $this->assertNull($price['campaign_participation_item_id'], $label);
+            $this->assertNull($price['campaign_name'], $label);
+        }
+    }
+
+    public function test_admin_budget_estimate_separates_actual_approved_and_pending_exposure_and_does_not_block_approval(): void
+    {
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'Santa Rosa');
+        $category = $this->category();
+        [$seller, $store] = $this->sellerAndStore($category, 'campaign-budget-approved');
+        $limitedProduct = $this->product($store, $category, 'Campaign Budget Limited Item');
+        $limitedVariant = $this->variant($limitedProduct, 'CAMPAIGN-BUDGET-LIMIT-001', 10000, 5);
+        $cartItem = $this->cartItem($buyer, $limitedVariant, 1);
+        $campaignData = $this->campaign($store, $seller, $limitedProduct, $limitedVariant, [
+            'funding_type' => PlatformPromotion::FUNDING_PLATFORM,
+            'campaign_price_minor' => 8000,
+            'stock_limit' => 5,
+            'budget_minor' => 3999,
+        ]);
+
+        $quote = $this->quote($buyer, [$cartItem->id], $destination->id);
+        $this->assertSame(2000, (int) $quote['campaign_platform_discount_minor']);
+        $order = $this->place($buyer, [$cartItem->id], $destination->id, $quote['quote_token'], $quote['promotion_selection']);
+        $order->load(['sellerOrders.items']);
+        $this->assertSame(2000, (int) $order->sellerOrders->first()->items->first()->campaign_platform_discount_minor);
+
+        $secondBuyer = $this->user('buyer');
+        $secondDestination = $this->address($secondBuyer, 'Santa Rosa');
+        $secondCartItem = $this->cartItem($secondBuyer, $limitedVariant, 1);
+        $secondQuote = $this->quote($secondBuyer, [$secondCartItem->id], $secondDestination->id);
+        $this->assertSame(0, (int) $secondQuote['campaign_platform_discount_minor']);
+        $this->assertSame(10000, (int) $secondQuote['items'][0]['unit_price_minor']);
+
+        $inventoryProduct = $this->product($store, $category, 'Campaign Budget Inventory Item');
+        $inventoryVariant = $this->variant($inventoryProduct, 'CAMPAIGN-BUDGET-INVENTORY-001', 5000, 3);
+        $inventoryCampaignItem = $campaignData['participation']->items()->create([
+            'product_id' => $inventoryProduct->id,
+            'product_variant_id' => $inventoryVariant->id,
+            'regular_price_minor' => 5000,
+            'campaign_price_minor' => 4000,
+            'discount_percent' => 20,
+            'stock_limit' => null,
+            'per_buyer_limit' => null,
+        ]);
+
+        [$pendingSeller, $pendingStore] = $this->sellerAndStore($category, 'campaign-budget-pending');
+        $pendingProduct = $this->product($pendingStore, $category, 'Campaign Budget Pending Item');
+        $pendingVariant = $this->variant($pendingProduct, 'CAMPAIGN-BUDGET-PENDING-001', 10000, 10);
+        $pendingParticipation = PlatformCampaignParticipation::query()->create([
+            'platform_promotion_id' => $campaignData['campaign']->id,
+            'store_id' => $pendingStore->id,
+            'submitted_by' => $pendingSeller->id,
+            'status' => PlatformCampaignParticipation::STATUS_PENDING_REVIEW,
+            'terms_accepted_at' => now(),
+            'submitted_at' => now(),
+        ]);
+        $pendingParticipation->items()->create([
+            'product_id' => $pendingProduct->id,
+            'product_variant_id' => $pendingVariant->id,
+            'regular_price_minor' => 10000,
+            'campaign_price_minor' => 7000,
+            'discount_percent' => 30,
+            'stock_limit' => 5,
+            'per_buyer_limit' => null,
+        ]);
+
+        $campaigns = app(\App\Services\CampaignService::class);
+        $estimate = $campaigns->adminBudgetEstimate($campaigns->adminDetail($campaignData['campaign']));
+        $this->assertSame(3999, $estimate['budget_minor']);
+        $this->assertSame(2000, $estimate['actual_spend_minor']);
+        $this->assertSame(11000, $estimate['approved_remaining_exposure_minor']);
+        $this->assertSame(13000, $estimate['projected_total_minor']);
+        $this->assertSame(-9001, $estimate['remaining_headroom_minor']);
+        $this->assertFalse($estimate['actual_at_or_over_budget']);
+        $this->assertTrue($estimate['projected_exceeds_budget']);
+        $this->assertSame(1, $estimate['item_estimates'][$campaignData['item']->id]['sold_units']);
+        $this->assertSame(4, $estimate['item_estimates'][$campaignData['item']->id]['estimated_units']);
+        $this->assertSame(2000, $estimate['item_estimates'][$campaignData['item']->id]['unit_subsidy_minor']);
+        $this->assertTrue($estimate['item_estimates'][$inventoryCampaignItem->id]['inventory_based']);
+        $this->assertSame(3, $estimate['item_estimates'][$inventoryCampaignItem->id]['estimated_units']);
+        $this->assertSame(3000, $estimate['item_estimates'][$inventoryCampaignItem->id]['exposure_minor']);
+
+        $pendingEstimate = $estimate['pending_participations'][$pendingParticipation->id];
+        $this->assertSame(15000, $pendingEstimate['additional_exposure_minor']);
+        $this->assertSame(28000, $pendingEstimate['projected_total_if_approved_minor']);
+        $this->assertSame(-24001, $pendingEstimate['remaining_headroom_if_approved_minor']);
+        $this->assertTrue($pendingEstimate['would_exceed_budget']);
+        $this->assertSame(13000, $estimate['projected_total_minor'], 'Pending participation is not included in approved projection.');
+
+        $admin = $this->user('admin');
+        $this->actingAs($admin)
+            ->get(route('admin.campaigns.show', $campaignData['campaign']))
+            ->assertOk()
+            ->assertSee('Actual Bearly spend to date')
+            ->assertSee('₱39.99')
+            ->assertSee('₱20.00')
+            ->assertSee('₱110.00')
+            ->assertSee('₱130.00')
+            ->assertSee('₱90.01 over budget')
+            ->assertSee('Projected exposure exceeds cap')
+            ->assertSee('If approved: additional estimated exposure ₱150.00')
+            ->assertSee('Projected total if approved: ₱280.00')
+            ->assertSee('Would exceed the configured budget by ₱240.01 if approved. Estimate only; approval remains available.')
+            ->assertSee('Current available inventory; changeable')
+            ->assertSee('Approve');
+
+        $campaignData['campaign']->update(['budget_minor' => 2000]);
+        $atBudgetEstimate = $campaigns->adminBudgetEstimate($campaigns->adminDetail($campaignData['campaign']->fresh()));
+        $this->assertTrue($atBudgetEstimate['actual_at_or_over_budget']);
+        $this->actingAs($admin)
+            ->get(route('admin.campaigns.show', $campaignData['campaign']))
+            ->assertOk()
+            ->assertSee('Actual Bearly spend has reached or exceeded the configured budget.')
+            ->assertSee('Approved remaining exposure puts the projected total');
+
+        $this->actingAs($admin)
+            ->patch(route('admin.campaigns.participations.review', $pendingParticipation), [
+                'decision' => 'approve',
+                'reason' => 'Approval remains an Admin decision despite the estimate.',
+            ])
+            ->assertRedirect();
+        $this->assertSame(PlatformCampaignParticipation::STATUS_APPROVED, $pendingParticipation->fresh()->status);
+
+        $approvedEstimate = $campaigns->adminBudgetEstimate($campaigns->adminDetail($campaignData['campaign']->fresh()));
+        $this->assertSame(26000, $approvedEstimate['approved_remaining_exposure_minor']);
+        $this->assertSame(28000, $approvedEstimate['projected_total_minor']);
+
+        $buyerPage = $this->actingAs($buyer)->get(route('campaigns.show', $campaignData['campaign']))->assertOk();
+        $buyerPage->assertDontSee('Actual Bearly spend to date')
+            ->assertDontSee('Approved remaining exposure')
+            ->assertDontSee('Projected total if approved');
+        $sellerPage = $this->actingAs($seller)->get(route('seller.promotions.campaigns.show', $campaignData['campaign']))->assertOk();
+        $sellerPage->assertDontSee('Actual Bearly spend to date')
+            ->assertDontSee('Approved remaining exposure')
+            ->assertDontSee('Projected total if approved');
+    }
+
+    public function test_campaign_budget_spend_and_sold_units_share_checkout_cancellation_and_refund_filters(): void
+    {
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'Santa Rosa');
+        $category = $this->category();
+        [$seller, $store] = $this->sellerAndStore($category, 'campaign-budget-accounting');
+        $product = $this->product($store, $category, 'Campaign Budget Accounting Item');
+        $variant = $this->variant($product, 'CAMPAIGN-BUDGET-ACCOUNTING-001', 10000, 5);
+        $cartItem = $this->cartItem($buyer, $variant, 1);
+        $campaign = $this->campaign($store, $seller, $product, $variant, [
+            'funding_type' => PlatformPromotion::FUNDING_PLATFORM,
+            'campaign_price_minor' => 8000,
+            'stock_limit' => 5,
+            'budget_minor' => 10000,
+        ]);
+        $quote = $this->quote($buyer, [$cartItem->id], $destination->id);
+        $order = $this->place($buyer, [$cartItem->id], $destination->id, $quote['quote_token'], $quote['promotion_selection']);
+        $sellerOrder = $order->sellerOrders->firstOrFail();
+        $itemId = (int) $sellerOrder->items->firstOrFail()->platform_campaign_participation_item_id;
+
+        $this->assertSame(2000, app(ProductPricingService::class)->campaignActualSpendMinor($campaign['campaign']));
+        $this->assertSame(1, app(ProductPricingService::class)->campaignSoldUnitsForItems([$itemId])[$itemId]);
+
+        $order->update(['payment_status' => 'partially_refunded']);
+        $this->assertSame(2000, app(ProductPricingService::class)->campaignActualSpendMinor($campaign['campaign']));
+        $this->assertSame(1, app(ProductPricingService::class)->campaignSoldUnitsForItems([$itemId])[$itemId]);
+
+        $order->update(['payment_status' => 'refunded']);
+        $this->assertSame(0, app(ProductPricingService::class)->campaignActualSpendMinor($campaign['campaign']));
+        $this->assertSame(0, app(ProductPricingService::class)->campaignSoldUnitsForItems([$itemId])[$itemId]);
+
+        $order->update(['payment_status' => 'unpaid']);
+        $sellerOrder->update(['status' => 'cancelled']);
+        $this->assertSame(0, app(ProductPricingService::class)->campaignActualSpendMinor($campaign['campaign']));
+        $this->assertSame(0, app(ProductPricingService::class)->campaignSoldUnitsForItems([$itemId])[$itemId]);
+    }
+
+    public function test_admin_budget_display_handles_uncapped_and_seller_funded_campaigns_without_buyer_or_seller_leaks(): void
+    {
+        $category = $this->category();
+        [$platformSeller, $platformStore] = $this->sellerAndStore($category, 'campaign-budget-no-cap');
+        $platformProduct = $this->product($platformStore, $category, 'Uncapped Campaign Item');
+        $platformVariant = $this->variant($platformProduct, 'CAMPAIGN-BUDGET-NOCAP-001', 10000, 4);
+        $uncapped = $this->campaign($platformStore, $platformSeller, $platformProduct, $platformVariant, [
+            'funding_type' => PlatformPromotion::FUNDING_PLATFORM,
+            'campaign_price_minor' => 9000,
+            'budget_minor' => null,
+        ]);
+
+        [$sellerFundedSeller, $sellerFundedStore] = $this->sellerAndStore($category, 'campaign-budget-seller-funded');
+        $sellerFundedProduct = $this->product($sellerFundedStore, $category, 'Seller Funded Campaign Item');
+        $sellerFundedVariant = $this->variant($sellerFundedProduct, 'CAMPAIGN-BUDGET-SELLER-001', 10000, 4);
+        $sellerFunded = $this->campaign($sellerFundedStore, $sellerFundedSeller, $sellerFundedProduct, $sellerFundedVariant, [
+            'funding_type' => PlatformPromotion::FUNDING_SELLER,
+            'campaign_price_minor' => 8000,
+            'budget_minor' => null,
+        ]);
+
+        $admin = $this->user('admin');
+        $this->actingAs($admin)
+            ->get(route('admin.campaigns.show', $uncapped['campaign']))
+            ->assertOk()
+            ->assertSee('No budget cap')
+            ->assertSee('Actual Bearly spend to date')
+            ->assertSee('Current available inventory; changeable')
+            ->assertDontSee('Projected exposure exceeds cap');
+
+        $uncapped['campaign']->update(['budget_minor' => 10000]);
+        $this->actingAs($admin)
+            ->get(route('admin.campaigns.show', $uncapped['campaign']))
+            ->assertOk()
+            ->assertSee('Projected within budget')
+            ->assertSee('₱60.00 projected headroom');
+        $uncapped['campaign']->update(['budget_minor' => null]);
+
+        $sellerFundedEstimate = app(\App\Services\CampaignService::class)
+            ->adminBudgetEstimate($sellerFunded['campaign']);
+        $this->assertFalse($sellerFundedEstimate['applies']);
+        $this->assertSame([], $sellerFundedEstimate['item_estimates']);
+        $this->actingAs($admin)
+            ->get(route('admin.campaigns.show', $sellerFunded['campaign']))
+            ->assertOk()
+            ->assertSee('No Bearly budget applies')
+            ->assertDontSee('Actual Bearly spend to date');
+
+        $buyer = $this->user('buyer');
+        $buyerPage = $this->actingAs($buyer)->get(route('campaigns.show', $uncapped['campaign']))->assertOk();
+        $buyerPage->assertDontSee('No budget cap')
+            ->assertDontSee('Actual Bearly spend to date')
+            ->assertDontSee('Projected total');
+        $sellerPage = $this->actingAs($platformSeller)
+            ->get(route('seller.promotions.campaigns.show', $uncapped['campaign']))
+            ->assertOk();
+        $sellerPage->assertDontSee('No budget cap')
+            ->assertDontSee('Actual Bearly spend to date')
+            ->assertDontSee('Projected total');
     }
 
     public function test_locked_campaign_pricing_accounts_for_projected_stock_and_budget_within_checkout(): void

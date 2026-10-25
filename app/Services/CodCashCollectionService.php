@@ -22,6 +22,7 @@ class CodCashCollectionService
     public function __construct(
         private readonly CommissionLedgerService $commissionLedger,
         private readonly NotificationService $notifications,
+        private readonly PromotionService $promotions,
     ) {}
 
     public function recordRiderCollection(Shipment $shipment, User $riderUser, int $actualAmountMinor): CodCashCollection
@@ -385,6 +386,7 @@ class CodCashCollectionService
         $paidAt = $collections->max('collected_at') ?? now();
         $payment->update(['status' => 'paid', 'paid_at' => $paidAt]);
         $order->update(['payment_status' => 'paid']);
+        $this->promotions->markOrderPaid($order);
         $this->commissionLedger->finalize($payment->fresh());
     }
 

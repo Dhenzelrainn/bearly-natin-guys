@@ -38,8 +38,10 @@ body.product-detail-page .detail-primary-image{
   border:1px solid #e7dfd6;
   border-radius:8px;
   background:#fff;
+  touch-action:pan-y pinch-zoom;
 }
-body.product-detail-page .detail-primary-image img{width:100%;height:100%;object-fit:contain}
+body.product-detail-page .detail-primary-image img{width:100%;height:100%;object-fit:contain;user-select:none;-webkit-user-drag:none}
+body.product-detail-page .detail-primary-image.is-swiping{cursor:grabbing}
 body.product-detail-page .detail-primary-image.is-empty::after{content:'Product image unavailable';color:#75695d;font-size:13px}
 body.product-detail-page .detail-primary-image.is-empty::before{content:none}
 body.product-detail-page .detail-gallery{display:flex;min-width:0;gap:8px;margin-top:10px;overflow-x:auto;padding:2px 2px 7px;scrollbar-width:thin}

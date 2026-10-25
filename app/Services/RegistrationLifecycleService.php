@@ -58,6 +58,16 @@ class RegistrationLifecycleService
             $sponsorLogisticsUserId
         ) {
             $role = $this->role($requestedRole);
+            $sellerRegistrationCategory = $requestedRole === UserRole::Seller->value
+                ? $this->sellerRegistrationCategory(
+                    $application['business_category_id'] ?? null,
+                    $application['business_category'] ?? $user->business_category,
+                )
+                : null;
+
+            if ($sellerRegistrationCategory && $user->business_category !== $sellerRegistrationCategory->name) {
+                $user->forceFill(['business_category' => $sellerRegistrationCategory->name])->save();
+            }
 
             $normalizedAddress = $this->storeAddress(
                 $user,
@@ -120,8 +130,8 @@ class RegistrationLifecycleService
                     'business_name' =>
                         $application['business_name']
                         ?? $user->business_name,
-                    'business_category_id' =>
-                        $this->categoryId(
+                    'business_category_id' => $sellerRegistrationCategory?->id
+                        ?? $this->categoryId(
                             $application['business_category']
                             ?? $user->business_category
                         ),
@@ -138,8 +148,8 @@ class RegistrationLifecycleService
                         $application['business_name']
                         ?? $accountApplication->business_name
                         ?? $user->business_name,
-                    'business_category_id' =>
-                        $this->categoryId(
+                    'business_category_id' => $sellerRegistrationCategory?->id
+                        ?? $this->categoryId(
                             $application['business_category']
                             ?? $user->business_category
                         )
@@ -1151,6 +1161,51 @@ class RegistrationLifecycleService
                     ?? Str::headline($name),
             ]
         );
+    }
+
+    private function sellerRegistrationCategory(mixed $categoryId, ?string $name): Category
+    {
+        $query = Category::query()
+            ->whereNull('parent_id')
+            ->where('is_registration_option', true)
+            ->where('is_active', true)
+            ->whereHas('marketplaceCategories', fn ($marketplaceCategories) => $marketplaceCategories
+                ->where('marketplace_categories.is_active', true));
+
+        if (filled($categoryId)) {
+            if (! is_numeric($categoryId) || (int) $categoryId < 1) {
+                throw ValidationException::withMessages([
+                    'business_category_id' => 'Choose one of the available Seller registration categories.',
+                ]);
+            }
+
+            $category = $query->whereKey((int) $categoryId)->lockForUpdate()->first();
+        } elseif (filled($name)) {
+            $category = $query
+                ->whereRaw('LOWER(name) = ?', [strtolower(trim($name))])
+                ->lockForUpdate()
+                ->first();
+        } else {
+            $category = null;
+        }
+
+        if (! $category) {
+            throw ValidationException::withMessages([
+                'business_category_id' => 'Choose one of the available Seller registration categories.',
+            ]);
+        }
+
+        $mappedBuyerCategories = $category->marketplaceCategories()
+            ->where('marketplace_categories.is_active', true)
+            ->get(['marketplace_categories.id', 'marketplace_categories.slug']);
+
+        if ($mappedBuyerCategories->count() !== 1 || $mappedBuyerCategories->first()->slug !== $category->slug) {
+            throw ValidationException::withMessages([
+                'business_category_id' => 'Choose one of the available Seller registration categories.',
+            ]);
+        }
+
+        return $category;
     }
 
     private function categoryId(?string $name): ?int

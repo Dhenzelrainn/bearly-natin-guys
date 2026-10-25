@@ -38,6 +38,7 @@ class BuyerCheckoutController extends Controller
             'cart_item_ids' => ['required', 'array', 'min:1', 'max:100'],
             'cart_item_ids.*' => ['required', 'integer', 'min:1', 'distinct'],
             'platform_voucher_id' => ['nullable', 'integer', 'min:1'],
+            'platform_shipping_voucher_id' => ['nullable', 'integer', 'min:1'],
             'store_voucher_id' => ['nullable', 'integer', 'min:1'],
             'voucher_code' => ['nullable', 'string', 'max:40', 'regex:/^[A-Za-z0-9_-]+$/'],
         ]);
@@ -64,6 +65,7 @@ class BuyerCheckoutController extends Controller
             'seller_note' => ['nullable', 'string', 'max:120'],
             'payment_method' => ['required', 'in:cod'],
             'platform_voucher_id' => ['nullable', 'integer', 'min:1'],
+            'platform_shipping_voucher_id' => ['nullable', 'integer', 'min:1'],
             'store_voucher_id' => ['nullable', 'integer', 'min:1'],
             'voucher_code' => ['nullable', 'string', 'max:40', 'regex:/^[A-Za-z0-9_-]+$/'],
         ]);
@@ -84,7 +86,14 @@ class BuyerCheckoutController extends Controller
     public function confirmation(Request $request, string $orderNo, BuyerOrderConfirmationService $confirmation, BuyerCatalogService $catalog): View
     {
         $order = Order::query()
-            ->with(['sellerOrders.store', 'sellerOrders.items.product.images.variant', 'sellerOrders.items.variant', 'sellerOrders.shipments', 'payments'])
+            ->with([
+                'sellerOrders.store',
+                'sellerOrders.items.product.images.variant',
+                'sellerOrders.items.variant',
+                'sellerOrders.shipments',
+                'payments',
+                'promotionRedemptions.allocations',
+            ])
             ->where('buyer_id', $request->user()->id)
             ->where('order_no', $orderNo)
             ->firstOrFail();
@@ -122,6 +131,7 @@ class BuyerCheckoutController extends Controller
     {
         return [
             'platform_voucher_id' => $data['platform_voucher_id'] ?? null,
+            'platform_shipping_voucher_id' => $data['platform_shipping_voucher_id'] ?? null,
             'store_voucher_id' => $data['store_voucher_id'] ?? null,
             'voucher_code' => filled($data['voucher_code'] ?? null)
                 ? strtoupper(trim((string) $data['voucher_code']))

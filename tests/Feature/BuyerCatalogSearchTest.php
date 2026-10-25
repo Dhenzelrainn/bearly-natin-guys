@@ -59,6 +59,71 @@ class BuyerCatalogSearchTest extends TestCase
             ->assertDontSee('Stores matching your search');
     }
 
+    public function test_buyer_catalog_uses_only_supported_cod_orderability(): void
+    {
+        $category = $this->category();
+        $store = $this->store($category, 'COD and Online Store');
+        $codProduct = $this->product($category, $store, 'COD Supported Product');
+        $codProduct->update(['payment_methods' => ['cod', 'online']]);
+        $onlineOnly = $this->product($category, $store, 'Unsupported Online Only Product');
+        $onlineOnly->update(['payment_methods' => ['online']]);
+        $buyer = $this->buyer();
+
+        $this->actingAs($buyer)
+            ->get(route('products.index', ['search' => 'COD Supported Product']))
+            ->assertOk()
+            ->assertSee('COD Supported Product')
+            ->assertDontSee('Online payment');
+
+        $this->actingAs($buyer)
+            ->get(route('products.index', ['search' => 'Unsupported Online Only Product']))
+            ->assertOk()
+            ->assertSee('0 results')
+            ->assertDontSee('href="'.route('products.show', $onlineOnly).'"', false);
+
+        $this->actingAs($buyer)
+            ->get(route('products.show', $codProduct))
+            ->assertOk()
+            ->assertSee('Cash on Delivery')
+            ->assertDontSee('Online payment');
+
+        $this->actingAs($buyer)
+            ->get(route('products.show', $onlineOnly))
+            ->assertNotFound();
+
+        $this->actingAs($buyer)
+            ->postJson(route('cart.add'), [
+                'product_variant_id' => $onlineOnly->variants()->value('id'),
+                'quantity' => 1,
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('product_variant_id');
+    }
+
+    public function test_product_detail_store_count_matches_the_cod_orderable_store_catalog(): void
+    {
+        $category = $this->category();
+        $store = $this->store($category, 'Store Count Orderability');
+        $orderableProduct = $this->product($category, $store, 'Store Count COD Product');
+        $orderableProduct->update(['payment_methods' => ['cod']]);
+        $onlineOnlyProduct = $this->product($category, $store, 'Store Count Online Product');
+        $onlineOnlyProduct->update(['payment_methods' => ['online']]);
+        $buyer = $this->buyer();
+
+        $this->actingAs($buyer)
+            ->get(route('stores.show', $store->slug))
+            ->assertOk()
+            ->assertSee('1 shown · 1 in this store')
+            ->assertSee($orderableProduct->name)
+            ->assertDontSee($onlineOnlyProduct->name);
+
+        $this->actingAs($buyer)
+            ->get(route('products.show', $orderableProduct))
+            ->assertOk()
+            ->assertSee('<span><strong>1</strong><small>Products</small></span>', false)
+            ->assertDontSee('<span><strong>2</strong><small>Products</small></span>', false);
+    }
+
     public function test_homepage_search_form_submits_to_the_live_catalog_search(): void
     {
         $this->actingAs($this->buyer())
@@ -72,10 +137,7 @@ class BuyerCatalogSearchTest extends TestCase
 
     private function category(): Category
     {
-        return Category::create([
-            'name' => 'Electronics and Gadgets',
-            'slug' => 'electronics-and-gadgets',
-        ]);
+        return Category::query()->where('slug', 'electronics-and-gadgets')->firstOrFail();
     }
 
     private function store(

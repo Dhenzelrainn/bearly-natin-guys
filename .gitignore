@@ -25,3 +25,8 @@ Thumbs.db
 
 /database/*.sqlite
 /database/*.sqlite-*
+
+/bearly-private.zip
+/bearly-seller-products.zip
+/bearly-storage.zip
+/public.zip

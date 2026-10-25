@@ -21,12 +21,7 @@ class BuyerDiscountDisplayTest extends TestCase
 
     public function test_active_seller_discounts_render_across_buyer_product_surfaces(): void
     {
-        $category = Category::create([
-            'name' => 'Electronics and Gadgets',
-            'slug' => 'electronics-and-gadgets',
-            'is_active' => true,
-        ]);
-
+        $category = Category::query()->where('slug', 'electronics-and-gadgets')->firstOrFail();
         $seller = User::create([
             'name' => 'Discount Seller',
             'first_name' => 'Discount',
@@ -161,11 +156,7 @@ class BuyerDiscountDisplayTest extends TestCase
 
     public function test_product_without_an_active_discount_keeps_the_discount_meta_hidden(): void
     {
-        $category = Category::create([
-            'name' => 'Books and Media',
-            'slug' => 'books-and-media',
-            'is_active' => true,
-        ]);
+        $category = Category::query()->where('slug', 'books-and-media')->firstOrFail();
 
         $seller = User::create([
             'name' => 'Regular Price Seller',
@@ -235,11 +226,7 @@ class BuyerDiscountDisplayTest extends TestCase
 
     public function test_only_currently_active_product_discounts_reach_buyer_pricing(): void
     {
-        $category = Category::create([
-            'name' => 'Electronics and Gadgets',
-            'slug' => 'electronics-and-gadgets',
-            'is_active' => true,
-        ]);
+        $category = Category::query()->where('slug', 'electronics-and-gadgets')->firstOrFail();
 
         $seller = User::create([
             'name' => 'Promotion Seller',

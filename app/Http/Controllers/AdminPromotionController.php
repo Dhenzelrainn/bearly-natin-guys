@@ -4,12 +4,14 @@ namespace App\Http\Controllers;
 
 use App\Models\Category;
 use App\Models\PlatformPromotion;
+use App\Models\Product;
 use App\Models\PromotionRedemption;
 use App\Models\Store;
 use App\Services\AuditService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
@@ -31,6 +33,14 @@ class AdminPromotionController extends Controller
                     ->whereIn('status', [PromotionRedemption::STATUS_RESERVED, PromotionRedemption::STATUS_REDEEMED]),
                 'claims',
             ])
+            ->withSum([
+                'redemptions as active_discount_minor' => fn ($query) => $query
+                    ->whereIn('status', [PromotionRedemption::STATUS_RESERVED, PromotionRedemption::STATUS_REDEEMED]),
+            ], 'discount_minor')
+            ->withSum([
+                'redemptions as active_shipping_discount_minor' => fn ($query) => $query
+                    ->whereIn('status', [PromotionRedemption::STATUS_RESERVED, PromotionRedemption::STATUS_REDEEMED]),
+            ], 'shipping_discount_minor')
             ->orderByDesc('created_at')
             ->orderByDesc('id')
             ->paginate(20);
@@ -39,6 +49,11 @@ class AdminPromotionController extends Controller
             'promotions' => $promotions,
             'categories' => Category::query()->orderBy('name')->get(['id', 'name']),
             'stores' => Store::query()->orderBy('name')->get(['id', 'name']),
+            'products' => Product::query()
+                ->visibleToBuyers()
+                ->with('store:id,name')
+                ->orderBy('name')
+                ->get(['id', 'name', 'store_id']),
         ]);
     }
 
@@ -47,6 +62,9 @@ class AdminPromotionController extends Controller
         $request->merge([
             'start_time' => $request->input('start_time', '00:00'),
             'end_time' => $request->input('end_time', '23:59'),
+            'code' => filled($request->input('code'))
+                ? Str::upper(trim((string) $request->input('code')))
+                : null,
         ]);
 
         $data = $request->validate([
@@ -71,26 +89,41 @@ class AdminPromotionController extends Controller
                 PlatformPromotion::DISCOUNT_FIXED_SHIPPING,
                 PlatformPromotion::DISCOUNT_PERCENT_SHIPPING,
             ])],
-            'value' => ['nullable', 'numeric', 'min:0', 'max:10000000', 'decimal:0,2'],
-            'discount_percent' => ['nullable', 'integer', 'min:1', 'max:100'],
-            'max_discount' => ['nullable', 'numeric', 'min:0', 'max:10000000', 'decimal:0,2'],
+            'value' => [
+                Rule::excludeIf(! in_array((string) $request->input('discount_type'), [
+                    PlatformPromotion::DISCOUNT_FIXED,
+                    PlatformPromotion::DISCOUNT_FIXED_SHIPPING,
+                ], true)),
+                'nullable', 'numeric', 'min:0.01', 'max:10000000', 'decimal:0,2',
+            ],
+            'discount_percent' => [
+                Rule::excludeIf(! in_array((string) $request->input('discount_type'), [
+                    PlatformPromotion::DISCOUNT_PERCENT,
+                    PlatformPromotion::DISCOUNT_PERCENT_SHIPPING,
+                ], true)),
+                'nullable', 'integer', 'min:1', 'max:100',
+            ],
+            'max_discount' => [
+                Rule::excludeIf(! in_array((string) $request->input('discount_type'), [
+                    PlatformPromotion::DISCOUNT_PERCENT,
+                    PlatformPromotion::DISCOUNT_FREE_SHIPPING,
+                    PlatformPromotion::DISCOUNT_PERCENT_SHIPPING,
+                ], true)),
+                'nullable', 'numeric', 'min:0.01', 'max:10000000', 'decimal:0,2',
+            ],
             'minimum_spend' => ['nullable', 'numeric', 'min:0', 'max:10000000', 'decimal:0,2'],
             'starts_on' => ['required', 'date_format:Y-m-d'],
             'ends_on' => ['required', 'date_format:Y-m-d', 'after_or_equal:starts_on'],
             'start_time' => ['required', 'date_format:H:i'],
             'end_time' => ['required', 'date_format:H:i'],
-            'redemption_limit' => ['nullable', 'integer', 'min:1'],
+            'redemption_limit' => ['nullable', 'integer', 'min:1', 'max:4294967295'],
             'per_buyer_limit' => ['required', 'integer', 'min:1', 'max:1000'],
             'budget' => ['nullable', 'numeric', 'min:0', 'max:100000000', 'decimal:0,2'],
-            'status' => ['required', Rule::in([PlatformPromotion::STATUS_ACTIVE, PlatformPromotion::STATUS_PAUSED])],
+            'status' => ['required', Rule::in([PlatformPromotion::STATUS_DRAFT, PlatformPromotion::STATUS_ACTIVE, PlatformPromotion::STATUS_PAUSED])],
             'description' => ['nullable', 'string', 'max:255'],
             'terms' => ['nullable', 'string', 'max:2000'],
             'is_claimable' => ['sometimes', 'boolean'],
             'is_public' => ['sometimes', 'boolean'],
-            'is_featured' => ['sometimes', 'boolean'],
-            'banner' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
-            'banner_title' => ['nullable', 'string', 'max:160'],
-            'banner_link' => ['nullable', 'url', 'max:500'],
             'position' => ['nullable', 'integer', 'min:0', 'max:10000'],
             'scope_type' => ['required', Rule::in(['all', 'category', 'store', 'product'])],
             'category_ids' => ['nullable', 'array', 'max:100'],
@@ -111,8 +144,6 @@ class AdminPromotionController extends Controller
         $this->validatePromotionShape($data);
 
         $promotion = DB::transaction(function () use ($request, $data): PlatformPromotion {
-            $bannerPath = $request->file('banner')?->store('promotions/banners', 'public');
-
             $promotion = PlatformPromotion::query()->create([
                 'created_by' => $request->user()->id,
                 'name' => trim((string) $data['name']),
@@ -140,11 +171,11 @@ class AdminPromotionController extends Controller
                 ], true)
                     && (bool) ($data['is_claimable'] ?? false),
                 'is_public' => (bool) ($data['is_public'] ?? true),
-                'is_featured' => (bool) ($data['is_featured'] ?? false),
-                'banner_path' => $bannerPath,
-                'banner_disk' => $bannerPath ? 'public' : null,
-                'banner_title' => filled($data['banner_title'] ?? null) ? trim((string) $data['banner_title']) : null,
-                'banner_link' => filled($data['banner_link'] ?? null) ? trim((string) $data['banner_link']) : null,
+                'is_featured' => false,
+                'banner_path' => null,
+                'banner_disk' => null,
+                'banner_title' => null,
+                'banner_link' => null,
                 'position' => (int) ($data['position'] ?? 0),
             ]);
 
@@ -167,8 +198,24 @@ class AdminPromotionController extends Controller
             'is_featured' => (bool) $promotion->is_featured,
         ], 'info', $request);
 
+        [$successTitle, $successMessage] = match ($promotion->kind) {
+            PlatformPromotion::KIND_FREE_SHIPPING => [
+                'Promotion created',
+                'Free shipping voucher created successfully: '.$promotion->name.'.',
+            ],
+            PlatformPromotion::KIND_AUTOMATIC_DISCOUNT => [
+                'Promotion created',
+                'Automatic discount created successfully: '.$promotion->name.'.',
+            ],
+            default => [
+                'Promotion created',
+                'Platform voucher created successfully: '.$promotion->name.'.',
+            ],
+        };
+
         return redirect()->route('admin.promotions')
-            ->with('success', 'Platform promotion created.');
+            ->with('success_title', $successTitle)
+            ->with('success', $successMessage);
     }
 
     public function updateStatus(Request $request, PlatformPromotion $promotion, AuditService $audit): RedirectResponse
@@ -176,11 +223,48 @@ class AdminPromotionController extends Controller
         abort_if($promotion->isCampaign(), 404);
 
         $data = $request->validate([
-            'status' => ['required', Rule::in([PlatformPromotion::STATUS_ACTIVE, PlatformPromotion::STATUS_PAUSED])],
+            'status' => ['required', Rule::in([
+                PlatformPromotion::STATUS_ACTIVE,
+                PlatformPromotion::STATUS_PAUSED,
+            ])],
         ]);
 
-        $oldStatus = $promotion->status;
-        $promotion->update(['status' => $data['status']]);
+        [$promotion, $oldStatus] = DB::transaction(function () use ($promotion, $data): array {
+            $locked = PlatformPromotion::query()
+                ->whereKey($promotion->id)
+                ->whereNull('campaign_type')
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($data['status'] === PlatformPromotion::STATUS_ACTIVE) {
+                $now = now('Asia/Manila');
+                if ($locked->statusKey($now) === PlatformPromotion::STATUS_EXPIRED) {
+                    throw ValidationException::withMessages([
+                        'status' => 'An expired promotion cannot be reactivated. Create a new scheduled promotion instead.',
+                    ]);
+                }
+
+                $redemptions = PromotionRedemption::query()
+                    ->where('platform_promotion_id', $locked->id)
+                    ->whereIn('status', [PromotionRedemption::STATUS_RESERVED, PromotionRedemption::STATUS_REDEEMED])
+                    ->orderBy('id')
+                    ->lockForUpdate()
+                    ->get(['buyer_id', 'discount_minor', 'shipping_discount_minor']);
+                $budgetSpendMinor = (int) $redemptions->sum(fn (PromotionRedemption $redemption): int =>
+                    (int) $redemption->discount_minor + (int) $redemption->shipping_discount_minor);
+
+                if ($locked->isExhausted($redemptions->count(), $budgetSpendMinor)) {
+                    throw ValidationException::withMessages([
+                        'status' => 'This promotion has exhausted its redemption limit or platform budget and cannot be reactivated.',
+                    ]);
+                }
+            }
+
+            $oldStatus = (string) $locked->status;
+            $locked->update(['status' => $data['status']]);
+
+            return [$locked, $oldStatus];
+        }, attempts: 3);
 
         $audit->record('promotion.status_updated', 'marketing', $promotion, 'Platform promotion status updated.', [
             'status' => $oldStatus,
@@ -196,6 +280,20 @@ class AdminPromotionController extends Controller
 
     private function validatePromotionShape(array $data): void
     {
+        $discountType = $data['discount_type'];
+        $fixedType = in_array($discountType, [
+            PlatformPromotion::DISCOUNT_FIXED,
+            PlatformPromotion::DISCOUNT_FIXED_SHIPPING,
+        ], true);
+        $percentageType = in_array($discountType, [
+            PlatformPromotion::DISCOUNT_PERCENT,
+            PlatformPromotion::DISCOUNT_PERCENT_SHIPPING,
+        ], true);
+        $cappedType = in_array($discountType, [
+            PlatformPromotion::DISCOUNT_PERCENT,
+            PlatformPromotion::DISCOUNT_FREE_SHIPPING,
+            PlatformPromotion::DISCOUNT_PERCENT_SHIPPING,
+        ], true);
         $shippingType = in_array($data['discount_type'], [
             PlatformPromotion::DISCOUNT_FREE_SHIPPING,
             PlatformPromotion::DISCOUNT_FIXED_SHIPPING,
@@ -214,9 +312,10 @@ class AdminPromotionController extends Controller
             ]);
         }
 
-        if ($data['kind'] !== PlatformPromotion::KIND_VOUCHER && filled($data['code'] ?? null)) {
+        if (! in_array($data['kind'], [PlatformPromotion::KIND_VOUCHER, PlatformPromotion::KIND_FREE_SHIPPING], true)
+            && filled($data['code'] ?? null)) {
             throw ValidationException::withMessages([
-                'code' => 'Only platform vouchers can use a voucher code.',
+                'code' => 'Voucher codes are available only for platform vouchers and shipping vouchers.',
             ]);
         }
 
@@ -228,21 +327,54 @@ class AdminPromotionController extends Controller
             ]);
         }
 
-        if (in_array($data['discount_type'], [
-            PlatformPromotion::DISCOUNT_FIXED,
-            PlatformPromotion::DISCOUNT_FIXED_SHIPPING,
-        ], true) && blank($data['value'] ?? null)) {
+        if (in_array($data['kind'], [PlatformPromotion::KIND_AUTOMATIC_DISCOUNT, PlatformPromotion::KIND_FREE_SHIPPING], true)
+            && ! (bool) ($data['is_public'] ?? true)) {
             throw ValidationException::withMessages([
-                'value' => 'Enter the fixed discount amount.',
+                'is_public' => 'Automatic offers and shipping offers must be publicly available.',
             ]);
         }
 
-        if (in_array($data['discount_type'], [
-            PlatformPromotion::DISCOUNT_PERCENT,
-            PlatformPromotion::DISCOUNT_PERCENT_SHIPPING,
-        ], true) && blank($data['discount_percent'] ?? null)) {
+        if (($data['kind'] === PlatformPromotion::KIND_VOUCHER && (bool) ($data['is_claimable'] ?? false))
+            && ! (bool) ($data['is_public'] ?? true)) {
+            throw ValidationException::withMessages([
+                'is_public' => 'A claimable voucher must be publicly visible in My Vouchers.',
+            ]);
+        }
+
+        if ($fixedType && (blank($data['value'] ?? null) || $this->minor($data['value'], 'value') < 1)) {
+            throw ValidationException::withMessages([
+                'value' => 'Enter a fixed discount amount greater than ₱0.00.',
+            ]);
+        }
+
+        if ($percentageType && blank($data['discount_percent'] ?? null)) {
             throw ValidationException::withMessages([
                 'discount_percent' => 'Enter the discount percentage.',
+            ]);
+        }
+
+        if (! $fixedType && filled($data['value'] ?? null)) {
+            throw ValidationException::withMessages([
+                'value' => 'A fixed amount is not used by this discount type.',
+            ]);
+        }
+
+        if (! $percentageType && filled($data['discount_percent'] ?? null)) {
+            throw ValidationException::withMessages([
+                'discount_percent' => 'A percentage is not used by this discount type.',
+            ]);
+        }
+
+        if (! $cappedType && filled($data['max_discount'] ?? null)) {
+            throw ValidationException::withMessages([
+                'max_discount' => 'A maximum discount cap is not used by this discount type.',
+            ]);
+        }
+
+        if ($cappedType && filled($data['max_discount'] ?? null)
+            && $this->minor($data['max_discount'], 'max_discount') < 1) {
+            throw ValidationException::withMessages([
+                'max_discount' => 'Enter a maximum discount greater than ₱0.00, or leave the cap blank.',
             ]);
         }
 

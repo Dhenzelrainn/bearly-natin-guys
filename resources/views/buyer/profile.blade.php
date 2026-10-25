@@ -7,6 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Material+Symbols+Outlined:wght@400&display=swap" rel="stylesheet">
     @include('buyer.partials.account-context-script')
+    <script>window.bearlyLiveWishlist = @json($wishlistItems ?? []);</script>
     @vite(['resources/css/buyer.css','resources/css/profile.css','resources/css/addresses.css','resources/css/maps.css','resources/css/bearly-chat.css','resources/js/profile.js','resources/js/account-addresses.js','resources/js/my-likes.js','resources/js/my-purchases.js','resources/js/reviews-ratings.js','resources/js/bearly-chat.js'])
 </head>
 <body class="bh profile-page">
@@ -134,8 +135,9 @@
                 <form id="address-form">
                     <input id="address-editing-id" type="hidden">
                     <div class="form-grid two"><label><span>Full Name</span><input id="address-full-name" required placeholder="Recipient name"></label><label><span>Phone Number</span><input id="address-phone-number" required placeholder="+63 900 000 0000"></label></div>
-                    <div class="form-grid"><label><span>Province</span><input id="address-province" required placeholder="Laguna"></label></div>
-                    <div class="form-grid two"><label><span>City / Municipality</span><input id="address-city" required placeholder="City / Municipality"></label><label><span>Barangay</span><input id="address-barangay" required placeholder="Barangay"></label></div>
+                    <div class="form-grid"><label><span>Province</span><select id="address-province" required><option value="">Loading provinces…</option></select></label></div>
+                    <div class="form-grid two"><label><span>City / Municipality</span><select id="address-city" required disabled><option value="">Select province first</option></select></label><label><span>Barangay</span><input id="address-barangay" required placeholder="Barangay"></label></div>
+                    <p id="address-psgc-status" class="address-map-status" role="status">Select a province and city from the PSGC list. Legacy addresses need city re-verification before checkout.</p><input id="address-city-code" type="hidden" value="">
                     <div class="form-grid"><label><span>Postal Code</span><input id="address-postal-code" required placeholder="Postal Code"></label><label><span>Street Name, Building, House No.</span><input id="address-street" required placeholder="Street Name, Building, House No."></label></div>
                     <div class="address-map-picker-section"><div class="address-map-picker-heading"><div><strong>Pin your location <span>(optional)</span></strong><small>Coordinates supplement your validated address and do not replace PSGC fields.</small></div><div class="address-map-picker-actions"><button id="use-current-location" type="button" class="address-map-location"><span class="material-symbols-outlined" aria-hidden="true">my_location</span>Use my current location</button><button id="clear-address-pin" type="button" class="address-map-clear" hidden>Clear pin</button></div></div><div id="address-map" class="address-map" data-map-tile-url="{{ config('maps.tile_url') }}" data-map-attribution="{{ config('maps.tile_attribution') }}" data-reverse-geocode-url="{{ route('maps.reverse-geocode') }}" data-forward-geocode-url="{{ route('maps.forward-geocode') }}" aria-label="Address map pin picker"></div><p id="address-map-status" class="address-map-status" role="status">Enter province, city, and barangay to center the map, or click to place a pin.</p><input id="address-latitude" type="hidden"><input id="address-longitude" type="hidden"></div>
                     <div class="label-section">Label As:</div><div class="label-buttons"><button class="label-choice active" data-label="Home" type="button">Home</button><button class="label-choice" data-label="Work" type="button">Work</button></div>
@@ -168,7 +170,6 @@
                     <option value="price-low">Price: low to high</option>
                     <option value="price-high">Price: high to low</option>
                     <option value="name">Name: A to Z</option>
-                    <option value="rating">Top rated</option>
                 </select>
                 <span class="material-symbols-outlined likes-sort-chevron" aria-hidden="true">expand_more</span>
             </label>
@@ -178,17 +179,10 @@
         <div id="likes-empty" class="likes-empty">
             <span class="material-symbols-outlined" aria-hidden="true">favorite_border</span>
             <h2 id="likes-empty-title">No liked products yet</h2>
-            <p id="likes-empty-copy">Tap the heart on a product and it will appear here automatically.</p>
+            <p id="likes-empty-copy">Save a live product from the Bearly catalog and it will appear here.</p>
             <a class="likes-empty-action" href="{{ url('/home') }}">Browse Products</a>
         </div>
-
-        <section id="likes-recommendations" class="likes-recommendations" aria-labelledby="likes-recommendations-title">
-            <div class="likes-recommendations-head">
-                <div><h2 id="likes-recommendations-title">You may also like</h2><p>More great finds based on your likes.</p></div>
-                <a href="{{ url('/home#results') }}">See more <span class="material-symbols-outlined" aria-hidden="true">chevron_right</span></a>
-            </div>
-            <div id="likes-recommendation-grid" class="likes-recommendation-grid"></div>
-        </section>
+        <p id="likes-status" class="likes-status" role="status" aria-live="polite" hidden></p>
     </section>
 
     <section class="profile-card account-panel" id="purchases-panel" data-account-panel="purchases" hidden>
@@ -257,7 +251,7 @@
         <div class="voucher-code-entry">
             <div class="voucher-code-copy">
                 <strong>Have a voucher code?</strong>
-                <span>Enter a platform or Store voucher code to add it to My Vouchers.</span>
+                <span>Add a claimable platform or Store code to My Vouchers. Any valid voucher code can also be applied directly at checkout.</span>
             </div>
             <div class="voucher-code-control">
                 <label class="sr-only" for="voucher-code-input">Voucher code</label>

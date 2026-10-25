@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Models\Category;
 use App\Models\InventoryMovement;
+use App\Models\MarketplaceCategory;
+use App\Models\MarketplaceSubcategory;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\SellerProfile;
@@ -108,11 +110,11 @@ class SellerInventoryIntegrationTest extends TestCase
             ->assertSee('INV-SHIRT-L')
             ->assertSee('INV-SOLD-OUT')
             ->assertSee('INV-ARCHIVED')
-            ->assertSee('Filter by subcategory')
-            ->assertSee('All Subcategories')
+            ->assertSee('Filter by Store section')
+            ->assertSee('All Store Sections')
             ->assertSee('Tops')
-            ->assertSee('data-subcategory="'.$tops->id.'"', false)
-            ->assertSee('Uncategorized')
+            ->assertSee('data-store-section="'.$tops->id.'"', false)
+            ->assertSee('No Store Section')
             ->assertSee('Manual stock count')
             ->assertSee('Inventory Owner')
             ->assertDontSee('INV-PRIVATE')
@@ -136,6 +138,112 @@ class SellerInventoryIntegrationTest extends TestCase
             'id' => $archived->id,
             'stock_on_hand' => 9,
         ]);
+    }
+
+    public function test_inventory_filters_store_sections_and_marketplace_subcategories_separately(): void
+    {
+        $businessCategory = $this->category();
+        [$seller, $store] = $this->sellerAndStore($businessCategory, 'inventory-taxonomy');
+        [, $otherStore] = $this->sellerAndStore($businessCategory, 'inventory-taxonomy-other');
+
+        $phonesSection = $this->subcategory($store, $businessCategory, 'Phones');
+        $audioSection = $this->subcategory($store, $businessCategory, 'Audio');
+        $privateSection = $this->subcategory($otherStore, $businessCategory, 'Private section');
+
+        $electronics = MarketplaceCategory::create([
+            'name' => 'Electronics & Gadgets',
+            'slug' => 'inventory-electronics-and-gadgets',
+            'is_active' => true,
+            'position' => 1,
+        ]);
+        $mobilePhones = $this->marketplaceSubcategory($electronics, 'Mobile Phones & Accessories', 'mobile-phones-accessories');
+        $audioVideo = $this->marketplaceSubcategory($electronics, 'Audio & Video Equipment', 'audio-video-equipment');
+
+        $privateMarketplaceCategory = MarketplaceCategory::create([
+            'name' => 'Private Marketplace Category',
+            'slug' => 'inventory-private-marketplace-category',
+            'is_active' => true,
+            'position' => 2,
+        ]);
+        $privateMarketplaceSubcategory = $this->marketplaceSubcategory($privateMarketplaceCategory, 'Private Marketplace Subcategory', 'private-marketplace-subcategory');
+
+        $phoneProduct = $this->product($store, $businessCategory, 'Phone Product', 'inventory-phone-product');
+        $phoneProduct->update([
+            'subcategory_id' => $phonesSection->id,
+            'marketplace_subcategory_id' => $mobilePhones->id,
+        ]);
+        $phoneVariant = $this->variant($phoneProduct, 'INV-TAX-PHONE', 'Default', 8, 0, 2);
+
+        $audioProduct = $this->product($store, $businessCategory, 'Audio Product', 'inventory-audio-product');
+        $audioProduct->update([
+            'subcategory_id' => $phonesSection->id,
+            'marketplace_subcategory_id' => $audioVideo->id,
+        ]);
+        $audioVariant = $this->variant($audioProduct, 'INV-TAX-AUDIO', 'Default', 8, 0, 2);
+
+        $unclassifiedProduct = $this->product($store, $businessCategory, 'Unclassified Product', 'inventory-unclassified-product');
+        $unclassifiedProduct->update(['subcategory_id' => $audioSection->id]);
+        $unclassifiedVariant = $this->variant($unclassifiedProduct, 'INV-TAX-UNCLASSIFIED', 'Default', 8, 0, 2);
+
+        $privateProduct = $this->product($otherStore, $businessCategory, 'Private Taxonomy Product', 'inventory-private-taxonomy-product');
+        $privateProduct->update([
+            'subcategory_id' => $privateSection->id,
+            'marketplace_subcategory_id' => $privateMarketplaceSubcategory->id,
+        ]);
+        $this->variant($privateProduct, 'INV-TAX-PRIVATE', 'Default', 8, 0, 2);
+
+        $service = app(SellerInventoryService::class);
+        $filteredInventory = $service->inventoryFor($seller, (string) $phonesSection->id, (string) $mobilePhones->id);
+
+        $this->assertSame([$phoneVariant->id], $filteredInventory['inventoryItems']->pluck('id')->all());
+        $this->assertSame(
+            [$phoneVariant->id, $audioVariant->id],
+            $service->inventoryFor($seller, (string) $phonesSection->id)['inventoryItems']->pluck('id')->all(),
+        );
+        $this->assertSame(
+            [$phoneVariant->id],
+            $service->inventoryFor($seller, null, (string) $mobilePhones->id)['inventoryItems']->pluck('id')->all(),
+        );
+        $this->assertSame(
+            [],
+            $service->inventoryFor($seller, null, (string) $privateMarketplaceSubcategory->id)['inventoryItems']->all(),
+        );
+        $this->assertEqualsCanonicalizing(
+            [$phonesSection->id, $audioSection->id],
+            collect($filteredInventory['inventorySubcategories'])->pluck('id')->all(),
+        );
+        $this->assertEqualsCanonicalizing(
+            [$mobilePhones->id, $audioVideo->id],
+            collect($filteredInventory['inventoryMarketplaceSubcategories'])->pluck('id')->all(),
+        );
+        $this->assertTrue($filteredInventory['inventoryHasUnclassifiedMarketplaceItems']);
+        $this->assertSame((string) $phonesSection->id, $filteredInventory['inventorySelectedStoreSection']);
+        $this->assertSame((string) $mobilePhones->id, $filteredInventory['inventorySelectedMarketplaceSubcategory']);
+
+        $unclassifiedInventory = $service->inventoryFor($seller, null, 'unclassified');
+        $this->assertSame([$unclassifiedVariant->id], $unclassifiedInventory['inventoryItems']->pluck('id')->all());
+
+        $this->actingAs($seller)
+            ->get(route('seller.inventory', [
+                'store_section' => $phonesSection->id,
+                'marketplace_subcategory' => $mobilePhones->id,
+            ]))
+            ->assertOk()
+            ->assertSee('Filter by Store section')
+            ->assertSee('Filter by Marketplace subcategory')
+            ->assertSee('All Store Sections')
+            ->assertSee('All Marketplace Subcategories')
+            ->assertSee('Electronics &amp; Gadgets', false)
+            ->assertSee('data-id="'.$phoneVariant->id.'"', false)
+            ->assertDontSee('data-id="'.$audioVariant->id.'"', false)
+            ->assertDontSee('INV-TAX-PRIVATE')
+            ->assertDontSee('Private Marketplace Category')
+            ->assertDontSee('Private Marketplace Subcategory')
+            ->assertSee('No Marketplace Subcategory');
+
+        $this->actingAs($seller)
+            ->get(route('seller.inventory', ['marketplace_subcategory' => 'not-a-valid-filter']))
+            ->assertSessionHasErrors('marketplace_subcategory');
     }
 
     public function test_compliance_blocked_inventory_is_not_presented_as_sellable_stock(): void
@@ -356,6 +464,21 @@ class SellerInventoryIntegrationTest extends TestCase
             'parent_category_id' => $category->id,
             'name' => $name,
             'slug' => Str::slug($name),
+        ]);
+    }
+
+    private function marketplaceSubcategory(
+        MarketplaceCategory $category,
+        string $name,
+        string $slug,
+    ): MarketplaceSubcategory {
+        return MarketplaceSubcategory::create([
+            'marketplace_category_id' => $category->id,
+            'name' => $name,
+            'name_key' => Str::lower($name),
+            'slug' => $slug,
+            'is_active' => true,
+            'position' => 0,
         ]);
     }
 

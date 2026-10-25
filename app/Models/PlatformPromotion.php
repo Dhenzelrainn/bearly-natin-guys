@@ -50,6 +50,11 @@ class PlatformPromotion extends Model
 
     public const STATUS_ENDED = 'ended';
 
+    /** Computed display states; these are not persisted by the regular-offer workflow. */
+    public const STATUS_EXHAUSTED = 'exhausted';
+
+    public const STATUS_EXPIRED = 'expired';
+
     public const CAMPAIGN_FLASH_DEAL = 'flash_deal';
 
     public const CAMPAIGN_PISO_SALE = 'piso_sale';
@@ -80,6 +85,7 @@ class PlatformPromotion extends Model
             'is_public' => 'boolean',
             'is_featured' => 'boolean',
             'requires_approval' => 'boolean',
+            'minimum_discount_percent' => 'integer',
         ];
     }
 
@@ -186,19 +192,33 @@ class PlatformPromotion extends Model
             return self::STATUS_ACTIVE;
         }
 
+        if ($this->status === self::STATUS_DRAFT) {
+            return self::STATUS_DRAFT;
+        }
+
+        if ($this->status === self::STATUS_ENDED || $this->endsAt()?->lessThan($at)) {
+            return self::STATUS_EXPIRED;
+        }
+
         if ($this->status === self::STATUS_PAUSED) {
             return self::STATUS_PAUSED;
         }
 
         if ($this->startsAt()?->greaterThan($at)) {
-            return 'scheduled';
+            return self::STATUS_SCHEDULED;
         }
 
-        if ($this->endsAt()?->lessThan($at)) {
-            return self::STATUS_ENDED;
+        if ($this->status !== self::STATUS_ACTIVE) {
+            return $this->status ?: self::STATUS_DRAFT;
         }
 
         return self::STATUS_ACTIVE;
+    }
+
+    public function isExhausted(int $activeRedemptions, int $activeBudgetSpendMinor): bool
+    {
+        return ($this->redemption_limit !== null && $activeRedemptions >= (int) $this->redemption_limit)
+            || ($this->budget_minor !== null && $activeBudgetSpendMinor >= (int) $this->budget_minor);
     }
 
     public function isActiveAt(?Carbon $at = null): bool

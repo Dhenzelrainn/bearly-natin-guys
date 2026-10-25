@@ -1,10 +1,15 @@
 @php
-    $catalog = json_decode(file_get_contents(resource_path('data/buyer-mens-products (1).json')), true, 512, JSON_THROW_ON_ERROR);
+    $catalog = [];
     $taxonomy = json_decode(file_get_contents(resource_path('data/buyer-categories.json')), true, 512, JSON_THROW_ON_ERROR);
     $mensCategory = collect($taxonomy)->firstWhere('slug', 'men-s-apparel');
     $subcategories = $mensCategory['subcategories'];
     $liveCatalog = $liveCatalog ?? [];
-    $usingLiveCatalog = ! empty($liveCatalog);
+    $canonicalMarketplaceTaxonomy = (bool) ($canonicalMarketplaceTaxonomy ?? false);
+    $usingLiveCatalog = true;
+    if ($canonicalMarketplaceTaxonomy) {
+        $catalog = $liveCatalog ?? [];
+        $subcategories = collect($marketplaceSubcategories ?? [])->pluck('name')->all();
+    }
     if ($usingLiveCatalog) {
         $catalog = $liveCatalog;
     }
@@ -45,7 +50,7 @@
 </style>
 
 </head>
-    <body class="bc" data-category="men-s-apparel" data-catalog-rows="4" style="--catalog-image:url('{{ asset('images/mens-catalog-atlas.png') }}');--catalog-image-height:400%" data-live-catalog="{{ $usingLiveCatalog ? 'true' : 'false' }}">
+    <body class="bc" data-category="men-s-apparel" data-catalog-rows="4" style="--catalog-image:url('{{ asset('images/mens-catalog-atlas.png') }}');--catalog-image-height:400%" data-live-catalog="{{ $usingLiveCatalog ? 'true' : 'false' }}" data-canonical-marketplace-taxonomy="{{ $canonicalMarketplaceTaxonomy ? 'true' : 'false' }}" data-next-page="{{ isset($categoryPagination) && $categoryPagination->hasMorePages() ? $categoryPagination->currentPage() + 1 : '' }}">
         <a href="#bc-main" class="skip">
             Skip to products
         </a>
@@ -85,7 +90,7 @@
                             All items
                         </button>
                         @foreach($subcategories as $i => $sub)
-                        <button data-sub="{{ $sub }}" aria-pressed="false">
+                        <button data-sub="{{ $canonicalMarketplaceTaxonomy ? ($marketplaceSubcategorySlugs[$sub] ?? '') : $sub }}" data-sub-label="{{ $sub }}" data-subcategory-id="{{ $canonicalMarketplaceTaxonomy ? ($marketplaceSubcategoryIds[$sub] ?? '') : '' }}" aria-pressed="false">
                             <i class="mi" aria-hidden="true">
                                 {{ ['checkroom','apparel','checkroom','directions_run','steps','styler'][$i] }}
                             </i>
@@ -169,7 +174,7 @@
                 </div>
                 <div class="shortcuts" aria-label="Explore subcategories">
                     @foreach($subcategories as $i => $sub)
-                    <button data-sub="{{ $sub }}">
+                    <button data-sub="{{ $canonicalMarketplaceTaxonomy ? ($marketplaceSubcategorySlugs[$sub] ?? '') : $sub }}" data-sub-label="{{ $sub }}" data-subcategory-id="{{ $canonicalMarketplaceTaxonomy ? ($marketplaceSubcategoryIds[$sub] ?? '') : '' }}">
                         <span class="photo" style="--x:{{ ([5,1,2,15,4,19][$i] % 5)*25 }}%;--y:{{ floor([5,1,2,15,4,19][$i]/5)*100/3 }}%" aria-hidden="true">
                         </span>
                         <span>

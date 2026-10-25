@@ -16,6 +16,7 @@ class BuyerOrderConfirmationService
     public function __construct(
         private readonly CodCashCollectionService $codCash,
         private readonly NotificationService $notifications,
+        private readonly PromotionService $promotions,
     ) {}
 
     /**
@@ -56,7 +57,11 @@ class BuyerOrderConfirmationService
                     continue;
                 }
 
-                $shipmentStatuses = $sellerOrder->shipments()->orderBy('id')->lockForUpdate()->pluck('status');
+                $shipmentStatuses = $sellerOrder->shipments()
+                    ->where('purpose', 'outbound')
+                    ->orderBy('id')
+                    ->lockForUpdate()
+                    ->pluck('status');
 
                 abort_if(
                     $shipmentStatuses->isEmpty() || $shipmentStatuses->contains(fn (string $status): bool => $status !== ShipmentStatus::Delivered->value),
@@ -99,6 +104,7 @@ class BuyerOrderConfirmationService
             foreach ($pendingNonCod as $payment) {
                 $payment->update(['status' => 'paid', 'paid_at' => $now]);
             }
+            $this->promotions->markOrderPaid($order);
 
             $this->notifySellersOfCompletion($order, $completedNow, $buyer);
 
@@ -149,8 +155,12 @@ class BuyerOrderConfirmationService
             return false;
         }
 
-        return $pending->every(fn ($sellerOrder): bool => $sellerOrder->shipments->isNotEmpty()
-            && $sellerOrder->shipments->every(fn ($shipment): bool => $shipment->status === ShipmentStatus::Delivered->value));
+        return $pending->every(function ($sellerOrder): bool {
+            $outbound = $sellerOrder->shipments->where('purpose', 'outbound');
+
+            return $outbound->isNotEmpty()
+                && $outbound->every(fn ($shipment): bool => $shipment->status === ShipmentStatus::Delivered->value);
+        });
     }
 
     /**

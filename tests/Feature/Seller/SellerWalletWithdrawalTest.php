@@ -103,6 +103,48 @@ class SellerWalletWithdrawalTest extends TestCase
         $this->assertSame(90_000, app(SellerWalletService::class)->ledgerTotals($wallet)['available']);
     }
 
+    public function test_paid_earnings_release_after_the_three_day_return_window(): void
+    {
+        [, $profile, $store] = $this->sellerFixture('Three-day window seller');
+        [, , , $transaction] = $this->saleFixture(
+            $profile,
+            $store,
+            'three-day-window',
+            completedDaysAgo: 4,
+            method: 'gcash',
+        );
+
+        $wallet = app(SellerWalletService::class)->refreshForSeller($profile);
+
+        $this->assertSame(90_000, (int) $wallet->available_balance_minor);
+        $this->assertSame(0, (int) $wallet->pending_balance_minor);
+        $this->assertDatabaseHas('seller_wallet_transactions', [
+            'seller_transaction_id' => $transaction->id,
+            'type' => 'sale_earning_available',
+            'available_delta_minor' => 90_000,
+        ]);
+    }
+
+    public function test_wallet_shows_when_the_three_day_return_period_ends_without_promising_availability(): void
+    {
+        Carbon::setTestNow('2026-10-22 12:00:00');
+        [$seller, $profile, $store] = $this->sellerFixture('Return period display seller');
+        $this->saleFixture(
+            $profile,
+            $store,
+            'return-period-display',
+            completedDaysAgo: 2,
+            method: 'gcash',
+        );
+
+        $this->actingAs($seller)
+            ->get(route('seller.finance.wallet'))
+            ->assertOk()
+            ->assertSeeText('Paid earnings may move to Available after the 3-calendar-day return/refund period ends, counted from Seller Order completion.')
+            ->assertSeeText('Return period ends Oct 23, 2026; may become Available after that if all other checks pass.')
+            ->assertSeeText('Return period: 3 calendar days after order completion; other checks may extend the wait.');
+    }
+
     public function test_wallet_migration_backfills_paid_legacy_payouts_and_refuses_data_loss_on_rollback(): void
     {
         $migration = require database_path('migrations/2026_10_15_000001_create_seller_wallet_and_withdrawal_tables.php');

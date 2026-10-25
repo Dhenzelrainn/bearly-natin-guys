@@ -105,7 +105,7 @@ class RiderDeliveryHistoryService
     {
         $outcome = $this->statusLabel((string) $record->history_status);
         $earning = $record->earning_minor === null
-            ? 'Not recorded'
+            ? 'No ledger entry'
             : $this->formatMinor((int) $record->earning_minor);
 
         return array_map($this->safeCsvValue(...), [
@@ -379,7 +379,7 @@ class RiderDeliveryHistoryService
                 'status' => (string) $record->history_status,
                 'status_label' => $this->statusLabel((string) $record->history_status),
                 'earning' => $record->earning_minor === null
-                    ? 'Not recorded'
+                    ? 'No ledger entry'
                     : $this->formatMinor((int) $record->earning_minor),
                 'batch_no' => (string) ($record->batch_no ?? '—'),
                 'attempt' => $record->attempt_no === null

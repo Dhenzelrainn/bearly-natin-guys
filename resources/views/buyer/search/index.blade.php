@@ -94,7 +94,9 @@
                                         'current' => (float) $product['price'],
                                         'regular' => (float) ($product['regular_price'] ?? $product['price']),
                                         'discount' => (int) ($product['discount_percent'] ?? 0),
-                                        'campaign_name' => $product['product_discount_name'] ?? null,
+                                        'price_source' => $product['price_source'] ?? null,
+                                        'campaign_name' => $product['campaign_name'] ?? null,
+                                        'product_discount_name' => $product['product_discount_name'] ?? null,
                                     ])
                                 </div>
                                 @if ($product['store_slug'])

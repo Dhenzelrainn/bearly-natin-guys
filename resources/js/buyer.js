@@ -1,8 +1,7 @@
 /* BEARLY shared buyer JavaScript: homepage + legacy page + category V2. */
-/* Frontend catalog preview. Preview state is buyer-scoped and never treated as live commerce data. */
+import { toggleBuyerWishlist } from './buyer-wishlist';
 
 const buyerStorageKey = key => window.bearlyStorageKey?.(key) || `bearly-${key}-v1`;
-const PREVIEW_WISHLIST_KEY = buyerStorageKey('preview-wishlist');
 const SEARCH_HISTORY_KEY = buyerStorageKey('search-history');
 
 export function selectProducts(products, { category = '', search = '', sort = 'featured' } = {}) {
@@ -66,7 +65,8 @@ const buyerPriceMetaMarkup = product => {
     const current = Number(product?.price) || 0;
     const regular = Number(product?.regular_price) || 0;
     const discount = Number(product?.discount_percent) || 0;
-    const campaignName = String(product?.product_discount_name || '').trim();
+    const isCampaign = String(product?.price_source || '') === 'campaign';
+    const campaignName = String((isCampaign ? product?.campaign_name : product?.product_discount_name) || '').trim();
 
     if (!(discount > 0 && regular > current)) return '';
 
@@ -337,6 +337,11 @@ function initialize() {
 
     const { categories, products, live = false } = JSON.parse(dataElement.textContent);
     const $ = id => document.getElementById(id);
+    const liveWishlistIds = new Set(
+        live
+            ? products.filter(product => product.is_wishlisted).map(product => Number(product.id)).filter(id => id > 0)
+            : []
+    );
 
     const state = {
         category: '',
@@ -425,8 +430,10 @@ function initialize() {
 
     const card = product => {
         const metrics = discoveryMetrics(product);
+        const productId = Number(product.id);
+        const isSaved = live && productId > 0 && liveWishlistIds.has(productId);
         return `
-        <article class="product-card discovery-card" data-discovery-product="${escapeHtml(product.wishlist_key || product.id)}">
+        <article class="product-card discovery-card" data-discovery-product="${escapeHtml(product.wishlist_key || product.id)}" data-live-product-id="${live && productId > 0 ? productId : ''}">
             <button
                 class="product-open"
                 data-product="${escapeHtml(product.id)}"
@@ -440,7 +447,7 @@ function initialize() {
                     <div class="buyer-price-line discovery-price-line"><strong class="product-price">${peso(product.price)}</strong>${buyerPriceMetaMarkup(product)}</div>
                 </div>
             </button>
-            <button type="button" class="discovery-like" data-discovery-like aria-label="Save ${escapeHtml(product.name)}"><span class="material-symbols-outlined">favorite</span></button>
+            <button type="button" class="discovery-like${isSaved ? ' is-liked' : ''}" data-discovery-like aria-pressed="${isSaved}" aria-label="${isSaved ? 'Remove' : 'Save'} ${escapeHtml(product.name)} ${isSaved ? 'from' : 'to'} My Likes"><span class="material-symbols-outlined" aria-hidden="true">favorite</span></button>
         </article>
     `;
     };
@@ -558,10 +565,15 @@ function initialize() {
             .join('');
 
         $('empty').hidden = results.length !== 0;
+        if (live && results.length === 0 && !filtered) {
+            const emptyTitle = $('empty').querySelector('h3');
+            const emptyCopy = $('empty').querySelector('p');
+            if (emptyTitle) emptyTitle.textContent = 'No live products yet';
+            if (emptyCopy) emptyCopy.textContent = 'Orderable listings from Bearly sellers will appear here when available.';
+        }
         $('load-more').hidden = visible.length >= results.length;
 
-        $('result-count').textContent =
-            `Showing ${visible.length} of ${results.length} ${live ? 'products' : 'sample products'}`;
+        $('result-count').textContent = `Showing ${visible.length} of ${results.length} ${live ? 'products' : 'sample products'}`;
 
         $('view-all').hidden = false;
         $('view-all').innerHTML = filtered
@@ -1815,7 +1827,7 @@ function initialize() {
         );
     }
 
-    document.addEventListener('click', event => {
+    document.addEventListener('click', async event => {
         // Flash Deals and Top Products reuse the existing Bearly product-details UI.
         const featuredCard = event.target.closest('[data-flash-product], [data-top-product]');
         if (featuredCard && !event.target.closest('[data-flash-add], [data-flash-like], [data-top-add], [data-top-like]')) {
@@ -1890,21 +1902,23 @@ function initialize() {
 
         if (discoveryLike) {
             const card = discoveryLike.closest('[data-discovery-product]');
-            const key = String(card?.dataset.discoveryProduct || '');
-            if (!key) return;
+            const productId = Number(card?.dataset.liveProductId || 0);
+            if (!productId) return;
 
-            let saved = [];
+            discoveryLike.disabled = true;
             try {
-                const parsed = JSON.parse(localStorage.getItem(PREVIEW_WISHLIST_KEY) || '[]');
-                if (Array.isArray(parsed)) saved = parsed;
-            } catch {}
-
-            const index = saved.indexOf(key);
-            if (index >= 0) saved.splice(index, 1);
-            else saved.push(key);
-
-            try { localStorage.setItem(PREVIEW_WISHLIST_KEY, JSON.stringify(saved)); } catch {}
-            discoveryLike.classList.toggle('is-liked', index < 0);
+                const result = await toggleBuyerWishlist(productId);
+                if (result.is_wishlisted) liveWishlistIds.add(productId);
+                else liveWishlistIds.delete(productId);
+                discoveryLike.classList.toggle('is-liked', result.is_wishlisted);
+                discoveryLike.setAttribute('aria-pressed', String(result.is_wishlisted));
+                discoveryLike.setAttribute('aria-label', `${result.is_wishlisted ? 'Remove' : 'Save'} ${card.querySelector('h3')?.textContent || 'product'} ${result.is_wishlisted ? 'from' : 'to'} My Likes`);
+                $('result-count').textContent = result.is_wishlisted ? 'Saved to My Likes.' : 'Removed from My Likes.';
+            } catch (error) {
+                $('result-count').textContent = error.message || 'Unable to update My Likes.';
+            } finally {
+                discoveryLike.disabled = false;
+            }
             return;
         }
 
@@ -2627,8 +2641,13 @@ export function catalogWithFilterGroups(products, category) {
 }
 
 export function matchesCatalogSubcategory(product, subcategory) {
-    return product.subcategory === subcategory ||
-        (product.filter_groups || []).includes(subcategory);
+    if (!subcategory) return false;
+
+    const selected = String(subcategory);
+    return String(product.marketplace_subcategory_slug || '') === selected ||
+        String(product.marketplace_subcategory_id || '') === selected ||
+        product.subcategory === selected ||
+        (product.filter_groups || []).includes(selected);
 }
 
 export function filterCatalog(products, state, savedIds = []) {
@@ -2769,6 +2788,8 @@ if (
 function init() {
     const $ = id => document.getElementById(id);
     const usingLiveCatalog = document.body.dataset.liveCatalog === 'true';
+    const canonicalLiveTaxonomy = usingLiveCatalog && document.body.dataset.canonicalMarketplaceTaxonomy === 'true';
+    const nextPageNumber = Number(document.body.dataset.nextPage || 0);
     const catalogNoun = count => usingLiveCatalog
         ? (count === 1 ? 'product' : 'products')
         : (count === 1 ? 'sample product' : 'sample products');
@@ -2777,6 +2798,17 @@ function init() {
         JSON.parse($('bc-data').textContent),
         document.body.dataset.category
     );
+
+    if (canonicalLiveTaxonomy && !document.querySelector('[data-subcategory-id]')) {
+        const navigation = document.querySelector('.subcategories');
+        document.querySelectorAll('.shortcuts').forEach(shortcuts => { shortcuts.hidden = true; });
+        if (navigation) {
+            const note = document.createElement('p');
+            note.className = 'subcategory-empty-hint';
+            note.textContent = 'No active canonical subcategories have orderable listings assigned yet. Unassigned products remain under All items; ask the Seller or Admin to review any incorrect category assignment.';
+            navigation.after(note);
+        }
+    }
     const priceLimit = catalogPriceLimit(products);
 
     for (const id of ['bc-min', 'bc-max', 'bc-min-range', 'bc-max-range']) {
@@ -2788,67 +2820,34 @@ function init() {
         upperPricePreset.dataset.price = `1001,${priceLimit}`;
     }
 
-    const validIds = new Set(
-        products.map(product => product.id)
-    );
-
     let state = readState(
         new URLSearchParams(location.search),
         products
     );
 
     let limit = 20;
-    let saved = [];
-    const wishlistCategory =
-        document.body.dataset.category || 'unknown';
+    let saved = products
+        .filter(product => product.is_wishlisted)
+        .map(product => Number(product.id));
+    let wishlistNotice = '';
 
     const categoryMetrics = product => {
-        const seedText = `${wishlistCategory}:${product.id}`;
-        let seed = 0;
-
-        for (const character of seedText) {
-            seed = (seed * 31 + character.charCodeAt(0)) >>> 0;
-        }
-
         const ratingValue = Number(product.rating);
-        const liveProduct = product.live === true;
         const rating = Number.isFinite(ratingValue) && ratingValue > 0
             ? Math.min(5, ratingValue).toFixed(1)
-            : (liveProduct ? '' : '4.5');
+            : '';
 
         const soldText = String(product.sold ?? '').trim().toLowerCase();
         const soldValue = soldText.endsWith('k')
             ? Number.parseFloat(soldText) * 1000
             : Number(soldText);
-        const soldCount = Number.isFinite(soldValue) && soldValue >= 0
-            ? Math.round(soldValue)
-            : (liveProduct ? 0 : 180 + (seed % 4621));
-        const sold = soldCount >= 1000
-            ? `${(soldCount / 1000).toFixed(1)}k`
-            : String(soldCount);
+        const soldCount = Number.isFinite(soldValue) && soldValue > 0 ? Math.round(soldValue) : 0;
+        const sold = soldCount > 0
+            ? (soldCount >= 1000 ? `${(soldCount / 1000).toFixed(1)}k` : String(soldCount))
+            : '';
 
         return { rating, sold };
     };
-
-    try {
-        const stored = JSON.parse(
-            localStorage.getItem(
-                PREVIEW_WISHLIST_KEY
-            ) || '[]'
-        );
-
-        if (Array.isArray(stored)) {
-            saved = stored
-                .filter(key =>
-                    typeof key === 'string' &&
-                    key.startsWith(`${wishlistCategory}:`)
-                )
-                .map(key => Number(key.split(':').pop()))
-                .filter(id => validIds.has(id));
-        }
-    } catch {
-        saved = [];
-    }
 
     const colors = {
         Blue: '#305e94',
@@ -2943,10 +2942,12 @@ function init() {
         }
 
         if (state.subcategory) {
+            const subcategoryButton = [...document.querySelectorAll('[data-sub]')]
+                .find(button => button.dataset.sub === state.subcategory);
             result.push([
                 'subcategory',
                 state.subcategory,
-                state.subcategory,
+                subcategoryButton?.dataset.subLabel || state.subcategory,
             ]);
         }
 
@@ -3165,7 +3166,7 @@ function init() {
                 campaignLabel.hidden = true;
                 priceMeta.append(campaignLabel);
             }
-            const campaignName = String(product.product_discount_name || '').trim();
+            const campaignName = String((String(product.price_source || '') === 'campaign' ? product.campaign_name : product.product_discount_name) || '').trim();
 
             if (priceMeta) priceMeta.hidden = !hasDiscount;
             if (regularAmount) regularAmount.textContent = price(regularPrice);
@@ -3219,14 +3220,34 @@ function init() {
         $('bc-count').textContent =
             `${filtered.length} ${catalogNoun(filtered.length)}`;
 
-        $('bc-status').textContent =
-            `Showing ${shown.length} of ${filtered.length} ${catalogNoun(filtered.length)}`;
+        $('bc-status').textContent = wishlistNotice
+            || `Showing ${shown.length} of ${filtered.length} ${catalogNoun(filtered.length)}`;
 
         $('bc-empty').hidden =
             filtered.length > 0;
 
-        $('bc-more').hidden =
-            shown.length >= filtered.length;
+        if (usingLiveCatalog && filtered.length === 0) {
+            const hasActiveFilters = chips().length > 0;
+            const emptyTitle = $('bc-empty').querySelector('h2');
+            const emptyCopy = $('bc-empty').querySelector('p');
+            const resetButton = $('bc-empty').querySelector('[data-reset]');
+
+            if (emptyTitle) {
+                emptyTitle.textContent = hasActiveFilters
+                    ? 'No products match these filters'
+                    : 'No products in this category yet';
+            }
+            if (emptyCopy) {
+                emptyCopy.textContent = hasActiveFilters
+                    ? 'Try removing a filter or choosing another subcategory.'
+                    : 'Products will appear here when Sellers publish listings in this category.';
+            }
+            if (resetButton) resetButton.hidden = !hasActiveFilters;
+        }
+
+        const hasLocalMore = shown.length < filtered.length;
+        $('bc-more').hidden = !hasLocalMore && !(usingLiveCatalog && nextPageNumber > 0);
+        $('bc-more').textContent = hasLocalMore ? 'Load more products' : 'Load next page';
 
         const selected = chips();
 
@@ -3456,6 +3477,15 @@ function init() {
     }
 
     function reset() {
+        if (canonicalLiveTaxonomy) {
+            const url = new URL(location.href);
+            for (const key of ['q', 'sub', 'size', 'color', 'condition', 'location', 'min', 'max', 'shipping', 'voucher', 'rating', 'sort', 'saved', 'view', 'page']) {
+                url.searchParams.delete(key);
+            }
+            location.assign(url);
+            return;
+        }
+
         const view = state.view;
 
         state = defaults(priceLimit);
@@ -3638,6 +3668,13 @@ function init() {
     $('bc-more').addEventListener(
         'click',
         () => {
+            if (usingLiveCatalog && nextPageNumber > 0 && $('bc-grid').children.length >= filterCatalog(products, state, saved).length) {
+                const url = new URL(location.href);
+                url.searchParams.set('page', String(nextPageNumber));
+                location.assign(url);
+                return;
+            }
+
             const previousCount =
                 $('bc-grid').children.length;
 
@@ -4733,7 +4770,7 @@ function init() {
 
     document.addEventListener(
         'click',
-        event => {
+        async event => {
             const button =
                 event.target.closest(
                     'button'
@@ -4746,6 +4783,18 @@ function init() {
                     'data-sub'
                 )
             ) {
+                if (canonicalLiveTaxonomy) {
+                    const url = new URL(location.href);
+                    const selectedSubcategory = state.subcategory === button.dataset.sub
+                        ? ''
+                        : button.dataset.sub;
+                    if (selectedSubcategory) url.searchParams.set('sub', selectedSubcategory);
+                    else url.searchParams.delete('sub');
+                    url.searchParams.delete('page');
+                    location.assign(url);
+                    return;
+                }
+
                 state.subcategory =
                     state.subcategory ===
                     button.dataset.sub
@@ -4830,50 +4879,24 @@ function init() {
                         ).dataset.id
                     );
 
-                saved =
-                    saved.includes(id)
-                        ? saved.filter(
-                            value =>
-                                value !== id
-                        )
-                        : [...saved, id];
-
+                const saveButton = button;
+                saveButton.disabled = true;
                 try {
-                    const allSaved = JSON.parse(
-                        localStorage.getItem(
-                            PREVIEW_WISHLIST_KEY
-                        ) || '[]'
-                    );
-                    const otherCategories = Array.isArray(allSaved)
-                        ? allSaved.filter(key =>
-                            typeof key === 'string' &&
-                            !key.startsWith(`${wishlistCategory}:`)
-                        )
-                        : [];
-                    const categoryKeys = saved.map(
-                        value => `${wishlistCategory}:${value}`
-                    );
-
-                    localStorage.setItem(
-                        PREVIEW_WISHLIST_KEY,
-                        JSON.stringify([
-                            ...otherCategories,
-                            ...categoryKeys,
-                        ])
-                    );
-                } catch {
-                    // LocalStorage unavailable.
+                    const result = await toggleBuyerWishlist(id);
+                    saved = result.is_wishlisted
+                        ? [...new Set([...saved, id])]
+                        : saved.filter(value => value !== id);
+                    wishlistNotice = result.is_wishlisted ? 'Saved to My Likes.' : 'Removed from My Likes.';
+                } catch (error) {
+                    wishlistNotice = error.message || 'Unable to update My Likes.';
+                } finally {
+                    saveButton.disabled = false;
                 }
 
                 render();
-
                 $('bc-grid')
-                    .querySelector(
-                        `[data-id="${id}"] [data-save]`
-                    )
-                    ?.focus({
-                        preventScroll: true,
-                    });
+                    .querySelector(`[data-id="${id}"] [data-save]`)
+                    ?.focus({ preventScroll: true });
             }
 
             if (
@@ -5408,1571 +5431,6 @@ if (typeof document !== 'undefined') {
 }
 
 
-/* Shared full product preview for Home featured sections and View All pages. */
-
-function featuredPhotoStyle(element, product) {
-    if (!element || !product) return;
-    if (product.image) {
-        element.style.backgroundImage = `url("${product.image}")`;
-        element.style.backgroundSize = 'cover';
-        element.style.backgroundPosition = 'center';
-        element.style.backgroundRepeat = 'no-repeat';
-        return;
-    }
-    const columns = Number(product.atlas_columns) || 6;
-    const rows = Number(product.atlas_rows) || 6;
-    const photoIndex = Math.max(0, Number(product.photo) || 0);
-    const column = photoIndex % columns;
-    const row = Math.floor(photoIndex / columns);
-    const x = columns > 1 ? (column * 100) / (columns - 1) : 0;
-    const y = rows > 1 ? (row * 100) / (rows - 1) : 0;
-    if (product.atlas) element.style.backgroundImage = `url("${product.atlas}")`;
-    element.style.backgroundSize = `${columns * 100}% ${rows * 100}%`;
-    element.style.backgroundPosition = `${x}% ${y}%`;
-    element.style.backgroundRepeat = 'no-repeat';
-}
-
-function showFeaturedProductFull(product) {
-    // This preview is also used on dedicated pages, outside the Home
-    // initialization scope. Keep its color palette local so it is always defined.
-    const featuredProductColors = {
-        Blue: '#305e94', Black: '#26292a', White: '#fff', Beige: '#d8c8a4',
-        Green: '#68745a', Gray: '#8a8b8e', Brown: '#79543b', Red: '#a8493d',
-        Pink: '#d8899b', Yellow: '#d8ad39', Orange: '#c97b37', Purple: '#79608f',
-        Navy: '#39485f',
-    };
-    const dialog =
-        document.getElementById('product-dialog');
-
-    const detail =
-        document.getElementById('product-detail');
-
-    const sizes =
-        Array.isArray(product.sizes)
-            ? product.sizes.filter(Boolean)
-            : [];
-
-    const productColors =
-        Array.isArray(product.colors) &&
-        product.colors.length
-            ? product.colors.filter(Boolean)
-            : [product.color].filter(Boolean);
-
-    const variants =
-        Array.isArray(product.variants)
-            ? product.variants
-            : [];
-
-    const productIdMatch =
-        String(product.id ?? '').match(/(\d+)$/);
-
-    const productId =
-        Number(productIdMatch?.[1]) || 1;
-
-    const sellerName =
-        product.seller_name ||
-        'Bearly Sample Seller';
-
-    const sellerLocation =
-        product.seller_location ||
-        product.location ||
-        'Philippines';
-
-    const sellerRating =
-        Number(
-            product.seller_rating ??
-            Math.min(
-                5,
-                (Number(product.rating) ||
-                    4.7) + 0.1
-            )
-        ).toFixed(1);
-
-    const fallbackStock =
-        12 + (productId % 9);
-
-    const baseStock =
-        Number.isFinite(
-            Number(product.stock)
-        )
-            ? Math.max(
-                0,
-                Number(product.stock)
-            )
-            : fallbackStock;
-
-    const soldCount =
-        Number.isFinite(
-            Number(product.sold)
-        )
-            ? Math.max(
-                0,
-                Number(product.sold)
-            )
-            : 24 +
-            ((productId * 17) %
-                180);
-
-    const productRating =
-        Number(product.rating) || 0;
-
-    let selectedSize =
-        sizes[0] || '';
-
-    let selectedColor =
-        productColors[0] || '';
-
-    let quantity = 1;
-
-    const findVariant = () => {
-        if (!variants.length) {
-            return null;
-        }
-
-        return (
-            variants.find(variant => {
-                const sizeMatches =
-                    !selectedSize ||
-                    !variant.size ||
-                    variant.size ===
-                    selectedSize;
-
-                const colorMatches =
-                    !selectedColor ||
-                    !variant.color ||
-                    variant.color ===
-                    selectedColor;
-
-                return (
-                    sizeMatches &&
-                    colorMatches
-                );
-            }) || null
-        );
-    };
-
-    const sizeOptions =
-        sizes.length
-            ? `
-                <div class="pd-option-group">
-                    <div class="pd-option-heading">
-                        <span>Size</span>
-                        <button
-                            type="button"
-                            class="pd-size-guide"
-                            data-pd-size-guide
-                        >
-                            Size guide
-                        </button>
-                    </div>
-
-                    <div
-                        class="pd-options"
-                        role="group"
-                        aria-label="Choose size"
-                    >
-                        ${sizes
-                            .map(
-                                (
-                                    size,
-                                    index
-                                ) => `
-                                    <button
-                                        type="button"
-                                        class="pd-option"
-                                        data-pd-size="${escapeHtml(
-                                            size
-                                        )}"
-                                        aria-pressed="${
-                                            index === 0
-                                                ? 'true'
-                                                : 'false'
-                                        }"
-                                    >
-                                        ${escapeHtml(
-                                            size
-                                        )}
-                                    </button>
-                                `
-                            )
-                            .join('')}
-                    </div>
-                </div>
-            `
-            : '';
-
-    const colorOptions =
-        productColors.length
-            ? `
-                <div class="pd-option-group">
-                    <div class="pd-option-heading">
-                        <span>Color</span>
-
-                        <strong data-pd-color-label>
-                            ${escapeHtml(
-                                selectedColor
-                            )}
-                        </strong>
-                    </div>
-
-                    <div
-                        class="pd-options pd-color-options"
-                        role="group"
-                        aria-label="Choose color"
-                    >
-                        ${productColors
-                            .map(
-                                (
-                                    color,
-                                    index
-                                ) => `
-                                    <button
-                                        type="button"
-                                        class="pd-option pd-color-option"
-                                        data-pd-color="${escapeHtml(
-                                            color
-                                        )}"
-                                        aria-pressed="${
-                                            index === 0
-                                                ? 'true'
-                                                : 'false'
-                                        }"
-                                    >
-                                        <span
-                                            class="pd-color-dot"
-                                            style="--pd-color:${
-                                                featuredProductColors[
-                                                    color
-                                                ] ||
-                                                '#aaa'
-                                            }"
-                                            aria-hidden="true"
-                                        ></span>
-
-                                        ${escapeHtml(
-                                            color
-                                        )}
-                                    </button>
-                                `
-                            )
-                            .join('')}
-                    </div>
-                </div>
-            `
-            : '';
-
-    const shippingBadge =
-        product.free_shipping
-            ? `
-                <span class="pd-badge">
-                    <i class="mi" aria-hidden="true">
-                        local_shipping
-                    </i>
-                    Free shipping
-                </span>
-            `
-            : '';
-
-    const voucherBadge =
-        product.voucher
-            ? `
-                <span class="pd-badge">
-                    <i class="mi" aria-hidden="true">
-                        sell
-                    </i>
-                    Voucher available
-                </span>
-            `
-            : '';
-
-    const sellerInitial =
-        escapeHtml(
-            sellerName
-                .charAt(0)
-                .toUpperCase()
-        );
-
-    detail.innerHTML = `
-        <article class="pd-shell">
-
-            <div class="pd-top">
-
-                <section class="pd-media">
-
-                    <div
-                        class="photo pd-main-photo"
-                        role="img"
-                        aria-label="${escapeHtml(
-                            product.name
-                        )}"
-                    ></div>
-
-                    <div class="pd-thumbnails">
-                        <button
-                            type="button"
-                            class="pd-thumbnail is-active"
-                            aria-label="View product image"
-                        >
-                            <span
-                                class="photo pd-thumb-photo"
-                                aria-hidden="true"
-                            ></span>
-                        </button>
-                    </div>
-
-                    <div class="pd-media-note">
-                        <i class="mi" aria-hidden="true">
-                            verified
-                        </i>
-                        Product preview
-                    </div>
-
-                </section>
-
-                <section class="pd-info">
-
-                    <p class="pd-category">
-                        ${escapeHtml(
-                            product.subcategory ||
-                            product.category ||
-                            'Product'
-                        )}
-                    </p>
-
-                    <h2 id="product-title">
-                        ${escapeHtml(
-                            product.name
-                        )}
-                    </h2>
-
-                    <div class="pd-social-proof">
-
-                        <span class="pd-rating">
-                            <i
-                                class="mi"
-                                aria-hidden="true"
-                            >
-                                star
-                            </i>
-                            ${
-                                productRating
-                                    ? productRating.toFixed(
-                                        1
-                                    )
-                                    : 'New'
-                            }
-                        </span>
-
-                        <span class="pd-divider"></span>
-
-                        <span>
-                            ${soldCount} sold
-                        </span>
-
-                    </div>
-
-                    <div class="pd-price-box">
-                        <strong
-                            class="pd-price"
-                            data-pd-price
-                        >
-                            ${peso(
-                                product.price
-                            )}
-                        </strong>
-                    </div>
-
-                    ${
-                        shippingBadge ||
-                        voucherBadge
-                            ? `
-                                <div class="pd-badges">
-                                    ${shippingBadge}
-                                    ${voucherBadge}
-                                </div>
-                            `
-                            : ''
-                    }
-
-                    <div class="pd-overview">
-
-                        <div>
-                            <span>
-                                Condition
-                            </span>
-
-                            <strong>
-                                ${escapeHtml(
-                                    product.condition ||
-                                    'New'
-                                )}
-                            </strong>
-                        </div>
-
-                        <div>
-                            <span>
-                                Ships from
-                            </span>
-
-                            <strong>
-                                ${escapeHtml(
-                                    sellerLocation
-                                )}
-                            </strong>
-                        </div>
-
-                    </div>
-
-                    ${colorOptions}
-
-                    ${sizeOptions}
-
-                    <div
-                        class="pd-option-group pd-quantity-group"
-                    >
-
-                        <div class="pd-option-heading">
-                            <span>
-                                Quantity
-                            </span>
-
-                            <small data-pd-stock>
-                                ${baseStock}
-                                pieces available
-                            </small>
-                        </div>
-
-                        <div class="pd-quantity-row">
-
-                            <div class="pd-stepper">
-
-                                <button
-                                    type="button"
-                                    data-pd-minus
-                                    aria-label="Decrease quantity"
-                                >
-                                    <i
-                                        class="mi"
-                                        aria-hidden="true"
-                                    >
-                                        remove
-                                    </i>
-                                </button>
-
-                                <span
-                                    data-pd-quantity
-                                >
-                                    1
-                                </span>
-
-                                <button
-                                    type="button"
-                                    data-pd-plus
-                                    aria-label="Increase quantity"
-                                >
-                                    <i
-                                        class="mi"
-                                        aria-hidden="true"
-                                    >
-                                        add
-                                    </i>
-                                </button>
-
-                            </div>
-
-                        </div>
-
-                    </div>
-
-                    <div class="pd-actions">
-
-                        <button
-                            type="button"
-                            class="pd-add-cart"
-                            data-pd-add-cart disabled
-                        >
-                            <i
-                                class="mi"
-                                aria-hidden="true"
-                            >
-                                shopping_cart
-                            </i>
-
-                            Preview only
-                        </button>
-
-                        <button
-                            type="button"
-                            class="pd-buy-now"
-                            data-pd-buy-now disabled
-                        >
-                            Checkout preview
-                        </button>
-
-                    </div>
-
-                    <div class="pd-action-note">
-                        <i
-                            class="mi"
-                            aria-hidden="true"
-                        >
-                            info
-                        </i>
-
-                        Frontend preview only —
-                        checkout and live
-                        inventory will be
-                        connected during
-                        backend integration.
-                    </div>
-
-                </section>
-
-            </div>
-
-            <section class="pd-seller-card">
-
-                <div class="pd-seller-avatar">
-                    ${sellerInitial}
-                </div>
-
-                <div class="pd-seller-info">
-
-                    <small>Sold by</small>
-
-                    <h3>
-                        ${escapeHtml(
-                            sellerName
-                        )}
-                    </h3>
-
-                    <div class="pd-seller-meta">
-
-                        <span>
-                            <i
-                                class="mi"
-                                aria-hidden="true"
-                            >
-                                star
-                            </i>
-                            ${sellerRating}
-                            seller rating
-                        </span>
-
-                        <span>
-                            <i
-                                class="mi"
-                                aria-hidden="true"
-                            >
-                                location_on
-                            </i>
-                            ${escapeHtml(
-                                sellerLocation
-                            )}
-                        </span>
-
-                    </div>
-
-                </div>
-
-                <div class="pd-seller-actions">
-
-                    <button
-                        type="button"
-                        class="pd-shop-button"
-                        data-pd-shop
-                    >
-                        <i
-                            class="mi"
-                            aria-hidden="true"
-                        >
-                            storefront
-                        </i>
-
-                        View Shop
-                    </button>
-
-                </div>
-
-            </section>
-
-            <section class="pd-description">
-
-                <h3>
-                    Product Description
-                </h3>
-
-                <p>
-                    ${escapeHtml(
-                        product.description ||
-                        'No description available.'
-                    )}
-                </p>
-
-                <div class="pd-description-grid">
-
-                    <div>
-                        <span>
-                            Category
-                        </span>
-
-                        <strong>
-                            ${escapeHtml(
-                                product.subcategory
-                            )}
-                        </strong>
-                    </div>
-
-                    <div>
-                        <span>
-                            Condition
-                        </span>
-
-                        <strong>
-                            ${escapeHtml(
-                                product.condition ||
-                                'New'
-                            )}
-                        </strong>
-                    </div>
-
-                    <div>
-                        <span>
-                            Color
-                        </span>
-
-                        <strong
-                            data-pd-description-color
-                        >
-                            ${escapeHtml(
-                                selectedColor ||
-                                '—'
-                            )}
-                        </strong>
-                    </div>
-
-                    <div>
-                        <span>
-                            Location
-                        </span>
-
-                        <strong>
-                            ${escapeHtml(
-                                sellerLocation
-                            )}
-                        </strong>
-                    </div>
-
-                </div>
-
-            </section>
-
-        </article>
-    `;
-
-        mountProductReviews(detail, product);
-        mountProductGallery(detail, product, featuredPhotoStyle);
-    bindProductReviewButton(detail);
-
-    function notify(message) {
-        let toast =
-            document.getElementById(
-                'bc-preview-toast'
-            );
-
-        if (!toast) {
-            toast =
-                document.createElement(
-                    'div'
-                );
-
-            toast.id =
-                'bc-preview-toast';
-
-            toast.className =
-                'bc-preview-toast';
-
-            toast.setAttribute(
-                'role',
-                'status'
-            );
-
-            toast.setAttribute(
-                'aria-live',
-                'polite'
-            );
-
-            document.body.append(toast);
-        }
-
-        toast.textContent = message;
-        toast.classList.add(
-            'is-visible'
-        );
-
-        clearTimeout(
-            window.__bearlyPreviewToast
-        );
-
-        window.__bearlyPreviewToast =
-            setTimeout(() => {
-                toast.classList.remove(
-                    'is-visible'
-                );
-            }, 2400);
-    }
-
-    function currentVariant() {
-        return findVariant();
-    }
-
-    function currentStock() {
-        const variant =
-            currentVariant();
-
-        if (
-            variants.length &&
-            !variant
-        ) {
-            return 0;
-        }
-
-        if (
-            variant &&
-            Number.isFinite(
-                Number(variant.stock)
-            )
-        ) {
-            return Math.max(
-                0,
-                Number(variant.stock)
-            );
-        }
-
-        return baseStock;
-    }
-
-    function currentPrice() {
-        const variant =
-            currentVariant();
-
-        if (
-            variant &&
-            Number.isFinite(
-                Number(variant.price)
-            )
-        ) {
-            return Number(
-                variant.price
-            );
-        }
-
-        return (
-            Number(product.price) ||
-            0
-        );
-    }
-
-    function syncProductSelection() {
-        const stock =
-            currentStock();
-
-        if (stock > 0) {
-            quantity = Math.max(
-                1,
-                Math.min(
-                    quantity,
-                    stock
-                )
-            );
-        } else {
-            quantity = 1;
-        }
-
-        const priceNode =
-            detail.querySelector(
-                '[data-pd-price]'
-            );
-
-        const stockNode =
-            detail.querySelector(
-                '[data-pd-stock]'
-            );
-
-        const quantityNode =
-            detail.querySelector(
-                '[data-pd-quantity]'
-            );
-
-        const minusButton =
-            detail.querySelector(
-                '[data-pd-minus]'
-            );
-
-        const plusButton =
-            detail.querySelector(
-                '[data-pd-plus]'
-            );
-
-        const addButton =
-            detail.querySelector(
-                '[data-pd-add-cart]'
-            );
-
-        const buyButton =
-            detail.querySelector(
-                '[data-pd-buy-now]'
-            );
-
-        if (priceNode) {
-            priceNode.textContent =
-                peso(
-                    currentPrice()
-                );
-        }
-
-        if (stockNode) {
-            stockNode.textContent =
-                stock > 0
-                    ? `${stock} piece${
-                        stock === 1
-                            ? ''
-                            : 's'
-                    } available`
-                    : 'Out of stock';
-
-            stockNode.classList.toggle(
-                'is-out',
-                stock <= 0
-            );
-        }
-
-        if (quantityNode) {
-            quantityNode.textContent =
-                quantity;
-        }
-
-        if (minusButton) {
-            minusButton.disabled =
-                quantity <= 1 ||
-                stock <= 0;
-        }
-
-        if (plusButton) {
-            plusButton.disabled =
-                quantity >= stock ||
-                stock <= 0;
-        }
-
-        if (addButton) {
-            addButton.disabled = true;
-        }
-
-        if (buyButton) {
-            buyButton.disabled = true;
-        }
-    }
-
-    detail
-        .querySelectorAll(
-            '[data-pd-size]'
-        )
-        .forEach(button => {
-            button.addEventListener(
-                'click',
-                () => {
-                    selectedSize =
-                        button.dataset
-                            .pdSize || '';
-
-                    detail
-                        .querySelectorAll(
-                            '[data-pd-size]'
-                        )
-                        .forEach(
-                            option => {
-                                option.setAttribute(
-                                    'aria-pressed',
-                                    String(
-                                        option ===
-                                        button
-                                    )
-                                );
-                            }
-                        );
-
-                    quantity = 1;
-
-                    syncProductSelection();
-                }
-            );
-        });
-
-    detail
-        .querySelectorAll(
-            '[data-pd-color]'
-        )
-        .forEach(button => {
-            button.addEventListener(
-                'click',
-                () => {
-                    selectedColor =
-                        button.dataset
-                            .pdColor || '';
-
-                    detail
-                        .querySelectorAll(
-                            '[data-pd-color]'
-                        )
-                        .forEach(
-                            option => {
-                                option.setAttribute(
-                                    'aria-pressed',
-                                    String(
-                                        option ===
-                                        button
-                                    )
-                                );
-                            }
-                        );
-
-                    const colorLabel =
-                        detail.querySelector(
-                            '[data-pd-color-label]'
-                        );
-
-                    const descriptionColor =
-                        detail.querySelector(
-                            '[data-pd-description-color]'
-                        );
-
-                    if (colorLabel) {
-                        colorLabel.textContent =
-                            selectedColor;
-                    }
-
-                    if (
-                        descriptionColor
-                    ) {
-                        descriptionColor.textContent =
-                            selectedColor;
-                    }
-
-                    quantity = 1;
-
-                    syncProductSelection();
-                }
-            );
-        });
-
-    detail
-        .querySelector(
-            '[data-pd-minus]'
-        )
-        ?.addEventListener(
-            'click',
-            () => {
-                if (quantity > 1) {
-                    quantity--;
-                    syncProductSelection();
-                }
-            }
-        );
-
-    detail
-        .querySelector(
-            '[data-pd-plus]'
-        )
-        ?.addEventListener(
-            'click',
-            () => {
-                const stock =
-                    currentStock();
-
-                if (
-                    quantity <
-                    stock
-                ) {
-                    quantity++;
-                    syncProductSelection();
-                }
-            }
-        );
-
-    detail
-        .querySelector(
-            '[data-pd-buy-now]'
-        )
-        ?.addEventListener(
-            'click',
-            () => {
-                notify(
-                    'Buy Now is frontend-only for now. Checkout will be connected later.'
-                );
-            }
-        );
-
-    detail
-        .querySelector(
-            '[data-pd-shop]'
-        )
-        ?.addEventListener(
-            'click',
-            () => {
-                notify(
-                    'Seller shop page will be connected later.'
-                );
-            }
-        );
-
-    detail
-        .querySelector(
-            '[data-pd-size-guide]'
-        )
-        ?.addEventListener(
-            'click',
-            () => {
-                notify(
-                    'Size guide preview can be added after the product details UI.'
-                );
-            }
-        );
-
-    syncProductSelection();
-
-    if (!dialog.open) {
-        dialog.showModal();
-    }
-
-    document.body.style.overflow =
-        'hidden';
-
-    dialog.addEventListener(
-        'close',
-        () => {
-            document.body.style.overflow =
-                '';
-        },
-        { once: true }
-    );
-}
-window.bearlyShowFeaturedProduct = showFeaturedProductFull;
-
-/* Shared preview for Flash Deals and Top Products */
-function openBearlyFeaturedPreview(card, kind = 'top') {
-    if (!card) return;
-
-    // Dedicated featured pages carry the same catalog JSON as Home. Resolve the
-    // card back to that real catalog item first so every surface uses Bearly's
-    // full existing product-details dialog instead of the lightweight fallback.
-    const source = document.getElementById('featured-product-data');
-    if (source && document.getElementById('product-dialog')) {
-        let featuredProducts = [];
-        try {
-            const parsed = JSON.parse(source.textContent || '[]');
-            if (Array.isArray(parsed)) featuredProducts = parsed;
-        } catch {}
-
-        const aliases = {
-            'mens-apparel': 'men-s-apparel',
-            'womens-apparel': 'women-s-apparel',
-            'foods-and-gourmet': 'food-and-gourmet',
-        };
-        const rawKey = String(card.dataset.productId || '');
-        const [rawSlug, rawId] = rawKey.split(':');
-        const canonicalKey = rawId ? `${aliases[rawSlug] || rawSlug}:${rawId}` : rawKey;
-        const product = featuredProducts.find(item => String(item.featured_key || '') === canonicalKey);
-
-        if (product) {
-            const previewProduct = { ...product };
-            if (kind === 'flash') {
-                previewProduct.original_price = Number(product.price || card.dataset.originalPrice || 0);
-                previewProduct.price = Number(card.dataset.price || product.price || 0);
-                previewProduct.flash_deal = true;
-            }
-            window.bearlyShowFeaturedProduct(previewProduct);
-            return;
-        }
-    }
-    const fallbackProduct = {
-        id: card.dataset.productId || card.dataset.key || 'featured-product',
-        name: card.dataset.name || 'Bearly Product',
-        category: kind === 'flash' ? (card.dataset.flashCategory || '') : (card.dataset.topCategory || ''),
-        subcategory: kind === 'flash' ? (card.dataset.flashCategory || '') : (card.dataset.topCategory || ''),
-        price: Number(card.dataset.price || 0),
-        original_price: Number(card.dataset.originalPrice || 0) || undefined,
-        image: card.dataset.image || '',
-        rating: Number(card.dataset.rating || 4.8),
-        sold: Number(card.dataset.sold || 41),
-        condition: 'New',
-        seller_name: 'Bearly Official',
-        seller_location: 'Laguna',
-        seller_rating: 4.9,
-        stock: 13,
-        colors: ['Default'],
-        sizes: [],
-        description: kind === 'flash'
-            ? 'Limited-time Bearly flash deal. The sale price is preserved when added to cart.'
-            : 'Bearly featured product preview.',
-        free_shipping: true,
-        voucher: kind === 'flash',
-        flash_deal: kind === 'flash',
-    };
-    window.bearlyShowFeaturedProduct(fallbackProduct);
-}
-// Direct card opener used by the dedicated featured pages. Keeping this on window
-// avoids relying on page-specific delegated listeners for the primary card action.
-window.bearlyOpenFeaturedCard = (card, kind = 'top') => {
-    if (!card) return;
-    openBearlyFeaturedPreview(card, kind);
-};
-
-/* BEAR-110 Flash Deals */
-function initBearlyFlashDeals() {
-    const products = [...document.querySelectorAll('[data-flash-product]')];
-    const countdowns = [...document.querySelectorAll('[data-flash-countdown]')];
-    if (!products.length && !countdowns.length) return;
-
-    const SAVED_KEY = PREVIEW_WISHLIST_KEY;
-    const END_KEY = 'bearly-flash-deal-end-v1';
-    const cycleMs = 6 * 60 * 60 * 1000;
-
-    const getEnd = () => {
-        const now = Date.now();
-        let end = Number(localStorage.getItem(END_KEY) || 0);
-        if (!Number.isFinite(end) || end <= now) {
-            end = now + cycleMs;
-            try { localStorage.setItem(END_KEY, String(end)); } catch {}
-        }
-        return end;
-    };
-
-    const end = getEnd();
-    const tick = () => {
-        const left = Math.max(0, end - Date.now());
-        const hours = Math.floor(left / 3600000);
-        const minutes = Math.floor((left % 3600000) / 60000);
-        const seconds = Math.floor((left % 60000) / 1000);
-        countdowns.forEach(box => {
-            const h = box.querySelector('[data-hours]');
-            const m = box.querySelector('[data-minutes]');
-            const s = box.querySelector('[data-seconds]');
-            if (h) h.textContent = String(hours).padStart(2, '0');
-            if (m) m.textContent = String(minutes).padStart(2, '0');
-            if (s) s.textContent = String(seconds).padStart(2, '0');
-        });
-    };
-    tick();
-    if (countdowns.length) window.setInterval(tick, 1000);
-
-    const toast = message => {
-        const el = document.querySelector('[data-flash-toast]');
-        if (!el) return;
-        el.textContent = message;
-        el.classList.add('show');
-        window.setTimeout(() => el.classList.remove('show'), 1600);
-    };
-
-    const readSaved = () => {
-        try {
-            const parsed = JSON.parse(localStorage.getItem(SAVED_KEY) || '[]');
-            return Array.isArray(parsed) ? parsed : [];
-        } catch {
-            return [];
-        }
-    };
-
-    const syncFlashLikes = () => {
-        const saved = new Set(readSaved());
-        products.forEach(card => {
-            const button = card.querySelector('[data-flash-like]');
-            const key = card.dataset.productId || card.dataset.key || '';
-            if (button) button.classList.toggle('is-liked', saved.has(key));
-        });
-    };
-    syncFlashLikes();
-
-    document.addEventListener('click', event => {
-        const card = event.target.closest('[data-flash-product]');
-        if (!card) return;
-
-        const like = event.target.closest('[data-flash-like]');
-        if (like) {
-            event.preventDefault();
-            event.stopPropagation();
-            const key = card.dataset.productId || card.dataset.key || '';
-            const saved = readSaved();
-            const index = saved.indexOf(key);
-            if (index >= 0) saved.splice(index, 1);
-            else saved.push(key);
-            try { localStorage.setItem(SAVED_KEY, JSON.stringify(saved)); } catch {}
-            syncFlashLikes();
-            toast(index >= 0 ? 'Removed from My Likes.' : 'Saved to My Likes.');
-            return;
-        }
-
-        const button = event.target.closest('[data-flash-add]');
-        if (!button) {
-            event.preventDefault();
-            openBearlyFeaturedPreview(card, 'flash');
-            return;
-        }
-
-        toast('This Flash Deal is a preview and is not connected to the live cart.');
-    });
-}
-
-if (typeof document !== 'undefined') {
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initBearlyFlashDeals);
-    else initBearlyFlashDeals();
-}
-
-
-/* BEAR-111 Top Products */
-function initBearlyCategoryRankingPage(page) {
-    const grid = page.querySelector('[data-top-grid]');
-    const source = document.getElementById('featured-product-data');
-    if (!grid || !source) return;
-
-    let products = [];
-    try {
-        const parsed = JSON.parse(source.textContent || '[]');
-        if (Array.isArray(parsed)) products = parsed;
-    } catch {}
-    if (!products.length) return;
-
-    const mode = page.dataset.rankingMode === 'sales' ? 'sales' : 'popular';
-    const categoryTabs = [...page.querySelectorAll('[data-top-category-tab]')];
-    const moreToggle = page.querySelector('[data-top-more-toggle]');
-    const moreMenu = page.querySelector('[data-top-more-menu]');
-    const empty = page.querySelector('[data-top-empty]');
-    const toastEl = page.querySelector('[data-top-toast]');
-    const saved = new Set(
-        (() => {
-            try {
-                const value = JSON.parse(localStorage.getItem(PREVIEW_WISHLIST_KEY) || '[]');
-                return Array.isArray(value) ? value.filter(value => typeof value === 'string') : [];
-            } catch {
-                return [];
-            }
-        })()
-    );
-    let cards = [];
-
-    const toast = message => {
-        if (!toastEl) return;
-        toastEl.textContent = message;
-        toastEl.classList.add('show');
-        window.setTimeout(() => toastEl.classList.remove('show'), 1500);
-    };
-
-    const hash = value => {
-        let result = 0;
-        for (const character of String(value)) result = (result * 31 + character.charCodeAt(0)) >>> 0;
-        return result;
-    };
-
-    const metricsFor = product => {
-        const rating = Number(product.rating) > 0 ? Number(product.rating) : 4.7;
-        const sales = 700 + (hash(`${product.category_slug}:${product.id}`) % 4301);
-        const score = mode === 'sales'
-            ? sales + rating * 125
-            : rating * 1000 + sales / 10;
-
-        return { rating, sales, score };
-    };
-
-    const formatSold = value => value >= 1000
-        ? `${(value / 1000).toFixed(1)}k`
-        : String(value);
-
-    const rankedProducts = category => products
-        .filter(product => product.category_slug === category)
-        .map(product => ({ product, metrics: metricsFor(product) }))
-        .sort((a, b) => b.metrics.score - a.metrics.score || String(a.product.name).localeCompare(String(b.product.name)))
-        .slice(0, 10);
-
-    const cardMarkup = (entry, index) => {
-        const product = entry.product;
-        const metrics = entry.metrics;
-        const rank = index + 1;
-        const productId = `${product.category_slug}:${product.id}`;
-        const key = `${mode}-${productId}`;
-        const podium = rank <= 3 ? ' top-rank-podium' : '';
-
-        return `<article class="top-product-card${podium}" data-top-product data-key="${escapeHtml(key)}" data-product-id="${escapeHtml(productId)}" data-name="${escapeHtml(product.name)}" data-price="${Number(product.price || 0)}" data-image="${escapeHtml(product.image || '')}" data-top-category="${escapeHtml(product.category || '')}" data-rating="${metrics.rating.toFixed(1)}" data-sold="${metrics.sales}">
-            <div class="top-product-image"><img src="${escapeHtml(product.image || '')}" alt="${escapeHtml(product.name)}" loading="lazy"><span class="top-rank">#${rank}</span><button type="button" class="top-like" data-top-like aria-label="Save ${escapeHtml(product.name)}"><span class="material-symbols-outlined">favorite</span></button></div>
-            <div class="top-product-copy"><small>${escapeHtml(product.category || '')}</small><h3>${escapeHtml(product.name)}</h3><div class="top-product-meta"><span><b>★ ${metrics.rating.toFixed(1)}</b></span><span>${formatSold(metrics.sales)} sold</span></div><div class="top-product-bottom"><span class="top-product-price-line"><strong>${escapeHtml(peso(product.price || 0))}</strong>${buyerPriceMetaMarkup(product)}</span></div></div>
-        </article>`;
-    };
-
-    const syncLikes = () => cards.forEach(card => {
-        const button = card.querySelector('[data-top-like]');
-        if (button) button.classList.toggle('is-liked', saved.has(card.dataset.productId || ''));
-    });
-
-    const attachCards = () => {
-        cards = [...grid.querySelectorAll('[data-top-product]')];
-        cards.forEach(card => {
-            const rankText = card.querySelector('.top-rank')?.textContent || '';
-            const rank = Number(rankText.match(/\d+/)?.[0] || 0);
-            card.classList.toggle('top-rank-podium', rank >= 1 && rank <= 3);
-            card.tabIndex = 0;
-            card.style.cursor = 'pointer';
-            card.setAttribute('role', 'link');
-            card.setAttribute('aria-label', `Preview ${card.dataset.name || 'product'}`);
-            card.addEventListener('keydown', event => {
-                if (event.target !== card || !['Enter', ' '].includes(event.key)) return;
-                event.preventDefault();
-                openBearlyFeaturedPreview(card, 'top');
-            });
-        });
-        syncLikes();
-    };
-
-    const renderCategory = category => {
-        const entries = rankedProducts(category);
-        const categoryName = categoryTabs.find(tab => tab.dataset.topCategoryTab === category)?.textContent.trim() || category;
-        grid.innerHTML = entries.map(cardMarkup).join('');
-        grid.setAttribute('aria-label', `${categoryName} ${mode === 'sales' ? 'best sellers' : 'top products'}`);
-        if (empty) {
-            empty.hidden = entries.length > 0;
-            const title = empty.querySelector('h3');
-            if (title) title.textContent = `No ${mode === 'sales' ? 'best sellers' : 'top products'} in ${categoryName}`;
-        }
-        attachCards();
-    };
-
-    const closeMoreMenu = () => {
-        if (!moreToggle || !moreMenu) return;
-        moreToggle.setAttribute('aria-expanded', 'false');
-        moreMenu.hidden = true;
-    };
-
-    if (moreToggle && moreMenu) {
-        moreToggle.addEventListener('click', event => {
-            event.stopPropagation();
-            const open = moreToggle.getAttribute('aria-expanded') === 'true';
-            moreToggle.setAttribute('aria-expanded', String(!open));
-            moreMenu.hidden = open;
-        });
-    }
-
-    const setCategory = category => {
-        const selected = categoryTabs.find(tab => tab.dataset.topCategoryTab === category);
-        const categoryName = selected?.textContent.trim() || category;
-
-        categoryTabs.forEach(tab => {
-            const active = tab.dataset.topCategoryTab === category;
-            tab.classList.toggle('is-active', active);
-            if (tab.getAttribute('role') === 'tab') tab.setAttribute('aria-selected', String(active));
-        });
-        if (moreToggle) moreToggle.classList.toggle('is-active', Boolean(selected && moreMenu?.contains(selected)));
-        closeMoreMenu();
-        renderCategory(category);
-        page.dataset.activeCategory = category;
-        page.dataset.activeCategoryName = categoryName;
-    };
-
-    categoryTabs.forEach(tab => tab.addEventListener('click', () => {
-        setCategory(tab.dataset.topCategoryTab || '');
-    }));
-    document.addEventListener('click', event => {
-        if (!event.target.closest('[data-top-more-toggle],[data-top-more-menu]')) closeMoreMenu();
-    });
-    document.addEventListener('keydown', event => {
-        if (event.key === 'Escape') closeMoreMenu();
-    });
-    document.addEventListener('click', event => {
-        const like = event.target.closest('[data-top-like]');
-        if (like) {
-            const card = like.closest('[data-top-product]');
-            if (!card) return;
-            const key = card.dataset.productId || '';
-            if (saved.has(key)) saved.delete(key); else saved.add(key);
-            try { localStorage.setItem(PREVIEW_WISHLIST_KEY, JSON.stringify([...saved])); } catch {}
-            syncLikes();
-            toast(saved.has(key) ? 'Saved to My Likes.' : 'Removed from My Likes.');
-            return;
-        }
-
-        const card = event.target.closest('[data-top-product]');
-        if (card && !event.target.closest('[data-top-add]')) openBearlyFeaturedPreview(card, 'top');
-    });
-
-    const defaultCategory = page.dataset.defaultCategory;
-    setCategory(categoryTabs.some(tab => tab.dataset.topCategoryTab === defaultCategory)
-        ? defaultCategory
-        : categoryTabs[0]?.dataset.topCategoryTab || '');
-}
-
-function initBearlyTopProducts() {
-    const rankingPage = document.querySelector('[data-ranking-page]');
-    if (rankingPage) {
-        initBearlyCategoryRankingPage(rankingPage);
-        return;
-    }
-    const cards = [...document.querySelectorAll('[data-top-product]')];
-    if (!cards.length) return;
-    const SAVED_KEY = PREVIEW_WISHLIST_KEY;
-    const toastEl = document.querySelector('[data-top-toast]');
-    const toast = message => {
-        if (!toastEl) return;
-        toastEl.textContent = message;
-        toastEl.classList.add('show');
-        window.setTimeout(() => toastEl.classList.remove('show'), 1500);
-    };
-    const readArray = key => {
-        try { const value = JSON.parse(localStorage.getItem(key) || '[]'); return Array.isArray(value) ? value : []; }
-        catch { return []; }
-    };
-    const saved = new Set(readArray(SAVED_KEY).filter(v => typeof v === 'string'));
-    const openProductPreview = card => openBearlyFeaturedPreview(card, 'top');
-
-
-    cards.forEach(card => {
-        const rankText = card.querySelector('.top-rank')?.textContent || '';
-        const rank = Number(rankText.match(/\d+/)?.[0] || 0);
-        card.classList.toggle('top-rank-podium', rank >= 1 && rank <= 3);
-        card.tabIndex = 0;
-        card.style.cursor = 'pointer';
-        card.setAttribute('role', 'link');
-        card.setAttribute(
-            'aria-label',
-            `Preview ${card.dataset.name || 'product'}`
-        );
-        card.addEventListener('keydown', event => {
-            if (event.target !== card || !['Enter', ' '].includes(event.key)) return;
-            event.preventDefault();
-            openProductPreview(card);
-        });
-    });
-
-    const syncLikes = () => cards.forEach(card => {
-        const key = card.dataset.productId || '';
-        const btn = card.querySelector('[data-top-like]');
-        if (btn) btn.classList.toggle('is-liked', saved.has(key));
-    });
-    syncLikes();
-    document.addEventListener('click', event => {
-        const like = event.target.closest('[data-top-like]');
-        if (like) {
-            const card = like.closest('[data-top-product]'); if (!card) return;
-            const key = card.dataset.productId || '';
-            if (saved.has(key)) saved.delete(key); else saved.add(key);
-            try { localStorage.setItem(SAVED_KEY, JSON.stringify([...saved])); } catch {}
-            syncLikes();
-            toast(saved.has(key) ? 'Saved to My Likes.' : 'Removed from My Likes.');
-            return;
-        }
-        const add = event.target.closest('[data-top-add]');
-        const card = event.target.closest('[data-top-product]');
-        if (!card) return;
-        if (!add) {
-            openProductPreview(card);
-            return;
-        }
-        toast('This Top Products item is a preview and is not connected to the live cart.');
-    });
-    const filters=[...document.querySelectorAll('[data-top-filter]')];
-    const moreToggle=document.querySelector('[data-top-more-toggle]');
-    const moreMenu=document.querySelector('[data-top-more-menu]');
-    const closeMoreMenu=()=>{
-        if(!moreToggle||!moreMenu)return;
-        moreToggle.setAttribute('aria-expanded','false');
-        moreMenu.hidden=true;
-    };
-    if(moreToggle&&moreMenu){
-        moreToggle.addEventListener('click',event=>{
-            event.stopPropagation();
-            const open=moreToggle.getAttribute('aria-expanded')==='true';
-            moreToggle.setAttribute('aria-expanded',String(!open));
-            moreMenu.hidden=open;
-        });
-        document.addEventListener('click',event=>{
-            if(!event.target.closest('[data-top-more-toggle],[data-top-more-menu]'))closeMoreMenu();
-        });
-        document.addEventListener('keydown',event=>{
-            if(event.key==='Escape')closeMoreMenu();
-        });
-    }
-    const primaryCategories = new Set([
-        'Women\'s Apparel',
-        'Men\'s Apparel',
-        'Jewelry & Watches',
-        'Electronics & Gadgets',
-        'Health & Beauty',
-        'Home & Garden',
-    ]);
-    filters.forEach(btn=>btn.addEventListener('click',()=>{
-        filters.forEach(x=>x.classList.toggle('is-active',x===btn));
-        const fromMore=Boolean(moreMenu?.contains(btn));
-        if(moreToggle){
-            moreToggle.classList.toggle('is-active',fromMore);
-            closeMoreMenu();
-        }
-        const wanted=btn.dataset.topFilter||'All'; let shown=0;
-        cards.forEach(card=>{
-            const cat=card.dataset.topCategory||'';
-            const fashion=cat.includes('Apparel')||cat.includes('Jewelry');
-            const more=!primaryCategories.has(cat);
-            const visible=wanted==='All'||cat===wanted||(wanted==='Fashion'&&fashion)||(wanted==='More'&&more);
-            card.hidden=!visible; if(visible) shown++;
-        });
-        const empty=document.querySelector('[data-top-empty]'); if(empty) empty.hidden=shown!==0;
-    }));
-}
-if (typeof document !== 'undefined') {
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initBearlyTopProducts);
-    else initBearlyTopProducts();
-}
-
-/* Homepage trending switcher: keep Popular Picks and Best Sellers together
-   without duplicating the same section heading and navigation. */
-function initBearlyTrendingTabs() {
-    const shell = document.querySelector('[data-trending-shell]');
-    if (!shell) return;
-
-    const tabs = [...shell.querySelectorAll('[data-trending-tab]')];
-    const panels = [...document.querySelectorAll('[data-trending-panel]')];
-    const secondary = document.querySelector('[data-trending-secondary]');
-    const viewAll = shell.querySelector('[data-trending-view-all]');
-    if (!tabs.length || !panels.length) return;
-
-    const setActive = key => {
-        tabs.forEach(tab => {
-            const active = tab.dataset.trendingTab === key;
-            tab.classList.toggle('is-active', active);
-            tab.setAttribute('aria-selected', String(active));
-        });
-
-        panels.forEach(panel => {
-            const active = panel.dataset.trendingPanel === key;
-            panel.hidden = !active;
-            panel.setAttribute('aria-hidden', String(!active));
-        });
-
-        if (secondary) secondary.hidden = key !== 'sales';
-
-        if (viewAll) {
-            viewAll.href = key === 'sales'
-                ? (viewAll.dataset.salesUrl || '/top-sales')
-                : (viewAll.dataset.popularUrl || '/top-products');
-        }
-    };
-
-    tabs.forEach(tab => tab.addEventListener('click', () => {
-        setActive(tab.dataset.trendingTab || 'popular');
-    }));
-
-    setActive('popular');
-}
-
-if (typeof document !== 'undefined') {
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initBearlyTrendingTabs);
-    else initBearlyTrendingTabs();
-}
-
 // Dedicated featured pages do not run initialize() because they have no #home-data.
 // Keep the shared product dialog's close button functional on those pages.
 if (typeof document !== 'undefined' && !document.getElementById('home-data')) {
@@ -6986,6 +5444,118 @@ if (typeof document !== 'undefined' && !document.getElementById('home-data')) {
         event.preventDefault();
         dialog.close();
     });
+}
+
+/* Homepage campaign showcase: filters and carousel controls are driven only by
+   rendered real campaigns. No placeholder slides are created. */
+function initBearlyHomeCampaigns() {
+    const showcase = document.querySelector('[data-home-campaigns]');
+    if (!showcase) return;
+
+    const track = showcase.querySelector('[data-campaign-track]');
+    const cards = [...showcase.querySelectorAll('[data-campaign-card]')];
+    const filters = [...showcase.querySelectorAll('[data-campaign-filter]')];
+    const previous = showcase.querySelector('[data-campaign-prev]');
+    const next = showcase.querySelector('[data-campaign-next]');
+    const dots = showcase.querySelector('[data-campaign-dots]');
+    if (!track || !cards.length) return;
+
+    const pageWidth = () => Math.max(1, track.clientWidth);
+    const maxScroll = () => Math.max(0, track.scrollWidth - track.clientWidth);
+    const isScrollable = () => maxScroll() > 2;
+
+    const buildDots = () => {
+        if (!dots) return;
+        dots.innerHTML = '';
+        const pages = Math.ceil(track.scrollWidth / pageWidth());
+        const showDots = isScrollable() && pages > 1;
+        dots.hidden = !showDots;
+        if (!showDots) return;
+
+        for (let index = 0; index < pages; index += 1) {
+            const dot = document.createElement('button');
+            dot.type = 'button';
+            dot.className = 'home-campaign-dot';
+            dot.setAttribute('aria-label', `Go to campaign page ${index + 1}`);
+            dot.addEventListener('click', () => {
+                track.scrollTo({ left: index * pageWidth(), behavior: 'smooth' });
+            });
+            dots.append(dot);
+        }
+    };
+
+    const syncControls = () => {
+        const maximum = maxScroll();
+        const scrollable = maximum > 2;
+
+        if (previous) {
+            previous.hidden = !scrollable;
+            previous.disabled = !scrollable || track.scrollLeft <= 2;
+        }
+        if (next) {
+            next.hidden = !scrollable;
+            next.disabled = !scrollable || track.scrollLeft >= maximum - 2;
+        }
+
+        if (dots && !dots.hidden) {
+            const current = Math.round(track.scrollLeft / pageWidth());
+            [...dots.children].forEach((dot, index) => {
+                const active = index === current;
+                dot.classList.toggle('is-active', active);
+                dot.setAttribute('aria-current', active ? 'true' : 'false');
+            });
+        }
+    };
+
+    const refresh = () => {
+        buildDots();
+        syncControls();
+    };
+
+    const applyFilter = key => {
+        filters.forEach(filter => {
+            const active = (filter.dataset.campaignFilter || 'all') === key;
+            filter.classList.toggle('is-active', active);
+            filter.setAttribute('aria-pressed', String(active));
+        });
+
+        cards.forEach(card => {
+            card.hidden = key !== 'all' && card.dataset.campaignType !== key;
+        });
+
+        track.scrollTo({ left: 0, behavior: 'auto' });
+        refresh();
+    };
+
+    filters.forEach(filter => {
+        filter.addEventListener('click', () => {
+            applyFilter(filter.dataset.campaignFilter || 'all');
+        });
+    });
+
+    if (previous) {
+        previous.addEventListener('click', () => {
+            track.scrollBy({ left: -pageWidth(), behavior: 'smooth' });
+        });
+    }
+    if (next) {
+        next.addEventListener('click', () => {
+            track.scrollBy({ left: pageWidth(), behavior: 'smooth' });
+        });
+    }
+
+    track.addEventListener('scroll', syncControls, { passive: true });
+    window.addEventListener('resize', refresh);
+    if ('ResizeObserver' in window) {
+        new ResizeObserver(refresh).observe(track);
+    }
+
+    applyFilter('all');
+}
+
+if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initBearlyHomeCampaigns);
+    else initBearlyHomeCampaigns();
 }
 
 /* Bearly global navbar state: keeps notification/cart badges in sync across buyer pages. */
@@ -7028,4 +5598,93 @@ if (typeof document !== 'undefined' && !document.getElementById('home-data')) {
   window.addEventListener('focus',sync);
   setInterval(sync,5000);
   window.BearlyNavbarState={sync};
+})();
+
+(() => {
+    const section = document.querySelector('[data-home-ranking-section]');
+    if (!section) return;
+
+    const tabs = [...section.querySelectorAll('[data-home-ranking-tab]')];
+    const panels = [...section.querySelectorAll('[data-home-ranking-panel]')];
+    const viewAll = section.querySelector('[data-home-ranking-view-all]');
+
+    function activateTab(tab, moveFocus = false) {
+        const selectedKind = tab.dataset.homeRankingTab;
+
+        tabs.forEach(candidate => {
+            const selected = candidate === tab;
+            candidate.classList.toggle('is-active', selected);
+            candidate.setAttribute('aria-selected', String(selected));
+            candidate.tabIndex = selected ? 0 : -1;
+        });
+
+        panels.forEach(panel => {
+            panel.hidden = panel.dataset.homeRankingPanel !== selectedKind;
+        });
+
+        if (viewAll && tab.dataset.rankingUrl) {
+            viewAll.href = tab.dataset.rankingUrl;
+        }
+
+        if (moveFocus) tab.focus();
+        panels.filter(panel => !panel.hidden).forEach(panel => {
+            panel.querySelectorAll('[data-ranking-track]').forEach(updateScrollControls);
+        });
+    }
+
+    function updateScrollControls(track) {
+        const carousel = track.closest('.home-ranking-carousel');
+        if (!carousel) return;
+
+        const previous = carousel.querySelector('[data-ranking-scroll="previous"]');
+        const next = carousel.querySelector('[data-ranking-scroll="next"]');
+        const hasOverflow = track.scrollWidth > track.clientWidth + 2;
+
+        carousel.classList.toggle('has-overflow', hasOverflow);
+
+        [previous, next].forEach(control => {
+            if (control) control.hidden = !hasOverflow;
+        });
+
+        if (previous) previous.disabled = !hasOverflow || track.scrollLeft <= 1;
+        if (next) next.disabled = !hasOverflow || track.scrollLeft + track.clientWidth >= track.scrollWidth - 1;
+    }
+
+    tabs.forEach((tab, index) => {
+        tab.addEventListener('click', () => activateTab(tab));
+        tab.addEventListener('keydown', event => {
+            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+            event.preventDefault();
+
+            const nextIndex = event.key === 'Home'
+                ? 0
+                : event.key === 'End'
+                    ? tabs.length - 1
+                    : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+
+            activateTab(tabs[nextIndex], true);
+        });
+    });
+
+    section.querySelectorAll('[data-ranking-track]').forEach(track => {
+        track.addEventListener('scroll', () => updateScrollControls(track), { passive: true });
+        updateScrollControls(track);
+    });
+
+    section.querySelectorAll('[data-ranking-scroll]').forEach(control => {
+        control.addEventListener('click', () => {
+            const track = control.closest('.home-ranking-carousel')?.querySelector('[data-ranking-track]');
+            if (!track) return;
+
+            const direction = control.dataset.rankingScroll === 'next' ? 1 : -1;
+            track.scrollBy({ left: direction * Math.max(180, track.clientWidth * 0.75), behavior: 'smooth' });
+        });
+    });
+
+    window.addEventListener('resize', () => {
+        section.querySelectorAll('[data-ranking-track]').forEach(updateScrollControls);
+    });
+
+    const initiallySelected = tabs.find(tab => tab.getAttribute('aria-selected') === 'true') || tabs[0];
+    if (initiallySelected) activateTab(initiallySelected);
 })();

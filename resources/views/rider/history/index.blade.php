@@ -8,15 +8,31 @@
     <div>
         <p class="page-kicker">Completed work</p>
         <h2>Delivery and return history</h2>
-        <p>Review your recorded delivery attempts, return deliveries, canceled assignments, and any earnings posted to your Rider ledger.</p>
+        <p>Review your recorded delivery attempts, return deliveries, and canceled assignments. This history is not a payable ledger: a delivery attempt does not create an earning by itself.</p>
     </div>
     <div class="page-actions">
+        <a class="button" href="{{ route('rider.earnings.index') }}">
+            <i data-lucide="wallet-cards" aria-hidden="true"></i>
+            View Earnings
+        </a>
         <a class="button" href="{{ route('rider.history.export', $filters) }}">
             <i data-lucide="download" aria-hidden="true"></i>
             Export history
         </a>
     </div>
 </div>
+
+<section class="panel" style="margin-bottom:20px" aria-label="Delivery history and earnings information">
+    <div class="panel-body">
+        <div class="attention-item">
+            <i data-lucide="info" aria-hidden="true"></i>
+            <span>
+                <strong>Delivery history and earnings are separate records</strong>
+                <small>A delivered attempt appears here even when no earning exists. The 3-calendar-day return/refund period starts at Seller Order completion; after it ends, payment, unresolved cases, and COD reconciliation still determine settlement eligibility. Finance remittance and Logistics' actual Rider payout are later steps, so this is not a promised pay date. A missing earning is not labeled pending because this history does not determine the reason.</small>
+            </span>
+        </div>
+    </div>
+</section>
 
 <section class="metric-strip" aria-label="Delivery history summary">
     <article class="metric-item">
@@ -218,7 +234,7 @@
             <div><dt>Recipient</dt><dd data-history-field="customer">—</dd></div>
             <div><dt>Service area</dt><dd data-history-field="area">—</dd></div>
             <div><dt>Outcome</dt><dd data-history-field="status">—</dd></div>
-            <div><dt>Recorded earning</dt><dd data-history-field="earning">—</dd></div>
+            <div><dt>Linked earning</dt><dd data-history-field="earning">—</dd></div>
             <div><dt>Parcel</dt><dd data-history-field="parcel">—</dd></div>
             <div><dt>Dispatch batch</dt><dd data-history-field="batch">—</dd></div>
             <div><dt>Delivery attempt</dt><dd data-history-field="attempt">—</dd></div>

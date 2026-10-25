@@ -49,6 +49,7 @@
         .store-product-copy strong { display:block; color:#39251b; line-height:1.35; }
         .store-product-link { display:block; color:inherit; text-decoration:none; }
         .store-subcategory-filters { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 16px; }
+        .store-section-filter-title { flex-basis:100%; color:#6d625a; font-size:11px; font-weight:700; }
         .store-subcategory-filters a { display:inline-flex; min-height:36px; align-items:center; padding:7px 12px; border:1px solid #dfd2c4; border-radius:999px; color:#604832; background:#fffdfa; font-size:12px; font-weight:600; text-decoration:none; }
         .store-subcategory-filters a[aria-current="page"] { border-color:#6f4a2e; color:#fff; background:#6f4a2e; }
         .store-product-subcategory { display:inline-flex !important; width:fit-content; margin-top:8px !important; padding:4px 7px; border-radius:5px; color:#6c543f !important; background:#f4ece3; font-size:10px; font-weight:600 !important; }
@@ -79,6 +80,9 @@
         .store-product-feedback { min-height:16px; margin:6px 0 0; color:#52703d; font-size:10px; line-height:1.4; }
         .store-product-feedback a { color:#5b3827; font-weight:700; }
         .store-filter-empty { margin-top:14px; padding:18px; border:1px dashed #cdbba9; border-radius:10px; color:#75695d; text-align:center; background:#fffdfa; }
+        .store-pagination { display:flex; justify-content:center; align-items:center; gap:12px; margin-top:22px; color:#75695d; font-size:12px; }
+        .store-pagination a { padding:8px 12px; border:1px solid #d8c8b8; border-radius:7px; background:#fffdfa; color:#604832; font-weight:700; text-decoration:none; }
+        .store-pagination a:hover { border-color:#6f4a2e; }
         .store-empty { padding:38px 20px; border:1px dashed #cdbba9; border-radius:16px; color:#75695d; text-align:center; background:#fffdfa; }
         @media (max-width:800px) { .store-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .store-identity { align-items:flex-start; padding:18px; } .store-shop-actions { margin-left:0; } .store-about { grid-template-columns:1fr; } .store-stats { margin-right:18px; margin-left:18px; } }
         @media (max-width:620px) { .store-meta, .store-promo-grid { grid-template-columns:1fr; } }
@@ -177,7 +181,8 @@
                 <span>{{ count($products) }} shown · {{ $publishedProductCount }} in this store</span>
             </div>
             @if ($storeSubcategories->isNotEmpty())
-                <nav class="store-subcategory-filters" aria-label="Filter store products by subcategory">
+                <nav class="store-subcategory-filters" aria-label="Store sections">
+                    <span class="store-section-filter-title">Shop by Store section</span>
                     <a href="{{ route('stores.show', $store->slug) }}" @if ($selectedSubcategoryId === null) aria-current="page" @endif>All products</a>
                     @foreach ($storeSubcategories as $subcategory)
                         <a href="{{ route('stores.show', ['store' => $store->slug, 'subcategory' => $subcategory->id]) }}" @if ($selectedSubcategoryId === (int) $subcategory->id) aria-current="page" @endif>{{ $subcategory->name }}</a>
@@ -204,7 +209,7 @@
                             </a>
                             <div class="store-product-copy">
                                 <a class="store-product-link" href="{{ route('products.show', $product['id']) }}"><strong>{{ $product['name'] }}</strong></a>
-                                @if (filled($product['seller_subcategory'] ?? null))<span class="store-product-subcategory">{{ $product['seller_subcategory'] }}</span>@endif
+                                @if (filled($product['seller_subcategory'] ?? null))<span class="store-product-subcategory">Store section · {{ $product['seller_subcategory'] }}</span>@endif
                                 <div class="store-product-rating" role="img" aria-label="{{ $reviewSummary['count'] > 0 ? number_format($reviewSummary['average'], 1).' out of 5, '.$reviewSummary['count'].' reviews' : 'No ratings yet' }}">
                                     @if ($reviewSummary['count'] > 0)<span class="store-stars" aria-hidden="true">{{ str_repeat('★', (int) round($reviewSummary['average'])) }}{{ str_repeat('☆', 5 - (int) round($reviewSummary['average'])) }}</span><strong>{{ number_format($reviewSummary['average'], 1) }}</strong><span>({{ $reviewSummary['count'] }})</span>@else<span>No ratings yet</span>@endif
                                 </div>
@@ -214,7 +219,9 @@
                                         'current' => $initialPrice,
                                         'regular' => $initialRegularPrice,
                                         'discount' => $initialDiscount,
-                                        'campaign_name' => $initialVariant['product_discount_name'] ?? null,
+                                        'price_source' => $initialVariant['price_source'] ?? null,
+                                        'campaign_name' => $initialVariant['campaign_name'] ?? null,
+                                        'product_discount_name' => $initialVariant['product_discount_name'] ?? null,
                                     ])
                                 </div>
                                 <span class="store-product-stock" data-store-stock>{{ (int) ($initialVariant['stock'] ?? $product['stock']) }} available</span>
@@ -222,7 +229,7 @@
                                     <label class="store-variant-field" for="store-variant-{{ $product['id'] }}">Choose variation
                                         <select class="store-product-variant" id="store-variant-{{ $product['id'] }}" data-store-variant>
                                             @foreach ($product['variants'] as $variant)
-                                                <option value="{{ $variant['id'] }}" data-price="{{ $variant['price'] }}" data-regular-price="{{ $variant['regular_price'] ?? $variant['price'] }}" data-discount="{{ $variant['discount_percent'] ?? 0 }}" data-campaign-name="{{ $variant['product_discount_name'] ?? '' }}" data-stock="{{ $variant['stock'] }}" @selected((int) $variant['id'] === (int) ($initialVariant['id'] ?? 0))>{{ $variant['name'] }} · ₱{{ number_format($variant['price'], 2) }}@if ($variant['stock'] < 1) · Out of stock @endif</option>
+                                                <option value="{{ $variant['id'] }}" data-price="{{ $variant['price'] }}" data-regular-price="{{ $variant['regular_price'] ?? $variant['price'] }}" data-discount="{{ $variant['discount_percent'] ?? 0 }}" data-campaign-name="{{ ($variant['price_source'] ?? '') === 'campaign' ? ($variant['campaign_name'] ?? '') : ($variant['product_discount_name'] ?? '') }}" data-stock="{{ $variant['stock'] }}" @selected((int) $variant['id'] === (int) ($initialVariant['id'] ?? 0))>{{ $variant['name'] }} · ₱{{ number_format($variant['price'], 2) }}@if ($variant['stock'] < 1) · Out of stock @endif</option>
                                             @endforeach
                                         </select>
                                     </label>
@@ -235,6 +242,13 @@
                         </article>
                     @endforeach
                 </div>
+                @if ($productPaginator->hasPages())
+                    <nav class="store-pagination" aria-label="Store product pages">
+                        @if ($productPaginator->onFirstPage())<span aria-disabled="true">Previous</span>@else<a href="{{ $productPaginator->previousPageUrl() }}" rel="prev">Previous</a>@endif
+                        <span>Page {{ $productPaginator->currentPage() }} of {{ $productPaginator->lastPage() }}</span>
+                        @if ($productPaginator->hasMorePages())<a href="{{ $productPaginator->nextPageUrl() }}" rel="next">Next</a>@else<span aria-disabled="true">Next</span>@endif
+                    </nav>
+                @endif
                 <p class="store-filter-empty" data-store-filter-empty hidden>No products match your search.</p>
             @else
                 <div class="store-empty">This store has no published products yet.</div>

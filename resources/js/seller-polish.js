@@ -1,4 +1,14 @@
 /* Bearly Seller Polish — supplemental frontend behavior. */
+import {
+    VARIANT_PACKAGE_FIELDS,
+    copyPackageFields,
+    incompletePackageFields,
+    packageValues,
+    packageValuesAreComplete,
+    packageValuesForVariant,
+    packageVariantsForSubmission,
+} from './variant-package-utils.js';
+
 const initializeSellerPolish = () => {
     /*
      * Stable Seller sidebar navigation.
@@ -132,6 +142,10 @@ const initializeSellerPolish = () => {
         const primaryImageInput = productEditor.querySelector('[data-product-image-input]');
         const galleryImagesInput = productEditor.querySelector('input[name="gallery_images[]"]');
         const productNameInput = productEditor.querySelector('input[name="name"]');
+        const productNameGuidance = productEditor.querySelector('[data-product-name-guidance]');
+        const productDescriptionInput = productEditor.querySelector('[data-product-description]');
+        const productDescriptionGuidance = productEditor.querySelector('[data-product-description-guidance]');
+        const marketplaceSubcategorySelect = productEditor.querySelector('[name="marketplace_subcategory_id"]');
         const buyerPreview = productEditor.querySelector('[data-buyer-product-preview]');
         const buyerPreviewImage = buyerPreview?.querySelector('[data-buyer-preview-image]');
         const buyerPreviewImageEmpty = buyerPreview?.querySelector('[data-buyer-preview-image-empty]');
@@ -202,40 +216,103 @@ const initializeSellerPolish = () => {
             || productModeValue?.value
             || 'single';
 
-        const updateVariantPackageSummary = (details) => {
-            const summary = details.querySelector('[data-variant-package-summary]');
-            const inputs = [...details.querySelectorAll('[data-variant-package-input]')];
-            if (!summary || !inputs.length) return;
+        const packageFieldLabels = {
+            package_weight_kg: 'Weight (kg)',
+            package_length_cm: 'Length (cm)',
+            package_width_cm: 'Width (cm)',
+            package_height_cm: 'Height (cm)',
+        };
 
-            const values = inputs.map((input) => Number(input.value));
-            const complete = inputs.every((input, index) => input.value.trim() !== ''
-                && Number.isFinite(values[index])
-                && values[index] >= Number(input.dataset.packageMin)
-                && values[index] <= Number(input.dataset.packageMax));
+        const packageRowForVariant = (row) => row?.nextElementSibling?.matches('[data-variant-package-row]')
+            ? row.nextElementSibling
+            : null;
+
+        const packageValuesForRow = (packageRow) => packageValues(Object.fromEntries(
+            VARIANT_PACKAGE_FIELDS.map((field) => [
+                field,
+                packageRow?.querySelector(`[data-variant-package-input="${field}"]`)?.value ?? '',
+            ]),
+        ));
+
+        const sharedPackageValuesNow = () => packageValues(Object.fromEntries(
+            VARIANT_PACKAGE_FIELDS.map((field) => [field, sharedPackageInputs[field]?.value ?? '']),
+        ));
+
+        const sharedPackageModeEnabled = () => currentProductMode() === 'with_variants'
+            && Boolean(sharedPackageMode?.checked);
+
+        const packageOverrideEnabled = (packageRow) => Boolean(
+            packageRow?.querySelector('[data-variant-package-override]')?.checked,
+        );
+
+        const effectivePackageValuesForRow = (row) => {
+            const packageRow = packageRowForVariant(row);
+            const perSkuValues = packageValuesForRow(packageRow);
+            return packageValuesForVariant({
+                ...perSkuValues,
+                package_override: packageOverrideEnabled(packageRow),
+            }, sharedPackageValuesNow(), sharedPackageModeEnabled());
+        };
+
+        const updateVariantPackageSummary = (details, values = null, usesShared = false) => {
+            const summary = details.querySelector('[data-variant-package-summary]');
+            if (!summary) return;
+
+            const effectiveValues = values || packageValuesForRow(details.closest('[data-variant-package-row]'));
+            const incomplete = incompletePackageFields(effectiveValues);
+            const complete = incomplete.length === 0;
+            const dimensions = [
+                effectiveValues.package_length_cm,
+                effectiveValues.package_width_cm,
+                effectiveValues.package_height_cm,
+            ].join(' × ');
 
             if (complete) {
-                summary.textContent = `${values[0]} kg · ${values.slice(1).join(' × ')} cm`;
+                summary.textContent = `${usesShared ? 'Shared · ' : ''}${effectiveValues.package_weight_kg} kg · ${dimensions} cm`;
                 summary.dataset.state = 'complete';
                 return;
             }
 
-            const entered = inputs.filter((input) => input.value.trim() !== '').length;
-            summary.textContent = entered === 0
-                ? 'Required · not set'
-                : entered < inputs.length
-                    ? `Incomplete · ${entered}/${inputs.length} values`
-                    : 'Check measurements';
+            const entered = VARIANT_PACKAGE_FIELDS.length - incomplete.length;
+            summary.textContent = usesShared
+                ? `Shared package incomplete · ${entered}/${VARIANT_PACKAGE_FIELDS.length} values`
+                : entered === 0
+                    ? 'Required · not set'
+                    : `Incomplete · ${entered}/${VARIANT_PACKAGE_FIELDS.length} values`;
             summary.dataset.state = 'incomplete';
         };
 
         const syncVariantPackageDetails = (details) => {
             const variantsEnabled = currentProductMode() === 'with_variants';
+            const packageRow = details.closest('[data-variant-package-row]');
+            const variantRow = packageRow?.previousElementSibling;
+            const overrideLabel = packageRow?.querySelector('[data-variant-package-override-label]');
+            const overrideInput = packageRow?.querySelector('[data-variant-package-override]');
+            const packageGrid = details.querySelector('[data-variant-package-grid]');
+            const usingShared = variantsEnabled
+                && sharedPackageModeEnabled()
+                && !overrideInput?.checked;
+            const sharedValuesNote = details.querySelector('[data-variant-package-shared-note]');
+            const effectiveValues = variantRow ? effectivePackageValuesForRow(variantRow) : packageValuesForRow(packageRow);
+
+            if (overrideLabel) overrideLabel.hidden = !sharedPackageModeEnabled();
+            if (overrideInput) overrideInput.disabled = !variantsEnabled;
+            if (packageGrid) packageGrid.hidden = usingShared;
+            if (sharedValuesNote) {
+                sharedValuesNote.hidden = !usingShared;
+                if (usingShared) {
+                    const sharedValues = sharedPackageValuesNow();
+                    sharedValuesNote.textContent = packageValuesAreComplete(sharedValues)
+                        ? `Using shared package details: ${sharedValues.package_weight_kg} kg · ${sharedValues.package_length_cm} × ${sharedValues.package_width_cm} × ${sharedValues.package_height_cm} cm.`
+                        : 'Using shared package details. Complete all four shared measurements above.';
+                }
+            }
 
             details.querySelectorAll('[data-variant-package-input]').forEach((input) => {
-                input.disabled = !variantsEnabled;
-                input.required = variantsEnabled && details.open;
+                input.disabled = !variantsEnabled || usingShared;
+                input.required = variantsEnabled && details.open && !usingShared;
 
-                if (variantsEnabled && details.open) {
+                if (variantsEnabled && details.open && !usingShared) {
                     input.min = input.dataset.packageMin;
                     input.max = input.dataset.packageMax;
                     input.step = input.dataset.packageStep;
@@ -247,10 +324,289 @@ const initializeSellerPolish = () => {
                     input.step = 'any';
                 }
             });
+
+            updateVariantPackageSummary(details, effectiveValues, usingShared);
         };
         const paymentMethodInputs = [...productEditor.querySelectorAll('input[name="payment_methods[]"]')];
         const paymentMethodClientError = productEditor.querySelector('[data-payment-method-client-error]');
         const variantClientError = variantMatrix.querySelector('[data-variant-client-error]');
+        const sharedPackageMode = variantMatrix.querySelector('[data-package-shared-mode]');
+        const sharedPackageFields = variantMatrix.querySelector('[data-shared-package-fields]');
+        const sharedPackageInputs = Object.fromEntries(VARIANT_PACKAGE_FIELDS.map((field) => [
+            field,
+            variantMatrix.querySelector(`[data-shared-package-input="${field}"]`),
+        ]));
+        const packageProgressLabel = variantMatrix.querySelector('[data-package-progress-label]');
+        const packageProgressBar = variantMatrix.querySelector('[data-package-progress-bar]');
+        const findIncompletePackageButton = variantMatrix.querySelector('[data-find-incomplete-package]');
+        const packageCopySource = variantMatrix.querySelector('[data-package-copy-source]');
+        const packageCopyButton = variantMatrix.querySelector('[data-package-copy-selected]');
+        const packageActionStatus = variantMatrix.querySelector('[data-package-action-status]');
+        let lastIncompleteVariantKey = '';
+
+        const variantMainRows = () => [...rowsHost.querySelectorAll('[data-variant-main-row]')];
+
+        const variantIdentity = (row) => row?.querySelector('input[name$="[sku]"]')?.value.trim()
+            || row?.dataset.variantLabel
+            || row?.querySelector('input[type="hidden"]')?.value
+            || 'Variant';
+
+        const updatePackageCopyControls = () => {
+            const hasTargets = variantMainRows().some((row) => row
+                .querySelector('[data-variant-package-copy-target]')?.checked);
+            const sourceExists = Boolean(packageCopySource?.value);
+            const enabled = currentProductMode() === 'with_variants' && hasTargets && sourceExists;
+            if (packageCopySource) packageCopySource.disabled = currentProductMode() !== 'with_variants' || variantMainRows().length === 0;
+            if (packageCopyButton) packageCopyButton.disabled = !enabled;
+        };
+
+        const refreshPackageCopySource = () => {
+            if (!packageCopySource) return;
+
+            const previousValue = packageCopySource.value;
+            packageCopySource.replaceChildren();
+            const placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = variantMainRows().length ? 'Choose a source SKU' : 'Generate variants first';
+            packageCopySource.appendChild(placeholder);
+
+            variantMainRows().forEach((row) => {
+                const option = document.createElement('option');
+                option.value = row.dataset.variantLabel || row.querySelector('input[type="hidden"]')?.value || '';
+                const sku = row.querySelector('input[name$="[sku]"]')?.value.trim();
+                option.textContent = sku ? `${option.value} · ${sku}` : option.value;
+                packageCopySource.appendChild(option);
+            });
+
+            if (variantMainRows().some((row) => (row.dataset.variantLabel || '') === previousValue)) {
+                packageCopySource.value = previousValue;
+            }
+
+            updatePackageCopyControls();
+        };
+
+        const updatePackageProgress = () => {
+            const rows = variantMainRows();
+            const sharedMode = sharedPackageModeEnabled();
+            const sharedValues = sharedPackageValuesNow();
+            let completeCount = 0;
+
+            rows.forEach((row) => {
+                const packageRow = packageRowForVariant(row);
+                const details = packageRow?.querySelector('[data-variant-package-details]');
+                const values = packageValuesForVariant({
+                    ...packageValuesForRow(packageRow),
+                    package_override: packageOverrideEnabled(packageRow),
+                }, sharedValues, sharedMode);
+                const complete = packageValuesAreComplete(values);
+                const usesShared = sharedMode && !packageOverrideEnabled(packageRow);
+
+                if (complete) completeCount += 1;
+                row.classList.toggle('has-incomplete-package', !complete);
+                packageRow?.classList.toggle('has-incomplete-package', !complete);
+                packageRow?.classList.toggle('uses-shared-package', usesShared);
+                if (details) updateVariantPackageSummary(details, values, usesShared);
+            });
+
+            if (packageProgressLabel) {
+                packageProgressLabel.textContent = `${completeCount} of ${rows.length} ${rows.length === 1 ? 'variant' : 'variants'} complete`;
+            }
+            if (packageProgressBar) {
+                packageProgressBar.max = Math.max(1, rows.length);
+                packageProgressBar.value = completeCount;
+                packageProgressBar.setAttribute('aria-valuenow', String(completeCount));
+                packageProgressBar.setAttribute('aria-valuemax', String(rows.length));
+            }
+            if (findIncompletePackageButton) {
+                findIncompletePackageButton.disabled = rows.length === 0 || completeCount === rows.length;
+            }
+
+            updatePackageCopyControls();
+        };
+
+        const syncPackageModeUI = () => {
+            const variantsEnabled = currentProductMode() === 'with_variants';
+            const sharedMode = sharedPackageModeEnabled();
+            const sharedVariantCount = variantMainRows().filter((row) => !packageOverrideEnabled(packageRowForVariant(row))).length;
+
+            if (sharedPackageMode) sharedPackageMode.disabled = !variantsEnabled;
+            if (sharedPackageFields) sharedPackageFields.hidden = !sharedMode;
+            VARIANT_PACKAGE_FIELDS.forEach((field) => {
+                const input = sharedPackageInputs[field];
+                if (!input) return;
+
+                input.disabled = !sharedMode;
+                input.required = sharedMode && sharedVariantCount > 0;
+                if (sharedMode) {
+                    input.min = '0.001';
+                    input.max = '1000';
+                    input.step = '0.001';
+                }
+            });
+
+            variantMainRows().forEach((row) => {
+                const packageRow = packageRowForVariant(row);
+                const details = packageRow?.querySelector('[data-variant-package-details]');
+                const target = row.querySelector('[data-variant-package-copy-target]');
+                if (target) target.disabled = !variantsEnabled;
+                if (details) syncVariantPackageDetails(details);
+            });
+
+            refreshPackageCopySource();
+            updatePackageProgress();
+        };
+
+        const focusIncompletePackage = (rowToFocus = null) => {
+            const rows = variantMainRows();
+            const incompleteRows = rows.filter((row) => !packageValuesAreComplete(effectivePackageValuesForRow(row)));
+            if (!incompleteRows.length) {
+                if (packageActionStatus) {
+                    packageActionStatus.textContent = 'All variant package details are complete.';
+                    packageActionStatus.hidden = false;
+                }
+                return;
+            }
+
+            const requestedIndex = rowToFocus ? incompleteRows.indexOf(rowToFocus) : -1;
+            const previousIndex = incompleteRows.findIndex((row) => {
+                const key = row.dataset.variantId || row.dataset.variantLabel || '';
+                return key === lastIncompleteVariantKey;
+            });
+            const nextIndex = requestedIndex >= 0
+                ? requestedIndex
+                : (previousIndex + 1) % incompleteRows.length;
+            const row = incompleteRows[nextIndex];
+            const key = row.dataset.variantId || row.dataset.variantLabel || '';
+            lastIncompleteVariantKey = key;
+
+            const packageRow = packageRowForVariant(row);
+            const details = packageRow?.querySelector('[data-variant-package-details]');
+            const usesShared = sharedPackageModeEnabled() && !packageOverrideEnabled(packageRow);
+            const values = effectivePackageValuesForRow(row);
+            const missingField = incompletePackageFields(values)[0];
+            if (details) {
+                details.open = true;
+                syncVariantPackageDetails(details);
+            }
+
+            const input = usesShared
+                ? sharedPackageInputs[missingField]
+                : packageRow?.querySelector(`[data-variant-package-input="${missingField}"]`);
+            input?.focus({ preventScroll: true });
+            input?.reportValidity();
+            (usesShared ? sharedPackageFields : row)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+            if (packageActionStatus) {
+                packageActionStatus.textContent = usesShared
+                    ? `Complete the shared package details used by ${variantIdentity(row)}.`
+                    : `Complete package details for ${variantIdentity(row)}.`;
+                packageActionStatus.hidden = false;
+            }
+        };
+
+        const copyPackageDetailsToSelected = () => {
+            const rows = variantMainRows();
+            const sourceRow = rows.find((row) => (row.dataset.variantLabel || '') === packageCopySource?.value);
+            if (!sourceRow) {
+                if (packageActionStatus) {
+                    packageActionStatus.textContent = 'Choose a source SKU first.';
+                    packageActionStatus.hidden = false;
+                }
+                return;
+            }
+
+            const sourceValues = effectivePackageValuesForRow(sourceRow);
+            if (!packageValuesAreComplete(sourceValues)) {
+                if (packageActionStatus) {
+                    packageActionStatus.textContent = `Complete package details for ${variantIdentity(sourceRow)} before copying.`;
+                    packageActionStatus.hidden = false;
+                }
+                focusIncompletePackage(sourceRow);
+                return;
+            }
+
+            const targets = rows.filter((row) => row !== sourceRow
+                && row.querySelector('[data-variant-package-copy-target]')?.checked);
+            if (!targets.length) {
+                if (packageActionStatus) {
+                    packageActionStatus.textContent = 'Select one or more target SKUs using the checkboxes in the variant rows.';
+                    packageActionStatus.hidden = false;
+                }
+                return;
+            }
+
+            const hasExistingValues = targets.some((row) => VARIANT_PACKAGE_FIELDS.some((field) =>
+                String(effectivePackageValuesForRow(row)[field] || '').trim() !== ''));
+            if (hasExistingValues && !window.confirm(
+                `Overwrite package details for ${targets.length} selected SKU(s) from ${variantIdentity(sourceRow)}? Price and stock will not change.`,
+            )) {
+                return;
+            }
+
+            targets.forEach((row) => {
+                const packageRow = packageRowForVariant(row);
+                const details = packageRow?.querySelector('[data-variant-package-details]');
+                const values = copyPackageFields(packageValuesForRow(packageRow), sourceValues);
+                VARIANT_PACKAGE_FIELDS.forEach((field) => {
+                    const input = packageRow?.querySelector(`[data-variant-package-input="${field}"]`);
+                    if (input) input.value = values[field];
+                });
+
+                if (sharedPackageModeEnabled()) {
+                    const override = packageRow?.querySelector('[data-variant-package-override]');
+                    if (override) override.checked = true;
+                }
+                if (details) syncVariantPackageDetails(details);
+                const targetCheckbox = row.querySelector('[data-variant-package-copy-target]');
+                if (targetCheckbox) targetCheckbox.checked = false;
+            });
+
+            if (packageActionStatus) {
+                packageActionStatus.textContent = `Copied package details to ${targets.length} SKU(s). Price, stock, and reserved quantities were not changed.`;
+                packageActionStatus.hidden = false;
+            }
+            updatePackageProgress();
+        };
+
+        const prepareSharedPackageSubmission = () => {
+            variantMatrix.querySelectorAll('[data-package-submission-input]').forEach((input) => input.remove());
+            if (!sharedPackageModeEnabled()) return;
+
+            const sharedValues = sharedPackageValuesNow();
+            const rows = variantMainRows();
+            const packageVariants = rows.map((row) => {
+                const packageRow = packageRowForVariant(row);
+                return {
+                    ...packageValuesForRow(packageRow),
+                    package_override: packageOverrideEnabled(packageRow),
+                };
+            });
+            const submittedPackages = packageVariantsForSubmission(packageVariants, sharedValues, true);
+
+            rows.forEach((row, index) => {
+                const packageRow = packageRowForVariant(row);
+                if (!packageRow) return;
+                const perSkuValues = packageValuesForRow(packageRow);
+                const usesShared = !packageOverrideEnabled(packageRow);
+
+                VARIANT_PACKAGE_FIELDS.forEach((field) => {
+                    const original = document.createElement('input');
+                    original.type = 'hidden';
+                    original.name = `package_originals[${index}][${field}]`;
+                    original.value = perSkuValues[field];
+                    original.dataset.packageSubmissionInput = '';
+                    packageRow.appendChild(original);
+
+                    if (!usesShared) return;
+                    const submitted = document.createElement('input');
+                    submitted.type = 'hidden';
+                    submitted.name = `variants[${index}][${field}]`;
+                    submitted.value = submittedPackages[index][field];
+                    submitted.dataset.packageSubmissionInput = '';
+                    packageRow.appendChild(submitted);
+                });
+            });
+        };
 
         const updateSubmitPreflightErrors = () => {
             if (paymentMethodInputs.some((input) => input.checked)) {
@@ -385,7 +741,7 @@ const initializeSellerPolish = () => {
 
                     const representative = color
                         ? [...rowsHost.querySelectorAll('[data-variant-main-row]')].find((row) =>
-                            colorForVariant(row.dataset.variantLabel || '').trim().toLocaleLowerCase() === normalizedColor)
+                            normalizedColorKey(colorForVariant(row.dataset.variantLabel || '')) === normalizedColor)
                         : null;
                     const variantId = representative?.dataset.variantId || null;
                     const variantLabel = representative?.dataset.variantLabel || '';
@@ -414,10 +770,10 @@ const initializeSellerPolish = () => {
                         && (variantId
                             ? String(item.variant_id || '') === variantId
                             : String(item.variant_label || '').toLocaleLowerCase() === variantLabel.toLocaleLowerCase()));
-                    const color = colorForVariant(variantLabel).toLocaleLowerCase();
+                    const color = normalizedColorKey(colorForVariant(variantLabel));
                     const colorFallback = savedProductMedia.find((item) => item.kind === 'variant'
                         && (item.color_shared || item.legacy_color)
-                        && (item.color || '').toLocaleLowerCase() === color);
+                        && normalizedColorKey(item.color) === color);
                     const activeFallback = colorFallback
                         && !uploadedColors.has(color)
                         && !removedProductImageIds.has(String(colorFallback.image_id || ''))
@@ -581,6 +937,7 @@ const initializeSellerPolish = () => {
             variants.forEach((variant, index) => {
                 const row = document.createElement('tr');
                 row.dataset.variantMainRow = '';
+                row.dataset.variantIndex = String(index);
                 row.dataset.variantId = variant.id ? String(variant.id) : '';
                 row.dataset.variantLabel = variant.label || `Variant ${index + 1}`;
                 row.dataset.originalRegularPrice = String(variant.original_regular_price ?? variant.price ?? '');
@@ -607,6 +964,19 @@ const initializeSellerPolish = () => {
                 labelStrong.textContent = variant.label || `Variant ${index + 1}`;
                 variantLabelDisplay.append(variantImageThumb, labelStrong);
                 labelCell.appendChild(variantLabelDisplay);
+
+                const packageTargetLabel = document.createElement('label');
+                packageTargetLabel.className = 'variant-package-copy-target';
+                const packageTarget = document.createElement('input');
+                packageTarget.type = 'checkbox';
+                packageTarget.checked = Boolean(variant.package_selected);
+                packageTarget.dataset.variantPackageCopyTarget = '';
+                packageTarget.setAttribute('aria-label', `Select ${variant.sku || variant.label || `variant ${index + 1}`} as a package-details copy target`);
+                packageTarget.addEventListener('change', updatePackageCopyControls);
+                const packageTargetText = document.createElement('span');
+                packageTargetText.textContent = 'Select for package copy';
+                packageTargetLabel.append(packageTarget, packageTargetText);
+                labelCell.appendChild(packageTargetLabel);
 
                 const hiddenLabel = document.createElement('input');
                 hiddenLabel.type = 'hidden';
@@ -669,10 +1039,38 @@ const initializeSellerPolish = () => {
                 const packageCell = document.createElement('td');
                 packageCell.colSpan = 5;
 
+                const packageToolbar = document.createElement('div');
+                packageToolbar.className = 'variant-package-row-toolbar';
+                const overrideLabel = document.createElement('label');
+                overrideLabel.className = 'variant-package-override';
+                overrideLabel.dataset.variantPackageOverrideLabel = '';
+                overrideLabel.hidden = true;
+                const overrideInput = document.createElement('input');
+                overrideInput.type = 'checkbox';
+                overrideInput.name = `package_overrides[${index}]`;
+                overrideInput.value = '1';
+                overrideInput.checked = Boolean(variant.package_override);
+                overrideInput.dataset.variantPackageOverride = '';
+                overrideInput.setAttribute('aria-label', `Use custom package details for ${variant.label || `variant ${index + 1}`}`);
+                const overrideText = document.createElement('span');
+                overrideText.textContent = 'Use custom package details for this SKU';
+                overrideLabel.append(overrideInput, overrideText);
+                overrideInput.addEventListener('change', () => {
+                    if (overrideInput.checked) packageDetails.open = true;
+                    syncVariantPackageDetails(packageDetails);
+                    updatePackageProgress();
+                });
+                packageToolbar.appendChild(overrideLabel);
+
                 const packageDetails = document.createElement('details');
                 packageDetails.className = 'variant-package-details';
                 packageDetails.dataset.variantPackageDetails = '';
-                packageDetails.open = Boolean(variant.packageDetailsOpen);
+                const packageValidationErrors = Array.isArray(variant.package_validation_errors)
+                    ? variant.package_validation_errors
+                    : [];
+                row.classList.toggle('has-package-server-error', packageValidationErrors.length > 0);
+                packageRow.classList.toggle('has-package-server-error', packageValidationErrors.length > 0);
+                packageDetails.open = Boolean(variant.packageDetailsOpen) || packageValidationErrors.length > 0;
                 const packageSummary = document.createElement('summary');
                 const packageSummaryLabel = document.createElement('strong');
                 packageSummaryLabel.textContent = 'SKU details';
@@ -681,12 +1079,17 @@ const initializeSellerPolish = () => {
                 packageSummary.append(packageSummaryLabel, packageSummaryStatus);
                 const packageGrid = document.createElement('div');
                 packageGrid.className = 'variant-package-grid';
+                packageGrid.dataset.variantPackageGrid = '';
+                const sharedPackageNote = document.createElement('small');
+                sharedPackageNote.className = 'variant-package-shared-note';
+                sharedPackageNote.dataset.variantPackageSharedNote = '';
+                sharedPackageNote.hidden = true;
 
                 const packageInputs = [
                     ['package_weight_kg', 'Weight (kg)', '0.001', '1000', '0.001', '0.350'],
-                    ['package_length_cm', 'Length (cm)', '0.01', '1000', '0.01', '24'],
-                    ['package_width_cm', 'Width (cm)', '0.01', '1000', '0.01', '18'],
-                    ['package_height_cm', 'Height (cm)', '0.01', '1000', '0.01', '8'],
+                    ['package_length_cm', 'Length (cm)', '0.001', '1000', '0.001', '24.000'],
+                    ['package_width_cm', 'Width (cm)', '0.001', '1000', '0.001', '18.000'],
+                    ['package_height_cm', 'Height (cm)', '0.001', '1000', '0.001', '8.000'],
                 ].map(([field, labelText, minimum, maximum, step, placeholder]) => {
                     const label = document.createElement('label');
                     label.className = 'variant-package-field';
@@ -700,14 +1103,17 @@ const initializeSellerPolish = () => {
                     const input = document.createElement('input');
                     input.type = 'number';
                     input.name = `variants[${index}][${field}]`;
-                    input.dataset.variantPackageInput = '';
+                    input.dataset.variantPackageInput = field;
                     input.dataset.packageMin = minimum;
                     input.dataset.packageMax = maximum;
                     input.dataset.packageStep = step;
                     input.value = variant[field] ?? '';
                     input.placeholder = `e.g. ${placeholder}`;
                     input.setAttribute('aria-label', `${labelText} for ${variant.label || `Variant ${index + 1}`}`);
-                    input.addEventListener('input', () => updateVariantPackageSummary(packageDetails));
+                    input.addEventListener('input', () => {
+                        updateVariantPackageSummary(packageDetails);
+                        updatePackageProgress();
+                    });
                     label.append(labelCopy, input);
                     return label;
                 });
@@ -715,8 +1121,8 @@ const initializeSellerPolish = () => {
                 packageDetails.addEventListener('toggle', () => syncVariantPackageDetails(packageDetails));
                 row.append(labelCell, skuCell, priceCell, stockCell, thresholdCell);
                 packageGrid.append(...packageInputs);
-                packageDetails.append(packageSummary, packageGrid);
-                packageCell.appendChild(packageDetails);
+                packageDetails.append(packageSummary, sharedPackageNote, packageGrid);
+                packageCell.append(packageToolbar, packageDetails);
                 packageRow.appendChild(packageCell);
                 rowsHost.append(row, packageRow);
                 syncVariantPackageDetails(packageDetails);
@@ -726,6 +1132,7 @@ const initializeSellerPolish = () => {
             const hasRows = variants.length > 0;
             if (tableWrap) tableWrap.hidden = !hasRows;
             if (emptyState) emptyState.hidden = hasRows;
+            syncPackageModeUI();
             renderVariantColorImageUploads(variants);
             updateVariantTotal();
             syncProductSkuControl();
@@ -767,9 +1174,8 @@ const initializeSellerPolish = () => {
                     if (control.matches('[data-variant-package-input]')) return;
                     control.disabled = !withVariants;
                 });
-                variantConfiguration.querySelectorAll('[data-variant-package-details]')
-                    .forEach(syncVariantPackageDetails);
             }
+            syncPackageModeUI();
 
             productModePicker?.querySelectorAll('[data-product-mode-card]').forEach((card) => {
                 card.classList.toggle('is-selected', card.dataset.productModeCard === currentProductMode());
@@ -784,6 +1190,23 @@ const initializeSellerPolish = () => {
 
         };
 
+        const updateProductFieldGuidance = () => {
+            const selectedOption = marketplaceSubcategorySelect?.selectedOptions?.[0];
+            const namePlaceholder = selectedOption?.dataset.namePlaceholder
+                || productEditor.dataset.guidanceNamePlaceholder;
+            const nameHint = selectedOption?.dataset.nameHint
+                || productEditor.dataset.guidanceNameHint;
+            const descriptionPlaceholder = selectedOption?.dataset.descriptionPlaceholder
+                || productEditor.dataset.guidanceDescriptionPlaceholder;
+            const descriptionHint = selectedOption?.dataset.descriptionHint
+                || productEditor.dataset.guidanceDescriptionHint;
+
+            if (productNameInput && namePlaceholder) productNameInput.placeholder = namePlaceholder;
+            if (productNameGuidance && nameHint) productNameGuidance.textContent = nameHint;
+            if (productDescriptionInput && descriptionPlaceholder) productDescriptionInput.placeholder = descriptionPlaceholder;
+            if (productDescriptionGuidance && descriptionHint) productDescriptionGuidance.textContent = descriptionHint;
+        };
+
         const readRenderedVariants = () => [...rowsHost.querySelectorAll('[data-variant-main-row]')]
             .map((row) => {
                 const packageRow = row.nextElementSibling?.matches('[data-variant-package-row]')
@@ -794,6 +1217,8 @@ const initializeSellerPolish = () => {
                 return {
                     id: row.dataset.variantId || null,
                     label: row.querySelector('input[type="hidden"]')?.value || '',
+                    package_override: packageOverrideEnabled(packageRow),
+                    package_selected: Boolean(row.querySelector('[data-variant-package-copy-target]')?.checked),
                     sku: row.querySelector('input[name*="[sku]"]')?.value || '',
                     price: row.querySelector('input[name*="[price]"]')?.value || '',
                     original_regular_price: row.dataset.originalRegularPrice || '',
@@ -813,11 +1238,14 @@ const initializeSellerPolish = () => {
 
         const colorForVariant = (label) => {
             const parts = String(label || '').split('/').map((part) => part.trim());
-            const firstName = (optionOneName?.value || '').trim().toLocaleLowerCase();
-            const secondName = (optionTwoName?.value || '').trim().toLocaleLowerCase();
+            const firstName = String(optionOneName?.value || '').trim().toLocaleLowerCase();
+            const secondName = String(optionTwoName?.value || '').trim().toLocaleLowerCase();
 
             if (['color', 'colour'].includes(firstName)) return parts[0] || '';
-            if (['color', 'colour'].includes(secondName)) return parts[1] || '';
+            if (['color', 'colour'].includes(secondName)) {
+                // A one-option Group 2 variant is serialized as a one-part label.
+                return splitValues(optionOneValues).length ? (parts[1] || '') : (parts[0] || '');
+            }
 
             return '';
         };
@@ -825,8 +1253,8 @@ const initializeSellerPolish = () => {
         const normalizedColorKey = (color) => String(color || '').trim().toLocaleLowerCase();
 
         const colorValuesFromOptions = () => {
-            const firstName = (optionOneName?.value || '').trim().toLocaleLowerCase();
-            const secondName = (optionTwoName?.value || '').trim().toLocaleLowerCase();
+            const firstName = String(optionOneName?.value || '').trim().toLocaleLowerCase();
+            const secondName = String(optionTwoName?.value || '').trim().toLocaleLowerCase();
 
             if (['color', 'colour'].includes(firstName)) return splitValues(optionOneValues);
             if (['color', 'colour'].includes(secondName)) return splitValues(optionTwoValues);
@@ -1031,7 +1459,7 @@ const initializeSellerPolish = () => {
             rowsHost.querySelectorAll('[data-variant-main-row]').forEach((row) => {
                 const variantId = row.dataset.variantId || '';
                 const variantLabel = row.dataset.variantLabel || '';
-                const color = colorForVariant(variantLabel).toLocaleLowerCase();
+                const color = normalizedColorKey(colorForVariant(variantLabel));
                 const exactImage = productMediaItems.find((item) => item.kind === 'variant'
                     && !item.color_shared
                     && (variantId
@@ -1041,12 +1469,12 @@ const initializeSellerPolish = () => {
                     ? productMediaItems.find((item) => item.kind === 'variant'
                         && item.color_shared
                         && !item.legacy_color
-                        && (item.color || '').toLocaleLowerCase() === color)
+                        && normalizedColorKey(item.color) === color)
                     : null;
                 const legacyColorImage = color
                     ? productMediaItems.find((item) => item.kind === 'variant'
                         && item.legacy_color
-                        && (item.color || '').toLocaleLowerCase() === color)
+                        && normalizedColorKey(item.color) === color)
                     : null;
                 const selectedImage = sharedColorImage || exactImage || legacyColorImage || productImage;
                 const thumbnail = row.querySelector('[data-variant-row-image]');
@@ -1144,7 +1572,7 @@ const initializeSellerPolish = () => {
                 }
             }
 
-            const color = selectedVariant ? colorForVariant(selectedVariant.label).toLocaleLowerCase() : '';
+            const color = selectedVariant ? normalizedColorKey(colorForVariant(selectedVariant.label)) : '';
             const variantImage = selectedVariant
                 ? productMediaItems.find((item) => item.kind === 'variant'
                     && !item.color_shared
@@ -1156,12 +1584,12 @@ const initializeSellerPolish = () => {
                 ? productMediaItems.find((item) => item.kind === 'variant'
                     && item.color_shared
                     && !item.legacy_color
-                    && (item.color || '').toLocaleLowerCase() === color)
+                    && normalizedColorKey(item.color) === color)
                 : null;
             const legacyColorImage = color
                 ? productMediaItems.find((item) => item.kind === 'variant'
                     && item.legacy_color
-                    && (item.color || '').toLocaleLowerCase() === color)
+                    && normalizedColorKey(item.color) === color)
                 : null;
             const defaultImage = productMediaItems.find((item) => item.kind === 'primary') || productMediaItems[0];
             const selectionKey = withVariants ? `variant:${selectedVariant?.label || ''}` : 'single';
@@ -1261,12 +1689,28 @@ const initializeSellerPolish = () => {
         }
 
         syncProductMode();
+        updateProductFieldGuidance();
         productModeChoices.forEach((input) => input.addEventListener('change', () => {
             syncProductMode();
             if (input.value === 'with_variants' && rowsHost.querySelector('[data-variant-main-row]') === null) {
                 renderVariants(existingVariants);
             }
         }));
+        marketplaceSubcategorySelect?.addEventListener('change', updateProductFieldGuidance);
+        sharedPackageMode?.addEventListener('change', () => {
+            lastIncompleteVariantKey = '';
+            syncPackageModeUI();
+            setPackageActionStatus(sharedPackageModeEnabled()
+                ? 'Per-SKU package values are preserved. Unchecked overrides will use the shared values on save.'
+                : 'Per-SKU package details are active; existing values were kept.');
+        });
+        Object.values(sharedPackageInputs).forEach((input) => input?.addEventListener('input', () => {
+            syncPackageModeUI();
+            setPackageActionStatus('Shared package values updated. Each non-overridden SKU will save its own copy.');
+        }));
+        packageCopySource?.addEventListener('change', updatePackageCopyControls);
+        packageCopyButton?.addEventListener('click', copyPackageDetailsToSelected);
+        findIncompletePackageButton?.addEventListener('click', () => focusIncompletePackage());
         paymentMethodInputs.forEach((input) => input.addEventListener('change', updateSubmitPreflightErrors));
         productEditor.addEventListener('invalid', (event) => {
             const input = event.target;
@@ -1327,23 +1771,17 @@ const initializeSellerPolish = () => {
                 syncVariantPackageDetails(details);
             });
 
-            const incompletePackage = packageDetails.find((details) =>
-                [...details.querySelectorAll('[data-variant-package-input]')]
-                    .some((input) => !input.checkValidity())
-            );
+            const incompletePackageRow = variantMainRows().find((row) =>
+                !packageValuesAreComplete(effectivePackageValuesForRow(row)));
 
-            if (incompletePackage) {
+            if (incompletePackageRow) {
                 event.preventDefault();
+                const incompleteDetails = packageRowForVariant(incompletePackageRow)?.querySelector('[data-variant-package-details]');
                 packageDetails.forEach((details) => {
-                    details.open = details === incompletePackage;
+                    details.open = details === incompleteDetails;
                     syncVariantPackageDetails(details);
                 });
-
-                const firstInvalidInput = [...incompletePackage.querySelectorAll('[data-variant-package-input]')]
-                    .find((input) => !input.checkValidity());
-                firstInvalidInput?.focus();
-                firstInvalidInput?.reportValidity();
-
+                focusIncompletePackage(incompletePackageRow);
                 return;
             }
 
@@ -1351,6 +1789,7 @@ const initializeSellerPolish = () => {
                 details.open = originalDisclosureStates.get(details) ?? false;
                 syncVariantPackageDetails(details);
             });
+            prepareSharedPackageSubmission();
         });
         [optionOneName, optionOneValues, optionTwoName, optionTwoValues].forEach((input) => {
             input?.addEventListener('input', () => {

@@ -37,6 +37,7 @@
         ]],
         ['key' => 'products', 'label' => 'Products', 'icon' => 'package', 'active' => request()->routeIs('seller.products*', 'seller.inventory'), 'children' => [
             ['label' => 'Product Management', 'route' => 'seller.products'],
+            ['label' => 'Marketplace Subcategory Requests', 'route' => 'seller.products.subcategory-requests.index'],
             ['label' => 'Inventory', 'route' => 'seller.inventory'],
             ['label' => 'Pricing & Promotions', 'route' => 'seller.products.pricing'],
         ]],

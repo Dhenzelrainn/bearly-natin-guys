@@ -96,6 +96,10 @@
         return String(item.key);
     }
 
+    function orderableItems() {
+        return items.filter(item => item.orderable !== false);
+    }
+
     function setText(id, value) {
         const element = $(id);
         if (element) element.textContent = value;
@@ -111,26 +115,26 @@
 
         const keys = new Set(items.map(itemKey));
         selected = new Set(
-            [...selected].filter(key => keys.has(key))
+            [...selected].filter(key => keys.has(key) && items.some(item => itemKey(item) === key && item.orderable !== false))
         );
 
         if (!selectionInitialized) {
-            selected = new Set(items.map(itemKey));
+            selected = new Set(orderableItems().map(itemKey));
             selectionInitialized = true;
         }
     }
 
     function syncChecks() {
         const all =
-            items.length > 0 &&
-            items.every(item => selected.has(itemKey(item)));
+            orderableItems().length > 0 &&
+            orderableItems().every(item => selected.has(itemKey(item)));
         const top = $('select-all-top');
 
         if (top) top.checked = all;
     }
 
     function totals() {
-        const chosen = items.filter(item =>
+        const chosen = orderableItems().filter(item =>
             selected.has(itemKey(item))
         );
         const count = chosen.reduce(
@@ -177,9 +181,9 @@
         const quantity = Number(item.quantity || 1);
 
         return `
-            <div class="cart-row" data-key="${escapeHtml(key)}">
+            <div class="cart-row${item.orderable === false ? ' is-unorderable' : ''}" data-key="${escapeHtml(key)}">
                 <label class="check-wrap" aria-label="Select ${escapeHtml(item.name)}">
-                    <input class="item-check" type="checkbox" ${selected.has(key) ? 'checked' : ''}>
+                    <input class="item-check" type="checkbox" ${selected.has(key) ? 'checked' : ''} ${item.orderable === false ? 'disabled' : ''}>
                     <span></span>
                 </label>
                 <div class="product-cell">
@@ -189,13 +193,14 @@
                     <div class="product-info">
                         <div class="product-name">${escapeHtml(item.name)}</div>
                         <div class="product-meta">${escapeHtml(meta || (item.source === 'preview' ? 'Catalog preview item' : 'Standard item'))}</div>
+                        ${item.orderable === false ? `<div class="cart-item-unavailable" role="status">${escapeHtml(item.unavailable_reason || 'This item is not available with the currently supported Cash on Delivery checkout. Remove it before checkout.')}</div>` : ''}
                     </div>
                 </div>
                 <div class="unit-price"><span class="cart-field-label">Unit Price</span><strong>${money(item.price)}</strong></div>
                 <div class="qty-control" aria-label="Quantity for ${escapeHtml(item.name)}">
-                    <button type="button" data-minus aria-label="Decrease quantity">−</button>
+                    <button type="button" data-minus aria-label="Decrease quantity" ${item.orderable === false ? 'disabled' : ''}>−</button>
                     <span>${quantity}</span>
-                    <button type="button" data-plus aria-label="Increase quantity">+</button>
+                    <button type="button" data-plus aria-label="Increase quantity" ${item.orderable === false ? 'disabled' : ''}>+</button>
                 </div>
                 <div class="line-total"><span class="cart-field-label">Total Price</span><strong>${money(Number(item.price || 0) * quantity)}</strong></div>
                 <div class="action-cell">
@@ -249,7 +254,7 @@
                 `${quantity} cart ${quantity === 1 ? 'item' : 'items'}`
             );
         }
-        setText('select-all-label', `Select All (${items.length})`);
+        setText('select-all-label', `Select All (${orderableItems().length})`);
 
         $('cart-content').hidden = !items.length;
         $('cart-empty').hidden = Boolean(items.length);
@@ -434,7 +439,7 @@
     });
 
     function selectAll(on) {
-        selected = new Set(on ? items.map(itemKey) : []);
+        selected = new Set(on ? orderableItems().map(itemKey) : []);
         selectionInitialized = true;
         render();
     }

@@ -145,6 +145,8 @@ class CheckoutService
                     'currency' => 'PHP',
                     'subtotal_minor' => $totals['subtotal_minor'],
                     'shipping_fee_minor' => $totals['shipping_fee_minor'],
+                    'buyer_paid_shipping_fee_minor' => $totals['buyer_paid_shipping_fee_minor'],
+                    'shipping_funding_source' => $totals['shipping_funding_source'],
                     'discount_minor' => $totals['discount_minor'],
                     'platform_discount_minor' => $totals['platform_discount_minor'],
                     'campaign_platform_discount_minor' => $totals['campaign_platform_discount_minor'] ?? 0,
@@ -168,6 +170,8 @@ class CheckoutService
                         'campaign_platform_discount_minor' => $group['campaign_platform_discount_minor'] ?? 0,
                         'platform_shipping_discount_minor' => $group['platform_shipping_discount_minor'],
                         'shipping_fee_minor' => $group['quote']['shipping_fee_minor'],
+                        'buyer_paid_shipping_fee_minor' => $group['buyer_paid_shipping_fee_minor'],
+                        'shipping_funding_source' => $group['shipping_funding_source'],
                         'total_minor' => $group['seller_total_minor'] ?? $group['total_minor'],
                         'seller_note' => $sellerNote,
                         'delivery_provider_key' => $group['quote']['provider_key'],
@@ -366,6 +370,17 @@ class CheckoutService
         $resolved = $this->promotions->resolve($buyer, $groups, $promotionSelection, $lock);
         $groups = $resolved['groups'];
 
+        foreach ($groups as &$group) {
+            $group['quote']['shipping_fee_breakdown'] = [
+                'original_fee_minor' => (int) $group['original_shipping_fee_minor'],
+                'buyer_paid_minor' => (int) $group['buyer_paid_shipping_fee_minor'],
+                'platform_subsidy_minor' => (int) $group['platform_shipping_subsidy_minor'],
+                'funding_source' => (string) $group['shipping_funding_source'],
+                'funding_sources' => $group['shipping_funding_sources'],
+            ];
+        }
+        unset($group);
+
         $totals = array_merge($totals, $resolved['totals']);
         $totals['seller_orders'] = array_values(array_map(static fn (array $group): array => [
             'store_name' => $group['store']->name,
@@ -376,6 +391,9 @@ class CheckoutService
             'campaign_platform_discount_minor' => (int) ($group['campaign_platform_discount_minor'] ?? 0),
             'platform_shipping_discount_minor' => (int) $group['platform_shipping_discount_minor'],
             'shipping_fee_minor' => (int) $group['quote']['shipping_fee_minor'],
+            'buyer_paid_shipping_fee_minor' => (int) $group['buyer_paid_shipping_fee_minor'],
+            'platform_shipping_subsidy_minor' => (int) $group['platform_shipping_subsidy_minor'],
+            'shipping_funding_source' => (string) $group['shipping_funding_source'],
             'total_minor' => (int) ($group['seller_total_minor'] ?? $group['total_minor']),
             'buyer_total_minor' => (int) $group['buyer_total_minor'],
             'quote' => $group['quote'],
@@ -392,11 +410,13 @@ class CheckoutService
     private function normalizePromotionSelection(array $selection): array
     {
         $platformId = (int) ($selection['platform_voucher_id'] ?? 0);
+        $platformShippingId = (int) ($selection['platform_shipping_voucher_id'] ?? 0);
         $storeId = (int) ($selection['store_voucher_id'] ?? 0);
         $code = strtoupper(trim((string) ($selection['voucher_code'] ?? '')));
 
         return [
             'platform_voucher_id' => $platformId > 0 ? $platformId : null,
+            'platform_shipping_voucher_id' => $platformShippingId > 0 ? $platformShippingId : null,
             'store_voucher_id' => $storeId > 0 ? $storeId : null,
             'voucher_code' => $code !== '' ? $code : null,
         ];
@@ -541,8 +561,14 @@ class CheckoutService
             throw ValidationException::withMessages(['address_id' => 'Choose one of your saved delivery addresses.']);
         }
 
+        $destinationCityCode = trim((string) $destination->psgc_city_code);
+        if (! $this->postalCodes->findByCanonicalCityCode($destinationCityCode)) {
+            throw ValidationException::withMessages([
+                'address_id' => 'Update this delivery address with a verified PSGC municipality/city code before checkout.',
+            ]);
+        }
         $destinationCityCode = $this->postalCodes->canonicalCityCode(
-            $destination->psgc_city_code,
+            $destinationCityCode,
             (string) $destination->province,
             (string) $destination->city_municipality,
         );
@@ -774,6 +800,9 @@ class CheckoutService
                 'campaign_platform_discount_minor' => (int) ($group['campaign_platform_discount_minor'] ?? 0),
                 'platform_shipping_discount_minor' => (int) ($group['platform_shipping_discount_minor'] ?? 0),
                 'shipping_fee_minor' => (int) $quote['shipping_fee_minor'],
+                'buyer_paid_shipping_fee_minor' => (int) ($group['buyer_paid_shipping_fee_minor'] ?? $quote['shipping_fee_minor']),
+                'platform_shipping_subsidy_minor' => (int) ($group['platform_shipping_subsidy_minor'] ?? 0),
+                'shipping_funding_source' => (string) ($group['shipping_funding_source'] ?? 'buyer'),
                 'total_minor' => (int) ($group['seller_total_minor'] ?? $group['total_minor'] ?? ($group['subtotal_minor'] + $quote['shipping_fee_minor'])),
                 'buyer_total_minor' => (int) ($group['buyer_total_minor'] ?? ($group['subtotal_minor'] + $quote['shipping_fee_minor'])),
                 'quote' => $quote,
@@ -804,6 +833,9 @@ class CheckoutService
                 'subtotal_minor' => (int) $totals['subtotal_minor'],
                 'seller_subtotal_minor' => (int) ($totals['seller_subtotal_minor'] ?? $totals['subtotal_minor']),
                 'shipping_fee_minor' => (int) $totals['shipping_fee_minor'],
+                'buyer_paid_shipping_fee_minor' => (int) ($totals['buyer_paid_shipping_fee_minor'] ?? $totals['shipping_fee_minor']),
+                'platform_shipping_subsidy_minor' => (int) ($totals['platform_shipping_subsidy_minor'] ?? 0),
+                'shipping_funding_source' => (string) ($totals['shipping_funding_source'] ?? 'buyer'),
                 'seller_discount_minor' => (int) ($totals['seller_discount_minor'] ?? 0),
                 'platform_discount_minor' => (int) ($totals['platform_discount_minor'] ?? 0),
                 'campaign_platform_discount_minor' => (int) ($totals['campaign_platform_discount_minor'] ?? 0),

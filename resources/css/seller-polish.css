@@ -854,6 +854,220 @@ a.order-row-action { text-decoration: none; }
     padding: 0 8px 9px 24px;
 }
 
+.variant-package-grid[hidden] {
+    display: none;
+}
+
+.variant-package-manager {
+    display: grid;
+    min-width: 0;
+    margin-top: 12px;
+    overflow: hidden;
+    border: 1px solid #e7dfd6;
+    border-radius: 9px;
+    background: #fff;
+}
+
+.variant-package-shared-panel {
+    display: grid;
+    min-width: 0;
+    gap: 10px;
+    padding: 12px;
+    background: #fcfaf7;
+}
+
+.variant-package-shared-toggle {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    color: var(--seller-brown-950);
+    cursor: pointer;
+}
+
+.variant-package-shared-toggle input,
+.variant-package-copy-target input,
+.variant-package-override input {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
+    margin: 2px 0 0;
+    accent-color: #8a5c2d;
+}
+
+.variant-package-shared-toggle > span,
+.variant-package-progress-copy,
+.variant-package-copy-description {
+    display: grid;
+    min-width: 0;
+    gap: 4px;
+}
+
+.variant-package-shared-toggle strong,
+.variant-package-copy-description strong {
+    color: var(--seller-brown-950);
+    font-size: 12px;
+}
+
+.variant-package-shared-toggle small,
+.variant-package-copy-description small,
+.variant-package-progress-copy small {
+    color: var(--seller-muted);
+    font-size: 10.5px;
+    line-height: 1.45;
+}
+
+.variant-package-shared-fields {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #eee8e2;
+}
+
+.variant-package-shared-fields[hidden] {
+    display: none;
+}
+
+.variant-package-progress-panel {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    padding: 11px 12px;
+    border-top: 1px solid #eee8e2;
+}
+
+.variant-package-progress-copy > strong {
+    color: var(--seller-brown-950);
+    font-size: 12px;
+}
+
+.variant-package-progress-copy progress {
+    width: 100%;
+    height: 7px;
+    overflow: hidden;
+    border: 0;
+    border-radius: 99px;
+    accent-color: #687b4b;
+    background: #eee8e2;
+}
+
+.variant-package-progress-copy progress::-webkit-progress-bar {
+    border-radius: 99px;
+    background: #eee8e2;
+}
+
+.variant-package-progress-copy progress::-webkit-progress-value {
+    border-radius: 99px;
+    background: #687b4b;
+}
+
+.variant-package-progress-copy progress::-moz-progress-bar {
+    border-radius: 99px;
+    background: #687b4b;
+}
+
+.variant-package-copy-panel {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(180px, .65fr) auto;
+    align-items: end;
+    gap: 12px;
+    padding: 11px 12px;
+    border-top: 1px solid #eee8e2;
+}
+
+.variant-package-copy-source {
+    display: grid;
+    min-width: 0;
+    gap: 4px;
+    color: var(--seller-text);
+    font-size: 10px;
+    font-weight: 600;
+}
+
+.variant-package-copy-source select {
+    width: 100%;
+    min-height: 36px;
+    padding: 0 9px;
+    border: 1px solid #dcd3ca;
+    border-radius: 7px;
+    color: var(--seller-text);
+    background: #fff;
+    font: inherit;
+    font-size: 11px;
+}
+
+.variant-package-action-status {
+    grid-column: 1 / -1;
+    color: var(--seller-muted);
+    font-size: 10.5px;
+    line-height: 1.45;
+}
+
+.variant-package-action-status.is-error {
+    color: #9a3d2e;
+}
+
+.variant-package-copy-panel [hidden],
+.variant-package-row-toolbar [hidden],
+.variant-package-shared-note[hidden] {
+    display: none;
+}
+
+.variant-package-row-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    min-height: 25px;
+    margin: 2px 0 5px;
+}
+
+.variant-package-copy-target,
+.variant-package-override {
+    display: inline-flex;
+    align-items: flex-start;
+    gap: 6px;
+    color: var(--seller-muted);
+    font-size: 10px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.variant-package-copy-target input,
+.variant-package-override input {
+    width: 14px;
+    height: 14px;
+    flex-basis: 14px;
+    margin-top: 0;
+}
+
+.variant-package-shared-note {
+    display: block;
+    padding: 8px 24px 10px;
+    color: #655b53;
+    font-size: 10.5px;
+    line-height: 1.45;
+}
+
+.variant-matrix-table tr.has-incomplete-package > td:first-child,
+.variant-package-row.has-package-server-error > td {
+    background: #fffaf0;
+}
+
+.variant-matrix-table tr.has-package-server-error > td:first-child {
+    box-shadow: inset 3px 0 #b4613d;
+}
+
+.variant-package-row.has-incomplete-package > td {
+    border-bottom-color: #ead8bd;
+}
+
+.variant-package-validation-error {
+    display: block;
+    margin-top: 5px;
+}
+
 .variant-package-field {
     display: grid;
     min-width: 0;
@@ -906,8 +1120,23 @@ a.order-row-action { text-decoration: none; }
 }
 
 @media (max-width: 900px) {
-    .variant-package-grid {
+    .variant-package-grid,
+    .variant-package-shared-fields {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .variant-package-copy-panel {
+        grid-template-columns: minmax(0, 1fr) minmax(160px, .75fr);
+    }
+
+    .variant-package-copy-panel > button {
+        grid-column: 2;
+        width: 100%;
+    }
+
+    .variant-package-copy-description,
+    .variant-package-action-status {
+        grid-column: 1 / -1;
     }
 }
 
@@ -918,9 +1147,44 @@ a.order-row-action { text-decoration: none; }
         box-sizing: border-box;
     }
 
-    .variant-package-grid {
+    .variant-package-grid,
+    .variant-package-shared-fields {
         grid-template-columns: 1fr;
         padding-left: 8px;
+    }
+
+    .variant-package-progress-panel,
+    .variant-package-copy-panel {
+        grid-template-columns: minmax(0, 1fr);
+        align-items: stretch;
+    }
+
+    .variant-package-progress-panel > button,
+    .variant-package-copy-panel > button,
+    .variant-package-copy-source {
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .variant-package-copy-panel > button,
+    .variant-package-copy-description,
+    .variant-package-action-status {
+        grid-column: auto;
+    }
+
+    .variant-package-row-toolbar {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 7px;
+        padding: 4px 8px;
+    }
+
+    .variant-package-details {
+        max-width: 100%;
+    }
+
+    .variant-package-shared-note {
+        padding-inline: 8px;
     }
 
 }

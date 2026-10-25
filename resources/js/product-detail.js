@@ -1,3 +1,5 @@
+import { galleryIndexForDirection, gallerySwipeDirection } from './product-gallery-utils.js';
+
 (() => {
   const root = document.querySelector('[data-product-detail]');
   const dataNode = document.querySelector('[data-product-detail-data]');
@@ -126,7 +128,8 @@
     if (!image) {
       image = document.createElement('img');
       image.dataset.detailPrimaryImage = '';
-      gallery.replaceChildren(image);
+      image.draggable = false;
+      gallery.insertBefore(image, gallery.firstChild);
     }
     image.src = source;
     image.alt = alt || data.productName || 'Product image';
@@ -149,12 +152,14 @@
     if (priceRegularAmount) priceRegularAmount.textContent = money(regular);
     if (priceBadge) priceBadge.textContent = hasDiscount ? `${discount}% OFF` : '';
     if (priceCaption) priceCaption.hidden = hasDiscount;
-    const saleName = String(variant.product_discount_name || '').trim();
-    const saleStart = formatPht(variant.product_discount_starts_at);
-    const saleEnd = formatPht(variant.product_discount_ends_at);
-    const showSaleName = hasDiscount && saleName !== '' && saleStart !== '' && saleEnd !== '';
+    const isCampaign = String(variant.price_source || '') === 'campaign';
+    const saleName = String((isCampaign ? variant.campaign_name : variant.product_discount_name) || '').trim();
+    const saleStart = formatPht(isCampaign ? variant.campaign_starts_at : variant.product_discount_starts_at);
+    const saleEnd = formatPht(isCampaign ? variant.campaign_ends_at : variant.product_discount_ends_at);
+    const hasSalePeriod = saleStart !== '' && saleEnd !== '';
+    const showSaleName = hasDiscount && saleName !== '';
     if (promotionName) promotionName.textContent = saleName;
-    if (promotionPeriod) promotionPeriod.textContent = showSaleName ? `${saleStart} – ${saleEnd} PHT` : '';
+    if (promotionPeriod) promotionPeriod.textContent = showSaleName && hasSalePeriod ? `${saleStart} – ${saleEnd} PHT` : '';
     if (promotionNote) promotionNote.hidden = !showSaleName;
     if (stock) {
       stock.textContent = available > 0 ? `${available} available` : 'Out of stock';
@@ -254,14 +259,50 @@
     showImage(thumbnail.dataset.imageSrc, thumbnail.dataset.imageAlt);
   };
   thumbnails.forEach(thumbnail => thumbnail.addEventListener('click', () => chooseThumbnail(thumbnail)));
-  root.querySelector('[data-gallery-prev]')?.addEventListener('click', () => {
+  const showAdjacentGalleryImage = direction => {
+    if (!thumbnails.length) return;
+
     const index = thumbnails.findIndex(thumbnail => thumbnail.getAttribute('aria-pressed') === 'true');
-    if (thumbnails.length) chooseThumbnail(thumbnails[(index - 1 + thumbnails.length) % thumbnails.length]);
+    const nextIndex = galleryIndexForDirection(index, direction, thumbnails.length);
+
+    if (nextIndex >= 0) chooseThumbnail(thumbnails[nextIndex]);
+  };
+  root.querySelector('[data-gallery-prev]')?.addEventListener('click', () => showAdjacentGalleryImage(-1));
+  root.querySelector('[data-gallery-next]')?.addEventListener('click', () => showAdjacentGalleryImage(1));
+
+  let gallerySwipeStart = null;
+  const clearGallerySwipe = event => {
+    if (!gallerySwipeStart || (event?.pointerId !== undefined && event.pointerId !== gallerySwipeStart.pointerId)) return;
+    gallerySwipeStart = null;
+    gallery?.classList.remove('is-swiping');
+  };
+
+  gallery?.addEventListener('pointerdown', event => {
+    if (!event.isPrimary || event.button !== 0 || event.target.closest?.('button') || thumbnails.length < 2) return;
+
+    gallerySwipeStart = {
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+    };
+    gallery.classList.add('is-swiping');
+    gallery.setPointerCapture?.(event.pointerId);
   });
-  root.querySelector('[data-gallery-next]')?.addEventListener('click', () => {
-    const index = thumbnails.findIndex(thumbnail => thumbnail.getAttribute('aria-pressed') === 'true');
-    if (thumbnails.length) chooseThumbnail(thumbnails[(index + 1) % thumbnails.length]);
+
+  gallery?.addEventListener('pointerup', event => {
+    if (!gallerySwipeStart || event.pointerId !== gallerySwipeStart.pointerId) return;
+
+    const direction = gallerySwipeDirection(
+      gallerySwipeStart.x,
+      gallerySwipeStart.y,
+      event.clientX,
+      event.clientY,
+    );
+    clearGallerySwipe(event);
+    if (direction !== 0) showAdjacentGalleryImage(direction);
   });
+  gallery?.addEventListener('pointercancel', clearGallerySwipe);
+  gallery?.addEventListener('lostpointercapture', clearGallerySwipe);
 
   addButton?.addEventListener('click', async () => {
     const variant = currentVariant();
@@ -344,6 +385,6 @@
   }));
   reviewSort?.addEventListener('change', sortReviews);
 
-  renderVariant();
+  renderVariant(false);
   sortReviews();
 })();

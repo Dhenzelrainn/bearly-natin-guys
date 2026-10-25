@@ -2,20 +2,31 @@
 
 namespace App\Services;
 
+use App\Enums\SellerOrderStatus;
 use App\Models\Category;
 use App\Models\OrderItem;
+use App\Models\MarketplaceCategory;
 use App\Models\Product;
 use App\Models\ProductImage;
 use App\Models\ProductVariant;
 use App\Models\Store;
+use App\Models\StoreSubcategory;
 use App\Models\User;
 use App\Models\Wishlist;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Database\Query\Builder as QueryBuilder;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class BuyerCatalogService
 {
+    private ?bool $marketplaceTaxonomyAvailable = null;
+
     public function __construct(private readonly ProductPricingService $pricing) {}
 
     private const CATEGORY_ALIASES = [
@@ -34,36 +45,87 @@ class BuyerCatalogService
         'furniture-and-office-equipment' => ['furniture-and-office-equipment', 'Furniture and Office Equipment'],
     ];
 
-    public function publishedProducts(?string $categorySlug = null, ?Store $store = null): Collection
+    public function publishedProducts(?string $categorySlug = null, ?Store $store = null, ?int $limit = null): Collection
+    {
+        $query = $this->publishedProductsQuery($categorySlug, $store);
+
+        if ($limit !== null) {
+            $query->limit(max(1, $limit));
+        }
+
+        return $query->get();
+    }
+
+    public function publishedProductsQuery(?string $categorySlug = null, ?Store $store = null): Builder
     {
         $query = Product::query()
-            ->with([
-                'category',
-                'subcategory',
-                'store.sellerProfile',
-                'images' => fn ($images) => $images->with('variant')->orderBy('position'),
-                'variants' => fn ($variants) => $variants->where('is_active', true)->orderBy('position'),
-            ])
-            ->visibleToBuyers();
+            ->with($this->catalogRelations())
+            ->visibleToBuyers()
+            ->acceptsCashOnDelivery();
 
         if ($store) {
             $query->where('store_id', $store->id);
         }
 
         if ($categorySlug !== null) {
-            $category = $this->categoryForSlug($categorySlug);
-
-            if (! $category) {
-                return collect();
-            }
-
-            $query->where('category_id', $category->id);
+            $this->filterByBuyerCategory($query, $categorySlug);
         }
 
         return $query
             ->orderByDesc('published_at')
-            ->orderByDesc('id')
-            ->get();
+            ->orderByDesc('id');
+    }
+
+    public function publishedProductsPage(
+        ?string $categorySlug = null,
+        ?Store $store = null,
+        int $perPage = 60,
+    ): LengthAwarePaginator {
+        return $this->publishedProductsQuery($categorySlug, $store)
+            ->paginate(max(1, $perPage))
+            ->withQueryString();
+    }
+
+    public function filterByBuyerCategory(Builder $query, string $categorySlug): Builder
+    {
+        if ($this->hasMarketplaceTaxonomyTables()) {
+            $marketplaceCategory = $this->marketplaceCategoryForSlug($categorySlug);
+
+            if ($marketplaceCategory) {
+                $this->constrainMarketplaceCategory($query, $marketplaceCategory);
+            } else {
+                $query->whereRaw('1 = 0');
+            }
+
+            return $query;
+        }
+
+        $category = $this->legacyCategoryFallbackIsUnambiguous($categorySlug)
+            ? $this->categoryForSlug($categorySlug)
+            : null;
+
+        return $category
+            ? $query->where('category_id', $category->id)
+            : $query->whereRaw('1 = 0');
+    }
+
+    /** @return array<string, mixed> */
+    private function catalogRelations(): array
+    {
+        $relations = [
+            'category',
+            'subcategory',
+            'store.sellerProfile',
+            'images' => fn ($images) => $images->with('variant')->orderBy('position'),
+            'variants' => fn ($variants) => $variants->where('is_active', true)->orderBy('position'),
+        ];
+        if ($this->hasMarketplaceTaxonomyTables()) {
+            $relations['category.marketplaceCategories'] = fn ($categories) => $categories
+                ->where('marketplace_categories.is_active', true);
+            $relations[] = 'marketplaceSubcategory.marketplaceCategory';
+        }
+
+        return $relations;
     }
 
     public function categoryForSlug(string $slug): ?Category
@@ -81,8 +143,393 @@ class BuyerCatalogService
             ->first();
     }
 
-    public function cards(Collection $products, ?User $buyer = null, bool $includeStoreSubcategory = false): array
+    public function marketplaceCategoryForSlug(string $slug): ?MarketplaceCategory
     {
+        return MarketplaceCategory::query()
+            ->where('slug', Str::lower(trim($slug)))
+            ->where('is_active', true)
+            ->first();
+    }
+
+    /**
+     * Canonical subcategories shown in a Buyer category page are active and
+     * have at least one product that is currently buyer-visible.
+     *
+     * @return Collection<int, \App\Models\MarketplaceSubcategory>
+     */
+    public function marketplaceSubcategoriesForBuyer(MarketplaceCategory $category): Collection
+    {
+        return $category->subcategories()
+            ->where('is_active', true)
+            ->whereHas('products', fn ($products) => $products
+                ->visibleToBuyers()
+                ->acceptsCashOnDelivery())
+            ->orderBy('position')
+            ->orderBy('name')
+            ->get();
+    }
+
+    /**
+     * Products assigned to a canonical marketplace subcategory, plus legacy
+     * unassigned products only where their approved business category maps to
+     * exactly this one Buyer category.
+     *
+     * @return LengthAwarePaginator<int, Product>
+     */
+    public function publishedProductsForMarketplaceCategory(
+        MarketplaceCategory $category,
+        ?string $subcategorySlug = null,
+        int $perPage = 60,
+    ): LengthAwarePaginator
+    {
+        $query = Product::query()
+            ->with($this->catalogRelations())
+            ->visibleToBuyers()
+            ->acceptsCashOnDelivery();
+
+        $this->constrainMarketplaceCategory($query, $category);
+
+        if (filled($subcategorySlug)) {
+            $subcategory = $category->subcategories()
+                ->where('is_active', true)
+                ->where('slug', trim($subcategorySlug))
+                ->first();
+
+            if ($subcategory) {
+                $query->where('marketplace_subcategory_id', $subcategory->id);
+            } else {
+                $query->whereRaw('1 = 0');
+            }
+        }
+
+        return $query
+            ->orderByDesc('published_at')
+            ->orderByDesc('id')
+            ->paginate(max(1, $perPage))
+            ->withQueryString();
+    }
+
+    /**
+     * Related products remain within the source product's Buyer category
+     * branch; ambiguous business-category aliases do not broaden the results.
+     *
+     * @return Collection<int, Product>
+     */
+    public function relatedProducts(Product $product, int $limit = 4): Collection
+    {
+        $query = Product::query()
+            ->with($this->catalogRelations())
+            ->visibleToBuyers()
+            ->acceptsCashOnDelivery()
+            ->where('products.id', '!=', $product->getKey());
+
+        if ($this->hasMarketplaceTaxonomyTables()) {
+            $product->loadMissing([
+                'marketplaceSubcategory.marketplaceCategory',
+                'category.marketplaceCategories' => fn ($categories) => $categories
+                    ->where('marketplace_categories.is_active', true),
+            ]);
+            $category = $this->marketplaceCategoryFor($product, $product->marketplaceSubcategory);
+
+            if ($category) {
+                $this->constrainMarketplaceCategory($query, $category);
+            } else {
+                $query->whereRaw('1 = 0');
+            }
+        } elseif ($product->category_id && $this->legacyCategoryFallbackIsUnambiguous($this->buyerCategorySlug($product->category))) {
+            $query->where('category_id', $product->category_id);
+        } else {
+            $query->whereRaw('1 = 0');
+        }
+
+        return $query
+            ->orderByDesc('published_at')
+            ->orderByDesc('id')
+            ->limit(max(1, $limit))
+            ->get();
+    }
+
+    /** @return Collection<int, StoreSubcategory> */
+    public function storeSubcategoriesForBuyer(Store $store): Collection
+    {
+        return StoreSubcategory::query()
+            ->where('store_id', $store->id)
+            ->where('is_active', true)
+            ->whereHas('products', fn ($products) => $products
+                ->where('store_id', $store->id)
+                ->visibleToBuyers()
+                ->acceptsCashOnDelivery())
+            ->orderBy('name')
+            ->get();
+    }
+
+    private function constrainMarketplaceCategory(Builder $query, MarketplaceCategory $category): void
+    {
+        $unambiguousCategoryIds = DB::table('marketplace_category_business_categories as mapping')
+            ->join('marketplace_categories as mapped_marketplace_categories', 'mapped_marketplace_categories.id', '=', 'mapping.marketplace_category_id')
+            ->join('categories as mapped_business_categories', 'mapped_business_categories.id', '=', 'mapping.category_id')
+            ->where('mapped_marketplace_categories.is_active', true)
+            ->where('mapped_business_categories.is_active', true)
+            ->select('mapping.category_id')
+            ->groupBy('mapping.category_id')
+            ->havingRaw('COUNT(DISTINCT mapping.marketplace_category_id) = 1');
+
+        $legacyCategoryIds = DB::table('marketplace_category_business_categories as category_mapping')
+            ->join('marketplace_categories as target_marketplace_category', 'target_marketplace_category.id', '=', 'category_mapping.marketplace_category_id')
+            ->select('category_mapping.category_id')
+            ->where('target_marketplace_category.is_active', true)
+            ->where('category_mapping.marketplace_category_id', $category->id)
+            ->whereIn('category_mapping.category_id', $unambiguousCategoryIds);
+
+        $query->where(function (Builder $products) use ($category, $legacyCategoryIds): void {
+            $products->whereHas('marketplaceSubcategory', fn (Builder $subcategories) => $subcategories
+                ->where('marketplace_category_id', $category->id)
+                ->where('is_active', true)
+                ->whereHas('marketplaceCategory', fn (Builder $parents) => $parents->where('is_active', true)))
+                ->whereHas('category', fn (Builder $businessCategories) => $businessCategories->where('is_active', true));
+
+            $products->orWhere(function (Builder $legacy) use ($legacyCategoryIds): void {
+                $legacy->whereNull('marketplace_subcategory_id')
+                    ->whereHas('category', fn (Builder $categories) => $categories->where('is_active', true))
+                    ->whereIn('category_id', $legacyCategoryIds);
+            });
+        });
+    }
+
+    private function legacyCategoryFallbackIsUnambiguous(string $slug): bool
+    {
+        $aliases = self::CATEGORY_ALIASES[$slug] ?? [$slug, Str::headline(str_replace('-', ' ', $slug))];
+        $legacySlug = (string) ($aliases[0] ?? '');
+        $buyerBranches = collect(self::CATEGORY_ALIASES)
+            ->filter(fn (array $candidate): bool => (string) ($candidate[0] ?? '') === $legacySlug)
+            ->keys();
+
+        return $buyerBranches->count() <= 1;
+    }
+
+    /**
+     * Home rankings derived only from current Buyer saves and completed seller
+     * orders. No catalog-only product can appear in Top Sales without sales.
+     *
+     * @return array{popular: array<int, array<string, mixed>>, top_sales: array<int, array<string, mixed>>}
+     */
+    public function homepageRankings(User $buyer, int $limit = 6): array
+    {
+        $limit = min(12, max(1, $limit));
+
+        return [
+            'popular' => $this->rankedHomeCards($this->rankingMetrics('popular'), $buyer, $limit, 'buyer_likes_count'),
+            'top_sales' => $this->rankedHomeCards($this->rankingMetrics('top_sales'), $buyer, $limit, 'completed_units_sold'),
+        ];
+    }
+
+    /**
+     * Active canonical Buyer categories and their ranked, Buyer-orderable
+     * product counts. Empty categories remain available for honest empty states.
+     *
+     * @return Collection<int, array{id: int, slug: string, name: string, product_count: int}>
+     */
+    public function rankingCategories(string $rankingType): Collection
+    {
+        if (! $this->hasMarketplaceTaxonomyTables()) {
+            return collect();
+        }
+
+        return MarketplaceCategory::query()
+            ->where('is_active', true)
+            ->orderBy('position')
+            ->orderBy('id')
+            ->get(['id', 'slug', 'name'])
+            ->map(function (MarketplaceCategory $category) use ($rankingType): array {
+                $query = $this->rankedProductsQuery($this->rankingMetrics($rankingType));
+                $this->constrainMarketplaceCategory($query, $category);
+                $count = (int) $query->count('products.id');
+
+                return [
+                    'id' => (int) $category->id,
+                    'slug' => $category->slug,
+                    'name' => $category->name,
+                    'product_count' => $count,
+                ];
+            })
+            ->values();
+    }
+
+    /**
+     * Database-paginated products for a Buyer ranking page. The ranking metric,
+     * category filter, availability, and ordering remain in SQL; only the
+     * selected page is hydrated through the existing catalog-card contract.
+     *
+     * @return LengthAwarePaginator<int, array<string, mixed>>
+     */
+    public function rankedProductsPage(
+        User $buyer,
+        string $rankingType,
+        ?string $categorySlug = null,
+        int $perPage = 24,
+    ): LengthAwarePaginator {
+        $query = $this->rankedProductsQuery($this->rankingMetrics($rankingType), withRelations: true);
+
+        if (filled($categorySlug)) {
+            $this->filterByBuyerCategory($query, (string) $categorySlug);
+        }
+
+        $page = $query
+            ->orderByDesc('ranking_metrics.ranking_metric')
+            ->orderBy('products.id')
+            ->paginate(min(48, max(1, $perPage)))
+            ->withQueryString();
+
+        $products = $page->getCollection();
+        $metricByProductId = $products->mapWithKeys(fn (Product $product): array => [
+            (int) $product->id => (int) $product->ranking_metric,
+        ]);
+        $metricKey = $this->rankingMetricKey($rankingType);
+        $firstRank = (int) ($page->firstItem() ?? 1);
+        $cards = collect($this->cards($products, $buyer))
+            ->values()
+            ->map(function (array $card, int $index) use ($metricByProductId, $metricKey, $firstRank): array {
+                $metric = (int) ($metricByProductId->get((int) $card['id']) ?? 0);
+                unset($card['rating'], $card['sold']);
+                $card[$metricKey] = $metric;
+                $card['ranking_metric'] = $metric;
+                $card['ranking_position'] = $firstRank + $index;
+
+                return $card;
+            });
+
+        $page->setCollection($cards);
+
+        return $page;
+    }
+
+    private function rankingMetrics(string $rankingType): QueryBuilder
+    {
+        return match ($rankingType) {
+            'popular' => DB::table('wishlists')
+                ->join('users', 'users.id', '=', 'wishlists.user_id')
+                ->where('users.role', 'buyer')
+                ->where('users.status', 'active')
+                ->select('wishlists.product_id')
+                ->selectRaw('COUNT(DISTINCT wishlists.user_id) AS ranking_metric')
+                ->groupBy('wishlists.product_id')
+                ->havingRaw('COUNT(DISTINCT wishlists.user_id) > 0'),
+            'top_sales' => DB::table('order_items')
+                ->join('seller_orders', 'seller_orders.id', '=', 'order_items.seller_order_id')
+                ->where('seller_orders.status', SellerOrderStatus::Completed->value)
+                ->whereNotNull('seller_orders.completed_at')
+                ->whereNotNull('order_items.product_id')
+                ->select('order_items.product_id')
+                ->selectRaw('SUM(order_items.quantity) AS ranking_metric')
+                ->groupBy('order_items.product_id')
+                ->havingRaw('SUM(order_items.quantity) > 0'),
+            default => throw new \InvalidArgumentException('Unsupported Buyer product ranking type.'),
+        };
+    }
+
+    private function rankingMetricKey(string $rankingType): string
+    {
+        return match ($rankingType) {
+            'popular' => 'buyer_likes_count',
+            'top_sales' => 'completed_units_sold',
+            default => throw new \InvalidArgumentException('Unsupported Buyer product ranking type.'),
+        };
+    }
+
+    private function rankedProductsQuery(QueryBuilder $metrics, bool $withRelations = false): Builder
+    {
+        $query = Product::query()
+            ->joinSub($metrics, 'ranking_metrics', fn ($join) => $join
+                ->on('ranking_metrics.product_id', '=', 'products.id'))
+            ->select(['products.*', 'ranking_metrics.ranking_metric'])
+            ->visibleToBuyers()
+            ->acceptsCashOnDelivery()
+            ->whereHas('variants', fn (Builder $variants) => $variants
+                ->where('is_active', true)
+                ->whereColumn('stock_on_hand', '>', 'stock_reserved'));
+
+        if ($withRelations) {
+            $relations = $this->catalogRelations();
+            $relations['variants'] = fn ($variants) => $variants
+                ->where('is_active', true)
+                ->whereColumn('stock_on_hand', '>', 'stock_reserved')
+                ->orderBy('position')
+                ->orderBy('id');
+            $query->with($relations);
+        }
+
+        return $query;
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function rankedHomeCards(QueryBuilder $metrics, User $buyer, int $limit, string $metricKey): array
+    {
+        $products = $this->rankedProductsQuery($metrics, withRelations: true)
+            ->orderByDesc('ranking_metrics.ranking_metric')
+            ->orderBy('products.id')
+            ->limit($limit)
+            ->get();
+
+        if ($products->isEmpty()) {
+            return [];
+        }
+
+        $metricByProductId = $products->mapWithKeys(fn (Product $product): array => [
+            (int) $product->id => (int) $product->ranking_metric,
+        ]);
+
+        return array_map(function (array $card) use ($metricByProductId, $metricKey): array {
+            $card[$metricKey] = (int) ($metricByProductId->get((int) $card['id']) ?? 0);
+            unset($card['rating'], $card['sold']);
+
+            return $card;
+        }, $this->cards($products, $buyer));
+    }
+
+    public function cards(
+        Collection $products,
+        ?User $buyer = null,
+        bool $includeStoreSubcategory = false,
+        bool $includeCampaignItemId = false,
+    ): array
+    {
+        $products = $products
+            ->filter(fn ($product): bool => $product instanceof Product && $product->acceptsCashOnDelivery())
+            ->values();
+        $productModels = $products->filter(fn ($product): bool => $product instanceof Product)->values();
+        if ($this->hasMarketplaceTaxonomyTables() && $products instanceof EloquentCollection) {
+            $products->loadMissing([
+                'marketplaceSubcategory.marketplaceCategory',
+                'category.marketplaceCategories' => fn ($categories) => $categories
+                    ->where('marketplace_categories.is_active', true),
+            ]);
+        } elseif ($productModels->isNotEmpty()) {
+            $relations = [];
+            if ($this->hasMarketplaceTaxonomyTables()) {
+                $relations = [
+                    'marketplaceSubcategory.marketplaceCategory',
+                    'category.marketplaceCategories' => fn ($categories) => $categories
+                        ->where('marketplace_categories.is_active', true),
+                ];
+            }
+            $loadedMarketplaceRelations = Product::query()
+                ->with($relations)
+                ->whereKey($productModels->pluck('id')->all())
+                ->get()
+                ->keyBy('id');
+            $productModels->each(function (Product $product) use ($loadedMarketplaceRelations): void {
+                $loaded = $loadedMarketplaceRelations->get($product->id);
+                if ($loaded) {
+                    foreach (['marketplaceSubcategory', 'category'] as $relation) {
+                        if ($loaded->relationLoaded($relation)) {
+                            $product->setRelation($relation, $loaded->getRelation($relation));
+                        }
+                    }
+                }
+            });
+        }
         $wishlistIds = $buyer
             ? Wishlist::query()->where('user_id', $buyer->id)->pluck('product_id')->map(fn ($id) => (int) $id)->all()
             : [];
@@ -94,13 +541,30 @@ class BuyerCatalogService
                 $product,
                 in_array((int) $product->id, $wishlistIds, true),
                 $includeStoreSubcategory,
+                $includeCampaignItemId,
             ))
             ->values()
             ->all();
     }
 
-    public function card(Product $product, bool $isWishlisted = false, bool $includeStoreSubcategory = false): array
+    public function card(
+        Product $product,
+        bool $isWishlisted = false,
+        bool $includeStoreSubcategory = false,
+        bool $includeCampaignItemId = false,
+    ): array
     {
+        if ($this->hasMarketplaceTaxonomyTables()) {
+            $product->loadMissing([
+                'marketplaceSubcategory.marketplaceCategory',
+                'category.marketplaceCategories' => fn ($categories) => $categories
+                    ->where('marketplace_categories.is_active', true),
+            ]);
+        }
+        $marketplaceSubcategory = $this->hasMarketplaceTaxonomyTables()
+            ? $product->marketplaceSubcategory
+            : null;
+        $marketplaceCategory = $this->marketplaceCategoryFor($product, $marketplaceSubcategory);
         $variants = $product->relationLoaded('variants')
             ? $product->variants->where('is_active', true)->values()
             : $product->variants()->where('is_active', true)->orderBy('position')->get();
@@ -136,10 +600,20 @@ class BuyerCatalogService
             'product_discount_ends_at' => $firstPrice['product_discount_ends_at'] ?? null,
             'campaign_type' => $firstPrice['campaign_type'] ?? null,
             'campaign_funding' => $firstPrice['campaign_funding'] ?? null,
+            'campaign_starts_at' => $firstPrice['campaign_starts_at'] ?? null,
+            'campaign_ends_at' => $firstPrice['campaign_ends_at'] ?? null,
             'price_source' => $firstPrice['price_source'] ?? 'regular',
             'subcategory' => $product->category?->name ?? 'Marketplace',
             'category' => $product->category?->name ?? 'Marketplace',
-            'category_slug' => $this->buyerCategorySlug($product->category),
+            'category_slug' => $marketplaceCategory?->slug
+                ?? (! $this->hasMarketplaceTaxonomyTables() ? $this->buyerCategorySlug($product->category) : null),
+            'marketplace_category_slug' => $marketplaceCategory?->slug,
+            'marketplace_category_name' => $marketplaceCategory?->name,
+            'marketplace_subcategory_id' => $marketplaceSubcategory?->id
+                ? (int) $marketplaceSubcategory->id
+                : null,
+            'marketplace_subcategory_slug' => $marketplaceSubcategory?->slug,
+            'marketplace_subcategory_name' => $marketplaceSubcategory?->name,
             'photo' => 0,
             'image' => $primary
                 ? $this->imageUrl($primary->path, $primary->disk ?: 'public')
@@ -157,10 +631,7 @@ class BuyerCatalogService
             'store_slug' => $product->store?->slug,
             'free_shipping' => false,
             'voucher' => (bool) $product->voucher_eligible,
-            'payment_methods' => array_values(array_intersect(
-                (array) ($product->payment_methods ?? ['cod', 'online']),
-                ['cod', 'online'],
-            )) ?: ['cod', 'online'],
+            'payment_methods' => ['cod'],
             'rating' => 0,
             'sold' => 0,
             'description' => $product->description ?? '',
@@ -174,6 +645,13 @@ class BuyerCatalogService
 
         if ($includeStoreSubcategory) {
             $card['seller_subcategory'] = $product->subcategory?->name;
+        }
+
+        if ($includeCampaignItemId) {
+            $campaignItemId = $firstPrice['campaign_participation_item_id'] ?? null;
+            $card['campaign_participation_item_id'] = $campaignItemId !== null
+                ? (int) $campaignItemId
+                : null;
         }
 
         return $card;
@@ -190,6 +668,38 @@ class BuyerCatalogService
             'books and stationery' => 'books-and-media',
             default => Str::slug((string) $category?->name),
         };
+    }
+
+    private function marketplaceCategoryFor(Product $product, mixed $marketplaceSubcategory): ?MarketplaceCategory
+    {
+        if (! $this->hasMarketplaceTaxonomyTables()) {
+            return null;
+        }
+
+        if ($marketplaceSubcategory) {
+            $parent = $marketplaceSubcategory->marketplaceCategory;
+
+            if ($marketplaceSubcategory->is_active && $parent?->is_active && $product->category?->is_active) {
+                return $parent;
+            }
+
+            return null;
+        }
+
+        $mappedCategories = $product->category?->marketplaceCategories;
+        if (! $product->category?->is_active || ! $mappedCategories || $mappedCategories->count() !== 1) {
+            return null;
+        }
+
+        return $mappedCategories->first();
+    }
+
+    private function hasMarketplaceTaxonomyTables(): bool
+    {
+        return $this->marketplaceTaxonomyAvailable ??= Schema::hasTable('marketplace_categories')
+            && Schema::hasTable('marketplace_subcategories')
+            && Schema::hasTable('marketplace_category_business_categories')
+            && Schema::hasColumn('products', 'marketplace_subcategory_id');
     }
 
     private function variant(Product $product, ProductVariant $variant, ?string $image = null): array
@@ -214,6 +724,8 @@ class BuyerCatalogService
             'product_discount_ends_at' => $price['product_discount_ends_at'],
             'campaign_type' => $price['campaign_type'],
             'campaign_funding' => $price['campaign_funding'],
+            'campaign_starts_at' => $price['campaign_starts_at'],
+            'campaign_ends_at' => $price['campaign_ends_at'],
             'price_source' => $price['price_source'],
             'stock' => (int) $variant->available_stock,
             'size' => $size,
@@ -401,8 +913,8 @@ class BuyerCatalogService
     private function option(array $options, array $names): string
     {
         foreach ($options as $key => $value) {
-            if (in_array(Str::lower((string) $key), $names, true)) {
-                return (string) $value;
+            if (in_array(Str::lower(trim((string) $key)), $names, true)) {
+                return trim((string) $value);
             }
         }
 

@@ -14,6 +14,11 @@ class RiderEarningsService
 {
     private const PER_PAGE = 20;
 
+    /** @var array<int, true> */
+    private array $shippingSettlementsMaterializedForRider = [];
+
+    public function __construct(private readonly ShippingSettlementService $shippingSettlements) {}
+
     /**
      * Reversed and cancelled rows remain visible in ledger activity, but do
      * not contribute to recorded earning totals.
@@ -38,6 +43,7 @@ class RiderEarningsService
      */
     public function summary(RiderProfile $rider): array
     {
+        $this->materializeShippingSettlements((int) $rider->id);
         $now = now();
         $base = DB::table('rider_earnings')
             ->where('rider_profile_id', $rider->id);
@@ -81,6 +87,7 @@ class RiderEarningsService
         RiderProfile $rider,
         array $filters,
     ): LengthAwarePaginator {
+        $this->materializeShippingSettlements((int) $rider->id);
         $page = $this->filteredQuery($rider, $filters)
             ->orderByDesc('earnings.earned_at')
             ->orderByDesc('earnings.id')
@@ -97,6 +104,8 @@ class RiderEarningsService
      */
     public function exportQuery(RiderProfile $rider, array $filters): Builder
     {
+        $this->materializeShippingSettlements((int) $rider->id);
+
         return $this->filteredQuery($rider, $filters)
             ->orderByDesc('earnings.earned_at')
             ->orderByDesc('earnings.id');
@@ -126,6 +135,10 @@ class RiderEarningsService
             (string) ($record->description ?? ''),
             $presented['pickup_assignment_id'],
             $presented['delivery_attempt_id'],
+            $presented['payout_method'],
+            $presented['payout_reference'],
+            $presented['payout_paid_on'],
+            $presented['payout_reason'],
         ]);
     }
 
@@ -217,6 +230,9 @@ class RiderEarningsService
             })
             ->leftJoin('parcels', 'parcels.id', '=', 'attempts.parcel_id')
             ->leftJoin('shipments', 'shipments.id', '=', 'parcels.shipment_id')
+            ->leftJoin('shipping_settlements as linked_settlements', 'linked_settlements.id', '=', 'earnings.shipping_settlement_id')
+            ->leftJoin('seller_orders as settlement_orders', 'settlement_orders.id', '=', 'linked_settlements.seller_order_id')
+            ->leftJoin('rider_earning_payouts as payouts', 'payouts.rider_earning_id', '=', 'earnings.id')
             ->where('earnings.rider_profile_id', $rider->id)
             ->select([
                 'earnings.id as earning_id',
@@ -227,6 +243,12 @@ class RiderEarningsService
                 'earnings.earned_at',
                 'earnings.posted_at',
                 'earnings.paid_at',
+                'settlement_orders.completed_at as seller_order_completed_at',
+                'payouts.method as payout_method',
+                'payouts.reference as payout_reference',
+                'payouts.paid_on as payout_paid_on',
+                'payouts.amount_minor as payout_amount_minor',
+                'payouts.reason as payout_reason',
                 'earnings.pickup_assignment_id',
                 'earnings.delivery_attempt_id',
                 'assignments.id as linked_pickup_assignment_id',
@@ -311,6 +333,12 @@ class RiderEarningsService
             : ($deliveryAttemptId !== null
                 ? 'Delivery attempt #'.$deliveryAttemptId
                 : 'No linked pickup or delivery record');
+        $returnWindowEndedAt = $record->type === 'shipping_delivery' && $record->seller_order_completed_at
+            ? Carbon::parse($record->seller_order_completed_at)
+                ->addDays(ReturnRefundService::RETURN_WINDOW_DAYS)
+                ->endOfDay()
+                ->format('M j, Y')
+            : '';
 
         return [
             'id' => (int) $record->earning_id,
@@ -326,7 +354,18 @@ class RiderEarningsService
             'status_label' => $this->label((string) $record->status),
             'posted_at' => $this->formatDate($record->posted_at),
             'paid_at' => $this->formatDate($record->paid_at),
+            'payout_method' => (string) ($record->payout_method ?? ''),
+            'payout_reference' => (string) ($record->payout_reference ?? ''),
+            'payout_paid_on' => $record->payout_paid_on
+                ? Carbon::parse($record->payout_paid_on)->format('M j, Y')
+                : '',
+            'payout_amount_minor' => $record->payout_amount_minor === null ? null : (int) $record->payout_amount_minor,
+            'payout_amount' => $record->payout_amount_minor === null
+                ? ''
+                : $this->formatMinor((int) $record->payout_amount_minor),
+            'payout_reason' => (string) ($record->payout_reason ?? ''),
             'description' => (string) ($record->description ?? ''),
+            'return_window_ended_at' => $returnWindowEndedAt,
             'pickup_assignment_id' => $pickupAssignmentId === null
                 ? ''
                 : (string) $pickupAssignmentId,
@@ -363,5 +402,15 @@ class RiderEarningsService
         return preg_match('/^[\x00-\x20]*[=+\-@]/u', $value) === 1
             ? "'".$value
             : $value;
+    }
+
+    private function materializeShippingSettlements(int $riderProfileId): void
+    {
+        if (isset($this->shippingSettlementsMaterializedForRider[$riderProfileId])) {
+            return;
+        }
+
+        $this->shippingSettlements->materializeEligibleSettlements(riderProfileId: $riderProfileId);
+        $this->shippingSettlementsMaterializedForRider[$riderProfileId] = true;
     }
 }

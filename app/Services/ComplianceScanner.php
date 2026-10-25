@@ -51,16 +51,20 @@ class ComplianceScanner
                     continue;
                 }
 
+                $recommendedAction = $rule->rule_type === 'category_mismatch'
+                    ? 'hold'
+                    : $rule->default_action;
+
                 ProductComplianceCheckMatch::create([
                     'check_id' => $check->id,
                     'rule_id' => $rule->id,
                     'matched_field' => $rule->target_field,
                     'matched_excerpt' => $excerpt,
                     'severity' => $rule->severity,
-                    'recommended_action' => $rule->default_action,
+                    'recommended_action' => $recommendedAction,
                 ]);
 
-                if (in_array($rule->default_action, ['flag', 'hold', 'block'], true)) {
+                if (in_array($recommendedAction, ['flag', 'hold', 'block'], true)) {
                     $matchedViolationRuleIds[] = (int) $rule->id;
 
                     [$violation, $wasDismissedFalsePositive] = $this->recordViolation($product, $check, $rule, $excerpt);
@@ -71,7 +75,7 @@ class ComplianceScanner
 
                     $this->recordSellerWarning($violation, $rule, $excerpt);
 
-                    if ($rule->default_action === 'block') {
+                    if ($recommendedAction === 'block') {
                         $result = 'blocked';
                     } elseif ($result !== 'blocked') {
                         $result = 'review_required';
@@ -80,6 +84,16 @@ class ComplianceScanner
             }
 
             $this->resolveClearedViolations($product, $actor, $matchedViolationRuleIds);
+
+            if (
+                $result === 'clear'
+                && ProductViolation::query()
+                    ->where('product_id', $product->id)
+                    ->whereNotIn('status', ['dismissed', 'resolved'])
+                    ->exists()
+            ) {
+                $result = 'review_required';
+            }
 
             $check->update([
                 'status' => match ($result) {
@@ -191,7 +205,9 @@ class ComplianceScanner
             }
 
             $categorySlug = $product->category?->slug;
-            $mismatchTerms = $rule->configuration['mismatched_terms_by_category_slug'][$categorySlug] ?? [];
+            $configuredTerms = $rule->configuration['mismatched_terms_by_category_slug'][$categorySlug] ?? [];
+            $runtimeTerms = config('product_compliance.category_mismatch_runtime_terms', [])[$rule->code][$categorySlug] ?? [];
+            $mismatchTerms = array_values(array_unique(array_merge($configuredTerms, $runtimeTerms)));
             $term = $this->findPatternTerm(implode('|', $mismatchTerms), $text, wholeWord: true);
 
             if ($term !== null) {

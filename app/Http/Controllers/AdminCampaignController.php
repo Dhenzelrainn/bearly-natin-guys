@@ -45,7 +45,8 @@ class AdminCampaignController extends Controller
 
         return redirect()
             ->route('admin.campaigns.show', $campaign)
-            ->with('success', 'Bearly campaign created.');
+            ->with('success_title', 'Campaign created')
+            ->with('success', 'Campaign created successfully: '.$campaign->name.'.');
     }
 
     public function update(
@@ -58,13 +59,14 @@ class AdminCampaignController extends Controller
         $campaigns->updateCampaign(
             $request->user(),
             $campaign,
-            $this->validated($request, false),
+            $this->validated($request, false, $campaign),
             $request->file('banner'),
         );
 
         return redirect()
             ->route('admin.campaigns.show', $campaign)
-            ->with('success', 'Bearly campaign updated.');
+            ->with('success_title', 'Campaign updated')
+            ->with('success', 'Campaign changes saved successfully.');
     }
 
     public function show(PlatformPromotion $campaign, CampaignService $campaigns): View
@@ -76,6 +78,7 @@ class AdminCampaignController extends Controller
 
         return view('admin.campaigns.show', [
             'campaign' => $campaign,
+            'budgetEstimate' => $campaigns->adminBudgetEstimate($campaign),
             'auditLogs' => AuditLog::query()
                 ->with('actor:id,name')
                 ->where(function ($query) use ($campaign, $participationIds): void {
@@ -161,24 +164,38 @@ class AdminCampaignController extends Controller
     }
 
     /** @return array<string, mixed> */
-    private function validated(Request $request, bool $creating): array
+    private function validated(
+        Request $request,
+        bool $creating,
+        ?PlatformPromotion $campaign = null,
+    ): array
     {
         $request->merge([
             'start_time' => $request->input('start_time', '00:00'),
             'end_time' => $request->input('end_time', '23:59'),
         ]);
 
+        $allowedFundingTypes = $creating
+            ? [PlatformPromotion::FUNDING_PLATFORM]
+            : [$campaign?->funding_type ?? PlatformPromotion::FUNDING_PLATFORM];
+        $requiresPlatformBudget = $creating
+            || $campaign?->funding_type === PlatformPromotion::FUNDING_PLATFORM;
+
         $rules = [
             'name' => ['required', 'string', 'max:120'],
             'campaign_type' => ['required', Rule::in(array_keys($this->campaignTypes()))],
-            'funding_type' => ['required', Rule::in([
-                PlatformPromotion::FUNDING_PLATFORM,
-                PlatformPromotion::FUNDING_SELLER,
-            ])],
+            'funding_type' => ['required', Rule::in($allowedFundingTypes)],
+            'minimum_discount_percent' => [
+                $creating || $campaign?->minimum_discount_percent !== null ? 'required' : 'nullable',
+                'integer',
+                'between:1,90',
+            ],
             'description' => ['nullable', 'string', 'max:2000'],
             'terms' => ['nullable', 'string', 'max:5000'],
             'campaign_notes' => ['nullable', 'string', 'max:2000'],
-            'budget' => ['nullable', 'prohibited_if:funding_type,seller', 'string', 'regex:/^\d{1,10}(?:\.\d{1,2})?$/D'],
+            'budget' => $requiresPlatformBudget
+                ? ['required', 'string', 'regex:/^\d{1,10}(?:\.\d{1,2})?$/D']
+                : ['prohibited'],
             'starts_on' => ['required', 'date_format:Y-m-d'],
             'ends_on' => ['required', 'date_format:Y-m-d', 'after_or_equal:starts_on'],
             'start_time' => ['required', 'date_format:H:i'],
@@ -207,15 +224,31 @@ class AdminCampaignController extends Controller
             ])];
         }
 
-        $validated = $request->validate($rules);
+        $validated = $request->validate($rules, [
+            'ends_on.after_or_equal' => 'The campaign end date must be on or after the start date.',
+            'join_deadline.before_or_equal' => 'The Seller join deadline must be on or before the campaign start date. If you move the start earlier, update the deadline too.',
+        ]);
+
+        if ($requiresPlatformBudget && $this->pesoMinor($validated['budget']) < 1) {
+            throw ValidationException::withMessages([
+                'budget' => 'Set a Bearly-funded budget greater than ₱0.00. No-cap Bearly campaigns are not available for Admin campaigns.',
+            ]);
+        }
 
         if (PlatformPromotion::dateTimeFromInput($validated['ends_on'], $validated['end_time'], true)
             ->lessThan(PlatformPromotion::dateTimeFromInput($validated['starts_on'], $validated['start_time']))) {
             throw ValidationException::withMessages([
-                'end_time' => 'The end time must be after the start time.',
+                'end_time' => 'The campaign end date and time must be after the start date and time.',
             ]);
         }
 
         return $validated;
+    }
+
+    private function pesoMinor(string $value): int
+    {
+        [$whole, $fraction] = array_pad(explode('.', trim($value), 2), 2, '');
+
+        return ((int) $whole * 100) + (int) str_pad($fraction, 2, '0');
     }
 }

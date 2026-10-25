@@ -280,7 +280,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const roleRequired = {
         seller: [
             'business_name',
-            'business_category',
+            'business_category_id',
             'business_permit',
         ],
     };
@@ -369,12 +369,14 @@ document.addEventListener('DOMContentLoaded', () => {
         ];
 
         if (role === 'seller') {
+            const categorySelect = form.elements['business_category_id'];
+            const categoryLabel = categorySelect?.selectedOptions?.[0]?.textContent?.trim() || '';
             groups.push({
                 title: 'Business',
                 editStep: 3,
                 fields: [
                     ['Business name', valueOf('business_name')],
-                    ['Line of business', valueOf('business_category')],
+                    ['Line of business', categoryLabel],
                 ],
             });
         }

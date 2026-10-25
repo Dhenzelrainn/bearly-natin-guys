@@ -24,6 +24,8 @@ class PromotionService
         PromotionRedemption::STATUS_REDEEMED,
     ];
 
+    public function __construct(private readonly AuditService $audit) {}
+
     /**
      * Publicly displayable platform offers for the Buyer storefront.
      *
@@ -41,33 +43,55 @@ class PromotionService
         }
 
         if ($featuredOnly) {
-            $query->where('is_featured', true);
+            $query->where('is_featured', true)->campaigns();
         }
 
-        return $query->get()->map(fn (PlatformPromotion $promotion): array => [
-            'id' => (int) $promotion->id,
-            'name' => (string) $promotion->name,
-            'kind' => (string) $promotion->kind,
-            'code' => $promotion->code,
-            'description' => $promotion->description,
-            'terms' => $promotion->terms,
-            'discount_label' => $promotion->discountLabel(),
-            'minimum_spend_minor' => (int) $promotion->minimum_spend_minor,
-            'starts_on' => $promotion->starts_on?->toDateString(),
-            'ends_on' => $promotion->ends_on?->toDateString(),
-            'starts_at' => $promotion->startsAt()?->toIso8601String(),
-            'ends_at' => $promotion->endsAt()?->toIso8601String(),
-            'is_featured' => (bool) $promotion->is_featured,
-            'banner_url' => $promotion->banner_path
-                ? Storage::disk($promotion->banner_disk ?: 'public')->url($promotion->banner_path)
-                : null,
-            'banner_title' => $promotion->banner_title,
-            'banner_link' => $promotion->banner_link,
-            'campaign_type' => $promotion->campaign_type,
-            'campaign_type_label' => $promotion->isCampaign() ? $promotion->campaignTypeLabel() : null,
-            'funding_type' => $promotion->funding_type,
-            'is_campaign' => $promotion->isCampaign(),
-        ])->values();
+        return $query
+            ->withCount(['redemptions as active_redemptions_count' => fn (Builder $redemptions) => $redemptions
+                ->whereIn('status', self::ACTIVE_REDEMPTION_STATUSES)])
+            ->withSum(['redemptions as active_discount_minor' => fn (Builder $redemptions) => $redemptions
+                ->whereIn('status', self::ACTIVE_REDEMPTION_STATUSES)], 'discount_minor')
+            ->withSum(['redemptions as active_shipping_discount_minor' => fn (Builder $redemptions) => $redemptions
+                ->whereIn('status', self::ACTIVE_REDEMPTION_STATUSES)], 'shipping_discount_minor')
+            ->get()
+            ->filter(function (PlatformPromotion $promotion): bool {
+                if ($promotion->isCampaign()) {
+                    return true;
+                }
+
+                return ! $promotion->isExhausted(
+                    (int) $promotion->active_redemptions_count,
+                    (int) $promotion->active_discount_minor + (int) $promotion->active_shipping_discount_minor,
+                );
+            })
+            ->map(function (PlatformPromotion $promotion): array {
+            $isCampaign = $promotion->isCampaign();
+
+            return [
+                'id' => (int) $promotion->id,
+                'name' => (string) $promotion->name,
+                'kind' => (string) $promotion->kind,
+                'code' => $promotion->code,
+                'description' => $promotion->description,
+                'terms' => $promotion->terms,
+                'discount_label' => $promotion->discountLabel(),
+                'minimum_spend_minor' => (int) $promotion->minimum_spend_minor,
+                'starts_on' => $promotion->starts_on?->toDateString(),
+                'ends_on' => $promotion->ends_on?->toDateString(),
+                'starts_at' => $promotion->startsAt()?->toIso8601String(),
+                'ends_at' => $promotion->endsAt()?->toIso8601String(),
+                'is_featured' => $isCampaign && (bool) $promotion->is_featured,
+                'banner_url' => $isCampaign && $promotion->banner_path
+                    ? Storage::disk($promotion->banner_disk ?: 'public')->url($promotion->banner_path)
+                    : null,
+                'banner_title' => $isCampaign ? $promotion->banner_title : null,
+                'banner_link' => $isCampaign ? $promotion->banner_link : null,
+                'campaign_type' => $promotion->campaign_type,
+                'campaign_type_label' => $isCampaign ? $promotion->campaignTypeLabel() : null,
+                'funding_type' => $promotion->funding_type,
+                'is_campaign' => $isCampaign,
+            ];
+            })->values();
     }
 
     /**
@@ -80,11 +104,21 @@ class PromotionService
                 $query->where(function (Builder $vouchers): void {
                     $vouchers->where('kind', PlatformPromotion::KIND_VOUCHER)
                         ->where('is_claimable', true);
-                })->orWhere('kind', PlatformPromotion::KIND_FREE_SHIPPING);
+                })->orWhere(function (Builder $shipping): void {
+                    $shipping->where('kind', PlatformPromotion::KIND_FREE_SHIPPING)
+                        ->where(function (Builder $availableShipping): void {
+                            $availableShipping->where('is_claimable', true)
+                                ->orWhereNull('code');
+                        });
+                });
             })
             ->with(['products:id', 'categories:id', 'stores:id,name'])
             ->withCount(['redemptions as active_redemptions_count' => fn (Builder $query) => $query
                 ->whereIn('status', self::ACTIVE_REDEMPTION_STATUSES)])
+            ->withSum(['redemptions as active_discount_minor' => fn (Builder $query) => $query
+                ->whereIn('status', self::ACTIVE_REDEMPTION_STATUSES)], 'discount_minor')
+            ->withSum(['redemptions as active_shipping_discount_minor' => fn (Builder $query) => $query
+                ->whereIn('status', self::ACTIVE_REDEMPTION_STATUSES)], 'shipping_discount_minor')
             ->orderBy('position')
             ->orderBy('ends_on')
             ->orderBy('ends_time')
@@ -115,17 +149,27 @@ class PromotionService
         $platformUsage = $this->buyerUsageCounts($buyer, 'platform');
         $storeUsage = $this->buyerUsageCounts($buyer, 'store');
 
-        $platformRows = $platform->map(fn (PlatformPromotion $promotion): array => $this->platformVoucherPayload(
-            $promotion,
-            $platformClaims->get($promotion->id),
-            (int) ($platformUsage[$promotion->id] ?? 0),
-        ));
+        $platformRows = $platform->map(function (PlatformPromotion $promotion) use ($platformClaims, $platformUsage): array {
+            return $this->platformVoucherPayload(
+                $promotion,
+                $platformClaims->get($promotion->id),
+                (int) ($platformUsage[$promotion->id] ?? 0),
+                [
+                    'active_count' => (int) $promotion->active_redemptions_count,
+                    'buyer_count' => (int) ($platformUsage[$promotion->id] ?? 0),
+                    'budget_spend_minor' => (int) $promotion->active_discount_minor + (int) $promotion->active_shipping_discount_minor,
+                ],
+            );
+        });
 
-        $storeRows = $store->map(fn (StorePromotion $promotion): array => $this->storeVoucherPayload(
-            $promotion,
-            $storeClaims->get($promotion->id),
-            (int) ($storeUsage[$promotion->id] ?? 0),
-        ));
+        $storeRows = $store->map(function (StorePromotion $promotion) use ($storeClaims, $storeUsage): array {
+            return $this->storeVoucherPayload(
+                $promotion,
+                $storeClaims->get($promotion->id),
+                (int) ($storeUsage[$promotion->id] ?? 0),
+                ['active_count' => (int) $promotion->active_redemptions_count],
+            );
+        });
 
         return [
             'platform' => $platformRows,
@@ -139,7 +183,12 @@ class PromotionService
      * @param  array<int, array<string, mixed>>  $groups
      * @return array<string, mixed>
      */
-    public function optionsFor(User $buyer, array $groups): array
+    public function optionsFor(
+        User $buyer,
+        array $groups,
+        bool $lock = false,
+        ?array $lockedAutomaticPromotionIds = null,
+    ): array
     {
         $groups = $this->initializeGroups($groups);
         $platformClaims = PromotionClaim::query()
@@ -152,8 +201,10 @@ class PromotionService
             ->whereNotNull('store_promotion_id')
             ->with(['storePromotion.store:id,name,slug,publication_status', 'storePromotion.products:id'])
             ->get();
-        $platformUsage = $this->buyerUsageCounts($buyer, 'platform');
-        $storeUsage = $this->buyerUsageCounts($buyer, 'store');
+        $platformPromotions = $platformClaims->pluck('platformPromotion')->filter()->values();
+        $storePromotions = $storeClaims->pluck('storePromotion')->filter()->values();
+        $platformUsage = $this->redemptionStatsFor($platformPromotions, $buyer, 'platform');
+        $storeUsage = $this->redemptionStatsFor($storePromotions, $buyer, 'store');
 
         $platform = $platformClaims
             ->map(function (PromotionClaim $claim) use ($groups, $platformUsage): ?array {
@@ -161,10 +212,10 @@ class PromotionService
                 if (! $promotion || ! $promotion->isActiveAt()) {
                     return null;
                 }
-                $usage = (int) ($platformUsage[$promotion->id] ?? 0);
-                $preview = $this->previewPlatform($promotion, $groups);
+                $usage = $platformUsage[(int) $promotion->id] ?? [];
+                $preview = $this->previewWithRemainingBudget($promotion, $groups, $usage);
                 return $this->optionPayload(
-                    $this->platformVoucherPayload($promotion, $claim, $usage),
+                    $this->platformVoucherPayload($promotion, $claim, (int) ($usage['buyer_count'] ?? 0), $usage),
                     $preview,
                 );
             })
@@ -177,40 +228,43 @@ class PromotionService
                 if (! $promotion || ! $promotion->isActiveAt() || $promotion->type !== StorePromotion::TYPE_STORE_VOUCHER) {
                     return null;
                 }
-                $usage = (int) ($storeUsage[$promotion->id] ?? 0);
-                $preview = $this->previewStore($promotion, $groups);
+                $usage = $storeUsage[(int) $promotion->id] ?? [];
+                $preview = $this->applyPromotionAvailability(
+                    $promotion,
+                    $this->previewStore($promotion, $groups),
+                    $usage,
+                    checkBudget: false,
+                );
                 return $this->optionPayload(
-                    $this->storeVoucherPayload($promotion, $claim, $usage),
+                    $this->storeVoucherPayload($promotion, $claim, (int) ($usage['buyer_count'] ?? 0), $usage),
                     $preview,
                 );
             })
             ->filter()
             ->values();
 
-        $automatic = $this->activePlatformQuery()
-            ->where(function (Builder $query): void {
-                $query->where('kind', PlatformPromotion::KIND_AUTOMATIC_DISCOUNT)
-                    ->orWhere(function (Builder $shipping): void {
-                        $shipping->where('kind', PlatformPromotion::KIND_FREE_SHIPPING)
-                            ->where('is_claimable', false);
-                    });
-            })
-            ->whereNull('campaign_type')
+        $automaticQuery = $this->automaticPlatformQuery($lock && $lockedAutomaticPromotionIds === null);
+        if ($lockedAutomaticPromotionIds !== null) {
+            $automaticQuery->whereIn('id', $lockedAutomaticPromotionIds);
+        }
+        $automaticPromotions = $automaticQuery
             ->with(['products:id', 'categories:id', 'stores:id,name'])
-            ->orderBy('position')
             ->orderBy('id')
-            ->get()
-            ->map(function (PlatformPromotion $promotion) use ($groups): array {
-                $preview = $this->previewPlatform($promotion, $groups);
-                $row = $this->platformVoucherPayload($promotion, null, 0);
+            ->get();
+        $automaticUsage = $this->redemptionStatsFor($automaticPromotions, $buyer, 'platform', $lock);
+        $automatic = $automaticPromotions
+            ->map(function (PlatformPromotion $promotion) use ($groups, $automaticUsage): array {
+                $usage = $automaticUsage[(int) $promotion->id] ?? [];
+                $preview = $this->previewWithRemainingBudget($promotion, $groups, $usage);
+                $row = $this->platformVoucherPayload($promotion, null, 0, $usage);
                 $row['automatic'] = true;
                 $row['applies_with_platform_voucher'] = $promotion->isShippingDiscount();
                 $row['_promotion'] = $promotion;
+                $row['_usage'] = $usage;
                 $row['_line_weights'] = $preview['line_weights'] ?? [];
                 $row['_shipping_weights'] = $preview['shipping_weights'] ?? [];
                 return $this->optionPayload($row, $preview);
             })
-            ->filter(fn (array $row): bool => (bool) ($row['eligible'] ?? false))
             ->values();
 
         return [
@@ -224,27 +278,57 @@ class PromotionService
      * Resolve the Buyer's selected vouchers and active automatic promotions.
      *
      * @param  array<int, array<string, mixed>>  $groups
-     * @param  array{platform_voucher_id?: int|null, store_voucher_id?: int|null, voucher_code?: string|null}  $selection
+     * @param  array{platform_voucher_id?: int|null, platform_shipping_voucher_id?: int|null, store_voucher_id?: int|null, voucher_code?: string|null}  $selection
      * @return array<string, mixed>
      */
     public function resolve(User $buyer, array $groups, array $selection = [], bool $lock = false): array
     {
         $groups = $this->initializeGroups($groups);
-        $platformId = isset($selection['platform_voucher_id']) && (int) $selection['platform_voucher_id'] > 0
+        $selectedPlatformId = isset($selection['platform_voucher_id']) && (int) $selection['platform_voucher_id'] > 0
             ? (int) $selection['platform_voucher_id']
             : null;
-        $storeId = isset($selection['store_voucher_id']) && (int) $selection['store_voucher_id'] > 0
+        $selectedShippingId = isset($selection['platform_shipping_voucher_id']) && (int) $selection['platform_shipping_voucher_id'] > 0
+            ? (int) $selection['platform_shipping_voucher_id']
+            : null;
+        $selectedStoreId = isset($selection['store_voucher_id']) && (int) $selection['store_voucher_id'] > 0
             ? (int) $selection['store_voucher_id']
             : null;
         $code = strtoupper(trim((string) ($selection['voucher_code'] ?? '')));
 
+        $platformId = $selectedPlatformId;
+        $platformShippingId = $selectedShippingId;
+        $storeId = $selectedStoreId;
+        $codePlatform = null;
+        $codeStore = null;
         $platform = null;
+        $platformShipping = null;
         $store = null;
         $platformClaim = null;
+        $platformShippingClaim = null;
         $storeClaim = null;
 
+        // Older checkout clients submit a shipping voucher in the original
+        // platform_voucher_id slot. Normalize before code stacking is resolved
+        // so those clients may still combine it with one merchandise voucher.
+        if ($platformId !== null) {
+            $legacySelection = PlatformPromotion::query()
+                ->select(['id', 'discount_type'])
+                ->find($platformId);
+            if ($legacySelection?->isShippingDiscount()) {
+                if ($platformShippingId !== null && $platformShippingId !== $platformId) {
+                    throw ValidationException::withMessages([
+                        'platform_shipping_voucher_id' => 'Only one platform shipping voucher can be applied per order.',
+                    ]);
+                }
+                $platformId = null;
+                $selectedPlatformId = null;
+                $platformShippingId = (int) $legacySelection->id;
+                $selectedShippingId = (int) $legacySelection->id;
+            }
+        }
+
         if ($code !== '') {
-            [$codePlatform, $codeStore] = $this->findByCode($code, $lock);
+            [$codePlatform, $codeStore] = $this->findByCode($code, false);
 
             if ($codePlatform && $codeStore) {
                 throw ValidationException::withMessages([
@@ -253,13 +337,21 @@ class PromotionService
             }
 
             if ($codePlatform) {
-                if ($platformId !== null && $platformId !== (int) $codePlatform->id) {
-                    throw ValidationException::withMessages([
-                        'voucher_code' => 'Only one platform voucher can be applied per order.',
-                    ]);
+                if ($codePlatform->isShippingDiscount()) {
+                    if ($platformShippingId !== null && $platformShippingId !== (int) $codePlatform->id) {
+                        throw ValidationException::withMessages([
+                            'voucher_code' => 'Only one platform shipping voucher can be applied per order.',
+                        ]);
+                    }
+                    $platformShippingId = (int) $codePlatform->id;
+                } else {
+                    if ($platformId !== null && $platformId !== (int) $codePlatform->id) {
+                        throw ValidationException::withMessages([
+                            'voucher_code' => 'Only one platform merchandise voucher can be applied per order.',
+                        ]);
+                    }
+                    $platformId = (int) $codePlatform->id;
                 }
-                $platform = $codePlatform;
-                $platformId = (int) $codePlatform->id;
             } elseif ($codeStore) {
                 if ($storeId !== null && $storeId !== (int) $codeStore->id) {
                     throw ValidationException::withMessages([
@@ -275,26 +367,114 @@ class PromotionService
             }
         }
 
+        $lockedAutomaticPromotionIds = null;
+        if ($lock) {
+            // Lock every possible automatic offer and explicitly selected
+            // platform promotion in one deterministic ID order. Separate
+            // selected-then-automatic locks can deadlock when two checkouts
+            // choose different offers from the same automatic pool.
+            $lockedAutomaticPromotionIds = $this->automaticPromotionIdsForGroups($groups);
+            $platformIdsToLock = collect([$platformId, $platformShippingId, $codePlatform?->id])
+                ->filter()
+                ->map(fn ($id): int => (int) $id)
+                ->merge($lockedAutomaticPromotionIds)
+                ->unique()
+                ->sort()
+                ->values();
+            if ($platformIdsToLock->isNotEmpty()) {
+                PlatformPromotion::query()
+                    ->whereIn('id', $platformIdsToLock->all())
+                    ->orderBy('id')
+                    ->lockForUpdate()
+                    ->get(['id']);
+            }
+            $storeIdToLock = $storeId ?? (int) ($codeStore?->id ?? 0);
+            if ($storeIdToLock > 0) {
+                StorePromotion::query()->whereKey($storeIdToLock)->lockForUpdate()->first();
+            }
+        }
+
         if ($platformId !== null) {
-            [$platform, $platformClaim] = $this->findPlatformVoucherForBuyer($buyer, $platformId, $lock, $code !== '');
-            $this->assertUsable($platform, $buyer, true, $lock, $code !== '');
+            [$platform, $platformClaim] = $this->findPlatformVoucherForBuyer(
+                $buyer,
+                $platformId,
+                $lock,
+                $code !== '' && $codePlatform && (int) $codePlatform->id === $platformId,
+                'platform_voucher_id',
+            );
+            if ($platform->isShippingDiscount()) {
+                throw ValidationException::withMessages([
+                    'platform_voucher_id' => 'Choose a merchandise voucher in this field. Select shipping vouchers separately.',
+                ]);
+            }
+            if ($code !== '' && $codePlatform && (int) $codePlatform->id === (int) $platform->id
+                && ! hash_equals(strtoupper((string) $platform->code), $code)) {
+                throw ValidationException::withMessages(['voucher_code' => 'That voucher code is no longer valid.']);
+            }
+            $platformCodeMatches = $codePlatform && (int) $codePlatform->id === (int) $platform->id;
+            $platformUsage = $this->assertUsable($platform, $buyer, true, $lock, (bool) $platformCodeMatches, 'platform_voucher_id');
+        } else {
+            $platformUsage = [];
+        }
+
+        if ($platformShippingId !== null) {
+            [$platformShipping, $platformShippingClaim] = $this->findPlatformVoucherForBuyer(
+                $buyer,
+                $platformShippingId,
+                $lock,
+                $code !== '' && $codePlatform && (int) $codePlatform->id === $platformShippingId,
+                'platform_shipping_voucher_id',
+            );
+            if (! $platformShipping->isShippingDiscount()) {
+                throw ValidationException::withMessages([
+                    'platform_shipping_voucher_id' => 'Choose a shipping voucher in this field.',
+                ]);
+            }
+            if ($code !== '' && $codePlatform && (int) $codePlatform->id === (int) $platformShipping->id
+                && ! hash_equals(strtoupper((string) $platformShipping->code), $code)) {
+                throw ValidationException::withMessages(['voucher_code' => 'That voucher code is no longer valid.']);
+            }
+            $platformShippingUsage = $this->assertUsable(
+                $platformShipping,
+                $buyer,
+                true,
+                $lock,
+                (bool) ($codePlatform && (int) $codePlatform->id === (int) $platformShipping->id),
+                'platform_shipping_voucher_id',
+            );
+        } else {
+            $platformShippingUsage = [];
         }
 
         if ($storeId !== null) {
-            [$store, $storeClaim] = $this->findStoreVoucherForBuyer($buyer, $storeId, $lock, $code !== '');
-            $this->assertUsable($store, $buyer, false, $lock, $code !== '');
+            [$store, $storeClaim] = $this->findStoreVoucherForBuyer(
+                $buyer,
+                $storeId,
+                $lock,
+                $code !== '' && $codeStore && (int) $codeStore->id === $storeId,
+            );
+            if ($code !== '' && $codeStore && (int) $codeStore->id === (int) $store->id
+                && ! hash_equals(strtoupper((string) $store->code), $code)) {
+                throw ValidationException::withMessages(['voucher_code' => 'That voucher code is no longer valid.']);
+            }
+            $storeCodeMatches = $codeStore && (int) $codeStore->id === (int) $store->id;
+            $storeUsage = $this->assertUsable($store, $buyer, false, $lock, (bool) $storeCodeMatches, 'store_voucher_id');
+        } else {
+            $storeUsage = [];
         }
 
         $applied = [
             'store' => null,
             'platform' => null,
+            'platform_shipping' => null,
             'automatic' => null,
             'shipping' => null,
         ];
-        $options = $this->optionsFor($buyer, $groups);
+        $options = $this->optionsFor($buyer, $groups, $lock, $lockedAutomaticPromotionIds);
 
         if ($store) {
             $preview = $this->previewStore($store, $groups);
+            $preview = $this->applyPromotionAvailability($store, $preview, $storeUsage);
             if (! $preview['eligible']) {
                 throw ValidationException::withMessages([
                     'store_voucher_id' => $preview['reason'] ?: 'This store voucher is not eligible for the selected items.',
@@ -317,57 +497,73 @@ class PromotionService
         }
 
         if ($platform) {
-            $preview = $this->previewPlatform($platform, $groups);
+            $preview = $this->applyPromotionAvailability(
+                $platform,
+                $this->previewPlatform($platform, $groups),
+                $platformUsage,
+                checkBudget: false,
+            );
             if (! $preview['eligible']) {
                 throw ValidationException::withMessages([
                     'platform_voucher_id' => $preview['reason'] ?: 'This platform voucher is not eligible for the selected items.',
                 ]);
             }
 
-            if ($platform->isShippingDiscount()) {
-                $shippingAllocations = $this->allocateProportionally(
-                    $preview['shipping_discount_minor'],
-                    $preview['shipping_weights'],
-                );
-                $applied['platform'] = [
-                    'source' => 'platform',
-                    'promotion' => $platform,
-                    'claim' => $platformClaim,
-                    'discount_minor' => 0,
-                    'shipping_discount_minor' => $preview['shipping_discount_minor'],
-                    'line_allocations' => [],
-                    'shipping_allocations' => $shippingAllocations,
-                ];
-                $this->applyShippingAllocations($groups, $shippingAllocations);
-            } else {
-                $allocations = $this->capPlatformAllocations(
-                    $this->allocateProportionally($preview['discount_minor'], $preview['line_weights']),
-                    $groups,
-                );
-                $discount = array_sum($allocations);
-                $applied['platform'] = [
-                    'source' => 'platform',
-                    'promotion' => $platform,
-                    'claim' => $platformClaim,
-                    'discount_minor' => $discount,
-                    'shipping_discount_minor' => 0,
-                    'line_allocations' => $allocations,
-                    'shipping_allocations' => [],
-                ];
-                $this->applyLineAllocations($groups, $allocations, 'platform');
-            }
+            $allocations = $this->capPlatformAllocations(
+                $this->allocateProportionally($preview['discount_minor'], $preview['line_weights']),
+                $groups,
+            );
+            $discount = array_sum($allocations);
+            $this->assertDiscountWithinRemainingBudget($platform, $platformUsage, $discount, 'platform_voucher_id');
+            $applied['platform'] = [
+                'source' => 'platform',
+                'promotion' => $platform,
+                'claim' => $platformClaim,
+                'discount_minor' => $discount,
+                'shipping_discount_minor' => 0,
+                'line_allocations' => $allocations,
+                'shipping_allocations' => [],
+            ];
+            $this->applyLineAllocations($groups, $allocations, 'platform');
         }
 
-        if (! $platform || $platform->isShippingDiscount()) {
-            $bestAutomatic = $this->bestAutomaticMerchandiseOption($options['automatic']);
+        if ($platformShipping) {
+            $preview = $this->applyPromotionAvailability(
+                $platformShipping,
+                $this->previewPlatform($platformShipping, $groups),
+                $platformShippingUsage,
+                checkBudget: false,
+            );
+            if (! $preview['eligible']) {
+                throw ValidationException::withMessages([
+                    'platform_shipping_voucher_id' => $preview['reason'] ?: 'This shipping voucher is not eligible for this delivery.',
+                ]);
+            }
+            $shippingAllocations = $this->allocateProportionally(
+                $preview['shipping_discount_minor'],
+                $preview['shipping_weights'],
+            );
+            $shippingDiscount = array_sum($shippingAllocations);
+            $this->assertDiscountWithinRemainingBudget($platformShipping, $platformShippingUsage, $shippingDiscount, 'platform_shipping_voucher_id');
+            $applied['platform_shipping'] = [
+                'source' => 'platform',
+                'promotion' => $platformShipping,
+                'claim' => $platformShippingClaim,
+                'discount_minor' => 0,
+                'shipping_discount_minor' => $shippingDiscount,
+                'line_allocations' => [],
+                'shipping_allocations' => $shippingAllocations,
+            ];
+            $this->applyShippingAllocations($groups, $shippingAllocations);
+        }
+
+        if (! $platform) {
+            $bestAutomatic = $this->bestAutomaticMerchandiseOption($options['automatic'], $groups);
             if ($bestAutomatic) {
                 $promotion = $bestAutomatic['promotion'];
-                $preview = $bestAutomatic['preview'];
-                $allocations = $this->capPlatformAllocations(
-                    $this->allocateProportionally($preview['discount_minor'], $preview['line_weights']),
-                    $groups,
-                );
-                $discount = array_sum($allocations);
+                $allocations = $bestAutomatic['allocations'];
+                $discount = (int) $bestAutomatic['discount_minor'];
+                $this->assertDiscountWithinRemainingBudget($promotion, $bestAutomatic['usage'], $discount, 'promotion');
                 $applied['automatic'] = [
                     'source' => 'automatic',
                     'promotion' => $promotion,
@@ -381,21 +577,19 @@ class PromotionService
             }
         }
 
-        if (! ($platform && $platform->isShippingDiscount())) {
-            $bestShipping = $this->bestAutomaticShippingOption($options['automatic']);
+        if (! $platformShipping) {
+            $bestShipping = $this->bestAutomaticShippingOption($options['automatic'], $groups);
             if ($bestShipping) {
                 $promotion = $bestShipping['promotion'];
-                $preview = $bestShipping['preview'];
-                $allocations = $this->allocateProportionally(
-                    $preview['shipping_discount_minor'],
-                    $preview['shipping_weights'],
-                );
+                $allocations = $bestShipping['allocations'];
+                $shippingDiscount = (int) $bestShipping['shipping_discount_minor'];
+                $this->assertDiscountWithinRemainingBudget($promotion, $bestShipping['usage'], $shippingDiscount, 'promotion');
                 $applied['shipping'] = [
                     'source' => 'automatic',
                     'promotion' => $promotion,
                     'claim' => null,
                     'discount_minor' => 0,
-                    'shipping_discount_minor' => $preview['shipping_discount_minor'],
+                    'shipping_discount_minor' => $shippingDiscount,
                     'line_allocations' => [],
                     'shipping_allocations' => $allocations,
                 ];
@@ -411,8 +605,9 @@ class PromotionService
             'applied' => $applied,
             'options' => $this->publicOptions($options),
             'selection' => [
-                'platform_voucher_id' => $platform ? (int) $platform->id : null,
-                'store_voucher_id' => $store ? (int) $store->id : null,
+                'platform_voucher_id' => $selectedPlatformId,
+                'platform_shipping_voucher_id' => $selectedShippingId,
+                'store_voucher_id' => $selectedStoreId,
                 'voucher_code' => $code !== '' ? $code : null,
             ],
             'totals' => $totals,
@@ -447,7 +642,9 @@ class PromotionService
                 $promotion = PlatformPromotion::query()->whereKey($platformId)->lockForUpdate()->firstOrFail();
                 if (! $this->canBeClaimedFromWallet($promotion)) {
                     throw ValidationException::withMessages([
-                        'platform_promotion_id' => 'This Bearly offer is applied automatically and cannot be claimed as a voucher.',
+                        'platform_promotion_id' => filled($promotion->code)
+                            ? 'Enter this shipping voucher code directly at checkout; it cannot be claimed into My Vouchers.'
+                            : 'This Bearly offer is applied automatically and cannot be claimed as a voucher.',
                     ]);
                 }
                 if (! $promotion->is_claimable || ! $promotion->is_public) {
@@ -467,10 +664,12 @@ class PromotionService
                     'used_at' => null,
                 ]);
 
+                $usage = $this->redemptionStatsFor([$promotion], $buyer, 'platform', true)[$promotion->id] ?? [];
                 return $this->platformVoucherPayload(
                     $promotion->load(['products:id', 'categories:id', 'stores:id,name']),
                     $claim,
-                    (int) ($this->buyerUsageCounts($buyer, 'platform')[$promotion->id] ?? 0),
+                    (int) ($usage['buyer_count'] ?? 0),
+                    $usage,
                 );
             }
 
@@ -492,10 +691,12 @@ class PromotionService
                 'used_at' => null,
             ]);
 
+            $usage = $this->redemptionStatsFor([$promotion], $buyer, 'store', true)[$promotion->id] ?? [];
             return $this->storeVoucherPayload(
                 $promotion->load(['store:id,name,slug,publication_status', 'products:id']),
                 $claim,
-                (int) ($this->buyerUsageCounts($buyer, 'store')[$promotion->id] ?? 0),
+                (int) ($usage['buyer_count'] ?? 0),
+                $usage,
             );
         }, attempts: 3);
     }
@@ -512,7 +713,7 @@ class PromotionService
         array $orderItemsByCartItemId,
         array $sellerOrdersByStoreId,
     ): void {
-        foreach (['store', 'platform', 'automatic', 'shipping'] as $slot) {
+        foreach (['store', 'platform', 'platform_shipping', 'automatic', 'shipping'] as $slot) {
             $applied = $resolved['applied'][$slot] ?? null;
             if (! $applied || (int) $applied['discount_minor'] < 1 && (int) $applied['shipping_discount_minor'] < 1) {
                 continue;
@@ -521,6 +722,17 @@ class PromotionService
             /** @var PlatformPromotion|StorePromotion $promotion */
             $promotion = $applied['promotion'];
             $claim = $applied['claim'] ?? null;
+            $totalDiscountMinor = (int) $applied['discount_minor'] + (int) $applied['shipping_discount_minor'];
+
+            if ($promotion instanceof PlatformPromotion) {
+                $usage = $this->redemptionStatsFor([$promotion], $buyer, 'platform', true)[$promotion->id] ?? [];
+                $this->assertDiscountWithinRemainingBudget(
+                    $promotion,
+                    $usage,
+                    $totalDiscountMinor,
+                    'promotion',
+                );
+            }
 
             if (! $claim && $promotion->is_claimable && $promotion instanceof PlatformPromotion) {
                 $claim = PromotionClaim::query()->firstOrCreate(
@@ -553,9 +765,9 @@ class PromotionService
                 'discount_type' => $promotion->discount_type,
                 'discount_minor' => (int) $applied['discount_minor'],
                 'shipping_discount_minor' => (int) $applied['shipping_discount_minor'],
-                'status' => PromotionRedemption::STATUS_REDEEMED,
+                'status' => PromotionRedemption::STATUS_RESERVED,
                 'reserved_at' => now(),
-                'redeemed_at' => now(),
+                'redeemed_at' => null,
             ]);
 
             foreach ((array) ($applied['line_allocations'] ?? []) as $lineKey => $amountMinor) {
@@ -590,6 +802,131 @@ class PromotionService
         }
     }
 
+    /**
+     * Convert all reserved promotion redemptions for an Order to confirmed use
+     * after the authoritative payment transition succeeds. Call inside the
+     * payment transaction after locking the parent Order.
+     */
+    public function markOrderPaid(Order $order): void
+    {
+        $redemptions = PromotionRedemption::query()
+            ->where('order_id', $order->id)
+            ->where('status', PromotionRedemption::STATUS_RESERVED)
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get();
+
+        foreach ($redemptions as $redemption) {
+            $redemption->update([
+                'status' => PromotionRedemption::STATUS_REDEEMED,
+                'redeemed_at' => now(),
+            ]);
+        }
+    }
+
+    /**
+     * Release only the promotion portions allocated to a Seller Order that is
+     * cancelled while its marketplace COD payment is still pending.
+     */
+    public function releaseForSellerOrder(Order $order, SellerOrder $sellerOrder, User $actor, string $reason): void
+    {
+        $redemptions = PromotionRedemption::query()
+            ->where('order_id', $order->id)
+            ->whereIn('status', self::ACTIVE_REDEMPTION_STATUSES)
+            ->with('claim')
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get();
+
+        foreach ($redemptions as $redemption) {
+            $allocations = PromotionRedemptionAllocation::query()
+                ->where('promotion_redemption_id', $redemption->id)
+                ->where('seller_order_id', $sellerOrder->id)
+                ->whereColumn('released_amount_minor', '<', 'amount_minor')
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get();
+
+            if ($allocations->isEmpty()) {
+                continue;
+            }
+
+            $releasedMerchandiseMinor = 0;
+            $releasedShippingMinor = 0;
+            $now = now();
+            foreach ($allocations as $allocation) {
+                $remainingMinor = max(0, (int) $allocation->amount_minor - (int) $allocation->released_amount_minor);
+                if ($remainingMinor < 1) {
+                    continue;
+                }
+                if ($allocation->order_item_id === null) {
+                    $releasedShippingMinor += $remainingMinor;
+                } else {
+                    $releasedMerchandiseMinor += $remainingMinor;
+                }
+                $allocation->update([
+                    'released_amount_minor' => (int) $allocation->amount_minor,
+                    'released_at' => $now,
+                ]);
+            }
+
+            $remainingAllocations = PromotionRedemptionAllocation::query()
+                ->where('promotion_redemption_id', $redemption->id)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get(['order_item_id', 'amount_minor', 'released_amount_minor']);
+            $remainingMerchandiseMinor = (int) $remainingAllocations
+                ->whereNotNull('order_item_id')
+                ->sum(fn (PromotionRedemptionAllocation $allocation): int => max(
+                    0,
+                    (int) $allocation->amount_minor - (int) $allocation->released_amount_minor,
+                ));
+            $remainingShippingMinor = (int) $remainingAllocations
+                ->whereNull('order_item_id')
+                ->sum(fn (PromotionRedemptionAllocation $allocation): int => max(
+                    0,
+                    (int) $allocation->amount_minor - (int) $allocation->released_amount_minor,
+                ));
+            $oldValues = [
+                'status' => $redemption->status,
+                'discount_minor' => (int) $redemption->discount_minor,
+                'shipping_discount_minor' => (int) $redemption->shipping_discount_minor,
+            ];
+            $newStatus = $remainingMerchandiseMinor + $remainingShippingMinor < 1
+                ? PromotionRedemption::STATUS_RELEASED
+                : $redemption->status;
+            $redemption->update([
+                'discount_minor' => $remainingMerchandiseMinor,
+                'shipping_discount_minor' => $remainingShippingMinor,
+                'status' => $newStatus,
+                'released_at' => $newStatus === PromotionRedemption::STATUS_RELEASED ? $now : $redemption->released_at,
+            ]);
+
+            $this->audit->record(
+                action: 'promotion.redemption_allocation_released',
+                module: 'marketing',
+                subject: $redemption,
+                description: "Promotion allocation for cancelled Seller Order {$sellerOrder->seller_order_no} was released.",
+                oldValues: $oldValues,
+                newValues: [
+                    'status' => $newStatus,
+                    'seller_order_id' => (int) $sellerOrder->id,
+                    'released_discount_minor' => $releasedMerchandiseMinor,
+                    'released_shipping_discount_minor' => $releasedShippingMinor,
+                    'remaining_discount_minor' => $remainingMerchandiseMinor,
+                    'remaining_shipping_discount_minor' => $remainingShippingMinor,
+                    'reason' => trim($reason),
+                ],
+                severity: 'warning',
+                actor: $actor,
+            );
+
+            if ($newStatus === PromotionRedemption::STATUS_RELEASED) {
+                $this->restoreClaimIfUnused($redemption);
+            }
+        }
+    }
+
     public function releaseForOrder(Order $order, string $status = PromotionRedemption::STATUS_RELEASED, bool $restoreClaims = true): void
     {
         $redemptions = PromotionRedemption::query()
@@ -600,24 +937,52 @@ class PromotionService
             ->get();
 
         foreach ($redemptions as $redemption) {
+            $now = now();
             $redemption->update([
                 'status' => $status,
-                'released_at' => now(),
+                'released_at' => $now,
             ]);
 
-            if ($restoreClaims && $redemption->claim) {
-                $otherActive = PromotionRedemption::query()
-                    ->where('promotion_claim_id', $redemption->claim->id)
-                    ->whereKeyNot($redemption->id)
-                    ->whereIn('status', self::ACTIVE_REDEMPTION_STATUSES)
-                    ->exists();
+            PromotionRedemptionAllocation::query()
+                ->where('promotion_redemption_id', $redemption->id)
+                ->whereColumn('released_amount_minor', '<', 'amount_minor')
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get()
+                ->each(fn (PromotionRedemptionAllocation $allocation) => $allocation->update([
+                    'released_amount_minor' => (int) $allocation->amount_minor,
+                    'released_at' => $now,
+                ]));
 
-                $redemption->claim->update([
-                    'status' => $otherActive ? PromotionClaim::STATUS_USED : PromotionClaim::STATUS_CLAIMED,
-                    'used_at' => $otherActive ? $redemption->claim->used_at : null,
-                ]);
+            if ($restoreClaims) {
+                $this->restoreClaimIfUnused($redemption);
             }
         }
+    }
+
+    private function restoreClaimIfUnused(PromotionRedemption $redemption): void
+    {
+        if (! $redemption->promotion_claim_id) {
+            return;
+        }
+
+        $claim = PromotionClaim::query()
+            ->whereKey($redemption->promotion_claim_id)
+            ->lockForUpdate()
+            ->first();
+        if (! $claim) {
+            return;
+        }
+
+        $otherActive = PromotionRedemption::query()
+            ->where('promotion_claim_id', $claim->id)
+            ->whereKeyNot($redemption->id)
+            ->whereIn('status', self::ACTIVE_REDEMPTION_STATUSES)
+            ->exists();
+        $claim->update([
+            'status' => $otherActive ? PromotionClaim::STATUS_USED : PromotionClaim::STATUS_CLAIMED,
+            'used_at' => $otherActive ? $claim->used_at : null,
+        ]);
     }
 
     /**
@@ -632,8 +997,14 @@ class PromotionService
         if ($promotion->isShippingDiscount()) {
             $shippingWeights = [];
             $shipping = 0;
+            $eligibleStoreIds = collect($eligible)
+                ->pluck('store_id')
+                ->map(fn ($storeId): int => (int) $storeId)
+                ->unique()
+                ->all();
             foreach ($groups as $storeId => $group) {
-                if (! $this->platformTargetsStore($promotion, (int) $storeId)) {
+                if (! $this->platformTargetsStore($promotion, (int) $storeId)
+                    || ! in_array((int) $storeId, $eligibleStoreIds, true)) {
                     continue;
                 }
                 $fee = (int) ($group['quote']['shipping_fee_minor'] ?? 0);
@@ -788,6 +1159,22 @@ class PromotionService
             $group['platform_total_discount_minor'] = $platformMerchandise + $group['platform_shipping_discount_minor'];
             $group['seller_total_minor'] = max(0, $sellerSubtotal - $sellerDiscount + $shipping);
             $group['total_minor'] = $group['seller_total_minor'];
+            $group['original_shipping_fee_minor'] = $shipping;
+            $group['platform_shipping_subsidy_minor'] = min($shipping, $group['platform_shipping_discount_minor']);
+            $group['buyer_paid_shipping_fee_minor'] = max(0, $shipping - $group['platform_shipping_subsidy_minor']);
+            $group['shipping_funding_source'] = match (true) {
+                $group['platform_shipping_subsidy_minor'] < 1 => 'buyer',
+                $group['buyer_paid_shipping_fee_minor'] < 1 => 'platform',
+                default => 'buyer_and_platform',
+            };
+            $group['shipping_funding_sources'] = array_values(array_filter([
+                $group['buyer_paid_shipping_fee_minor'] > 0
+                    ? ['source' => 'buyer', 'amount_minor' => $group['buyer_paid_shipping_fee_minor']]
+                    : null,
+                $group['platform_shipping_subsidy_minor'] > 0
+                    ? ['source' => 'platform', 'amount_minor' => $group['platform_shipping_subsidy_minor']]
+                    : null,
+            ]));
             $group['buyer_total_minor'] = max(
                 0,
                 $buyerSubtotal + $shipping - $sellerDiscount - $group['platform_total_discount_minor'],
@@ -812,6 +1199,7 @@ class PromotionService
         $platformDiscount = 0;
         $campaignPlatformDiscount = 0;
         $shippingDiscount = 0;
+        $buyerPaidShipping = 0;
 
         foreach ($groups as $group) {
             $subtotal += (int) $group['subtotal_minor'];
@@ -821,6 +1209,7 @@ class PromotionService
             $platformDiscount += (int) $group['platform_discount_minor'];
             $campaignPlatformDiscount += (int) ($group['campaign_platform_discount_minor'] ?? 0);
             $shippingDiscount += (int) $group['platform_shipping_discount_minor'];
+            $buyerPaidShipping += (int) ($group['buyer_paid_shipping_fee_minor'] ?? 0);
         }
 
         $total = max(0, $subtotal + $shipping - $sellerDiscount - $platformDiscount - $shippingDiscount);
@@ -829,6 +1218,13 @@ class PromotionService
             'subtotal_minor' => $subtotal,
             'seller_subtotal_minor' => $sellerSubtotal,
             'shipping_fee_minor' => $shipping,
+            'buyer_paid_shipping_fee_minor' => $buyerPaidShipping,
+            'platform_shipping_subsidy_minor' => $shippingDiscount,
+            'shipping_funding_source' => match (true) {
+                $shippingDiscount < 1 => 'buyer',
+                $buyerPaidShipping < 1 => 'platform',
+                default => 'buyer_and_platform',
+            },
             'seller_discount_minor' => $sellerDiscount,
             'platform_discount_minor' => $platformDiscount,
             'campaign_platform_discount_minor' => $campaignPlatformDiscount,
@@ -847,7 +1243,13 @@ class PromotionService
                     'source' => 'platform',
                     'name' => $applied['platform']['promotion']->name,
                     'discount_minor' => (int) $applied['platform']['discount_minor'],
-                    'shipping_discount_minor' => (int) $applied['platform']['shipping_discount_minor'],
+                    'shipping_discount_minor' => 0,
+                ] : null,
+                $applied['platform_shipping'] ? [
+                    'source' => 'platform',
+                    'name' => $applied['platform_shipping']['promotion']->name,
+                    'discount_minor' => 0,
+                    'shipping_discount_minor' => (int) $applied['platform_shipping']['shipping_discount_minor'],
                 ] : null,
                 $applied['automatic'] ? [
                     'source' => 'automatic',
@@ -1124,14 +1526,27 @@ class PromotionService
     {
         $clean = static function (Collection $rows): array {
             return $rows->map(static function (array $row): array {
-                unset($row['_promotion'], $row['_line_weights'], $row['_shipping_weights']);
+                unset($row['_promotion'], $row['_usage'], $row['_line_weights'], $row['_shipping_weights']);
 
                 return $row;
             })->values()->all();
         };
 
         return [
-            'platform' => $clean($options['platform']),
+            'platform' => $clean($options['platform']->reject(
+                fn (array $row): bool => in_array($row['discount_type'] ?? null, [
+                    PlatformPromotion::DISCOUNT_FREE_SHIPPING,
+                    PlatformPromotion::DISCOUNT_FIXED_SHIPPING,
+                    PlatformPromotion::DISCOUNT_PERCENT_SHIPPING,
+                ], true),
+            )),
+            'platform_shipping' => $clean($options['platform']->filter(
+                fn (array $row): bool => in_array($row['discount_type'] ?? null, [
+                    PlatformPromotion::DISCOUNT_FREE_SHIPPING,
+                    PlatformPromotion::DISCOUNT_FIXED_SHIPPING,
+                    PlatformPromotion::DISCOUNT_PERCENT_SHIPPING,
+                ], true),
+            )),
             'store' => $clean($options['store']),
             'automatic' => $clean($options['automatic']),
         ];
@@ -1167,6 +1582,188 @@ class PromotionService
         ];
     }
 
+    /**
+     * Current reservation/redemption counts and subsidy totals for the supplied
+     * promotions. Checkout uses locking reads after locking the promotion row;
+     * preview-only quotes use an aggregate read and are rechecked at placement.
+     *
+     * @param  iterable<PlatformPromotion|StorePromotion>  $promotions
+     * @return array<int, array{active_count:int,buyer_count:int,budget_spend_minor:int}>
+     */
+    private function redemptionStatsFor(iterable $promotions, User $buyer, string $source, bool $lock = false): array
+    {
+        $promotionIds = collect($promotions)
+            ->map(fn (PlatformPromotion|StorePromotion $promotion): int => (int) $promotion->id)
+            ->filter(fn (int $id): bool => $id > 0)
+            ->unique()
+            ->values();
+        if ($promotionIds->isEmpty()) {
+            return [];
+        }
+
+        $promotionColumn = $source === 'store' ? 'store_promotion_id' : 'platform_promotion_id';
+        $query = PromotionRedemption::query()
+            ->whereIn($promotionColumn, $promotionIds->all())
+            ->whereIn('status', self::ACTIVE_REDEMPTION_STATUSES);
+
+        if ($lock) {
+            $rows = $query
+                ->orderBy($promotionColumn)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get([$promotionColumn, 'buyer_id', 'discount_minor', 'shipping_discount_minor']);
+
+            $stats = [];
+            foreach ($rows as $row) {
+                $id = (int) $row->{$promotionColumn};
+                $stats[$id] ??= ['active_count' => 0, 'buyer_count' => 0, 'budget_spend_minor' => 0];
+                $stats[$id]['active_count']++;
+                $stats[$id]['buyer_count'] += (int) $row->buyer_id === (int) $buyer->id ? 1 : 0;
+                $stats[$id]['budget_spend_minor'] += (int) $row->discount_minor + (int) $row->shipping_discount_minor;
+            }
+
+            return $stats;
+        }
+
+        return $query
+            ->select($promotionColumn)
+            ->selectRaw('COUNT(*) as active_count')
+            ->selectRaw('SUM(CASE WHEN buyer_id = ? THEN 1 ELSE 0 END) as buyer_count', [(int) $buyer->id])
+            ->selectRaw('COALESCE(SUM(discount_minor + shipping_discount_minor), 0) as budget_spend_minor')
+            ->groupBy($promotionColumn)
+            ->get()
+            ->mapWithKeys(fn ($row): array => [(int) $row->{$promotionColumn} => [
+                'active_count' => (int) $row->active_count,
+                'buyer_count' => (int) $row->buyer_count,
+                'budget_spend_minor' => (int) $row->budget_spend_minor,
+            ]])
+            ->all();
+    }
+
+    /** @param array<string, mixed> $usage */
+    private function promotionUsageReason(
+        PlatformPromotion|StorePromotion $promotion,
+        array $usage,
+    ): ?string {
+        if ($promotion->redemption_limit !== null
+            && (int) ($usage['active_count'] ?? 0) >= (int) $promotion->redemption_limit) {
+            return 'This offer has reached its total redemption limit.';
+        }
+        if ((int) ($usage['buyer_count'] ?? 0) >= max(1, (int) $promotion->per_buyer_limit)) {
+            return 'You have reached this offer’s per-Buyer use limit.';
+        }
+        if ($promotion instanceof PlatformPromotion
+            && $promotion->budget_minor !== null
+            && (int) ($usage['budget_spend_minor'] ?? 0) >= (int) $promotion->budget_minor) {
+            return 'This offer is no longer available.';
+        }
+
+        return null;
+    }
+
+    /** @param array<string, mixed> $usage */
+    private function applyPromotionAvailability(
+        PlatformPromotion|StorePromotion $promotion,
+        array $preview,
+        array $usage,
+        bool $checkBudget = true,
+    ): array {
+        if (! ($preview['eligible'] ?? false)) {
+            return $preview;
+        }
+
+        $reason = $this->promotionUsageReason($promotion, $usage);
+        if ($reason === null && $checkBudget && $promotion instanceof PlatformPromotion && $promotion->budget_minor !== null) {
+            $previewDiscount = (int) ($preview['discount_minor'] ?? 0) + (int) ($preview['shipping_discount_minor'] ?? 0);
+            $remaining = max(0, (int) $promotion->budget_minor - (int) ($usage['budget_spend_minor'] ?? 0));
+            if ($previewDiscount > $remaining) {
+                $reason = 'This offer no longer has enough budget to cover the full discount.';
+            }
+        }
+        if ($reason === null) {
+            return $preview;
+        }
+
+        $preview['eligible'] = false;
+        $preview['reason'] = $reason;
+        $preview['discount_minor'] = 0;
+        $preview['shipping_discount_minor'] = 0;
+        $preview['line_weights'] = [];
+        $preview['shipping_weights'] = [];
+
+        return $preview;
+    }
+
+    /** @param array<string, mixed> $usage */
+    private function previewWithRemainingBudget(
+        PlatformPromotion $promotion,
+        array $groups,
+        array $usage,
+    ): array {
+        $preview = $this->applyPromotionAvailability(
+            $promotion,
+            $this->previewPlatform($promotion, $groups),
+            $usage,
+            checkBudget: false,
+        );
+        if (! ($preview['eligible'] ?? false) || $promotion->budget_minor === null) {
+            return $preview;
+        }
+
+        if ($promotion->isShippingDiscount()) {
+            $allocations = $this->allocateProportionally(
+                (int) $preview['shipping_discount_minor'],
+                $preview['shipping_weights'],
+            );
+            $discountMinor = array_sum($allocations);
+        } else {
+            $allocations = $this->capPlatformAllocations(
+                $this->allocateProportionally((int) $preview['discount_minor'], $preview['line_weights']),
+                $groups,
+            );
+            $discountMinor = array_sum($allocations);
+        }
+
+        if ($this->fitsRemainingBudget($promotion, $usage, $discountMinor)) {
+            return $preview;
+        }
+
+        $preview['eligible'] = false;
+        $preview['reason'] = $discountMinor > 0
+            ? 'This offer no longer has enough budget to cover the full discount.'
+            : 'This offer does not provide a discount for the selected items or delivery.';
+        $preview['discount_minor'] = 0;
+        $preview['shipping_discount_minor'] = 0;
+        $preview['line_weights'] = [];
+        $preview['shipping_weights'] = [];
+
+        return $preview;
+    }
+
+    /** @param array<string, mixed> $usage */
+    private function assertDiscountWithinRemainingBudget(
+        PlatformPromotion $promotion,
+        array $usage,
+        int $discountMinor,
+        string $field,
+    ): void {
+        if ($discountMinor < 1) {
+            throw ValidationException::withMessages([
+                $field => 'This offer does not provide a discount for the selected items or delivery.',
+            ]);
+        }
+        if ($promotion->budget_minor === null) {
+            return;
+        }
+
+        $remainingMinor = max(0, (int) $promotion->budget_minor - (int) ($usage['budget_spend_minor'] ?? 0));
+        if ($discountMinor > $remainingMinor) {
+            throw ValidationException::withMessages([
+                $field => 'This offer no longer has enough budget to cover the full discount. Choose another offer or remove this one.',
+            ]);
+        }
+    }
+
     private function activePlatformQuery(bool $lock = false): Builder
     {
         $query = PlatformPromotion::query()
@@ -1179,6 +1776,43 @@ class PromotionService
         }
 
         return $query;
+    }
+
+    private function automaticPlatformQuery(bool $lock = false): Builder
+    {
+        $query = $this->activePlatformQuery($lock)
+            ->where(function (Builder $query): void {
+                $query->where('kind', PlatformPromotion::KIND_AUTOMATIC_DISCOUNT)
+                    ->orWhere(function (Builder $shipping): void {
+                        $shipping->where('kind', PlatformPromotion::KIND_FREE_SHIPPING)
+                            ->where('is_claimable', false)
+                            ->whereNull('code');
+                    });
+            })
+            ->whereNull('campaign_type');
+
+        return $query;
+    }
+
+    /**
+     * Lock only automatic offers that could apply to at least one current cart
+     * line or delivery. Ineligible campaigns should not serialize unrelated
+     * checkouts merely because they are active and public.
+     *
+     * @param  array<string, array<string, mixed>>  $groups
+     * @return list<int>
+     */
+    private function automaticPromotionIdsForGroups(array $groups): array
+    {
+        return $this->automaticPlatformQuery()
+            ->with(['products:id', 'categories:id', 'stores:id,name'])
+            ->orderBy('id')
+            ->get()
+            ->filter(fn (PlatformPromotion $promotion): bool => (bool) $this->previewPlatform($promotion, $groups)['eligible'])
+            ->pluck('id')
+            ->map(fn ($id): int => (int) $id)
+            ->values()
+            ->all();
     }
 
     private function activeStoreQuery(bool $lock = false): Builder
@@ -1211,7 +1845,13 @@ class PromotionService
     }
 
     /** @return array{0: PlatformPromotion, 1: PromotionClaim|null} */
-    private function findPlatformVoucherForBuyer(User $buyer, int $id, bool $lock, bool $viaCode): array
+    private function findPlatformVoucherForBuyer(
+        User $buyer,
+        int $id,
+        bool $lock,
+        bool $viaCode,
+        string $field = 'platform_voucher_id',
+    ): array
     {
         $query = PlatformPromotion::query()
             ->with(['products:id', 'categories:id', 'stores:id,name'])
@@ -1221,9 +1861,12 @@ class PromotionService
         }
         $promotion = $query->firstOrFail();
 
-        if (! $this->canBeClaimedFromWallet($promotion)) {
+        $selectablePlatformVoucher = $promotion->kind === PlatformPromotion::KIND_VOUCHER
+            || ($promotion->kind === PlatformPromotion::KIND_FREE_SHIPPING
+                && ((bool) $promotion->is_claimable || ($viaCode && filled($promotion->code))));
+        if (! $selectablePlatformVoucher) {
             throw ValidationException::withMessages([
-                'platform_voucher_id' => 'This Bearly offer is applied automatically and cannot be selected as a voucher.',
+                $field => 'This Bearly offer applies automatically and cannot be selected as a voucher.',
             ]);
         }
 
@@ -1235,9 +1878,15 @@ class PromotionService
         }
         $claim = $claimQuery->first();
 
+        if (! $viaCode && filled($promotion->code) && ! $promotion->is_claimable) {
+            throw ValidationException::withMessages([
+                $field => 'Enter this voucher code at checkout instead of selecting it by ID.',
+            ]);
+        }
+
         if (! $viaCode && $promotion->is_claimable && ! $claim) {
             throw ValidationException::withMessages([
-                'platform_voucher_id' => 'Claim this voucher in My Vouchers before using it at checkout.',
+                $field => 'Claim this voucher in My Vouchers before using it at checkout.',
             ]);
         }
 
@@ -1267,6 +1916,12 @@ class PromotionService
             ]);
         }
 
+        if (! $viaCode && ! $promotion->is_claimable) {
+            throw ValidationException::withMessages([
+                'store_voucher_id' => 'Enter this Store voucher code at checkout instead of selecting it by ID.',
+            ]);
+        }
+
         $claimQuery = PromotionClaim::query()
             ->where('buyer_id', $buyer->id)
             ->where('store_promotion_id', $promotion->id);
@@ -1284,59 +1939,68 @@ class PromotionService
         return [$promotion, $claim];
     }
 
-    private function assertUsable(PlatformPromotion|StorePromotion $promotion, User $buyer, bool $platform, bool $lock, bool $viaCode = false): void
+    private function assertUsable(
+        PlatformPromotion|StorePromotion $promotion,
+        User $buyer,
+        bool $platform,
+        bool $lock,
+        bool $viaCode = false,
+        ?string $field = null,
+    ): array
     {
+        $field ??= $platform ? 'platform_voucher_id' : 'store_voucher_id';
         if (! $promotion->isActiveAt()) {
             throw ValidationException::withMessages([
-                $platform ? 'platform_voucher_id' : 'store_voucher_id' => 'This voucher is not active right now.',
+                $field => 'This voucher is not active right now.',
             ]);
         }
 
         if (! $promotion->is_public && ! $viaCode) {
             throw ValidationException::withMessages([
-                $platform ? 'platform_voucher_id' : 'store_voucher_id' => 'This voucher is no longer available.',
+                $field => 'This voucher is no longer available.',
             ]);
         }
 
         if ($promotion instanceof StorePromotion
             && (! $promotion->store || $promotion->store->publication_status !== 'published')) {
             throw ValidationException::withMessages([
-                'store_voucher_id' => 'This Store is not available for checkout.',
+                $field => 'This Store is not available for checkout.',
             ]);
         }
 
-        $redemptions = $promotion->redemptions()
-            ->whereIn('status', self::ACTIVE_REDEMPTION_STATUSES);
+        $usage = $this->redemptionStatsFor(
+            [$promotion],
+            $buyer,
+            $platform ? 'platform' : 'store',
+            $lock,
+        )[(int) $promotion->id] ?? [
+            'active_count' => 0,
+            'buyer_count' => 0,
+            'budget_spend_minor' => 0,
+        ];
+
         if ($promotion->redemption_limit !== null
-            && $redemptions->count() >= (int) $promotion->redemption_limit) {
+            && (int) $usage['active_count'] >= (int) $promotion->redemption_limit) {
             throw ValidationException::withMessages([
-                $platform ? 'platform_voucher_id' : 'store_voucher_id' => 'This voucher has reached its redemption limit.',
+                $field => 'This voucher has reached its total redemption limit.',
             ]);
         }
 
-        $buyerRedemptions = $promotion->redemptions()
-            ->where('buyer_id', $buyer->id)
-            ->whereIn('status', self::ACTIVE_REDEMPTION_STATUSES)
-            ->count();
-        if ($buyerRedemptions >= max(1, (int) $promotion->per_buyer_limit)) {
+        if ((int) $usage['buyer_count'] >= max(1, (int) $promotion->per_buyer_limit)) {
             throw ValidationException::withMessages([
-                $platform ? 'platform_voucher_id' : 'store_voucher_id' => 'You have already used this voucher the maximum number of times.',
+                $field => 'You have reached this voucher’s per-Buyer use limit.',
             ]);
         }
 
         if ($promotion instanceof PlatformPromotion && $promotion->budget_minor !== null) {
-            $usedBudget = (int) $promotion->redemptions()
-                ->whereIn('status', self::ACTIVE_REDEMPTION_STATUSES)
-                ->sum('discount_minor')
-                + (int) $promotion->redemptions()
-                    ->whereIn('status', self::ACTIVE_REDEMPTION_STATUSES)
-                    ->sum('shipping_discount_minor');
-            if ($usedBudget >= (int) $promotion->budget_minor) {
+            if ((int) $usage['budget_spend_minor'] >= (int) $promotion->budget_minor) {
                 throw ValidationException::withMessages([
-                    'platform_voucher_id' => 'This promotion has reached its platform budget.',
+                    $field => 'This offer is no longer available.',
                 ]);
             }
         }
+
+        return $usage;
     }
 
     /** @return array<int, int> */
@@ -1356,55 +2020,97 @@ class PromotionService
 
     /**
      * @param  Collection<int, array<string, mixed>>  $automatic
-     * @return array{promotion: PlatformPromotion, preview: array<string, mixed>}|null
+     * @param  array<string, array<string, mixed>>  $groups
+     * @return array{promotion: PlatformPromotion, preview: array<string, mixed>, allocations: array<string, int>, discount_minor: int, usage: array<string, int>}|null
      */
-    private function bestAutomaticMerchandiseOption(Collection $automatic): ?array
+    private function bestAutomaticMerchandiseOption(Collection $automatic, array $groups): ?array
     {
-        return $automatic
+        $rows = $automatic
             ->filter(fn (array $row): bool => (bool) ($row['eligible'] ?? false)
                 && (int) ($row['discount_minor'] ?? 0) > 0
                 && empty($row['shipping_discount_minor']))
             ->sortByDesc(fn (array $row): int => (int) $row['discount_minor'])
-            ->values()
-            ->map(fn (array $row): array => [
-                'promotion' => $row['_promotion'],
-                'preview' => [
-                    'eligible' => true,
-                    'reason' => null,
-                    'discount_minor' => (int) $row['discount_minor'],
-                    'shipping_discount_minor' => 0,
-                    'eligible_subtotal_minor' => (int) $row['eligible_subtotal_minor'],
-                    'line_weights' => $row['_line_weights'] ?? [],
-                    'shipping_weights' => [],
-                ],
-            ])
-            ->first();
+            ->values();
+
+        foreach ($rows as $row) {
+            $promotion = $row['_promotion'];
+            $usage = $row['_usage'] ?? [];
+            $preview = $this->previewPlatform($promotion, $groups);
+            $preview = $this->applyPromotionAvailability($promotion, $preview, $usage, checkBudget: false);
+            if (! $preview['eligible']) {
+                continue;
+            }
+
+            $allocations = $this->capPlatformAllocations(
+                $this->allocateProportionally($preview['discount_minor'], $preview['line_weights']),
+                $groups,
+            );
+            $discountMinor = array_sum($allocations);
+            if (! $this->fitsRemainingBudget($promotion, $usage, $discountMinor)) {
+                continue;
+            }
+
+            return [
+                'promotion' => $promotion,
+                'preview' => $preview,
+                'allocations' => $allocations,
+                'discount_minor' => $discountMinor,
+                'usage' => $usage,
+            ];
+        }
+
+        return null;
     }
 
     /**
      * @param  Collection<int, array<string, mixed>>  $automatic
-     * @return array{promotion: PlatformPromotion, preview: array<string, mixed>}|null
+     * @param  array<string, array<string, mixed>>  $groups
+     * @return array{promotion: PlatformPromotion, preview: array<string, mixed>, allocations: array<int, int>, shipping_discount_minor: int, usage: array<string, int>}|null
      */
-    private function bestAutomaticShippingOption(Collection $automatic): ?array
+    private function bestAutomaticShippingOption(Collection $automatic, array $groups): ?array
     {
-        return $automatic
+        $rows = $automatic
             ->filter(fn (array $row): bool => (bool) ($row['eligible'] ?? false)
                 && (int) ($row['shipping_discount_minor'] ?? 0) > 0)
             ->sortByDesc(fn (array $row): int => (int) $row['shipping_discount_minor'])
-            ->values()
-            ->map(fn (array $row): array => [
-                'promotion' => $row['_promotion'],
-                'preview' => [
-                    'eligible' => true,
-                    'reason' => null,
-                    'discount_minor' => 0,
-                    'shipping_discount_minor' => (int) $row['shipping_discount_minor'],
-                    'eligible_subtotal_minor' => (int) $row['eligible_subtotal_minor'],
-                    'line_weights' => [],
-                    'shipping_weights' => $row['_shipping_weights'] ?? [],
-                ],
-            ])
-            ->first();
+            ->values();
+
+        foreach ($rows as $row) {
+            $promotion = $row['_promotion'];
+            $usage = $row['_usage'] ?? [];
+            $preview = $this->previewPlatform($promotion, $groups);
+            $preview = $this->applyPromotionAvailability($promotion, $preview, $usage, checkBudget: false);
+            if (! $preview['eligible']) {
+                continue;
+            }
+
+            $allocations = $this->allocateProportionally(
+                $preview['shipping_discount_minor'],
+                $preview['shipping_weights'],
+            );
+            $shippingDiscountMinor = array_sum($allocations);
+            if (! $this->fitsRemainingBudget($promotion, $usage, $shippingDiscountMinor)) {
+                continue;
+            }
+
+            return [
+                'promotion' => $promotion,
+                'preview' => $preview,
+                'allocations' => $allocations,
+                'shipping_discount_minor' => $shippingDiscountMinor,
+                'usage' => $usage,
+            ];
+        }
+
+        return null;
+    }
+
+    /** @param array<string, mixed> $usage */
+    private function fitsRemainingBudget(PlatformPromotion $promotion, array $usage, int $discountMinor): bool
+    {
+        return $discountMinor > 0
+            && ($promotion->budget_minor === null
+                || $discountMinor <= max(0, (int) $promotion->budget_minor - (int) ($usage['budget_spend_minor'] ?? 0)));
     }
 
     /**
@@ -1414,9 +2120,34 @@ class PromotionService
         PlatformPromotion $promotion,
         ?PromotionClaim $claim,
         int $usageCount,
+        array $usageStats = [],
     ): array {
-        $autoApplies = $promotion->kind === PlatformPromotion::KIND_FREE_SHIPPING
-            && ! $promotion->is_claimable;
+        $status = $promotion->statusKey();
+        $activeCount = (int) ($usageStats['active_count'] ?? $promotion->active_redemptions_count ?? 0);
+        $budgetSpendMinor = (int) ($usageStats['budget_spend_minor']
+            ?? ((int) ($promotion->active_discount_minor ?? 0) + (int) ($promotion->active_shipping_discount_minor ?? 0)));
+        if ($status === PlatformPromotion::STATUS_ACTIVE
+            && $promotion->isExhausted($activeCount, $budgetSpendMinor)) {
+            $status = PlatformPromotion::STATUS_EXHAUSTED;
+        }
+        $availabilityReason = $this->promotionUsageReason($promotion, array_merge($usageStats, [
+            'active_count' => $activeCount,
+            'buyer_count' => (int) ($usageStats['buyer_count'] ?? $usageCount),
+            'budget_spend_minor' => $budgetSpendMinor,
+        ]));
+        $availabilityReason ??= match ($status) {
+            PlatformPromotion::STATUS_DRAFT => 'This promotion has not been published.',
+            PlatformPromotion::STATUS_SCHEDULED => 'This promotion is scheduled for a future date.',
+            PlatformPromotion::STATUS_PAUSED => 'This promotion is temporarily paused.',
+            PlatformPromotion::STATUS_EXPIRED => 'This promotion has expired.',
+            PlatformPromotion::STATUS_EXHAUSTED => 'This offer is no longer available.',
+            default => null,
+        };
+        $available = $status === PlatformPromotion::STATUS_ACTIVE && $availabilityReason === null;
+        $autoApplies = $available
+            && $promotion->kind === PlatformPromotion::KIND_FREE_SHIPPING
+            && ! $promotion->is_claimable
+            && blank($promotion->code);
         $section = $promotion->isShippingDiscount()
             ? 'shipping'
             : ($promotion->stores->isNotEmpty()
@@ -1449,7 +2180,7 @@ class PromotionService
                 : $promotion->discountLabel().' on eligible Bearly items.'),
             'terms' => $promotion->terms ?: ($autoApplies
                 ? 'This public Free Shipping offer applies automatically when your checkout meets its eligibility rules.'
-                : 'Platform vouchers are funded by Bearly. One platform voucher and one Store voucher may be applied per order.'),
+                : 'Platform vouchers are funded by Bearly. One merchandise voucher, one shipping voucher, and one Store voucher may be applied per order.'),
             'minimum' => ((int) $promotion->minimum_spend_minor) > 0
                 ? 'Min. Spend ₱'.number_format(((int) $promotion->minimum_spend_minor) / 100, 2)
                 : 'No minimum spend',
@@ -1460,10 +2191,16 @@ class PromotionService
             'expires' => $promotion->endsAt()->format('M j, Y g:i A').' PHT',
             'expires_on' => $promotion->ends_on->toDateString(),
             'expires_at' => $promotion->endsAt()->toIso8601String(),
+            'starts_at' => $promotion->startsAt()?->toIso8601String(),
+            'starts_at_display' => $promotion->startsAt()?->format('M j, Y g:i A').' PHT',
             'claimed' => $claim !== null,
             'claim_status' => $claim?->status,
-            'can_claim' => $promotion->is_claimable && $claim === null && $usageCount < max(1, (int) $promotion->per_buyer_limit),
+            'can_claim' => $available && $promotion->is_claimable && $claim === null,
+            'can_use' => $available,
+            'availability_status' => $status,
+            'availability_reason' => $availabilityReason,
             'auto_applies' => $autoApplies,
+            'code_applies' => $available && filled($promotion->code),
             'per_buyer_limit' => (int) $promotion->per_buyer_limit,
             'redemption_limit' => $promotion->redemption_limit,
             'kind' => $promotion->kind,
@@ -1480,7 +2217,17 @@ class PromotionService
         StorePromotion $promotion,
         ?PromotionClaim $claim,
         int $usageCount,
+        array $usageStats = [],
     ): array {
+        $availabilityReason = $this->promotionUsageReason($promotion, array_merge($usageStats, [
+            'active_count' => (int) ($usageStats['active_count'] ?? $promotion->active_redemptions_count ?? 0),
+            'buyer_count' => (int) ($usageStats['buyer_count'] ?? $usageCount),
+        ]));
+        $available = $promotion->isActiveAt()
+            && $availabilityReason === null
+            && $promotion->is_public
+            && $promotion->store?->publication_status === 'published';
+
         $valueLabel = $promotion->isPercentDiscount()
             ? ((int) $promotion->discount_percent).'%'
             : '₱'.number_format(((int) $promotion->voucher_amount_minor) / 100, 2);
@@ -1505,9 +2252,14 @@ class PromotionService
             'expires' => $promotion->endsAt()->format('M j, Y g:i A').' PHT',
             'expires_on' => $promotion->ends_on->toDateString(),
             'expires_at' => $promotion->endsAt()->toIso8601String(),
+            'starts_at' => $promotion->startsAt()?->toIso8601String(),
+            'starts_at_display' => $promotion->startsAt()?->format('M j, Y g:i A').' PHT',
             'claimed' => $claim !== null,
             'claim_status' => $claim?->status,
-            'can_claim' => $promotion->is_claimable && $claim === null && $usageCount < max(1, (int) $promotion->per_buyer_limit),
+            'can_claim' => $available && $promotion->is_claimable && $claim === null,
+            'can_use' => $available,
+            'availability_status' => $available ? 'active' : 'unavailable',
+            'availability_reason' => $availabilityReason,
             'per_buyer_limit' => (int) $promotion->per_buyer_limit,
             'redemption_limit' => $promotion->redemption_limit,
             'kind' => StorePromotion::TYPE_STORE_VOUCHER,

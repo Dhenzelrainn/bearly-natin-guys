@@ -12,6 +12,7 @@ use App\Http\Controllers\AdminDisputeController;
 use App\Http\Controllers\AdminFinanceController;
 use App\Http\Controllers\AdminFulfillmentController;
 use App\Http\Controllers\AdminMessageController;
+use App\Http\Controllers\AdminMarketplaceTaxonomyController;
 use App\Http\Controllers\AdminPolicyController;
 use App\Http\Controllers\AdminPromotionController;
 use App\Http\Controllers\AdminRegistrationController;
@@ -49,6 +50,7 @@ use App\Http\Controllers\SellerController;
 use App\Http\Controllers\SellerMessageController;
 use App\Http\Controllers\SellerProductController;
 use App\Http\Controllers\SellerProductDiscountController;
+use App\Http\Controllers\SellerMarketplaceSubcategoryRequestController;
 use App\Http\Controllers\SellerStoreVoucherController;
 use App\Http\Controllers\SellerWalletController;
 use App\Http\Controllers\SellerWaybillController;
@@ -369,6 +371,10 @@ Route::middleware(['auth', 'role:buyer'])->group(function () {
     Route::get('/flash-deals', [BuyerController::class, 'flashDeals'])
         ->name('flash-deals');
 
+    Route::get('/campaigns/{campaign}', [BuyerController::class, 'showCampaign'])
+        ->whereNumber('campaign')
+        ->name('campaigns.show');
+
     Route::get('/vouchers', function () {
         $filter = request()->query('filter');
         $allowedFilters = ['shipping', 'discount', 'category', 'new', 'claimed'];
@@ -379,10 +385,10 @@ Route::middleware(['auth', 'role:buyer'])->group(function () {
         return redirect('/profile'.$query.'#vouchers');
     })->name('vouchers');
 
-    Route::view('/top-products', 'buyer.top-products')
+    Route::get('/top-products', [BuyerController::class, 'topProducts'])
         ->name('top-products');
 
-    Route::view('/top-sales', 'buyer.top-sales')
+    Route::get('/top-sales', [BuyerController::class, 'topSales'])
         ->name('top-sales');
 
     Route::redirect('/cart/preview', '/cart')->name('cart.preview');
@@ -511,6 +517,17 @@ Route::prefix('admin')
         Route::get('/compliance', [AdminComplianceController::class, 'index'])
             ->name('compliance');
 
+        Route::get('/compliance/category-reviews', [AdminComplianceController::class, 'categoryReviews'])
+            ->name('compliance.category-reviews');
+
+        Route::post('/compliance/category-reviews/{product}/reviewed', [AdminComplianceController::class, 'markCategoryAppropriate'])
+            ->whereNumber('product')
+            ->name('compliance.category-reviews.reviewed');
+
+        Route::post('/compliance/category-reviews/{product}/flag', [AdminComplianceController::class, 'flagCategoryForCorrection'])
+            ->whereNumber('product')
+            ->name('compliance.category-reviews.flag');
+
         Route::get('/compliance/violations', [AdminController::class, 'productViolations'])
             ->name('compliance.violations');
 
@@ -540,6 +557,20 @@ Route::prefix('admin')
         Route::patch('/promotions/{promotion}/status', [AdminPromotionController::class, 'updateStatus'])
             ->whereNumber('promotion')
             ->name('promotions.status');
+
+        Route::get('/marketplace-taxonomy', [AdminMarketplaceTaxonomyController::class, 'index'])
+            ->name('marketplace-taxonomy.index');
+
+        Route::post('/marketplace-taxonomy/subcategories', [AdminMarketplaceTaxonomyController::class, 'storeSubcategory'])
+            ->name('marketplace-taxonomy.subcategories.store');
+
+        Route::patch('/marketplace-taxonomy/subcategories/{subcategory}', [AdminMarketplaceTaxonomyController::class, 'updateSubcategory'])
+            ->whereNumber('subcategory')
+            ->name('marketplace-taxonomy.subcategories.update');
+
+        Route::patch('/marketplace-taxonomy/requests/{subcategoryRequest}/decision', [AdminMarketplaceTaxonomyController::class, 'decideRequest'])
+            ->whereNumber('subcategoryRequest')
+            ->name('marketplace-taxonomy.requests.decide');
 
         /*
         |--------------------------------------------------------------------------
@@ -695,6 +726,9 @@ Route::prefix('admin')
         Route::get('/payments', [AdminFinanceController::class, 'payments'])
             ->name('payments');
 
+        Route::get('/shipping-settlements', [AdminFinanceController::class, 'shippingSettlements'])
+            ->name('shipping-settlements.index');
+
         Route::get('/seller-payouts', [AdminSellerPayoutController::class, 'index'])
             ->name('seller-payouts.index');
 
@@ -737,6 +771,10 @@ Route::prefix('admin')
         Route::get('/payments/cod/{collection}/receipt', [AdminFinanceController::class, 'printCodCashReceipt'])
             ->whereNumber('collection')
             ->name('payments.cod.receipt');
+
+        Route::post('/shipping-settlements/{settlement}/record-paid', [AdminFinanceController::class, 'recordShippingSettlement'])
+            ->whereNumber('settlement')
+            ->name('shipping-settlements.record-paid');
 
         Route::post('/payments/seller-settlements', [AdminFinanceController::class, 'generateSellerPayout'])
             ->name('payments.seller-settlements.store');
@@ -1179,6 +1217,16 @@ Route::prefix('seller')
             ->whereNumber('participation')
             ->name('promotions.campaigns.withdraw');
 
+        Route::get('/products/subcategory-requests', [SellerMarketplaceSubcategoryRequestController::class, 'index'])
+            ->name('products.subcategory-requests.index');
+
+        Route::get('/products/subcategory-requests/create', [SellerMarketplaceSubcategoryRequestController::class, 'create'])
+            ->name('products.subcategory-requests.create');
+
+        Route::post('/products/subcategory-requests', [SellerMarketplaceSubcategoryRequestController::class, 'store'])
+            ->middleware('throttle:10,1')
+            ->name('products.subcategory-requests.store');
+
         Route::get('/products/create', [SellerProductController::class, 'createProduct'])
             ->name('products.create');
 
@@ -1290,6 +1338,13 @@ Route::prefix('logistics')->name('logistics.')->group(function () {
 
         Route::get('/cash', [LogisticsCashController::class, 'index'])
             ->name('cash.index');
+
+        Route::get('/settlements', [LogisticsCashController::class, 'shippingSettlements'])
+            ->name('settlements.index');
+
+        Route::post('/settlements/rider-earnings/{earning}/record-paid', [LogisticsCashController::class, 'recordRiderShippingPayout'])
+            ->whereNumber('earning')
+            ->name('settlements.rider-earnings.record-paid');
 
         Route::post('/cash/cod/{collection}/receive', [LogisticsCashController::class, 'receiveCod'])
             ->whereNumber('collection')

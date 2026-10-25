@@ -58,6 +58,7 @@
     </section>
 
     <form class="product-filter-bar" method="GET" action="{{ route('seller.products') }}" aria-label="Product filters" data-product-filter-form>
+        <input type="hidden" name="status" value="{{ $selectedStatus }}">
         <label class="product-search">
             <i data-lucide="search" aria-hidden="true"></i>
             <input type="search" name="search" value="{{ request('search') }}" placeholder="Search by product name or variant SKU" aria-label="Search by product name or active variant SKU">
@@ -72,20 +73,34 @@
                 @endforeach
             </select>
         </label>
-        <label class="product-filter-select">
-            <span>Status</span>
-            <select name="status" aria-label="Filter by status" data-product-filter-auto-submit>
-                <option value="">All Statuses</option>
-                @foreach ($statuses as $status)<option value="{{ $status }}" @selected(request('status') === $status)>{{ $status }}</option>@endforeach
-            </select>
-        </label>
         <div class="product-filter-actions">
             <button class="seller-secondary-button" type="submit"><i data-lucide="filter" aria-hidden="true"></i>Apply</button>
-            @if (request()->hasAny(['search', 'subcategory', 'status']))
-                <a class="product-filter-reset" href="{{ route('seller.products') }}">Clear</a>
+            @if (request()->hasAny(['search', 'subcategory']))
+                <a class="product-filter-reset" href="{{ route('seller.products', request()->only('status')) }}">Clear</a>
             @endif
         </div>
     </form>
+
+    <nav class="product-status-tabs" aria-label="Filter products by status">
+        <a
+            class="product-status-tab{{ $selectedStatus === 'all' ? ' is-active' : '' }}"
+            href="{{ route('seller.products', array_merge(request()->except(['status', 'page']), ['status' => 'all'])) }}"
+            @if ($selectedStatus === 'all') aria-current="page" @endif
+        >
+            <span>All Products</span>
+            <strong>{{ number_format($counts['all']) }}</strong>
+        </a>
+        @foreach ($statusTabs as $statusTab)
+            <a
+                class="product-status-tab{{ $selectedStatus === $statusTab['value'] ? ' is-active' : '' }}"
+                href="{{ route('seller.products', array_merge(request()->except(['status', 'page']), ['status' => $statusTab['value']])) }}"
+                @if ($selectedStatus === $statusTab['value']) aria-current="page" @endif
+            >
+                <span>{{ $statusTab['label'] }}</span>
+                <strong>{{ number_format($statusTab['count']) }}</strong>
+            </a>
+        @endforeach
+    </nav>
 
     <section class="seller-panel product-table-card">
         <div class="product-table-wrap">
@@ -157,7 +172,7 @@
                                 <span class="stock-value {{ $isLowStock ? 'is-low' : '' }}">{{ $product['stock'] }}</span>
                                 @if ($isLowStock)<small class="stock-helper">Low stock</small>@endif
                             </td>
-                            <td><span class="product-status status-{{ strtolower($product['status']) }}">{{ $product['status'] }}</span></td>
+                            <td><span class="product-status status-{{ str_replace(' ', '-', strtolower($product['status'])) }}">{{ $product['status'] }}</span></td>
                             <td>
                                 <div class="product-row-actions">
                                     <a class="row-action" href="{{ route('seller.products.edit', $product['id']) }}" title="Edit product" aria-label="Edit {{ $product['name'] }}">
@@ -178,8 +193,26 @@
                         <tr><td colspan="6">
                             <div class="no-filter-results">
                                 <i data-lucide="search-x" aria-hidden="true"></i>
-                                <strong>No matching products</strong>
-                                <span>Try another name, active variant SKU, subcategory, or status.</span>
+                                <strong>{{ $selectedStatus === 'all' || request()->hasAny(['search', 'subcategory']) ? 'No matching products' : 'No '.$selectedStatus.' products' }}</strong>
+                                <span>
+                                    @if (request()->hasAny(['search', 'subcategory']))
+                                        Try another name, active variant SKU, or subcategory.
+                                    @elseif ($selectedStatus === 'Needs Review')
+                                        Products flagged for review will appear here.
+                                    @elseif ($selectedStatus === 'Blocked')
+                                        Blocked listings remain available in this status view and in All Products.
+                                    @elseif ($selectedStatus === 'Draft')
+                                        Saved drafts will appear here.
+                                    @elseif ($selectedStatus === 'Pending Review')
+                                        Products waiting for review will appear here.
+                                    @elseif ($selectedStatus === 'Archived')
+                                        Archived listings remain available here and can be restored.
+                                    @elseif ($selectedStatus === 'Active')
+                                        Products in Active status will appear here.
+                                    @else
+                                        Try another name, active variant SKU, subcategory, or status.
+                                    @endif
+                                </span>
                             </div>
                         </td></tr>
                     @endif

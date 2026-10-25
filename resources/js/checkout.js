@@ -7,7 +7,7 @@
   const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[char]));
   const imageUrl = value => { const image = String(value || '').trim(); return !image ? '/images/bearly-logo.png' : /^(https?:|\/|data:)/.test(image) ? image : `/${image.replace(/^\.\//, '')}`; };
   let allItems = [], items = [], addresses = [], address = null, quote = null, quoting = false, quoteRequest = 0;
-  let promotionSelection = { platform_voucher_id: null, store_voucher_id: null, voucher_code: null };
+  let promotionSelection = { platform_voucher_id: null, platform_shipping_voucher_id: null, store_voucher_id: null, voucher_code: null };
 
   function storedKeys() {
     try {
@@ -40,9 +40,10 @@
 
   function syncPromotionSelection() {
     $('checkout-platform-voucher-id').value = promotionSelection.platform_voucher_id || '';
+    $('checkout-platform-shipping-voucher-id').value = promotionSelection.platform_shipping_voucher_id || '';
     $('checkout-store-voucher-id').value = promotionSelection.store_voucher_id || '';
     $('checkout-voucher-code').value = promotionSelection.voucher_code || '';
-    const active = Boolean(promotionSelection.platform_voucher_id || promotionSelection.store_voucher_id || promotionSelection.voucher_code);
+    const active = Boolean(promotionSelection.platform_voucher_id || promotionSelection.platform_shipping_voucher_id || promotionSelection.store_voucher_id || promotionSelection.voucher_code);
     $('checkout-voucher-clear').hidden = !active;
   }
 
@@ -80,6 +81,25 @@
     }).join('');
   }
 
+  function renderAutomaticOfferNotes() {
+    const container = $('checkout-automatic-offer-notes');
+    if (!container) return;
+    const automatic = Array.isArray(quote?.promotions?.automatic) ? quote.promotions.automatic : [];
+    const unavailable = automatic
+      .filter(row => row && row.eligible === false && row.reason)
+      .slice(0, 3);
+    if (!unavailable.length) {
+      container.hidden = true;
+      container.replaceChildren();
+      return;
+    }
+
+    container.hidden = false;
+    container.innerHTML = `<p>Some automatic offers do not apply to this checkout:</p><ul>${unavailable.map(row =>
+      `<li><strong>${escapeHtml(row.name || row.title || 'Automatic offer')}</strong> — ${escapeHtml(row.reason)}</li>`
+    ).join('')}</ul>`;
+  }
+
   function voucherOptionLabel(voucher) {
     const title = voucher.title ? ` · ${voucher.title}` : '';
     const saving = Number(voucher.shipping_discount_minor || 0) > 0
@@ -93,10 +113,12 @@
 
   function renderVoucherOptions() {
     const platformSelect = $('checkout-platform-voucher');
+    const platformShippingSelect = $('checkout-platform-shipping-voucher');
     const storeSelect = $('checkout-store-voucher');
-    if (!platformSelect || !storeSelect) return;
+    if (!platformSelect || !platformShippingSelect || !storeSelect) return;
     const selection = quote?.promotion_selection || promotionSelection;
     const platformRows = Array.isArray(quote?.promotions?.platform) ? quote.promotions.platform : [];
+    const platformShippingRows = Array.isArray(quote?.promotions?.platform_shipping) ? quote.promotions.platform_shipping : [];
     const storeRows = Array.isArray(quote?.promotions?.store) ? quote.promotions.store : [];
 
     const fill = (select, rows, emptyLabel, selectedId) => {
@@ -109,13 +131,15 @@
       }).join('');
     };
 
-    fill(platformSelect, platformRows, 'No platform voucher', selection.platform_voucher_id);
+    fill(platformSelect, platformRows, 'No merchandise voucher', selection.platform_voucher_id);
+    fill(platformShippingSelect, platformShippingRows, 'No shipping voucher', selection.platform_shipping_voucher_id);
     fill(storeSelect, storeRows, 'No Store voucher', selection.store_voucher_id);
   }
 
   function clearPromotionSelection() {
-    promotionSelection = { platform_voucher_id: null, store_voucher_id: null, voucher_code: null };
+    promotionSelection = { platform_voucher_id: null, platform_shipping_voucher_id: null, store_voucher_id: null, voucher_code: null };
     $('checkout-platform-voucher').value = '';
+    $('checkout-platform-shipping-voucher').value = '';
     $('checkout-store-voucher').value = '';
     $('checkout-voucher-code-input').value = '';
     setVoucherStatus('');
@@ -126,6 +150,20 @@
   $('checkout-platform-voucher').addEventListener('change', event => {
     promotionSelection = {
       platform_voucher_id: Number(event.target.value) || null,
+      platform_shipping_voucher_id: promotionSelection.platform_shipping_voucher_id,
+      store_voucher_id: promotionSelection.store_voucher_id,
+      voucher_code: null,
+    };
+    $('checkout-voucher-code-input').value = '';
+    setVoucherStatus('');
+    syncPromotionSelection();
+    requestQuote();
+  });
+
+  $('checkout-platform-shipping-voucher').addEventListener('change', event => {
+    promotionSelection = {
+      platform_voucher_id: promotionSelection.platform_voucher_id,
+      platform_shipping_voucher_id: Number(event.target.value) || null,
       store_voucher_id: promotionSelection.store_voucher_id,
       voucher_code: null,
     };
@@ -138,6 +176,7 @@
   $('checkout-store-voucher').addEventListener('change', event => {
     promotionSelection = {
       platform_voucher_id: promotionSelection.platform_voucher_id,
+      platform_shipping_voucher_id: promotionSelection.platform_shipping_voucher_id,
       store_voucher_id: Number(event.target.value) || null,
       voucher_code: null,
     };
@@ -156,9 +195,7 @@
       return;
     }
     input.value = code;
-    promotionSelection = { platform_voucher_id: null, store_voucher_id: null, voucher_code: code };
-    $('checkout-platform-voucher').value = '';
-    $('checkout-store-voucher').value = '';
+    promotionSelection = { ...promotionSelection, voucher_code: code };
     setVoucherStatus('');
     syncPromotionSelection();
     requestQuote();
@@ -214,6 +251,7 @@
       setDiscountRow('summary-shipping-discount-row', 'summary-shipping-discount', 0);
       $('shipping-breakdown').replaceChildren();
       renderAppliedVouchers();
+      renderAutomaticOfferNotes();
       return;
     }
 
@@ -225,11 +263,19 @@
     $('summary-total').textContent = money(quote.total_minor);
     $('order-total').textContent = money(quote.total_minor);
     renderAppliedVouchers();
+    renderAutomaticOfferNotes();
     $('shipping-breakdown').innerHTML = (quote.seller_orders || []).map(sellerOrder => {
       const route = sellerOrder.quote || {};
       const dimensions = route.parcel_dimensions_cm || {};
-      const size = [dimensions.length, dimensions.width, dimensions.height].map(value => Number(value || 0).toLocaleString('en-PH', { maximumFractionDigits: 2 })).join(' × ');
-      return `<div class="shipping-estimate-row"><span>${escapeHtml(sellerOrder.store_name)} · ${escapeHtml(route.route_label || 'Shipping')} · ${Number(route.billable_weight_kg || 0)} kg (${size} cm)</span><strong>${money(sellerOrder.shipping_fee_minor)}</strong></div>`;
+      const size = [dimensions.length, dimensions.width, dimensions.height].map(value => Number(value || 0).toLocaleString('en-PH', { maximumFractionDigits: 3 })).join(' × ');
+      const buyerPaid = Number(sellerOrder.buyer_paid_shipping_fee_minor ?? sellerOrder.shipping_fee_minor ?? 0);
+      const platformSubsidy = Number(sellerOrder.platform_shipping_subsidy_minor ?? sellerOrder.platform_shipping_discount_minor ?? 0);
+      const zone = `Zone ${Number(route.zone_level ?? 0)} · ${route.zone_label || 'Verified route'}`;
+      const feeInputs = `Base ${money(route.base_fee_minor)} + zone surcharge ${money(route.zone_surcharge_minor)}`;
+      const funding = platformSubsidy > 0
+        ? `Buyer pays ${money(buyerPaid)} · Bearly subsidy ${money(platformSubsidy)}`
+        : `Buyer pays ${money(buyerPaid)} · no platform subsidy`;
+      return `<div class="shipping-estimate-row"><span><strong>${escapeHtml(sellerOrder.store_name)} · ${escapeHtml(zone)}</strong><small>${escapeHtml(feeInputs)} · ${Number(route.billable_weight_kg || 0)} kg (${size} cm)</small><small>${escapeHtml(funding)}</small></span><strong>${money(sellerOrder.shipping_fee_minor)}</strong></div>`;
     }).join('');
   }
 
@@ -257,6 +303,7 @@
           address_id: address.id,
           cart_item_ids: items.map(item => Number(item.id)),
           platform_voucher_id: promotionSelection.platform_voucher_id,
+          platform_shipping_voucher_id: promotionSelection.platform_shipping_voucher_id,
           store_voucher_id: promotionSelection.store_voucher_id,
           voucher_code: promotionSelection.voucher_code,
         }),
@@ -271,6 +318,7 @@
       const resolvedSelection = quote.promotion_selection || {};
       promotionSelection = {
         platform_voucher_id: Number(resolvedSelection.platform_voucher_id) || null,
+        platform_shipping_voucher_id: Number(resolvedSelection.platform_shipping_voucher_id) || null,
         store_voucher_id: Number(resolvedSelection.store_voucher_id) || null,
         voucher_code: resolvedSelection.voucher_code || null,
       };
@@ -291,13 +339,13 @@
       renderItems();
       renderVoucherOptions();
       renderQuote();
-      $('checkout-status').textContent = 'A flat shipping fee applies to each Seller Order. Package measurements are shown for delivery planning.';
+      $('checkout-status').textContent = 'Zone-based shipping is quoted per Seller Order. Eligible voucher and automatic discounts are calculated from this saved quote.';
       button.disabled = false;
     } catch (error) {
       if (requestNumber !== quoteRequest) return;
       $('checkout-status').textContent = 'Checkout needs attention before the order can be placed.';
       showError(error.message);
-      if (promotionSelection.platform_voucher_id || promotionSelection.store_voucher_id || promotionSelection.voucher_code) {
+      if (promotionSelection.platform_voucher_id || promotionSelection.platform_shipping_voucher_id || promotionSelection.store_voucher_id || promotionSelection.voucher_code) {
         setVoucherStatus(error.message, 'error');
       }
     } finally {

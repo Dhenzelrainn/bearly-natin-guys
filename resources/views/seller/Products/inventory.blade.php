@@ -51,14 +51,18 @@
     </button>
 </div>
 
-<section class="inventory-workspace" data-inventory-workspace>
+<section
+    class="inventory-workspace"
+    data-inventory-workspace
+    data-inventory-initial-status="{{ $inventorySelectedStatus ?? 'all' }}"
+>
     <div class="inventory-tabs" role="tablist" aria-label="Filter inventory by stock status">
         @foreach ($inventoryTabs as $tab)
             <button
-                class="inventory-tab {{ $tab['key'] === 'all' ? 'is-active' : '' }}"
+                class="inventory-tab {{ $tab['key'] === ($inventorySelectedStatus ?? 'all') ? 'is-active' : '' }}"
                 type="button"
                 role="tab"
-                aria-selected="{{ $tab['key'] === 'all' ? 'true' : 'false' }}"
+                aria-selected="{{ $tab['key'] === ($inventorySelectedStatus ?? 'all') ? 'true' : 'false' }}"
                 data-inventory-tab="{{ $tab['key'] }}"
             >
                 {{ $tab['label'] }}
@@ -77,25 +81,66 @@
                 <input
                     type="search"
                     placeholder="Search product, SKU, or variation"
+                    value="{{ $inventorySearch ?? '' }}"
                     data-inventory-search
                 >
             </label>
 
-            <label class="inventory-select">
-                <span class="sr-only">Filter by subcategory</span>
-                <select data-inventory-subcategory>
-                    <option value="">All Subcategories</option>
-                    @foreach ($inventorySubcategories as $subcategory)
-                        <option value="{{ $subcategory['id'] }}">{{ $subcategory['name'] }}</option>
-                    @endforeach
-                    @if ($inventoryHasUncategorized)
-                        <option value="uncategorized">Uncategorized</option>
-                    @endif
-                </select>
-            </label>
+            <form
+                class="inventory-filter-form"
+                method="GET"
+                action="{{ route('seller.inventory') }}"
+                data-inventory-filter-form
+            >
+                <input type="hidden" name="inventory_search" value="{{ $inventorySearch ?? '' }}" data-inventory-search-state>
+                <input type="hidden" name="inventory_status" value="{{ $inventorySelectedStatus ?? 'all' }}" data-inventory-status-state>
+                <input type="hidden" name="inventory_variations" value="{{ ($inventoryShowVariations ?? true) ? '1' : '0' }}" data-inventory-variations-state>
+
+                <label class="inventory-select">
+                    <span class="sr-only">Filter by Store section</span>
+                    <select name="store_section" data-inventory-store-section>
+                        <option value="">All Store Sections</option>
+                        @foreach ($inventorySubcategories as $subcategory)
+                            <option
+                                value="{{ $subcategory['id'] }}"
+                                @selected(($inventorySelectedStoreSection ?? '') === (string) $subcategory['id'])
+                            >{{ $subcategory['name'] }}</option>
+                        @endforeach
+                        @if ($inventoryHasUncategorized)
+                            <option value="uncategorized" @selected(($inventorySelectedStoreSection ?? '') === 'uncategorized')>
+                                No Store Section
+                            </option>
+                        @endif
+                    </select>
+                </label>
+
+                <label class="inventory-select">
+                    <span class="sr-only">Filter by Marketplace subcategory</span>
+                    <select name="marketplace_subcategory" data-inventory-marketplace-subcategory>
+                        <option value="">All Marketplace Subcategories</option>
+                        @foreach (collect($inventoryMarketplaceSubcategories)->groupBy('marketplace_category') as $marketplaceCategory => $subcategories)
+                            <optgroup label="{{ $marketplaceCategory }}">
+                                @foreach ($subcategories as $subcategory)
+                                    <option
+                                        value="{{ $subcategory['id'] }}"
+                                        @selected(($inventorySelectedMarketplaceSubcategory ?? '') === (string) $subcategory['id'])
+                                    >{{ $subcategory['name'] }}</option>
+                                @endforeach
+                            </optgroup>
+                        @endforeach
+                        @if ($inventoryHasUnclassifiedMarketplaceItems)
+                            <option value="unclassified" @selected(($inventorySelectedMarketplaceSubcategory ?? '') === 'unclassified')>
+                                No Marketplace Subcategory
+                            </option>
+                        @endif
+                    </select>
+                </label>
+
+                <noscript><button type="submit" class="inventory-filter-submit">Apply filters</button></noscript>
+            </form>
 
             <label class="inventory-variation-toggle">
-                <input type="checkbox" checked data-inventory-variations>
+                <input type="checkbox" @checked($inventoryShowVariations ?? true) data-inventory-variations>
                 <span>Show variations</span>
             </label>
 
@@ -155,7 +200,8 @@
                             data-id="{{ $item['id'] }}"
                             data-product="{{ strtolower($item['product']) }}"
                             data-search="{{ strtolower($item['product'].' '.$item['sku'].' '.$item['variation']) }}"
-                            data-subcategory="{{ $item['subcategory_id'] ?? 'uncategorized' }}"
+                            data-store-section="{{ $item['subcategory_id'] ?? 'uncategorized' }}"
+                            data-marketplace-subcategory="{{ $item['marketplace_subcategory_id'] ?? 'unclassified' }}"
                             data-status="{{ $item['status_key'] }}"
                             data-parent="{{ $item['parent'] }}"
                             data-variation-row="{{ $item['variation_row'] ? 'true' : 'false' }}"
@@ -241,7 +287,7 @@
 
         <footer class="inventory-table-footer">
             <span>
-                <strong data-inventory-visible-count>{{ $inventoryTotal }}</strong>
+                <strong data-inventory-visible-count>{{ $inventoryItems->count() }}</strong>
                 SKUs shown
             </span>
         </footer>

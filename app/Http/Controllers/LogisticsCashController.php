@@ -9,6 +9,7 @@ use App\Models\RefundCashPayout;
 use App\Services\AuditService;
 use App\Services\CodCashCollectionService;
 use App\Services\RefundCashPayoutService;
+use App\Services\ShippingSettlementService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -41,6 +42,51 @@ class LogisticsCashController extends Controller
         return view('logistics.cash.index', $this->layoutData($request) + $workspace + [
             'selectedCodCollection' => $selectedCodCollection,
         ]);
+    }
+
+    public function shippingSettlements(Request $request, ShippingSettlementService $settlements): View
+    {
+        return view('logistics.cash.shipping-settlements', $this->layoutData($request) + [
+            'earnings' => $settlements->riderEarningsForLogistics($request->user()),
+        ]);
+    }
+
+    public function recordRiderShippingPayout(
+        Request $request,
+        int $earning,
+        ShippingSettlementService $settlements,
+    ): RedirectResponse {
+        $data = $request->validate([
+            'earning_id' => ['required', 'integer'],
+            'actual_amount' => ['required', 'string', 'regex:/^\d{1,8}(?:\.\d{1,2})?$/'],
+            'method' => ['required', 'in:bank_transfer,gcash,cash,other'],
+            'reference' => ['required', 'string', 'max:150'],
+            'paid_on' => ['required', 'date_format:Y-m-d', 'before_or_equal:today'],
+            'reason' => ['required', 'string', 'min:5', 'max:1000'],
+            'payout_confirmed' => ['required', 'accepted'],
+        ], [
+            'actual_amount.regex' => 'Enter the actual amount with up to two decimal places.',
+            'payout_confirmed.accepted' => 'Confirm that the Rider already received the payout.',
+        ]);
+
+        if ((int) $data['earning_id'] !== $earning) {
+            throw ValidationException::withMessages(['earning_id' => 'The selected Rider earning changed. Refresh and try again.']);
+        }
+
+        $payout = $settlements->recordRiderPayout(
+            $request->user(),
+            $earning,
+            $this->amountToMinor($data['actual_amount']),
+            $data['method'],
+            trim($data['reference']),
+            $data['paid_on'],
+            trim($data['reason']),
+            $request,
+        );
+
+        return redirect()
+            ->route('logistics.settlements.index')
+            ->with('success', "Rider payout {$payout->reference} was recorded. The Rider earning is now marked paid.");
     }
 
     public function receiveCod(Request $request, CodCashCollection $collection, CodCashCollectionService $cash): RedirectResponse

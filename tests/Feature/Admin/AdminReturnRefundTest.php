@@ -45,6 +45,14 @@ class AdminReturnRefundTest extends TestCase
 
     protected function setUp(): void
     {
+        if (in_array($this->name(), [
+            'test_manual_payout_is_external_and_cannot_be_recorded_twice',
+            'test_seller_recovery_is_recorded_only_after_verified_collection_or_paid_payout_offset',
+        ], true)) {
+            // Seed the full scenario before the cutoff, including shared fixtures created below.
+            Carbon::setTestNow('2026-10-20 12:00:00 UTC');
+        }
+
         parent::setUp();
 
         $adminRole = Role::firstOrCreate(
@@ -716,6 +724,9 @@ class AdminReturnRefundTest extends TestCase
             ])
             ->assertRedirect();
 
+        $refund->refresh();
+        $this->assertTrue($refund->completed_at->lt(Carbon::parse(config('seller-wallet.refund_cutoff_at'), 'UTC')));
+
         $this->assertDatabaseHas('refunds', [
             'id' => $refund->id,
             'status' => 'completed',
@@ -893,6 +904,10 @@ class AdminReturnRefundTest extends TestCase
         Storage::fake('local');
         $refund = $this->createCompletedSellerRefund();
         $recovery = SellerRefundRecovery::query()->where('refund_id', $refund->id)->firstOrFail();
+        $this->assertTrue($refund->completed_at->lt(Carbon::parse(config('seller-wallet.refund_cutoff_at'), 'UTC')));
+        $this->assertSame('pending', $recovery->status);
+        $this->assertSame(0, (int) $recovery->recovered_amount_minor);
+
         $payout = SellerPayout::query()->create([
             'payout_no' => 'PYO-RECOVERY-TEST-001',
             'seller_profile_id' => $recovery->seller_profile_id,

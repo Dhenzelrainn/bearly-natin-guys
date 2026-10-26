@@ -7,12 +7,25 @@
     $initialRegularPrice = (float) ($initialVariant['regular_price'] ?? $initialPrice);
     $initialDiscount = (int) ($initialVariant['discount_percent'] ?? 0);
     $initialHasDiscount = $initialDiscount > 0 && $initialRegularPrice > $initialPrice;
-    $initialPromotionName = trim((string) ($initialVariant['product_discount_name'] ?? ''));
-    $initialPromotionStartsAt = $initialVariant['product_discount_starts_at'] ?? null;
-    $initialPromotionEndsAt = $initialVariant['product_discount_ends_at'] ?? null;
-    $initialImage = filled($initialVariant['image'] ?? null)
-        ? (string) $initialVariant['image']
-        : (string) ($productCard['image'] ?? '');
+    $initialPriceSource = (string) ($initialVariant['price_source'] ?? '');
+    $initialPromotionName = $initialPriceSource === 'campaign'
+        ? trim((string) ($initialVariant['campaign_name'] ?? ''))
+        : trim((string) ($initialVariant['product_discount_name'] ?? ''));
+    $initialPromotionStartsAt = $initialPriceSource === 'campaign'
+        ? ($initialVariant['campaign_starts_at'] ?? null)
+        : ($initialVariant['product_discount_starts_at'] ?? null);
+    $initialPromotionEndsAt = $initialPriceSource === 'campaign'
+        ? ($initialVariant['campaign_ends_at'] ?? null)
+        : ($initialVariant['product_discount_ends_at'] ?? null);
+    $hasPrimaryProductImage = $product->images->contains(fn ($image): bool => $image->variant_id === null && $image->is_primary);
+    $firstProductImage = (string) (collect($productCard['gallery'] ?? [])->first() ?? '');
+    $initialImage = $hasPrimaryProductImage && filled($productCard['image'] ?? null)
+        ? (string) $productCard['image']
+        : (filled($firstProductImage)
+            ? $firstProductImage
+            : (filled($initialVariant['image'] ?? null)
+                ? (string) $initialVariant['image']
+                : (string) ($productCard['image'] ?? '')));
     $variantOptionRows = $variantCollection->map(static function (array $variant): array {
         $options = [];
 
@@ -175,15 +188,21 @@
     <main class="catalog-detail-shell">
         <nav class="catalog-breadcrumb" aria-label="Breadcrumb">
             <a href="{{ route('home') }}">Home</a><span aria-hidden="true">/</span>
-            <a href="{{ route('products.index', ['category' => $productCard['category_slug']]) }}">{{ $product->category?->name }}</a><span aria-hidden="true">/</span>
+            <a href="{{ route('products.index', ['category' => $productCard['category_slug']]) }}">{{ $productCard['marketplace_category_name'] ?? $product->category?->name }}</a><span aria-hidden="true">/</span>
             <span aria-current="page">{{ $product->name }}</span>
         </nav>
 
         <article class="detail-card" data-product-detail>
             <section class="detail-media" aria-label="Product images">
-                <div class="detail-primary-image {{ $initialImage === '' ? 'is-empty' : '' }}">
+                <div
+                    class="detail-primary-image {{ $initialImage === '' ? 'is-empty' : '' }}"
+                    role="group"
+                    aria-label="Product image carousel"
+                    aria-roledescription="carousel"
+                    data-gallery-swipe
+                >
                     @if ($initialImage !== '')
-                        <img src="{{ $initialImage }}" alt="{{ $product->name }}" data-detail-primary-image data-default-image="{{ $initialImage }}">
+                        <img src="{{ $initialImage }}" alt="{{ $product->name }}" data-detail-primary-image data-default-image="{{ $initialImage }}" draggable="false">
                     @endif
                     @if (count($detailImages) > 1)
                         <button class="detail-gallery-arrow detail-gallery-arrow--previous" type="button" data-gallery-prev aria-label="Previous product image"><span class="material-symbols-outlined" aria-hidden="true">chevron_left</span></button>
@@ -226,7 +245,9 @@
                         'current' => $initialPrice,
                         'regular' => $initialRegularPrice,
                         'discount' => $initialDiscount,
-                        'campaign_name' => null,
+                        'price_source' => $initialPriceSource,
+                        'campaign_name' => $initialVariant['campaign_name'] ?? null,
+                        'product_discount_name' => $initialVariant['product_discount_name'] ?? null,
                     ])
                     <span class="detail-price-caption" data-detail-price-caption{{ $initialHasDiscount ? ' hidden' : '' }}>Current variation price</span>
                 </div>
@@ -243,7 +264,7 @@
                     <div class="detail-payment-methods" aria-label="Payment methods listed by seller">
                         <strong>Payment options:</strong>
                         @foreach ($productCard['payment_methods'] as $method)
-                            <span>{{ $method === 'cod' ? 'Cash on Delivery' : 'Online payment' }}</span>
+                            @if ($method === 'cod')<span>Cash on Delivery</span>@endif
                         @endforeach
                     </div>
                 @endif
@@ -432,7 +453,9 @@
                                         'current' => (float) $related['price'],
                                         'regular' => (float) ($related['regular_price'] ?? $related['price']),
                                         'discount' => (int) ($related['discount_percent'] ?? 0),
-                                        'campaign_name' => $related['product_discount_name'] ?? null,
+                                        'price_source' => $related['price_source'] ?? null,
+                                        'campaign_name' => $related['campaign_name'] ?? null,
+                                        'product_discount_name' => $related['product_discount_name'] ?? null,
                                     ])
                                 </div>
                             </div>

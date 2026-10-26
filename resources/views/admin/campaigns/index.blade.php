@@ -19,9 +19,7 @@
     </div>
 </section>
 
-@if (session('success'))
-    <div class="info-box" role="status"><strong>Saved.</strong> {{ session('success') }}</div>
-@endif
+@include('admin.partials.success-toast')
 
 <section class="panel">
     <div class="panel-heading panel-heading-wrap">
@@ -56,7 +54,7 @@
                             <br><small>{{ $campaign->scopeLabel() }}</small>
                         </td>
                         <td>{{ $campaign->campaignTypeLabel() }}</td>
-                        <td>{{ $campaign->funding_type === \App\Models\PlatformPromotion::FUNDING_PLATFORM ? 'Bearly-funded' : 'Seller-funded' }}</td>
+                        <td>{{ $campaign->funding_type === \App\Models\PlatformPromotion::FUNDING_PLATFORM ? 'Bearly-funded' : 'Seller-funded (legacy)' }}</td>
                             <td>{{ $campaign->schedulePeriod() }}</td>
                         <td>{{ $campaign->join_deadline?->format('M j, Y') ?? '—' }}</td>
                         <td>

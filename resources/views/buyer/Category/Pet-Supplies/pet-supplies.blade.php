@@ -1,11 +1,5 @@
 @php
-    $catalog = json_decode(
-        file_get_contents(resource_path('data/buyer-pet-supplies-products.json')),
-        true,
-        512,
-        JSON_THROW_ON_ERROR
-    );
-
+    $catalog = [];
     $taxonomy = json_decode(
         file_get_contents(resource_path('data/buyer-categories.json')),
         true,
@@ -16,7 +10,12 @@
     $petCategory = collect($taxonomy)->firstWhere('slug', 'pet-supplies');
     $subcategories = $petCategory['subcategories'];
     $liveCatalog = $liveCatalog ?? [];
-    $usingLiveCatalog = ! empty($liveCatalog);
+    $canonicalMarketplaceTaxonomy = (bool) ($canonicalMarketplaceTaxonomy ?? false);
+    $usingLiveCatalog = true;
+    if ($canonicalMarketplaceTaxonomy) {
+        $catalog = $liveCatalog ?? [];
+        $subcategories = collect($marketplaceSubcategories ?? [])->pluck('name')->all();
+    }
     if ($usingLiveCatalog) {
         $catalog = $liveCatalog;
     }
@@ -59,7 +58,7 @@
 
 </head>
 
-<body class="bc pet-supplies" data-category="pet-supplies" style="--catalog-image:url('{{ asset('images/pet-supplies-catalog-atlas.png') }}')" data-live-catalog="{{ $usingLiveCatalog ? 'true' : 'false' }}">
+<body class="bc pet-supplies" data-category="pet-supplies" style="--catalog-image:url('{{ asset('images/pet-supplies-catalog-atlas.png') }}')" data-live-catalog="{{ $usingLiveCatalog ? 'true' : 'false' }}" data-canonical-marketplace-taxonomy="{{ $canonicalMarketplaceTaxonomy ? 'true' : 'false' }}" data-next-page="{{ isset($categoryPagination) && $categoryPagination->hasMorePages() ? $categoryPagination->currentPage() + 1 : '' }}">
     <a href="#bc-main" class="skip">Skip to products</a>
 
     @include('buyer.partials.buyer-header', [
@@ -90,7 +89,7 @@
                     </button>
 
                     @foreach($subcategories as $i => $sub)
-                        <button data-sub="{{ $sub }}" aria-pressed="false">
+                        <button data-sub="{{ $canonicalMarketplaceTaxonomy ? ($marketplaceSubcategorySlugs[$sub] ?? '') : $sub }}" data-sub-label="{{ $sub }}" data-subcategory-id="{{ $canonicalMarketplaceTaxonomy ? ($marketplaceSubcategoryIds[$sub] ?? '') : '' }}" aria-pressed="false">
                             <i class="mi">
                                 {{ ['pets','cleaning_services','water','flutter_dash','content_cut','health_and_safety'][$i] }}
                             </i>
@@ -144,7 +143,7 @@
                 @php $shortcutPhotos = [0, 5, 10, 15, 1, 6]; @endphp
 
                 @foreach($subcategories as $i => $sub)
-                    <button data-sub="{{ $sub }}">
+                    <button data-sub="{{ $canonicalMarketplaceTaxonomy ? ($marketplaceSubcategorySlugs[$sub] ?? '') : $sub }}" data-sub-label="{{ $sub }}" data-subcategory-id="{{ $canonicalMarketplaceTaxonomy ? ($marketplaceSubcategoryIds[$sub] ?? '') : '' }}">
                         <span
                             class="photo"
                             style="--x:{{ ($shortcutPhotos[$i] % 5) * 25 }}%;--y:{{ floor($shortcutPhotos[$i] / 5) * 20 }}%"

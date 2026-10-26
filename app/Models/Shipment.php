@@ -65,4 +65,9 @@ class Shipment extends Model
     {
         return $this->hasOne(CodCashCollection::class);
     }
+
+    public function shippingSettlement()
+    {
+        return $this->hasOne(ShippingSettlement::class);
+    }
 }

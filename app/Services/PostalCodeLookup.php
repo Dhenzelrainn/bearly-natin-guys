@@ -71,6 +71,24 @@ class PostalCodeLookup
         return count($matches) === 1 ? $matches[0] : null;
     }
 
+    /**
+     * Resolve a city only by its canonical PSGC identifier. Shipping-zone
+     * classification must not fall back to municipality or province names.
+     *
+     * @return array{province: string, city: string, options: array}|null
+     */
+    public function findByCanonicalCityCode(?string $code): ?array
+    {
+        $code = trim((string) $code);
+        if (! preg_match('/^\d{10}$/D', $code)) {
+            return null;
+        }
+
+        $place = $this->data()['cities'][$code] ?? null;
+
+        return is_array($place) ? $place : null;
+    }
+
     private function normalizeCity(string $value): string
     {
         $normalized = $this->normalize($value);

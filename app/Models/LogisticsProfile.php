@@ -31,6 +31,16 @@ class LogisticsProfile extends Model
         return $this->hasMany(Shipment::class);
     }
 
+    public function shippingSettlements()
+    {
+        return $this->hasMany(ShippingSettlement::class);
+    }
+
+    public function riderEarningPayouts()
+    {
+        return $this->hasMany(RiderEarningPayout::class);
+    }
+
     public function serviceAddress()
     {
         return $this->hasOne(Address::class, 'user_id', 'user_id')

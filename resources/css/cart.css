@@ -375,6 +375,13 @@ body.cart-page .product-meta{
     white-space:nowrap;
 }
 
+body.cart-page .cart-item-unavailable{
+    margin-top:6px;
+    color:#9a3f2f;
+    font-size:10px;
+    line-height:1.45;
+}
+
 body.cart-page .unit-price,
 body.cart-page .line-total{
     color:#44342b;

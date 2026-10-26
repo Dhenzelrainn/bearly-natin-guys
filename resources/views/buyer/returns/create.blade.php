@@ -24,7 +24,7 @@
     <header class="buyer-return-heading">
         <span class="section-kicker">Order {{ $seller_order->seller_order_no }}</span>
         <h1>Request a return or refund</h1>
-        <p>{{ $seller_order->store?->name ?? 'Seller' }} · Submitted within 7 days of order completion.</p>
+        <p>{{ $seller_order->store?->name ?? 'Seller' }} · Submitted within 3 days of order completion.</p>
         @if ($deadline)<small>Request by {{ $deadline->format('M j, Y · g:i A') }}</small>@endif
     </header>
 
@@ -56,7 +56,7 @@
             <div class="buyer-return-actions"><a class="buyer-return-secondary" href="{{ route('buyer.profile') }}#purchases">Cancel</a><button type="submit" class="buyer-return-primary">Submit request</button></div>
         </form>
     @else
-        <section class="buyer-return-card buyer-return-unavailable"><span class="material-symbols-outlined" aria-hidden="true">event_busy</span><h2>No eligible quantities</h2><p>This Seller Order is outside the 7-day return window, is not completed, has no recorded payment, or all item quantities already belong to another case.</p></section>
+        <section class="buyer-return-card buyer-return-unavailable"><span class="material-symbols-outlined" aria-hidden="true">event_busy</span><h2>No eligible quantities</h2><p>This Seller Order is outside the 3-day return window, is not completed, has no recorded payment, or all item quantities already belong to another case.</p></section>
     @endif
 
     @if ($cases->isNotEmpty())

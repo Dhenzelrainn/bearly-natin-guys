@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Product;
+use App\Models\MarketplaceSubcategory;
+use App\Services\MarketplaceTaxonomyService;
 use App\Services\SellerIdentityService;
 use App\Services\SellerNotificationService;
 use App\Services\SellerProductService;
@@ -39,6 +41,9 @@ class SellerProductController extends Controller
             'category' => '',
             'subcategory_id' => null,
             'subcategory' => '',
+            'marketplace_subcategory_id' => null,
+            'marketplace_subcategory' => '',
+            'marketplace_category' => '',
             'description' => '',
             'sku' => '',
             'price' => 0,
@@ -95,9 +100,7 @@ class SellerProductController extends Controller
         $request->merge(['product_mode' => $productMode]);
 
         if (! array_key_exists('payment_methods', $request->all())) {
-            $request->merge([
-                'payment_methods' => $request->boolean('payment_methods_present') ? [] : ['cod', 'online'],
-            ]);
+            $request->merge(['payment_methods' => ['cod']]);
         }
 
         $validated = $request->validate([
@@ -112,18 +115,19 @@ class SellerProductController extends Controller
                     ->where('parent_category_id', $categoryId)
                     ->where('is_active', true),
             ],
+            'marketplace_subcategory_id' => ['nullable', 'integer', 'min:1'],
             'new_subcategory_name' => ['nullable', 'string', 'max:120'],
             'description' => ['nullable', 'string', 'max:1000'],
             'sku' => ['nullable', 'string', 'max:60'],
             'price' => ['exclude_if:product_mode,with_variants', 'required_if:product_mode,single', 'numeric', 'min:0'],
             'package_weight_kg' => ['exclude_if:product_mode,with_variants', 'required_if:product_mode,single', 'numeric', 'gt:0', 'max:1000'],
-            'package_length_cm' => ['exclude_if:product_mode,with_variants', 'required_if:product_mode,single', 'numeric', 'gt:0', 'max:1000'],
-            'package_width_cm' => ['exclude_if:product_mode,with_variants', 'required_if:product_mode,single', 'numeric', 'gt:0', 'max:1000'],
-            'package_height_cm' => ['exclude_if:product_mode,with_variants', 'required_if:product_mode,single', 'numeric', 'gt:0', 'max:1000'],
+            'package_length_cm' => ['exclude_if:product_mode,with_variants', 'required_if:product_mode,single', 'numeric', 'decimal:0,3', 'gt:0', 'max:1000'],
+            'package_width_cm' => ['exclude_if:product_mode,with_variants', 'required_if:product_mode,single', 'numeric', 'decimal:0,3', 'gt:0', 'max:1000'],
+            'package_height_cm' => ['exclude_if:product_mode,with_variants', 'required_if:product_mode,single', 'numeric', 'decimal:0,3', 'gt:0', 'max:1000'],
             'voucher_eligible' => ['sometimes', 'boolean'],
             'payment_methods_present' => ['nullable', 'boolean'],
-            'payment_methods' => ['required', 'array', 'min:1', 'max:2'],
-            'payment_methods.*' => ['required', 'string', Rule::in(['cod', 'online']), 'distinct:strict'],
+            'payment_methods' => ['required', 'array', 'size:1'],
+            'payment_methods.*' => ['required', 'string', Rule::in(['cod']), 'distinct:strict'],
             'stock' => ['required', 'integer', 'min:0'],
             'low_stock_threshold' => [
                 ! $existingProduct && $productMode === 'single' ? 'required' : 'nullable',
@@ -142,9 +146,9 @@ class SellerProductController extends Controller
             'variants.*.stock' => ['required_with:variants', 'integer', 'min:0'],
             'variants.*.low_stock_threshold' => ['nullable', 'integer', 'min:0', 'max:4294967295'],
             'variants.*.package_weight_kg' => ['required_with:variants', 'numeric', 'gt:0', 'max:1000'],
-            'variants.*.package_length_cm' => ['required_with:variants', 'numeric', 'gt:0', 'max:1000'],
-            'variants.*.package_width_cm' => ['required_with:variants', 'numeric', 'gt:0', 'max:1000'],
-            'variants.*.package_height_cm' => ['required_with:variants', 'numeric', 'gt:0', 'max:1000'],
+            'variants.*.package_length_cm' => ['required_with:variants', 'numeric', 'decimal:0,3', 'gt:0', 'max:1000'],
+            'variants.*.package_width_cm' => ['required_with:variants', 'numeric', 'decimal:0,3', 'gt:0', 'max:1000'],
+            'variants.*.package_height_cm' => ['required_with:variants', 'numeric', 'decimal:0,3', 'gt:0', 'max:1000'],
             'image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
             'gallery_images' => ['nullable', 'array', 'max:4'],
             'gallery_images.*' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
@@ -178,16 +182,22 @@ class SellerProductController extends Controller
         return $validated;
     }
 
-    public function createProduct(Request $request, SellerProductService $products): View
+    public function createProduct(
+        Request $request,
+        SellerProductService $products,
+        MarketplaceTaxonomyService $taxonomy,
+    ): View
     {
         $registeredCategory = $this->registeredCategory($request);
+        $storeSubcategories = $products->subcategoriesFor($request->user());
 
         return view('seller.Products.product-form', [
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
             'categories' => [$registeredCategory],
             'registeredCategory' => $registeredCategory,
-            'subcategories' => $products->subcategoriesFor($request->user()),
+            'subcategories' => $storeSubcategories,
+            'marketplaceSubcategories' => $taxonomy->marketplaceSubcategoriesForSeller($request->user()),
             'product' => $this->normalizeProduct([
                 'category' => $registeredCategory,
                 'subcategory_id' => null,
@@ -229,18 +239,34 @@ class SellerProductController extends Controller
         );
     }
 
-    public function editProduct(Request $request, string $product, SellerProductService $products): View
+    public function editProduct(
+        Request $request,
+        string $product,
+        SellerProductService $products,
+        MarketplaceTaxonomyService $taxonomy,
+    ): View
     {
         $item = $products->findForSeller($request->user(), $product);
         $registeredCategory = $products->registeredCategoryName($request->user());
         $item = $products->formPayload($item);
+        $storeSubcategories = $products->subcategoriesFor($request->user());
+        $marketplaceSubcategories = $taxonomy->marketplaceSubcategoriesForSeller($request->user());
+        $inactiveMarketplaceSubcategory = null;
+        if (filled($item['marketplace_subcategory_id'] ?? null)
+            && ! $marketplaceSubcategories->contains('id', (int) $item['marketplace_subcategory_id'])) {
+            $inactiveMarketplaceSubcategory = MarketplaceSubcategory::query()
+                ->with('marketplaceCategory')
+                ->find($item['marketplace_subcategory_id']);
+        }
 
         return view('seller.Products.product-form', [
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
             'categories' => [$registeredCategory],
             'registeredCategory' => $registeredCategory,
-            'subcategories' => $products->subcategoriesFor($request->user()),
+            'subcategories' => $storeSubcategories,
+            'marketplaceSubcategories' => $marketplaceSubcategories,
+            'inactiveMarketplaceSubcategory' => $inactiveMarketplaceSubcategory,
             'product' => $item,
             'mode' => 'edit',
         ]);

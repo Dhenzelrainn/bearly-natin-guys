@@ -68,6 +68,8 @@ class MobileBuyerAddressApiTest extends TestCase
             ->assertCreated()
             ->assertJsonPath('data.name', 'Mobile Recipient')
             ->assertJsonPath('data.phone', '+639171234567')
+            ->assertJsonPath('data.cityCode', '0403428000')
+            ->assertJsonPath('data.cityVerified', true)
             ->assertJsonPath('data.isDefault', true)
             ->assertJsonPath('message', 'Address added successfully.');
 
@@ -77,6 +79,7 @@ class MobileBuyerAddressApiTest extends TestCase
             'user_id' => $buyer->id,
             'recipient_name' => 'Mobile Recipient',
             'phone' => '+639171234567',
+            'psgc_city_code' => '0403428000',
             'is_default_shipping' => 1,
         ]);
         $this->assertDatabaseMissing('addresses', [
@@ -212,6 +215,27 @@ class MobileBuyerAddressApiTest extends TestCase
             ->assertJsonPath('data.0.name', 'Web Updated Recipient')
             ->assertJsonPath('data.0.label', 'Work')
             ->assertJsonPath('data.0.street', 'Web Updated Street');
+
+        $this->withToken($token)
+            ->patchJson('/api/mobile/buyer/addresses/'.$address->id, [
+                'city' => 'Biñan',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('city_code');
+
+        $this->withToken($token)
+            ->patchJson('/api/mobile/buyer/addresses/'.$address->id, [
+                'city' => 'Biñan',
+                'city_code' => '0403428000',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('city');
+
+        $this->assertDatabaseHas('addresses', [
+            'id' => $address->id,
+            'city_municipality' => 'Santa Rosa',
+            'psgc_city_code' => '0403428000',
+        ]);
     }
 
     public function test_mobile_address_validation_matches_web_phone_location_and_coordinate_rules(): void
@@ -222,7 +246,16 @@ class MobileBuyerAddressApiTest extends TestCase
         $this->withToken($token)
             ->postJson('/api/mobile/buyer/addresses', ['name' => 'Missing fields'])
             ->assertUnprocessable()
-            ->assertJsonValidationErrors(['phone', 'province', 'city', 'barangay', 'postal', 'street', 'label']);
+            ->assertJsonValidationErrors([
+                'phone',
+                'province',
+                'city',
+                'city_code',
+                'barangay',
+                'postal',
+                'street',
+                'label',
+            ]);
 
         $this->withToken($token)
             ->postJson('/api/mobile/buyer/addresses', $this->addressInput([
@@ -233,7 +266,7 @@ class MobileBuyerAddressApiTest extends TestCase
 
         $this->withToken($token)
             ->postJson('/api/mobile/buyer/addresses', $this->addressInput([
-                'city_code' => '999999',
+                'city_code' => '0403427000',
             ]))
             ->assertUnprocessable()
             ->assertJsonValidationErrors('city');
@@ -254,6 +287,44 @@ class MobileBuyerAddressApiTest extends TestCase
             ->assertJsonValidationErrors(['latitude', 'longitude']);
 
         $this->assertDatabaseCount('addresses', 0);
+    }
+
+    public function test_legacy_address_allows_non_location_patch_without_becoming_city_verified(): void
+    {
+        $buyer = $this->buyer();
+        $address = $this->address($buyer, 'Legacy Recipient', verified: false);
+        $token = $this->token($buyer);
+
+        $this->withToken($token)
+            ->patchJson('/api/mobile/buyer/addresses/'.$address->id, [
+                'name' => 'Updated Legacy Recipient',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.name', 'Updated Legacy Recipient')
+            ->assertJsonPath('data.cityCode', null)
+            ->assertJsonPath('data.cityVerified', false);
+
+        $this->assertDatabaseHas('addresses', [
+            'id' => $address->id,
+            'recipient_name' => 'Updated Legacy Recipient',
+            'city_municipality' => 'Santa Rosa',
+            'psgc_city_code' => null,
+        ]);
+
+        $this->withToken($token)
+            ->patchJson('/api/mobile/buyer/addresses/'.$address->id, [
+                'province' => 'Metro Manila',
+                'city' => 'Manila',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('city_code');
+
+        $this->assertDatabaseHas('addresses', [
+            'id' => $address->id,
+            'province' => 'Laguna',
+            'city_municipality' => 'Santa Rosa',
+            'psgc_city_code' => null,
+        ]);
     }
 
     public function test_mobile_ownership_checks_hide_foreign_addresses_for_update_delete_and_default(): void
@@ -418,7 +489,12 @@ class MobileBuyerAddressApiTest extends TestCase
         ]);
     }
 
-    private function address(User $user, string $name, bool $isDefault = false): Address
+    private function address(
+        User $user,
+        string $name,
+        bool $isDefault = false,
+        bool $verified = true,
+    ): Address
     {
         return Address::create([
             'user_id' => $user->id,
@@ -430,6 +506,7 @@ class MobileBuyerAddressApiTest extends TestCase
             'city_municipality' => 'Santa Rosa',
             'province' => 'Laguna',
             'postal_code' => '4026',
+            'psgc_city_code' => $verified ? '0403428000' : null,
             'is_default_shipping' => $isDefault,
         ]);
     }
@@ -441,6 +518,7 @@ class MobileBuyerAddressApiTest extends TestCase
             'phone' => '+63 917 123 4567',
             'province' => 'Laguna',
             'city' => 'Santa Rosa',
+            'city_code' => '0403428000',
             'barangay' => 'Balibago',
             'postal' => '4026',
             'street' => 'Maple Street',

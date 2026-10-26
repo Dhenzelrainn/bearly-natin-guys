@@ -44,16 +44,18 @@
 <label><span>Phone Number</span><input id="phone-number" type="tel" inputmode="numeric" autocomplete="tel" required placeholder="+63 9123456789 or 09123456789"></label>
 </div>
 <div class="form-grid">
-<label><span>Province</span><input id="province" required placeholder="Laguna"></label>
+<label><span>Province</span><select id="province" required><option value="">Loading provinces…</option></select></label>
 </div>
 <div class="form-grid two">
-<label><span>City / Municipality</span><input id="city" required placeholder="City / Municipality"></label>
+<label><span>City / Municipality</span><select id="city" required disabled><option value="">Select province first</option></select></label>
 <label><span>Barangay</span><input id="barangay" required placeholder="Barangay"></label>
 </div>
 <div class="form-grid">
 <label><span>Postal Code</span><input id="postal-code" inputmode="numeric" maxlength="4" pattern="\d{4}" required placeholder="Postal Code"></label>
 <label><span>Street Name, Building, House No.</span><input id="street" required placeholder="Street Name, Building, House No."></label>
 </div>
+<p id="address-psgc-status" class="address-map-status" role="status">Select a province and city from the PSGC list. Legacy addresses need city re-verification before checkout.</p>
+<input id="city-code" type="hidden" value="">
 
 <div class="address-map-picker-section">
 <div class="address-map-picker-heading"><div><strong>Pin your location <span>(optional)</span></strong><small>Coordinates supplement your validated address. We do not reverse-geocode or change your PSGC fields.</small></div><div class="address-map-picker-actions"><button id="use-current-location" type="button" class="address-map-location"><span class="material-symbols-outlined" aria-hidden="true">my_location</span>Use my current location</button><button id="clear-address-pin" type="button" class="address-map-clear" hidden>Clear pin</button></div></div>

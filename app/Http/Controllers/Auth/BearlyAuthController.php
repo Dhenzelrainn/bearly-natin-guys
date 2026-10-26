@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Auth;
 use App\Enums\AccountStatus;
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
+use App\Models\Category;
 use App\Models\User;
 use App\Services\ApplicationReviewService;
 use App\Services\AuditService;
@@ -24,6 +25,7 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Laravel\Socialite\Facades\Socialite;
 use Throwable;
@@ -39,7 +41,26 @@ class BearlyAuthController extends Controller
     {
         $this->activeGoogleRegistration($request);
 
-        return view('auth.register');
+        return view('auth.register', [
+            'sellerRegistrationCategories' => $this->sellerRegistrationCategories(),
+        ]);
+    }
+
+    private function sellerRegistrationCategories()
+    {
+        return Category::query()
+            ->whereNull('parent_id')
+            ->where('is_active', true)
+            ->where('is_registration_option', true)
+            ->whereHas('marketplaceCategories', fn ($query) => $query
+                ->where('marketplace_categories.is_active', true))
+            ->with(['marketplaceCategories' => fn ($query) => $query
+                ->where('marketplace_categories.is_active', true)])
+            ->get(['categories.id', 'categories.name', 'categories.slug'])
+            ->filter(fn (Category $category): bool => $category->marketplaceCategories->count() === 1
+                && $category->marketplaceCategories->first()->slug === $category->slug)
+            ->sortBy(fn (Category $category): int => (int) $category->marketplaceCategories->first()->position)
+            ->values();
     }
 
     public function login(Request $request, AuditService $audit): RedirectResponse
@@ -165,7 +186,9 @@ class BearlyAuthController extends Controller
     {
         try {
             $googleUser = Socialite::driver('google')->user();
-        } catch (Throwable) {
+        } catch (Throwable $e) {
+            report($e);
+
             return redirect()
                 ->route('login')
                 ->withErrors([
@@ -349,6 +372,27 @@ class BearlyAuthController extends Controller
             $emailRules[] = Rule::in([$googleEmail]);
         }
 
+        $registrationCategories = $request->input('role') === UserRole::Seller->value
+            ? $this->sellerRegistrationCategories()
+            : collect();
+
+        // Accept a stale form that still posts the exact option label, but
+        // resolve it to a DB-backed selectable Category ID before validation.
+        if (
+            $request->input('role') === UserRole::Seller->value
+            && blank($request->input('business_category_id'))
+            && is_string($request->input('business_category'))
+        ) {
+            $submittedName = trim($request->input('business_category'));
+            $matchingCategories = $registrationCategories
+                ->filter(fn (Category $category): bool => $category->name === $submittedName)
+                ->values();
+
+            if ($matchingCategories->count() === 1) {
+                $request->merge(['business_category_id' => $matchingCategories->first()->id]);
+            }
+        }
+
         $data = $request->validate([
             'role' => ['required', Rule::in([UserRole::Buyer->value, UserRole::Seller->value])],
             'first_name' => ['required', 'string', 'min:2', 'max:50', 'regex:/^[\pL\s\'\-]+$/u'],
@@ -384,7 +428,14 @@ class BearlyAuthController extends Controller
             'house_number' => ['required', 'string', 'max:40'],
             'postal_code' => ['required', 'digits:4'],
             'business_name' => ['required_if:role,seller', 'nullable', 'string', 'max:150', 'regex:/^[\pL\pN\s&\'\.\-]+$/u'],
-            'business_category' => ['required_if:role,seller', 'nullable', 'string', 'max:100'],
+            'business_category_id' => [
+                'exclude_unless:role,seller',
+                'required',
+                'integer',
+                Rule::exists('categories', 'id')
+                    ->where('is_registration_option', true)
+                    ->where('is_active', true),
+            ],
             'valid_id' => ['required', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:5120'],
             'business_permit' => ['required_if:role,seller', 'nullable', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:5120'],
             'password' => ['required', 'confirmed', 'min:8', 'regex:/[a-z]/', 'regex:/[A-Z]/', 'regex:/[0-9]/'],
@@ -392,6 +443,21 @@ class BearlyAuthController extends Controller
         ], [
             'email.in' => 'Use the same email address that was verified by Google.',
         ]);
+
+        if ($data['role'] === UserRole::Seller->value) {
+            $selectedBusinessCategory = $registrationCategories
+                ->first(fn (Category $category): bool => (int) $category->id === (int) $data['business_category_id']);
+
+            if (! $selectedBusinessCategory) {
+                throw ValidationException::withMessages([
+                    'business_category_id' => 'Choose one of the active Seller registration categories.',
+                ]);
+            }
+
+            $data['business_category'] = $selectedBusinessCategory->name;
+        } else {
+            $data['business_category'] = null;
+        }
 
         app(PostalCodeLookup::class)->validate($data);
 
@@ -497,6 +563,7 @@ class BearlyAuthController extends Controller
                         [
                             'business_name' => $data['business_name'] ?? null,
                             'business_category' => $data['business_category'] ?? null,
+                            'business_category_id' => $data['business_category_id'] ?? null,
                         ],
                         array_values(array_filter([
                             [

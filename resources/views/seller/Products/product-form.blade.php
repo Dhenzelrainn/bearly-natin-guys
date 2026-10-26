@@ -1,16 +1,77 @@
 @extends('layouts.seller')
 
-@php($isEdit = $mode === 'edit')
-@php($productMode = $isEdit ? ($product['product_mode'] ?? 'single') : old('product_mode', $product['product_mode'] ?? 'single'))
-@php($hasVariantMatrix = $productMode === 'with_variants')
-@php($selectedPaymentMethods = old('payment_methods', $product['payment_methods'] ?? []))
-@php($formPrice = (float) old('price', $product['price']))
-@php($formDiscount = (int) ($product['discount_percent'] ?? 0))
-@php($formSalePrice = $formPrice * (1 - ($formDiscount / 100)))
-@php($savedMediaPreview = $product['media_preview'] ?? [])
-@php($removedProductImageIds = collect(old('remove_product_images', []))->map(fn ($id) => (int) $id)->filter(fn ($id) => $id > 0)->unique()->values()->all())
-@php($visibleSavedMediaPreview = array_values(array_filter($savedMediaPreview, fn ($media) => ! in_array((int) ($media['image_id'] ?? 0), $removedProductImageIds, true))))
-@php($initialMediaPreview = $visibleSavedMediaPreview[0] ?? null)
+@php
+    $isEdit = $mode === 'edit';
+    $productMode = $isEdit ? ($product['product_mode'] ?? 'single') : old('product_mode', $product['product_mode'] ?? 'single');
+    $hasVariantMatrix = $productMode === 'with_variants';
+    $formPrice = (float) old('price', $product['price']);
+    $formDiscount = (int) ($product['discount_percent'] ?? 0);
+    $formSalePrice = $formPrice * (1 - ($formDiscount / 100));
+    $savedMediaPreview = $product['media_preview'] ?? [];
+    $removedProductImageIds = collect(old('remove_product_images', []))->map(fn ($id) => (int) $id)->filter(fn ($id) => $id > 0)->unique()->values()->all();
+    $visibleSavedMediaPreview = array_values(array_filter($savedMediaPreview, fn ($media) => ! in_array((int) ($media['image_id'] ?? 0), $removedProductImageIds, true)));
+    $initialMediaPreview = $visibleSavedMediaPreview[0] ?? null;
+    $marketplaceSubcategoryCollection = collect($marketplaceSubcategories ?? []);
+    $marketplaceSubcategoryGroups = $marketplaceSubcategoryCollection->groupBy('marketplace_category_id');
+    $productGuidanceConfig = config('seller_product_guidance');
+    $productGuidanceForCategory = static fn (?string $slug): array => $productGuidanceConfig['categories'][$slug ?? '']
+        ?? $productGuidanceConfig['default'];
+    $businessCategoryGuidance = $productGuidanceForCategory(Str::slug($registeredCategory));
+    $selectedMarketplaceSubcategoryId = (int) old(
+        'marketplace_subcategory_id',
+        $product['marketplace_subcategory_id'] ?? 0,
+    );
+    $selectedMarketplaceSubcategory = $marketplaceSubcategoryCollection->first(
+        fn ($subcategory): bool => (int) $subcategory->id === $selectedMarketplaceSubcategoryId,
+    );
+    if (! $selectedMarketplaceSubcategory
+        && ($inactiveMarketplaceSubcategory ?? null)
+        && (int) $inactiveMarketplaceSubcategory->id === $selectedMarketplaceSubcategoryId) {
+        $selectedMarketplaceSubcategory = $inactiveMarketplaceSubcategory;
+    }
+    $currentProductGuidance = $selectedMarketplaceSubcategory?->marketplaceCategory?->slug
+        ? $productGuidanceForCategory((string) $selectedMarketplaceSubcategory->marketplaceCategory->slug)
+        : $businessCategoryGuidance;
+    $isSharedPackageMode = (bool) old('package_shared', false);
+    $variantRowsForEditor = old('variants', $product['variants'] ?? []);
+    $variantRowsForEditor = is_array($variantRowsForEditor) ? array_values($variantRowsForEditor) : [];
+    $oldPackageOverrides = old('package_overrides', []);
+    $oldPackageOverrides = is_array($oldPackageOverrides) ? $oldPackageOverrides : [];
+    $oldPackageOriginals = old('package_originals', []);
+    $oldPackageOriginals = is_array($oldPackageOriginals) ? $oldPackageOriginals : [];
+    $packageFieldLabels = ['package_weight_kg' => 'Weight (kg)', 'package_length_cm' => 'Length (cm)', 'package_width_cm' => 'Width (cm)', 'package_height_cm' => 'Height (cm)'];
+    $packageFieldPlaceholders = ['package_weight_kg' => '0.350', 'package_length_cm' => '24.000', 'package_width_cm' => '18.000', 'package_height_cm' => '8.000'];
+
+    foreach ($variantRowsForEditor as $variantIndex => &$variantRow) {
+        if (! is_array($variantRow)) {
+            $variantRow = [];
+        }
+
+        $variantRow['package_override'] = (bool) ($oldPackageOverrides[$variantIndex] ?? false);
+        $variantRow['package_validation_errors'] = [];
+
+        foreach ($packageFieldLabels as $packageField => $packageLabel) {
+            $message = $errors->first("variants.{$variantIndex}.{$packageField}");
+            if ($message !== '') {
+                $variantRow['package_validation_errors'][] = [
+                    'field' => $packageField,
+                    'label' => $packageLabel,
+                    'message' => $message,
+                ];
+            }
+        }
+
+        $originalPackage = $oldPackageOriginals[$variantIndex] ?? null;
+        if ($isSharedPackageMode && ! $variantRow['package_override'] && is_array($originalPackage)) {
+            foreach (array_keys($packageFieldLabels) as $packageField) {
+                if (array_key_exists($packageField, $originalPackage)) {
+                    $variantRow[$packageField] = $originalPackage[$packageField];
+                }
+            }
+        }
+    }
+    unset($variantRow);
+@endphp
 
 @section('title', $isEdit ? 'Edit Product' : 'Add Product')
 @section('page-title', $isEdit ? 'Edit Product' : 'Add Product')
@@ -54,6 +115,10 @@
     action="{{ $isEdit ? route('seller.products.update', $product['id']) : route('seller.products.add') }}"
     enctype="multipart/form-data"
     data-product-editor
+    data-guidance-name-placeholder="{{ $businessCategoryGuidance['name_placeholder'] }}"
+    data-guidance-name-hint="{{ $businessCategoryGuidance['name_hint'] }}"
+    data-guidance-description-placeholder="{{ $businessCategoryGuidance['description_placeholder'] }}"
+    data-guidance-description-hint="{{ $businessCategoryGuidance['description_hint'] }}"
     data-preview-reserved-stock="{{ (int) ($product['reserved_stock'] ?? 0) }}"
     data-product-discount-percent="{{ $formDiscount }}"
     data-platform-commission-rate="0.10"
@@ -72,7 +137,8 @@
                 <div class="product-form-fields">
                     <label class="seller-field">
                         <span>Product Name <em>*</em></span>
-                        <input name="name" value="{{ old('name', $product['name']) }}" maxlength="120" placeholder="e.g. Classic Linen Shirt" required>
+                        <input name="name" value="{{ old('name', $product['name']) }}" maxlength="120" placeholder="{{ $currentProductGuidance['name_placeholder'] }}" required>
+                        <small data-product-name-guidance>{{ $currentProductGuidance['name_hint'] }}</small>
                         @error('name')<small class="field-error">{{ $message }}</small>@enderror
                     </label>
                     <div class="seller-field locked-category-field">
@@ -81,29 +147,65 @@
                         <small>This is locked to your registered line of business. Contact platform support/Admin for a category review.</small>
                         @error('category')<small class="field-error">{{ $message }}</small>@enderror
                     </div>
+                    <div class="seller-field product-marketplace-subcategory-field">
+                        <label for="product-marketplace-subcategory">Marketplace subcategory</label>
+                        <select id="product-marketplace-subcategory" name="marketplace_subcategory_id">
+                            <option value="">No marketplace subcategory</option>
+                            @if ($inactiveMarketplaceSubcategory ?? false)
+                                @php($inactiveProductGuidance = $productGuidanceForCategory($inactiveMarketplaceSubcategory->marketplaceCategory?->slug))
+                                <option
+                                    value="{{ $inactiveMarketplaceSubcategory->id }}"
+                                    data-name-placeholder="{{ $inactiveProductGuidance['name_placeholder'] }}"
+                                    data-name-hint="{{ $inactiveProductGuidance['name_hint'] }}"
+                                    data-description-placeholder="{{ $inactiveProductGuidance['description_placeholder'] }}"
+                                    data-description-hint="{{ $inactiveProductGuidance['description_hint'] }}"
+                                    @selected((string) old('marketplace_subcategory_id', $product['marketplace_subcategory_id'] ?? '') === (string) $inactiveMarketplaceSubcategory->id)
+                                >Inactive classification · {{ $inactiveMarketplaceSubcategory->marketplaceCategory?->name }} · {{ $inactiveMarketplaceSubcategory->name }}</option>
+                            @endif
+                            @foreach ($marketplaceSubcategoryGroups as $subcategoriesInCategory)
+                                <optgroup label="{{ $subcategoriesInCategory->first()->marketplaceCategory?->name ?? 'Marketplace' }}">
+                                    @foreach ($subcategoriesInCategory as $marketplaceSubcategory)
+                                        @php($marketplaceProductGuidance = $productGuidanceForCategory($marketplaceSubcategory->marketplaceCategory?->slug))
+                                        <option
+                                            value="{{ $marketplaceSubcategory->id }}"
+                                            data-name-placeholder="{{ $marketplaceProductGuidance['name_placeholder'] }}"
+                                            data-name-hint="{{ $marketplaceProductGuidance['name_hint'] }}"
+                                            data-description-placeholder="{{ $marketplaceProductGuidance['description_placeholder'] }}"
+                                            data-description-hint="{{ $marketplaceProductGuidance['description_hint'] }}"
+                                            @selected((string) old('marketplace_subcategory_id', $product['marketplace_subcategory_id'] ?? '') === (string) $marketplaceSubcategory->id)
+                                        >{{ $marketplaceSubcategory->name }}</option>
+                                    @endforeach
+                                </optgroup>
+                            @endforeach
+                        </select>
+                        <small>Choose one Buyer category and subcategory. Your approved business category remains {{ $registeredCategory }}.</small>
+                        @error('marketplace_subcategory_id')<small class="field-error">{{ $message }}</small>@enderror
+                        <a class="seller-subcategory-request-link" href="{{ route('seller.products.subcategory-requests.create') }}">Request a marketplace subcategory</a>
+                    </div>
                     <div class="seller-field product-subcategory-field">
-                        <label for="product-subcategory">Store subcategory</label>
+                        <label for="product-subcategory">Store section / collection</label>
                         <select id="product-subcategory" name="subcategory_id">
-                            <option value="">No subcategory</option>
+                            <option value="">No Store section</option>
                             @foreach ($subcategories as $subcategory)
                                 <option value="{{ $subcategory->id }}" @selected((string) old('subcategory_id', $product['subcategory_id'] ?? '') === (string) $subcategory->id)>{{ $subcategory->name }}</option>
                             @endforeach
                         </select>
-                        <small>Organize this product within your store. Choose an existing option or add a new one below; this will not change your approved marketplace category.</small>
+                        <small>Optional organization shown only on your Store page. This is separate from marketplace classification.</small>
                         @error('subcategory_id')<small class="field-error">{{ $message }}</small>@enderror
                         <details class="seller-subcategory-create" @if (filled(old('new_subcategory_name'))) open @endif>
-                            <summary>Add a new subcategory</summary>
+                            <summary>Create a Store section / collection</summary>
                             <label class="seller-field" for="new-product-subcategory">
-                                <span>New subcategory name</span>
+                                <span>Store section name</span>
                                 <input id="new-product-subcategory" name="new_subcategory_name" value="{{ old('new_subcategory_name') }}" maxlength="120" placeholder="e.g. Summer Shorts">
-                                <small>Saved for your store when you save this product. Existing matching names are reused.</small>
+                                <small>Saved for your Store when you save this product. Existing matching Store sections are reused; this will not appear in global Buyer category navigation.</small>
                                 @error('new_subcategory_name')<small class="field-error">{{ $message }}</small>@enderror
                             </label>
                         </details>
                     </div>
                     <label class="seller-field product-description-field">
                         <span>Description</span>
-                        <textarea name="description" maxlength="1000" placeholder="Describe the product, its material, purpose, or key features." data-product-description>{{ old('description', $product['description']) }}</textarea>
+                        <textarea name="description" maxlength="1000" placeholder="{{ $currentProductGuidance['description_placeholder'] }}" data-product-description>{{ old('description', $product['description']) }}</textarea>
+                        <small data-product-description-guidance>{{ $currentProductGuidance['description_hint'] }}</small>
                         <small class="product-character-count"><span data-product-description-count>{{ strlen(old('description', $product['description'])) }}</span> / 1000</small>
                         @error('description')<small class="field-error">{{ $message }}</small>@enderror
                     </label>
@@ -242,17 +344,15 @@
                 <fieldset class="product-payment-methods" aria-describedby="payment-method-client-error">
                     <legend>Accepted payment methods</legend>
                     <input type="hidden" name="payment_methods_present" value="1">
+                    <input type="hidden" name="payment_methods[]" value="cod">
                     <div class="product-payment-method-options">
                         <label>
-                            <input type="checkbox" name="payment_methods[]" value="cod" @checked(in_array('cod', (array) $selectedPaymentMethods, true))>
+                            <input type="checkbox" name="payment_methods[]" value="cod" checked disabled>
                             <span><strong>Cash on Delivery</strong><small>COD</small></span>
                         </label>
-                        <label>
-                            <input type="checkbox" name="payment_methods[]" value="online" @checked(in_array('online', (array) $selectedPaymentMethods, true))>
-                            <span><strong>Online</strong><small>Online payment</small></span>
-                        </label>
                     </div>
-                    <small class="field-error" id="payment-method-client-error" data-payment-method-client-error role="alert" hidden>Select at least one payment method before saving or publishing.</small>
+                    <small>Buyer checkout currently supports Cash on Delivery only. Online payment is not available yet.</small>
+                    <small class="field-error" id="payment-method-client-error" data-payment-method-client-error role="alert" hidden>Cash on Delivery must remain selected.</small>
                     @error('payment_methods')<small class="field-error">{{ $message }}</small>@enderror
                     @error('payment_methods.0')<small class="field-error">{{ $message }}</small>@enderror
                     @error('payment_methods.1')<small class="field-error">{{ $message }}</small>@enderror
@@ -341,17 +441,17 @@
                     </label>
                     <label class="seller-field">
                         <span>Packaged length (cm) <em>*</em></span>
-                        <input type="number" name="package_length_cm" value="{{ old('package_length_cm', $product['package_length_cm'] ?? '') }}" min="0.01" max="1000" step="0.01" placeholder="e.g. 24" @if ($hasVariantMatrix) disabled @else required @endif>
+                        <input type="number" name="package_length_cm" value="{{ old('package_length_cm', $product['package_length_cm'] ?? '') }}" min="0.001" max="1000" step="0.001" placeholder="e.g. 24.000" @if ($hasVariantMatrix) disabled @else required @endif>
                         @error('package_length_cm')<small class="field-error">{{ $message }}</small>@enderror
                     </label>
                     <label class="seller-field">
                         <span>Packaged width (cm) <em>*</em></span>
-                        <input type="number" name="package_width_cm" value="{{ old('package_width_cm', $product['package_width_cm'] ?? '') }}" min="0.01" max="1000" step="0.01" placeholder="e.g. 18" @if ($hasVariantMatrix) disabled @else required @endif>
+                        <input type="number" name="package_width_cm" value="{{ old('package_width_cm', $product['package_width_cm'] ?? '') }}" min="0.001" max="1000" step="0.001" placeholder="e.g. 18.000" @if ($hasVariantMatrix) disabled @else required @endif>
                         @error('package_width_cm')<small class="field-error">{{ $message }}</small>@enderror
                     </label>
                     <label class="seller-field">
                         <span>Packaged height (cm) <em>*</em></span>
-                        <input type="number" name="package_height_cm" value="{{ old('package_height_cm', $product['package_height_cm'] ?? '') }}" min="0.01" max="1000" step="0.01" placeholder="e.g. 8" @if ($hasVariantMatrix) disabled @else required @endif>
+                        <input type="number" name="package_height_cm" value="{{ old('package_height_cm', $product['package_height_cm'] ?? '') }}" min="0.001" max="1000" step="0.001" placeholder="e.g. 8.000" @if ($hasVariantMatrix) disabled @else required @endif>
                         @error('package_height_cm')<small class="field-error">{{ $message }}</small>@enderror
                     </label>
                 </div>
@@ -382,6 +482,60 @@
                         </button>
                     </div>
 
+                    <section class="variant-package-manager" aria-label="Variant package details">
+                        <div class="variant-package-shared-panel">
+                            <label class="variant-package-shared-toggle">
+                                <input type="checkbox" name="package_shared" value="1" data-package-shared-mode @checked($isSharedPackageMode)>
+                                <span>
+                                    <strong>Use the same package details for all variants</strong>
+                                    <small>Enter packaging once. Each SKU still saves its own weight and dimensions; selected SKUs can keep custom overrides.</small>
+                                </span>
+                            </label>
+                            <div class="variant-package-shared-fields" data-shared-package-fields @unless ($isSharedPackageMode) hidden @endunless>
+                                @foreach ($packageFieldLabels as $packageField => $packageLabel)
+                                    <label class="variant-package-field">
+                                        <span>{{ $packageLabel }} <em>*</em></span>
+                                        <input
+                                            type="number"
+                                            name="shared_package[{{ $packageField }}]"
+                                            value="{{ old('shared_package.'.$packageField, '') }}"
+                                            min="0.001"
+                                            max="1000"
+                                            step="0.001"
+                                            placeholder="{{ $packageFieldPlaceholders[$packageField] }}"
+                                            data-shared-package-input="{{ $packageField }}"
+                                            @unless ($isSharedPackageMode) disabled @endunless
+                                        >
+                                    </label>
+                                @endforeach
+                            </div>
+                        </div>
+
+                        <div class="variant-package-progress-panel">
+                            <div class="variant-package-progress-copy">
+                                <strong data-package-progress-label role="status" aria-live="polite">0 of 0 variants complete</strong>
+                                <progress max="1" value="0" aria-label="Package details completion" data-package-progress-bar></progress>
+                                <small>Every SKU needs positive package weight and length, width, and height before saving or publishing.</small>
+                            </div>
+                            <button class="seller-secondary-button" type="button" data-find-incomplete-package disabled>Find incomplete SKU</button>
+                        </div>
+
+                        <div class="variant-package-copy-panel">
+                            <div>
+                                <strong>Copy package details</strong>
+                                <small>Choose a source SKU and select targets below. Only weight and dimensions are copied—price and stock stay independent.</small>
+                            </div>
+                            <label class="variant-package-copy-source">
+                                <span>Copy from SKU</span>
+                                <select data-package-copy-source disabled>
+                                    <option value="">Generate variants first</option>
+                                </select>
+                            </label>
+                            <button class="seller-secondary-button" type="button" data-package-copy-selected disabled>Copy to selected SKUs</button>
+                            <small class="variant-package-action-status" data-package-action-status role="status" aria-live="polite" hidden></small>
+                        </div>
+                    </section>
+
                     <div class="variant-matrix-empty" data-variant-empty>
                         <i data-lucide="rows-3"></i>
                         <strong>No variant rows yet</strong>
@@ -410,8 +564,11 @@
                     @error('variants')<small class="field-error">{{ $message }}</small>@enderror
                     @error('variants.*.stock')<small class="field-error">{{ $message }}</small>@enderror
                     @error('variants.*.low_stock_threshold')<small class="field-error">{{ $message }}</small>@enderror
-                    @foreach (['package_weight_kg' => 'Packaged weight', 'package_length_cm' => 'Packaged length', 'package_width_cm' => 'Packaged width', 'package_height_cm' => 'Packaged height'] as $packageField => $packageLabel)
-                        @error("variants.*.{$packageField}")<small class="field-error">{{ $packageLabel }} is required for every SKU.</small>@enderror
+                    @foreach ($variantRowsForEditor as $variantErrorIndex => $variantErrorRow)
+                        @foreach ($variantErrorRow['package_validation_errors'] ?? [] as $packageError)
+                            @php($variantErrorIdentity = trim((string) ($variantErrorRow['sku'] ?? '')) ?: (trim((string) ($variantErrorRow['label'] ?? '')) ?: 'Variant '.($variantErrorIndex + 1)))
+                            <small class="field-error variant-package-validation-error" role="alert">{{ $variantErrorIdentity }} — {{ $packageError['label'] }}: {{ $packageError['message'] }}</small>
+                        @endforeach
                     @endforeach
                     @foreach ($errors->getMessages() as $key => $messages)
                         @if (preg_match('/^variants\.\d+\.price$/', $key))
@@ -421,7 +578,7 @@
                     <small class="field-error" id="variant-client-error" data-variant-client-error role="alert" hidden>Generate at least one variant row and enter a regular price for every SKU before saving or publishing.</small>
                     </section>
 
-                    <script type="application/json" data-existing-variants>@json(old('variants', $product['variants'] ?? []))</script>
+                    <script type="application/json" data-existing-variants>@json($variantRowsForEditor)</script>
                 </div>
             </section>
         </div>
@@ -480,11 +637,7 @@
                     <div class="product-buyer-preview-payment">
                         <span>Accepted payment methods</span>
                         <div class="product-buyer-preview-payments" data-buyer-preview-payment-methods>
-                            @forelse ((array) $selectedPaymentMethods as $method)
-                                @if ($method === 'cod')<span>Cash on Delivery</span>@elseif ($method === 'online')<span>Online</span>@endif
-                            @empty
-                                <span>No payment methods selected</span>
-                            @endforelse
+                            <span>Cash on Delivery</span>
                         </div>
                     </div>
                 </article>

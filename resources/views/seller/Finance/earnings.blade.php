@@ -56,7 +56,7 @@
         <ol class="settlement-rule-list">
             <li><span>1</span><div><strong>Payment is confirmed and the ledger is posted</strong><p>Your sale earnings appear in the shared Finance ledger and Wallet Pending balance.</p></div></li>
             <li><span>2</span><div><strong>Seller Order is completed</strong><p>COD earnings also require exact Finance reconciliation for each associated outbound COD shipment.</p></div></li>
-            <li><span>3</span><div><strong>Return and refund checks are clear</strong><p>The seven-day return period must end and no open return/refund case may remain before earnings move to Available.</p></div></li>
+            <li><span>3</span><div><strong>Return and refund checks are clear</strong><p>After 3 calendar days from Seller Order completion, earnings may move to Available if no return/refund case remains open. Payment and COD reconciliation checks can still delay release.</p></div></li>
             <li><span>4</span><div><strong>Request a bank withdrawal</strong><p>Available funds are reserved for Finance review. Bearly does not send a transfer automatically.</p></div></li>
         </ol>
     </article>

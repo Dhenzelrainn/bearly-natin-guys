@@ -1155,9 +1155,9 @@ Append-only custody history. Contains the collection ID, event type, from/to rol
 | `updated_at` | `timestamp` | YES | — |  |
 | `deleted_at` | `timestamp` | YES | — |  |
 | `package_weight_kg` | `decimal(10,3)` | YES | — |  |
-| `package_length_cm` | `decimal(10,2)` | YES | — |  |
-| `package_width_cm` | `decimal(10,2)` | YES | — |  |
-| `package_height_cm` | `decimal(10,2)` | YES | — |  |
+| `package_length_cm` | `decimal(10,3)` | YES | — |  |
+| `package_width_cm` | `decimal(10,3)` | YES | — |  |
+| `package_height_cm` | `decimal(10,3)` | YES | — |  |
 
 **Foreign keys**
 

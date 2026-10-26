@@ -29,6 +29,7 @@ class RiderDeliveryService
 {
     public function __construct(
         private readonly NotificationService $notifications,
+        private readonly SellerOrderOutboundShipmentGuard $outboundShipmentGuard,
     ) {}
 
     public function startDelivery(
@@ -1129,13 +1130,21 @@ class RiderDeliveryService
                         );
                     }
 
-                    $shipment = Shipment::query()
+                    $shipmentReference = Shipment::query()
                         ->where(
                             'shipment_no',
                             $shipmentNo
                         )
-                        ->lockForUpdate()
                         ->firstOrFail();
+
+                    if ($shipmentReference->purpose === 'outbound' && (int) $shipmentReference->cod_amount_minor > 0) {
+                        $shipment = $this->outboundShipmentGuard->lockSingleForShipment((int) $shipmentReference->id)['shipment'];
+                    } else {
+                        $shipment = Shipment::query()
+                            ->whereKey($shipmentReference->id)
+                            ->lockForUpdate()
+                            ->firstOrFail();
+                    }
 
                     if (
                         (int) $shipment->logistics_profile_id

@@ -43,13 +43,20 @@ class SellerInventoryService
      *     inventoryTabs: array<int, array{key: string, label: string, count: int}>,
      *     inventorySubcategories: array<int, array{id: int, name: string}>,
      *     inventoryHasUncategorized: bool,
+     *     inventoryMarketplaceSubcategories: array<int, array{id: int, name: string, marketplace_category: string}>,
+     *     inventoryHasUnclassifiedMarketplaceItems: bool,
+     *     inventorySelectedStoreSection: ?string,
+     *     inventorySelectedMarketplaceSubcategory: ?string,
      *     inventoryItems: Collection<int, array<string, mixed>>,
      *     stockMovements: Collection<int, array<string, mixed>>,
      *     adjustmentReasons: array<string, string>
      * }
      */
-    public function inventoryFor(User $user): array
-    {
+    public function inventoryFor(
+        User $user,
+        ?string $storeSection = null,
+        ?string $marketplaceSubcategoryFilter = null,
+    ): array {
         $store = $this->products->storeFor($user);
 
         $variants = ProductVariant::query()
@@ -57,6 +64,7 @@ class SellerInventoryService
             ->whereHas('product', fn ($products) => $products->where('store_id', $store->id))
             ->with([
                 'product.subcategory:id,store_id,name',
+                'product.marketplaceSubcategory.marketplaceCategory',
                 'product.images' => fn ($images) => $images
                     ->select(['id', 'product_id', 'variant_id', 'path', 'disk', 'purpose', 'position', 'is_primary'])
                     ->orderBy('position'),
@@ -73,6 +81,7 @@ class SellerInventoryService
             $productImages = $product->images->whereNull('variant_id');
             $image = $productImages->firstWhere('is_primary', true) ?? $productImages->first();
             $subcategory = $product->subcategory;
+            $marketplaceSubcategory = $product->marketplaceSubcategory;
             $hasOwnedSubcategory = $subcategory !== null
                 && (int) $subcategory->store_id === (int) $store->id;
             $physicalAvailable = max(0, (int) $variant->stock_on_hand - (int) $variant->stock_reserved);
@@ -102,6 +111,11 @@ class SellerInventoryService
                     : (string) $variant->name,
                 'subcategory' => $hasOwnedSubcategory ? (string) $subcategory->name : null,
                 'subcategory_id' => $hasOwnedSubcategory ? (int) $subcategory->id : null,
+                'marketplace_subcategory' => $marketplaceSubcategory?->name,
+                'marketplace_subcategory_id' => $marketplaceSubcategory?->id
+                    ? (int) $marketplaceSubcategory->id
+                    : null,
+                'marketplace_category' => $marketplaceSubcategory?->marketplaceCategory?->name,
                 'image' => $this->catalog->variantImageUrl($product, $variant)
                     ?? ($image ? Storage::disk($image->disk ?: 'public')->url($image->path) : null),
                 'icon' => 'package',
@@ -143,6 +157,35 @@ class SellerInventoryService
             ->values()
             ->all();
         $hasUncategorizedItems = $items->contains(fn (array $item): bool => $item['subcategory_id'] === null);
+        $marketplaceSubcategories = $items
+            ->filter(fn (array $item): bool => $item['marketplace_subcategory_id'] !== null)
+            ->map(fn (array $item): array => [
+                'id' => $item['marketplace_subcategory_id'],
+                'name' => (string) $item['marketplace_subcategory'],
+                'marketplace_category' => (string) ($item['marketplace_category'] ?? 'Marketplace'),
+            ])
+            ->unique('id')
+            ->sortBy(fn (array $subcategory): string => Str::lower($subcategory['marketplace_category'].' '.$subcategory['name']))
+            ->values()
+            ->all();
+        $hasUnclassifiedMarketplaceItems = $items->contains(
+            fn (array $item): bool => $item['marketplace_subcategory_id'] === null,
+        );
+
+        $filteredItems = $items->filter(function (array $item) use ($storeSection, $marketplaceSubcategoryFilter): bool {
+            $matchesStoreSection = match ($storeSection) {
+                null, '' => true,
+                'uncategorized' => $item['subcategory_id'] === null,
+                default => (string) $item['subcategory_id'] === $storeSection,
+            };
+            $matchesMarketplaceSubcategory = match ($marketplaceSubcategoryFilter) {
+                null, '' => true,
+                'unclassified' => $item['marketplace_subcategory_id'] === null,
+                default => (string) $item['marketplace_subcategory_id'] === $marketplaceSubcategoryFilter,
+            };
+
+            return $matchesStoreSection && $matchesMarketplaceSubcategory;
+        })->values();
 
         return [
             'inventoryTotal' => $activeItems->count(),
@@ -168,7 +211,11 @@ class SellerInventoryService
             ],
             'inventorySubcategories' => $subcategories,
             'inventoryHasUncategorized' => $hasUncategorizedItems,
-            'inventoryItems' => $items,
+            'inventoryMarketplaceSubcategories' => $marketplaceSubcategories,
+            'inventoryHasUnclassifiedMarketplaceItems' => $hasUnclassifiedMarketplaceItems,
+            'inventorySelectedStoreSection' => $storeSection,
+            'inventorySelectedMarketplaceSubcategory' => $marketplaceSubcategoryFilter,
+            'inventoryItems' => $filteredItems,
             'stockMovements' => $this->recentMovementsFor($store),
             'adjustmentReasons' => self::ADJUSTMENT_REASONS,
         ];

@@ -9,6 +9,7 @@ use App\Models\Refund;
 use App\Models\RefundCashPayout;
 use App\Models\SellerPayout;
 use App\Models\SellerTransaction;
+use App\Models\ShippingSettlement;
 use App\Models\Store;
 use App\Models\SystemSetting;
 use App\Services\AuditService;
@@ -17,6 +18,7 @@ use App\Services\CodCashCollectionService;
 use App\Services\RefundCashPayoutService;
 use App\Services\SellerEarningsService;
 use App\Services\SellerPayoutService;
+use App\Services\ShippingSettlementService;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Http\RedirectResponse;
@@ -102,6 +104,7 @@ class AdminFinanceController extends Controller
                 'sellerOrder.store',
                 'sellerOrder.items.product.images.variant',
                 'sellerOrder.items.variant',
+                'sellerOrder.order.promotionRedemptions.allocations',
                 'payment',
                 'refund',
                 'commission.refund',
@@ -140,6 +143,40 @@ class AdminFinanceController extends Controller
                     ])
                     ->values()
                     ->all() ?? [],
+                'platform_promotions' => ($transaction->sellerOrder?->order?->promotionRedemptions ?? collect())
+                    ->filter(fn ($redemption): bool => $redemption->platform_promotion_id !== null)
+                    ->map(function ($redemption) use ($transaction): array {
+                        $allocations = $redemption->allocations
+                            ->where('seller_order_id', $transaction->seller_order_id);
+                        $discountMinor = (int) $allocations
+                            ->whereNotNull('order_item_id')
+                            ->sum(fn ($allocation): int => max(0, (int) $allocation->amount_minor - (int) $allocation->released_amount_minor));
+                        $shippingDiscountMinor = (int) $allocations
+                            ->whereNull('order_item_id')
+                            ->sum(fn ($allocation): int => max(0, (int) $allocation->amount_minor - (int) $allocation->released_amount_minor));
+                        $releasedDiscountMinor = (int) $allocations
+                            ->whereNotNull('order_item_id')
+                            ->sum('released_amount_minor');
+                        $releasedShippingMinor = (int) $allocations
+                            ->whereNull('order_item_id')
+                            ->sum('released_amount_minor');
+
+                        return [
+                            'name' => (string) $redemption->name,
+                            'kind' => (string) $redemption->kind,
+                            'status' => (string) $redemption->status,
+                            'discount_minor' => $discountMinor,
+                            'shipping_discount_minor' => $shippingDiscountMinor,
+                            'released_discount_minor' => $releasedDiscountMinor,
+                            'released_shipping_discount_minor' => $releasedShippingMinor,
+                        ];
+                    })
+                    ->filter(fn (array $promotion): bool => $promotion['discount_minor'] > 0
+                        || $promotion['shipping_discount_minor'] > 0
+                        || $promotion['released_discount_minor'] > 0
+                        || $promotion['released_shipping_discount_minor'] > 0)
+                    ->values()
+                    ->all(),
                 'method' => str($transaction->refund?->method ?? $transaction->payment?->method ?? 'system')->replace('_', ' ')->title()->toString(),
                 'gross' => $grossMinor / 100,
                 'refund' => $status === 'Refunded' ? abs((int) ($transaction->refund?->amount_minor ?? 0)) / 100 : 0,
@@ -202,6 +239,15 @@ class AdminFinanceController extends Controller
         ));
     }
 
+    public function shippingSettlements(
+        Request $request,
+        ShippingSettlementService $shippingSettlementService,
+    ): View {
+        return view('admin.finance.shipping-settlements', $this->base($request) + [
+            'shippingSettlements' => $shippingSettlementService->financeSettlements(),
+        ]);
+    }
+
     public function reconcileCodCash(
         Request $request,
         CodCashCollection $collection,
@@ -221,6 +267,42 @@ class AdminFinanceController extends Controller
         );
 
         return back()->with('success', "COD cash {$reconciled->collection_no} was reconciled. Bearly Finance receipt {$reconciled->finance_reference} is ready to print.");
+    }
+
+    public function recordShippingSettlement(
+        Request $request,
+        ShippingSettlement $settlement,
+        ShippingSettlementService $shippingSettlements,
+    ): RedirectResponse {
+        $data = $request->validate([
+            'settlement_id' => ['required', 'integer'],
+            'remittance_confirmed' => ['required', 'accepted'],
+            'actual_amount' => ['required', 'string', 'regex:/^\d{1,8}(?:\.\d{1,2})?$/'],
+            'method' => ['required', Rule::in(['bank_transfer', 'gcash', 'cash', 'other'])],
+            'reference' => ['required', 'string', 'max:150'],
+            'paid_on' => ['required', 'date_format:Y-m-d', 'before_or_equal:today'],
+            'reason' => ['required', 'string', 'min:5', 'max:1000'],
+        ], [
+            'remittance_confirmed.accepted' => 'Confirm that Finance has already sent the exact shipping allocation to Logistics.',
+            'actual_amount.regex' => 'Enter the actual amount with up to two decimal places.',
+        ]);
+
+        if ((int) $data['settlement_id'] !== (int) $settlement->id) {
+            throw ValidationException::withMessages(['settlement_id' => 'The selected shipping settlement changed. Refresh and try again.']);
+        }
+
+        $recorded = $shippingSettlements->recordLogisticsRemittance(
+            $request->user(),
+            (int) $settlement->id,
+            $this->amountToMinor($data['actual_amount']),
+            $data['method'],
+            trim($data['reference']),
+            $data['paid_on'],
+            trim($data['reason']),
+            $request,
+        );
+
+        return back()->with('success', "Shipping allocation {$recorded->settlement_no} was recorded as remitted to Logistics.");
     }
 
     public function printCodCashReceipt(Request $request, CodCashCollection $collection, AuditService $audit): Response

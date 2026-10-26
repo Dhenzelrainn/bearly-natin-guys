@@ -21,6 +21,7 @@ export default defineConfig({
                 'resources/css/buyer.css',
                 'resources/css/product-detail.css',
                 'resources/js/buyer.js',
+                'resources/js/buyer-flash-deals.js',
                 'resources/js/product-detail.js',
                 'resources/js/buyer-notifications.js',
                 // Buyer promo slider
@@ -34,6 +35,7 @@ export default defineConfig({
                  'resources/css/buyer-dispute.css',
                  'resources/css/buyer-return.css',
                  'resources/css/wishlist.css',
+                'resources/js/wishlist.js',
                 'resources/css/bearly-chat.css',
                 'resources/js/profile.js',
                 'resources/js/account-addresses.js',

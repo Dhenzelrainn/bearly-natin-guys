@@ -40,6 +40,11 @@ class SellerOrder extends Model
         return $this->hasMany(Shipment::class);
     }
 
+    public function shippingSettlements()
+    {
+        return $this->hasMany(ShippingSettlement::class);
+    }
+
     public function returnRequests()
     {
         return $this->hasMany(ReturnRequest::class)

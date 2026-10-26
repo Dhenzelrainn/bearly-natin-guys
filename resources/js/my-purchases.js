@@ -23,7 +23,7 @@ async function ensureServerOrders(){
   })();
   return serverFetch;
 }
-window.bearlyEnsurePurchases=ensureServerOrders;
+if(typeof window!=='undefined')window.bearlyEnsurePurchases=ensureServerOrders;
 function safeImage(img){
   const value=String(img||'');
   if(/^(\/images\/|\/storage\/)/.test(value))return value;
@@ -36,30 +36,32 @@ function safeImage(img){
 function orderTimestamp(order){const value=[order?.date,order?.time].filter(Boolean).join(' '),timestamp=Date.parse(value);return Number.isNaN(timestamp)?0:timestamp}
 function sortedOrders(orders){return [...orders].sort((a,b)=>{if(purchaseSort==='high')return Number(b?.total||0)-Number(a?.total||0);if(purchaseSort==='low')return Number(a?.total||0)-Number(b?.total||0);const direction=purchaseSort==='oldest'?1:-1;return (orderTimestamp(a)-orderTimestamp(b))*direction})}
 function placedDate(order){return [order?.date,order?.time].filter(Boolean).join(' ')||'Date unavailable'}
+function sellerDeliveryLabel(state){return ({preparing:'Preparing',in_transit:'In transit',out_for_delivery:'Out for delivery',delivered:'Delivered',cancelled:'Cancelled'}[state]||'Preparing')}
 function serverActionForm(action,reason,label,cls){
   return `<form method="post" action="${purchaseEsc(action)}" class="order-server-action"><input type="hidden" name="_token" value="${purchaseEsc(csrfToken())}"><input type="hidden" name="reason" value="${purchaseEsc(reason)}"><button class="${cls}" type="submit">${label}</button></form>`;
 }
-function actionButtons(order){
+export function actionButtons(order){
   const id=purchaseEsc(order.id||'');
   if(order&&order.server){
     const track=`<button class="order-btn order-track" type="button" data-order="${id}">Track Order</button>`;
     const details=order.details_url?`<a class="order-btn" href="${purchaseEsc(order.details_url)}">View Details</a>`:'<button class="order-btn" type="button">View Details</button>';
-    if(order.status==='to-pay')return `<button class="order-btn primary" type="button">Pay Now</button>${details}`;
+    if(order.status==='to-pay')return details;
     if(order.status==='to-ship'&&order.cancel_url)return `${details}${serverActionForm(order.cancel_url,'Buyer requested cancellation','Cancel Order','order-btn order-cancel')}`;
     if(order.status==='to-ship')return `${details}`;
     if(order.status==='to-receive'&&order.can_confirm&&order.confirm_url)return `${serverActionForm(order.confirm_url,'Buyer confirmed receipt','Order Received','order-btn primary')}${track}${details}`;
     if(order.status==='to-receive')return `${track}${details}`;
-    if(order.status==='completed')return `<button class="order-btn primary order-rate-product" type="button" data-order="${id}" data-index="0">Rate Product</button><button class="order-btn" type="button">Buy Again</button>${details}`;
+    if(order.status==='completed')return `<button class="order-btn primary order-rate-product" type="button" data-order="${id}" data-index="0">Rate Product</button>${details}`;
     return details;
   }
-  if(order.status==='to-pay')return '<button class="order-btn primary" type="button">Pay Now</button><button class="order-btn" type="button">View Details</button>';
+  if(order.status==='to-pay')return '<button class="order-btn" type="button">View Details</button>';
   if(order.status==='to-ship')return '<button class="order-btn" type="button">View Details</button><button class="order-btn order-cancel" type="button">Cancel Order</button>';
   if(order.status==='to-receive')return `<button class="order-btn primary" type="button">Order Received</button><button class="order-btn order-track" type="button" data-order="${id}">Track Order</button><button class="order-btn" type="button">View Details</button>`;
-  if(order.status==='completed')return `<button class="order-btn primary order-rate-product" type="button" data-order="${id}" data-index="0">Rate Product</button><button class="order-btn" type="button">Buy Again</button><button class="order-btn" type="button">View Details</button>`;
+  if(order.status==='completed')return `<button class="order-btn primary order-rate-product" type="button" data-order="${id}" data-index="0">Rate Product</button><button class="order-btn" type="button">View Details</button>`;
   return '<button class="order-btn" type="button">View Details</button>';
 }
 function orderHTML(o){
-   const items=(o.items||[]).map(i=>{const item=i||{};return `<div class="order-product"><img src="${purchaseEsc(safeImage(item.image))}" alt="${purchaseEsc(item.name||'Product')}" onerror="this.onerror=null;this.src='/images/bearly-logo.png'"><div class="order-product-copy"><h3>${purchaseEsc(item.name||'Product')}</h3><p>Variation: ${purchaseEsc(item.variation||'Standard')}</p><p>x${purchaseEsc(item.qty||1)}</p></div><div class="order-price"><strong>${peso(item.price)}</strong></div></div>`}).join('');
+    const items=(o.items||[]).map(i=>{const item=i||{};return `<div class="order-product"><img src="${purchaseEsc(safeImage(item.image))}" alt="${purchaseEsc(item.name||'Product')}" onerror="this.onerror=null;this.src='/images/bearly-logo.png'"><div class="order-product-copy"><h3>${purchaseEsc(item.name||'Product')}</h3><p>Variation: ${purchaseEsc(item.variation||'Standard')}</p><p>x${purchaseEsc(item.qty||1)}</p></div><div class="order-price"><strong>${peso(item.price)}</strong></div></div>`}).join('');
+    const sellerProgress=(o.seller_orders||[]).map(sellerOrder=>`<div class="order-seller-progress-row"><strong>${purchaseEsc(sellerOrder.store||'Seller')}</strong><span>Seller order #${purchaseEsc(sellerOrder.number||sellerOrder.id||'')}</span><span>${purchaseEsc(sellerDeliveryLabel(sellerOrder.delivery_status))}</span></div>`).join('');
     const returnLinks=(o.seller_orders||[]).map(sellerOrder=>{
       const cases=(sellerOrder.return_cases||[]).map(returnCase=>`<a class="order-btn" href="${purchaseEsc(returnCase.url)}">Case ${purchaseEsc(returnCase.number)} · ${purchaseEsc(String(returnCase.status||'').replaceAll('_',' '))}</a>`).join('');
       const request=sellerOrder.return_url?`<a class="order-btn" href="${purchaseEsc(sellerOrder.return_url)}">Return / refund · ${purchaseEsc(sellerOrder.store||'Seller')}</a>`:'';
@@ -67,7 +69,7 @@ function orderHTML(o){
       return cases+request+dispute;
     }).join('');
    const status=o.status||'', label=purchaseEsc(o.statusLabel||status||'Order update');
-   return `<article class="order-card"><div class="order-card-head"><div class="order-meta"><div class="order-shop"><span class="material-symbols-outlined" aria-hidden="true">storefront</span><strong>${purchaseEsc(o.shop||'Seller')}</strong></div><span class="order-id">Order #${purchaseEsc(o.id||'')}</span><span class="order-date">Placed on ${purchaseEsc(placedDate(o))}</span></div><span class="order-status">${label}</span></div>${items}<div class="order-card-foot"><div class="order-actions">${actionButtons(o)}${returnLinks}</div></div></article>`;
+    return `<article class="order-card"><div class="order-card-head"><div class="order-meta"><div class="order-shop"><span class="material-symbols-outlined" aria-hidden="true">storefront</span><strong>${purchaseEsc(o.shop||'Seller')}</strong></div><span class="order-id">Order #${purchaseEsc(o.id||'')}</span><span class="order-date">Placed on ${purchaseEsc(placedDate(o))}</span></div><span class="order-status">${label}</span></div>${sellerProgress?`<div class="order-seller-progress" aria-label="Progress by Seller Order">${sellerProgress}</div>`:''}${items}<div class="order-card-foot"><div class="order-actions">${actionButtons(o)}${returnLinks}</div></div></article>`;
 }
 async function renderMyPurchases(){
   const list=document.querySelector('#purchase-list'),empty=document.querySelector('#purchases-empty'),count=document.querySelector('#purchase-count');if(!list)return;
@@ -124,11 +126,15 @@ function initMyPurchases(){
   const back=document.querySelector('#tracking-back'); if(back) back.addEventListener('click',()=>{if(typeof window.bearlyShowAccountPanel==='function')window.bearlyShowAccountPanel('purchases');else location.hash='purchases'});
   renderMyPurchases();
 }
-if(document.readyState === 'loading'){
-  document.addEventListener('DOMContentLoaded', initMyPurchases);
-} else {
-  initMyPurchases();
+if(typeof document!=='undefined'){
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', initMyPurchases);
+  } else {
+    initMyPurchases();
+  }
 }
-window.renderMyPurchases=renderMyPurchases;
-window.bearlyGetOrders=getOrders;
-window.renderOrderTracking=renderOrderTracking;
+if(typeof window!=='undefined'){
+  window.renderMyPurchases=renderMyPurchases;
+  window.bearlyGetOrders=getOrders;
+  window.renderOrderTracking=renderOrderTracking;
+}

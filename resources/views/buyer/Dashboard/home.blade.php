@@ -4,116 +4,8 @@ $homeCategories = json_decode(file_get_contents(resource_path('data/buyer-catego
 
 
 
-$categoryProductSources = [
-
-    'pet-supplies' => ['file' => 'buyer-pet-supplies-products.json', 'name' => 'Pet Supplies', 'atlas' => 'pet-supplies-catalog-atlas.png'],
-
-    'electronics-and-gadgets' => ['file' => 'buyer-electronics-gadgets-products.json', 'name' => 'Electronics and Gadgets', 'atlas' => 'electronics-gadgets-catalog-atlas.png'],
-
-    'women-s-apparel' => ['file' => 'buyer-womens-products.json', 'name' => "Women's Apparel", 'atlas' => 'womens-catalog-atlas.png'],
-
-    'men-s-apparel' => ['file' => 'buyer-mens-products (1).json', 'name' => "Men's Apparel", 'atlas' => 'mens-catalog-atlas.png', 'atlas_columns' => 4, 'atlas_rows' => 4],
-
-    'kids-and-baby' => ['file' => 'buyer-kids-baby-products.json', 'name' => 'Kids and Baby', 'atlas' => 'kids-baby-catalog-atlas.png'],
-
-    'home-and-garden' => ['file' => 'buyer-home-garden-products.json', 'name' => 'Home and Garden', 'atlas' => 'home-garden-catalog-atlas.png'],
-
-    'sports-and-outdoors' => ['file' => 'buyer-sports-products.json', 'name' => 'Sports and Outdoors', 'atlas' => 'sports-outdoors-catalog-atlas.png'],
-
-    'health-and-beauty' => ['file' => 'buyer-health-beauty-products.json', 'name' => 'Health and Beauty', 'atlas' => 'health-beauty-catalog-atlas.png'],
-
-    'books-and-media' => ['file' => 'buyer-books-media-products.json', 'name' => 'Books and Media', 'atlas' => 'books-media-catalog-atlas.png'],
-
-    'jewelry-and-watches' => ['file' => 'buyer-jewelry-watches-products.json', 'name' => 'Jewelry and Watches', 'atlas' => 'jewelry-watches-catalog-atlas.png'],
-
-    'food-and-gourmet' => ['file' => 'buyer-foods-gourmet-products.json', 'name' => 'Foods and Gourmet', 'atlas' => 'foods-gourmet-catalog-atlas.png'],
-
-    'furniture-and-office-equipment' => ['file' => 'buyer-furniture-office-products.json', 'name' => 'Furniture and Office Equipment', 'atlas' => 'furniture-office-catalog-atlas.png'],
-
-];
-
-
-
-$homeProductsByCategory = [];
-
-foreach ($categoryProductSources as $slug => $source) {
-
-    $categoryProducts = json_decode(file_get_contents(resource_path('data/' . $source['file'])), true, 512, JSON_THROW_ON_ERROR);
-
-    $homeProductsByCategory[$slug] = [];
-
-
-
-    foreach (array_slice($categoryProducts, 0, 5) as $product) {
-
-        $originalProductId = $product['id'];
-        $product['id'] = 'home-' . $slug . '-' . $product['id'];
-
-        $product['category'] = $source['name'];
-
-        $product['category_slug'] = $slug;
-        $product['wishlist_key'] = $slug . ':' . $originalProductId;
-
-        $product['atlas'] = asset('images/' . $source['atlas']);
-
-        $product['atlas_columns'] = $source['atlas_columns'] ?? 5;
-
-        $product['atlas_rows'] = $source['atlas_rows'] ?? 6;
-
-        $homeProductsByCategory[$slug][] = $product;
-
-    }
-
-}
-
-
-
-$featuredProducts = [];
-foreach ($categoryProductSources as $slug => $source) {
-    $allCategoryProducts = json_decode(file_get_contents(resource_path('data/' . $source['file'])), true, 512, JSON_THROW_ON_ERROR);
-    foreach ($allCategoryProducts as $product) {
-        $product['featured_key'] = $slug . ':' . $product['id'];
-        $product['category'] = $source['name'];
-        $product['category_slug'] = $slug;
-        $featuredProducts[] = $product;
-    }
-}
-
-$homeProducts = [];
-
-for ($round = 0; $round < 5; $round++) {
-
-    foreach (array_keys($categoryProductSources) as $slug) {
-
-        if (isset($homeProductsByCategory[$slug][$round])) {
-
-            $homeProducts[] = $homeProductsByCategory[$slug][$round];
-
-        }
-
-    }
-
-}
-
-$usingLiveCatalog = ! empty($liveCatalog);
-
-if ($usingLiveCatalog) {
-
-    $homeProducts = array_slice($liveCatalog, 0, 60);
-
-}
-
-
-
-
-$homeFlashDeals = [
-    ['key' => 'flash-earbuds', 'product_id' => 'electronics-and-gadgets:7', 'name' => 'Wireless Earbuds', 'price' => 599, 'original_price' => 799, 'image' => 'electronics/electronics-07-01.jpg', 'category' => 'Electronics & Gadgets', 'discount' => 25, 'rating' => 4.8, 'sold' => '2.8k', 'claimed' => 72],
-    ['key' => 'flash-cleanser', 'product_id' => 'health-and-beauty:1', 'name' => 'Gentle Facial Cleanser', 'price' => 349, 'original_price' => 499, 'image' => 'health-beauty/health-beauty-01-01.jpg', 'category' => 'Health & Beauty', 'discount' => 30, 'rating' => 4.9, 'sold' => '2.1k', 'claimed' => 64],
-    ['key' => 'flash-tee', 'product_id' => 'mens-apparel:1', 'name' => 'Everyday Basic Tee', 'price' => 329, 'original_price' => 449, 'image' => 'men/mens-01-01.jpg', 'category' => "Men's Apparel", 'discount' => 27, 'rating' => 4.8, 'sold' => '1.9k', 'claimed' => 81],
-    ['key' => 'flash-watch', 'product_id' => 'jewelry-and-watches:21', 'name' => "Men's Silver Classic Watch", 'price' => 999, 'original_price' => 1499, 'image' => 'jewelry-watches/jewelry-watches-21-01.jpg', 'category' => 'Jewelry & Watches', 'discount' => 33, 'rating' => 4.9, 'sold' => '1.7k', 'claimed' => 58],
-    ['key' => 'flash-headphones', 'product_id' => 'electronics-and-gadgets:6', 'name' => 'Wireless Headphones', 'price' => 1299, 'original_price' => 1799, 'image' => 'electronics/electronics-06-01.jpg', 'category' => 'Audio & Entertainment', 'discount' => 28, 'rating' => 4.7, 'sold' => '1.5k', 'claimed' => 69],
-    ['key' => 'flash-smartwatch', 'product_id' => 'electronics-and-gadgets:8', 'name' => 'Smart Watch', 'price' => 1499, 'original_price' => 2199, 'image' => 'electronics/electronics-08-01.jpg', 'category' => 'Smart Devices & Power', 'discount' => 32, 'rating' => 4.8, 'sold' => '1.3k', 'claimed' => 61],
-];
+$homeProducts = array_slice($liveCatalog ?? [], 0, 60);
+$usingLiveCatalog = true;
 
 @endphp
 
@@ -532,127 +424,169 @@ $homeFlashDeals = [
 
 
 
-<section class="flash-deals-preview home-flash-deals home-featured-section" aria-labelledby="home-flash-title">
-    <div class="flash-deals-heading">
-        <div class="flash-deals-title">
-            <h2 id="home-flash-title">Flash Deals</h2>
-            <div class="flash-countdown" data-flash-countdown aria-label="Flash deals countdown">
-                <span data-hours>00</span><b aria-hidden="true">:</b><span data-minutes>00</span><b aria-hidden="true">:</b><span data-seconds>00</span>
-            </div>
-        </div>
-        <a class="text-button top-view-all" href="{{ url('/flash-deals') }}">View all <span aria-hidden="true">→</span></a>
-    </div>
+@include('buyer.partials.home-campaigns', ['campaigns' => $liveCampaigns ?? collect()])
 
-    <div class="flash-deal-grid" aria-label="Featured flash deals">
-        @foreach($homeFlashDeals as $deal)
-            <article
-                class="flash-deal-card"
-                data-flash-product
-                data-key="{{ $deal['key'] }}"
-                data-product-id="{{ $deal['product_id'] }}"
-                data-name="{{ $deal['name'] }}"
-                data-price="{{ $deal['price'] }}"
-                data-original-price="{{ $deal['original_price'] }}"
-                data-image="{{ asset('images/products/'.$deal['image']) }}"
-                data-flash-category="{{ $deal['category'] }}"
-            >
-                <div class="flash-image-wrap">
-                    <button type="button" class="flash-image" aria-label="View {{ $deal['name'] }}">
-                        <img src="{{ asset('images/products/'.$deal['image']) }}" alt="{{ $deal['name'] }}" loading="lazy">
-                        <span>{{ $deal['discount'] }}% OFF</span>
-                    </button>
-                    <button type="button" class="flash-like" data-flash-like aria-label="Save {{ $deal['name'] }}"><span class="material-symbols-outlined">favorite</span></button>
-                </div>
-                <div class="flash-copy">
-                    <small>{{ $deal['category'] }}</small>
-                    <h3>{{ $deal['name'] }}</h3>
-                    <div class="flash-meta"><span><b>★ {{ number_format($deal['rating'], 1) }}</b></span><span>({{ $deal['sold'] }} sold)</span></div>
-                    <div class="flash-prices"><strong>₱{{ number_format($deal['price']) }}</strong><del>₱{{ number_format($deal['original_price']) }}</del></div>
-                    <div class="flash-claimed" aria-label="{{ $deal['claimed'] }}% claimed; selling fast">
-                        <span class="flash-claimed-track"><i style="--claimed:{{ $deal['claimed'] }}%"></i></span>
-                        <small>SELLING FAST</small>
+@if (($liveFlashDealGroups ?? []) !== [])
+    <section class="flash-deals-preview home-flash-deals home-featured-section" aria-labelledby="home-flash-title">
+        <div class="flash-deals-heading">
+            <div class="flash-deals-title"><h2 id="home-flash-title">Flash Deals</h2></div>
+            <a class="text-button top-view-all" href="{{ url('/flash-deals') }}">View all <span aria-hidden="true">→</span></a>
+        </div>
+
+        <div class="home-flash-campaigns">
+            @foreach ($liveFlashDealGroups as $group)
+                @php($campaign = $group['campaign'])
+                <section class="home-flash-campaign" aria-label="{{ $campaign['name'] }} Flash Deal">
+                    <header class="home-flash-campaign-heading">
+                        <div>
+                            <span class="home-flash-campaign-type">{{ $campaign['type_label'] }}</span>
+                            <h3>{{ $campaign['name'] }}</h3>
+                            <p>{{ $campaign['period'] }}</p>
+                        </div>
+                        <a href="{{ route('campaigns.show', $campaign['id']) }}">Campaign details <span aria-hidden="true">→</span></a>
+                    </header>
+                    <div class="home-flash-product-grid">
+                        @foreach ($group['products'] as $product)
+                            <article class="home-flash-product-card discovery-card" data-discovery-product="live:{{ (int) $product['id'] }}" data-live-product-id="{{ (int) $product['id'] }}">
+                                <a class="home-flash-product-image" href="{{ route('products.show', ['product' => $product['id']]) }}" aria-label="View {{ $product['name'] }}">
+                                    @if (filled($product['image'] ?? null))
+                                        <img src="{{ $product['image'] }}" alt="{{ $product['name'] }}" loading="lazy">
+                                    @else
+                                        <span class="material-symbols-outlined" aria-hidden="true">image</span>
+                                    @endif
+                                </a>
+                                <button
+                                    type="button"
+                                    class="discovery-like{{ ($product['is_wishlisted'] ?? false) ? ' is-liked' : '' }}"
+                                    data-discovery-like
+                                    aria-pressed="{{ ($product['is_wishlisted'] ?? false) ? 'true' : 'false' }}"
+                                    aria-label="{{ ($product['is_wishlisted'] ?? false) ? 'Remove' : 'Save' }} {{ $product['name'] }} {{ ($product['is_wishlisted'] ?? false) ? 'from' : 'to' }} My Likes"
+                                ><span class="material-symbols-outlined" aria-hidden="true">favorite</span></button>
+                                <div class="home-flash-product-copy">
+                                    <span>{{ $product['category'] }}</span>
+                                    <h4><a href="{{ route('products.show', ['product' => $product['id']]) }}">{{ $product['name'] }}</a></h4>
+                                    <strong>₱{{ number_format(((int) $product['price_minor']) / 100, 2) }}</strong>
+                                </div>
+                            </article>
+                        @endforeach
                     </div>
-                    <button type="button" class="flash-add" data-flash-add disabled aria-label="Flash deal preview; not connected to the live cart"><span class="material-symbols-outlined" aria-hidden="true">info</span>Preview only</button>
+                </section>
+            @endforeach
+        </div>
+    </section>
+@endif
+
+@if (($popularRankingProducts ?? []) !== [] || ($topSalesRankingProducts ?? []) !== [])
+    <section class="top-products-preview home-trending-shell" aria-labelledby="top-products-title" data-home-ranking-section>
+        <div class="top-products-heading">
+            <div class="top-products-title-wrap">
+                <div>
+                    <p class="home-trending-eyebrow">BEARLY COMMUNITY RANKINGS</p>
+                    <h2 id="top-products-title">Trending on Bearly</h2>
                 </div>
-            </article>
-        @endforeach
-    </div>
-</section>
-
-<section class="top-products-preview home-trending-shell" data-trending-shell aria-labelledby="top-products-title">
-    <div class="top-products-heading">
-        <div class="top-products-title-wrap">
-            <h2 id="top-products-title">Trending on Bearly</h2>
-            <div class="top-ranking-tabs" role="tablist" aria-label="Trending product lists">
-                <button id="trending-popular-tab" type="button" role="tab" aria-selected="true" aria-controls="trending-popular-panel" data-trending-tab="popular">Popular Picks</button>
-                <button id="trending-sales-tab" type="button" role="tab" aria-selected="false" aria-controls="trending-sales-panel" data-trending-tab="sales">Best Sellers</button>
+                <div class="top-ranking-tabs" role="tablist" aria-label="Trending product rankings">
+                    @if (($popularRankingProducts ?? []) !== [])
+                        <button
+                            id="home-ranking-tab-popular"
+                            type="button"
+                            role="tab"
+                            aria-controls="home-ranking-panel-popular"
+                            aria-selected="{{ ($defaultRankingKind ?? 'popular') === 'popular' ? 'true' : 'false' }}"
+                            tabindex="{{ ($defaultRankingKind ?? 'popular') === 'popular' ? '0' : '-1' }}"
+                            class="{{ ($defaultRankingKind ?? 'popular') === 'popular' ? 'is-active' : '' }}"
+                            data-home-ranking-tab="popular"
+                            data-ranking-url="{{ route('top-products') }}"
+                        >Popular Picks</button>
+                    @endif
+                    @if (($topSalesRankingProducts ?? []) !== [])
+                        <button
+                            id="home-ranking-tab-top-sales"
+                            type="button"
+                            role="tab"
+                            aria-controls="home-ranking-panel-top-sales"
+                            aria-selected="{{ ($defaultRankingKind ?? 'popular') === 'top_sales' ? 'true' : 'false' }}"
+                            tabindex="{{ ($defaultRankingKind ?? 'popular') === 'top_sales' ? '0' : '-1' }}"
+                            class="{{ ($defaultRankingKind ?? 'popular') === 'top_sales' ? 'is-active' : '' }}"
+                            data-home-ranking-tab="top_sales"
+                            data-ranking-url="{{ route('top-sales') }}"
+                        >Best Sellers</button>
+                    @endif
+                </div>
             </div>
+            <a
+                class="text-button top-view-all"
+                href="{{ ($defaultRankingKind ?? 'popular') === 'popular' ? route('top-products') : route('top-sales') }}"
+                data-home-ranking-view-all
+            >View all <span aria-hidden="true">→</span></a>
         </div>
-        <a class="text-button top-view-all" data-trending-view-all data-popular-url="{{ url('/top-products') }}" data-sales-url="{{ url('/top-sales') }}" href="{{ url('/top-products') }}">View all <span aria-hidden="true">→</span></a>
-    </div>
-    <div class="top-products-grid top-products-grid-preview" id="trending-popular-panel" data-trending-panel="popular" role="tabpanel" aria-labelledby="trending-popular-tab">
-        <article class="top-product-card" data-top-product data-key="top-electronics-and-gadgets-5" data-product-id="electronics-and-gadgets:5" data-name="Wireless Mouse" data-price="499" data-image="/images/products/electronics/electronics-05-01.jpg" data-top-category="Electronics and Gadgets">
-            <div class="top-product-image"><img src="{{ asset('images/products/electronics/electronics-05-01.jpg') }}" alt="Wireless Mouse"><span class="top-home-rank" aria-hidden="true">TOP 1</span><span class="top-home-metric" aria-hidden="true">★ 4.9 &nbsp;TOP RATED</span><button type="button" class="top-like" data-top-like aria-label="Save Wireless Mouse"><span class="material-symbols-outlined">favorite</span></button></div>
-            <div class="top-product-copy"><small>Electronics and Gadgets</small><h3>Wireless Mouse</h3><div class="top-product-meta"><span><b>★ 4.9</b></span><span>(2.8k sold)</span></div><div class="top-product-bottom"><strong>₱499</strong><button type="button" data-top-add disabled aria-label="Product preview; not connected to the live cart"><span class="material-symbols-outlined" aria-hidden="true">info</span>Preview only</button></div></div>
-        </article>
-        <article class="top-product-card" data-top-product data-key="top-mens-apparel-4" data-product-id="mens-apparel:4" data-name="Classic Piqué Polo" data-price="549" data-image="/images/products/men/mens-04-01.jpg" data-top-category="Men's Apparel">
-            <div class="top-product-image"><img src="{{ asset('images/products/men/mens-04-01.jpg') }}" alt="Classic Piqué Polo"><span class="top-home-rank" aria-hidden="true">TOP 2</span><span class="top-home-metric" aria-hidden="true">★ 4.9 &nbsp;TOP RATED</span><button type="button" class="top-like" data-top-like aria-label="Save Classic Piqué Polo"><span class="material-symbols-outlined">favorite</span></button></div>
-            <div class="top-product-copy"><small>Men's Apparel</small><h3>Classic Piqué Polo</h3><div class="top-product-meta"><span><b>★ 4.9</b></span><span>(2.4k sold)</span></div><div class="top-product-bottom"><strong>₱549</strong><button type="button" data-top-add disabled aria-label="Product preview; not connected to the live cart"><span class="material-symbols-outlined" aria-hidden="true">info</span>Preview only</button></div></div>
-        </article>
-        <article class="top-product-card" data-top-product data-key="top-health-and-beauty-5" data-product-id="health-and-beauty:5" data-name="Sunscreen SPF 50+" data-price="499" data-image="/images/products/health-beauty/health-beauty-05-01.jpg" data-top-category="Health and Beauty">
-            <div class="top-product-image"><img src="{{ asset('images/products/health-beauty/health-beauty-05-01.jpg') }}" alt="Sunscreen SPF 50+"><span class="top-home-rank" aria-hidden="true">TOP 3</span><span class="top-home-metric" aria-hidden="true">★ 4.9 &nbsp;TOP RATED</span><button type="button" class="top-like" data-top-like aria-label="Save Sunscreen SPF 50+"><span class="material-symbols-outlined">favorite</span></button></div>
-            <div class="top-product-copy"><small>Health and Beauty</small><h3>Sunscreen SPF 50+</h3><div class="top-product-meta"><span><b>★ 4.9</b></span><span>(2.1k sold)</span></div><div class="top-product-bottom"><strong>₱499</strong><button type="button" data-top-add disabled aria-label="Product preview; not connected to the live cart"><span class="material-symbols-outlined" aria-hidden="true">info</span>Preview only</button></div></div>
-        </article>
-        <article class="top-product-card" data-top-product data-key="top-home-and-garden-1" data-product-id="home-and-garden:1" data-name="Decorative Indoor Plant" data-price="599" data-image="/images/products/home-garden/home-garden-01-01.jpg" data-top-category="Home and Garden">
-            <div class="top-product-image"><img src="{{ asset('images/products/home-garden/home-garden-01-01.jpg') }}" alt="Decorative Indoor Plant"><span class="top-home-rank" aria-hidden="true">TOP 4</span><span class="top-home-metric" aria-hidden="true">★ 4.8 &nbsp;TOP RATED</span><button type="button" class="top-like" data-top-like aria-label="Save Decorative Indoor Plant"><span class="material-symbols-outlined">favorite</span></button></div>
-            <div class="top-product-copy"><small>Home and Garden</small><h3>Decorative Indoor Plant</h3><div class="top-product-meta"><span><b>★ 4.8</b></span><span>(1.9k sold)</span></div><div class="top-product-bottom"><strong>₱599</strong><button type="button" data-top-add disabled aria-label="Product preview; not connected to the live cart"><span class="material-symbols-outlined" aria-hidden="true">info</span>Preview only</button></div></div>
-        </article>
-        <article class="top-product-card" data-top-product data-key="top-womens-apparel-6" data-product-id="womens-apparel:6" data-name="Classic White Blouse" data-price="499" data-image="/images/products/women/womens-06-01.jpg" data-top-category="Women's Apparel">
-            <div class="top-product-image"><img src="{{ asset('images/products/women/womens-06-01.jpg') }}" alt="Classic White Blouse"><span class="top-home-rank" aria-hidden="true">TOP 5</span><span class="top-home-metric" aria-hidden="true">★ 4.9 &nbsp;TOP RATED</span><button type="button" class="top-like" data-top-like aria-label="Save Classic White Blouse"><span class="material-symbols-outlined">favorite</span></button></div>
-            <div class="top-product-copy"><small>Women's Apparel</small><h3>Classic White Blouse</h3><div class="top-product-meta"><span><b>★ 4.9</b></span><span>(1.8k sold)</span></div><div class="top-product-bottom"><strong>₱499</strong><button type="button" data-top-add disabled aria-label="Product preview; not connected to the live cart"><span class="material-symbols-outlined" aria-hidden="true">info</span>Preview only</button></div></div>
-        </article>
-        <article class="top-product-card" data-top-product data-key="top-sports-and-outdoors-11" data-product-id="sports-and-outdoors:11" data-name="Resistance Band Set" data-price="499" data-image="/images/products/sports-outdoors/sports-outdoors-11-01.jpg" data-top-category="Sports and Outdoors">
-            <div class="top-product-image"><img src="{{ asset('images/products/sports-outdoors/sports-outdoors-11-01.jpg') }}" alt="Resistance Band Set"><span class="top-home-rank" aria-hidden="true">TOP 6</span><span class="top-home-metric" aria-hidden="true">★ 4.9 &nbsp;TOP RATED</span><button type="button" class="top-like" data-top-like aria-label="Save Resistance Band Set"><span class="material-symbols-outlined">favorite</span></button></div>
-            <div class="top-product-copy"><small>Sports and Outdoors</small><h3>Resistance Band Set</h3><div class="top-product-meta"><span><b>★ 4.9</b></span><span>(1.7k sold)</span></div><div class="top-product-bottom"><strong>₱499</strong><button type="button" data-top-add disabled aria-label="Product preview; not connected to the live cart"><span class="material-symbols-outlined" aria-hidden="true">info</span>Preview only</button></div></div>
-        </article>
-    </div>
-</section>
 
-<section class="top-products-preview top-sales-preview home-trending-secondary" data-trending-secondary aria-label="Best Sellers" hidden>
-    <div class="top-products-heading">
-        <div>
-            <h2 id="top-sales-title">Top Sales</h2>
+        <div class="home-ranking-groups">
+            @if (($popularRankingProducts ?? []) !== [])
+                <section
+                    id="home-ranking-panel-popular"
+                    class="home-ranking-group home-ranking-panel"
+                    data-ranking-kind="popular"
+                    data-home-ranking-panel="popular"
+                    role="tabpanel"
+                    aria-labelledby="home-ranking-tab-popular"
+                    @if (($defaultRankingKind ?? 'popular') !== 'popular') hidden @endif
+                >
+                    <p class="home-ranking-explainer">Popular Picks, ranked by saves from active Buyers.</p>
+                    <div class="home-ranking-carousel">
+                        <button type="button" class="home-ranking-scroll is-previous" data-ranking-scroll="previous" aria-label="Scroll Popular Picks left" aria-controls="home-ranking-track-popular" hidden>
+                            <span class="material-symbols-outlined" aria-hidden="true">chevron_left</span>
+                        </button>
+                        <div id="home-ranking-track-popular" class="top-products-grid home-ranking-grid" data-ranking-track>
+                        @foreach ($popularRankingProducts as $product)
+                            @include('buyer.partials.ranked-product-card', [
+                                'product' => $product,
+                                'rank' => $loop->iteration,
+                                'rankingType' => 'popular',
+                                'homeRankingCard' => true,
+                            ])
+                        @endforeach
+                        </div>
+                        <button type="button" class="home-ranking-scroll is-next" data-ranking-scroll="next" aria-label="Scroll Popular Picks right" aria-controls="home-ranking-track-popular" hidden>
+                            <span class="material-symbols-outlined" aria-hidden="true">chevron_right</span>
+                        </button>
+                    </div>
+                </section>
+            @endif
+
+            @if (($topSalesRankingProducts ?? []) !== [])
+                <section
+                    id="home-ranking-panel-top-sales"
+                    class="home-ranking-group home-ranking-panel"
+                    data-ranking-kind="top-sales"
+                    data-home-ranking-panel="top_sales"
+                    role="tabpanel"
+                    aria-labelledby="home-ranking-tab-top-sales"
+                    @if (($defaultRankingKind ?? 'popular') !== 'top_sales') hidden @endif
+                >
+                    <p class="home-ranking-explainer">Best Sellers, ranked by units in completed Seller Orders.</p>
+                    <div class="home-ranking-carousel">
+                        <button type="button" class="home-ranking-scroll is-previous" data-ranking-scroll="previous" aria-label="Scroll Best Sellers left" aria-controls="home-ranking-track-top-sales" hidden>
+                            <span class="material-symbols-outlined" aria-hidden="true">chevron_left</span>
+                        </button>
+                        <div id="home-ranking-track-top-sales" class="top-products-grid home-ranking-grid" data-ranking-track>
+                        @foreach ($topSalesRankingProducts as $product)
+                            @include('buyer.partials.ranked-product-card', [
+                                'product' => $product,
+                                'rank' => $loop->iteration,
+                                'rankingType' => 'top_sales',
+                                'homeRankingCard' => true,
+                            ])
+                        @endforeach
+                        </div>
+                        <button type="button" class="home-ranking-scroll is-next" data-ranking-scroll="next" aria-label="Scroll Best Sellers right" aria-controls="home-ranking-track-top-sales" hidden>
+                            <span class="material-symbols-outlined" aria-hidden="true">chevron_right</span>
+                        </button>
+                    </div>
+                </section>
+            @endif
         </div>
-        <a class="text-button top-view-all" href="{{ url('/top-sales') }}">View all <span aria-hidden="true">→</span></a>
-    </div>
-    <div class="top-products-grid top-products-grid-preview" id="trending-sales-panel" data-trending-panel="sales" role="tabpanel" aria-labelledby="trending-sales-tab">
-        <article class="top-product-card" data-top-product data-key="sales-sports-and-outdoors-11" data-product-id="sports-and-outdoors:11" data-name="Resistance Band Set" data-price="499" data-image="/images/products/sports-outdoors/sports-outdoors-11-01.jpg" data-top-category="Sports and Outdoors">
-            <div class="top-product-image"><img src="{{ asset('images/products/sports-outdoors/sports-outdoors-11-01.jpg') }}" alt="Resistance Band Set"><span class="top-home-rank" aria-hidden="true">TOP 1</span><span class="top-home-metric" aria-hidden="true">MONTHLY SALES 4.6K+</span><button type="button" class="top-like" data-top-like aria-label="Save Resistance Band Set"><span class="material-symbols-outlined">favorite</span></button></div>
-            <div class="top-product-copy"><small>Sports and Outdoors</small><h3>Resistance Band Set</h3><div class="top-product-meta"><span><b>★ 4.9</b></span><span>(4.6k sold)</span></div><div class="top-product-bottom"><strong>₱499</strong><button type="button" data-top-add disabled aria-label="Product preview; not connected to the live cart"><span class="material-symbols-outlined" aria-hidden="true">info</span>Preview only</button></div></div>
-        </article>
-        <article class="top-product-card" data-top-product data-key="sales-electronics-and-gadgets-7" data-product-id="electronics-and-gadgets:7" data-name="TWS Wireless Earbuds" data-price="1099" data-image="/images/products/electronics/electronics-07-01.jpg" data-top-category="Electronics and Gadgets">
-            <div class="top-product-image"><img src="{{ asset('images/products/electronics/electronics-07-01.jpg') }}" alt="TWS Wireless Earbuds"><span class="top-home-rank" aria-hidden="true">TOP 2</span><span class="top-home-metric" aria-hidden="true">MONTHLY SALES 4.2K+</span><button type="button" class="top-like" data-top-like aria-label="Save TWS Wireless Earbuds"><span class="material-symbols-outlined">favorite</span></button></div>
-            <div class="top-product-copy"><small>Electronics and Gadgets</small><h3>TWS Wireless Earbuds</h3><div class="top-product-meta"><span><b>★ 4.7</b></span><span>(4.2k sold)</span></div><div class="top-product-bottom"><strong>₱1,099</strong><button type="button" data-top-add disabled aria-label="Product preview; not connected to the live cart"><span class="material-symbols-outlined" aria-hidden="true">info</span>Preview only</button></div></div>
-        </article>
-        <article class="top-product-card" data-top-product data-key="sales-kids-and-baby-2" data-product-id="kids-and-baby:2" data-name="Floral Baby Dress" data-price="899" data-image="/images/products/kids-baby/kids-baby-02-01.jpg" data-top-category="Kids and Baby">
-            <div class="top-product-image"><img src="{{ asset('images/products/kids-baby/kids-baby-02-01.jpg') }}" alt="Floral Baby Dress"><span class="top-home-rank" aria-hidden="true">TOP 3</span><span class="top-home-metric" aria-hidden="true">MONTHLY SALES 3.9K+</span><button type="button" class="top-like" data-top-like aria-label="Save Floral Baby Dress"><span class="material-symbols-outlined">favorite</span></button></div>
-            <div class="top-product-copy"><small>Kids and Baby</small><h3>Floral Baby Dress</h3><div class="top-product-meta"><span><b>★ 4.8</b></span><span>(3.9k sold)</span></div><div class="top-product-bottom"><strong>₱899</strong><button type="button" data-top-add disabled aria-label="Product preview; not connected to the live cart"><span class="material-symbols-outlined" aria-hidden="true">info</span>Preview only</button></div></div>
-        </article>
-        <article class="top-product-card" data-top-product data-key="sales-home-and-garden-1" data-product-id="home-and-garden:1" data-name="Decorative Indoor Plant" data-price="599" data-image="/images/products/home-garden/home-garden-01-01.jpg" data-top-category="Home and Garden">
-            <div class="top-product-image"><img src="{{ asset('images/products/home-garden/home-garden-01-01.jpg') }}" alt="Decorative Indoor Plant"><span class="top-home-rank" aria-hidden="true">TOP 4</span><span class="top-home-metric" aria-hidden="true">MONTHLY SALES 3.5K+</span><button type="button" class="top-like" data-top-like aria-label="Save Decorative Indoor Plant"><span class="material-symbols-outlined">favorite</span></button></div>
-            <div class="top-product-copy"><small>Home and Garden</small><h3>Decorative Indoor Plant</h3><div class="top-product-meta"><span><b>★ 4.8</b></span><span>(3.5k sold)</span></div><div class="top-product-bottom"><strong>₱599</strong><button type="button" data-top-add disabled aria-label="Product preview; not connected to the live cart"><span class="material-symbols-outlined" aria-hidden="true">info</span>Preview only</button></div></div>
-        </article>
-        <article class="top-product-card" data-top-product data-key="sales-foods-and-gourmet-5" data-product-id="foods-and-gourmet:5" data-name="Extra Virgin Olive Oil" data-price="349" data-image="/images/products/foods-gourmet/foods-gourmet-05-01.jpg" data-top-category="Food and Gourmet">
-            <div class="top-product-image"><img src="{{ asset('images/products/foods-gourmet/foods-gourmet-05-01.jpg') }}" alt="Extra Virgin Olive Oil"><span class="top-home-rank" aria-hidden="true">TOP 5</span><span class="top-home-metric" aria-hidden="true">MONTHLY SALES 3.2K+</span><button type="button" class="top-like" data-top-like aria-label="Save Extra Virgin Olive Oil"><span class="material-symbols-outlined">favorite</span></button></div>
-            <div class="top-product-copy"><small>Food and Gourmet</small><h3>Extra Virgin Olive Oil</h3><div class="top-product-meta"><span><b>★ 4.9</b></span><span>(3.2k sold)</span></div><div class="top-product-bottom"><strong>₱349</strong><button type="button" data-top-add disabled aria-label="Product preview; not connected to the live cart"><span class="material-symbols-outlined" aria-hidden="true">info</span>Preview only</button></div></div>
-        </article>
-        <article class="top-product-card" data-top-product data-key="sales-mens-apparel-4" data-product-id="mens-apparel:4" data-name="Classic Piqué Polo" data-price="549" data-image="/images/products/men/mens-04-01.jpg" data-top-category="Men's Apparel">
-            <div class="top-product-image"><img src="{{ asset('images/products/men/mens-04-01.jpg') }}" alt="Classic Piqué Polo"><span class="top-home-rank" aria-hidden="true">TOP 6</span><span class="top-home-metric" aria-hidden="true">MONTHLY SALES 2.9K+</span><button type="button" class="top-like" data-top-like aria-label="Save Classic Piqué Polo"><span class="material-symbols-outlined">favorite</span></button></div>
-            <div class="top-product-copy"><small>Men's Apparel</small><h3>Classic Piqué Polo</h3><div class="top-product-meta"><span><b>★ 4.9</b></span><span>(2.9k sold)</span></div><div class="top-product-bottom"><strong>₱549</strong><button type="button" data-top-add disabled aria-label="Product preview; not connected to the live cart"><span class="material-symbols-outlined" aria-hidden="true">info</span>Preview only</button></div></div>
-        </article>
-    </div>
-</section>
-
+    </section>
+@endif
 <section class="discover" id="results" aria-labelledby="results-title">
 
 <div class="section-heading"><div><h2 id="results-title">Daily Discoveries</h2><p id="results-caption" class="results-caption" hidden></p></div><button class="text-button" id="view-all">View all <span aria-hidden="true">→</span></button></div>
@@ -767,7 +701,7 @@ $homeFlashDeals = [
 <dialog id="info-dialog" aria-labelledby="info-title"><button class="dialog-close icon-button" data-close aria-label="Close"><span class="material-symbols-outlined" aria-hidden="true">close</span></button><h2 id="info-title"></h2><div id="info-copy"></div><div class="info-actions" id="info-actions"></div></dialog>
 
 <script id="home-data" type="application/json">{!! json_encode(['categories' => $homeCategories, 'products' => $homeProducts, 'live' => $usingLiveCatalog], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR) !!}</script>
-<script id="featured-product-data" type="application/json">{!! json_encode($featuredProducts, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR) !!}</script>
+
 
 
 

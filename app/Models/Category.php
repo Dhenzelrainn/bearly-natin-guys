@@ -10,7 +10,11 @@ class Category extends Model
 
     protected function casts(): array
     {
-        return ['is_restricted' => 'boolean', 'is_active' => 'boolean'];
+        return [
+            'is_restricted' => 'boolean',
+            'is_active' => 'boolean',
+            'is_registration_option' => 'boolean',
+        ];
     }
 
     public function parent()
@@ -26,5 +30,11 @@ class Category extends Model
     public function products()
     {
         return $this->hasMany(Product::class);
+    }
+
+    public function marketplaceCategories()
+    {
+        return $this->belongsToMany(MarketplaceCategory::class, 'marketplace_category_business_categories')
+            ->withTimestamps();
     }
 }

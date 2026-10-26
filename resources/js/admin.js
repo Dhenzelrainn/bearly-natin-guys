@@ -149,6 +149,42 @@ import {
         refreshIcons();
         setTimeout(refreshIcons, 150);
 
+        document.querySelectorAll('[data-admin-violation-decision-form]').forEach((form) => {
+            const choices = [...form.querySelectorAll('[data-decision-choice]')];
+            const reason = form.querySelector('[data-decision-reason]');
+            const guidance = form.querySelector('[data-decision-reason-guide]');
+            const submit = form.querySelector('[data-decision-submit]');
+            const removalNote = form.querySelector('[data-decision-removal-note]');
+
+            const applyDecisionPrompt = (choice, focusReason = false) => {
+                if (!choice) return;
+
+                if (guidance) {
+                    guidance.textContent = choice.dataset.reasonGuidance
+                        || 'Use your own facts.';
+                }
+                if (reason) {
+                    reason.placeholder = choice.dataset.reasonPlaceholder
+                        || 'Write why you chose this action.';
+                    if (focusReason) reason.focus();
+                }
+                if (submit) {
+                    submit.textContent = choice.dataset.submitLabel || 'Record decision';
+                }
+                if (removalNote) {
+                    removalNote.hidden = choice.value !== 'remove_product';
+                }
+            };
+
+            choices.forEach((choice) => {
+                choice.addEventListener('change', () => {
+                    if (choice.checked) applyDecisionPrompt(choice, true);
+                });
+            });
+
+            applyDecisionPrompt(choices.find((choice) => choice.checked));
+        });
+
         document.querySelectorAll('[data-announcement-media-editor]').forEach((editor) => {
             const input = editor.querySelector('[data-announcement-media-input]');
             const preview = editor.querySelector('[data-announcement-media-preview]');
@@ -444,6 +480,12 @@ import {
             toast.querySelector('button')?.addEventListener('click', remove);
             setTimeout(remove, 3400);
         };
+
+        document.querySelectorAll('[data-admin-server-toast]').forEach((toast) => {
+            const remove = () => toast.remove();
+            toast.querySelector('[data-admin-toast-dismiss]')?.addEventListener('click', remove);
+            setTimeout(remove, 5000);
+        });
 
         document.querySelectorAll('[data-mock-action]').forEach((element) => {
 

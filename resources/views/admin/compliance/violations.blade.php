@@ -4,6 +4,30 @@
 @section('page-title', 'Product Violations')
 
 @section('content')
+@php
+    $decisionReasonPrompts = [
+        'dismiss' => [
+            'guidance' => 'Tell us why this product is okay.',
+            'placeholder' => 'This product is okay because [what you checked].',
+            'submit_label' => 'Confirm dismissal',
+        ],
+        'request_correction' => [
+            'guidance' => 'Tell the Seller what to fix.',
+            'placeholder' => 'Please fix [the problem].',
+            'submit_label' => 'Request correction',
+        ],
+        'warn_seller' => [
+            'guidance' => 'Tell us what rule the Seller broke.',
+            'placeholder' => 'The Seller broke [rule] by [what they did].',
+            'submit_label' => 'Issue Seller warning',
+        ],
+        'remove_product' => [
+            'guidance' => 'Tell us why this product must be removed.',
+            'placeholder' => 'Remove this product because [what is not allowed].',
+            'submit_label' => 'Block & require removal',
+        ],
+    ];
+@endphp
 
 @if (session('success'))
     <div class="admin-violation-feedback is-success" role="status">
@@ -471,6 +495,7 @@
                 method="POST"
                 action="{{ route('admin.compliance.decide', $violation['database_id']) }}"
                 class="admin-violation-decision-form"
+                data-admin-violation-decision-form
             >
                 @csrf
                 <input type="hidden" name="violation_id" value="{{ $violation['database_id'] }}">
@@ -481,6 +506,54 @@
                     </div>
                 @endif
 
+                @php
+                    $selectedDecision = $reopenViolationModal ? old('decision') : null;
+                    $selectedPrompt = is_string($selectedDecision)
+                        ? ($decisionReasonPrompts[$selectedDecision] ?? null)
+                        : null;
+                @endphp
+
+                <fieldset class="admin-violation-decision-picker">
+                    <legend class="sr-only">Choose a compliance decision</legend>
+                    <div class="admin-violation-decision-options">
+                        <label class="admin-violation-decision-option">
+                            <input type="radio" name="decision" value="dismiss" required data-decision-choice
+                                data-reason-guidance="{{ $decisionReasonPrompts['dismiss']['guidance'] }}"
+                                data-reason-placeholder="{{ $decisionReasonPrompts['dismiss']['placeholder'] }}"
+                                data-submit-label="{{ $decisionReasonPrompts['dismiss']['submit_label'] }}"
+                                @checked($selectedDecision === 'dismiss')>
+                            <span class="button button-secondary"><i data-lucide="shield-check" aria-hidden="true"></i> Dismiss as false positive</span>
+                        </label>
+                        <label class="admin-violation-decision-option">
+                            <input type="radio" name="decision" value="request_correction" required data-decision-choice
+                                data-reason-guidance="{{ $decisionReasonPrompts['request_correction']['guidance'] }}"
+                                data-reason-placeholder="{{ $decisionReasonPrompts['request_correction']['placeholder'] }}"
+                                data-submit-label="{{ $decisionReasonPrompts['request_correction']['submit_label'] }}"
+                                @checked($selectedDecision === 'request_correction')>
+                            <span class="button button-warning"><i data-lucide="rotate-ccw" aria-hidden="true"></i> Request correction</span>
+                        </label>
+                        <label class="admin-violation-decision-option">
+                            <input type="radio" name="decision" value="warn_seller" required data-decision-choice
+                                data-reason-guidance="{{ $decisionReasonPrompts['warn_seller']['guidance'] }}"
+                                data-reason-placeholder="{{ $decisionReasonPrompts['warn_seller']['placeholder'] }}"
+                                data-submit-label="{{ $decisionReasonPrompts['warn_seller']['submit_label'] }}"
+                                @checked($selectedDecision === 'warn_seller')>
+                            <span class="button button-warning"><i data-lucide="badge-alert" aria-hidden="true"></i> Issue Seller warning</span>
+                        </label>
+                        <label class="admin-violation-decision-option">
+                            <input type="radio" name="decision" value="remove_product" required data-decision-choice
+                                data-reason-guidance="{{ $decisionReasonPrompts['remove_product']['guidance'] }}"
+                                data-reason-placeholder="{{ $decisionReasonPrompts['remove_product']['placeholder'] }}"
+                                data-submit-label="{{ $decisionReasonPrompts['remove_product']['submit_label'] }}"
+                                @checked($selectedDecision === 'remove_product')>
+                            <span class="button button-danger"><i data-lucide="package-x" aria-hidden="true"></i> Block &amp; require removal</span>
+                        </label>
+                    </div>
+                    <p id="violation-decision-guidance-{{ $violation['database_id'] }}" class="admin-violation-decision-guidance" data-decision-reason-guide aria-live="polite">
+                        {{ $selectedPrompt['guidance'] ?? 'Pick a button to see what to write. Use your own facts.' }}
+                    </p>
+                </fieldset>
+
                 <label class="form-field" for="violation-note-{{ $violation['database_id'] }}">
                     <span>Decision reason <strong>Required</strong></span>
                     <textarea
@@ -489,26 +562,19 @@
                         rows="3"
                         maxlength="2000"
                         required
-                        placeholder="Explain the evidence and why this decision is appropriate."
+                        data-decision-reason
+                        aria-describedby="violation-decision-guidance-{{ $violation['database_id'] }}"
+                        placeholder="{{ $selectedPrompt['placeholder'] ?? 'Pick a button to see what to write.' }}"
                     >{{ $reopenViolationModal ? old('note') : '' }}</textarea>
-                    <small>The reason is saved with the Admin account and decision history.</small>
+                    <small>This note is saved with your decision.</small>
                 </label>
 
                 <div class="modal-footer decision-footer admin-violation-decision-actions">
-                    <button type="submit" class="button button-secondary" name="decision" value="dismiss">
-                        <i data-lucide="shield-check"></i> Dismiss as false positive
-                    </button>
-                    <button type="submit" class="button button-warning" name="decision" value="request_correction">
-                        <i data-lucide="rotate-ccw"></i> Request correction
-                    </button>
-                    <button type="submit" class="button button-warning" name="decision" value="warn_seller">
-                        <i data-lucide="badge-alert"></i> Issue Seller warning
-                    </button>
-                    <button type="submit" class="button button-danger" name="decision" value="remove_product">
-                        <i data-lucide="package-x"></i> Block &amp; require removal
+                    <button type="submit" class="button button-primary admin-violation-decision-confirm" data-decision-submit>
+                        {{ $selectedPrompt['submit_label'] ?? 'Record decision' }}
                     </button>
                 </div>
-                <p class="admin-violation-removal-note">
+                <p class="admin-violation-removal-note" data-decision-removal-note @if ($selectedDecision !== 'remove_product') hidden @endif>
                     Blocking immediately removes the listing from Buyer-facing catalog results; the product record and violation history are retained.
                 </p>
             </form>

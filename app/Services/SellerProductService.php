@@ -274,15 +274,20 @@ class SellerProductService
         try {
             return DB::transaction(function () use ($user, $data, $primaryImage, $galleryImages, $product, $variantImages, $removeProductImageIds, $variantColorImages, $variantImageColors, &$newImagePaths): Product {
                 $store = $this->storeFor($user);
-                $category = $this->categoryFor($user);
-                $subcategory = $this->resolveSubcategory($store, $category, $data);
-
                 if ($product) {
                     $product = Product::query()
                         ->where('store_id', $store->id)
                         ->lockForUpdate()
                         ->findOrFail($product->getKey());
                 }
+
+                $category = $this->categoryFor($user);
+                $subcategory = $this->resolveSubcategory($store, $category, $data);
+                $marketplaceSubcategorySelection = array_key_exists('marketplace_subcategory_id', $data)
+                    ? $data['marketplace_subcategory_id']
+                    : $product?->marketplace_subcategory_id;
+                $marketplaceSubcategory = app(MarketplaceTaxonomyService::class)
+                    ->resolveMarketplaceSubcategory($category, $marketplaceSubcategorySelection, $product);
 
                 $isUpdate = $product !== null;
                 $productMode = $product
@@ -305,16 +310,9 @@ class SellerProductService
                     $data['option_two_values'] = '';
                 }
 
-                $paymentMethods = array_values(array_unique(array_intersect(
-                    (array) ($data['payment_methods'] ?? ['cod', 'online']),
-                    ['cod', 'online'],
-                )));
-
-                if ($paymentMethods === []) {
-                    throw ValidationException::withMessages([
-                        'payment_methods' => 'Select at least one accepted payment method.',
-                    ]);
-                }
+                // Bearly checkout is COD-only until an online payment gateway is
+                // implemented. Persist the supported method for all Seller rows.
+                $paymentMethods = ['cod'];
 
                 if ($product && (int) $product->store_id !== (int) $store->id) {
                     abort(404);
@@ -330,6 +328,7 @@ class SellerProductService
                 $product->store_id = $store->id;
                 $product->category_id = $category->id;
                 $product->subcategory_id = $subcategory?->id;
+                $product->marketplace_subcategory_id = $marketplaceSubcategory?->id;
 
                 if (! $product->exists) {
                     $product->slug = $this->uniqueSlug($store, (string) $data['name']);
@@ -381,7 +380,7 @@ class SellerProductService
                     ]);
                 }
 
-                return $product->fresh(['category', 'subcategory', 'variants', 'images', 'store']);
+                return $product->fresh(['category', 'subcategory', 'marketplaceSubcategory.marketplaceCategory', 'variants', 'images', 'store']);
             });
         } catch (Throwable $exception) {
             foreach ($newImagePaths as $storedImage) {
@@ -410,6 +409,7 @@ class SellerProductService
             ->with([
                 'category',
                 'subcategory',
+                'marketplaceSubcategory.marketplaceCategory',
                 'variants',
                 'images',
                 'store',
@@ -438,7 +438,7 @@ class SellerProductService
     /**
      * Paginated, filtered source for Seller Product Management.
      *
-     * @return array{products: LengthAwarePaginator, subcategories: EloquentCollection<int, StoreSubcategory>, statuses: array<int, string>, counts: array<string, int>}
+     * @return array{products: LengthAwarePaginator, subcategories: EloquentCollection<int, StoreSubcategory>, statuses: array<int, string>, statusTabs: array<int, array{label: string, value: string, count: int}>, selectedStatus: string, counts: array<string, int>}
      */
     public function productManagementListing(User $user, array $filters = [], int $perPage = 25): array
     {
@@ -471,14 +471,43 @@ class SellerProductService
             ->where('parent_category_id', $parentCategory->id)
             ->orderBy('name')
             ->get(['id', 'name']);
-        $statuses = (clone $base)
+
+        $statusCodes = [
+            'Active' => 'active',
+            'Needs Review' => 'flagged',
+            'Blocked' => 'blocked',
+            'Draft' => 'draft',
+            'Pending Review' => 'pending_review',
+            'Archived' => 'archived',
+        ];
+        $statusOrder = [
+            'Active',
+            'Needs Review',
+            'Blocked',
+            'Draft',
+            'Pending Review',
+            'Archived',
+        ];
+        $statusCounts = array_fill_keys($statusOrder, 0);
+        $statusLabelsByCode = array_flip($statusCodes);
+        foreach ((clone $base)
             ->select('product_status')
-            ->distinct()
-            ->orderBy('product_status')
-            ->pluck('product_status')
-            ->map(fn (string $status): string => $this->displayStatus($status))
-            ->unique()
-            ->values()
+            ->selectRaw('COUNT(*) as status_count')
+            ->groupBy('product_status')
+            ->get() as $statusCount) {
+            $label = $statusLabelsByCode[(string) $statusCount->product_status] ?? null;
+            if ($label !== null) {
+                $statusCounts[$label] += (int) $statusCount->status_count;
+            }
+        }
+
+        $statuses = $statusOrder;
+        $statusTabs = collect($statusOrder)
+            ->map(fn (string $label): array => [
+                'label' => $label,
+                'value' => $label,
+                'count' => $statusCounts[$label],
+            ])
             ->all();
 
         $query = $store->products()
@@ -518,16 +547,14 @@ class SellerProductService
                     ->where('is_active', true));
         }
 
-        $statusCodes = [
-            'Active' => 'active',
-            'Archived' => 'archived',
-            'Blocked' => 'blocked',
-            'Draft' => 'draft',
-            'Needs Review' => 'flagged',
-            'Pending Review' => 'pending_review',
-        ];
         $status = (string) ($filters['status'] ?? '');
-        if (isset($statusCodes[$status])) {
+        if ($status === '') {
+            $status = 'Active';
+        }
+        if ($status !== 'all' && ! isset($statusCodes[$status])) {
+            $status = 'Active';
+        }
+        if ($status !== 'all') {
             $query->where('product_status', $statusCodes[$status]);
         }
 
@@ -550,6 +577,8 @@ class SellerProductService
             'products' => $products,
             'subcategories' => $subcategories,
             'statuses' => $statuses,
+            'statusTabs' => $statusTabs,
+            'selectedStatus' => $status,
             'counts' => [
                 'all' => (clone $base)->count(),
                 'active' => (clone $activeProducts)->count(),
@@ -561,6 +590,7 @@ class SellerProductService
 
     public function formPayload(Product $product): array
     {
+        $product->loadMissing('marketplaceSubcategory.marketplaceCategory');
         $complianceWarnings = $this->complianceWarningPayload($product);
         $variants = $product->relationLoaded('variants')
             ? $product->variants->where('is_active', true)->sortBy('position')->values()
@@ -654,6 +684,9 @@ class SellerProductService
             'category' => $product->category?->name ?? '',
             'subcategory_id' => $product->subcategory_id,
             'subcategory' => $product->subcategory?->name ?? '',
+            'marketplace_subcategory_id' => $product->marketplace_subcategory_id,
+            'marketplace_subcategory' => $product->marketplaceSubcategory?->name ?? '',
+            'marketplace_category' => $product->marketplaceSubcategory?->marketplaceCategory?->name ?? '',
             'description' => $product->description ?? '',
             'sku' => $firstVariant?->sku ?? '',
             'price' => $regularMinor / 100,
@@ -767,12 +800,7 @@ class SellerProductService
 
     private function paymentMethods(Product $product): array
     {
-        $methods = array_values(array_intersect(
-            (array) ($product->payment_methods ?? []),
-            ['cod', 'online'],
-        ));
-
-        return $methods === [] ? ['cod', 'online'] : $methods;
+        return ['cod'];
     }
 
     public function archive(User $user, string|int $id): Product
@@ -1445,7 +1473,7 @@ class SellerProductService
     private function variantColor(ProductVariant $variant): string
     {
         foreach ((array) ($variant->options ?: []) as $name => $value) {
-            if (in_array(Str::lower((string) $name), ['color', 'colour'], true)) {
+            if (in_array(Str::lower(trim((string) $name)), ['color', 'colour'], true)) {
                 return trim((string) $value);
             }
         }
@@ -1473,12 +1501,24 @@ class SellerProductService
         $secondName = trim((string) ($data['option_two_name'] ?? ''));
         $options = [];
 
-        if ($firstName && isset($parts[0])) {
-            $options[$firstName] = trim($parts[0]);
-        }
+        if (count($parts) === 1) {
+            $groupTwoOnly = blank($data['option_one_values'] ?? null)
+                && filled($data['option_two_values'] ?? null);
+            $singleOptionName = $groupTwoOnly
+                ? $secondName
+                : ($firstName ?: $secondName);
 
-        if ($secondName && isset($parts[1])) {
-            $options[$secondName] = trim($parts[1]);
+            if ($singleOptionName !== '') {
+                $options[$singleOptionName] = trim($parts[0]);
+            }
+        } else {
+            if ($firstName && isset($parts[0])) {
+                $options[$firstName] = trim($parts[0]);
+            }
+
+            if ($secondName && isset($parts[1])) {
+                $options[$secondName] = trim($parts[1]);
+            }
         }
 
         return $options ?: ['label' => $label];

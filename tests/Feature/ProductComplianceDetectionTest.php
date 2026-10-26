@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Category;
+use App\Models\ComplianceRule;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\SellerProfile;
@@ -57,8 +58,9 @@ class ProductComplianceDetectionTest extends TestCase
         $this->assertSame(1, $product->violations()->firstOrFail()->warnings()->where('status', 'active')->count());
 
         $this->actingAs($seller)
-            ->get('/seller/products')
+            ->get('/seller/products?status=Blocked')
             ->assertOk()
+            ->assertSee('Compliance warning: this product is blocked and hidden from Buyers. Review the reason beside the product before making changes.')
             ->assertSee('Critical compliance warning')
             ->assertSee('Prohibited firearm listing (gun)');
 
@@ -121,6 +123,59 @@ class ProductComplianceDetectionTest extends TestCase
         $this->assertSame('clear', $electronics->fresh()->compliance_status);
         $this->assertSame('active', $electronics->fresh()->product_status);
         $this->assertSame(0, $electronics->violations()->count());
+    }
+
+    public function test_electronics_apparel_terms_are_specific_and_category_mismatches_only_hold(): void
+    {
+        $category = $this->category('electronics-and-gadgets');
+        [, $store] = $this->sellerAndStore($category);
+        $rule = ComplianceRule::query()
+            ->where('code', 'CATEGORY_MISMATCH_ELECTRONICS_APPAREL')
+            ->firstOrFail();
+
+        // Simulate a deployed database whose persisted rule still has its original terms.
+        $rule->update([
+            'default_action' => 'block',
+            'configuration' => [
+                'mismatched_terms_by_category_slug' => [
+                    'electronics-and-gadgets' => ['shirt', 'shirts', 'shorts'],
+                ],
+            ],
+        ]);
+
+        $scanner = app(ComplianceScanner::class);
+        $apparelListings = [
+            'Fleece Hoodie' => 'A warm pullover with a front pocket.',
+            'Cotton Tank Top' => 'Sleeveless everyday clothing.',
+            'Everyday Pajamas' => 'A matching sleepwear set.',
+        ];
+
+        foreach ($apparelListings as $name => $description) {
+            $product = $this->product($store, $category, $name, $description);
+            $check = $scanner->scan($product);
+
+            $this->assertSame('review_required', $check->result, "[{$name}] should be held for Admin review.");
+            $this->assertSame('flagged', $product->fresh()->product_status);
+            $this->assertSame('CATEGORY_MISMATCH_ELECTRONICS_APPAREL', $check->matches->firstOrFail()->rule->code);
+            $this->assertSame('hold', $check->matches->firstOrFail()->recommended_action);
+            $this->assertSame('flagged', $product->violations()->firstOrFail()->status);
+        }
+
+        $ambiguousListings = [
+            'Short USB-C Cable' => 'A short charging cable for compatible devices.',
+            'Short-Throw Projector' => 'Projector with a short-throw lens and adjustable focus.',
+            'Short testing' => 'A short sample description for an electronics listing.',
+        ];
+
+        foreach ($ambiguousListings as $name => $description) {
+            $product = $this->product($store, $category, $name, $description);
+            $check = $scanner->scan($product);
+
+            $this->assertSame('clear', $check->result, "[{$name}] must remain clear for manual judgment.");
+            $this->assertSame('active', $product->fresh()->product_status);
+            $this->assertSame(0, $product->violations()->count());
+            $this->assertTrue(Product::visibleToBuyers()->whereKey($product->id)->exists());
+        }
     }
 
     public function test_rescan_command_is_dry_run_by_default_and_restores_corrected_published_products(): void

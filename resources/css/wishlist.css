@@ -22,11 +22,14 @@
 .wl-cart:hover{background:#562b16!important}
 .wl-cart:disabled{opacity:.65;cursor:default}
 .wl-empty{display:none;background:#fff;border:1px dashed #d4c9c2;border-radius:14px;text-align:center;padding:68px 20px;color:#24160f}
+.wl-empty:not([hidden]){display:block}
+.wl-grid[hidden]{display:none!important}
 .wl-empty .material-symbols-outlined{font-size:54px;color:#c7bcb5}
 .wl-empty h2{color:#24160f;margin:8px 0 2px}
 .wl-empty p{color:#76685f;margin:0}
 .wl-empty a{display:inline-block;margin-top:16px;background:#3b1d0f!important;color:#fff!important;text-decoration:none!important;padding:11px 19px;border-radius:8px;font-weight:600}
 .wl-empty a:hover{background:#562b16!important;color:#fff!important}
+.wl-status:not([hidden]){margin:16px 0 0;padding:10px 12px;border:1px solid #e4d8cc;border-radius:7px;background:#fffaf4;color:#5c493b;font-size:12px;line-height:1.5}
 @media(max-width:1100px){.wl-grid{grid-template-columns:repeat(4,1fr)}}
 @media(max-width:850px){.wl-grid{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:620px){.wl-wrap{padding:22px 16px 50px}.wl-grid{grid-template-columns:repeat(2,1fr)}.wl-img{height:145px}.wl-title h1{font-size:24px}}

@@ -1527,6 +1527,10 @@ class RiderController extends Controller
                 'Description',
                 'Pickup assignment ID',
                 'Delivery attempt ID',
+                'Payout method',
+                'Payout reference',
+                'Payout date',
+                'Payout note',
             ], ',', '"', '\\');
 
             foreach ($earningsService->exportQuery($riderProfile, $filters)->cursor() as $record) {

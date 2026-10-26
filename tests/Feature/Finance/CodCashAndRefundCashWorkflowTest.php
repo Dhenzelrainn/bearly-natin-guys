@@ -5,6 +5,8 @@ namespace Tests\Feature\Finance;
 use App\Enums\UserRole;
 use App\Models\AuditLog;
 use App\Models\CodCashCollection;
+use App\Models\CodCashCollectionEvent;
+use App\Models\DeliveryAttempt;
 use App\Models\LogisticsProfile;
 use App\Models\Order;
 use App\Models\Payment;
@@ -27,6 +29,7 @@ use App\Models\User;
 use App\Services\CodCashCollectionService;
 use App\Services\CommissionLedgerService;
 use App\Services\RefundCashPayoutService;
+use App\Services\RiderDeliveryService;
 use App\Services\SellerPayoutService;
 use App\Services\SellerWalletService;
 use Database\Seeders\DatabaseSeeder;
@@ -555,6 +558,107 @@ class CodCashAndRefundCashWorkflowTest extends TestCase
         $this->assertSame('paid', $scenario['order']->fresh()->payment_status);
         $this->assertDatabaseCount('platform_commissions', 2);
         $this->assertDatabaseCount('seller_transactions', 2);
+    }
+
+    public function test_duplicate_outbound_shipments_block_new_cod_collection_before_financial_writes(): void
+    {
+        $scenario = $this->scenario('duplicate-outbound-cod');
+        $duplicateShipment = $this->duplicateOutboundCodShipment($scenario);
+        $rider = $this->rider($scenario['provider'], 'duplicate outbound COD rider');
+        $cash = app(CodCashCollectionService::class);
+
+        $this->assertOutboundShipmentConflict(fn () => $cash->recordRiderCollection($scenario['shipment'], $rider, 20000));
+        $this->assertOutboundShipmentConflict(fn () => $cash->recordRiderCollection($duplicateShipment, $rider, 20000));
+
+        $this->assertSame(40000, (int) Shipment::query()
+            ->where('seller_order_id', $scenario['seller_order']->id)
+            ->where('purpose', 'outbound')
+            ->sum('cod_amount_minor'), 'The deliberately duplicated fixture still records the original PHP 400.00 aggregate due.');
+        $this->assertSame(0, CodCashCollection::query()->where('seller_order_id', $scenario['seller_order']->id)->count());
+        $this->assertSame(0, CodCashCollectionEvent::query()->count());
+        $this->assertSame('pending', $scenario['payment']->fresh()->status);
+        $this->assertSame('unpaid', $scenario['order']->fresh()->payment_status);
+        $this->assertFalse($cash->hasPaymentCaptured($scenario['order']->fresh()));
+        $this->assertDatabaseCount('platform_commissions', 0);
+        $this->assertDatabaseCount('seller_transactions', 0);
+    }
+
+    public function test_duplicate_outbound_shipment_freezes_existing_cod_custody_without_rewriting_it(): void
+    {
+        $scenario = $this->scenario('duplicate-cod-custody');
+        $rider = $this->rider($scenario['provider'], 'duplicate custody rider');
+        $cash = app(CodCashCollectionService::class);
+        $collection = $cash->recordRiderCollection($scenario['shipment'], $rider, 20000);
+        $this->assertSame('paid', $scenario['payment']->fresh()->status);
+
+        $this->duplicateOutboundCodShipment($scenario);
+
+        $this->assertOutboundShipmentConflict(fn () => $cash->recordRiderCollection($scenario['shipment'], $rider, 20000));
+        $this->assertOutboundShipmentConflict(fn () => $cash->receiveAtLogistics($scenario['provider_user'], $collection->id, 20000));
+        $this->assertOutboundShipmentConflict(fn () => $cash->remitToFinance($scenario['provider_user'], $collection->id, 20000));
+        $this->assertOutboundShipmentConflict(fn () => $cash->reconcileAtFinance($this->admin, $collection->id, 20000));
+
+        $collection->refresh();
+        $this->assertSame('collected', $collection->status);
+        $this->assertSame(20000, (int) $collection->amount_collected_minor);
+        $this->assertNull($collection->amount_received_by_logistics_minor);
+        $this->assertNull($collection->amount_remitted_to_finance_minor);
+        $this->assertNull($collection->amount_reconciled_minor);
+        $this->assertSame(1, CodCashCollection::query()->where('seller_order_id', $scenario['seller_order']->id)->count());
+        $this->assertSame(1, $collection->events()->count());
+        $this->assertSame('paid', $scenario['payment']->fresh()->status, 'A pre-existing captured Payment is preserved; this guard does not compensate historical records.');
+        $this->assertFalse($cash->hasPaymentCaptured($scenario['order']->fresh()));
+    }
+
+    public function test_rider_delivery_completion_rejects_duplicate_outbound_cod_before_delivery_writes(): void
+    {
+        $scenario = $this->scenario('duplicate-outbound-delivery');
+        $this->duplicateOutboundCodShipment($scenario);
+        $rider = $this->rider($scenario['provider'], 'duplicate outbound delivery rider');
+        Storage::fake('local');
+
+        $this->assertOutboundShipmentConflict(fn () => app(RiderDeliveryService::class)->completeDelivery(
+            shipmentNo: $scenario['shipment']->shipment_no,
+            actor: $rider,
+            proofPhoto: UploadedFile::fake()->createWithContent('duplicate-cod-proof.jpg', 'test proof'),
+            recipientName: 'Buyer Recipient',
+            codCollectedAmountMinor: 20000,
+            codCash: app(CodCashCollectionService::class),
+        ));
+
+        $this->assertSame('delivered', $scenario['shipment']->fresh()->status);
+        $this->assertSame(0, DeliveryAttempt::query()
+            ->whereHas('parcel', fn ($query) => $query->where('shipment_id', $scenario['shipment']->id))
+            ->count());
+        $this->assertSame(0, CodCashCollection::query()->where('seller_order_id', $scenario['seller_order']->id)->count());
+        $this->assertSame([], Storage::disk('local')->allFiles('delivery-proofs'));
+        $this->assertSame('pending', $scenario['payment']->fresh()->status);
+        $this->assertSame('unpaid', $scenario['order']->fresh()->payment_status);
+    }
+
+    public function test_return_shipment_does_not_block_cod_collection_for_one_outbound_shipment(): void
+    {
+        $scenario = $this->scenario('return-plus-outbound-cod');
+        Shipment::query()->create([
+            'shipment_no' => 'SHP-'.Str::upper(Str::random(12)),
+            'seller_order_id' => $scenario['seller_order']->id,
+            'logistics_profile_id' => $scenario['provider']->id,
+            'purpose' => 'return',
+            'status' => 'returned',
+            'cod_amount_minor' => 0,
+            'shipping_fee_minor' => 0,
+        ]);
+
+        $collection = app(CodCashCollectionService::class)->recordRiderCollection(
+            $scenario['shipment'],
+            $this->rider($scenario['provider'], 'return excluded COD rider'),
+            20000,
+        );
+
+        $this->assertSame('collected', $collection->status);
+        $this->assertSame(20000, (int) $collection->amount_due_minor);
+        $this->assertSame('paid', $scenario['payment']->fresh()->status);
+        $this->assertSame(1, CodCashCollection::query()->where('seller_order_id', $scenario['seller_order']->id)->count());
     }
 
     public function test_overcollection_is_preserved_as_a_disputed_cash_record_without_capturing_payment(): void
@@ -1230,6 +1334,34 @@ class CodCashAndRefundCashWorkflowTest extends TestCase
         }
 
         $this->fail('The COD operation should have returned a conflict.');
+    }
+
+    private function assertOutboundShipmentConflict(callable $operation): void
+    {
+        try {
+            $operation();
+        } catch (ConflictHttpException $exception) {
+            $this->assertSame(409, $exception->getStatusCode());
+            $this->assertStringContainsString('exactly one outbound Shipment', $exception->getMessage());
+
+            return;
+        }
+
+        $this->fail('Financial processing should have rejected the duplicate outbound shipment state.');
+    }
+
+    /** @param array<string, mixed> $scenario */
+    private function duplicateOutboundCodShipment(array $scenario): Shipment
+    {
+        return Shipment::query()->create([
+            'shipment_no' => 'SHP-'.Str::upper(Str::random(12)),
+            'seller_order_id' => $scenario['seller_order']->id,
+            'logistics_profile_id' => $scenario['provider']->id,
+            'purpose' => 'outbound',
+            'status' => 'delivered',
+            'cod_amount_minor' => 20000,
+            'delivered_at' => now(),
+        ]);
     }
 
     /** @return array<string, mixed> */

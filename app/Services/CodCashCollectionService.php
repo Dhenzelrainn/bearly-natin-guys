@@ -22,12 +22,13 @@ class CodCashCollectionService
     public function __construct(
         private readonly CommissionLedgerService $commissionLedger,
         private readonly NotificationService $notifications,
+        private readonly PromotionService $promotions,
+        private readonly SellerOrderOutboundShipmentGuard $outboundShipmentGuard,
     ) {}
 
     public function recordRiderCollection(Shipment $shipment, User $riderUser, int $actualAmountMinor): CodCashCollection
     {
         return DB::transaction(function () use ($shipment, $riderUser, $actualAmountMinor): CodCashCollection {
-            $lockedShipment = Shipment::query()->whereKey($shipment->id)->lockForUpdate()->firstOrFail();
             $rider = $riderUser->riderProfile()->first();
 
             if ($riderUser->role !== UserRole::Rider->value
@@ -36,7 +37,17 @@ class CodCashCollectionService
                 || $rider->verification_status !== 'approved') {
                 throw new AuthorizationException('An active, approved Rider is required to record COD cash.');
             }
-            if ($lockedShipment->purpose !== 'outbound' || (int) $lockedShipment->cod_amount_minor < 1) {
+            $shipmentReference = Shipment::query()->whereKey($shipment->id)->firstOrFail();
+            if ($shipmentReference->purpose !== 'outbound' || (int) $shipmentReference->cod_amount_minor < 1) {
+                throw ValidationException::withMessages(['cod_collected_amount' => 'This delivery has no COD cash due.']);
+            }
+
+            $lockedFinancialState = $this->outboundShipmentGuard->lockSingleForShipment((int) $shipmentReference->id);
+            $lockedShipment = $lockedFinancialState['shipment'];
+            $sellerOrder = $lockedFinancialState['sellerOrder'];
+            $order = $lockedFinancialState['order'];
+
+            if ((int) $lockedShipment->cod_amount_minor < 1) {
                 throw ValidationException::withMessages(['cod_collected_amount' => 'This delivery has no COD cash due.']);
             }
             if ((int) $lockedShipment->logistics_profile_id !== (int) $rider->logistics_profile_id) {
@@ -48,8 +59,6 @@ class CodCashCollectionService
                 throw ValidationException::withMessages(['cod_collected_amount' => 'Enter the actual cash collected in centavos.']);
             }
 
-            $sellerOrder = $lockedShipment->sellerOrder()->lockForUpdate()->firstOrFail();
-            $order = Order::query()->whereKey($sellerOrder->order_id)->lockForUpdate()->firstOrFail();
             $payment = Payment::query()
                 ->where('order_id', $order->id)
                 ->where('method', 'cod')
@@ -129,7 +138,7 @@ class CodCashCollectionService
                 throw new AuthorizationException('An active Logistics account is required to receive COD cash.');
             }
 
-            $collection = CodCashCollection::query()->whereKey($collectionId)->lockForUpdate()->firstOrFail();
+            $collection = $this->lockCollectionForFinancialProcessing($collectionId);
             $this->assertProvider($collection, $profile->id);
             $this->assertActualAmount($collection, $receivedAmountMinor, 'received_amount');
 
@@ -185,7 +194,7 @@ class CodCashCollectionService
                 throw new AuthorizationException('An active Logistics account is required to remit COD cash.');
             }
 
-            $collection = CodCashCollection::query()->whereKey($collectionId)->lockForUpdate()->firstOrFail();
+            $collection = $this->lockCollectionForFinancialProcessing($collectionId);
             $this->assertProvider($collection, $profile->id);
             $this->assertActualAmount($collection, $amountMinor, 'amount');
             if ($collection->status === 'remitted_to_finance') {
@@ -272,7 +281,7 @@ class CodCashCollectionService
                 throw new AuthorizationException('An active Admin/Finance user is required to reconcile COD cash.');
             }
 
-            $collection = CodCashCollection::query()->whereKey($collectionId)->lockForUpdate()->firstOrFail();
+            $collection = $this->lockCollectionForFinancialProcessing($collectionId);
             $this->assertActualAmount($collection, $receivedAmountMinor, 'received_amount');
 
             if ($collection->status === 'reconciled') {
@@ -385,6 +394,7 @@ class CodCashCollectionService
         $paidAt = $collections->max('collected_at') ?? now();
         $payment->update(['status' => 'paid', 'paid_at' => $paidAt]);
         $order->update(['payment_status' => 'paid']);
+        $this->promotions->markOrderPaid($order);
         $this->commissionLedger->finalize($payment->fresh());
     }
 
@@ -393,6 +403,21 @@ class CodCashCollectionService
         if ((int) $collection->logistics_profile_id !== $logisticsProfileId) {
             throw new AuthorizationException('This COD cash belongs to another Logistics provider.');
         }
+    }
+
+    private function lockCollectionForFinancialProcessing(int $collectionId): CodCashCollection
+    {
+        $reference = CodCashCollection::query()->whereKey($collectionId)->firstOrFail();
+        $lockedFinancialState = $this->outboundShipmentGuard->lockSingleForShipment((int) $reference->shipment_id);
+
+        $collection = CodCashCollection::query()->whereKey($collectionId)->lockForUpdate()->firstOrFail();
+        if ((int) $collection->shipment_id !== (int) $lockedFinancialState['shipment']->id
+            || (int) $collection->seller_order_id !== (int) $lockedFinancialState['sellerOrder']->id
+            || (int) $collection->order_id !== (int) $lockedFinancialState['order']->id) {
+            throw new ConflictHttpException('This COD collection no longer matches its authoritative outbound shipment and Seller Order.');
+        }
+
+        return $collection;
     }
 
     private function assertActualAmount(CodCashCollection $collection, int $actualMinor, string $field): void

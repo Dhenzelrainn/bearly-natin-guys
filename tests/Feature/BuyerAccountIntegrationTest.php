@@ -42,8 +42,8 @@ class BuyerAccountIntegrationTest extends TestCase
             ->assertSee('My Likes')
             ->assertSee('id="likes-category-tabs"', false)
             ->assertSee('id="likes-sort"', false)
-            ->assertSee('You may also like')
-            ->assertSee('href="'.url('/home#results').'"', false)
+            ->assertSee('No liked products yet')
+            ->assertDontSee('You may also like')
             ->assertSee('My Vouchers')
             ->assertSee('images/vouchers/Bearly-voucher-icon.png', false)
             ->assertSee('data-notification-trigger', false)
@@ -51,14 +51,26 @@ class BuyerAccountIntegrationTest extends TestCase
             ->assertSee('View all notifications')
             ->assertSee('Edit Profile')
             ->assertSee('Save Changes')
+            ->assertSee('select id="address-province"', false)
+            ->assertSee('select id="address-city"', false)
+            ->assertSee('address-city-code', false)
+            ->assertSee('Legacy addresses need city re-verification before checkout.')
             ->assertDontSee('Mia Santos');
 
         $this->actingAs($buyer)
             ->get('/home')
             ->assertOk()
-            ->assertSee('"wishlist_key":"pet-supplies:1"', false)
+            ->assertDontSee('class="flash-deals-preview home-flash-deals', false)
+            ->assertDontSee('data-home-ranking-section', false)
+            ->assertDontSee('No live product rankings are available yet')
+            ->assertDontSee('No live Flash Deal products right now')
+            ->assertDontSee('Wireless Mouse')
+            ->assertDontSee('data-top-like', false)
+            ->assertDontSee('data-flash-like', false)
             ->assertSee('data-notification-trigger', false)
             ->assertSee('id="buyer-notification-popover"', false)
+            ->assertDontSee('SELLING FAST')
+            ->assertDontSee('data-flash-countdown', false)
             ->assertSee('href="'.url('/profile#vouchers').'"', false)
             ->assertSee('href="'.url('/profile?voucher=shipping#vouchers').'"', false);
 
@@ -78,6 +90,92 @@ class BuyerAccountIntegrationTest extends TestCase
             ->assertSee('data-chat-filter', false)
             ->assertSee('data-chat-attachment-button', false)
             ->assertSee('data-chat-emoji', false);
+    }
+
+    public function test_ranking_and_flash_deal_pages_do_not_render_sample_product_cards(): void
+    {
+        $buyer = $this->makeBuyer('buyer-preview@example.test', 'Preview Buyer');
+
+        $this->actingAs($buyer)
+            ->get('/top-products')
+            ->assertOk()
+            ->assertSee('No live product rankings are available yet')
+            ->assertDontSee('data-top-product', false)
+            ->assertDontSee('featured-product-data', false)
+            ->assertDontSee('Wireless Mouse');
+
+        $this->actingAs($buyer)
+            ->get('/top-sales')
+            ->assertOk()
+            ->assertSee('No live sales rankings are available yet')
+            ->assertDontSee('data-top-product', false)
+            ->assertDontSee('Resistance Band Set');
+
+        $this->actingAs($buyer)
+            ->get('/flash-deals')
+            ->assertOk()
+            ->assertSee('No live Flash Deal products right now')
+            ->assertDontSee('data-flash-product', false)
+            ->assertDontSee('Wireless Earbuds')
+            ->assertDontSee('% claimed')
+            ->assertDontSee('Deals refresh in');
+    }
+
+    public function test_profile_likes_and_wishlist_use_only_the_authenticated_buyers_saved_products(): void
+    {
+        $buyer = $this->makeBuyer('likes-owner@example.test', 'Likes Owner');
+        $otherBuyer = $this->makeBuyer('likes-other@example.test', 'Other Buyer');
+        ['product' => $product, 'variant' => $variant] = $this->makeProduct();
+
+        $this->actingAs($buyer)
+            ->postJson('/wishlist/toggle', ['product_id' => $product->id])
+            ->assertOk()
+            ->assertJsonPath('data.is_wishlisted', true);
+
+        $this->actingAs($buyer)
+            ->get('/profile')
+            ->assertOk()
+            ->assertSee('window.bearlyLiveWishlist', false)
+            ->assertSee('Private Integration Product')
+            ->assertSee('"product_id":'.$product->id, false);
+
+        $this->assertDatabaseHas('wishlists', [
+            'user_id' => $buyer->id,
+            'product_id' => $product->id,
+        ]);
+
+        $this->actingAs($buyer)
+            ->get('/wishlist')
+            ->assertOk()
+            ->assertSee('Private Integration Product')
+            ->assertSee('data-wishlist-remove', false)
+            ->assertSee('data-variant-id="'.$variant->id.'"', false)
+            ->assertSee('Add to Cart');
+
+        $this->actingAs($otherBuyer)
+            ->get('/wishlist')
+            ->assertOk()
+            ->assertDontSee('Private Integration Product')
+            ->assertSee('Your wishlist is empty');
+    }
+
+    public function test_home_live_product_card_data_is_hydrated_from_the_buyer_wishlist(): void
+    {
+        $buyer = $this->makeBuyer('home-likes@example.test', 'Home Likes Buyer');
+        ['product' => $product] = $this->makeProduct();
+
+        $this->actingAs($buyer)
+            ->postJson('/wishlist/toggle', ['product_id' => $product->id])
+            ->assertOk()
+            ->assertJsonPath('data.is_wishlisted', true);
+
+        $this->actingAs($buyer)
+            ->get('/home')
+            ->assertOk()
+            ->assertSee('Private Integration Product')
+            ->assertSee('"id":'.$product->id, false)
+            ->assertSee('"is_wishlisted":true', false)
+            ->assertDontSee('Wireless Mouse');
     }
 
     public function test_profile_updates_are_persisted_for_the_authenticated_buyer(): void
@@ -116,7 +214,7 @@ class BuyerAccountIntegrationTest extends TestCase
             ->get(route('checkout'))
             ->assertOk()
             ->assertSee('+639171234567')
-            ->assertSee('Shipping is a flat fee for each seller parcel.')
+            ->assertSee('Shipping is charged once per combined Seller Order shipment.')
             ->assertDontSee('using the Store pickup address, route tier, packaged SKU weight');
     }
 
@@ -321,6 +419,26 @@ class BuyerAccountIntegrationTest extends TestCase
             ->assertJsonPath('data.items.1.image', Storage::disk('public')->url($primaryPath));
     }
 
+    public function test_wishlist_keeps_online_only_legacy_items_removable_but_not_purchasable(): void
+    {
+        $buyer = $this->makeBuyer('online-wishlist@example.test', 'Wishlist Buyer');
+        ['product' => $product] = $this->makeProduct();
+        $product->update(['payment_methods' => ['online']]);
+
+        $this->actingAs($buyer)
+            ->postJson('/wishlist/toggle', ['product_id' => $product->id])
+            ->assertOk()
+            ->assertJsonPath('data.is_wishlisted', true);
+
+        $this->actingAs($buyer)
+            ->get('/wishlist')
+            ->assertOk()
+            ->assertSee('Saved · Unavailable with Cash on Delivery checkout')
+            ->assertSee('Unavailable with Cash on Delivery checkout')
+            ->assertSee('data-wishlist-remove', false)
+            ->assertDontSee('Add to Cart');
+    }
+
     public function test_wishlist_and_addresses_are_scoped_to_the_authenticated_buyer(): void
     {
         $buyer = $this->makeBuyer('buyer@example.test', 'Ava Buyer');
@@ -349,7 +467,8 @@ class BuyerAccountIntegrationTest extends TestCase
             ->get('/wishlist')
             ->assertOk()
             ->assertDontSee('Private Integration Product')
-            ->assertSee('disabled aria-label="Preview item; not available in live cart"', false);
+            ->assertSee('Your wishlist is empty')
+            ->assertDontSee('preview-wishlist');
 
         $otherAddress = Address::create([
             'user_id' => $otherBuyer->id,
@@ -382,10 +501,11 @@ class BuyerAccountIntegrationTest extends TestCase
             ->postJson('/addresses', [
                 'name' => 'Ava Buyer',
                 'phone' => '+63 917 123 4567',
-                'province' => 'Metro Manila',
-                'city' => 'Manila',
+                'province' => 'Laguna',
+                'city' => 'City of Santa Rosa',
+                'city_code' => '0403428000',
                 'barangay' => 'Barangay 1',
-                'postal' => '1000',
+                'postal' => '4026',
                 'street' => 'Buyer Street',
                 'label' => 'Home',
                 'is_default' => true,
@@ -411,6 +531,7 @@ class BuyerAccountIntegrationTest extends TestCase
             'phone' => '+63 917 123 4567',
             'province' => 'Laguna',
             'city' => 'Santa Rosa',
+            'city_code' => '0403428000',
             'barangay' => 'Balibago',
             'postal' => '4026',
             'street' => 'Maple Street',
@@ -437,6 +558,7 @@ class BuyerAccountIntegrationTest extends TestCase
                 'phone' => '+63 917 123 4567',
                 'province' => 'Laguna',
                 'city' => 'Santa Rosa',
+                'city_code' => '0403428000',
                 'barangay' => 'Balibago',
                 'postal' => '4026',
                 'street' => 'Maple Street',
@@ -452,6 +574,7 @@ class BuyerAccountIntegrationTest extends TestCase
                 'phone' => '+63 917 123 4567',
                 'province' => 'Laguna',
                 'city' => 'Santa Rosa',
+                'city_code' => '0403428000',
                 'barangay' => 'Balibago',
                 'postal' => '4026',
                 'street' => 'Maple Street',
@@ -463,6 +586,32 @@ class BuyerAccountIntegrationTest extends TestCase
             ->assertJsonValidationErrors(['latitude', 'longitude']);
     }
 
+    public function test_address_cannot_be_saved_when_its_city_does_not_resolve_to_a_canonical_psgc_code(): void
+    {
+        $buyer = $this->makeBuyer('unresolved-address@example.test', 'Unresolved Buyer');
+
+        $this->actingAs($buyer)
+            ->postJson('/addresses', [
+                'name' => 'Unresolved Buyer',
+                'phone' => '+63 917 123 4567',
+                'province' => 'Unknown Province',
+                'city' => 'Unknown City',
+                'city_code' => '0000000000',
+                'barangay' => 'Unknown Barangay',
+                'postal' => '9999',
+                'street' => 'Unknown Street',
+                'label' => 'Home',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('city')
+            ->assertJsonPath('errors.city.0', 'Please select your city again; the PSGC city code does not match the address.');
+
+        $this->assertDatabaseMissing('addresses', [
+            'user_id' => $buyer->id,
+            'street' => 'Unknown Street',
+        ]);
+    }
+
     public function test_kids_and_baby_category_uses_the_authenticated_buyer_view(): void
     {
         $buyer = $this->makeBuyer('buyer@example.test', 'Ava Buyer');
@@ -471,7 +620,8 @@ class BuyerAccountIntegrationTest extends TestCase
             ->get('/products?category=kids-and-baby')
             ->assertOk()
             ->assertSee('Kids & Baby', false)
-            ->assertSee('Ava Buyer');
+            ->assertSee('Ava Buyer')
+            ->assertDontSee('Floral Baby Dress');
     }
 
     private function makeBuyer(string $email, string $name): User

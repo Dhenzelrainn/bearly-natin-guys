@@ -9,6 +9,7 @@ use App\Enums\SellerOrderStatus;
 use App\Enums\ShipmentStatus;
 use App\Models\DeliveryAttempt;
 use App\Models\DeliveryProof;
+use App\Models\Dispute;
 use App\Models\Order;
 use App\Models\Parcel;
 use App\Models\Payment;
@@ -35,6 +36,7 @@ class BuyerOrderConfirmationService
     public function __construct(
         private readonly CodCashCollectionService $codCash,
         private readonly NotificationService $notifications,
+        private readonly PromotionService $promotions,
     ) {}
 
     /**
@@ -75,6 +77,13 @@ class BuyerOrderConfirmationService
             $blockMessage = $this->firstConfirmationBlockMessage($order, $sellerOrders, $payments, true);
             abort_if($blockMessage !== null, 409, $blockMessage);
 
+            // A promotion becomes redeemed only after an authoritative payment
+            // transition. COD capture and Admin payment confirmation already
+            // perform this transition; receipt confirmation must not redeem a
+            // voucher for a payment that was merely pending beforehand.
+            $paymentWasAlreadySettled = $payments->isNotEmpty()
+                && $payments->every(fn (Payment $payment): bool => $payment->status === 'paid');
+
             $now = now();
             $completedNow = [];
 
@@ -110,6 +119,9 @@ class BuyerOrderConfirmationService
             $pendingNonCod = $payments->where('status', 'pending')->where('method', '!=', 'cod');
             foreach ($pendingNonCod as $payment) {
                 $payment->update(['status' => 'paid', 'paid_at' => $now]);
+            }
+            if ($paymentWasAlreadySettled) {
+                $this->promotions->markOrderPaid($order);
             }
 
             $this->notifySellersOfCompletion($order, $completedNow, $buyer);
@@ -207,7 +219,7 @@ class BuyerOrderConfirmationService
         Order $order,
         Collection $sellerOrders,
         Collection $payments,
-        bool $lockEvidence,
+        bool $lockRows,
     ): ?string {
         if ($order->status === 'cancelled') {
             return 'This order was cancelled and cannot be confirmed as received.';
@@ -224,7 +236,7 @@ class BuyerOrderConfirmationService
             return 'This order has no active Seller Orders to confirm.';
         }
 
-        if ($this->hasUnresolvedReturnOrRefund($order)) {
+        if ($this->hasUnresolvedReturnOrRefund($order, $lockRows)) {
             return 'This order has an unresolved return, refund, or dispute case and cannot be confirmed as received.';
         }
 
@@ -234,7 +246,7 @@ class BuyerOrderConfirmationService
         }
 
         foreach ($activeSellerOrders as $sellerOrder) {
-            if (! $this->hasDeliveredOutboundEvidence($sellerOrder, $lockEvidence)) {
+            if (! $this->hasDeliveredOutboundEvidence($sellerOrder, $lockRows)) {
                 return 'This order cannot be confirmed yet because not every parcel has been delivered.';
             }
         }
@@ -242,8 +254,23 @@ class BuyerOrderConfirmationService
         return null;
     }
 
-    private function hasUnresolvedReturnOrRefund(Order $order): bool
+    private function hasUnresolvedReturnOrRefund(Order $order, bool $lockRows): bool
     {
+        $unresolvedDisputes = Dispute::query()
+            ->whereHas('sellerOrder', fn ($sellerOrders) => $sellerOrders->where('order_id', $order->id))
+            ->whereNotIn('status', ['resolved', 'closed']);
+
+        // Receipt confirmation already holds the Order and SellerOrder locks.
+        // Lock a matching dispute as well so an Admin resolution and the
+        // confirmation decision cannot pass each other within this transaction.
+        $hasUnresolvedDispute = $lockRows
+            ? $unresolvedDisputes->lockForUpdate()->first(['id']) !== null
+            : $unresolvedDisputes->exists();
+
+        if ($hasUnresolvedDispute) {
+            return true;
+        }
+
         $hasUnresolvedReturnOrDispute = ReturnRequest::query()
             ->where('order_id', $order->id)
             ->where(function ($query): void {

@@ -199,6 +199,133 @@ class MobileBuyerCatalogApiTest extends TestCase
         }
     }
 
+    public function test_mobile_catalog_filters_cod_ineligible_products_before_pagination(): void
+    {
+        $category = $this->category('Electronics and Gadgets', 'electronics-and-gadgets');
+        $store = $this->store($category);
+        $publishedAt = now();
+
+        $olderCod = $this->product($store, $category, [
+            'name' => 'Older COD Product',
+            'published_at' => $publishedAt->copy()->subMinutes(3),
+            'payment_methods' => ['cod'],
+        ]);
+        $this->variant($olderCod);
+
+        $onlineOnly = $this->product($store, $category, [
+            'name' => 'Online Only Product',
+            'published_at' => $publishedAt->copy()->subMinutes(2),
+            'payment_methods' => ['online'],
+        ]);
+        $this->variant($onlineOnly);
+
+        $newerCod = $this->product($store, $category, [
+            'name' => 'Newer COD Product',
+            'published_at' => $publishedAt->copy()->subMinute(),
+            'payment_methods' => ['cod'],
+        ]);
+        $this->variant($newerCod);
+
+        $draft = $this->product($store, $category, [
+            'name' => 'Draft COD Product',
+            'product_status' => 'draft',
+            'payment_methods' => ['cod'],
+        ]);
+        $this->variant($draft);
+
+        $blocked = $this->product($store, $category, [
+            'name' => 'Blocked COD Product',
+            'compliance_status' => 'blocked',
+            'payment_methods' => ['cod'],
+        ]);
+        $this->variant($blocked);
+
+        $token = $this->buyer()->createToken('cod-pagination-catalog-test')->plainTextToken;
+
+        $pageOne = $this->withToken($token)
+            ->getJson('/api/mobile/buyer/products?per_page=1&page=1')
+            ->assertOk();
+
+        $pageTwo = $this->withToken($token)
+            ->getJson('/api/mobile/buyer/products?per_page=1&page=2')
+            ->assertOk();
+
+        $actualPagination = [
+            'total' => $pageOne->json('meta.total'),
+            'last_page' => $pageOne->json('meta.last_page'),
+            'page_one_ids' => array_column($pageOne->json('data'), 'id'),
+            'page_two_ids' => array_column($pageTwo->json('data'), 'id'),
+            'page_two_has_more' => $pageTwo->json('meta.has_more'),
+        ];
+        $this->assertSame([
+            'total' => 2,
+            'last_page' => 2,
+            'page_one_ids' => [$newerCod->id],
+            'page_two_ids' => [$olderCod->id],
+            'page_two_has_more' => false,
+        ], $actualPagination, 'Only COD-orderable visible products should determine pagination totals and contiguous page boundaries.');
+    }
+
+    public function test_mobile_product_detail_matches_web_cod_eligibility_contract(): void
+    {
+        $category = $this->category('Electronics and Gadgets', 'electronics-and-gadgets');
+        $store = $this->store($category);
+        $codProduct = $this->product($store, $category, [
+            'name' => 'Detail COD Product',
+            'payment_methods' => ['cod'],
+        ]);
+        $this->variant($codProduct);
+        $onlineOnly = $this->product($store, $category, [
+            'name' => 'Detail Online Only Product',
+            'payment_methods' => ['online'],
+        ]);
+        $this->variant($onlineOnly);
+        $token = $this->buyer()->createToken('detail-orderability-catalog-test')->plainTextToken;
+
+        $this->withToken($token)
+            ->getJson('/api/mobile/buyer/products/'.$onlineOnly->id)
+            ->assertNotFound();
+
+        $this->withToken($token)
+            ->getJson('/api/mobile/buyer/products/'.$codProduct->id)
+            ->assertOk()
+            ->assertJsonPath('data.id', $codProduct->id);
+    }
+
+    public function test_mobile_price_low_sort_uses_active_variant_prices(): void
+    {
+        $scenario = $this->variantPriceSortingScenario();
+
+        $response = $this->withToken($scenario['token'])
+            ->getJson('/api/mobile/buyer/products?sort=price_low&per_page=10')
+            ->assertOk();
+
+        $this->assertSame([
+            'total' => 2,
+            'products' => [
+                ['id' => $scenario['lower_active_price']->id, 'price_minor' => 10000, 'active_variant_count' => 2],
+                ['id' => $scenario['higher_active_price']->id, 'price_minor' => 12000, 'active_variant_count' => 2],
+            ],
+        ], $this->sortedProductSummary($response), 'Price-low ordering must use the same active variant prices returned by the Mobile API.');
+    }
+
+    public function test_mobile_price_high_sort_uses_active_variant_prices(): void
+    {
+        $scenario = $this->variantPriceSortingScenario();
+
+        $response = $this->withToken($scenario['token'])
+            ->getJson('/api/mobile/buyer/products?sort=price_high&per_page=10')
+            ->assertOk();
+
+        $this->assertSame([
+            'total' => 2,
+            'products' => [
+                ['id' => $scenario['higher_active_price']->id, 'price_minor' => 12000, 'active_variant_count' => 2],
+                ['id' => $scenario['lower_active_price']->id, 'price_minor' => 10000, 'active_variant_count' => 2],
+            ],
+        ], $this->sortedProductSummary($response), 'Price-high ordering must be the reverse of the active price values returned by the Mobile API.');
+    }
+
     public function test_search_category_sort_validation_and_pagination_follow_web_catalog_filters(): void
     {
         $food = $this->category('Food and Gourmet', 'food-and-gourmet');
@@ -262,12 +389,14 @@ class MobileBuyerCatalogApiTest extends TestCase
 
     private function category(string $name, string $slug, ?int $parentId = null): Category
     {
-        return Category::create([
-            'parent_id' => $parentId,
-            'name' => $name,
-            'slug' => $slug,
-            'is_active' => true,
-        ]);
+        return Category::query()->firstOrCreate(
+            ['slug' => $slug],
+            [
+                'parent_id' => $parentId,
+                'name' => $name,
+                'is_active' => true,
+            ],
+        );
     }
 
     /** @param array<string, mixed> $options */
@@ -291,6 +420,72 @@ class MobileBuyerCatalogApiTest extends TestCase
             'slug' => 'public-bearly-store-'.uniqid(),
             'publication_status' => $options['publication_status'] ?? 'published',
         ]);
+    }
+
+    /** @return array{token: string, lower_active_price: Product, higher_active_price: Product} */
+    private function variantPriceSortingScenario(): array
+    {
+        $category = $this->category('Electronics and Gadgets', 'electronics-and-gadgets');
+        $store = $this->store($category);
+
+        $higherActivePrice = $this->product($store, $category, ['name' => 'Higher Active Price Product']);
+        $this->variant($higherActivePrice, [
+            'name' => 'Active Higher Price',
+            'price_minor' => 12000,
+            'position' => 1,
+        ]);
+        $this->variant($higherActivePrice, [
+            'name' => 'Active Secondary Price',
+            'price_minor' => 8000,
+            'is_active' => true,
+            'position' => 2,
+        ]);
+        $this->variant($higherActivePrice, [
+            'name' => 'Inactive Lower Price',
+            'price_minor' => 1000,
+            'is_active' => false,
+            'position' => 3,
+        ]);
+
+        $lowerActivePrice = $this->product($store, $category, ['name' => 'Lower Active Price Product']);
+        $this->variant($lowerActivePrice, [
+            'name' => 'Active Lower Price',
+            'price_minor' => 10000,
+            'position' => 1,
+        ]);
+        $this->variant($lowerActivePrice, [
+            'name' => 'Active Secondary Higher Price',
+            'price_minor' => 15000,
+            'is_active' => true,
+            'position' => 2,
+        ]);
+        $this->variant($lowerActivePrice, [
+            'name' => 'Inactive Higher Price',
+            'price_minor' => 50000,
+            'is_active' => false,
+            'position' => 3,
+        ]);
+
+        return [
+            'token' => $this->buyer()->createToken('variant-price-catalog-test')->plainTextToken,
+            'lower_active_price' => $lowerActivePrice,
+            'higher_active_price' => $higherActivePrice,
+        ];
+    }
+
+    /** @return array{total: int, products: list<array{id: int, price_minor: int, active_variant_count: int}>} */
+    private function sortedProductSummary(\Illuminate\Testing\TestResponse $response): array
+    {
+        return [
+            'total' => (int) $response->json('meta.total'),
+            'products' => collect($response->json('data'))
+                ->map(fn (array $product): array => [
+                    'id' => (int) $product['id'],
+                    'price_minor' => (int) $product['price_minor'],
+                    'active_variant_count' => count($product['variants']),
+                ])
+                ->all(),
+        ];
     }
 
     /** @param array<string, mixed> $attributes */

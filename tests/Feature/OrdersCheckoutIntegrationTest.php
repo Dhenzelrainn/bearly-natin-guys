@@ -20,7 +20,6 @@ use App\Models\User;
 use App\Notifications\WorkflowNotification;
 use App\Services\CheckoutService;
 use App\Services\PostalCodeLookup;
-use App\Services\ShippingQuoteService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -67,10 +66,16 @@ class OrdersCheckoutIntegrationTest extends TestCase
         $this->assertSame(2, $order->sellerOrders->count());
         $this->assertSame(22502, (int) $order->subtotal_minor);
         $this->assertSame(10000, (int) $order->shipping_fee_minor);
+        $this->assertSame(10000, (int) $order->buyer_paid_shipping_fee_minor);
+        $this->assertSame('buyer', $order->shipping_funding_source);
         $this->assertSame(32502, (int) $order->total_minor);
         $this->assertSame(
             [5000, 5000],
             $order->sellerOrders->pluck('shipping_fee_minor')->map(fn ($fee): int => (int) $fee)->all(),
+        );
+        $this->assertSame(
+            [5000, 5000],
+            $order->sellerOrders->pluck('buyer_paid_shipping_fee_minor')->map(fn ($fee): int => (int) $fee)->all(),
         );
         $this->assertSame('processing', $order->status);
         $this->assertSame('unpaid', $order->payment_status);
@@ -300,7 +305,7 @@ class OrdersCheckoutIntegrationTest extends TestCase
         $this->assertSame(2, Order::query()->where('checkout_request_key', $requestKey)->pluck('buyer_id')->unique()->count());
     }
 
-    public function test_quote_uses_combined_parcel_and_flat_fee_for_over_one_kg(): void
+    public function test_quote_uses_one_combined_parcel_and_zone_fee_for_over_one_kg(): void
     {
         $buyer = $this->user('buyer');
         $destination = $this->address($buyer, 'Santa Rosa');
@@ -319,7 +324,9 @@ class OrdersCheckoutIntegrationTest extends TestCase
 
         $response->assertJsonPath('data.shipping_fee_minor', 5000)
             ->assertJsonPath('data.seller_orders.0.shipping_fee_minor', 5000)
-            ->assertJsonPath('data.seller_orders.0.quote.pricing_rule', 'flat_per_seller_order')
+            ->assertJsonPath('data.seller_orders.0.quote.pricing_rule', 'zone_based_v1')
+            ->assertJsonPath('data.seller_orders.0.quote.zone_level', 0)
+            ->assertJsonPath('data.seller_orders.0.quote.zone_surcharge_minor', 0)
             ->assertJsonPath('data.seller_orders.0.quote.billable_weight_kg', 2)
             ->assertJsonPath('data.seller_orders.0.quote.volumetric_divisor', 5000)
             ->assertJsonPath('data.seller_orders.0.quote.package_estimator', 'greedy_minimum_bounding_box_v1');
@@ -330,6 +337,35 @@ class OrdersCheckoutIntegrationTest extends TestCase
         $this->assertNotEmpty($response->json('data.quote_token'));
         $dimensions = $response->json('data.seller_orders.0.quote.parcel_dimensions_cm');
         $this->assertSame(8000.0, (float) $dimensions['length'] * (float) $dimensions['width'] * (float) $dimensions['height']);
+    }
+
+    public function test_shipping_quote_preserves_three_decimal_centimeter_dimensions(): void
+    {
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'Santa Rosa');
+        $category = $this->category();
+        [, $store] = $this->sellerAndStore($category, 'checkout-package-thousandths');
+        $variant = $this->variant(
+            $this->product($store, $category, 'Three Decimal Package Item'),
+            'PACKAGE-THOUSANDTHS-001',
+            10000,
+            5,
+            [100, 100, 0.795],
+        );
+        $cartItem = $this->cartItem($buyer, $variant, 1);
+
+        $quote = $this->actingAs($buyer)
+            ->postJson(route('checkout.quote'), [
+                'address_id' => $destination->id,
+                'cart_item_ids' => [$cartItem->id],
+            ])
+            ->assertOk()
+            ->json('data.seller_orders.0.quote');
+
+        $this->assertSame('0.795', (string) $variant->fresh()->package_height_cm);
+        $this->assertSame(0.795, (float) $quote['parcel_dimensions_cm']['height']);
+        $this->assertSame(0.795, (float) $quote['package_items'][0]['package_dimensions_cm']['height']);
+        $this->assertSame(1.59, (float) $quote['volumetric_weight_kg']);
     }
 
     public function test_checkout_rejects_foreign_cart_items_and_foreign_addresses(): void
@@ -412,6 +448,51 @@ class OrdersCheckoutIntegrationTest extends TestCase
         ])->assertConflict();
     }
 
+    public function test_buyer_can_still_cancel_remaining_pending_seller_orders_after_another_seller_order_was_cancelled(): void
+    {
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'Santa Rosa');
+        $category = $this->category();
+        [, $firstStore] = $this->sellerAndStore($category, 'partial-cancel-first');
+        [, $secondStore] = $this->sellerAndStore($category, 'partial-cancel-second');
+        $firstVariant = $this->variant($this->product($firstStore, $category, 'Already Cancelled Seller Item'), 'PARTIAL-CANCEL-001', 1200, 8);
+        $secondVariant = $this->variant($this->product($secondStore, $category, 'Still Pending Seller Item'), 'PARTIAL-CANCEL-002', 1800, 8);
+        $firstCartItem = $this->cartItem($buyer, $firstVariant, 1);
+        $secondCartItem = $this->cartItem($buyer, $secondVariant, 2);
+        $cartItemIds = [$firstCartItem->id, $secondCartItem->id];
+        $quoteToken = $this->quoteToken($buyer, $cartItemIds, $destination->id);
+
+        $this->actingAs($buyer)->post(route('checkout.place'), [
+            'checkout_request_key' => (string) Str::uuid(),
+            'address_id' => $destination->id,
+            'cart_item_ids' => $cartItemIds,
+            'quote_token' => $quoteToken,
+            'payment_method' => 'cod',
+        ])->assertRedirect();
+
+        $order = Order::query()->with('sellerOrders')->firstOrFail();
+        $firstSellerOrder = $order->sellerOrders->firstWhere('store_id', $firstStore->id);
+        $pendingSellerOrder = $order->sellerOrders->firstWhere('store_id', $secondStore->id);
+        $firstSellerOrder->update(['status' => 'cancelled', 'cancelled_at' => now()]);
+        $firstVariant->update(['stock_reserved' => 0]);
+
+        $purchase = collect($this->actingAs($buyer)
+            ->getJson(route('buyer.purchases.data'))
+            ->assertOk()
+            ->json('data'))
+            ->firstWhere('id', $order->order_no);
+        $this->assertTrue($purchase['can_cancel']);
+        $this->assertSame(route('checkout.cancel', $order->id), $purchase['cancel_url']);
+
+        $this->actingAs($buyer)->post(route('checkout.cancel', $order->id), [
+            'reason' => 'Cancel remaining pending Seller Order',
+        ])->assertRedirect(route('checkout.confirmation', $order->order_no));
+
+        $this->assertSame('cancelled', $firstSellerOrder->fresh()->status);
+        $this->assertSame('cancelled', $pendingSellerOrder->fresh()->status);
+        $this->assertSame(0, (int) $secondVariant->fresh()->stock_reserved);
+    }
+
     public function test_seller_orders_are_persisted_and_scoped_to_the_authenticated_store(): void
     {
         $buyer = $this->user('buyer');
@@ -468,6 +549,7 @@ class OrdersCheckoutIntegrationTest extends TestCase
         ])->assertRedirect();
 
         $sellerOrder = Order::query()->firstOrFail()->sellerOrders()->sole();
+        $order = Order::query()->whereKey($sellerOrder->order_id)->firstOrFail();
         $endpoint = route('seller.orders.status', $sellerOrder->id);
 
         $this->actingAs($seller)->patchJson($endpoint, ['action' => 'confirm'])
@@ -485,8 +567,54 @@ class OrdersCheckoutIntegrationTest extends TestCase
         $this->assertDatabaseCount('waybills', 1);
         $this->assertDatabaseCount('parcels', 1);
 
+        $outboundShipment = $sellerOrder->fresh()->shipments()->where('purpose', 'outbound')->sole();
+        $financialSnapshot = function () use ($order, $sellerOrder): array {
+            $freshOrder = $order->fresh();
+            $freshSellerOrder = $sellerOrder->fresh();
+            $payment = $freshOrder->payments()->sole();
+            $outboundShipments = $freshSellerOrder->shipments()->where('purpose', 'outbound')->get();
+
+            return [
+                'order_total_minor' => (int) $freshOrder->total_minor,
+                'order_payment_status' => $freshOrder->payment_status,
+                'payment_amount_minor' => (int) $payment->amount_minor,
+                'payment_status' => $payment->status,
+                'seller_order_total_minor' => (int) $freshSellerOrder->total_minor,
+                'seller_order_shipping_fee_minor' => (int) $freshSellerOrder->shipping_fee_minor,
+                'outbound_count' => $outboundShipments->count(),
+                'outbound_cod_due_minor' => (int) $outboundShipments->sum(fn ($shipment): int => (int) $shipment->cod_amount_minor),
+                'outbound_shipping_fee_minor' => (int) $outboundShipments->sum(fn ($shipment): int => (int) $shipment->shipping_fee_minor),
+            ];
+        };
+
+        $beforeServiceRetry = $financialSnapshot();
+        $pickupAddress = $seller->sellerProfile->pickupAddress;
+        $this->assertNotNull($pickupAddress);
+        $retriedShipment = DB::transaction(function () use ($sellerOrder, $seller, $provider, $pickupAddress) {
+            $lockedOrder = Order::query()
+                ->whereKey($sellerOrder->order_id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $lockedSellerOrder = SellerOrder::query()
+                ->whereKey($sellerOrder->id)
+                ->where('order_id', $lockedOrder->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            return app(\App\Services\SellerFulfillmentService::class)->createShipmentFor(
+                $lockedSellerOrder,
+                $seller,
+                $provider,
+                $pickupAddress,
+            );
+        }, attempts: 3);
+        $this->assertSame($outboundShipment->id, $retriedShipment->id);
+        $this->assertSame($beforeServiceRetry, $financialSnapshot());
+
+        $beforeWorkflowRetry = $financialSnapshot();
         $this->actingAs($seller)->patchJson($endpoint, ['action' => 'start_preparing'])
             ->assertConflict();
+        $this->assertSame($beforeWorkflowRetry, $financialSnapshot());
 
         $this->assertDatabaseCount('shipments', 1);
         $this->assertDatabaseCount('waybills', 1);
@@ -875,7 +1003,7 @@ class OrdersCheckoutIntegrationTest extends TestCase
 
         $oldRateQuote = $this->quoteToken($buyer, [$cartItem->id], $destination->id);
         SystemSetting::query()->updateOrCreate(
-            ['key' => 'shipping.seller_order_fee_minor'],
+            ['key' => 'shipping.base_fee_minor'],
             ['value' => 6000, 'value_type' => 'integer', 'is_public' => false],
         );
 
@@ -903,6 +1031,90 @@ class OrdersCheckoutIntegrationTest extends TestCase
         $this->assertSame(0, Order::query()->count());
         $this->assertSame(0, (int) $variant->fresh()->stock_reserved);
         $this->assertDatabaseHas('cart_items', ['id' => $cartItem->id]);
+    }
+
+    public function test_admin_rate_changes_never_rewrite_confirmed_shipping_snapshots(): void
+    {
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'San Pablo City');
+        $category = $this->category();
+        [, $store] = $this->sellerAndStore($category, 'checkout-historical-shipping');
+        $variant = $this->variant($this->product($store, $category, 'Saved Shipping Item'), 'SAVED-SHIP-001', 5000, 5);
+        $cartItem = $this->cartItem($buyer, $variant, 1);
+        $token = $this->quoteToken($buyer, [$cartItem->id], $destination->id);
+
+        $this->actingAs($buyer)->post(route('checkout.place'), [
+            'checkout_request_key' => (string) Str::uuid(),
+            'address_id' => $destination->id,
+            'cart_item_ids' => [$cartItem->id],
+            'quote_token' => $token,
+            'payment_method' => 'cod',
+        ])->assertRedirect();
+
+        $sellerOrder = SellerOrder::query()->firstOrFail();
+        $savedQuote = $sellerOrder->shipping_quote;
+        $this->assertSame(5500, (int) $sellerOrder->shipping_fee_minor);
+
+        SystemSetting::query()->updateOrCreate(
+            ['key' => 'shipping.base_fee_minor'],
+            ['value' => 9000, 'value_type' => 'integer', 'is_public' => false],
+        );
+        SystemSetting::query()->updateOrCreate(
+            ['key' => 'shipping.zone_surcharge_per_level_minor'],
+            ['value' => 1200, 'value_type' => 'integer', 'is_public' => false],
+        );
+
+        $sellerOrder->refresh();
+        $this->assertSame(5500, (int) $sellerOrder->shipping_fee_minor);
+        $this->assertSame($savedQuote, $sellerOrder->shipping_quote);
+        $this->assertSame(5000, (int) $sellerOrder->shipping_quote['base_fee_minor']);
+        $this->assertSame(500, (int) $sellerOrder->shipping_quote['zone_surcharge_minor']);
+    }
+
+    public function test_checkout_requotes_and_uses_new_zone_after_saved_address_location_changes(): void
+    {
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'Santa Rosa');
+        $category = $this->category();
+        [, $store] = $this->sellerAndStore($category, 'checkout-address-zone-change');
+        $variant = $this->variant($this->product($store, $category, 'Address Zone Item'), 'ADDRESS-ZONE-001', 5000, 5);
+        $cartItem = $this->cartItem($buyer, $variant, 1);
+        $oldQuote = $this->quoteToken($buyer, [$cartItem->id], $destination->id);
+
+        $destination->update([
+            'city_municipality' => 'Cebu City',
+            'province' => 'Cebu',
+            'psgc_city_code' => app(PostalCodeLookup::class)->canonicalCityCode(null, 'Cebu', 'Cebu City'),
+            'psgc_province_code' => null,
+        ]);
+
+        $this->actingAs($buyer)->postJson(route('checkout.place'), [
+            'checkout_request_key' => (string) Str::uuid(),
+            'address_id' => $destination->id,
+            'cart_item_ids' => [$cartItem->id],
+            'quote_token' => $oldQuote,
+            'payment_method' => 'cod',
+        ])->assertUnprocessable()->assertJsonValidationErrors('quote_token');
+
+        $freshQuote = $this->actingAs($buyer)->postJson(route('checkout.quote'), [
+            'address_id' => $destination->id,
+            'cart_item_ids' => [$cartItem->id],
+        ])->assertOk()
+            ->assertJsonPath('data.seller_orders.0.quote.zone_level', 4)
+            ->assertJsonPath('data.seller_orders.0.shipping_fee_minor', 7000);
+
+        $this->actingAs($buyer)->post(route('checkout.place'), [
+            'checkout_request_key' => (string) Str::uuid(),
+            'address_id' => $destination->id,
+            'cart_item_ids' => [$cartItem->id],
+            'quote_token' => $freshQuote->json('data.quote_token'),
+            'payment_method' => 'cod',
+        ])->assertRedirect();
+        $order = Order::query()->with('sellerOrders')->where('buyer_id', $buyer->id)->latest('id')->firstOrFail();
+        $sellerOrder = $order->sellerOrders->sole();
+        $this->assertSame(7000, (int) $sellerOrder->shipping_fee_minor);
+        $this->assertSame(7000, (int) $sellerOrder->shipping_quote['original_shipping_fee_minor']);
+        $this->assertSame(4, (int) $sellerOrder->shipping_quote['zone_level']);
     }
 
     public function test_checkout_revalidates_stock_visibility_and_legacy_package_data(): void
@@ -950,31 +1162,33 @@ class OrdersCheckoutIntegrationTest extends TestCase
         $this->assertDatabaseHas('cart_items', ['id' => $cartItem->id]);
     }
 
-    public function test_shipping_route_tiers_use_city_province_and_island_group(): void
+    public function test_shipping_zone_classification_uses_canonical_psgc_codes_for_all_five_levels(): void
     {
         $seller = $this->user('seller');
         $buyer = $this->user('buyer');
         $origin = $this->address($seller, 'Santa Rosa');
-        $nearbyCity = $this->address($buyer, 'Santa Rosa');
-        $sameProvince = $this->address($buyer, 'San Pablo City', 'Laguna', '043403000', '0434');
-        $nearbyProvince = $this->address($buyer, 'Batangas City', 'Batangas', '041010000', '0410');
-        $interIsland = $this->address($buyer, 'Cebu City', 'Cebu', '072217000', '0722');
-        $shipping = app(ShippingQuoteService::class);
+        $destinations = [
+            [0, $this->address($buyer, 'Santa Rosa')],
+            [1, $this->address($buyer, 'San Pablo City', 'Laguna')],
+            [2, $this->address($buyer, 'Batangas City', 'Batangas')],
+            [3, $this->address($buyer, 'Cabanatuan City', 'Nueva Ecija')],
+            [4, $this->address($buyer, 'Cebu City', 'Cebu')],
+        ];
+        $classifier = app(\App\Services\ShippingZoneClassifier::class);
 
-        $this->assertSame('nearby_delivery', $shipping->routeTier($origin, $nearbyCity));
-        $this->assertSame('same_province', $shipping->routeTier($origin, $sameProvince));
-        $this->assertSame('nearby_provinces', $shipping->routeTier($origin, $nearbyProvince));
-        $this->assertSame('inter_island', $shipping->routeTier($origin, $interIsland));
+        foreach ($destinations as [$expectedLevel, $destination]) {
+            $this->assertSame($expectedLevel, $classifier->classify($origin, $destination)['level']);
+        }
     }
 
-    public function test_flat_seller_order_fee_is_independent_of_route_and_billable_weight(): void
+    public function test_zone_fee_is_once_per_combined_seller_order_and_independent_of_weight(): void
     {
         $buyer = $this->user('buyer');
         $category = $this->category();
-        [, $store] = $this->sellerAndStore($category, 'checkout-flat-route');
+        [, $store] = $this->sellerAndStore($category, 'checkout-zone-route');
         $variant = $this->variant(
-            $this->product($store, $category, 'Heavy Flat Fee Item'),
-            'FLAT-001',
+            $this->product($store, $category, 'Heavy Zone Fee Item'),
+            'ZONE-001',
             5000,
             5,
             [20, 20, 20],
@@ -982,25 +1196,104 @@ class OrdersCheckoutIntegrationTest extends TestCase
         $variant->update(['package_weight_kg' => 2.0]);
         $cartItem = $this->cartItem($buyer, $variant, 1);
         $destinations = [
-            ['nearby_delivery', $this->address($buyer, 'Santa Rosa')],
-            ['same_province', $this->address($buyer, 'San Pablo City', 'Laguna', null, '0434')],
-            ['nearby_provinces', $this->address($buyer, 'Batangas City', 'Batangas', null, '0410')],
-            ['inter_island', $this->address($buyer, 'Cebu City', 'Cebu', null, '0722')],
+            [0, 5000, $this->address($buyer, 'Santa Rosa')],
+            [1, 5500, $this->address($buyer, 'San Pablo City', 'Laguna')],
+            [2, 6000, $this->address($buyer, 'Batangas City', 'Batangas')],
+            [3, 6500, $this->address($buyer, 'Cabanatuan City', 'Nueva Ecija')],
+            [4, 7000, $this->address($buyer, 'Cebu City', 'Cebu')],
         ];
 
-        foreach ($destinations as [$routeTier, $destination]) {
+        foreach ($destinations as [$zoneLevel, $expectedFee, $destination]) {
             $this->actingAs($buyer)->postJson(route('checkout.quote'), [
                 'address_id' => $destination->id,
                 'cart_item_ids' => [$cartItem->id],
             ])->assertOk()
-                ->assertJsonPath('data.shipping_fee_minor', 5000)
-                ->assertJsonPath('data.seller_orders.0.shipping_fee_minor', 5000)
-                ->assertJsonPath('data.seller_orders.0.quote.route_tier', $routeTier)
+                ->assertJsonPath('data.shipping_fee_minor', $expectedFee)
+                ->assertJsonPath('data.seller_orders.0.shipping_fee_minor', $expectedFee)
+                ->assertJsonPath('data.seller_orders.0.quote.zone_level', $zoneLevel)
+                ->assertJsonPath('data.seller_orders.0.quote.base_fee_minor', 5000)
+                ->assertJsonPath('data.seller_orders.0.quote.zone_surcharge_minor', $zoneLevel * 500)
                 ->assertJsonPath('data.seller_orders.0.quote.billable_weight_kg', 2);
         }
     }
 
-    public function test_admin_can_update_flat_seller_order_fee_and_create_audit_attribution(): void
+    public function test_same_display_name_with_different_canonical_city_codes_is_not_same_municipality(): void
+    {
+        $seller = $this->user('seller');
+        $buyer = $this->user('buyer');
+        $origin = $this->address($seller, 'Santa Rosa');
+        $differentCityCode = app(PostalCodeLookup::class)->canonicalCityCode(null, 'Laguna', 'San Pablo City');
+        $destination = $this->address($buyer, 'Santa Rosa', 'Laguna', $differentCityCode);
+
+        $classification = app(\App\Services\ShippingZoneClassifier::class)->classify($origin, $destination);
+
+        $this->assertNotSame((string) $origin->psgc_city_code, (string) $destination->psgc_city_code);
+        $this->assertSame(1, $classification['level']);
+        $this->assertSame('same_province', $classification['classification']);
+    }
+
+    public function test_shipping_quote_rejects_missing_unknown_and_inconsistent_psgc_identifiers(): void
+    {
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer, 'Santa Rosa');
+        $category = $this->category();
+        [$seller, $store] = $this->sellerAndStore($category, 'checkout-missing-psgc');
+        $variant = $this->variant($this->product($store, $category, 'Verified Address Item'), 'PSGC-001', 5000, 5);
+        $cartItem = $this->cartItem($buyer, $variant, 1);
+
+        foreach ([null, '0000000000'] as $cityCode) {
+            $destination->update(['psgc_city_code' => $cityCode]);
+            $this->actingAs($buyer)->postJson(route('checkout.quote'), [
+                'address_id' => $destination->id,
+                'cart_item_ids' => [$cartItem->id],
+            ])->assertUnprocessable()->assertJsonValidationErrors('address_id');
+        }
+
+        $destination->update([
+            'psgc_city_code' => app(PostalCodeLookup::class)->canonicalCityCode(null, 'Laguna', 'Santa Rosa'),
+            'psgc_province_code' => '0300800000',
+        ]);
+        $this->actingAs($buyer)->postJson(route('checkout.quote'), [
+            'address_id' => $destination->id,
+            'cart_item_ids' => [$cartItem->id],
+        ])->assertUnprocessable()->assertJsonValidationErrors('shipping');
+
+        $pickup = Address::query()->where('user_id', $seller->id)->firstOrFail();
+        $pickup->update(['psgc_city_code' => null]);
+        $destination->update([
+            'psgc_city_code' => app(PostalCodeLookup::class)->canonicalCityCode(null, 'Laguna', 'Santa Rosa'),
+            'psgc_province_code' => '0434',
+        ]);
+        $this->actingAs($buyer)->postJson(route('checkout.quote'), [
+            'address_id' => $destination->id,
+            'cart_item_ids' => [$cartItem->id],
+        ])->assertUnprocessable()->assertJsonValidationErrors('shipping');
+    }
+
+    public function test_same_region_locations_without_a_verified_province_parent_fail_instead_of_guessing(): void
+    {
+        $firstCode = '0330100000';
+        $secondCode = '0331400000';
+        $postalCodes = app(PostalCodeLookup::class);
+        $firstPlace = $postalCodes->findByCanonicalCityCode($firstCode);
+        $secondPlace = $postalCodes->findByCanonicalCityCode($secondCode);
+        $this->assertNotNull($firstPlace);
+        $this->assertNotNull($secondPlace);
+
+        $seller = $this->user('seller');
+        $buyer = $this->user('buyer');
+        $origin = $this->address($seller, $firstPlace['city'], $firstPlace['province'], $firstCode);
+        $destination = $this->address($buyer, $secondPlace['city'], $secondPlace['province'], $secondCode);
+
+        try {
+            app(\App\Services\ShippingZoneClassifier::class)->classify($origin, $destination);
+            $this->fail('A same-region route without a verified province parent must not be priced by guesswork.');
+        } catch (\Illuminate\Validation\ValidationException $exception) {
+            $this->assertArrayHasKey('shipping', $exception->errors());
+        }
+    }
+
+    public function test_admin_can_update_zone_base_and_surcharge_with_audit_attribution(): void
     {
         $buyer = $this->user('buyer');
         $this->actingAs($buyer)->get(route('admin.shipping-rates'))->assertForbidden();
@@ -1009,23 +1302,26 @@ class OrdersCheckoutIntegrationTest extends TestCase
         $this->actingAs($admin)
             ->get(route('admin.shipping-rates'))
             ->assertOk()
-            ->assertSee('Standard fee per Seller Order')
+            ->assertSee('Zone-based fee per Seller Order')
             ->assertSee('value="50.00"', false)
+            ->assertSee('value="5.00"', false)
             ->assertDontSee('additional_kg_surcharge', false);
 
         $this->actingAs($admin)->put(route('admin.shipping-rates.update'), [
-            'seller_order_fee' => '50.00',
+            'base_fee' => '60.00',
+            'zone_surcharge_per_level' => '10.00',
             'volumetric_divisor' => 4500,
-            'reason' => 'Set standard Seller Order shipping fee',
+            'reason' => 'Set zone shipping base and surcharge',
         ])->assertRedirect(route('admin.shipping-rates'));
 
-        $this->assertSame(5000, (int) SystemSetting::query()->where('key', 'shipping.seller_order_fee_minor')->value('value'));
+        $this->assertSame(6000, (int) SystemSetting::query()->where('key', 'shipping.base_fee_minor')->value('value'));
+        $this->assertSame(1000, (int) SystemSetting::query()->where('key', 'shipping.zone_surcharge_per_level_minor')->value('value'));
         $this->assertSame(4500, (int) SystemSetting::query()->where('key', 'shipping.volumetric_divisor')->value('value'));
         $this->assertDatabaseHas('audit_logs', [
             'actor_user_id' => $admin->id,
             'action' => 'shipping_rates.updated',
             'module' => 'shipping',
-            'description' => 'Admin updated Bearly shipping configuration: Set standard Seller Order shipping fee',
+            'description' => 'Admin updated Bearly shipping configuration: Set zone shipping base and surcharge',
         ]);
     }
 

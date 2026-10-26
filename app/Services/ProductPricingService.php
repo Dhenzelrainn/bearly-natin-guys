@@ -10,6 +10,7 @@ use App\Models\ProductVariant;
 use App\Models\StorePromotion;
 use App\Models\User;
 use Illuminate\Support\Carbon;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Facades\DB;
 
 class ProductPricingService
@@ -125,7 +126,9 @@ class ProductPricingService
      *     campaign_participation_item_id: int|null,
      *     campaign_name: string|null,
      *     campaign_funding: string|null,
-     *     campaign_type: string|null
+     *     campaign_type: string|null,
+     *     campaign_starts_at: string|null,
+     *     campaign_ends_at: string|null
      * }
      */
     public function priceForVariant(
@@ -161,6 +164,7 @@ class ProductPricingService
         $priceSource = $productDiscountPrice !== null
             ? 'product_discount'
             : 'regular';
+        $preCampaignSellerPrice = $sellerPrice;
 
         $campaign = $this->bestCampaignFor($product, $variant, $sellerPrice, $quantity, $lock, $tracksReservations, $at, $buyer);
         $buyerPrice = $sellerPrice;
@@ -196,13 +200,18 @@ class ProductPricingService
             }
         }
 
+        $campaignPromotion = $campaignItem?->participation?->campaign;
+        $displayBaseline = $priceSource === 'campaign'
+            ? $preCampaignSellerPrice
+            : $regular;
+
         $data = [
-            'regular_unit_price_minor' => $regular,
+            'regular_unit_price_minor' => $displayBaseline,
             'seller_unit_price_minor' => $sellerPrice,
             'unit_price_minor' => $buyerPrice,
             'platform_unit_discount_minor' => $platformDiscount,
-            'discount_percent' => $regular > 0
-                ? (int) round(100 - (($buyerPrice / $regular) * 100))
+            'discount_percent' => $displayBaseline > 0
+                ? (int) round(100 - (($buyerPrice / $displayBaseline) * 100))
                 : 0,
             'price_source' => $priceSource,
             'product_discount_id' => $priceSource === 'product_discount' ? (int) $productDiscount->id : null,
@@ -216,9 +225,11 @@ class ProductPricingService
                 ? $productDiscount->endsAt()?->toIso8601String()
                 : null,
             'campaign_participation_item_id' => $campaignItem ? (int) $campaignItem->id : null,
-            'campaign_name' => $campaignItem?->participation?->campaign?->name,
-            'campaign_funding' => $campaignItem?->participation?->campaign?->funding_type,
-            'campaign_type' => $campaignItem?->participation?->campaign?->campaign_type,
+            'campaign_name' => $campaignPromotion?->name,
+            'campaign_funding' => $campaignPromotion?->funding_type,
+            'campaign_type' => $campaignPromotion?->campaign_type,
+            'campaign_starts_at' => $campaignPromotion?->startsAt()?->toIso8601String(),
+            'campaign_ends_at' => $campaignPromotion?->endsAt()?->toIso8601String(),
         ];
 
         if (! $tracksReservations) {
@@ -232,6 +243,69 @@ class ProductPricingService
     {
         return array_key_exists((int) $product->id, $this->productDiscounts)
             || array_key_exists((int) $product->id, $this->campaignItems);
+    }
+
+    public function campaignActualSpendMinor(PlatformPromotion $campaign): int
+    {
+        $campaignId = (int) $campaign->id;
+
+        return $this->campaignBudget[$campaignId] ??= (int) $this->eligibleCampaignOrderItems()
+            ->join('platform_campaign_participations', 'platform_campaign_participations.id', '=', 'platform_campaign_participation_items.platform_campaign_participation_id')
+            ->where('platform_campaign_participations.platform_promotion_id', $campaignId)
+            ->sum('order_items.campaign_platform_discount_minor');
+    }
+
+    /**
+     * @param  array<int, int>  $participationItemIds
+     * @return array<int, int>
+     */
+    public function campaignSoldUnitsForItems(array $participationItemIds): array
+    {
+        $ids = collect($participationItemIds)
+            ->map(fn ($id): int => (int) $id)
+            ->filter(fn (int $id): bool => $id > 0)
+            ->unique()
+            ->values();
+
+        if ($ids->isEmpty()) {
+            return [];
+        }
+
+        $missing = $ids->filter(fn (int $id): bool => ! array_key_exists($id, $this->campaignSold));
+        foreach ($missing as $id) {
+            $this->campaignSold[$id] = 0;
+        }
+
+        if ($missing->isNotEmpty()) {
+            $sold = $this->eligibleCampaignOrderItems()
+                ->whereIn('order_items.platform_campaign_participation_item_id', $missing->all())
+                ->select('order_items.platform_campaign_participation_item_id')
+                ->selectRaw('SUM(order_items.quantity) AS sold_quantity')
+                ->groupBy('order_items.platform_campaign_participation_item_id')
+                ->get();
+
+            foreach ($sold as $row) {
+                $this->campaignSold[(int) $row->platform_campaign_participation_item_id] = (int) $row->sold_quantity;
+            }
+        }
+
+        return $ids->mapWithKeys(fn (int $id): array => [$id => $this->campaignSold[$id]])->all();
+    }
+
+    public function savedCampaignPriceMinor(PlatformCampaignParticipationItem $item): ?int
+    {
+        if ($item->campaign_price_minor !== null) {
+            return max(0, (int) $item->campaign_price_minor);
+        }
+
+        if ($item->discount_percent !== null) {
+            $regular = max(0, (int) $item->regular_price_minor);
+            $percent = min(100, max(0, (int) $item->discount_percent));
+
+            return max(0, intdiv($regular * (100 - $percent) + 50, 100));
+        }
+
+        return null;
     }
 
     /**
@@ -308,6 +382,23 @@ class ProductPricingService
                 continue;
             }
 
+            if ($campaign->minimum_discount_percent !== null) {
+                $minimumDiscount = (int) $campaign->minimum_discount_percent;
+                $minimumPrice = max(1, intdiv(max(0, $sellerPrice) * (100 - $minimumDiscount) + 50, 100));
+                if ($price > $minimumPrice) {
+                    continue;
+                }
+
+                // A Bearly-funded campaign must not silently subsidize a
+                // Seller price increase beyond the baseline Admin approved.
+                // Legacy campaigns without a configured minimum retain their
+                // existing pricing behavior.
+                if ($campaign->funding_type === PlatformPromotion::FUNDING_PLATFORM
+                    && $sellerPrice > (int) $item->regular_price_minor) {
+                    continue;
+                }
+            }
+
             $platformDiscount = $campaign->funding_type === PlatformPromotion::FUNDING_PLATFORM
                 ? max(0, ($sellerPrice - $price) * $quantity)
                 : 0;
@@ -335,18 +426,7 @@ class ProductPricingService
         ProductVariant $variant,
         Carbon $at,
     ): ?int {
-        if ($item->campaign_price_minor !== null) {
-            return max(0, (int) $item->campaign_price_minor);
-        }
-
-        if ($item->discount_percent !== null) {
-            $regular = max(0, (int) $item->regular_price_minor);
-            $percent = min(100, max(0, (int) $item->discount_percent));
-
-            return max(0, intdiv($regular * (100 - $percent) + 50, 100));
-        }
-
-        return null;
+        return $this->savedCampaignPriceMinor($item);
     }
 
     private function remainingStock(PlatformCampaignParticipationItem $item): int
@@ -355,26 +435,16 @@ class ProductPricingService
             return PHP_INT_MAX;
         }
 
-        $sold = $this->campaignSold[(int) $item->id] ??= (int) DB::table('order_items')
-            ->join('seller_orders', 'seller_orders.id', '=', 'order_items.seller_order_id')
-            ->join('orders', 'orders.id', '=', 'seller_orders.order_id')
-            ->where('order_items.platform_campaign_participation_item_id', $item->id)
-            ->where('seller_orders.status', '!=', 'cancelled')
-            ->where('orders.payment_status', '!=', 'refunded')
-            ->sum('order_items.quantity');
+        $sold = $this->campaignSoldUnitsForItems([(int) $item->id])[(int) $item->id] ?? 0;
 
         return max(0, (int) $item->stock_limit - $sold);
     }
 
     private function soldForBuyer(PlatformCampaignParticipationItem $item, User $buyer): int
     {
-        return (int) DB::table('order_items')
-            ->join('seller_orders', 'seller_orders.id', '=', 'order_items.seller_order_id')
-            ->join('orders', 'orders.id', '=', 'seller_orders.order_id')
+        return (int) $this->eligibleCampaignOrderItems()
             ->where('order_items.platform_campaign_participation_item_id', $item->id)
             ->where('orders.buyer_id', $buyer->id)
-            ->where('seller_orders.status', '!=', 'cancelled')
-            ->where('orders.payment_status', '!=', 'refunded')
             ->sum('order_items.quantity');
     }
 
@@ -392,24 +462,27 @@ class ProductPricingService
             return true;
         }
 
-        $spent = $this->campaignBudget[(int) $campaign->id] ??= (int) DB::table('order_items')
-            ->join('platform_campaign_participation_items', 'platform_campaign_participation_items.id', '=', 'order_items.platform_campaign_participation_item_id')
-            ->join('platform_campaign_participations', 'platform_campaign_participations.id', '=', 'platform_campaign_participation_items.platform_campaign_participation_id')
-            ->join('seller_orders', 'seller_orders.id', '=', 'order_items.seller_order_id')
-            ->join('orders', 'orders.id', '=', 'seller_orders.order_id')
-            ->where('platform_campaign_participations.platform_promotion_id', $campaign->id)
-            ->where('seller_orders.status', '!=', 'cancelled')
-            ->where('orders.payment_status', '!=', 'refunded')
-            ->sum('order_items.campaign_platform_discount_minor');
+        $spent = $this->campaignActualSpendMinor($campaign);
 
         $projected = $lock ? ($this->campaignBudgetProjected[(int) $campaign->id] ?? 0) : 0;
 
         return $spent + $projected + $platformDiscount <= (int) $campaign->budget_minor;
     }
 
+    private function eligibleCampaignOrderItems(): QueryBuilder
+    {
+        return DB::table('order_items')
+            ->join('platform_campaign_participation_items', 'platform_campaign_participation_items.id', '=', 'order_items.platform_campaign_participation_item_id')
+            ->join('seller_orders', 'seller_orders.id', '=', 'order_items.seller_order_id')
+            ->join('orders', 'orders.id', '=', 'seller_orders.order_id')
+            ->where('seller_orders.status', '!=', 'cancelled')
+            ->where('orders.payment_status', '!=', 'refunded');
+    }
+
     private function activeCampaignQuery($query): void
     {
         $query->where('status', PlatformPromotion::STATUS_ACTIVE)
+            ->where('is_public', true)
             ->withinScheduleAt($this->at ?? now('Asia/Manila'))
             ->where(function ($campaigns): void {
                 $campaigns->whereIn('kind', [

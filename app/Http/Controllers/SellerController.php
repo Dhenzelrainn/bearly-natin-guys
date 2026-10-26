@@ -582,10 +582,27 @@ class SellerController extends Controller
 
     public function inventory(Request $request, SellerInventoryService $inventory): View
     {
+        $filters = $request->validate([
+            'store_section' => ['nullable', 'string', 'max:20', 'regex:/^(?:uncategorized|[1-9][0-9]*)$/'],
+            'marketplace_subcategory' => ['nullable', 'string', 'max:20', 'regex:/^(?:unclassified|[1-9][0-9]*)$/'],
+            'inventory_search' => ['nullable', 'string', 'max:200'],
+            'inventory_status' => ['nullable', Rule::in([
+                'all', 'needs-restocking', 'low-stock', 'out-of-stock', 'needs-review', 'blocked', 'archived',
+            ])],
+            'inventory_variations' => ['nullable', Rule::in(['0', '1'])],
+        ]);
+
         return view('seller.Products.inventory', array_merge([
             'seller' => $this->seller(),
             'notifications' => $this->notifications(),
-        ], $inventory->inventoryFor($request->user())));
+            'inventorySearch' => $filters['inventory_search'] ?? '',
+            'inventorySelectedStatus' => $filters['inventory_status'] ?? 'all',
+            'inventoryShowVariations' => ($filters['inventory_variations'] ?? '1') === '1',
+        ], $inventory->inventoryFor(
+            $request->user(),
+            $filters['store_section'] ?? null,
+            $filters['marketplace_subcategory'] ?? null,
+        )));
     }
 
     public function adjustInventory(Request $request, SellerInventoryService $inventory): RedirectResponse
@@ -1108,7 +1125,15 @@ class SellerController extends Controller
         $filters = $request->validate([
             'search' => ['nullable', 'string', 'max:120'],
             'subcategory' => ['nullable', 'regex:/^(none|[1-9][0-9]*)$/'],
-            'status' => ['nullable', 'string', 'max:32'],
+            'status' => ['nullable', Rule::in([
+                'all',
+                'Active',
+                'Needs Review',
+                'Blocked',
+                'Draft',
+                'Pending Review',
+                'Archived',
+            ])],
         ]);
         $listing = $productService->productManagementListing($request->user(), $filters);
 

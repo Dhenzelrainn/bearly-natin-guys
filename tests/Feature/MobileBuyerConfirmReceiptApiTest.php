@@ -12,6 +12,7 @@ use App\Models\LogisticsProfile;
 use App\Models\Order;
 use App\Models\Parcel;
 use App\Models\Payment;
+use App\Models\PromotionRedemption;
 use App\Models\Refund;
 use App\Models\ReturnRequest;
 use App\Models\RiderProfile;
@@ -29,6 +30,7 @@ use App\Services\NotificationService;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Mockery;
@@ -530,6 +532,109 @@ class MobileBuyerConfirmReceiptApiTest extends TestCase
             ->postJson('/api/mobile/buyer/orders/'.$fixture['order']->id.'/confirm-receipt')
             ->assertStatus(409)
             ->assertJsonPath('error.code', 'return_refund_in_progress');
+    }
+
+    public function test_standalone_open_dispute_blocks_receipt_until_admin_resolves_it(): void
+    {
+        $fixture = $this->receiptFixture('standalone-open-dispute');
+        $this->collectCod($fixture['shipment'], $fixture['provider']);
+
+        $dispute = Dispute::query()->create([
+            'dispute_no' => 'DSP-'.Str::upper(Str::random(12)),
+            'seller_order_id' => $fixture['seller_order']->id,
+            'return_request_id' => null,
+            'shipment_id' => $fixture['shipment']->id,
+            'opened_by' => $fixture['buyer']->id,
+            'subject' => 'Standalone receipt dispute',
+            'description' => 'An unresolved dispute without a ReturnRequest must block receipt confirmation.',
+            'priority' => 'normal',
+            'status' => 'open',
+            'amount_minor' => (int) $fixture['seller_order']->total_minor,
+            'opened_at' => now(),
+        ]);
+
+        $orderId = (int) $fixture['order']->id;
+        $route = '/api/mobile/buyer/orders/'.$orderId.'/confirm-receipt';
+        $canConfirm = $this->actingAs($fixture['buyer'])
+            ->getJson('/api/mobile/buyer/orders/'.$orderId)
+            ->assertOk()
+            ->json('data.buyer_actions.can_confirm_receipt');
+
+        $receiptState = function () use ($fixture): array {
+            $order = $fixture['order']->fresh();
+            $sellerOrder = $fixture['seller_order']->fresh();
+            $payment = $fixture['order']->payments()->sole();
+
+            return [
+                'order_status' => $order->status,
+                'order_payment_status' => $order->payment_status,
+                'order_completed_at' => $order->getRawOriginal('completed_at'),
+                'seller_order_status' => $sellerOrder->status,
+                'seller_order_completed_at' => $sellerOrder->getRawOriginal('completed_at'),
+                'seller_order_history_count' => $sellerOrder->statusHistory()->count(),
+                'payment_status' => $payment->status,
+                'payment_paid_at' => $payment->getRawOriginal('paid_at'),
+                'promotion_redemptions' => PromotionRedemption::query()
+                    ->where('order_id', $fixture['order']->id)
+                    ->orderBy('id')
+                    ->get(['id', 'status', 'redeemed_at'])
+                    ->map(fn (PromotionRedemption $redemption): array => [
+                        (int) $redemption->id,
+                        $redemption->status,
+                        $redemption->getRawOriginal('redeemed_at'),
+                    ])
+                    ->all(),
+            ];
+        };
+
+        $stateBeforeOpenAttempt = $receiptState();
+        DB::beginTransaction();
+        try {
+            $openAttempt = $this->actingAs($fixture['buyer'])->postJson($route);
+            $stateAfterOpenAttempt = $receiptState();
+        } finally {
+            // Keep this intentionally failing regression from retaining the
+            // premature confirmation if the current implementation accepts it.
+            DB::rollBack();
+        }
+
+        $admin = $this->user(UserRole::Admin, 'resolve-standalone-dispute');
+        $this->actingAs($admin)
+            ->postJson(route('admin.disputes.resolve', $dispute), [
+                'outcome' => 'seller_favored',
+                'note' => 'The case was reviewed and resolved before Buyer receipt confirmation.',
+            ])
+            ->assertOk()
+            ->assertJsonPath('message', 'Dispute resolved successfully.');
+        $this->assertSame('resolved', $dispute->fresh()->status);
+
+        $this->actingAs($fixture['buyer'])
+            ->postJson($route)
+            ->assertOk()
+            ->assertJsonPath('data.status', 'fulfilled')
+            ->assertJsonPath('data.receipt_confirmed', true)
+            ->assertJsonPath('data.already_confirmed', false);
+
+        $historyCountAfterConfirmation = $fixture['seller_order']->statusHistory()->count();
+        $this->actingAs($fixture['buyer'])
+            ->postJson($route)
+            ->assertOk()
+            ->assertJsonPath('data.already_confirmed', true);
+        $this->assertSame($historyCountAfterConfirmation, $fixture['seller_order']->statusHistory()->count());
+
+        $this->assertSame([
+            'can_confirm' => false,
+            'response_status' => 409,
+            'error_code' => 'return_refund_in_progress',
+            'state_unchanged' => true,
+        ], [
+            'can_confirm' => $canConfirm,
+            'response_status' => $openAttempt->status(),
+            'error_code' => $openAttempt->json('error.code'),
+            'state_unchanged' => $stateBeforeOpenAttempt === $stateAfterOpenAttempt,
+        ], 'An unresolved standalone dispute must block receipt without advancing order, payment, or promotion state. Before: '
+            .json_encode($stateBeforeOpenAttempt, JSON_THROW_ON_ERROR)
+            .' After: '.json_encode($stateAfterOpenAttempt, JSON_THROW_ON_ERROR));
     }
 
     public function test_pending_completed_and_unknown_refunds_block_new_confirmation_but_inactive_refund_states_do_not(): void

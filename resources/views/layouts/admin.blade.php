@@ -99,6 +99,11 @@ $adminNavGroups = [
                 'icon' => 'shield-check',
             ],
             [
+                'label' => 'Category Reviews',
+                'route' => 'admin.compliance.category-reviews',
+                'icon' => 'scan-search',
+            ],
+            [
                 'label' => 'Complaints & Disputes',
                 'route' => 'admin.disputes',
                 'icon' => 'message-square-warning',
@@ -135,6 +140,11 @@ $adminNavGroups = [
                 'icon' => 'credit-card',
             ],
             [
+                'label' => 'Shipping Settlements',
+                'route' => 'admin.shipping-settlements.index',
+                'icon' => 'truck',
+            ],
+            [
                 'label' => 'Seller Payouts',
                 'route' => 'admin.seller-payouts.index',
                 'icon' => 'wallet',
@@ -154,6 +164,11 @@ $adminNavGroups = [
                 'label' => 'Platform Vouchers & Offers',
                 'route' => 'admin.promotions',
                 'icon' => 'badge-percent',
+            ],
+            [
+                'label' => 'Marketplace Taxonomy',
+                'route' => 'admin.marketplace-taxonomy.index',
+                'icon' => 'tags',
             ],
             [
                 'label' => 'Bearly Campaigns',
@@ -403,7 +418,7 @@ $adminNavGroups = [
             request()->routeIs('admin.registrations*') => 'Registration Management',
             request()->routeIs('admin.users*') => 'User Management',
             request()->routeIs('admin.compliance*', 'admin.disputes*', 'admin.violations*') => 'Compliance & Disputes',
-            request()->routeIs('admin.commissions', 'admin.transactions', 'admin.payments', 'admin.seller-payouts.*', 'admin.reports', 'admin.orders', 'admin.fulfillment') => 'Finance & Reports',
+            request()->routeIs('admin.commissions', 'admin.transactions', 'admin.payments', 'admin.shipping-settlements.*', 'admin.seller-payouts.*', 'admin.reports', 'admin.orders', 'admin.fulfillment') => 'Finance & Reports',
             request()->routeIs('admin.messages', 'admin.announcements', 'admin.support-tickets') => 'Communication',
             request()->routeIs('admin.settings', 'admin.account', 'admin.policies', 'admin.audit-logs') => 'System Management',
             default => trim(View::yieldContent('page-title', 'Admin Center')) ?: 'Admin Center',
@@ -427,7 +442,7 @@ $adminNavGroups = [
         </button>
 
         <h1>
-            {{ $adminTopbarTitle }}
+            {{ html_entity_decode($adminTopbarTitle, ENT_QUOTES | ENT_HTML5, 'UTF-8') }}
         </h1>
 
     </div>
@@ -637,7 +652,9 @@ $adminNavGroups = [
     data-toast-stack
     aria-live="polite"
     aria-atomic="true"
-></div>
+>
+    @stack('admin-toasts')
+</div>
 
 
 <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>

@@ -22,10 +22,7 @@ class BuyerProductVariantPresentationTest extends TestCase
     {
         Storage::fake('public');
 
-        $category = Category::create([
-            'name' => 'Electronics and Gadgets',
-            'slug' => 'electronics-and-gadgets',
-        ]);
+        $category = Category::query()->where('slug', 'electronics-and-gadgets')->firstOrFail();
         $seller = User::create([
             'name' => 'Variant Seller',
             'first_name' => 'Variant',

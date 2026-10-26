@@ -105,7 +105,7 @@ class SellerBuyerCatalogIntegrationTest extends TestCase
         $this->actingAs($buyer)
             ->get('/products?category=men-s-apparel')
             ->assertOk()
-            ->assertSee('Live Integration Shirt')
+            ->assertDontSee('Live Integration Shirt')
             ->assertDontSee('Summer Shorts');
 
         $this->actingAs($buyer)
@@ -157,11 +157,11 @@ class SellerBuyerCatalogIntegrationTest extends TestCase
         $this->actingAs($seller)
             ->get('/seller/products/create')
             ->assertOk()
-            ->assertSee('Store subcategory')
-            ->assertSee('Add a new subcategory')
+            ->assertSee('Store section / collection')
+            ->assertSee('Create a Store section / collection')
             ->assertSee('Dresses &amp; Skirts', false)
             ->assertSee('Suits &amp; Blazers', false)
-            ->assertSee('No subcategory');
+            ->assertSee('No Store section');
 
         $this->assertSame(11, StoreSubcategory::query()->where('store_id', $store->id)->count());
         $this->assertDatabaseHas('store_subcategories', [
@@ -256,10 +256,10 @@ class SellerBuyerCatalogIntegrationTest extends TestCase
                 'sample_name' => 'Dog Food & Treats',
             ],
         ] as $index => $categoryData) {
-            $category = Category::create([
-                'name' => $categoryData['name'],
-                'slug' => $categoryData['slug'],
-            ]);
+            $category = Category::query()->firstOrCreate(
+                ['slug' => $categoryData['slug']],
+                ['name' => $categoryData['name']],
+            );
             $seller = $this->seller($category);
             $store = Store::create([
                 'seller_profile_id' => $seller->sellerProfile->id,
@@ -452,6 +452,230 @@ class SellerBuyerCatalogIntegrationTest extends TestCase
             ->assertOk()
             ->assertSee('Small / Red')
             ->assertSee('Large / Black');
+    }
+
+    public function test_variant_package_dimensions_accept_and_preserve_three_decimal_centimeters(): void
+    {
+        $category = $this->category();
+        $seller = $this->seller($category);
+        $store = Store::create([
+            'seller_profile_id' => $seller->sellerProfile->id,
+            'name' => 'Precision Dimension Store',
+            'slug' => 'precision-dimension-store',
+            'publication_status' => 'draft',
+        ]);
+        $payload = [
+            'product_mode' => 'with_variants',
+            'name' => 'Precision Dimension Product',
+            'category' => $category->name,
+            'description' => 'Package dimensions retain thousandths of a centimeter.',
+            'price' => '699.90',
+            'stock' => 15,
+            'low_stock_threshold' => 5,
+            'option_one_name' => 'Capacity',
+            'option_one_values' => '256GB',
+            'option_two_name' => 'Color',
+            'option_two_values' => 'Black',
+            'variants' => [[
+                'label' => '256GB / Black',
+                'sku' => 'PRECISION-DIMENSION-001',
+                'price' => '699.90',
+                'stock' => 15,
+                'low_stock_threshold' => 5,
+                'package_weight_kg' => '0.177',
+                'package_length_cm' => '14.960',
+                'package_width_cm' => '7.150',
+                'package_height_cm' => '0.795',
+            ]],
+            'payment_methods' => ['cod'],
+            'intent' => 'draft',
+        ];
+
+        $this->actingAs($seller)
+            ->post('/seller/products', $payload)
+            ->assertRedirect('/seller/products');
+
+        $variant = ProductVariant::query()->where('sku', 'PRECISION-DIMENSION-001')->firstOrFail();
+        $this->assertSame('14.960', (string) $variant->package_length_cm);
+        $this->assertSame('7.150', (string) $variant->package_width_cm);
+        $this->assertSame('0.795', (string) $variant->package_height_cm);
+
+        $payload['name'] = 'Too Precise Dimension Product';
+        $payload['variants'][0]['sku'] = 'PRECISION-DIMENSION-INVALID-001';
+        $payload['variants'][0]['package_height_cm'] = '0.7951';
+
+        $this->actingAs($seller)
+            ->from('/seller/products/create')
+            ->post('/seller/products', $payload)
+            ->assertRedirect('/seller/products/create')
+            ->assertSessionHasErrors('variants.0.package_height_cm');
+
+        $this->assertDatabaseMissing('products', ['name' => 'Too Precise Dimension Product']);
+    }
+
+    public function test_shared_package_submission_saves_values_on_each_sku_and_keeps_selected_override(): void
+    {
+        $category = $this->category();
+        $seller = $this->seller($category);
+        $store = Store::create([
+            'seller_profile_id' => $seller->sellerProfile->id,
+            'name' => 'Shared Package Persistence Store',
+            'slug' => 'shared-package-persistence-store',
+            'publication_status' => 'draft',
+        ]);
+
+        $this->actingAs($seller)
+            ->get('/seller/products/create')
+            ->assertOk()
+            ->assertSee('Use the same package details for all variants')
+            ->assertSee('data-shared-package-input="package_height_cm"', false)
+            ->assertSee('data-package-progress-label', false)
+            ->assertSee('data-find-incomplete-package', false)
+            ->assertSee('data-package-copy-source', false)
+            ->assertSee('data-package-copy-selected', false);
+
+        $this->actingAs($seller)
+            ->post('/seller/products', [
+                'product_mode' => 'with_variants',
+                'name' => 'Shared Package Persistence Product',
+                'category' => $category->name,
+                'description' => 'Shared dimensions are persisted independently for each SKU.',
+                'price' => '699.90',
+                'stock' => 15,
+                'low_stock_threshold' => 5,
+                'option_one_name' => 'Capacity',
+                'option_one_values' => '128GB, 256GB',
+                'option_two_name' => 'Color',
+                'option_two_values' => 'Black',
+                'package_shared' => 1,
+                'shared_package' => [
+                    'package_weight_kg' => '0.177',
+                    'package_length_cm' => '14.960',
+                    'package_width_cm' => '7.150',
+                    'package_height_cm' => '0.795',
+                ],
+                'package_overrides' => [1 => 1],
+                'variants' => [
+                    [
+                        'label' => '128GB / Black',
+                        'sku' => 'SHARED-PACKAGE-128',
+                        'price' => '699.90',
+                        'stock' => 8,
+                        'low_stock_threshold' => 3,
+                        'package_weight_kg' => '0.177',
+                        'package_length_cm' => '14.960',
+                        'package_width_cm' => '7.150',
+                        'package_height_cm' => '0.795',
+                    ],
+                    [
+                        'label' => '256GB / Black',
+                        'sku' => 'SHARED-PACKAGE-256',
+                        'price' => '749.90',
+                        'stock' => 7,
+                        'low_stock_threshold' => 2,
+                        'package_weight_kg' => '0.250',
+                        'package_length_cm' => '16.000',
+                        'package_width_cm' => '8.000',
+                        'package_height_cm' => '0.900',
+                    ],
+                ],
+                'payment_methods' => ['cod'],
+                'intent' => 'draft',
+            ])
+            ->assertRedirect('/seller/products');
+
+        $variants = Product::query()
+            ->where('store_id', $store->id)
+            ->firstOrFail()
+            ->variants()
+            ->orderBy('position')
+            ->get()
+            ->keyBy('sku');
+
+        $this->assertSame('0.177', (string) $variants['SHARED-PACKAGE-128']->package_weight_kg);
+        $this->assertSame('14.960', (string) $variants['SHARED-PACKAGE-128']->package_length_cm);
+        $this->assertSame('7.150', (string) $variants['SHARED-PACKAGE-128']->package_width_cm);
+        $this->assertSame('0.795', (string) $variants['SHARED-PACKAGE-128']->package_height_cm);
+        $this->assertSame('0.250', (string) $variants['SHARED-PACKAGE-256']->package_weight_kg);
+        $this->assertSame('16.000', (string) $variants['SHARED-PACKAGE-256']->package_length_cm);
+        $this->assertSame('8.000', (string) $variants['SHARED-PACKAGE-256']->package_width_cm);
+        $this->assertSame('0.900', (string) $variants['SHARED-PACKAGE-256']->package_height_cm);
+        $this->assertSame(69990, (int) $variants['SHARED-PACKAGE-128']->price_minor);
+        $this->assertSame(74990, (int) $variants['SHARED-PACKAGE-256']->price_minor);
+        $this->assertSame(8, (int) $variants['SHARED-PACKAGE-128']->stock_on_hand);
+        $this->assertSame(7, (int) $variants['SHARED-PACKAGE-256']->stock_on_hand);
+    }
+
+    public function test_shared_package_validation_error_identifies_the_affected_sku(): void
+    {
+        $category = $this->category();
+        $seller = $this->seller($category);
+        Store::create([
+            'seller_profile_id' => $seller->sellerProfile->id,
+            'name' => 'Shared Package Error Store',
+            'slug' => 'shared-package-error-store',
+            'publication_status' => 'draft',
+        ]);
+
+        $this->actingAs($seller)
+            ->from('/seller/products/create')
+            ->post('/seller/products', [
+                'product_mode' => 'with_variants',
+                'name' => 'Shared Package Error Product',
+                'category' => $category->name,
+                'description' => 'Validation should identify the SKU with invalid measurements.',
+                'price' => '699.90',
+                'stock' => 20,
+                'low_stock_threshold' => 5,
+                'option_one_name' => 'Capacity',
+                'option_one_values' => '256GB',
+                'option_two_name' => 'Color',
+                'option_two_values' => 'Black, White',
+                'package_shared' => 1,
+                'shared_package' => [
+                    'package_weight_kg' => '0.177',
+                    'package_length_cm' => '14.960',
+                    'package_width_cm' => '7.150',
+                    'package_height_cm' => '0.795',
+                ],
+                'package_overrides' => [1 => 1],
+                'variants' => [
+                    [
+                        'label' => '256GB / Black',
+                        'sku' => 'SHARED-ERROR-BLACK',
+                        'price' => '699.90',
+                        'stock' => 10,
+                        'low_stock_threshold' => 5,
+                        'package_weight_kg' => '0.177',
+                        'package_length_cm' => '14.960',
+                        'package_width_cm' => '7.150',
+                        'package_height_cm' => '0.795',
+                    ],
+                    [
+                        'label' => '256GB / White',
+                        'sku' => 'SHARED-ERROR-WHITE',
+                        'price' => '699.90',
+                        'stock' => 10,
+                        'low_stock_threshold' => 5,
+                        'package_weight_kg' => '0.177',
+                        'package_length_cm' => '14.960',
+                        'package_width_cm' => '7.150',
+                        'package_height_cm' => '0.7951',
+                    ],
+                ],
+                'payment_methods' => ['cod'],
+                'intent' => 'draft',
+            ])
+            ->assertRedirect('/seller/products/create')
+            ->assertSessionHasErrors('variants.1.package_height_cm');
+
+        $this->actingAs($seller)
+            ->get('/seller/products/create')
+            ->assertOk()
+            ->assertSee('SHARED-ERROR-WHITE — Height (cm):', false)
+            ->assertDontSee('SHARED-ERROR-BLACK — Height (cm):', false);
+
+        $this->assertDatabaseMissing('products', ['name' => 'Shared Package Error Product']);
     }
 
     public function test_repeated_variant_labels_get_unique_skus_and_legacy_generated_skus_are_replaced(): void
@@ -930,6 +1154,88 @@ class SellerBuyerCatalogIntegrationTest extends TestCase
         )['stock']);
     }
 
+    public function test_product_management_defaults_to_active_and_separates_other_statuses(): void
+    {
+        $category = $this->category();
+        $seller = $this->seller($category);
+        $store = Store::create([
+            'seller_profile_id' => $seller->sellerProfile->id,
+            'name' => 'Product Status Tabs Store',
+            'slug' => 'product-status-tabs-store',
+            'publication_status' => 'draft',
+        ]);
+
+        $products = [
+            'active' => 'Active status listing',
+            'flagged' => 'Needs review status listing',
+            'blocked' => 'Blocked status listing',
+            'draft' => 'Draft status listing',
+            'pending_review' => 'Pending status listing',
+            'archived' => 'Archived status listing',
+        ];
+
+        foreach ($products as $status => $name) {
+            Product::create([
+                'store_id' => $store->id,
+                'category_id' => $category->id,
+                'name' => $name,
+                'slug' => str($name)->slug(),
+                'product_status' => $status,
+                'compliance_status' => in_array($status, ['flagged', 'blocked'], true) ? $status : 'clear',
+            ]);
+        }
+
+        $this->actingAs($seller)
+            ->get('/seller/products')
+            ->assertOk()
+            ->assertSee('name="status" value="Active"', false)
+            ->assertSee('Active status listing')
+            ->assertDontSee('Needs review status listing')
+            ->assertDontSee('Blocked status listing')
+            ->assertDontSee('Draft status listing')
+            ->assertDontSee('Pending status listing')
+            ->assertDontSee('Archived status listing')
+            ->assertSee('Needs Review')
+            ->assertSee('Blocked')
+            ->assertSee('All Products');
+
+        $this->actingAs($seller)
+            ->get('/seller/products?status=all')
+            ->assertOk()
+            ->assertSee('Active status listing')
+            ->assertSee('Needs review status listing')
+            ->assertSee('Blocked status listing')
+            ->assertSee('Draft status listing')
+            ->assertSee('Pending status listing')
+            ->assertSee('Archived status listing');
+
+        $this->actingAs($seller)
+            ->get(route('seller.products', ['status' => 'Needs Review']))
+            ->assertOk()
+            ->assertSee('name="status" value="Needs Review"', false)
+            ->assertSee('Needs review status listing')
+            ->assertDontSee('Active status listing');
+
+        $this->actingAs($seller)
+            ->get(route('seller.products', ['status' => 'Needs Review', 'search' => 'no matching listing']))
+            ->assertOk()
+            ->assertSee('href="'.route('seller.products', ['status' => 'Needs Review']).'"', false)
+            ->assertSee('No matching products');
+
+        Product::query()->where('name', 'Active status listing')->delete();
+
+        $this->actingAs($seller)
+            ->get('/seller/products')
+            ->assertOk()
+            ->assertSee('name="status" value="Active"', false)
+            ->assertSee('No Active products')
+            ->assertSee('Products in Active status will appear here.');
+
+        $emptyActiveListing = app(SellerProductService::class)->productManagementListing($seller);
+        $this->assertSame('Active', $emptyActiveListing['selectedStatus']);
+        $this->assertSame(0, $emptyActiveListing['statusTabs'][0]['count']);
+    }
+
     public function test_uploaded_product_images_are_removed_if_the_product_transaction_rolls_back(): void
     {
         Storage::fake('public');
@@ -1036,7 +1342,7 @@ class SellerBuyerCatalogIntegrationTest extends TestCase
                 'package_length_cm' => '25',
                 'package_width_cm' => '18',
                 'package_height_cm' => '9',
-                'payment_methods' => ['online'],
+                'payment_methods' => ['cod'],
                 'intent' => 'draft',
             ])
             ->assertRedirect('/seller/products');
@@ -1044,7 +1350,7 @@ class SellerBuyerCatalogIntegrationTest extends TestCase
         $product->refresh();
         $variant->refresh();
 
-        $this->assertSame(['online'], $product->payment_methods);
+        $this->assertSame(['cod'], $product->payment_methods);
         $this->assertSame('SINGLE-MUG-002', $variant->sku);
         $this->assertSame(27500, (int) $variant->price_minor);
         $this->assertSame(5, (int) $variant->stock_on_hand);
@@ -1052,7 +1358,7 @@ class SellerBuyerCatalogIntegrationTest extends TestCase
         $this->assertSame(2, $variant->movements()->count());
     }
 
-    public function test_product_payment_methods_accept_only_cod_and_online_and_require_one_choice(): void
+    public function test_seller_products_are_cod_only_and_online_methods_are_rejected(): void
     {
         $category = $this->category();
         $seller = $this->seller($category);
@@ -1060,23 +1366,24 @@ class SellerBuyerCatalogIntegrationTest extends TestCase
         $this->actingAs($seller)
             ->get('/seller/products/create')
             ->assertOk()
-            ->assertDontSee('name="payment_methods[]" value="cod" checked', false)
-            ->assertDontSee('name="payment_methods[]" value="online" checked', false)
-            ->assertDontSee('Choose which payment methods buyers may use for this product.')
-            ->assertDontSee('Seller preferences only; online payment processing and checkout enforcement are not active yet.')
+            ->assertSee('name="payment_methods[]" value="cod" checked disabled', false)
+            ->assertDontSee('name="payment_methods[]" value="online"', false)
+            ->assertSee('Buyer checkout currently supports Cash on Delivery only.')
+            ->assertSee('Online payment is not available yet.')
             ->assertDontSee('Preview only. Commission is finalized when a successful order becomes')
             ->assertSee('data-payment-method-client-error', false)
             ->assertSee('data-variant-client-error', false);
 
         foreach ([
-            ['methods' => [], 'error' => 'payment_methods'],
+            ['methods' => ['online'], 'error' => 'payment_methods.0'],
             ['methods' => ['wallet'], 'error' => 'payment_methods.0'],
+            ['methods' => [], 'error' => 'payment_methods'],
         ] as $case) {
             $this->actingAs($seller)
                 ->from('/seller/products/create')
                 ->post('/seller/products', [
                     'product_mode' => 'single',
-                    'name' => 'Invalid Payment Product',
+                    'name' => 'Invalid Payment Product '.count($case['methods']),
                     'category' => $category->name,
                     'price' => '100.00',
                     'stock' => 1,
@@ -1089,23 +1396,9 @@ class SellerBuyerCatalogIntegrationTest extends TestCase
                 ->assertSessionHasErrors($case['error']);
         }
 
-        $this->actingAs($seller)
-            ->from('/seller/products/create')
-            ->post('/seller/products', [
-                'product_mode' => 'single',
-                'name' => 'No Payment Method Product',
-                'category' => $category->name,
-                'price' => '100.00',
-                'stock' => 1,
-                'low_stock_threshold' => 1,
-                'payment_methods_present' => 1,
-                'intent' => 'draft',
-            ])
-            ->assertRedirect('/seller/products/create')
-            ->assertSessionHasErrors('payment_methods');
-
-        $this->assertDatabaseMissing('products', ['name' => 'Invalid Payment Product']);
-        $this->assertDatabaseMissing('products', ['name' => 'No Payment Method Product']);
+        foreach ([0, 1] as $methodCount) {
+            $this->assertDatabaseMissing('products', ['name' => 'Invalid Payment Product '.$methodCount]);
+        }
     }
 
     public function test_variant_images_are_saved_per_sku_and_follow_buyer_variant_selection(): void
@@ -1196,7 +1489,7 @@ class SellerBuyerCatalogIntegrationTest extends TestCase
                     1 => UploadedFile::fake()->create('large-red-shirt.jpg', 100, 'image/jpeg'),
                     2 => UploadedFile::fake()->create('small-blue-shirt.jpg', 100, 'image/jpeg'),
                 ],
-                'payment_methods' => ['online'],
+                'payment_methods' => ['cod'],
                 'intent' => 'publish',
             ])
             ->assertRedirect('/seller/products');
@@ -1277,7 +1570,8 @@ class SellerBuyerCatalogIntegrationTest extends TestCase
             ->assertSee('aria-label="View Blue variant image (Small / Blue)"', false)
             ->assertSee('data-image-src="'.$smallBlue['image'].'"', false)
             ->assertSee('data-variant-id="'.$smallBlue['id'].'"', false)
-            ->assertSee('Online');
+            ->assertSee('Cash on Delivery')
+            ->assertDontSee('Online payment');
 
         $largeRedImage = $variantImages->firstWhere('variant_id', $largeRed['id']);
         $largeRedImage->delete();
@@ -1287,7 +1581,7 @@ class SellerBuyerCatalogIntegrationTest extends TestCase
         $legacyLargeRed = collect($legacyCatalog['variants'])->firstWhere('name', 'Large / Red');
         $this->assertSame(Storage::disk('public')->url($legacyColorImage->path), $legacyLargeRed['image']);
 
-        $this->assertSame(['online'], $product->fresh()->payment_methods);
+        $this->assertSame(['cod'], $product->fresh()->payment_methods);
 
         $redImage = $variantImages->firstOrFail();
         $this->actingAs($seller)
@@ -1308,7 +1602,7 @@ class SellerBuyerCatalogIntegrationTest extends TestCase
                     ['label' => 'Large / Red', 'sku' => 'COLOR-LG-RED', 'price' => '300.00', 'stock' => 4, 'package_weight_kg' => '0.250', 'package_length_cm' => '24', 'package_width_cm' => '18', 'package_height_cm' => '8'],
                     ['label' => 'Small / Blue', 'sku' => 'COLOR-SM-BLUE', 'price' => '300.00', 'stock' => 5, 'package_weight_kg' => '0.250', 'package_length_cm' => '24', 'package_width_cm' => '18', 'package_height_cm' => '8'],
                 ],
-                'payment_methods' => ['online'],
+                'payment_methods' => ['cod'],
                 'remove_product_images' => [$redImage->id],
                 'intent' => 'draft',
             ])
@@ -1348,7 +1642,7 @@ class SellerBuyerCatalogIntegrationTest extends TestCase
                 ['label' => 'Small / Blue', 'sku' => 'SHARED-SM-BLUE', 'price' => '300.00', 'stock' => 2, 'package_weight_kg' => '0.250', 'package_length_cm' => '24', 'package_width_cm' => '18', 'package_height_cm' => '8'],
                 ['label' => 'Large / Blue', 'sku' => 'SHARED-LG-BLUE', 'price' => '300.00', 'stock' => 3, 'package_weight_kg' => '0.250', 'package_length_cm' => '24', 'package_width_cm' => '18', 'package_height_cm' => '8'],
             ],
-            'payment_methods' => ['online'],
+            'payment_methods' => ['cod'],
             'intent' => 'publish',
         ];
 
@@ -1376,6 +1670,8 @@ class SellerBuyerCatalogIntegrationTest extends TestCase
             ->with('variant')
             ->get();
         $this->assertCount(2, $colorImages);
+        $smallRedVariant = $product->variants()->where('name', 'Small / Red')->firstOrFail();
+        $this->assertSame(['Size' => 'Small', 'Color' => 'Red'], $smallRedVariant->options);
         $this->assertSame(['Blue', 'Red'], $colorImages->map(
             fn (ProductImage $image): string => collect((array) $image->variant->options)
                 ->first(fn ($value, $name): bool => strtolower((string) $name) === 'color')
@@ -1399,7 +1695,6 @@ class SellerBuyerCatalogIntegrationTest extends TestCase
             ->first(fn ($value, $name): bool => strtolower((string) $name) === 'color') === 'Red'
         );
         $this->assertSame(Storage::disk('public')->url($redSharedImage->path), $smallRed['image']);
-        $smallRedVariant = $product->variants()->where('name', 'Small / Red')->firstOrFail();
         $orderImage = app(BuyerCatalogService::class)->orderImageRecord($product->fresh('images'), $smallRedVariant);
         $this->assertSame('variant_color', $orderImage?->purpose);
 
@@ -1415,6 +1710,281 @@ class SellerBuyerCatalogIntegrationTest extends TestCase
             ->assertSee('data-color-shared="true"', false)
             ->assertSee('name="variant_color_images[]"', false)
             ->assertSee('data-variant-color-image-uploads', false);
+    }
+
+    public function test_create_and_publish_saves_primary_gallery_and_color_variant_images_together(): void
+    {
+        Storage::fake('public');
+
+        $category = $this->category();
+        $seller = $this->seller($category);
+        $store = Store::create([
+            'seller_profile_id' => $seller->sellerProfile->id,
+            'name' => 'Create Media Flow Store',
+            'slug' => 'create-media-flow-store',
+            'publication_status' => 'published',
+        ]);
+
+        $this->actingAs($seller)
+            ->get('/seller/products/create')
+            ->assertOk()
+            ->assertSee('enctype="multipart/form-data"', false)
+            ->assertSee('name="image"', false)
+            ->assertSee('name="gallery_images[]"', false)
+            ->assertSee('name="variant_color_images[]"', false);
+
+        $this->actingAs($seller)
+            ->post('/seller/products', [
+                'product_mode' => 'with_variants',
+                'name' => 'Create Media Flow Product',
+                'category' => $category->name,
+                'description' => 'All selected product media is saved when the product is published.',
+                'price' => '699.90',
+                'stock' => 20,
+                'low_stock_threshold' => 2,
+                'option_one_name' => 'Color',
+                'option_one_values' => 'Black, White',
+                'option_two_name' => 'Storage',
+                'option_two_values' => '128GB, 256GB',
+                'variants' => [
+                    ['label' => 'Black / 128GB', 'sku' => 'CREATE-MEDIA-BLK-128', 'price' => '699.90', 'stock' => 5, 'package_weight_kg' => '0.177', 'package_length_cm' => '14.960', 'package_width_cm' => '7.150', 'package_height_cm' => '0.795'],
+                    ['label' => 'Black / 256GB', 'sku' => 'CREATE-MEDIA-BLK-256', 'price' => '749.90', 'stock' => 5, 'package_weight_kg' => '0.177', 'package_length_cm' => '14.960', 'package_width_cm' => '7.150', 'package_height_cm' => '0.795'],
+                    ['label' => 'White / 128GB', 'sku' => 'CREATE-MEDIA-WHT-128', 'price' => '699.90', 'stock' => 5, 'package_weight_kg' => '0.177', 'package_length_cm' => '14.960', 'package_width_cm' => '7.150', 'package_height_cm' => '0.795'],
+                    ['label' => 'White / 256GB', 'sku' => 'CREATE-MEDIA-WHT-256', 'price' => '749.90', 'stock' => 5, 'package_weight_kg' => '0.177', 'package_length_cm' => '14.960', 'package_width_cm' => '7.150', 'package_height_cm' => '0.795'],
+                ],
+                'image' => UploadedFile::fake()->create('create-media-primary.jpg', 100, 'image/jpeg'),
+                'gallery_images' => [
+                    UploadedFile::fake()->create('create-media-gallery-1.jpg', 100, 'image/jpeg'),
+                    UploadedFile::fake()->create('create-media-gallery-2.jpg', 100, 'image/jpeg'),
+                ],
+                'variant_color_images' => [
+                    0 => UploadedFile::fake()->create('create-media-black.jpg', 100, 'image/jpeg'),
+                    1 => UploadedFile::fake()->create('create-media-white.jpg', 100, 'image/jpeg'),
+                ],
+                'variant_image_colors' => [0 => 'Black', 1 => 'White'],
+                'payment_methods' => ['cod'],
+                'intent' => 'publish',
+            ])
+            ->assertRedirect('/seller/products');
+
+        $product = Product::query()->where('store_id', $store->id)->firstOrFail();
+        $product->load(['variants', 'images.variant']);
+        $this->assertSame('active', $product->product_status);
+
+        $primaryImage = $product->images->firstWhere('is_primary', true);
+        $galleryImages = $product->images->whereNull('variant_id')->where('is_primary', false)->values();
+        $variantColorImages = $product->images->where('purpose', 'variant_color')->values();
+
+        $this->assertNotNull($primaryImage);
+        $this->assertCount(2, $galleryImages);
+        $this->assertCount(2, $variantColorImages);
+        foreach ($product->images as $image) {
+            $this->assertTrue(Storage::disk($image->disk ?: 'public')->exists($image->path));
+        }
+
+        $catalog = app(BuyerCatalogService::class)->card($product);
+        $this->assertCount(3, $catalog['gallery']);
+        foreach ($galleryImages as $galleryImage) {
+            $this->assertContains(Storage::disk('public')->url($galleryImage->path), $catalog['gallery']);
+        }
+        $blackImage = Storage::disk('public')->url($variantColorImages->first(
+            fn (ProductImage $image): bool => collect((array) $image->variant->options)
+                ->first(fn ($value, $name): bool => strcasecmp((string) $name, 'Color') === 0) === 'Black',
+        )->path);
+        $whiteImage = Storage::disk('public')->url($variantColorImages->first(
+            fn (ProductImage $image): bool => collect((array) $image->variant->options)
+                ->first(fn ($value, $name): bool => strcasecmp((string) $name, 'Color') === 0) === 'White',
+        )->path);
+        $catalogVariants = collect($catalog['variants'])->keyBy('name');
+        $this->assertSame($blackImage, $catalogVariants['Black / 128GB']['image']);
+        $this->assertSame($blackImage, $catalogVariants['Black / 256GB']['image']);
+        $this->assertSame($whiteImage, $catalogVariants['White / 128GB']['image']);
+        $this->assertSame($whiteImage, $catalogVariants['White / 256GB']['image']);
+        $this->assertNotSame($blackImage, $whiteImage);
+
+        $this->actingAs($seller)
+            ->get(route('seller.products.edit', $product))
+            ->assertOk()
+            ->assertSee('5 images')
+            ->assertSee('Primary image')
+            ->assertSee('Gallery image 1')
+            ->assertSee('Black variant image')
+            ->assertSee('White variant image');
+
+        $buyerPage = $this->actingAs($this->buyer())
+            ->get('/products/'.$product->id)
+            ->assertOk()
+            ->assertSee('src="'.Storage::disk('public')->url($primaryImage->path).'" alt="Create Media Flow Product"', false)
+            ->assertSee($catalog['gallery'][0], false)
+            ->assertSee($blackImage, false)
+            ->assertSee($whiteImage, false)
+            ->assertSee('data-gallery-prev', false)
+            ->assertSee('data-gallery-next', false)
+            ->assertSee('data-detail-thumbnail', false);
+
+        foreach ($galleryImages as $galleryImage) {
+            $buyerPage->assertSee(Storage::disk('public')->url($galleryImage->path), false);
+        }
+        $this->assertSame(5, substr_count($buyerPage->getContent(), 'data-detail-thumbnail'));
+    }
+
+    public function test_color_only_in_option_group_two_persists_and_resolves_its_shared_images(): void
+    {
+        $this->assertColorOnlyOptionImageFlow(
+            'group-two-color-only',
+            'Size',
+            '',
+            'Color',
+            'Black, White',
+            'Color',
+            [
+                ['label' => 'Black', 'color' => 'Black'],
+                ['label' => 'White', 'color' => 'White'],
+            ],
+            ['BLACK', 'wHiTe'],
+        );
+    }
+
+    public function test_color_only_in_option_group_one_supports_colour_and_case_insensitive_matching(): void
+    {
+        $this->assertColorOnlyOptionImageFlow(
+            'group-one-colour-only',
+            'cOLOuR',
+            'Rose, Navy',
+            'Size',
+            '',
+            'cOLOuR',
+            [
+                ['label' => 'Rose', 'color' => 'Rose'],
+                ['label' => 'Navy', 'color' => 'Navy'],
+            ],
+            ['rOsE', 'NAVY'],
+        );
+    }
+
+    /**
+     * Exercise upload persistence and the actual Buyer variant payload for a
+     * one-option Color/Colour matrix, not only the in-form JavaScript preview.
+     *
+     * @param  list<array{label: string, color: string}>  $variantDefinitions
+     * @param  list<string>  $uploadedColorAssignments
+     */
+    private function assertColorOnlyOptionImageFlow(
+        string $slugSuffix,
+        string $optionOneName,
+        string $optionOneValues,
+        string $optionTwoName,
+        string $optionTwoValues,
+        string $expectedOptionName,
+        array $variantDefinitions,
+        array $uploadedColorAssignments,
+    ): void {
+        Storage::fake('public');
+
+        $category = $this->category();
+        $seller = $this->seller($category);
+        $store = Store::create([
+            'seller_profile_id' => $seller->sellerProfile->id,
+            'name' => 'Color Image Store '.$slugSuffix,
+            'slug' => 'color-image-store-'.$slugSuffix,
+            'publication_status' => 'published',
+        ]);
+
+        $variants = array_map(fn (array $variant, int $index): array => [
+            'label' => $variant['label'],
+            'sku' => strtoupper($slugSuffix).'-'.($index + 1),
+            'price' => '300.00',
+            'stock' => 3,
+            'low_stock_threshold' => 1,
+            'package_weight_kg' => '0.250',
+            'package_length_cm' => '24',
+            'package_width_cm' => '18',
+            'package_height_cm' => '8',
+        ], $variantDefinitions, array_keys($variantDefinitions));
+
+        $payload = [
+            'product_mode' => 'with_variants',
+            'name' => 'Color Image Product '.$slugSuffix,
+            'category' => $category->name,
+            'description' => 'A color-only variant image test product.',
+            'price' => '300.00',
+            'stock' => count($variants) * 3,
+            'low_stock_threshold' => 1,
+            'option_one_name' => $optionOneName,
+            'option_one_values' => $optionOneValues,
+            'option_two_name' => $optionTwoName,
+            'option_two_values' => $optionTwoValues,
+            'variants' => $variants,
+            'image' => UploadedFile::fake()->create('primary-'.$slugSuffix.'.jpg', 100, 'image/jpeg'),
+            'payment_methods' => ['cod'],
+            'intent' => 'publish',
+        ];
+
+        $this->actingAs($seller)
+            ->post('/seller/products', $payload)
+            ->assertRedirect('/seller/products');
+
+        $product = Product::query()->where('store_id', $store->id)->firstOrFail();
+        $updatePayload = $payload;
+        unset($updatePayload['image']);
+        $updatePayload['variant_color_images'] = array_map(
+            fn (int $index): UploadedFile => UploadedFile::fake()->create(
+                'shared-'.$slugSuffix.'-'.$index.'.jpg',
+                100,
+                'image/jpeg',
+            ),
+            array_keys($uploadedColorAssignments),
+        );
+        $updatePayload['variant_image_colors'] = $uploadedColorAssignments;
+
+        $this->actingAs($seller)
+            ->put(route('seller.products.update', $product), $updatePayload)
+            ->assertRedirect('/seller/products');
+
+        $product->load(['variants', 'images']);
+        $variantsByName = $product->variants->keyBy('name');
+        foreach ($variantDefinitions as $definition) {
+            $variant = $variantsByName->get($definition['label']);
+            $this->assertNotNull($variant);
+            $this->assertSame([$expectedOptionName => $definition['color']], $variant->options);
+        }
+
+        $sharedImages = $product->images()
+            ->where('purpose', 'variant_color')
+            ->with('variant')
+            ->get();
+        $this->assertCount(count($variantDefinitions), $sharedImages);
+        foreach ($sharedImages as $image) {
+            $this->assertSame('public', $image->disk);
+            $this->assertTrue(Storage::disk('public')->exists($image->path));
+        }
+
+        $catalog = app(BuyerCatalogService::class)->card($product);
+        $primary = $product->images->firstWhere('is_primary', true);
+        $this->assertNotNull($primary);
+
+        foreach ($variantDefinitions as $definition) {
+            $variantPayload = collect($catalog['variants'])->firstWhere('name', $definition['label']);
+            $this->assertNotNull($variantPayload);
+            $this->assertSame($definition['color'], $variantPayload['color']);
+
+            $colorImage = $sharedImages->first(function (ProductImage $image) use ($definition, $expectedOptionName): bool {
+                $savedColor = collect((array) $image->variant->options)
+                    ->first(fn ($value, $name): bool => strcasecmp(trim((string) $name), trim($expectedOptionName)) === 0);
+
+                return strcasecmp(trim((string) $savedColor), trim($definition['color'])) === 0;
+            });
+            $this->assertNotNull($colorImage);
+            $expectedUrl = Storage::disk('public')->url($colorImage->path);
+            $this->assertSame($expectedUrl, $variantPayload['image']);
+            $this->assertNotSame(Storage::disk('public')->url($primary->path), $variantPayload['image']);
+
+            $variant = $variantsByName->get($definition['label']);
+            $this->assertSame(
+                (int) $colorImage->id,
+                (int) app(BuyerCatalogService::class)->orderImageRecord($product, $variant)?->id,
+            );
+        }
     }
 
     public function test_seller_can_remove_saved_product_photos_only_from_their_own_product(): void
@@ -1958,10 +2528,7 @@ class SellerBuyerCatalogIntegrationTest extends TestCase
     public function test_seller_product_category_must_match_the_approved_category(): void
     {
         $approvedCategory = $this->category();
-        $otherCategory = Category::create([
-            'name' => 'Electronics and Gadgets',
-            'slug' => 'electronics-and-gadgets',
-        ]);
+        $otherCategory = Category::query()->where('slug', 'electronics-and-gadgets')->firstOrFail();
         $seller = $this->seller($approvedCategory);
 
         $this->actingAs($seller)

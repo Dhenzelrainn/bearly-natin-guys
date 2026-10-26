@@ -11,7 +11,9 @@ use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\SellerProfile;
 use App\Models\Store;
+use App\Models\StorePromotion;
 use App\Models\User;
+use App\Services\PromotionService;
 use App\Services\PostalCodeLookup;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -135,6 +137,72 @@ class MobileBuyerCheckoutQuoteApiTest extends TestCase
 
         $this->assertNotEmpty($response->json('data.quote_token'));
         $this->assertDatabaseCount('promotion_claims', 0);
+        $this->assertDatabaseCount('promotion_redemptions', 0);
+    }
+
+    public function test_mobile_quote_accepts_claimed_platform_voucher_with_store_promo_code(): void
+    {
+        $buyer = $this->user('buyer');
+        $destination = $this->address($buyer);
+        $fixture = $this->productFixture('Stacked Mobile Voucher Item', 10000);
+        $cartItem = $this->cartItem($buyer, $fixture['variant'], 1);
+        $platformVoucher = PlatformPromotion::query()->create([
+            'name' => 'Claimable Mobile Bearly voucher',
+            'code' => null,
+            'kind' => PlatformPromotion::KIND_VOUCHER,
+            'funding_type' => PlatformPromotion::FUNDING_PLATFORM,
+            'discount_type' => PlatformPromotion::DISCOUNT_FIXED,
+            'status' => PlatformPromotion::STATUS_ACTIVE,
+            'value_minor' => 500,
+            'minimum_spend_minor' => 0,
+            'starts_on' => now('Asia/Manila')->toDateString(),
+            'ends_on' => now('Asia/Manila')->addDays(5)->toDateString(),
+            'per_buyer_limit' => 1,
+            'is_claimable' => true,
+            'is_public' => true,
+        ]);
+        $storeCode = StorePromotion::query()->create([
+            'store_id' => $fixture['store']->id,
+            'name' => 'Mobile Store promo code',
+            'code' => 'MOBILE-STORE-600',
+            'type' => StorePromotion::TYPE_STORE_VOUCHER,
+            'status' => StorePromotion::STATUS_ACTIVE,
+            'funding_type' => StorePromotion::FUNDING_SELLER,
+            'discount_type' => StorePromotion::DISCOUNT_FIXED,
+            'discount_percent' => null,
+            'voucher_amount_minor' => 600,
+            'minimum_spend_minor' => 0,
+            'starts_on' => now('Asia/Manila')->toDateString(),
+            'ends_on' => now('Asia/Manila')->addDays(5)->toDateString(),
+            'per_buyer_limit' => 1,
+            'is_claimable' => false,
+            'is_public' => true,
+        ]);
+        $storeCode->products()->attach($fixture['product']->id);
+        app(PromotionService::class)->claim($buyer, ['platform_promotion_id' => $platformVoucher->id]);
+
+        $response = $this->withToken($this->token($buyer))
+            ->postJson('/api/mobile/buyer/checkout/quote', [
+                'address_id' => $destination->id,
+                'cart_item_ids' => [$cartItem->id],
+                'platform_voucher_id' => $platformVoucher->id,
+                'voucher_code' => $storeCode->code,
+                'payment_method' => 'cod',
+            ])->assertOk()
+            ->assertJsonPath('data.subtotal_minor', 10000)
+            ->assertJsonPath('data.seller_discount_minor', 600)
+            ->assertJsonPath('data.platform_discount_minor', 500)
+            ->assertJsonPath('data.total_minor', 13900)
+            ->assertJsonPath('data.promotion_selection.platform_voucher_id', $platformVoucher->id)
+            ->assertJsonPath('data.promotion_selection.voucher_code', 'MOBILE-STORE-600')
+            ->assertJsonCount(2, 'data.applied_promotions');
+
+        $this->assertSame(['platform', 'store'], collect($response->json('data.applied_promotions'))
+            ->pluck('source')
+            ->sort()
+            ->values()
+            ->all());
+        $this->assertDatabaseCount('promotion_claims', 1);
         $this->assertDatabaseCount('promotion_redemptions', 0);
     }
 

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\SellerWalletTransactionType;
 use App\Models\Order;
+use App\Models\Payment;
 use App\Models\Refund;
 use App\Models\ReturnRequest;
 use App\Models\SellerOrder;
@@ -24,7 +25,8 @@ use LogicException;
 
 class SellerWalletService
 {
-    private const RETURN_WINDOW_DAYS = 7;
+    // Keep aligned with ReturnRefundService::RETURN_WINDOW_DAYS.
+    private const RETURN_WINDOW_DAYS = 3;
 
     public function refreshForSeller(SellerProfile $sellerProfile): SellerWallet
     {
@@ -649,8 +651,24 @@ class SellerWalletService
             return false;
         }
 
-        $sellerOrderId = (int) ($transaction->seller_order_id ?? 0);
-        $orderId = (int) ($transaction->sellerOrder?->order_id ?? 0);
+        $sellerOrder = $transaction->sellerOrder;
+        $payment = $transaction->payment;
+
+        return $sellerOrder !== null
+            && $payment !== null
+            && $this->isSellerOrderSettlementEligible($sellerOrder, $payment);
+    }
+
+    /**
+     * Shared financial eligibility gate for Seller and shipping settlement
+     * ledgers. Call inside a transaction; this method locks Order before
+     * SellerOrder, then locks return/refund rows before deciding eligibility.
+     */
+    public function isSellerOrderSettlementEligible(SellerOrder $sellerOrder, ?Payment $payment = null): bool
+    {
+        $sellerOrderId = (int) $sellerOrder->id;
+        $orderId = (int) $sellerOrder->order_id;
+
         if ($sellerOrderId < 1 || $orderId < 1) {
             return false;
         }
@@ -673,7 +691,11 @@ class SellerWalletService
         }
         $sellerOrder->load('shipments.codCashCollection');
 
-        $payment = $transaction->payment;
+        $paymentQuery = Payment::query()->where('order_id', $order->id);
+        if ($payment) {
+            $paymentQuery->whereKey($payment->id);
+        }
+        $payment = $paymentQuery->lockForUpdate()->first();
         if (! $payment
             || ! in_array($payment->status, ['paid', 'partially_refunded', 'refunded'], true)
             || ! $payment->paid_at

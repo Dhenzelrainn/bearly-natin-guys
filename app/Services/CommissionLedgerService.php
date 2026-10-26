@@ -39,9 +39,9 @@ class CommissionLedgerService
                         'type' => 'sale',
                     ],
                     [
-                        'base_amount_minor' => $sellerOrder->total_minor,
+                        'base_amount_minor' => $this->commissionableBaseMinor($sellerOrder),
                         'rate_bps' => $rateBps,
-                        'amount_minor' => (int) round($sellerOrder->total_minor * $rateBps / 10000),
+                        'amount_minor' => (int) round($this->commissionableBaseMinor($sellerOrder) * $rateBps / 10000),
                         'status' => 'finalized',
                         'calculated_at' => now(),
                         'finalized_at' => now(),
@@ -58,7 +58,7 @@ class CommissionLedgerService
                         'transaction_no' => 'STX-'.Str::upper(Str::random(12)),
                         'seller_profile_id' => $sellerOrder->store->seller_profile_id,
                         'commission_id' => $commission->id,
-                        'amount_minor' => $sellerOrder->total_minor - $commission->amount_minor,
+                        'amount_minor' => (int) $commission->base_amount_minor - (int) $commission->amount_minor,
                         'status' => 'posted',
                         'available_at' => now(),
                         'posted_at' => now(),
@@ -69,5 +69,17 @@ class CommissionLedgerService
                 $this->wallets->recordPendingEarning($sellerTransaction);
             }
         }, attempts: 3);
+    }
+
+    private function commissionableBaseMinor(\App\Models\SellerOrder $sellerOrder): int
+    {
+        $gross = (int) $sellerOrder->total_minor;
+        $quote = (array) $sellerOrder->shipping_quote;
+
+        if (($quote['pricing_rule'] ?? null) === 'zone_based_v1') {
+            return max(0, $gross - (int) $sellerOrder->shipping_fee_minor);
+        }
+
+        return $gross;
     }
 }

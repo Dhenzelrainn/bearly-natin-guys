@@ -511,7 +511,7 @@ class AdminReturnRefundTest extends TestCase
             ->assertSee('<wbr>', false)
             ->assertSee('return-case-submitted', false)
             ->assertSee('returns-table-product', false)
-            ->assertSee('Within 7 days after Bearly marks the order complete')
+            ->assertSee('Within 3 days after Bearly marks the order complete')
             ->assertSee('attach at least one helpful file')
             ->assertSee('Logistics picks it up and brings it to you')
             ->assertSee('It will not be taken from your payout automatically.')
@@ -663,6 +663,9 @@ class AdminReturnRefundTest extends TestCase
 
     public function test_manual_payout_is_external_and_cannot_be_recorded_twice(): void
     {
+        // This case covers the legacy separate-recovery path before the
+        // configured post-cutoff automatic wallet-adjustment policy.
+        Carbon::setTestNow('2026-10-20 12:00:00');
         Storage::fake('local');
         $this->actingAs($this->admin)
             ->post(route('admin.compliance.returns-refunds.approve', $this->returnRequest), $this->responsibilityData('seller'))
@@ -901,6 +904,7 @@ class AdminReturnRefundTest extends TestCase
 
     public function test_seller_recovery_is_recorded_only_after_verified_collection_or_paid_payout_offset(): void
     {
+        Carbon::setTestNow('2026-10-20 12:00:00');
         Storage::fake('local');
         $refund = $this->createCompletedSellerRefund();
         $recovery = SellerRefundRecovery::query()->where('refund_id', $refund->id)->firstOrFail();
@@ -1119,9 +1123,9 @@ class AdminReturnRefundTest extends TestCase
         $this->assertSame(0, $otherSeller->notifications()->count());
     }
 
-    public function test_buyer_cannot_request_a_return_after_the_seven_day_window(): void
+    public function test_buyer_cannot_request_a_return_after_the_three_day_window(): void
     {
-        $this->returnRequest->sellerOrder()->update(['completed_at' => now()->subDays(8)]);
+        $this->returnRequest->sellerOrder()->update(['completed_at' => now()->subDays(4)]);
 
         $this->actingAs($this->buyer)
             ->from(route('buyer.returns.create', $this->returnRequest->seller_order_id))

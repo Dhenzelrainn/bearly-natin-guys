@@ -46,6 +46,15 @@
                     @if(count($transaction['items']))
                         @include('partials.order-item-preview-list', ['items' => $transaction['items']])
                     @endif
+                    @foreach($transaction['platform_promotions'] as $promotion)
+                        <small class="table-subline">Bearly offer: {{ $promotion['name'] }} · {{ str($promotion['status'])->replace('_', ' ')->title() }}</small>
+                        <small class="table-subline">
+                            Merchandise subsidy ₱{{ number_format($promotion['discount_minor'] / 100, 2) }} · Shipping subsidy ₱{{ number_format($promotion['shipping_discount_minor'] / 100, 2) }}
+                            @if($promotion['released_discount_minor'] || $promotion['released_shipping_discount_minor'])
+                                · Released ₱{{ number_format(($promotion['released_discount_minor'] + $promotion['released_shipping_discount_minor']) / 100, 2) }}
+                            @endif
+                        </small>
+                    @endforeach
                 </td>
                 <td>{{ $transaction['method'] }}</td><td><span class="status-badge {{ $badge }}">{{ $transaction['status'] }}</span></td>
                 <td class="align-right">₱{{ number_format($transaction['gross'], 2) }}</td><td class="align-right">₱{{ number_format($transaction['refund'], 2) }}</td><td class="align-right commission-value">₱{{ number_format($transaction['commission'], 2) }}</td><td class="align-right">₱{{ number_format($transaction['sellerNet'], 2) }}</td>

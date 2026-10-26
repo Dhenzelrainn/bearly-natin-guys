@@ -42,7 +42,7 @@ use Throwable;
 
 class ReturnRefundService
 {
-    public const RETURN_WINDOW_DAYS = 7;
+    public const RETURN_WINDOW_DAYS = 3;
 
     private const NON_REFUND_STATUSES = ['failed', 'cancelled'];
 
@@ -170,7 +170,7 @@ class ReturnRefundService
 
                 if (! $this->eligibleForRequest($sellerOrder)) {
                     throw ValidationException::withMessages([
-                        'return' => 'This Seller Order is outside the 7-day return window or is not completed.',
+                        'return' => 'This Seller Order is outside the 3-day return window or is not completed.',
                     ]);
                 }
 
@@ -1246,8 +1246,12 @@ class ReturnRefundService
         $rateBps = (int) ($saleCommission?->rate_bps
             ?? $sellerOrder->store?->sellerProfile?->commission_rate_bps
             ?? 0);
+        $commissionBaseMinor = (int) $sellerOrder->total_minor;
+        if (($sellerOrder->shipping_quote['pricing_rule'] ?? null) === 'zone_based_v1') {
+            $commissionBaseMinor = max(0, $commissionBaseMinor - (int) $sellerOrder->shipping_fee_minor);
+        }
         $saleCommissionMinor = (int) ($saleCommission?->amount_minor
-            ?? round((int) $sellerOrder->total_minor * $rateBps / 10000));
+            ?? round($commissionBaseMinor * $rateBps / 10000));
         $priorRefundsMinor = (int) Refund::query()
             ->where('status', 'completed')
             ->where('financially_responsible_party', 'seller')

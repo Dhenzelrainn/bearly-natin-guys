@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\MobileBuyerProductResource;
 use App\Models\Category;
 use App\Models\Product;
+use App\Models\ProductVariant;
 use App\Services\BuyerCatalogService;
 use App\Services\ProductReviewService;
 use Illuminate\Database\Eloquent\Builder;
@@ -45,10 +46,20 @@ class MobileBuyerCatalogController extends Controller
                 'images' => fn ($images) => $images->with('variant')->orderBy('position'),
                 'variants' => fn ($variants) => $variants
                     ->where('is_active', true)
-                    ->orderBy('position'),
+                    ->orderBy('position')
+                    ->orderBy('id'),
             ])
-            ->withMin('variants', 'price_minor')
-            ->visibleToBuyers();
+            ->addSelect([
+                'variants_display_price_minor' => ProductVariant::query()
+                    ->select('product_variants.price_minor')
+                    ->whereColumn('product_variants.product_id', 'products.id')
+                    ->where('product_variants.is_active', true)
+                    ->orderBy('product_variants.position')
+                    ->orderBy('product_variants.id')
+                    ->limit(1),
+            ])
+            ->visibleToBuyers()
+            ->acceptsCashOnDelivery();
 
         if ($search !== '') {
             $like = '%'.$search.'%';
@@ -77,8 +88,8 @@ class MobileBuyerCatalogController extends Controller
         }
 
         match ($sort) {
-            'price_low' => $query->orderBy('variants_min_price_minor')->orderByDesc('products.id'),
-            'price_high' => $query->orderByDesc('variants_min_price_minor')->orderByDesc('products.id'),
+            'price_low' => $query->orderBy('variants_display_price_minor')->orderByDesc('products.id'),
+            'price_high' => $query->orderByDesc('variants_display_price_minor')->orderByDesc('products.id'),
             'newest' => $query->orderByDesc('products.created_at')->orderByDesc('products.id'),
             default => $query->orderByDesc('products.published_at')->orderByDesc('products.id'),
         };
@@ -124,13 +135,15 @@ class MobileBuyerCatalogController extends Controller
     ): JsonResponse {
         $visibleProduct = Product::query()
             ->visibleToBuyers()
+            ->acceptsCashOnDelivery()
             ->with([
                 'category.parent',
                 'store:id,name,slug',
                 'images' => fn ($images) => $images->with('variant')->orderBy('position'),
                 'variants' => fn ($variants) => $variants
                     ->where('is_active', true)
-                    ->orderBy('position'),
+                    ->orderBy('position')
+                    ->orderBy('id'),
             ])
             ->whereKey($product->getKey())
             ->firstOrFail();

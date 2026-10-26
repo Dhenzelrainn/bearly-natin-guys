@@ -1,79 +1,121 @@
 @php
-$categoryProductSources = [
-    'pet-supplies'=>['file'=>'buyer-pet-supplies-products.json','name'=>'Pet Supplies'],
-    'electronics-and-gadgets'=>['file'=>'buyer-electronics-gadgets-products.json','name'=>'Electronics and Gadgets'],
-    'women-s-apparel'=>['file'=>'buyer-womens-products.json','name'=>"Women's Apparel"],
-    'men-s-apparel'=>['file'=>'buyer-mens-products (1).json','name'=>"Men's Apparel"],
-    'kids-and-baby'=>['file'=>'buyer-kids-baby-products.json','name'=>'Kids and Baby'],
-    'home-and-garden'=>['file'=>'buyer-home-garden-products.json','name'=>'Home and Garden'],
-    'sports-and-outdoors'=>['file'=>'buyer-sports-products.json','name'=>'Sports and Outdoors'],
-    'health-and-beauty'=>['file'=>'buyer-health-beauty-products.json','name'=>'Health and Beauty'],
-    'books-and-media'=>['file'=>'buyer-books-media-products.json','name'=>'Books and Media'],
-    'jewelry-and-watches'=>['file'=>'buyer-jewelry-watches-products.json','name'=>'Jewelry and Watches'],
-    'food-and-gourmet'=>['file'=>'buyer-foods-gourmet-products.json','name'=>'Foods and Gourmet'],
-    'furniture-and-office-equipment'=>['file'=>'buyer-furniture-office-products.json','name'=>'Furniture and Office Equipment'],
-];
-$featuredProducts=[];
-foreach($categoryProductSources as $slug=>$source){
-    $items=json_decode(file_get_contents(resource_path('data/'.$source['file'])),true,512,JSON_THROW_ON_ERROR);
-    foreach($items as $product){
-        $product['featured_key']=$slug.':'.$product['id'];
-        $product['category']=$source['name'];
-        $product['category_slug']=$slug;
-        $featuredProducts[]=$product;
-    }
-}
+    $headerSearchCategories = collect(json_decode(file_get_contents(resource_path('data/buyer-categories.json')), true, 512, JSON_THROW_ON_ERROR))->mapWithKeys(fn (array $category): array => [$category['slug'] => $category['name']])->all();
 @endphp
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Flash Deals | Bearly</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Material+Symbols+Outlined:wght@400&display=swap" rel="stylesheet">
-@vite(['resources/css/buyer.css','resources/js/buyer.js'])
-@include('buyer.partials.account-context-script')
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Flash Deals | Bearly</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Material+Symbols+Outlined:wght@400&display=swap" rel="stylesheet">
+    @vite(['resources/css/buyer.css', 'resources/js/buyer.js', 'resources/js/buyer-flash-deals.js'])
+    @include('buyer.partials.account-context-script')
 </head>
 <body class="bh flash-page">
 @include('buyer.partials.buyer-header', [
     'headerSearchFormId' => 'search-form',
     'headerSearchInputId' => 'search-input',
-    'headerSearchCategories' => $categoryProductSources,
+    'headerSearchCategories' => $headerSearchCategories,
     'headerSearchPlaceholder' => 'Search for products, brands or sellers...',
 ])
 <main class="flash-page-main">
-    <a class="flash-back" href="{{ url('/home') }}"><span class="material-symbols-outlined">arrow_back</span> Back to Home</a>
-    @include('buyer.partials.live-offers', ['promotions' => $activePromotions ?? collect()])
+    <a class="flash-back" href="{{ url('/home') }}"><span class="material-symbols-outlined" aria-hidden="true">arrow_back</span> Back to Home</a>
+    @if (($otherOffers ?? collect())->isNotEmpty())
+        @include('buyer.partials.live-offers', [
+            'promotions' => $otherOffers,
+            'eyebrow' => 'Vouchers, discounts, shipping & campaigns',
+            'heading' => 'Other live offers',
+        ])
+    @endif
     <section class="flash-hero">
-        <div><p class="flash-kicker"><span class="material-symbols-outlined">bolt</span> Bearly Flash Deals</p><h1>Catch it before the clock runs out.</h1><p>Sample products, prices, and availability for the frontend preview. These deals are not connected to the live cart or checkout.</p></div>
-        <div><small>Deals refresh in</small><div class="flash-countdown flash-countdown-large" data-flash-countdown><span data-hours>00</span><b>:</b><span data-minutes>00</span><b>:</b><span data-seconds>00</span></div></div>
+        <div>
+            <p class="flash-kicker"><span class="material-symbols-outlined" aria-hidden="true">bolt</span> Bearly Flash Deals</p>
+            <h1>Live product deals</h1>
+            <p>Approved products from active Flash Deal campaigns. Prices reflect the current eligible campaign price.</p>
+        </div>
     </section>
-    <div class="flash-page-toolbar"><div><h2>Today's deals</h2><p>Demo sale · fixed availability for the buyer prototype</p></div><span class="flash-live"><i></i> LIVE</span></div>
-    <section class="flash-deal-grid flash-deal-grid-full" aria-label="Flash deal products">
-@php
-$deals = [
- ['flash-earbuds','electronics-and-gadgets:7','Wireless Earbuds',599,799,'electronics/electronics-07-01.jpg','Electronics & Gadgets',25,72],
- ['flash-cleanser','health-and-beauty:1','Gentle Facial Cleanser',349,499,'health-beauty/health-beauty-01-01.jpg','Health & Beauty',30,64],
- ['flash-tee','mens-apparel:1','Everyday Basic Tee',329,449,'men/mens-01-01.jpg',"Men's Apparel",27,81],
- ['flash-watch','jewelry-and-watches:21',"Men's Silver Classic Watch",999,1499,'jewelry-watches/jewelry-watches-21-01.jpg','Jewelry & Watches',33,58],
- ['flash-chair','furniture-and-office-equipment:8','Ergonomic Office Chair',4299,5499,'furniture-office/furniture-office-08-01.jpg','Furniture & Office Equipment',22,47],
- ['flash-lamp','furniture-and-office-equipment:16','Adjustable Desk Lamp',649,899,'furniture-office/furniture-office-16-01.jpg','Furniture & Office Equipment',28,69],
- ['flash-bracelet','jewelry-and-watches:13','Crystal Tennis Bracelet',799,1099,'jewelry-watches/jewelry-watches-13-01.jpg','Jewelry & Watches',27,55],
- ['flash-monitor','furniture-and-office-equipment:25','24-Inch Office Monitor',6999,8999,'furniture-office/furniture-office-25-01.jpg','Furniture & Office Equipment',22,76],
-];
-@endphp
-@foreach($deals as $d)
-        <article class="flash-deal-card" data-flash-product data-key="{{ $d[0] }}" data-product-id="{{ $d[1] }}" data-name="{{ $d[2] }}" data-price="{{ $d[3] }}" data-original-price="{{ $d[4] }}" data-image="{{ asset('images/products/'.$d[5]) }}" data-flash-category="{{ $d[6] }}">
-            <button type="button" class="flash-image" data-feature-open><img src="{{ asset('images/products/'.$d[5]) }}" alt="{{ $d[2] }}"><span>{{ $d[7] }}% OFF</span></button>
-        <div class="flash-copy"><small>{{ $d[6] }}</small><h3>{{ $d[2] }}</h3><div class="flash-prices"><strong>₱{{ number_format($d[3]) }}</strong><del>₱{{ number_format($d[4]) }}</del></div><div class="flash-stock"><span style="--sold:{{ $d[8] }}%"></span><small>{{ $d[8] }}% claimed</small></div><button type="button" class="flash-add" data-flash-add disabled aria-label="Flash deal preview; not connected to the live cart">Preview only</button></div>
-        </article>
-@endforeach
+    <section class="flash-campaign-list" data-flash-deal-listing aria-label="Live Flash Deal products">
+        @forelse ($flashDealGroups ?? [] as $group)
+            @php($campaign = $group['campaign'])
+            <article class="flash-campaign-group" data-flash-campaign-id="{{ $campaign['id'] }}">
+                <header class="flash-campaign-heading">
+                    <div>
+                        <p class="flash-campaign-kicker">{{ $campaign['type_label'] }} · {{ $campaign['funding_label'] }}</p>
+                        <h2>{{ $campaign['name'] }}</h2>
+                        <p class="flash-campaign-schedule">
+                            <span class="material-symbols-outlined" aria-hidden="true">calendar_month</span>
+                            {{ $campaign['period'] }}
+                        </p>
+                        @if (filled($campaign['description'] ?? null))
+                            <p class="flash-campaign-description">{{ $campaign['description'] }}</p>
+                        @endif
+                    </div>
+                    <a class="flash-campaign-details" href="{{ route('campaigns.show', $campaign['id']) }}">
+                        Campaign details
+                        <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
+                    </a>
+                </header>
+                <p class="flash-campaign-list-note">Showing up to 12 eligible products. Open campaign details to browse the full list.</p>
+
+                <div class="flash-campaign-products">
+                    @foreach ($group['products'] as $product)
+                        <article class="flash-product-card">
+                            <div class="flash-product-media">
+                                <a class="flash-product-image" href="{{ route('products.show', ['product' => $product['id']]) }}" aria-label="View {{ $product['name'] }}">
+                                    @if (filled($product['image'] ?? null))
+                                        <img src="{{ $product['image'] }}" alt="{{ $product['name'] }}" loading="lazy">
+                                    @else
+                                        <span class="material-symbols-outlined" aria-hidden="true">image</span>
+                                    @endif
+                                </a>
+                                <button
+                                    type="button"
+                                    class="flash-product-like{{ ($product['is_wishlisted'] ?? false) ? ' is-liked' : '' }}"
+                                    data-flash-wishlist
+                                    data-product-id="{{ (int) $product['id'] }}"
+                                    data-product-name="{{ $product['name'] }}"
+                                    aria-pressed="{{ ($product['is_wishlisted'] ?? false) ? 'true' : 'false' }}"
+                                    aria-label="{{ ($product['is_wishlisted'] ?? false) ? 'Remove' : 'Save' }} {{ $product['name'] }} {{ ($product['is_wishlisted'] ?? false) ? 'from' : 'to' }} My Likes"
+                                >
+                                    <span class="material-symbols-outlined" aria-hidden="true">favorite</span>
+                                </button>
+                            </div>
+                            <div class="flash-product-copy">
+                                <span class="flash-product-category">{{ $product['category'] }}</span>
+                                <h3><a href="{{ route('products.show', ['product' => $product['id']]) }}">{{ $product['name'] }}</a></h3>
+                                <div class="flash-product-price-line">
+                                    <strong>₱{{ number_format(((int) $product['price_minor']) / 100, 2) }}</strong>
+                                    @include('buyer.partials.product-price-meta', [
+                                        'current' => ((int) $product['price_minor']) / 100,
+                                        'regular' => ((int) ($product['regular_price_minor'] ?? $product['price_minor'])) / 100,
+                                        'discount' => (int) ($product['discount_percent'] ?? 0),
+                                        'price_source' => $product['price_source'] ?? null,
+                                        'campaign_name' => $product['campaign_name'] ?? null,
+                                        'product_discount_name' => $product['product_discount_name'] ?? null,
+                                    ])
+                                </div>
+                                @if (filled($product['store_slug'] ?? null))
+                                    <a class="flash-product-store" href="{{ route('stores.show', ['store' => $product['store_slug']]) }}">Sold by {{ $product['seller_name'] }}</a>
+                                @else
+                                    <span class="flash-product-store">Sold by {{ $product['seller_name'] }}</span>
+                                @endif
+                            </div>
+                        </article>
+                    @endforeach
+                </div>
+            </article>
+        @empty
+            <div class="top-products-empty flash-live-empty" role="status">
+                <span class="material-symbols-outlined" aria-hidden="true">local_offer</span>
+                <h2>No live Flash Deal products right now</h2>
+                <p>Approved, in-stock COD products will appear here while their Flash Deal campaign price is active.</p>
+                <a href="{{ route('products.index') }}">Browse live products</a>
+            </div>
+        @endforelse
     </section>
+    <p id="flash-likes-status" class="flash-likes-status" role="status" aria-live="polite" hidden></p>
 </main>
-<footer class="footer"><a href="{{ url('/home') }}"><img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly home" width="110" height="37"></a><p>Good finds. Happy spaces.</p><span>Flash Deals preview</span></footer>
-<div class="flash-toast" data-flash-toast role="status" aria-live="polite"></div>
-<dialog id="product-dialog" aria-labelledby="product-title"><button class="dialog-close icon-button" data-close aria-label="Close product details"><span class="material-symbols-outlined">close</span></button><div id="product-detail"></div></dialog><dialog id="info-dialog" aria-labelledby="info-title"><button class="dialog-close icon-button" data-close aria-label="Close"><span class="material-symbols-outlined">close</span></button><h2 id="info-title"></h2><div id="info-copy"></div><div class="info-actions" id="info-actions"></div></dialog><script id="featured-product-data" type="application/json">{!! json_encode($featuredProducts, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR) !!}</script>
+<footer class="footer"><a href="{{ url('/home') }}"><img src="{{ asset('images/bearly-logo-2.png') }}" alt="Bearly home" width="110" height="37"></a><p>Good finds. Happy spaces.</p><span>Flash Deals</span></footer>
 </body>
 </html>

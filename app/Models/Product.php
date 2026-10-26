@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Product extends Model
@@ -38,6 +39,11 @@ class Product extends Model
         return $this->belongsTo(StoreSubcategory::class, 'subcategory_id');
     }
 
+    public function marketplaceSubcategory()
+    {
+        return $this->belongsTo(MarketplaceSubcategory::class, 'marketplace_subcategory_id');
+    }
+
     public function variants()
     {
         return $this->hasMany(ProductVariant::class);
@@ -57,6 +63,11 @@ class Product extends Model
     public function complianceChecks()
     {
         return $this->hasMany(ProductComplianceCheck::class);
+    }
+
+    public function latestComplianceCheck(): HasOne
+    {
+        return $this->hasOne(ProductComplianceCheck::class)->latestOfMany();
     }
 
     public function violations()
@@ -84,6 +95,17 @@ class Product extends Model
     }
 
     /**
+     * Bearly checkout currently supports Cash on Delivery only. Legacy
+     * products without an explicit payment-method list remain orderable.
+     */
+    public function acceptsCashOnDelivery(): bool
+    {
+        $methods = (array) ($this->payment_methods ?? []);
+
+        return $methods === [] || in_array('cod', $methods, true);
+    }
+
+    /**
      * Products that buyers may discover or open directly.
      */
     public function scopeVisibleToBuyers(Builder $query): Builder
@@ -94,5 +116,18 @@ class Product extends Model
             ->whereNull('removed_at')
             ->whereHas('store', fn (Builder $stores) => $stores->visibleToBuyers())
             ->whereHas('variants', fn (Builder $variants) => $variants->where('is_active', true));
+    }
+
+    /**
+     * Keep discovery and orderability aligned with the supported COD checkout.
+     * Empty/null legacy method lists remain COD-compatible, matching checkout.
+     */
+    public function scopeAcceptsCashOnDelivery(Builder $query): Builder
+    {
+        return $query->where(function (Builder $methods): void {
+            $methods->whereNull('payment_methods')
+                ->orWhereJsonLength('payment_methods', 0)
+                ->orWhereJsonContains('payment_methods', 'cod');
+        });
     }
 }

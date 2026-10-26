@@ -2,8 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Product;
 use App\Models\ProductComplianceCheck;
 use App\Models\ProductViolation;
+use App\Services\ProductCategoryReviewService;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
@@ -35,5 +38,67 @@ class AdminComplianceController extends Controller
                 'decision_url'=>route('admin.compliance.decide', $violation),
             ])->all(),
         ]);
+    }
+
+    public function categoryReviews(Request $request, ProductCategoryReviewService $reviewService): View
+    {
+        $filters = $request->validate([
+            'search' => ['nullable', 'string', 'max:120'],
+        ]);
+        $admin = $request->user();
+
+        return view('admin.compliance.category-reviews', [
+            'admin' => [
+                'name' => $admin->name,
+                'role' => 'Admin',
+                'email' => $admin->email,
+                'initials' => collect(explode(' ', $admin->name))
+                    ->map(fn ($part) => strtoupper(substr($part, 0, 1)))
+                    ->take(2)
+                    ->implode(''),
+            ],
+            'topNotifications' => [],
+            'products' => $reviewService->paginateQueue($filters['search'] ?? null),
+        ]);
+    }
+
+    public function markCategoryAppropriate(
+        Request $request,
+        Product $product,
+        ProductCategoryReviewService $reviewService,
+    ): RedirectResponse {
+        $data = $request->validate([
+            'reason' => ['required', 'string', 'max:2000'],
+        ]);
+
+        $reviewService->markCategoryAppropriate(
+            $product,
+            $request->user(),
+            $data['reason'],
+            $request,
+        );
+
+        return back()->with('success', 'Review saved. The listing will return to this queue if its relevant text, category, or image metadata changes.');
+    }
+
+    public function flagCategoryForCorrection(
+        Request $request,
+        Product $product,
+        ProductCategoryReviewService $reviewService,
+    ): RedirectResponse {
+        $data = $request->validate([
+            'reason' => ['required', 'string', 'max:2000'],
+        ]);
+
+        $violation = $reviewService->flagForCategoryCorrection(
+            $product,
+            $request->user(),
+            $data['reason'],
+            $request,
+        );
+
+        return redirect()
+            ->route('admin.compliance.violations')
+            ->with('success', "Listing hidden for category correction. Violation {$violation->violation_no} is ready for Admin review.");
     }
 }

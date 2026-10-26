@@ -28,12 +28,39 @@
         @endif
         <div class="summary confirmation-totals">
             <div><span>Merchandise subtotal</span><strong>₱{{ number_format($order->subtotal_minor / 100, 2) }}</strong></div>
-            <div><span>Estimated shipping</span><strong>₱{{ number_format($order->shipping_fee_minor / 100, 2) }}</strong></div>
+            @php
+                $orderBuyerPaidShipping = $order->buyer_paid_shipping_fee_minor
+                    ?? max(0, (int) $order->shipping_fee_minor - (int) $order->platform_shipping_discount_minor);
+            @endphp
+            <div>
+                <span>Shipping paid by you<small>Original ₱{{ number_format($order->shipping_fee_minor / 100, 2) }} · Bearly subsidy ₱{{ number_format($order->platform_shipping_discount_minor / 100, 2) }}</small></span>
+                <strong>₱{{ number_format((int) $orderBuyerPaidShipping / 100, 2) }}</strong>
+            </div>
             @if ((int) $order->discount_minor > 0)
                 <div><span>Voucher discounts</span><strong>−₱{{ number_format($order->discount_minor / 100, 2) }}</strong></div>
             @endif
-            @if ((int) $order->platform_shipping_discount_minor > 0)
-                <div><span>Shipping discount</span><strong>−₱{{ number_format($order->platform_shipping_discount_minor / 100, 2) }}</strong></div>
+            @if ($order->promotionRedemptions->isNotEmpty())
+                <div class="confirmation-promotion-list">
+                    <span>Offers applied to this order</span>
+                    <div>
+                        @foreach ($order->promotionRedemptions as $redemption)
+                            @php
+                                $promotionStatus = match ($redemption->status) {
+                                    'reserved' => 'Reserved while payment is pending',
+                                    'redeemed' => 'Applied',
+                                    'released' => 'Released after cancellation',
+                                    'refunded' => 'Released after full refund',
+                                    default => str($redemption->status)->replace('_', ' ')->title(),
+                                };
+                                $promotionBenefitMinor = (int) $redemption->discount_minor + (int) $redemption->shipping_discount_minor;
+                            @endphp
+                            <p>
+                                <span><strong>{{ $redemption->name }}</strong><small>{{ $promotionStatus }}{{ $redemption->code ? ' · Code '.$redemption->code : '' }}</small></span>
+                                <strong>{{ $promotionBenefitMinor > 0 ? '−₱'.number_format($promotionBenefitMinor / 100, 2) : '—' }}</strong>
+                            </p>
+                        @endforeach
+                    </div>
+                </div>
             @endif
             @if ((int) $order->campaign_platform_discount_minor > 0)
                 <div class="confirmation-campaign-savings"><span>Bearly campaign savings (included in item prices)</span><strong>₱{{ number_format($order->campaign_platform_discount_minor / 100, 2) }}</strong></div>
@@ -72,7 +99,20 @@
                     </div>
                 </article>
             @endforeach
-            <div class="confirmation-item"><span>Estimated Bearly Logistics shipping ({{ $sellerOrder->shipping_quote['route_label'] ?? 'route quote' }}, {{ $sellerOrder->shipping_quote['billable_weight_kg'] ?? '—' }} kg)</span><strong>₱{{ number_format($sellerOrder->shipping_fee_minor / 100, 2) }}</strong></div>
+            @php
+                $sellerBuyerPaidShipping = $sellerOrder->buyer_paid_shipping_fee_minor
+                    ?? max(0, (int) $sellerOrder->shipping_fee_minor - (int) $sellerOrder->platform_shipping_discount_minor);
+                $sellerPlatformShippingSubsidy = $sellerOrder->platform_shipping_discount_minor ?? 0;
+                $savedZoneLabel = isset($sellerOrder->shipping_quote['zone_level'])
+                    ? 'Zone '.$sellerOrder->shipping_quote['zone_level'].' · '.($sellerOrder->shipping_quote['zone_label'] ?? 'verified route')
+                    : 'Saved shipping quote';
+            @endphp
+            <div class="confirmation-item">
+                <span>Bearly Logistics · {{ $savedZoneLabel }} · {{ $sellerOrder->shipping_quote['billable_weight_kg'] ?? '—' }} kg
+                    <small>Buyer pays ₱{{ number_format((int) $sellerBuyerPaidShipping / 100, 2) }} · Bearly subsidy ₱{{ number_format((int) $sellerPlatformShippingSubsidy / 100, 2) }}</small>
+                </span>
+                <strong>Original ₱{{ number_format($sellerOrder->shipping_fee_minor / 100, 2) }}</strong>
+            </div>
         </section>
     @endforeach
 

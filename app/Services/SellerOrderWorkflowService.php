@@ -245,6 +245,8 @@ class SellerOrderWorkflowService
             $payment->update(['status' => 'cancelled', 'amount_minor' => 0]);
             $this->promotions->releaseForOrder($order);
         } else {
+            $this->promotions->releaseForSellerOrder($order, $sellerOrder, $actor, $reason);
+
             $subtotal = (int) $remainingOrders->sum(fn (SellerOrder $item): int => (int) $item->subtotal_minor);
             $shipping = (int) $remainingOrders->sum(fn (SellerOrder $item): int => (int) $item->shipping_fee_minor);
             $sellerDiscount = (int) $remainingOrders->sum(fn (SellerOrder $item): int => (int) $item->discount_minor);

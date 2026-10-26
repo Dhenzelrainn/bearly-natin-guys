@@ -1,4 +1,5 @@
 import { createAddressMapPicker } from './address-map-picker';
+import { setupPsgcAddressSelector } from './psgc-address-selector';
 
 (() => {
   const $ = id => document.getElementById(id);
@@ -29,7 +30,7 @@ import { createAddressMapPicker } from './address-map-picker';
     list.innerHTML = addresses.map(address => `<article class="address-item" data-id="${escapeHtml(address.id)}">
       <div><div class="address-name-line"><strong>${escapeHtml(address.name)}</strong><span class="address-phone">${escapeHtml(address.phone)}</span></div>
       <div class="address-text">${escapeHtml(fullAddress(address))}</div>
-      <div class="address-tags"><span class="address-tag">${escapeHtml(address.label || 'Home')}</span>${address.isDefault ? '<span class="address-tag default-badge">Default</span>' : ''}</div></div>
+      <div class="address-tags"><span class="address-tag">${escapeHtml(address.label || 'Home')}</span>${address.isDefault ? '<span class="address-tag default-badge">Default</span>' : ''}${address.cityVerified ? '' : '<span class="address-tag address-verify-tag">Verify city for checkout</span>'}</div></div>
       <div class="address-actions"><div class="address-actions-top"><button class="edit-btn" data-edit type="button">Edit</button><button class="delete-btn" data-delete type="button">Delete</button></div>
       <button class="set-default-btn" data-default type="button" ${address.isDefault ? 'disabled' : ''}>${address.isDefault ? 'Default Address' : 'Set as Default'}</button></div>
     </article>`).join('');
@@ -68,14 +69,14 @@ import { createAddressMapPicker } from './address-map-picker';
     $('editing-id').value = address?.id || '';
     $('full-name').value = address?.name || '';
     $('phone-number').value = address?.phone || '';
-    $('province').value = address?.province || '';
-    $('city').value = address?.city || '';
+    $('city-code').value = address?.cityCode || '';
     $('barangay').value = address?.barangay || '';
     $('postal-code').value = address?.postal || '';
     $('street').value = address?.street || '';
     $('set-default').checked = Boolean(address?.isDefault);
     setLabel(address?.label || 'Home');
     $('address-modal').hidden = false;
+    void psgcAddressSelector?.setAddress(address?.province || '', address?.cityCode || '');
     mapPicker?.reset(address?.latitude, address?.longitude);
     setTimeout(() => $('full-name').focus(), 30);
   }
@@ -84,13 +85,14 @@ import { createAddressMapPicker } from './address-map-picker';
     $('address-modal').hidden = true;
     $('address-form').reset();
     $('editing-id').value = '';
+    $('city-code').value = '';
     setLabel('Home');
   }
 
   function formData() {
     return {
       name: $('full-name').value.trim(), phone: $('phone-number').value.trim(),
-      province: $('province').value.trim(), city: $('city').value.trim(),
+      province: $('province').value.trim(), city: $('city').value.trim(), city_code: $('city-code').value.trim(),
       barangay: $('barangay').value.trim(), postal: $('postal-code').value.trim(),
       street: $('street').value.trim(), label: activeLabel,
       is_default: $('set-default').checked,
@@ -111,7 +113,7 @@ import { createAddressMapPicker } from './address-map-picker';
     try {
       await request(id ? `/addresses/${encodeURIComponent(id)}` : '/addresses', { method: id ? 'PATCH' : 'POST', body: JSON.stringify(formData()) });
       closeForm(); await load(); toast(id ? 'Address updated' : 'Address added');
-    } catch (error) { toast(error.message); }
+    } catch (error) { toast(error.message); if (/city|PSGC/i.test(error.message)) { $('city').setAttribute('aria-invalid', 'true'); $('address-psgc-status').textContent = error.message; $('city').focus(); } }
   };
 
   $('address-list').onclick = async event => {
@@ -135,6 +137,9 @@ import { createAddressMapPicker } from './address-map-picker';
   };
   $('address-modal').onclick = event => { if (event.target === $('address-modal')) closeForm(); };
   $('delete-modal').onclick = event => { if (event.target === $('delete-modal')) { $('delete-modal').hidden = true; pendingDelete = null; } };
+
+  const psgcAddressSelector = setupPsgcAddressSelector({ province: $('province'), city: $('city'), cityCode: $('city-code'), status: $('address-psgc-status') });
+  psgcAddressSelector?.load();
 
   mapPicker = createAddressMapPicker({
     element: $('address-map'),

@@ -60,6 +60,16 @@ class BuyerPurchasesDataTest extends TestCase
             'source' => 'rider',
             'occurred_at' => Carbon::parse('2026-10-12 08:30:00'),
         ]);
+        ShipmentEvent::query()->create([
+            'shipment_id' => $deliveredShipment->id,
+            'event_type' => 'admin_override',
+            'from_status' => 'out_for_delivery',
+            'to_status' => 'delivered',
+            'actor_user_id' => $provider['user']->id,
+            'source' => 'admin',
+            'notes' => 'Internal reason: manual delivery exception review.',
+            'occurred_at' => Carbon::parse('2026-10-12 08:29:00'),
+        ]);
         $deliveredSellerOrder->items()->firstOrFail()->update([
             'product_image_disk' => 'public',
             'product_image_path' => 'seller-products/variants/snapshot-test.png',
@@ -97,6 +107,7 @@ class BuyerPurchasesDataTest extends TestCase
         $this->assertSame(route('stores.show', $store->slug, false), $data[1]['items'][0]['store_url']);
         $this->assertSame('delivered', $data[1]['delivery_status']);
         $this->assertSame('Delivered', $data[1]['trackingStatus']);
+        $this->assertNotContains('Internal reason: manual delivery exception review.', array_column($data[1]['trackingEvents'], 'note'));
         $this->assertSame('Oct 12, 2026 · 8:30 AM', $data[1]['delivered_at_display']);
         $this->assertSame(route('checkout.confirmation', $delivered->order_no), $data[1]['details_url']);
         $this->assertNotEmpty($data[1]['shop']);
@@ -132,6 +143,86 @@ class BuyerPurchasesDataTest extends TestCase
         $this->assertSame('delivered', $byId[$completed->order_no]['delivery_status']);
         $this->assertSame('Delivered', $byId[$completed->order_no]['trackingStatus']);
         $this->assertSame('cancelled', $byId[$cancelled->order_no]['status']);
+    }
+
+    public function test_multi_seller_delivery_waits_for_every_active_outbound_shipment_and_cancelled_sellers_do_not_block_cancel_visibility(): void
+    {
+        $buyer = $this->buyer('multi-seller-state');
+        [, $deliveredStore] = $this->seller();
+        [, $pendingStore] = $this->seller();
+        [, $cancelledStore] = $this->seller();
+        $provider = $this->provider('multi-seller-state');
+
+        $partial = $this->marketplaceOrder($buyer, 'multi-seller-partial');
+        $deliveredSellerOrder = $this->sellerOrder($partial, $deliveredStore, 'multi-seller-delivered', 'handed_to_logistics');
+        $deliveredSellerOrder->update(['total_minor' => 10000]);
+        $pendingSellerOrder = $this->sellerOrder($partial, $pendingStore, 'multi-seller-pending', 'pending');
+        $pendingSellerOrder->update(['total_minor' => 0]);
+        $cancelledSellerOrder = $this->sellerOrder($partial, $cancelledStore, 'multi-seller-cancelled', 'cancelled');
+        $cancelledSellerOrder->update(['total_minor' => 0]);
+        $partial->update(['total_minor' => 10000]);
+        $partial->payments()->update(['amount_minor' => 10000]);
+        $deliveredShipment = $this->shipment($deliveredSellerOrder, $provider, 'multi-seller-partial', 'delivered');
+        $this->collectCod($deliveredShipment, $provider, 'multi-seller-partial');
+
+        $partialPayload = collect($this->actingAs($buyer)
+            ->getJson(route('buyer.purchases.data'))
+            ->assertOk()
+            ->json('data'))
+            ->firstWhere('id', $partial->order_no);
+
+        $this->assertSame('preparing', $partialPayload['delivery_status']);
+        $this->assertNotSame('Delivered', $partialPayload['trackingStatus']);
+        $this->assertFalse($partialPayload['can_confirm']);
+        $this->assertNull($partialPayload['confirm_url']);
+        $this->assertSame('delivered', collect($partialPayload['seller_orders'])->firstWhere('id', $deliveredSellerOrder->id)['delivery_status']);
+        $this->assertSame('preparing', collect($partialPayload['seller_orders'])->firstWhere('id', $pendingSellerOrder->id)['delivery_status']);
+        $this->assertSame('cancelled', collect($partialPayload['seller_orders'])->firstWhere('id', $cancelledSellerOrder->id)['delivery_status']);
+
+        $this->actingAs($buyer)
+            ->post(route('checkout.confirm-receipt', $partial->id))
+            ->assertStatus(409);
+
+        $inTransit = $this->marketplaceOrder($buyer, 'multi-seller-transit');
+        $inTransitFirstOrder = $this->sellerOrder($inTransit, $deliveredStore, 'multi-seller-transit-delivered', 'handed_to_logistics');
+        $inTransitFirstOrder->update(['total_minor' => 10000]);
+        $inTransitSecondOrder = $this->sellerOrder($inTransit, $pendingStore, 'multi-seller-transit-pending', 'handed_to_logistics');
+        $inTransitSecondOrder->update(['total_minor' => 10000]);
+        $inTransit->update(['total_minor' => 20000]);
+        $inTransit->payments()->update(['amount_minor' => 20000]);
+        $deliveredParcel = $this->shipment($inTransitFirstOrder, $provider, 'multi-seller-transit-delivered', 'delivered');
+        $transitParcel = $this->shipment($inTransitSecondOrder, $provider, 'multi-seller-transit-pending', 'out_for_delivery');
+        $this->collectCod($deliveredParcel, $provider, 'multi-seller-transit-delivered');
+        $this->collectCod($transitParcel, $provider, 'multi-seller-transit-pending');
+
+        $transitPayload = collect($this->actingAs($buyer)
+            ->getJson(route('buyer.purchases.data'))
+            ->assertOk()
+            ->json('data'))
+            ->firstWhere('id', $inTransit->order_no);
+
+        $this->assertSame('out_for_delivery', $transitPayload['delivery_status']);
+        $this->assertSame('Out for Delivery', $transitPayload['trackingStatus']);
+        $this->assertFalse($transitPayload['can_confirm']);
+        $this->assertNotSame('Delivered', $transitPayload['trackingStatus']);
+        $this->actingAs($buyer)
+            ->post(route('checkout.confirm-receipt', $inTransit->id))
+            ->assertStatus(409);
+
+        $cancellable = $this->marketplaceOrder($buyer, 'multi-seller-cancellable');
+        $alreadyCancelled = $this->sellerOrder($cancellable, $deliveredStore, 'already-cancelled', 'cancelled');
+        $stillPending = $this->sellerOrder($cancellable, $pendingStore, 'still-pending', 'pending');
+
+        $cancellablePayload = collect($this->actingAs($buyer)
+            ->getJson(route('buyer.purchases.data'))
+            ->assertOk()
+            ->json('data'))
+            ->firstWhere('id', $cancellable->order_no);
+
+        $this->assertTrue($cancellablePayload['can_cancel']);
+        $this->assertSame(route('checkout.cancel', $cancellable->id), $cancellablePayload['cancel_url']);
+        $this->assertSame('cancelled', $alreadyCancelled->fresh()->status);
+        $this->assertSame('pending', $stillPending->fresh()->status);
     }
 
     public function test_purchases_never_expose_another_buyers_orders(): void

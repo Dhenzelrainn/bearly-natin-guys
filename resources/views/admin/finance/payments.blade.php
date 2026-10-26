@@ -12,7 +12,7 @@
 
 <section class="page-hero">
     <div><span class="eyebrow">Seller Wallet · Finance</span><h1>Review Seller withdrawals</h1><p>New Seller payouts are requested from Seller Wallet and sent manually by bank transfer. COD custody reconciliation remains separate.</p></div>
-    <div class="hero-actions"><a class="button button-primary" href="{{ route('admin.seller-payouts.index') }}"><i data-lucide="wallet" aria-hidden="true"></i>Open Seller Payouts</a><button class="button button-secondary" type="button" data-finance-export="payments"><i data-lucide="download"></i> Export legacy payments</button></div>
+    <div class="hero-actions"><a class="button button-primary" href="{{ route('admin.seller-payouts.index') }}"><i data-lucide="wallet" aria-hidden="true"></i>Open Seller Payouts</a><a class="button button-secondary" href="{{ route('admin.shipping-settlements.index') }}"><i data-lucide="truck" aria-hidden="true"></i>Shipping Settlements</a><button class="button button-secondary" type="button" data-finance-export="payments"><i data-lucide="download"></i> Export legacy payments</button></div>
 </section>
 
 <section class="kpi-grid kpi-grid-compact">

@@ -4,10 +4,13 @@ namespace Tests\Feature;
 
 use App\Enums\AccountStatus;
 use App\Enums\UserRole;
+use App\Models\AccountApplication;
+use App\Models\Category;
 use App\Models\User;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
@@ -30,6 +33,70 @@ class RegistrationValidationTest extends TestCase
 
         $this->seed(DatabaseSeeder::class);
         Storage::fake('local');
+    }
+
+    public function test_database_backed_seller_categories_persist_the_matching_business_category_id(): void
+    {
+        $this->withoutMiddleware(ThrottleRequests::class);
+
+        $categories = Category::query()
+            ->where('is_registration_option', true)
+            ->where('is_active', true)
+            ->with('marketplaceCategories')
+            ->get()
+            ->sortBy(fn (Category $category): int => (int) $category->marketplaceCategories->first()->position)
+            ->values();
+
+        $this->assertCount(12, $categories);
+
+        $registerPage = $this->get(route('register'))
+            ->assertOk()
+            ->assertSee('name="business_category_id"', false)
+            ->assertDontSee('Toys and Hobbies')
+            ->assertDontSee('Automotive and Parts')
+            ->assertDontSee('Books and Stationery');
+
+        foreach ($categories as $index => $category) {
+            $registerPage
+                ->assertSee('<option value="'.$category->id.'"', false)
+                ->assertSee($category->name);
+
+            $email = 'registration-option-'.$category->id.'@example.test';
+            $phone = '0917'.str_pad((string) ($index + 1), 7, '0', STR_PAD_LEFT);
+            $payload = $this->buyerData($email, $phone, [
+                'role' => UserRole::Seller->value,
+                'business_name' => 'Registration Option Seller '.($index + 1),
+                'business_category_id' => (string) $category->id,
+                'business_permit' => UploadedFile::fake()->create('permit.pdf', 100, 'application/pdf'),
+            ]);
+            $this->grantEmailProof($email);
+
+            $this->post(route('register.submit'), $payload)
+                ->assertRedirect(route('application.pending'));
+
+            $user = User::query()->where('email', $email)->firstOrFail();
+            $application = AccountApplication::query()->where('user_id', $user->id)->firstOrFail();
+            $buyerCategory = $category->marketplaceCategories->sole();
+
+            $this->assertSame((int) $category->id, (int) $application->business_category_id);
+            $this->assertSame($category->name, $user->business_category);
+            $this->assertSame(1, $category->marketplaceCategories->count());
+            $this->assertSame($category->slug, $buyerCategory->slug);
+        }
+
+        $legacyCategory = Category::query()->where('slug', 'toys-and-hobbies')->firstOrFail();
+        $legacyPayload = $this->buyerData('legacy-category-choice@example.test', '09179999999', [
+            'role' => UserRole::Seller->value,
+            'business_name' => 'Legacy Category Attempt',
+            'business_category_id' => $legacyCategory->id,
+            'business_permit' => UploadedFile::fake()->create('legacy-permit.pdf', 100, 'application/pdf'),
+        ]);
+
+        $this->from(route('register'))
+            ->post(route('register.submit'), $legacyPayload)
+            ->assertRedirect(route('register'))
+            ->assertSessionHasErrors('business_category_id');
+        $this->assertDatabaseMissing('users', ['email' => 'legacy-category-choice@example.test']);
     }
 
     public function test_buyer_names_support_unicode_and_enforce_two_to_fifty_characters(): void

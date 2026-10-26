@@ -32,4 +32,24 @@ class RiderEarning extends Model
     {
         return $this->belongsTo(DeliveryAttempt::class);
     }
+
+    public function shippingSettlement()
+    {
+        return $this->belongsTo(ShippingSettlement::class);
+    }
+
+    public function shipment()
+    {
+        return $this->belongsTo(Shipment::class);
+    }
+
+    public function logisticsProfile()
+    {
+        return $this->belongsTo(LogisticsProfile::class);
+    }
+
+    public function payout()
+    {
+        return $this->hasOne(RiderEarningPayout::class);
+    }
 }

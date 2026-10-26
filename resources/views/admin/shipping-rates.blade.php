@@ -8,7 +8,7 @@
     <div>
         <span class="eyebrow">Bearly Logistics</span>
         <h1>Shipping fee settings</h1>
-        <p>Set one standard Bearly shipping fee for each Seller Order, regardless of destination route or billable weight.</p>
+        <p>Set the base and per-zone surcharge used for each combined Seller Order shipment. Confirmed orders keep their saved quote.</p>
     </div>
 </section>
 
@@ -27,15 +27,21 @@
         <div class="panel-heading">
             <div>
                 <span class="eyebrow">Buyer shipping fee</span>
-                <h2>Standard fee per Seller Order</h2>
-                <p>A checkout with multiple Sellers pays this fee once for each Seller Order/parcel. The default fee is ₱50.</p>
+                <h2>Zone-based fee per Seller Order</h2>
+                <p>Each combined Seller Order shipment is charged once, regardless of product quantity or parcel count. The default base is ₱50 with a ₱5 increment per zone level.</p>
             </div>
         </div>
         <div class="form-field">
-            <label for="seller-order-fee">Standard fee (₱)</label>
-            <input id="seller-order-fee" name="seller_order_fee" type="number" min="0" max="9999999.99" step="0.01" value="{{ old('seller_order_fee', $sellerOrderFee) }}" required>
-            <small>Distance and billable weight do not change this fee. Existing orders keep their saved shipping totals.</small>
-            @error('seller_order_fee')<small class="field-error">{{ $message }}</small>@enderror
+            <label for="shipping-base-fee">Base fee (₱)</label>
+            <input id="shipping-base-fee" name="base_fee" type="number" min="0" max="9999999.99" step="0.01" value="{{ old('base_fee', $baseFee) }}" required>
+            <small>Zone 0 (same municipality) is the base fee.</small>
+            @error('base_fee')<small class="field-error">{{ $message }}</small>@enderror
+        </div>
+        <div class="form-field">
+            <label for="zone-surcharge-step">Surcharge per zone level (₱)</label>
+            <input id="zone-surcharge-step" name="zone_surcharge_per_level" type="number" min="0" max="9999999.99" step="0.01" value="{{ old('zone_surcharge_per_level', $zoneSurchargePerLevel) }}" required>
+            <small>Zone 1 adds one increment; Zone 2 adds two; Zone 3 adds three; Zone 4 adds four. Defaults produce ₱50, ₱55, ₱60, ₱65, and ₱70.</small>
+            @error('zone_surcharge_per_level')<small class="field-error">{{ $message }}</small>@enderror
         </div>
     </section>
 
@@ -50,7 +56,7 @@
         <div class="form-field">
             <label for="volumetric-divisor">Volumetric divisor</label>
             <input id="volumetric-divisor" name="volumetric_divisor" type="number" min="1" max="1000000" step="1" value="{{ old('volumetric_divisor', $volumetricDivisor) }}" required>
-            <small>Volumetric weight (kg) = combined parcel L × W × H (cm) ÷ this divisor. Default: 5000.</small>
+            <small>Volumetric weight (kg) = combined parcel L × W × H (cm) ÷ this divisor. It does not change the zone fee. Default: 5000.</small>
             @error('volumetric_divisor')<small class="field-error">{{ $message }}</small>@enderror
         </div>
     </section>

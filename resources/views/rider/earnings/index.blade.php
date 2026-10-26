@@ -13,9 +13,13 @@
     <div>
         <p class="page-kicker">Rider ledger</p>
         <h2>Recorded earnings</h2>
-        <p>This page shows only earning entries recorded for your Rider profile. No payout schedule or account details are assumed.</p>
+        <p>A shipping earning can enter this ledger only after Seller Order completion, the 3-calendar-day return/refund period, and the payment/COD checks. That starts eligibility; it is not a payout promise. Admin/Finance must remit to your Logistics provider, which then records your actual payout.</p>
     </div>
     <div class="page-actions">
+        <a class="button" href="{{ route('rider.history.index') }}">
+            <i data-lucide="history" aria-hidden="true"></i>
+            View Delivery History
+        </a>
         <a class="button button-primary" href="{{ route('rider.earnings.export', $exportFilters) }}">
             <i data-lucide="download" aria-hidden="true"></i>
             Export filtered CSV
@@ -63,8 +67,8 @@
         <div class="attention-item">
             <i data-lucide="info" aria-hidden="true"></i>
             <span>
-                <strong>Ledger-only reporting</strong>
-                <small>Pending, posted, and paid are ledger statuses, not payout promises. Reversed and cancelled rows remain visible below for audit context but are excluded from the totals above. Rider payout details are not configured.</small>
+                <strong>Three-day return period, then settlement</strong>
+                <small>The 3-calendar-day return/refund period starts when the Seller Order is completed. After it ends, payment, unresolved cases, and COD reconciliation can still delay eligibility. Pending means the earning is recorded and waiting for Admin/Finance remittance; Posted means it was remitted to your provider; Paid means your provider recorded the actual payout. A missing row is not labeled pending, and this page does not guess why it is missing.</small>
             </span>
         </div>
     </div>
@@ -134,6 +138,7 @@
                     <th>Status</th>
                     <th>Posted at</th>
                     <th>Paid at</th>
+                    <th>Payout details</th>
                 </tr>
             </thead>
             <tbody>
@@ -147,6 +152,9 @@
                                 @if(filled($log['description']))
                                     <small>{{ $log['description'] }}</small>
                                 @endif
+                                @if(filled($log['return_window_ended_at']))
+                                    <small>3-day return period ended {{ $log['return_window_ended_at'] }}</small>
+                                @endif
                             </div>
                         </td>
                         <td>{{ $log['type_label'] }}</td>
@@ -154,11 +162,27 @@
                         <td><span class="status-badge" data-status="{{ $log['status'] }}">{{ $log['status_label'] }}</span></td>
                         <td>{{ $log['posted_at'] }}</td>
                         <td>{{ $log['paid_at'] }}</td>
+                        <td>
+                            @if(filled($log['payout_reference']))
+                                <strong>{{ \Illuminate\Support\Str::headline(str_replace('_', ' ', $log['payout_method'])) }}</strong>
+                                <small class="table-subline">{{ $log['payout_paid_on'] }} · {{ $log['payout_amount'] }}</small>
+                                <code>{{ $log['payout_reference'] }}</code>
+                                @if(filled($log['payout_reason']))<small class="table-subline">{{ $log['payout_reason'] }}</small>@endif
+                            @else
+                                <span class="empty-copy">No payout recorded</span>
+                            @endif
+                        </td>
                     </tr>
                 @empty
                     <tr>
-                        <td class="empty-row" colspan="7">
-                            {{ $hasFilters ? 'No earning ledger entries match these filters.' : 'No earning ledger entries are currently recorded for your Rider profile.' }}
+                        <td class="empty-row" colspan="8">
+                            @if($hasFilters)
+                                No earning ledger entries match these filters.
+                            @else
+                                <strong>No earning ledger entries are currently recorded for your Rider profile.</strong>
+                                <span>Delivery History is separate and does not create an earning by itself. After the 3-calendar-day return/refund period ends, payment, open-case, and COD checks still determine eligibility. Finance remits eligible allocations to your provider; your provider records the actual Rider payout.</span>
+                                <a class="button button-small" href="{{ route('rider.history.index') }}">Review Delivery History</a>
+                            @endif
                         </td>
                     </tr>
                 @endforelse

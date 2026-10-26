@@ -1,11 +1,5 @@
 @php
-    $catalog = json_decode(
-        file_get_contents(resource_path('data/buyer-sports-products.json')),
-        true,
-        512,
-        JSON_THROW_ON_ERROR
-    );
-
+    $catalog = [];
     $taxonomy = json_decode(
         file_get_contents(resource_path('data/buyer-categories.json')),
         true,
@@ -24,7 +18,12 @@
         'Sports Accessories',
     ];
     $liveCatalog = $liveCatalog ?? [];
-    $usingLiveCatalog = ! empty($liveCatalog);
+    $canonicalMarketplaceTaxonomy = (bool) ($canonicalMarketplaceTaxonomy ?? false);
+    $usingLiveCatalog = true;
+    if ($canonicalMarketplaceTaxonomy) {
+        $catalog = $liveCatalog ?? [];
+        $subcategories = collect($marketplaceSubcategories ?? [])->pluck('name')->all();
+    }
     if ($usingLiveCatalog) {
         $catalog = $liveCatalog;
     }
@@ -67,7 +66,7 @@
 
 </head>
 
-<body class="bc" data-category="sports-and-outdoors" style="--catalog-image:url('{{ asset('images/sports-outdoors-catalog-atlas.png') }}')" data-live-catalog="{{ $usingLiveCatalog ? 'true' : 'false' }}">
+<body class="bc" data-category="sports-and-outdoors" style="--catalog-image:url('{{ asset('images/sports-outdoors-catalog-atlas.png') }}')" data-live-catalog="{{ $usingLiveCatalog ? 'true' : 'false' }}" data-canonical-marketplace-taxonomy="{{ $canonicalMarketplaceTaxonomy ? 'true' : 'false' }}" data-next-page="{{ isset($categoryPagination) && $categoryPagination->hasMorePages() ? $categoryPagination->currentPage() + 1 : '' }}">
     <a href="#bc-main" class="skip">Skip to products</a>
 
     @include('buyer.partials.buyer-header', [
@@ -101,7 +100,7 @@
                     </button>
 
                     @foreach($subcategories as $i => $sub)
-                        <button data-sub="{{ $sub }}" aria-pressed="false">
+                        <button data-sub="{{ $canonicalMarketplaceTaxonomy ? ($marketplaceSubcategorySlugs[$sub] ?? '') : $sub }}" data-sub-label="{{ $sub }}" data-subcategory-id="{{ $canonicalMarketplaceTaxonomy ? ($marketplaceSubcategoryIds[$sub] ?? '') : '' }}" aria-pressed="false">
                             <i class="mi" aria-hidden="true">
                                 {{ ['sports_soccer','fitness_center','camping','sports_tennis','directions_bike','backpack'][$i] ?? 'sports' }}
                             </i>
@@ -177,7 +176,7 @@
                 @endphp
 
                 @foreach($subcategories as $sub)
-                    <button data-sub="{{ $sub }}">
+                    <button data-sub="{{ $canonicalMarketplaceTaxonomy ? ($marketplaceSubcategorySlugs[$sub] ?? '') : $sub }}" data-sub-label="{{ $sub }}" data-subcategory-id="{{ $canonicalMarketplaceTaxonomy ? ($marketplaceSubcategoryIds[$sub] ?? '') : '' }}">
                         <span
                             class="photo"
                             style="background-image:url('{{ $shortcutPhotos[$sub] ?? '/images/products/sports-outdoors/sports-outdoors-01-01.jpg' }}');background-size:contain;background-position:center;background-repeat:no-repeat;background-color:#fff"

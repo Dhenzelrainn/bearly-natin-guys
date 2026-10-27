@@ -287,7 +287,7 @@ function initProfile(){
   const photoInput=$('#photo-input');
   if(photoInput) photoInput.addEventListener('change',e=>{
    const f=e.target.files?.[0]; if(!f)return;
-   if(f.size>5*1024*1024){alert('Please choose an image smaller than 5 MB.');e.target.value='';return}
+    if(f.size>10*1024*1024){alert('Please choose an image no larger than 10 MB.');e.target.value='';return}
    if(!['image/jpeg','image/png','image/webp'].includes(f.type)){alert('JPG, PNG, and WEBP images only.');e.target.value='';return}
     pendingPhotoFile=f;pendingRemovePhoto=false;const r=new FileReader(); r.onload=()=>avatar(r.result);r.readAsDataURL(f);
   });

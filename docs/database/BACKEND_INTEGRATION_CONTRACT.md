@@ -37,6 +37,7 @@ This file is the shared contract for backend, UI, and database work. The executa
 | Physical package/piece | `parcels` |
 | Immutable tracking history | `shipment_events` |
 | Product moderation | `product_compliance_checks`, matches, `product_violations`, `violation_actions` |
+| Advisory product-image/category consistency | `product_image_category_checks`; separate from text compliance and enforcement history |
 | Return/refund | `return_requests`, `return_items`, `return_evidence`, `refunds` |
 | Case management | `disputes`, participants, evidence, events |
 
@@ -132,6 +133,7 @@ Use constants or PHP backed enums in application code, while columns remain stri
 | Application | `draft`, `submitted`, `under_review`, `needs_revision`, `approved`, `rejected`, `withdrawn` |
 | Product | `draft`, `pending_review`, `active`, `flagged`, `blocked`, `archived` |
 | Compliance check | `queued`, `running`, `passed`, `flagged`, `blocked`, `failed` |
+| Advisory product-image/category check | `pending`, `match`, `possible_mismatch`, `uncertain`, `unavailable` |
 | Violation | `flagged`, `under_review`, `confirmed`, `dismissed`, `corrective_action`, `resolved` |
 | Order | `pending_payment`, `paid`, `processing`, `partially_fulfilled`, `fulfilled`, `cancelled`, `closed` |
 | Seller order | `pending`, `accepted`, `packing`, `ready_for_pickup`, `handed_to_logistics`, `completed`, `cancelled` |
@@ -141,6 +143,7 @@ Use constants or PHP backed enums in application code, while columns remain stri
 | Pickup | `requested`, `scheduled`, `assigned`, `in_progress`, `completed`, `cancelled`, `failed` |
 | Assignment | `assigned`, `accepted`, `en_route`, `completed`, `declined`, `cancelled` |
 | Dispatch | `draft`, `loading`, `dispatched`, `completed`, `cancelled` |
+| Announcement | `draft`, `scheduled`, `published`, `archived` |
 | Return | `awaiting_seller`, `under_review`, `awaiting_evidence`, `return_pickup_requested`, `return_in_transit`, `awaiting_inspection`, `refund_pending`, `resolved`, `rejected` |
 | Refund | `pending`, `processing`, `completed`, `failed`, `cancelled` |
 | COD cash custody | `collected`, `disputed`, `received_by_logistics`, `remitted_to_finance`, `reconciled` |
@@ -157,6 +160,23 @@ Use constants or PHP backed enums in application code, while columns remain stri
 | Marketplace subcategory request | `pending_review`, `approved`, `rejected` |
 
 Do not add synonymous values (for example both `shipped` and `dispatched`) without updating this contract and every consumer.
+
+### Announcement retention
+
+- New announcements do not require or set an expiration date. The legacy nullable
+  `announcements.expires_at` column remains for existing rows and legacy delivery
+  backfill behavior; it does not hide a published announcement or trigger
+  deletion.
+- Keep at most 10 announcements in `published` status. When the limit is
+  exceeded, archive the oldest published announcements with
+  `archive_reason = retention`; preserve their rows, audience roles, audit
+  history, and media. A retention-archived announcement remains readable to its
+  original active audience and in paginated announcement history, but is not
+  sent as a new feed/realtime announcement.
+- Admin-initiated archives use `archive_reason = manual` and remain hidden from
+  recipients. Existing archived rows with a null archive reason retain this
+  hidden/manual behavior. Automatic retention must never hard-delete
+  announcements or media.
 
 ## Marketplace taxonomy
 
@@ -175,6 +195,12 @@ Do not add synonymous values (for example both `shipped` and `dispatched`) witho
 Input: persisted `Product`, scan trigger (`create`, `update`, `manual`, `report`), and an optional authenticated actor for recheck audit history.
 
 Output: `ProductComplianceCheck` with zero or more matches and violations. Active rules scan product names/descriptions; category matching uses configured term rules, not image recognition or an inferred category model. Critical prohibited rules block/hide the product; high-severity rules hold it for review. Actionable automated violations and active in-app `seller_warnings` are deduplicated per product/rule. A later clean scan resolves automated violations/warnings and records a `violation_actions` history entry; an unchanged Admin-dismissed false positive is not reopened. Flagged/blocked products are not buyer-visible. Admin decisions require a reason and append `violation_actions` transactionally. Supported decisions are `dismiss`, `confirm`, `request_correction`, `remove_product`, and `warn_seller`; removal blocks the listing without deleting its product record, and dismissal preserves false-positive history. A final decision cannot be applied twice to the same violation. Seller account suspension/escalation is a separate workflow and is not implied by product moderation.
+
+### Advisory product-image/category consistency
+
+- `product_image_category_checks` is separate from text compliance checks, matches, violations, and Seller warnings. It stores image SHA-256 and listing/category snapshots plus provider/model/prompt version and short validated output; it never stores image bytes or raw API payloads.
+- The asynchronous primary-image check runs only after the Seller product-save transaction commits. It is disabled by default and must remain disabled until the Project Owner accepts the applicable Gemini data-use terms. Provider failure is `unavailable`, never `match`; stale image/listing results are not current.
+- `match`, `possible_mismatch`, and `uncertain` are advisory observations only. They never block/hide products, change product or compliance status, create violations, or issue Seller warnings. Admin remains solely responsible for any audited manual category-review action.
 
 ### Checkout
 

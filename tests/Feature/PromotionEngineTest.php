@@ -1326,7 +1326,7 @@ class PromotionEngineTest extends TestCase
             ->assertOk()
             ->assertSee('name="banner"', false)
             ->assertSee('name="banner_title"', false)
-            ->assertSee('name="banner_link"', false)
+            ->assertDontSee('name="banner_link"', false)
             ->assertSee('name="is_featured"', false)
             ->assertSee('Feature on the homepage');
     }

@@ -14,6 +14,73 @@ const bootSeller = () => {
         control.addEventListener('change', () => productFilterForm.requestSubmit());
     });
 
+    const sellerWalletLive = document.querySelector('[data-seller-wallet-live]');
+    if (sellerWalletLive) {
+        const endpoint = sellerWalletLive.dataset.codCashStatusVersionUrl;
+        const withdrawalModal = document.querySelector('[data-modal="wallet-withdrawal"]');
+        let knownVersion = String(sellerWalletLive.dataset.codCashStatusVersion || '');
+        let requestInFlight = false;
+        let requestQueued = false;
+        let reloadPending = false;
+
+        const reloadWhenSafe = () => {
+            if (withdrawalModal && !withdrawalModal.hidden) {
+                reloadPending = true;
+                return;
+            }
+
+            window.location.reload();
+        };
+
+        const refreshWalletStatus = async () => {
+            if (!endpoint || document.hidden) return;
+            if (requestInFlight) {
+                requestQueued = true;
+                return;
+            }
+
+            requestQueued = false;
+            requestInFlight = true;
+            try {
+                const response = await fetch(endpoint, {
+                    cache: 'no-store',
+                    headers: {
+                        Accept: 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                });
+                const result = await response.json().catch(() => ({}));
+                const version = String(result?.data?.version || '');
+                if (response.ok && version && version !== knownVersion) reloadPending = true;
+
+                if (reloadPending && (!withdrawalModal || withdrawalModal.hidden)) {
+                    window.location.reload();
+                }
+            } catch {
+                // Retry on the next poll if the realtime connection or request is unavailable.
+            } finally {
+                requestInFlight = false;
+                if (requestQueued && !document.hidden) {
+                    requestQueued = false;
+                    refreshWalletStatus();
+                }
+            }
+        };
+
+        window.addEventListener('bearly:notification-created', (event) => {
+            const eventKey = String(event.detail?.event || '');
+            if (eventKey === 'seller_cod_cash_reconciled') {
+                refreshWalletStatus();
+            } else if (eventKey === 'seller_withdrawal_status_changed') {
+                reloadWhenSafe();
+            }
+        });
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) refreshWalletStatus();
+        });
+        window.setInterval(refreshWalletStatus, 15000);
+    }
+
     const shell = document.querySelector('[data-seller-shell]');
     const menuButton = document.querySelector('[data-seller-menu]');
     const mobileMenuButton = document.querySelector('[data-seller-mobile-menu]');
@@ -224,6 +291,7 @@ const bootSeller = () => {
             });
 
             orderWorkspace.querySelectorAll('[data-order-queue-card]').forEach((card) => {
+                if (card.dataset.orderQueueCard === 'waybill') return;
                 const countNode = card.querySelector('strong');
                 if (!countNode) return;
                 countNode.textContent = String(orderRows.filter((row) => row.dataset.status === card.dataset.orderQueueCard).length);
@@ -4253,7 +4321,9 @@ const setupBearlyOrderActionModal = () => {
         row.dataset.orderCanonical = String(snapshot.canonical_status || '');
         row.dataset.orderOwner = String(snapshot.responsibility || '');
         row.dataset.orderNext = String(snapshot.next_step || '');
-        row.dataset.orderStatusHistory = JSON.stringify(snapshot.timeline_history || []);
+        if (Array.isArray(snapshot.timeline_history)) {
+            row.dataset.orderStatusHistory = JSON.stringify(snapshot.timeline_history);
+        }
         row.dataset.orderSellerStatus = String(snapshot.seller_order_status || '');
         row.dataset.search = `${row.dataset.orderId || ''} ${row.dataset.orderCustomer || ''} ${snapshot.canonical_status || ''} ${statusLabel}`.toLowerCase();
 
@@ -4287,6 +4357,76 @@ const setupBearlyOrderActionModal = () => {
 
         return trackingSignature(snapshot);
     };
+
+    let orderStatusSyncInFlight = false;
+    let orderStatusSyncQueued = false;
+    const refreshOrderStatuses = async () => {
+        const endpoint = workspace.dataset.orderStatusesUrl;
+        if (!endpoint || document.hidden) return;
+        if (orderStatusSyncInFlight) {
+            orderStatusSyncQueued = true;
+            return;
+        }
+
+        orderStatusSyncQueued = false;
+        orderStatusSyncInFlight = true;
+        try {
+            const response = await fetch(endpoint, {
+                cache: 'no-store',
+                headers: {
+                    Accept: 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            });
+            const result = await response.json().catch(() => ({}));
+            const snapshots = result?.data?.orders;
+            if (!response.ok || !Array.isArray(snapshots)) return;
+
+            const rowsById = new Map(
+                [...workspace.querySelectorAll('[data-order-row]')]
+                    .map((row) => [Number(row.dataset.sellerOrderId), row]),
+            );
+
+            snapshots.forEach((snapshot) => {
+                const row = rowsById.get(Number(snapshot.seller_order_id));
+                if (!row) return;
+
+                applyTrackingSnapshot(row, snapshot);
+                if (active?.row === row) refreshActiveTracking();
+            });
+        } catch {
+            // The short polling fallback retries if the realtime connection is unavailable.
+        } finally {
+            orderStatusSyncInFlight = false;
+            if (orderStatusSyncQueued && !document.hidden) {
+                orderStatusSyncQueued = false;
+                refreshOrderStatuses();
+            }
+        }
+    };
+
+    const sellerOrderNotificationEvents = new Set([
+        'seller_order_updates',
+        'seller_order_cancelled',
+        'seller_pickup_updates',
+        'seller_shipment_updates',
+    ]);
+    const refreshAfterOrderNotification = (event) => {
+        const notification = event.detail || {};
+        if (!sellerOrderNotificationEvents.has(String(notification.event || ''))) return;
+
+        const sellerOrderId = Number(notification.meta?.seller_order_id || 0);
+        if (sellerOrderId > 0 && !workspace.querySelector(`[data-seller-order-id="${sellerOrderId}"]`)) return;
+
+        refreshOrderStatuses();
+    };
+
+    window.addEventListener('bearly:notification-created', refreshAfterOrderNotification);
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) refreshOrderStatuses();
+    });
+    refreshOrderStatuses();
+    window.setInterval(refreshOrderStatuses, 15000);
 
     const setLiveTrackingMessage = (message) => {
         const note = context.querySelector('[data-bearly-live-status]');

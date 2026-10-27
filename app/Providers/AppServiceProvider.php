@@ -70,12 +70,13 @@ class AppServiceProvider extends ServiceProvider
             $buyerCartCount = 0;
 
             if (Schema::hasTable('carts') && Schema::hasTable('cart_items')) {
-                $buyerCartCount = (int) Cart::query()
+                $activeCart = Cart::query()
                     ->where('user_id', $buyer->id)
                     ->where('status', 'active')
-                    ->withSum('items', 'quantity')
-                    ->get()
-                    ->sum('items_sum_quantity');
+                    ->withCount('items')
+                    ->latest('id')
+                    ->first();
+                $buyerCartCount = (int) ($activeCart?->items_count ?? 0);
             }
 
             $buyerProfilePayload = [

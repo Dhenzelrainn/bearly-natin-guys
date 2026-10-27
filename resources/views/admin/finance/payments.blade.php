@@ -60,7 +60,12 @@
     </ol>
 </section>
 
-<section class="panel">
+<section
+    class="panel"
+    data-finance-cod-live
+    data-cod-cash-status-version="{{ $codCashVersion }}"
+    data-cod-cash-status-version-url="{{ route('admin.payments.cod-status-version') }}"
+>
     <div class="panel-heading"><div><span class="eyebrow">COD custody</span><h2>COD custody &amp; Finance receipts</h2><p>Confirm physical cash received from Logistics here. Reconciled receipts can be printed again from their row; Seller proceeds are not settlement-eligible until Finance confirms the remittance.</p></div></div>
     <div class="table-wrap"><table class="admin-table finance-cod-custody-table">
         <thead><tr><th>Collection / order</th><th>Products</th><th>Provider / Rider</th><th>Due</th><th>Collected</th><th>Difference</th><th>Custody status</th><th>Finance action</th></tr></thead>
@@ -98,8 +103,8 @@
                 </td>
                 <td>
                     @if($collection->status === 'remitted_to_finance')
-                        <details class="finance-action-details"><summary class="button button-secondary button-small">Reconcile received cash</summary>
-                            <form method="POST" action="{{ route('admin.payments.cod.reconcile', $collection) }}" class="finance-action-form">
+                        <details class="finance-action-details" data-cod-reconcile-details><summary class="button button-secondary button-small">Reconcile received cash</summary>
+                            <form method="POST" action="{{ route('admin.payments.cod.reconcile', $collection) }}" class="finance-action-form" data-cod-reconcile-form>
                                 @csrf
                                 <input type="hidden" name="collection_id" value="{{ $collection->id }}">
                                 <label for="cod-finance-amount-{{ $collection->id }}">Cash physically received (₱)</label>

@@ -1483,6 +1483,11 @@
     background: #fff;
 }
 
+.seller-date-control:focus-within {
+    border-color: #c98a2e;
+    box-shadow: 0 0 0 3px rgba(233, 167, 47, .12);
+}
+
 .seller-date-control svg {
     width: 17px;
     height: 17px;
@@ -1490,11 +1495,20 @@
 }
 
 .seller-date-control select {
+    box-sizing: border-box;
+    width: 190px;
     min-width: 190px;
     border: 0;
     outline: 0;
     color: #413934;
     background: transparent;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23756c65' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 1px center;
+    background-size: 12px;
+    padding-right: 18px;
+    appearance: none;
+    -webkit-appearance: none;
     font-size: 11px;
     font-weight: 500;
     cursor: pointer;
@@ -8052,7 +8066,8 @@ svg {
     letter-spacing: .035em;
     text-transform: uppercase;
 }
-.seller-nav-heading:hover { transform: none; background: transparent; }
+.seller-nav-heading:hover { transform: none; background: rgba(255,255,255,.08); }
+.seller-nav-heading:focus-visible { outline: 2px solid #f0b844; outline-offset: 2px; }
 .seller-nav-group.is-active .seller-nav-heading { color: #fff; }
 .seller-nav-children {
     display: grid;
@@ -8080,8 +8095,8 @@ svg {
 .seller-mobile-menu-button { display: none; }
 
 @media (min-width:821px) {
-    .seller-shell.sidebar-collapsed .seller-sidebar-header { display:flex; justify-content:center; }
-    .seller-shell.sidebar-collapsed .seller-sidebar-menu-button { flex:0 0 38px; }
+    .seller-shell.sidebar-collapsed .seller-sidebar-header { display:grid; width:100%; grid-template-columns:minmax(0,1fr); justify-items:center; }
+    .seller-shell.sidebar-collapsed .seller-sidebar-menu-button { width:38px; height:38px; margin:0 auto; }
     .seller-shell.sidebar-collapsed .seller-brand { display:none; }
     .seller-shell.sidebar-collapsed .seller-nav-heading { justify-content:center; padding-inline:0; }
     .seller-shell.sidebar-collapsed .seller-nav-heading > span { display:none; }

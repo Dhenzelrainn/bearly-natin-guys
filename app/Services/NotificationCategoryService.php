@@ -70,7 +70,7 @@ class NotificationCategoryService
             ],
             'finance' => [
                 'label' => 'Finance & withdrawals',
-                'events' => ['seller_withdrawal_status_changed'],
+                'events' => ['seller_withdrawal_status_changed', 'seller_cod_cash_reconciled'],
             ],
             'announcements' => [
                 'label' => 'Announcements',

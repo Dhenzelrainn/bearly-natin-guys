@@ -10,10 +10,12 @@ use App\Models\SellerWithdrawal;
 use App\Models\SellerWithdrawalTransfer;
 use App\Services\AuditService;
 use App\Services\BuyerCatalogService;
+use App\Services\CodCashCollectionService;
 use App\Services\ReturnRefundService;
 use App\Services\SellerWalletService;
 use App\Services\SellerWithdrawalService;
 use Carbon\CarbonImmutable;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -27,9 +29,11 @@ class SellerWalletController extends Controller
         Request $request,
         SellerWalletService $wallets,
         BuyerCatalogService $catalog,
+        CodCashCollectionService $codCash,
     ): View {
         $sellerProfile = $this->sellerProfile($request);
         $wallet = $wallets->refreshForSeller($sellerProfile);
+        $codCashVersion = $codCash->reconciledStatusVersionForStore((int) ($sellerProfile->store?->id ?? 0));
 
         $transactions = SellerWalletTransaction::query()
             ->where('seller_wallet_id', $wallet->id)
@@ -122,7 +126,20 @@ class SellerWalletController extends Controller
             'recoveries' => $recoveries,
             'outstandingRecoveryMinor' => $recoveries->sum(fn (SellerRefundRecovery $recovery): int => $recovery->outstandingMinor()),
             'idempotencyKey' => old('idempotency_key', (string) Str::uuid()),
+            'codCashVersion' => $codCashVersion,
         ]);
+    }
+
+    public function codCashStatusVersion(Request $request, CodCashCollectionService $codCash): JsonResponse
+    {
+        $sellerProfile = $this->sellerProfile($request);
+
+        return response()->json([
+            'data' => [
+                'version' => $codCash->reconciledStatusVersionForStore((int) ($sellerProfile->store?->id ?? 0)),
+            ],
+            'message' => 'Seller COD reconciliation status loaded.',
+        ])->header('Cache-Control', 'private, no-store');
     }
 
     public function bankAccounts(Request $request): View

@@ -72,7 +72,12 @@ class AdminProductViolationWorkflowTest extends TestCase
         $this->actingAs($this->admin)
             ->get(route('admin.compliance'))
             ->assertOk()
-            ->assertSee('Test Prohibited Listing');
+            ->assertSee('Product Compliance')
+            ->assertSee('CUSTOMER CASES')
+            ->assertSee('Compliance Overview')
+            ->assertSee('Complaints & Disputes')
+            ->assertSee('Open Product Violations')
+            ->assertDontSee('Test Prohibited Listing');
     }
 
     public function test_violation_search_and_status_filters_use_persisted_values(): void

@@ -251,7 +251,7 @@
                 </label>
 
                 <label class="form-field">
-                    <span>Banner image <small>Optional, max 4 MB</small></span>
+                    <span>Banner image <small>Optional, max 10 MB</small></span>
                     <input class="text-field" type="file" name="banner" accept=".jpg,.jpeg,.png,.webp">
                     @if ($isEdit && $campaign->banner_path)
                         <small>Leave blank to keep the current banner.</small>

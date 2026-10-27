@@ -380,6 +380,8 @@ class SellerProductService
                     ]);
                 }
 
+                app(ProductImageCategoryCheckService::class)->queueAfterProductSave($product);
+
                 return $product->fresh(['category', 'subcategory', 'marketplaceSubcategory.marketplaceCategory', 'variants', 'images', 'store']);
             });
         } catch (Throwable $exception) {

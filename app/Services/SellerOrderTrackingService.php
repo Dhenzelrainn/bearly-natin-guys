@@ -34,14 +34,37 @@ class SellerOrderTrackingService
             'shipments.events',
         ]);
 
+        return [
+            ...$this->statusSnapshot($sellerOrder),
+            'timeline_history' => $this->timelineHistory($sellerOrder),
+            'updated_at' => $this->latestUpdate($sellerOrder),
+        ];
+    }
+
+    /**
+     * Small Seller-facing status payload for live order-list refreshes. The
+     * full modal timeline stays on snapshot() and is not repeated on each poll.
+     *
+     * @return array{
+     *     seller_order_status: string,
+     *     status_label: string,
+     *     status_detail: string,
+     *     canonical_status: string,
+     *     status_key: string,
+     *     tone: string,
+     *     responsibility: string,
+     *     next_step: string
+     * }
+     */
+    public function statusSnapshot(SellerOrder $sellerOrder): array
+    {
+        $sellerOrder->loadMissing('shipments');
         $shipmentStatus = $this->aggregateShipmentStatus($sellerOrder->shipments);
         $state = $this->resolveState((string) $sellerOrder->status, $shipmentStatus);
 
         return [
             'seller_order_status' => (string) $sellerOrder->status,
             ...$state,
-            'timeline_history' => $this->timelineHistory($sellerOrder),
-            'updated_at' => $this->latestUpdate($sellerOrder),
         ];
     }
 

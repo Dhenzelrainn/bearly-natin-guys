@@ -32,6 +32,7 @@ class ProductCategoryReviewService
 
     public function __construct(
         private readonly AuditService $audit,
+        private readonly ProductImageCategoryCheckService $imageChecks,
     ) {}
 
     public function paginateQueue(?string $search = null): LengthAwarePaginator
@@ -336,6 +337,7 @@ class ProductCategoryReviewService
             'store.sellerProfile.approvedCategory',
             'images',
             'latestComplianceCheck',
+            'currentImageCategoryCheck',
         ];
     }
 
@@ -356,6 +358,10 @@ class ProductCategoryReviewService
                 !== ($product->category_id === null ? null : (int) $product->category_id)
         );
 
+        $imageCheck = $this->imageChecks->currentCheckForProduct($product);
+        $imageCheckEnabled = (bool) config('services.gemini.product_image_check.enabled', false);
+        $imageCheckCode = $imageCheck?->status ?? ($imageCheckEnabled ? 'not_checked' : 'disabled');
+
         return [
             'id' => (int) $product->id,
             'name' => $product->name,
@@ -372,6 +378,34 @@ class ProductCategoryReviewService
                 : 'No scan recorded',
             'latest_scan_at' => $scanAt ? Carbon::parse($scanAt)->format('M j, Y g:i A') : null,
             'scan_is_stale' => $scanIsStale,
+            'image_category_code' => $imageCheckCode,
+            'image_category_status' => match ($imageCheckCode) {
+                'match' => 'Match',
+                'possible_mismatch' => 'Possible mismatch',
+                'uncertain' => 'Uncertain',
+                'pending' => 'Pending',
+                'unavailable' => 'Unavailable',
+                'not_checked' => 'Not checked',
+                default => 'Disabled',
+            },
+            'image_category_class' => match ($imageCheckCode) {
+                'match' => 'badge-success',
+                'possible_mismatch' => 'badge-warning',
+                'pending' => 'badge-info',
+                default => 'badge-neutral',
+            },
+            'image_category_description' => $imageCheck?->visible_item_description,
+            'image_category_reason' => $imageCheck?->reason,
+            'image_category_helper' => match ($imageCheckCode) {
+                'possible_mismatch', 'uncertain' => 'AI advisory only; Admin review is still required.',
+                'pending' => 'Awaiting an advisory check; this does not affect publishing or visibility.',
+                'not_checked' => 'No image check is recorded for this listing yet.',
+                'disabled' => 'Image checks are disabled; no product photo is sent to Google.',
+                default => null,
+            },
+            'image_category_checked_at' => $imageCheck?->completed_at
+                ? Carbon::parse($imageCheck->completed_at)->format('M j, Y g:i A')
+                : null,
             'product_status' => Str::headline((string) $product->product_status),
             'compliance_status' => Str::headline((string) $product->compliance_status),
         ];

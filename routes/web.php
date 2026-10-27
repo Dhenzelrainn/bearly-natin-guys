@@ -517,6 +517,9 @@ Route::prefix('admin')
         Route::get('/compliance', [AdminComplianceController::class, 'index'])
             ->name('compliance');
 
+        Route::get('/compliance/image-advisories', [AdminComplianceController::class, 'imageAdvisories'])
+            ->name('compliance.image-advisories');
+
         Route::get('/compliance/category-reviews', [AdminComplianceController::class, 'categoryReviews'])
             ->name('compliance.category-reviews');
 
@@ -725,6 +728,9 @@ Route::prefix('admin')
 
         Route::get('/payments', [AdminFinanceController::class, 'payments'])
             ->name('payments');
+
+        Route::get('/payments/cod-status-version', [AdminFinanceController::class, 'codCashStatusVersion'])
+            ->name('payments.cod-status-version');
 
         Route::get('/shipping-settlements', [AdminFinanceController::class, 'shippingSettlements'])
             ->name('shipping-settlements.index');
@@ -1006,6 +1012,9 @@ Route::prefix('seller')
         Route::get('/orders', [SellerWorkflowController::class, 'orders'])
             ->name('orders');
 
+        Route::get('/orders/status-updates', [SellerWorkflowController::class, 'orderStatusUpdates'])
+            ->name('orders.status-updates');
+
         Route::get('/orders/{sellerOrder}/tracking', [SellerWorkflowController::class, 'orderTracking'])
             ->whereNumber('sellerOrder')
             ->name('orders.tracking');
@@ -1076,6 +1085,9 @@ Route::prefix('seller')
 
         Route::get('/finance/wallet', [SellerWalletController::class, 'index'])
             ->name('finance.wallet');
+
+        Route::get('/finance/wallet/cod-status-version', [SellerWalletController::class, 'codCashStatusVersion'])
+            ->name('finance.wallet.cod-status-version');
 
         Route::get('/finance/bank-accounts', [SellerWalletController::class, 'bankAccounts'])
             ->name('finance.bank-accounts');

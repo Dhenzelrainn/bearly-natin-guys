@@ -468,7 +468,7 @@
                                 >
 
                                 <small class="delivery-field-help" id="delivery-proof-help">
-                                    JPG, PNG, or WebP · up to 5 MB.
+                                    JPG, PNG, or WebP · up to 10 MB.
                                 </small>
 
                                 @error('proof_photo')

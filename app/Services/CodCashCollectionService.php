@@ -12,10 +12,14 @@ use App\Models\Shipment;
 use App\Models\User;
 use App\Notifications\WorkflowNotification;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
+use Throwable;
 
 class CodCashCollectionService
 {
@@ -23,6 +27,7 @@ class CodCashCollectionService
         private readonly CommissionLedgerService $commissionLedger,
         private readonly NotificationService $notifications,
         private readonly PromotionService $promotions,
+        private readonly SellerWalletService $sellerWallets,
     ) {}
 
     public function recordRiderCollection(Shipment $shipment, User $riderUser, int $actualAmountMinor): CodCashCollection
@@ -211,6 +216,7 @@ class CodCashCollectionService
                 'remitted_to_finance_by' => $logisticsUser->id,
             ]);
             $this->event($collection, 'cash_remitted_to_finance', 'logistics', (int) $collection->logistics_received_by, 'admin', null, $logisticsUser, $amountMinor, $reference, null, $now);
+            $this->notifyFinanceOfRemittance($collection, $logisticsUser);
 
             return $collection->fresh(['events']);
         }, attempts: 3);
@@ -268,7 +274,8 @@ class CodCashCollectionService
 
     public function reconcileAtFinance(User $admin, int $collectionId, int $receivedAmountMinor): CodCashCollection
     {
-        return DB::transaction(function () use ($admin, $collectionId, $receivedAmountMinor): CodCashCollection {
+        $reconciledNow = false;
+        $collection = DB::transaction(function () use ($admin, $collectionId, $receivedAmountMinor, &$reconciledNow): CodCashCollection {
             if ($admin->role !== UserRole::Admin->value || $admin->status !== AccountStatus::Active->value) {
                 throw new AuthorizationException('An active Admin/Finance user is required to reconcile COD cash.');
             }
@@ -298,9 +305,16 @@ class CodCashCollectionService
                 'reconciled_by' => $admin->id,
             ]);
             $this->event($collection, 'cash_reconciled_by_finance', 'logistics', (int) $collection->remitted_to_finance_by, 'admin', $admin->id, $admin, $receivedAmountMinor, $reference, null, $now);
+            $reconciledNow = true;
 
             return $collection->fresh(['events']);
         }, attempts: 3);
+
+        if ($reconciledNow) {
+            $this->refreshSellerAfterFinanceReconciliation($collection);
+        }
+
+        return $collection;
     }
 
     public function assertPaymentCaptured(Order $order): void
@@ -347,6 +361,82 @@ class CodCashCollectionService
             ->whereIn('status', ['collected', 'disputed', 'received_by_logistics', 'remitted_to_finance', 'reconciled'])
             ->orderByDesc('collected_at')
             ->get();
+    }
+
+    public function statusVersion(?Collection $collections = null): string
+    {
+        if ($collections !== null) {
+            return $this->statusVersionForRows($collections);
+        }
+
+        return $this->statusVersionFor(CodCashCollection::query()
+            ->whereIn('status', ['collected', 'disputed', 'received_by_logistics', 'remitted_to_finance', 'reconciled']));
+    }
+
+    public function reconciledStatusVersionForStore(int $storeId): string
+    {
+        if ($storeId < 1) {
+            return hash('sha256', '');
+        }
+
+        return $this->statusVersionFor(CodCashCollection::query()
+            ->where('status', 'reconciled')
+            ->whereHas('sellerOrder', fn ($orders) => $orders->where('store_id', $storeId)));
+    }
+
+    private function statusVersionFor(Builder $query): string
+    {
+        return $this->statusVersionForRows($query
+            ->orderBy('id')
+            ->get(['id', 'status', 'updated_at']));
+    }
+
+    private function statusVersionForRows(Collection $collections): string
+    {
+        $state = $collections
+            ->sortBy('id')
+            ->map(fn (CodCashCollection $collection): string => implode(':', [
+                (string) $collection->id,
+                (string) $collection->status,
+                $collection->updated_at?->format('Y-m-d H:i:s.u') ?? '',
+            ]))
+            ->implode('|');
+
+        return hash('sha256', $state);
+    }
+
+    private function refreshSellerAfterFinanceReconciliation(CodCashCollection $collection): void
+    {
+        $collection->loadMissing('sellerOrder.store.sellerProfile.user');
+        $sellerOrder = $collection->sellerOrder;
+        $sellerProfile = $sellerOrder?->store?->sellerProfile;
+        $seller = $sellerProfile?->user;
+
+        if (! $sellerOrder || ! $sellerProfile || ! $seller) {
+            return;
+        }
+
+        try {
+            $this->sellerWallets->refreshForSeller($sellerProfile);
+        } catch (Throwable $exception) {
+            Log::error('Seller wallet refresh failed after Finance reconciled COD cash.', [
+                'cod_cash_collection_id' => (int) $collection->id,
+                'seller_profile_id' => (int) $sellerProfile->id,
+                'exception' => $exception::class,
+            ]);
+        }
+
+        $this->notifications->send($seller, new WorkflowNotification(
+            eventKey: 'seller_cod_cash_reconciled',
+            title: 'COD cash reconciled by Finance',
+            body: "Finance reconciled the COD cash for {$sellerOrder->seller_order_no}. Earnings remain subject to the return window and other settlement checks.",
+            actionUrl: route('seller.finance.wallet'),
+            type: 'success',
+            meta: [
+                'seller_order_id' => (int) $sellerOrder->id,
+                'cod_collection_id' => (int) $collection->id,
+            ],
+        ));
     }
 
     private function captureMarketplacePaymentWhenFullyCollected(Order $order, Payment $payment): void

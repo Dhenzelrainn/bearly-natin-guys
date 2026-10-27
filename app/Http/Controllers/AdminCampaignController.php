@@ -207,7 +207,7 @@ class AdminCampaignController extends Controller
             'is_featured' => ['sometimes', 'boolean'],
             'banner_title' => ['nullable', 'string', 'max:120'],
             'banner_link' => ['nullable', 'url', 'max:255'],
-            'banner' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
+            'banner' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
             'scope_submitted' => ['sometimes', 'boolean'],
             'store_ids' => ['nullable', 'array', 'max:500'],
             'store_ids.*' => ['integer', 'exists:stores,id'],

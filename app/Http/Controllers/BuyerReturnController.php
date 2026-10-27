@@ -38,7 +38,7 @@ class BuyerReturnController extends Controller
             'item_quantities.*' => ['nullable', 'integer', 'min:0', 'max:500'],
             'buyer_note' => ['nullable', 'string', 'max:2000'],
             'evidence' => ['nullable', 'array', 'max:5'],
-            'evidence.*' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+            'evidence.*' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
         ]);
 
         $returnRequest = $returns->createBuyerRequest(
@@ -91,7 +91,7 @@ class BuyerReturnController extends Controller
         $data = $request->validate([
             'note' => ['nullable', 'string', 'max:1000'],
             'evidence' => ['nullable', 'array', 'max:5'],
-            'evidence.*' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+            'evidence.*' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
         ]);
         $files = array_values($request->file('evidence', []));
         if ($files === [] && ! filled($data['note'] ?? null)) {

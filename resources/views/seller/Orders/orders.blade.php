@@ -34,7 +34,7 @@
     @endforeach
 </section>
 
-<section class="orders-workspace" data-orders-workspace>
+<section class="orders-workspace" data-orders-workspace data-order-statuses-url="{{ route('seller.orders.status-updates') }}">
     <div class="order-tabs" role="tablist" aria-label="Filter orders by seller-facing status">
         @foreach ($orderTabs as $tab)
             <button
@@ -103,6 +103,7 @@
                     <tr
                         data-order-row
                         data-order-tracking-url="{{ $order['tracking_url'] }}"
+                        data-seller-order-id="{{ $order['seller_order_id'] }}"
                         data-status="{{ $order['status_key'] }}"
                         data-date="{{ $order['date_key'] }}"
                         data-payment="{{ $order['payment_key'] }}"

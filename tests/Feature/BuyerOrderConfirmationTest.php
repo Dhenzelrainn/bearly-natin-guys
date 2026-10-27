@@ -67,6 +67,12 @@ class BuyerOrderConfirmationTest extends TestCase
         $this->assertSame('paid', $order->payments()->sole()->status);
         $this->assertNotNull($order->payments()->sole()->paid_at);
 
+        $sellerNotification = $seller->notifications()
+            ->where('data->event', 'seller_shipment_updates')
+            ->latest()
+            ->firstOrFail();
+        $this->assertSame($sellerOrder->id, (int) $sellerNotification->data['meta']['seller_order_id']);
+
         $this->actingAs($buyer)
             ->get(route('checkout.confirmation', $order->order_no))
             ->assertOk()
@@ -76,7 +82,36 @@ class BuyerOrderConfirmationTest extends TestCase
         $this->actingAs($seller)
             ->get(route('seller.orders'))
             ->assertOk()
+            ->assertSee('data-order-statuses-url="'.route('seller.orders.status-updates').'"', false)
+            ->assertSee('data-seller-order-id="'.$sellerOrder->id.'"', false)
             ->assertSee('Completed');
+
+        $this->actingAs($seller)
+            ->getJson(route('seller.orders.status-updates'))
+            ->assertOk()
+            ->assertJsonPath('data.orders.0.seller_order_id', $sellerOrder->id)
+            ->assertJsonPath('data.orders.0.seller_order_status', 'completed')
+            ->assertJsonPath('data.orders.0.status_label', 'Completed');
+    }
+
+    public function test_seller_order_status_updates_are_scoped_to_the_authenticated_store(): void
+    {
+        $buyer = $this->buyer('status-scope');
+        [$seller, $store] = $this->seller();
+        [, $otherStore] = $this->seller();
+        $ownOrder = $this->marketplaceOrder($buyer, 'status-own');
+        $otherOrder = $this->marketplaceOrder($buyer, 'status-other');
+        $ownSellerOrder = $this->sellerOrder($ownOrder, $store, 'status-own', 'handed_to_logistics');
+        $otherSellerOrder = $this->sellerOrder($otherOrder, $otherStore, 'status-other', 'handed_to_logistics');
+
+        $orders = $this->actingAs($seller)
+            ->getJson(route('seller.orders.status-updates'))
+            ->assertOk()
+            ->json('data.orders');
+
+        $this->assertCount(1, $orders);
+        $this->assertSame($ownSellerOrder->id, (int) $orders[0]['seller_order_id']);
+        $this->assertNotSame($otherSellerOrder->id, (int) $orders[0]['seller_order_id']);
     }
 
     public function test_repeating_confirmation_is_idempotent_without_duplicate_history(): void

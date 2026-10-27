@@ -33,7 +33,11 @@
             <span class="eyebrow">Buyer-visible listings</span>
             <h2>Category review queue</h2>
             <p class="admin-category-review-guidance">
-                The text scan does not inspect product photos. Review images manually; no product photo is sent to an AI service.
+                @if ($imageCheckEnabled)
+                    Gemini receives the primary image and relevant listing/category text for an advisory check only. It cannot change listing status or create violations; Admins remain the decision-makers.
+                @else
+                    Gemini image checks are disabled. No product photos are sent to Google. If enabled later, results remain advisory and Admins retain all decisions.
+                @endif
             </p>
         </div>
         <form method="GET" action="{{ route('admin.compliance.category-reviews') }}" class="table-toolbar admin-category-review-search">
@@ -58,7 +62,11 @@
     </div>
 
     <div class="table-wrap admin-category-review-table-wrap">
-        <table class="admin-table admin-category-review-table">
+        <table
+            class="admin-table admin-category-review-table"
+            data-image-advisory-poll
+            data-image-advisories-url="{{ route('admin.compliance.image-advisories') }}"
+        >
             <thead>
                 <tr>
                     <th>Product</th>
@@ -67,13 +75,14 @@
                     <th>Listed business category</th>
                     <th>Marketplace category</th>
                     <th>Latest scan</th>
+                    <th>Image check (advisory)</th>
                     <th>Status</th>
                     <th>Review actions</th>
                 </tr>
             </thead>
             <tbody>
                 @forelse ($products as $product)
-                    <tr>
+                    <tr data-image-advisory-product-id="{{ $product['id'] }}">
                         <td>
                             <div class="admin-category-review-product">
                                 @if ($product['image_url'])
@@ -112,6 +121,15 @@
                                 @if ($product['scan_is_stale'])
                                     <span class="admin-category-review-stale">Stale text/category scan</span>
                                 @endif
+                            </div>
+                        </td>
+                        <td>
+                            <div class="admin-category-review-cell admin-category-review-image-check">
+                                <span class="status-badge {{ $product['image_category_class'] }}" data-image-advisory-status data-image-advisory-code="{{ $product['image_category_code'] }}">{{ $product['image_category_status'] }}</span>
+                                <small data-image-advisory-description @if (! $product['image_category_description']) hidden @endif>{{ $product['image_category_description'] }}</small>
+                                <small data-image-advisory-reason @if (! $product['image_category_reason']) hidden @endif>{{ $product['image_category_reason'] }}</small>
+                                <small data-image-advisory-helper @if (! $product['image_category_helper']) hidden @endif>{{ $product['image_category_helper'] }}</small>
+                                <small data-image-advisory-checked-at @if (! $product['image_category_checked_at']) hidden @endif>@if ($product['image_category_checked_at'])Checked {{ $product['image_category_checked_at'] }}@endif</small>
                             </div>
                         </td>
                         <td>
@@ -156,7 +174,7 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="8">
+                        <td colspan="9">
                             <div class="admin-category-review-empty">
                                 <i data-lucide="shield-check" aria-hidden="true"></i>
                                 <strong>No listings need manual category review</strong>

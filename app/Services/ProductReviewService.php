@@ -19,7 +19,7 @@ class ProductReviewService
 
     public const MAX_RESPONSE = 400;
 
-    public const MAX_PHOTO_KB = 2048;
+    public const MAX_PHOTO_KB = 10240;
 
     public function __construct(private readonly BuyerCatalogService $catalog) {}
 
@@ -59,7 +59,7 @@ class ProductReviewService
 
             if ($photo->getSize() === false || $photo->getSize() > self::MAX_PHOTO_KB * 1024) {
                 throw ValidationException::withMessages([
-                    'photo' => 'Review photos must be smaller than 2 MB.',
+                    'photo' => 'Review photos must be 10 MB or smaller.',
                 ]);
             }
         }

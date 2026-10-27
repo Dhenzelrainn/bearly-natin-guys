@@ -276,13 +276,13 @@
                         <label class="product-primary-upload">
                             <span>Primary Product Image</span>
                             <input type="file" name="image" accept="image/png,image/jpeg,image/webp" data-product-image-input>
-                            <small>JPG, PNG, or WEBP · up to 5MB. This image appears first to buyers.</small>
+                            <small>JPG, PNG, or WEBP · up to 10 MB per image; 50 MB total per save. This image appears first to buyers.</small>
                             @error('image')<small class="field-error">{{ $message }}</small>@enderror
                         </label>
                         <label class="seller-field product-gallery-field">
                             <span>Gallery Images</span>
                             <input type="file" name="gallery_images[]" accept="image/png,image/jpeg,image/webp" multiple>
-                            <small>Add up to four additional product photos. A new selection replaces the saved gallery.</small>
+                            <small>Add up to four additional photos. Each image is up to 10 MB; all new product images must total 50 MB or less per save. A new selection replaces the saved gallery.</small>
                             @if ($isEdit && count($product['gallery_images']))<span class="existing-gallery-count"><i data-lucide="images"></i>{{ count($product['gallery_images']) }} gallery image(s) saved</span>@endif
                             @error('gallery_images')<small class="field-error">{{ $message }}</small>@enderror
                             @error('gallery_images.*')<small class="field-error">{{ $message }}</small>@enderror
@@ -295,7 +295,7 @@
                             <label class="seller-field product-variant-images-field">
                                 <span>Choose Variant Images</span>
                                 <input type="file" name="variant_color_images[]" accept="image/png,image/jpeg,image/webp" multiple data-variant-color-image-input>
-                                <small>Choose images before or after generating variants. Add a Color option above to assign them. Up to 5MB per image.</small>
+                                <small>Choose images before or after generating variants. Add a Color option above to assign them. Up to 10 MB per image; all new product images must total 50 MB or less per save.</small>
                                 @error('variant_color_images')<small class="field-error">{{ $message }}</small>@enderror
                                 @error('variant_color_images.*')<small class="field-error">{{ $message }}</small>@enderror
                                 @error('variant_image_colors.*')<small class="field-error">{{ $message }}</small>@enderror

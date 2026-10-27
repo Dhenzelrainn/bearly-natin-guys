@@ -31,7 +31,13 @@
         'description' => 'Order, shipment, return, message, and announcement updates in one place.',
         'emptyTitle' => 'No notifications yet',
         'emptyBody' => 'Updates about your Bearly orders and account will appear here.',
-        'links' => [],
+        'links' => [
+            [
+                'url' => route('home'),
+                'label' => 'Back to shopping',
+                'icon' => 'arrow_back',
+            ],
+        ],
     ])
 </main>
 </body>

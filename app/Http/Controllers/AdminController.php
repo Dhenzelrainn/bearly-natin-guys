@@ -13,6 +13,7 @@ use App\Models\SellerPayout;
 use App\Models\User;
 use App\Services\BuyerCatalogService;
 use App\Services\ConversationService;
+use App\Services\ProductImageCategoryCheckService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -971,7 +972,7 @@ class AdminController extends Controller
         );
     }
 
-    public function productViolations(Request $request): View
+    public function productViolations(Request $request, ProductImageCategoryCheckService $imageChecks): View
     {
         $openStatuses = ['flagged', 'under_review', 'correction_requested'];
         $filters = $request->validate([
@@ -991,8 +992,11 @@ class AdminController extends Controller
         $query = ProductViolation::query()
             ->with([
                 'product' => fn ($query) => $query->withTrashed(),
-                'product.store' => fn ($query) => $query->withTrashed(),
+                'product.store' => fn ($query) => $query->withTrashed()->with('sellerProfile.approvedCategory'),
                 'product.category',
+                'product.marketplaceSubcategory.marketplaceCategory',
+                'product.images',
+                'product.currentImageCategoryCheck',
                 'check',
                 'rule',
                 'sellerProfile.approvedCategory',
@@ -1028,7 +1032,7 @@ class AdminController extends Controller
             ->latest('id')
             ->paginate(25)
             ->withQueryString()
-            ->through(function (ProductViolation $violation) use ($openStatuses): array {
+            ->through(function (ProductViolation $violation) use ($openStatuses, $imageChecks): array {
                 $status = $violation->status;
                 $statusLabel = match ($status) {
                     'flagged' => 'Pending Review',
@@ -1050,10 +1054,16 @@ class AdminController extends Controller
                 };
                 $product = $violation->product;
                 $sellerProfile = $violation->sellerProfile;
+                $imageCheck = $product ? $imageChecks->currentCheckForProduct($product) : null;
+
+                $imageAdvisoryCode = $imageCheck !== null
+                    ? (string) $imageCheck->status
+                    : ((bool) config('services.gemini.product_image_check.enabled', false) ? 'not_checked' : 'disabled');
 
                 return [
                     'database_id' => $violation->id,
                     'id' => $violation->violation_no,
+                    'product_record_id' => (int) $violation->product_id,
                     'product_id' => 'PRD-'.str_pad((string) $violation->product_id, 6, '0', STR_PAD_LEFT),
                     'product' => $product?->name ?? $violation->check?->name_snapshot ?? 'Product record unavailable',
                     'product_status' => $product?->product_status ?? 'unavailable',
@@ -1075,6 +1085,32 @@ class AdminController extends Controller
                     'status_value' => $status,
                     'status_class' => $statusClass,
                     'actionable' => in_array($status, $openStatuses, true),
+                    'image_advisory_code' => $imageAdvisoryCode,
+                    'image_advisory_status' => match ($imageAdvisoryCode) {
+                        'match' => 'Match',
+                        'possible_mismatch' => 'Possible mismatch',
+                        'uncertain' => 'Uncertain',
+                        'pending' => 'Pending',
+                        'unavailable' => 'Unavailable',
+                        'not_checked' => 'Not checked',
+                        'disabled' => 'Disabled',
+                        default => 'Unavailable',
+                    },
+                    'image_advisory_class' => match ($imageAdvisoryCode) {
+                        'match' => 'badge-success',
+                        'possible_mismatch' => 'badge-warning',
+                        'pending' => 'badge-info',
+                        default => 'badge-neutral',
+                    },
+                    'image_advisory_description' => $imageCheck?->visible_item_description,
+                    'image_advisory_reason' => $imageCheck?->reason,
+                    'image_advisory_helper' => match ($imageAdvisoryCode) {
+                        'possible_mismatch', 'uncertain' => 'AI advisory only; Admin review is still required.',
+                        'pending' => 'Awaiting an advisory check; it does not change this violation or listing status.',
+                        'not_checked' => 'No image check is recorded for this listing yet.',
+                        'disabled' => 'Image checks are disabled; no product photo is sent to Google.',
+                        default => 'AI advisory only; it does not create, resolve, or change this violation or listing status.',
+                    },
                     'actions' => $violation->actions->map(fn ($action): array => [
                         'label' => Str::of($action->action_type)->replace(['_', '-'], ' ')->title()->toString(),
                         'actor' => $action->actor?->name ?? 'Admin account unavailable',

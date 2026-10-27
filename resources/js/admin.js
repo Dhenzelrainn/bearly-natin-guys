@@ -149,6 +149,159 @@ import {
         refreshIcons();
         setTimeout(refreshIcons, 150);
 
+        const financeCodLive = document.querySelector('[data-finance-cod-live]');
+        if (financeCodLive) {
+            let knownCodVersion = String(financeCodLive.dataset.codCashStatusVersion || '');
+            let codVersionRequestInFlight = false;
+            let codVersionRequestQueued = false;
+
+            const hasOpenOrEditedCodForm = () => {
+                if (financeCodLive.querySelector('[data-cod-reconcile-details][open]')) return true;
+
+                return [...financeCodLive.querySelectorAll('[data-cod-reconcile-form]')].some((form) => {
+                    if (form.querySelector('.cash-remittance-error')) return true;
+
+                    const amount = form.querySelector('[name="received_amount"]');
+                    const confirmation = form.querySelector('[name="cash_received_confirmed"]');
+
+                    return (amount && amount.value !== amount.defaultValue)
+                        || (confirmation && confirmation.checked !== confirmation.defaultChecked);
+                });
+            };
+
+            const refreshFinanceCodVersion = async () => {
+                const endpoint = financeCodLive.dataset.codCashStatusVersionUrl;
+                if (!endpoint || document.hidden) return;
+                if (codVersionRequestInFlight) {
+                    codVersionRequestQueued = true;
+                    return;
+                }
+
+                codVersionRequestQueued = false;
+                codVersionRequestInFlight = true;
+                try {
+                    const response = await fetch(endpoint, {
+                        cache: 'no-store',
+                        headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    });
+                    const result = await response.json().catch(() => ({}));
+                    const version = String(result?.data?.version || '');
+                    if (!response.ok || !version || version === knownCodVersion) return;
+
+                    if (!hasOpenOrEditedCodForm()) window.location.reload();
+                } catch {
+                    // Retry on the next poll if Finance realtime or HTTP is temporarily unavailable.
+                } finally {
+                    codVersionRequestInFlight = false;
+                    if (codVersionRequestQueued && !document.hidden) {
+                        codVersionRequestQueued = false;
+                        refreshFinanceCodVersion();
+                    }
+                }
+            };
+
+            const refreshForCodNotification = (event) => {
+                if (!['admin_cod_remitted', 'admin_cod_discrepancy'].includes(String(event.detail?.event || ''))) return;
+                refreshFinanceCodVersion();
+            };
+
+            window.addEventListener('bearly:notification-created', refreshForCodNotification);
+            document.addEventListener('visibilitychange', () => {
+                if (!document.hidden) refreshFinanceCodVersion();
+            });
+            window.setInterval(refreshFinanceCodVersion, 15000);
+        }
+
+        const imageAdvisoryPollPage = document.querySelector('[data-image-advisory-poll]');
+        if (imageAdvisoryPollPage) {
+            const endpoint = imageAdvisoryPollPage.dataset.imageAdvisoriesUrl;
+            const advisoryTargets = [...document.querySelectorAll('[data-image-advisory-product-id]')];
+            const productIds = [...new Set(advisoryTargets
+                .map((target) => String(target.dataset.imageAdvisoryProductId || ''))
+                .filter(Boolean))];
+            const advisoryBadgeClasses = {
+                match: 'badge-success',
+                possible_mismatch: 'badge-warning',
+                pending: 'badge-info',
+                uncertain: 'badge-neutral',
+                unavailable: 'badge-neutral',
+                not_checked: 'badge-neutral',
+                disabled: 'badge-neutral',
+            };
+            let imageAdvisoryPollInFlight = false;
+
+            const setAdvisoryNodeText = (node, value) => {
+                if (!node) return;
+
+                const prefix = node.dataset.imageAdvisoryDescriptionPrefix || '';
+                const text = value ? `${prefix}${String(value)}` : '';
+                if (node.textContent !== text) node.textContent = text;
+                node.hidden = text === '';
+            };
+
+            const refreshImageAdvisories = async () => {
+                if (!endpoint || !productIds.length || document.hidden || imageAdvisoryPollInFlight) return;
+
+                imageAdvisoryPollInFlight = true;
+                try {
+                    const url = new URL(endpoint, window.location.origin);
+                    productIds.forEach((productId) => url.searchParams.append('product_ids[]', productId));
+
+                    const response = await fetch(url.toString(), {
+                        cache: 'no-store',
+                        headers: {
+                            Accept: 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                    });
+                    const result = await response.json().catch(() => ({}));
+                    const advisories = result?.data?.advisories;
+                    if (!response.ok || !Array.isArray(advisories)) return;
+
+                    advisories.forEach((advisory) => {
+                        const productId = String(advisory.product_id || '');
+                        advisoryTargets
+                            .filter((target) => String(target.dataset.imageAdvisoryProductId || '') === productId)
+                            .forEach((target) => {
+                                const status = target.querySelector('[data-image-advisory-status]');
+                                if (status) {
+                                    const label = String(advisory.image_category_status || 'Unavailable');
+                                    const code = String(advisory.image_category_code || 'unavailable');
+                                    const badgeClass = `status-badge ${advisoryBadgeClasses[code] || 'badge-neutral'}`;
+                                    if (status.textContent !== label) status.textContent = label;
+                                    if (status.className !== badgeClass) status.className = badgeClass;
+                                    status.dataset.imageAdvisoryCode = code;
+                                }
+
+                                setAdvisoryNodeText(target.querySelector('[data-image-advisory-description]'), advisory.image_category_description);
+                                setAdvisoryNodeText(target.querySelector('[data-image-advisory-reason]'), advisory.image_category_reason);
+                                setAdvisoryNodeText(target.querySelector('[data-image-advisory-helper]'), advisory.image_category_helper);
+
+                                const checkedAt = target.querySelector('[data-image-advisory-checked-at]');
+                                if (checkedAt) {
+                                    const date = advisory.image_category_checked_at ? new Date(advisory.image_category_checked_at) : null;
+                                    const text = date && !Number.isNaN(date.getTime())
+                                        ? `Checked ${date.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}`
+                                        : '';
+                                    if (checkedAt.textContent !== text) checkedAt.textContent = text;
+                                    checkedAt.hidden = text === '';
+                                }
+                            });
+                    });
+                } catch {
+                    // Retry on the next poll if the advisory endpoint is temporarily unavailable.
+                } finally {
+                    imageAdvisoryPollInFlight = false;
+                }
+            };
+
+            document.addEventListener('visibilitychange', () => {
+                if (!document.hidden) refreshImageAdvisories();
+            });
+            refreshImageAdvisories();
+            window.setInterval(refreshImageAdvisories, 15000);
+        }
+
         document.querySelectorAll('[data-admin-violation-decision-form]').forEach((form) => {
             const choices = [...form.querySelectorAll('[data-decision-choice]')];
             const reason = form.querySelector('[data-decision-reason]');
@@ -788,180 +941,6 @@ import {
                     'Registration decision saved'
                 );
                 pendingRegistrationDecision = null;
-            });
-        });
-
-        // Drawer system + compliance data injection
-        let activeComplianceCard = null;
-        const COMPLIANCE_STORAGE_KEY = 'bearlyAdminComplianceState';
-        let complianceState = {};
-        try { complianceState = JSON.parse(localStorage.getItem(COMPLIANCE_STORAGE_KEY) || '{}'); } catch {}
-        const saveComplianceState = (id, state) => {
-            if (!id) return;
-            complianceState[id] = state;
-            localStorage.setItem(COMPLIANCE_STORAGE_KEY, JSON.stringify(complianceState));
-        };
-
-        const closeDrawer = (drawer) => {
-            if (!drawer) return;
-            drawer.hidden = true;
-        };
-
-        document.querySelectorAll('[data-open-drawer]').forEach((button) => {
-            button.addEventListener('click', () => {
-                const drawer = document.querySelector(`[data-drawer="${button.dataset.openDrawer}"]`);
-                if (!drawer) return;
-
-                const setText = (selector, value) => {
-                    const el = drawer.querySelector(selector);
-                    if (el) el.textContent = value;
-                };
-
-                setText('[data-drawer-product]', button.dataset.flagProduct || 'Flagged product');
-                setText('[data-drawer-seller]', button.dataset.flagSeller || 'Seller');
-                setText('[data-drawer-reason]', button.dataset.flagReason || 'Review required.');
-                setText('[data-drawer-risk]', button.dataset.flagRisk || 'Medium');
-                setText('[data-drawer-warnings]', button.dataset.flagWarnings || '0');
-
-                if (button.matches('[data-flag-card]')) {
-                    activeComplianceCard = button;
-                    drawer.dataset.complianceProduct = button.dataset.flagProduct || '';
-                    drawer.dataset.complianceSeller = button.dataset.flagSeller || '';
-                    drawer.dataset.complianceId = button.dataset.flagId || '';
-
-                    const notes = drawer.querySelector('[data-compliance-notes]');
-                    const noteError = drawer.querySelector('[data-compliance-note-error]');
-                    if (notes) notes.value = button.dataset.adminNotes || '';
-                    if (noteError) noteError.hidden = true;
-                    const decisionForm = drawer.querySelector('[data-compliance-decision-form]');
-                    if (decisionForm) decisionForm.action = button.dataset.decisionUrl || '';
-                }
-
-                drawer.hidden = false;
-                refreshIcons();
-            });
-        });
-
-        document.querySelectorAll('[data-close-drawer]').forEach((button) => {
-            button.addEventListener('click', () => closeDrawer(button.closest('[data-drawer]')));
-        });
-
-        const findComplianceAuditRow = (product) => {
-            return [...document.querySelectorAll('#compliance-table [data-table-row]')].find(
-                (row) => (row.dataset.complianceProduct || '').trim().toLowerCase() === product.trim().toLowerCase()
-            ) || null;
-        };
-
-        const updateComplianceFlagCount = () => {
-            const counter = document.querySelector('[data-compliance-flag-count]');
-            if (!counter) return;
-
-            const remaining = document.querySelectorAll('[data-flag-card]').length;
-            counter.textContent = remaining;
-        };
-
-        document.querySelectorAll('[data-flag-card]').forEach((card) => {
-            const saved = complianceState[card.dataset.flagId];
-            if (!saved) return;
-            card.dataset.adminNotes = saved.notes || '';
-            if (saved.warnings != null) card.dataset.flagWarnings = String(saved.warnings);
-            if (saved.action === 'suspend') card.dataset.sellerSuspended = 'true';
-            if (saved.action === 'compliant') {
-                const badge = findComplianceAuditRow(card.dataset.flagProduct || '')?.querySelector('.js-compliance-status');
-                if (badge) {
-                    badge.textContent = 'Compliant';
-                    badge.className = 'status-badge js-compliance-status badge-success';
-                }
-                card.remove();
-            }
-        });
-        updateComplianceFlagCount();
-
-        document.querySelectorAll('[data-compliance-action]').forEach((button) => {
-            button.addEventListener('click', () => {
-                const drawer = button.closest('[data-drawer]');
-                if (!drawer || !activeComplianceCard) return;
-
-                const action = button.dataset.complianceAction;
-                const notes = drawer.querySelector('[data-compliance-notes]');
-                const noteError = drawer.querySelector('[data-compliance-note-error]');
-                const noteText = notes?.value.trim() || '';
-
-                if ((action === 'warning' || action === 'suspend') && !noteText) {
-                    if (noteError) noteError.hidden = false;
-                    notes?.focus();
-                    return;
-                }
-
-                if (noteError) noteError.hidden = true;
-                activeComplianceCard.dataset.adminNotes = noteText;
-
-                const product = activeComplianceCard.dataset.flagProduct || '';
-                const seller = activeComplianceCard.dataset.flagSeller || '';
-                const complianceId = activeComplianceCard.dataset.flagId || '';
-                const auditRow = findComplianceAuditRow(product);
-                const statusBadge = auditRow?.querySelector('.js-compliance-status');
-
-                if (action === 'compliant') {
-                    saveComplianceState(complianceId, { action, notes: noteText });
-                    if (statusBadge) {
-                        statusBadge.textContent = 'Compliant';
-                        statusBadge.className = 'status-badge js-compliance-status badge-success';
-                    }
-
-                    const removedCard = activeComplianceCard;
-                    activeComplianceCard = null;
-                    removedCard.remove();
-                    updateComplianceFlagCount();
-                    closeDrawer(drawer);
-
-                    showToast(
-                        `${product} was marked compliant and removed from the manual review queue.`,
-                        'Listing marked compliant'
-                    );
-                    return;
-                }
-
-                if (action === 'warning') {
-                    const currentWarnings = Number(activeComplianceCard.dataset.flagWarnings || 0);
-                    const nextWarnings = currentWarnings + 1;
-
-                    activeComplianceCard.dataset.flagWarnings = String(nextWarnings);
-                    saveComplianceState(complianceId, { action, notes: noteText, warnings: nextWarnings });
-
-                    const drawerWarnings = drawer.querySelector('[data-drawer-warnings]');
-                    if (drawerWarnings) drawerWarnings.textContent = String(nextWarnings);
-
-                    if (statusBadge) {
-                        statusBadge.textContent = 'Flagged';
-                        statusBadge.className = 'status-badge js-compliance-status badge-danger';
-                    }
-
-                    closeDrawer(drawer);
-
-                    showToast(
-                        `${seller} now has ${nextWarnings} warning${nextWarnings === 1 ? '' : 's'} for ${product}.`,
-                        'Warning issued'
-                    );
-                    return;
-                }
-
-                if (action === 'suspend') {
-                    activeComplianceCard.dataset.sellerSuspended = 'true';
-                    saveComplianceState(complianceId, { action, notes: noteText });
-
-                    if (statusBadge) {
-                        statusBadge.textContent = 'Flagged';
-                        statusBadge.className = 'status-badge js-compliance-status badge-danger';
-                    }
-
-                    closeDrawer(drawer);
-
-                    showToast(
-                        `${seller} was marked suspended in this front-end preview.`,
-                        'Seller suspended'
-                    );
-                }
             });
         });
 

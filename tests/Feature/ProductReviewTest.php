@@ -53,7 +53,7 @@ class ProductReviewTest extends TestCase
                 'order_item_id' => $item->id,
                 'rating' => 5,
                 'comment' => 'Ang ganda, exactly as described.',
-                'photo' => $this->fakePhoto('review.jpg'),
+                'photo' => $this->fakePhoto('review.png', 6000),
             ])
             ->assertCreated()
             ->assertJsonPath('data.rating', 5);
@@ -179,6 +179,16 @@ class ProductReviewTest extends TestCase
             ])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('comment');
+
+        $this->actingAs($buyer)
+            ->postJson(route('buyer.reviews.store'), [
+                'order_item_id' => $item->id,
+                'rating' => 5,
+                'comment' => 'Image is over the new limit.',
+                'photo' => $this->fakePhoto('oversized-review.png', 10241),
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('photo');
 
         $this->assertSame(0, ProductReview::query()->count());
     }
@@ -351,7 +361,7 @@ class ProductReviewTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.item.id', $existingTarget->id)
             ->assertJsonPath('data.item.quantity', 2)
-            ->assertJsonPath('data.cart_count', 6);
+            ->assertJsonPath('data.cart_count', 2);
 
         $this->assertDatabaseHas('cart_items', [
             'id' => $existingTarget->id,
@@ -421,18 +431,19 @@ class ProductReviewTest extends TestCase
                 'quantity' => 2,
             ])
             ->assertOk()
-            ->assertJsonPath('data.cart_count', 2);
+            ->assertJsonPath('data.cart_count', 1);
     }
 
     /** 1x1 PNG built without GD, which is unavailable in this environment. */
-    private function fakePhoto(string $name): UploadedFile
+    private function fakePhoto(string $name, int $sizeKilobytes = 100): UploadedFile
     {
-        $path = tempnam(sys_get_temp_dir(), 'review').'.png';
-        file_put_contents($path, base64_decode(
+        $contents = base64_decode(
             'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
-        ));
+        );
 
-        return new UploadedFile($path, $name, 'image/png', null, true);
+        return UploadedFile::fake()
+            ->createWithContent($name, (string) $contents)
+            ->size($sizeKilobytes);
     }
 
     private function buyer(string $name, string $suffix): User

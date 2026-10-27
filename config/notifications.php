@@ -157,6 +157,15 @@ return [
             'defaults' => ['in_app' => true, 'email' => true],
         ],
 
+        'seller_cod_cash_reconciled' => [
+            'label' => 'COD cash reconciliation',
+            'description' => 'Finance confirmation of COD cash remitted for your orders.',
+            'group' => 'wallet',
+            'audience' => ['seller'],
+            'mandatory' => false,
+            'defaults' => ['in_app' => true, 'email' => false],
+        ],
+
         'seller_compliance_flagged' => [
             'label' => 'Compliance reviews',
             'description' => 'Products held or blocked by compliance scanning, and compliance warnings issued on your listings.',

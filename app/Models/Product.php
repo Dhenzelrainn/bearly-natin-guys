@@ -70,6 +70,13 @@ class Product extends Model
         return $this->hasOne(ProductComplianceCheck::class)->latestOfMany();
     }
 
+    public function currentImageCategoryCheck(): HasOne
+    {
+        return $this->hasOne(ProductImageCategoryCheck::class)
+            ->where('is_current', true)
+            ->latestOfMany();
+    }
+
     public function violations()
     {
         return $this->hasMany(ProductViolation::class);

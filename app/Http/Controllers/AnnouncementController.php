@@ -58,7 +58,12 @@ class AnnouncementController extends Controller
         $pastAnnouncements = Announcement::query()
             ->with(['creator', 'media', 'roles'])
             ->whereKeyNot($announcement->id)
-            ->where('status', 'published')
+            ->where(function (Builder $query): void {
+                $query->where('status', 'published')
+                    ->orWhere(fn (Builder $archived): Builder => $archived
+                        ->where('status', 'archived')
+                        ->where('archive_reason', 'retention'));
+            })
             ->where(function (Builder $query) use ($publishedAt): void {
                 $query->where(function (Builder $query) use ($publishedAt): void {
                     $query->whereNotNull('published_at')
@@ -246,10 +251,12 @@ class AnnouncementController extends Controller
     private function canView(User $user, Announcement $announcement): bool
     {
         $publishedAt = $announcement->published_at ?? $announcement->publish_at;
+        $recipientReadable = $announcement->status === 'published'
+            || ($announcement->status === 'archived' && $announcement->archive_reason === 'retention');
 
         if (
             $user->status !== AccountStatus::Active->value
-            || $announcement->status !== 'published'
+            || ! $recipientReadable
             || ! $publishedAt
             || $publishedAt->isAfter(now())
         ) {

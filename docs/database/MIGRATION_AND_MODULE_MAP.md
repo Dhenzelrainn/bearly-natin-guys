@@ -30,6 +30,12 @@ The schema has been validated against a clean MySQL database for the migration s
 14. Conversations, messages, and notifications
 15. Announcements, policies, audits, settings, and support
 
+The additive migration `2026_10_27_000001_add_archive_reason_to_announcements_table`
+adds `announcements.archive_reason` to distinguish manual archives from
+retention archives. Existing rows are not rewritten; old archived rows with a
+null reason remain hidden from recipients. Rollback restores retention-archived
+rows to `published` before dropping the marker so recipient links remain readable.
+
 The additive migration `2026_10_15_000001_create_seller_wallet_and_withdrawal_tables` adds the Seller Wallet ledger, encrypted bank-account storage, withdrawal/status-history/transfer records, and lifetime-withdrawn backfill from already-paid legacy Seller payouts. Its `down()` refuses to drop the tables once any wallet/account/withdrawal data exists; rollback after activation requires an explicit data-preservation plan.
 
 The additive migration `2026_10_15_000002_add_receiving_bank_name_to_seller_payouts` adds the optional `seller_payouts.receiving_bank_name` field used when Finance records a verified legacy bank transfer. Its rollback refuses to drop the column while any bank names have been recorded.

@@ -68,6 +68,15 @@ class CodCashAndRefundCashWorkflowTest extends TestCase
             20000,
         );
 
+        $adminCodVersionBeforeRemittance = $this->actingAs($this->admin)
+            ->getJson(route('admin.payments.cod-status-version'))
+            ->assertOk()
+            ->json('data.version');
+        $sellerCodVersionBeforeReconciliation = $this->actingAs($scenario['seller'])
+            ->getJson(route('seller.finance.wallet.cod-status-version'))
+            ->assertOk()
+            ->json('data.version');
+
         $this->assertSame('collected', $collection->status);
         $this->assertSame('paid', $scenario['payment']->fresh()->status);
         $this->assertSame('paid', $scenario['order']->fresh()->payment_status);
@@ -135,9 +144,21 @@ class CodCashAndRefundCashWorkflowTest extends TestCase
             'event_type' => 'cash_remitted_to_finance',
             'reference' => $remittanceReference,
         ]);
+        $adminRemittanceNotification = $this->admin->notifications()
+            ->where('data->event', 'admin_cod_remitted')
+            ->latest()
+            ->firstOrFail();
+        $this->assertSame($collection->id, (int) $adminRemittanceNotification->data['meta']['collection_id']);
+        $adminCodVersionAfterRemittance = $this->actingAs($this->admin)
+            ->getJson(route('admin.payments.cod-status-version'))
+            ->assertOk()
+            ->json('data.version');
+        $this->assertNotSame($adminCodVersionBeforeRemittance, $adminCodVersionAfterRemittance);
         $this->actingAs($this->admin)
             ->get(route('admin.payments'))
             ->assertOk()
+            ->assertSee('data-finance-cod-live', false)
+            ->assertSee(route('admin.payments.cod-status-version'), false)
             ->assertSee('finance-cod-custody-table', false)
             ->assertSee('finance-cod-products-cell', false)
             ->assertSee('COD Finance Product')
@@ -170,6 +191,21 @@ class CodCashAndRefundCashWorkflowTest extends TestCase
             'event_type' => 'cash_reconciled_by_finance',
             'reference' => $financeReceiptReference,
         ]);
+        $sellerCodVersionAfterReconciliation = $this->actingAs($scenario['seller'])
+            ->getJson(route('seller.finance.wallet.cod-status-version'))
+            ->assertOk()
+            ->json('data.version');
+        $this->assertNotSame($sellerCodVersionBeforeReconciliation, $sellerCodVersionAfterReconciliation);
+        $sellerFinanceNotification = $scenario['seller']->notifications()
+            ->where('data->event', 'seller_cod_cash_reconciled')
+            ->latest()
+            ->firstOrFail();
+        $this->assertSame($scenario['seller_order']->id, (int) $sellerFinanceNotification->data['meta']['seller_order_id']);
+        $this->actingAs($scenario['seller'])
+            ->get(route('seller.finance.wallet'))
+            ->assertOk()
+            ->assertSee('data-seller-wallet-live', false)
+            ->assertSee(route('seller.finance.wallet.cod-status-version'), false);
         $this->actingAs($this->admin)
             ->post(route('admin.payments.cod.reconcile', $collection), [
                 'received_amount' => '200.00',
@@ -214,6 +250,47 @@ class CodCashAndRefundCashWorkflowTest extends TestCase
 
         $this->assertDatabaseCount('seller_payouts', 0);
         $this->assertDatabaseCount('seller_payout_items', 0);
+    }
+
+    public function test_finance_reconciliation_releases_cod_wallet_earnings_only_when_existing_gates_pass(): void
+    {
+        $scenario = $this->scenario('matured cod wallet');
+        $scenario['seller_order']->update(['completed_at' => now()->subDays(4)]);
+        $collection = app(CodCashCollectionService::class)->recordRiderCollection(
+            $scenario['shipment'],
+            $this->rider($scenario['provider'], 'matured COD wallet rider'),
+            20000,
+        );
+
+        $wallet = $scenario['seller_profile']->wallet()->firstOrFail();
+        $this->assertSame(18000, (int) $wallet->pending_balance_minor);
+        $this->assertSame(0, (int) $wallet->available_balance_minor);
+
+        $this->actingAs($scenario['provider_user'])
+            ->post(route('logistics.cash.cod.receive', $collection), ['actual_amount' => '200.00'])
+            ->assertRedirect();
+        $this->actingAs($scenario['provider_user'])
+            ->post(route('logistics.cash.cod.remit', $collection), ['actual_amount' => '200.00'])
+            ->assertRedirect();
+        $this->actingAs($this->admin)
+            ->post(route('admin.payments.cod.reconcile', $collection), [
+                'received_amount' => '200.00',
+                'cash_received_confirmed' => '1',
+            ])
+            ->assertRedirect();
+
+        $wallet->refresh();
+        $this->assertSame(0, (int) $wallet->pending_balance_minor);
+        $this->assertSame(18000, (int) $wallet->available_balance_minor);
+        $this->assertDatabaseHas('seller_wallet_transactions', [
+            'seller_wallet_id' => $wallet->id,
+            'type' => 'sale_earning_available',
+            'seller_transaction_id' => SellerTransaction::query()
+                ->where('seller_order_id', $scenario['seller_order']->id)
+                ->where('type', 'sale')
+                ->sole()
+                ->id,
+        ]);
     }
 
     public function test_legacy_direct_cash_seller_payouts_are_disabled_in_favor_of_wallet_withdrawals(): void

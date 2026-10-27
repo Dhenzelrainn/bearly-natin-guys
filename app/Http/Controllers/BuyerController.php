@@ -140,7 +140,7 @@ class BuyerController extends Controller
                     }
                 },
             ],
-            'photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+            'photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
             'remove_photo' => ['nullable', 'boolean'],
         ]);
 
@@ -1748,7 +1748,7 @@ class BuyerController extends Controller
         $cart = $this->currentCart($user, false);
 
         return $cart
-            ? (int) $cart->items()->sum('quantity')
+            ? (int) $cart->items()->count()
             : 0;
     }
 

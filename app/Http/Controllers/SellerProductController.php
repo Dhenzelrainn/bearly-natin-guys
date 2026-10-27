@@ -10,12 +10,15 @@ use App\Services\SellerNotificationService;
 use App\Services\SellerProductService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class SellerProductController extends Controller
 {
+    private const MAX_PRODUCT_IMAGE_UPLOAD_BYTES = 50 * 1024 * 1024;
+
     private function seller(): array
     {
         return app(
@@ -149,13 +152,13 @@ class SellerProductController extends Controller
             'variants.*.package_length_cm' => ['required_with:variants', 'numeric', 'decimal:0,3', 'gt:0', 'max:1000'],
             'variants.*.package_width_cm' => ['required_with:variants', 'numeric', 'decimal:0,3', 'gt:0', 'max:1000'],
             'variants.*.package_height_cm' => ['required_with:variants', 'numeric', 'decimal:0,3', 'gt:0', 'max:1000'],
-            'image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+            'image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
             'gallery_images' => ['nullable', 'array', 'max:4'],
-            'gallery_images.*' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+            'gallery_images.*' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
             'variant_images' => ['exclude_if:product_mode,single', 'nullable', 'array', 'max:100'],
-            'variant_images.*' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+            'variant_images.*' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
             'variant_color_images' => ['exclude_if:product_mode,single', 'nullable', 'array', 'max:100'],
-            'variant_color_images.*' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+            'variant_color_images.*' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
             'variant_image_colors' => ['exclude_if:product_mode,single', 'nullable', 'array', 'max:100'],
             'variant_image_colors.*' => ['required', 'string', 'max:120', 'distinct:ignore_case'],
             'remove_product_images' => ['nullable', 'array', 'max:25'],
@@ -171,6 +174,31 @@ class SellerProductController extends Controller
             'category.in' => 'Products must match the seller’s approved business category.',
             'subcategory_id.exists' => 'Choose a subcategory belonging to your store and approved category.',
         ]);
+
+        $productImages = [];
+        $imageFields = ['image', 'gallery_images'];
+        if ($productMode === 'with_variants') {
+            $imageFields = [...$imageFields, 'variant_images', 'variant_color_images'];
+        }
+
+        foreach ($imageFields as $field) {
+            $files = $request->file($field);
+            foreach (is_array($files) ? $files : [$files] as $file) {
+                if ($file instanceof UploadedFile) {
+                    $productImages[] = $file;
+                }
+            }
+        }
+
+        $totalProductImageBytes = array_sum(array_map(
+            static fn (UploadedFile $file): int => max(0, (int) $file->getSize()),
+            $productImages,
+        ));
+        if ($totalProductImageBytes > self::MAX_PRODUCT_IMAGE_UPLOAD_BYTES) {
+            throw ValidationException::withMessages([
+                'image' => 'All product images in one save must total 50 MB or less. Remove or compress images and try again.',
+            ]);
+        }
 
         if (filled($validated['subcategory_id'] ?? null)
             && filled(trim((string) ($validated['new_subcategory_name'] ?? '')))) {
@@ -223,7 +251,9 @@ class SellerProductController extends Controller
         );
 
         if (in_array($savedProduct->product_status, ['blocked', 'flagged'], true)) {
-            return redirect()->route('seller.products')->with(
+            $statusFilter = $savedProduct->product_status === 'blocked' ? 'Blocked' : 'Needs Review';
+
+            return redirect()->route('seller.products', ['status' => $statusFilter])->with(
                 'compliance_warning',
                 $savedProduct->product_status === 'blocked'
                     ? 'Compliance warning: this product is blocked and hidden from Buyers. Review the reason beside the product before making changes.'
@@ -289,7 +319,9 @@ class SellerProductController extends Controller
         );
 
         if (in_array($savedProduct->product_status, ['blocked', 'flagged'], true)) {
-            return redirect()->route('seller.products')->with(
+            $statusFilter = $savedProduct->product_status === 'blocked' ? 'Blocked' : 'Needs Review';
+
+            return redirect()->route('seller.products', ['status' => $statusFilter])->with(
                 'compliance_warning',
                 $savedProduct->product_status === 'blocked'
                     ? 'Compliance warning: this product is blocked and hidden from Buyers. Review the reason beside the product before making changes.'

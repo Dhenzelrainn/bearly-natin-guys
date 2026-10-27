@@ -107,7 +107,7 @@
                         <button id="select-photo" type="button" class="photo-btn">Change Photo</button>
                         <button id="remove-photo" type="button" class="photo-remove-btn">Remove</button>
                     </div>
-                    <p class="photo-help">Maximum 5 MB<br>JPG, JPEG, PNG or WEBP</p>
+                    <p class="photo-help">Maximum 10 MB<br>JPG, JPEG, PNG or WEBP</p>
                 </div>
 
                 <div class="profile-actions">
@@ -354,7 +354,7 @@
     <button type="button" data-rating="1">★</button><button type="button" data-rating="2">★</button><button type="button" data-rating="3">★</button><button type="button" data-rating="4">★</button><button type="button" data-rating="5">★</button>
    </div><strong id="rating-label">Select a rating</strong></div>
    <label class="review-comment-label"><span>Your Review</span><textarea id="review-comment" maxlength="500" placeholder="Share your experience with this product..." required></textarea><small><span id="review-char-count">0</span>/500</small></label>
-   <label class="review-photo-label"><span>Add Product Photo <small>(optional)</small></span><input id="review-photo" type="file" accept="image/png,image/jpeg" hidden><button id="select-review-photo" type="button"><span class="material-symbols-outlined">add_photo_alternate</span>Choose Photo</button><div id="review-photo-preview" class="review-photo-preview" hidden></div></label>
+    <label class="review-photo-label"><span>Add Product Photo <small>(optional)</small></span><input id="review-photo" type="file" accept="image/png,image/jpeg,image/webp" hidden><button id="select-review-photo" type="button"><span class="material-symbols-outlined">add_photo_alternate</span>Choose Photo</button><small>JPG, PNG, or WebP · up to 10 MB</small><div id="review-photo-preview" class="review-photo-preview" hidden></div></label>
    <div class="review-actions"><button id="cancel-review" class="order-btn" type="button">Cancel</button><button class="order-btn primary" type="submit">Submit Review</button></div>
   </form>
  </div>

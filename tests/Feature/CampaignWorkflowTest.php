@@ -14,7 +14,9 @@ use App\Models\Store;
 use App\Models\User;
 use App\Services\CampaignService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -23,6 +25,47 @@ class CampaignWorkflowTest extends TestCase
     use RefreshDatabase;
 
     private int $sequence = 0;
+
+    public function test_admin_campaign_banner_accepts_images_up_to_ten_mb(): void
+    {
+        Storage::fake('public');
+
+        $admin = $this->user('admin');
+        $startsOn = now('Asia/Manila')->addDays(3)->toDateString();
+        $payload = [
+            'name' => 'Large Banner Upload Campaign',
+            'campaign_type' => PlatformPromotion::CAMPAIGN_MONTHLY_DEAL,
+            'funding_type' => PlatformPromotion::FUNDING_PLATFORM,
+            'minimum_discount_percent' => '10',
+            'budget' => '100.00',
+            'starts_on' => $startsOn,
+            'start_time' => '09:00',
+            'ends_on' => now('Asia/Manila')->addDays(5)->toDateString(),
+            'end_time' => '18:00',
+            'join_deadline' => now('Asia/Manila')->addDays(2)->toDateString(),
+            'status' => PlatformPromotion::STATUS_DRAFT,
+            'banner' => UploadedFile::fake()->create('large-banner.jpg', 6000, 'image/jpeg'),
+        ];
+
+        $this->actingAs($admin)
+            ->post(route('admin.campaigns.store'), $payload)
+            ->assertRedirect();
+
+        $campaign = PlatformPromotion::query()->where('name', 'Large Banner Upload Campaign')->firstOrFail();
+        $this->assertNotEmpty($campaign->banner_path);
+        Storage::disk('public')->assertExists($campaign->banner_path);
+
+        $payload['name'] = 'Oversized Banner Upload Campaign';
+        $payload['banner'] = UploadedFile::fake()->create('oversized-banner.jpg', 10241, 'image/jpeg');
+
+        $this->actingAs($admin)
+            ->from(route('admin.campaigns.create'))
+            ->post(route('admin.campaigns.store'), $payload)
+            ->assertRedirect(route('admin.campaigns.create'))
+            ->assertSessionHasErrors('banner');
+
+        $this->assertDatabaseMissing('platform_promotions', ['name' => 'Oversized Banner Upload Campaign']);
+    }
 
     public function test_admin_can_create_edit_review_and_transition_a_campaign(): void
     {

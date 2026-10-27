@@ -239,6 +239,7 @@
             (sum, item) => sum + Number(item.quantity || 1),
             0
         );
+        const itemCount = items.length;
         const list = $('cart-list');
 
         setText(
@@ -247,11 +248,11 @@
         );
         const headerCount = $('cart-header-count');
         if (headerCount) {
-            setText('cart-header-count', quantity);
-            headerCount.hidden = quantity === 0;
+            setText('cart-header-count', itemCount);
+            headerCount.hidden = itemCount === 0;
             headerCount.setAttribute(
                 'aria-label',
-                `${quantity} cart ${quantity === 1 ? 'item' : 'items'}`
+                `${itemCount} ${itemCount === 1 ? 'product' : 'products'} in cart`
             );
         }
         setText('select-all-label', `Select All (${orderableItems().length})`);

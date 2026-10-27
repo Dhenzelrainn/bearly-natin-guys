@@ -82,6 +82,7 @@ CREATE TABLE `announcements` (
   `title` varchar(180) COLLATE utf8mb4_unicode_ci NOT NULL,
   `body` text COLLATE utf8mb4_unicode_ci NOT NULL,
   `status` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'draft',
+  `archive_reason` varchar(20) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `created_by` bigint unsigned DEFAULT NULL,
   `publish_at` timestamp NULL DEFAULT NULL,
   `published_at` timestamp NULL DEFAULT NULL,
@@ -90,6 +91,7 @@ CREATE TABLE `announcements` (
   `updated_at` timestamp NULL DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `announcements_announcement_no_unique` (`announcement_no`),
+  KEY `announcements_status_archive_reason_index` (`status`,`archive_reason`),
   KEY `announcements_created_by_foreign` (`created_by`),
   CONSTRAINT `announcements_created_by_foreign` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

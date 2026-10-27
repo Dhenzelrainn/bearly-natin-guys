@@ -2553,7 +2553,8 @@ class RiderDeliveryWorkflowTest extends TestCase
                 [
                     'recipient_name' => 'HTTP Recipient',
                     'proof_photo' => $this->fakeProofPhoto(
-                        'http-proof.png'
+                        'http-proof.png',
+                        6000,
                     ),
                     'notes' => 'Handed to recipient.',
                 ]
@@ -3645,7 +3646,7 @@ class RiderDeliveryWorkflowTest extends TestCase
         );
     }
 
-    private function fakeProofPhoto(string $name = 'proof.png'): UploadedFile
+    private function fakeProofPhoto(string $name = 'proof.png', int $sizeKilobytes = 0): UploadedFile
     {
         $contents = base64_decode(
             'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
@@ -3656,7 +3657,12 @@ class RiderDeliveryWorkflowTest extends TestCase
             throw new \RuntimeException('Unable to create fake proof image.');
         }
 
-        return UploadedFile::fake()->createWithContent($name, $contents);
+        $file = UploadedFile::fake()->createWithContent($name, $contents);
+        if ($sizeKilobytes > 0) {
+            $file->size($sizeKilobytes);
+        }
+
+        return $file;
     }
 
     private function makeLogisticsProvider(): array

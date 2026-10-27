@@ -88,10 +88,12 @@
             </a>
             @foreach ($sellerNavGroups as $group)
                 <section class="seller-nav-group {{ ($group['active'] ?? false) ? 'is-active' : '' }}" data-seller-nav-group="{{ $group['key'] }}">
-                    <div class="seller-nav-link seller-nav-heading" title="{{ $group['label'] }}">
+                    @php($groupLanding = $group['children'][0] ?? [])
+                    @php($groupHref = isset($groupLanding['route']) ? route($groupLanding['route'], $groupLanding['query'] ?? []) : route('seller.dashboard'))
+                    <a href="{{ $groupHref }}" class="seller-nav-link seller-nav-heading" aria-label="{{ $group['label'] }}" title="{{ $group['label'] }}">
                         <i class="seller-ui-icon" data-lucide="{{ $group['icon'] }}" aria-hidden="true"></i>
                         <span>{{ $group['label'] }}</span>
-                    </div>
+                    </a>
                     <div class="seller-nav-children">
                         @foreach ($group['children'] as $child)
                             @php($childHref = isset($child['route']) ? route($child['route'], $child['query'] ?? []) : '#')

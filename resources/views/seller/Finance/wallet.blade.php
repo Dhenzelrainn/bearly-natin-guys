@@ -33,7 +33,13 @@
     </div>
 </div>
 
-<section class="seller-wallet-summary" aria-label="Wallet balances">
+<section
+    class="seller-wallet-summary"
+    aria-label="Wallet balances"
+    data-seller-wallet-live
+    data-cod-cash-version="{{ $codCashVersion }}"
+    data-cod-cash-version-url="{{ route('seller.finance.wallet.cod-status-version') }}"
+>
     <div class="seller-wallet-available">
         <span>Available Balance</span>
         <strong>{{ $money((int) $wallet->available_balance_minor) }}</strong>

@@ -59,8 +59,15 @@ export function actionButtons(order){
   if(order.status==='completed')return `<button class="order-btn primary order-rate-product" type="button" data-order="${id}" data-index="0">Rate Product</button><button class="order-btn" type="button">View Details</button>`;
   return '<button class="order-btn" type="button">View Details</button>';
 }
+export function purchaseItemLineTotalMinor(item){
+  const savedLineTotal=item?.line_total_minor;
+  if(savedLineTotal!==null&&savedLineTotal!==undefined&&String(savedLineTotal).trim()!==''&&Number.isFinite(Number(savedLineTotal)))return Math.max(0,Math.round(Number(savedLineTotal)));
+  const quantity=Math.max(1,Math.trunc(Number(item?.qty)||1));
+  const unitPriceMinor=Math.max(0,Math.round(Number(item?.price||0)*100));
+  return unitPriceMinor*quantity;
+}
 function orderHTML(o){
-    const items=(o.items||[]).map(i=>{const item=i||{};return `<div class="order-product"><img src="${purchaseEsc(safeImage(item.image))}" alt="${purchaseEsc(item.name||'Product')}" onerror="this.onerror=null;this.src='/images/bearly-logo.png'"><div class="order-product-copy"><h3>${purchaseEsc(item.name||'Product')}</h3><p>Variation: ${purchaseEsc(item.variation||'Standard')}</p><p>x${purchaseEsc(item.qty||1)}</p></div><div class="order-price"><strong>${peso(item.price)}</strong></div></div>`}).join('');
+    const items=(o.items||[]).map(i=>{const item=i||{},quantity=Math.max(1,Math.trunc(Number(item.qty)||1)),lineTotal=purchaseItemLineTotalMinor(item)/100;return `<div class="order-product"><img src="${purchaseEsc(safeImage(item.image))}" alt="${purchaseEsc(item.name||'Product')}" onerror="this.onerror=null;this.src='/images/bearly-logo.png'"><div class="order-product-copy"><h3>${purchaseEsc(item.name||'Product')}</h3><p>Variation: ${purchaseEsc(item.variation||'Standard')}</p><p>x${purchaseEsc(item.qty||1)}</p></div><div class="order-price"><strong>${peso(lineTotal)}</strong>${quantity>1?`<small>${peso(item.price)} each</small>`:''}</div></div>`}).join('');
     const sellerProgress=(o.seller_orders||[]).map(sellerOrder=>`<div class="order-seller-progress-row"><strong>${purchaseEsc(sellerOrder.store||'Seller')}</strong><span>Seller order #${purchaseEsc(sellerOrder.number||sellerOrder.id||'')}</span><span>${purchaseEsc(sellerDeliveryLabel(sellerOrder.delivery_status))}</span></div>`).join('');
     const returnLinks=(o.seller_orders||[]).map(sellerOrder=>{
       const cases=(sellerOrder.return_cases||[]).map(returnCase=>`<a class="order-btn" href="${purchaseEsc(returnCase.url)}">Case ${purchaseEsc(returnCase.number)} · ${purchaseEsc(String(returnCase.status||'').replaceAll('_',' '))}</a>`).join('');

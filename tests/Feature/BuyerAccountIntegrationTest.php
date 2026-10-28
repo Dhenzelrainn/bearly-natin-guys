@@ -258,7 +258,7 @@ class BuyerAccountIntegrationTest extends TestCase
                 'gender' => '',
                 'birthday' => '',
                 'remove_photo' => '0',
-                'photo' => UploadedFile::fake()->create('avatar.png', 100, 'image/png'),
+                'photo' => UploadedFile::fake()->create('avatar.png', 6000, 'image/png'),
             ], ['Accept' => 'application/json'])
             ->assertOk();
 
@@ -328,6 +328,25 @@ class BuyerAccountIntegrationTest extends TestCase
             'cart_id' => $otherCart->id,
             'quantity' => 2,
         ]);
+
+        $this->actingAs($buyer)
+            ->postJson('/cart/add', [
+                'product_variant_id' => $variant->id,
+                'quantity' => 4,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.cart_count', 1);
+
+        $this->actingAs($buyer)
+            ->getJson('/cart/data')
+            ->assertOk()
+            ->assertJsonPath('data.cart_count', 1)
+            ->assertJsonPath('data.items.0.quantity', 5);
+
+        $this->actingAs($buyer)
+            ->get('/profile')
+            ->assertOk()
+            ->assertSee('"cartCount":1', false);
 
         ['variant' => $unpublishedVariant] = $this->makeProduct();
         $unpublishedVariant->product->store->update(['publication_status' => 'draft']);

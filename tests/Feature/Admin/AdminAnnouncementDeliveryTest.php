@@ -336,11 +336,18 @@ class AdminAnnouncementDeliveryTest extends TestCase
         $archived = $this->announcement($admin, ['buyer'], [
             'announcement_no' => 'ANN-MANUAL-ARCHIVE',
             'title' => 'Hand archived notice',
-            'status' => 'archived',
             'published_at' => now()->subDays(4),
             'publish_at' => now()->subDays(4),
-            'expires_at' => now()->subDay(),
         ]);
+        $this->actingAs($admin)
+            ->patch(route('admin.announcements.update', $archived), [
+                'title' => $archived->title,
+                'body' => $archived->body,
+                'status' => 'archived',
+                'audience_roles' => ['buyer'],
+            ])
+            ->assertRedirect();
+        $this->assertSame('manual', $archived->fresh()->archive_reason);
 
         $this->actingAs($buyer)
             ->get(route('announcements.show', $expired))
@@ -366,16 +373,17 @@ class AdminAnnouncementDeliveryTest extends TestCase
             ->assertNotFound();
     }
 
-    public function test_publishing_process_prunes_only_the_oldest_expired_posts_beyond_ten(): void
+    public function test_publishing_process_archives_oldest_posts_beyond_ten_without_deleting_content(): void
     {
         Storage::fake('local');
 
         $admin = $this->user('admin', 'Bearly Admin');
-        $this->user('buyer', 'Retention Buyer');
+        $buyer = $this->user('buyer', 'Retention Buyer');
+        $seller = $this->user('seller', 'Retention Seller');
 
         $oldest = $this->announcement($admin, ['buyer'], [
             'announcement_no' => 'ANN-RETENTION-OLDEST',
-            'title' => 'Oldest expired announcement',
+            'title' => 'Oldest retained announcement',
             'published_at' => now()->subDays(30),
             'publish_at' => now()->subDays(30),
             'expires_at' => now()->subDays(29),
@@ -383,8 +391,8 @@ class AdminAnnouncementDeliveryTest extends TestCase
         $media = $oldest->media()->create([
             'media_type' => 'image',
             'disk' => 'local',
-            'file_path' => 'announcement-media/'.$oldest->id.'/pruned.png',
-            'original_name' => 'pruned.png',
+            'file_path' => 'announcement-media/'.$oldest->id.'/retained.png',
+            'original_name' => 'retained.png',
             'mime_type' => 'image/png',
             'size_bytes' => 120,
             'position' => 0,
@@ -410,26 +418,50 @@ class AdminAnnouncementDeliveryTest extends TestCase
 
         $result = app(AnnouncementPublishingService::class)->process();
 
-        $this->assertSame(1, $result['removed']);
-        $this->assertNull(Announcement::query()->find($oldest->id));
+        $this->assertSame(1, $result['archived']);
+        $this->assertSame('archived', $oldest->fresh()->status);
+        $this->assertSame('retention', $oldest->fresh()->archive_reason);
         $this->assertNotNull(Announcement::query()->find($secondOldest->id));
-        $this->assertSame(0, $oldest->media()->count());
-        Storage::disk('local')->assertMissing($media->file_path);
+        $this->assertDatabaseHas('announcement_media', ['id' => $media->id]);
+        Storage::disk('local')->assertExists($media->file_path);
         $this->assertSame(10, Announcement::query()->where('status', 'published')->count());
         $this->assertDatabaseHas('audit_logs', [
-            'action' => 'announcement.auto_deleted',
+            'action' => 'announcement.auto_archived',
             'module' => 'announcements',
             'auditable_id' => $oldest->id,
         ]);
 
-        $this->assertSame(0, app(AnnouncementPublishingService::class)->process()['removed']);
+        $this->actingAs($buyer)
+            ->get(route('announcements.show', $oldest))
+            ->assertOk()
+            ->assertSee('Oldest retained announcement')
+            ->assertSee('announcement-retained-note', false);
+        $this->actingAs($buyer)
+            ->get(route('announcements.media', [$oldest, $media]))
+            ->assertOk();
+        $this->actingAs($seller)
+            ->get(route('announcements.show', $oldest))
+            ->assertNotFound();
+
+        $latest = Announcement::query()->where('announcement_no', 'ANN-RETAINED-9')->firstOrFail();
+        $this->actingAs($buyer)
+            ->get(route('announcements.show', $latest).'?page=2')
+            ->assertOk()
+            ->assertSee('Oldest retained announcement');
+
+        $this->actingAs($buyer)
+            ->getJson(route('announcements.feed', ['after' => now()->subDays(31)->toIso8601String()]))
+            ->assertOk()
+            ->assertJsonMissing(['id' => (int) $oldest->id]);
+
+        $this->assertSame(0, app(AnnouncementPublishingService::class)->process()['archived']);
         $this->assertSame(10, Announcement::query()->where('status', 'published')->count());
     }
 
-    public function test_publishing_process_never_prunes_unexpired_posts(): void
+    public function test_publishing_process_archives_oldest_no_expiry_posts_and_keeps_them_readable(): void
     {
         $admin = $this->user('admin', 'Bearly Admin');
-        $this->user('buyer', 'Retention Buyer');
+        $buyer = $this->user('buyer', 'No-expiry archive reader');
 
         foreach (range(1, 12) as $index) {
             $this->announcement($admin, ['buyer'], [
@@ -442,24 +474,33 @@ class AdminAnnouncementDeliveryTest extends TestCase
 
         $result = app(AnnouncementPublishingService::class)->process();
 
-        $this->assertSame(0, $result['removed']);
-        $this->assertSame(12, Announcement::query()->where('status', 'published')->count());
+        $this->assertSame(2, $result['archived']);
+        $this->assertSame(10, Announcement::query()->where('status', 'published')->count());
+        $this->assertSame(2, Announcement::query()->where('archive_reason', 'retention')->count());
+
+        $oldest = Announcement::query()->where('announcement_no', 'ANN-UNEXPIRED-1')->firstOrFail();
+        $this->assertSame('archived', $oldest->status);
+        $this->assertSame('retention', $oldest->archive_reason);
+        $this->assertNull($oldest->expires_at);
+
+        $this->actingAs($buyer)
+            ->get(route('announcements.show', $oldest))
+            ->assertOk()
+            ->assertSee('Unexpired announcement 1')
+            ->assertSee('announcement-retained-note', false);
     }
 
-    public function test_admin_schedule_times_are_entered_in_manila_and_stored_as_utc(): void
+    public function test_admin_schedule_times_are_entered_in_manila_and_new_announcements_do_not_expire(): void
     {
         $admin = $this->user('admin', 'Bearly Admin');
 
         $publishAt = now('Asia/Manila')->addHours(3)->startOfMinute();
-        $expiresAt = now('Asia/Manila')->addHours(6)->startOfMinute();
-
         $this->actingAs($admin)
             ->post(route('admin.announcements.store'), [
                 'title' => 'Scheduled in Philippine time',
                 'body' => 'Schedule times use Philippine wall-clock time.',
                 'status' => 'scheduled',
                 'publish_at' => $publishAt->format('Y-m-d\TH:i'),
-                'expires_at' => $expiresAt->format('Y-m-d\TH:i'),
                 'audience_roles' => ['buyer'],
             ])
             ->assertRedirect()
@@ -471,31 +512,52 @@ class AdminAnnouncementDeliveryTest extends TestCase
             $publishAt->copy()->utc()->format('Y-m-d H:i:s'),
             $announcement->publish_at->utc()->format('Y-m-d H:i:s'),
         );
-        $this->assertSame(
-            $expiresAt->copy()->utc()->format('Y-m-d H:i:s'),
-            $announcement->expires_at->utc()->format('Y-m-d H:i:s'),
-        );
+        $this->assertNull($announcement->expires_at);
 
         $this->actingAs($admin)
             ->get(route('admin.announcements'))
             ->assertOk()
             ->assertSee('value="'.$publishAt->format('Y-m-d\TH:i').'"', false)
-            ->assertSee('value="'.$expiresAt->format('Y-m-d\TH:i').'"', false);
+            ->assertDontSee('name="expires_at"', false)
+            ->assertSee('oldest move to retained history', false);
     }
 
-    public function test_admin_expiration_time_already_passed_in_manila_time_is_rejected(): void
+    public function test_new_posts_ignore_expiration_input_and_edits_preserve_legacy_expiry_metadata(): void
     {
         $admin = $this->user('admin', 'Bearly Admin');
 
         $this->actingAs($admin)
             ->post(route('admin.announcements.store'), [
-                'title' => 'Past expiry',
-                'body' => 'This expiry already passed in Philippine time.',
+                'title' => 'No expiry by default',
+                'body' => 'New announcements stay available until retained in history.',
                 'status' => 'published',
                 'expires_at' => now('Asia/Manila')->subHour()->format('Y-m-d\TH:i'),
                 'audience_roles' => ['buyer'],
             ])
-            ->assertSessionHasErrors('expires_at');
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $newAnnouncement = Announcement::query()->where('title', 'No expiry by default')->firstOrFail();
+        $this->assertNull($newAnnouncement->expires_at);
+
+        $legacy = $this->announcement($admin, ['buyer'], [
+            'announcement_no' => 'ANN-LEGACY-EXPIRY-PRESERVED',
+            'title' => 'Legacy expiry metadata',
+            'expires_at' => now()->addDay(),
+        ]);
+        $legacyExpiry = $legacy->expires_at->copy();
+
+        $this->actingAs($admin)
+            ->patch(route('admin.announcements.update', $legacy), [
+                'title' => $legacy->title,
+                'body' => $legacy->body,
+                'status' => 'published',
+                'audience_roles' => ['buyer'],
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $this->assertTrue($legacyExpiry->equalTo($legacy->fresh()->expires_at));
     }
 
     /** @param array<string, mixed> $overrides

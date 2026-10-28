@@ -372,6 +372,7 @@ class SellerWorkflowController extends Controller
                     : '—';
 
                 return [
+                    'seller_order_id' => (int) $sellerOrder->id,
                     'id' => '#'.$sellerOrder->seller_order_no,
                     'customer' => (string) ($order?->recipient_name ?? 'Buyer'),
                     'items' => $quantity.' '.($quantity === 1 ? 'item' : 'items'),
@@ -644,6 +645,29 @@ class SellerWorkflowController extends Controller
             ],
             'orders' => $orders,
         ]);
+    }
+
+    public function orderStatusUpdates(Request $request, SellerOrderTrackingService $tracking): JsonResponse
+    {
+        $storeId = $request->user()->sellerProfile?->store?->id;
+        abort_unless($storeId, 404, 'Seller Store not found.');
+
+        $orders = SellerOrder::query()
+            ->where('store_id', $storeId)
+            ->with('shipments')
+            ->latest('created_at')
+            ->get()
+            ->map(fn (SellerOrder $sellerOrder): array => [
+                'seller_order_id' => (int) $sellerOrder->id,
+                ...$tracking->statusSnapshot($sellerOrder),
+            ])
+            ->values()
+            ->all();
+
+        return response()->json([
+            'data' => ['orders' => $orders],
+            'message' => 'Seller Order statuses refreshed.',
+        ])->header('Cache-Control', 'private, no-store');
     }
 
     public function updateOrderStatus(

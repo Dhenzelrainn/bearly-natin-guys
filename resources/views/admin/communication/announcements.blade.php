@@ -123,6 +123,9 @@
                         'archived' => 'is-archived',
                         default => 'is-draft',
                     };
+                    $statusLabel = $announcement->status === 'archived' && $announcement->archive_reason === 'retention'
+                        ? 'Archived · retained'
+                        : ucfirst($announcement->status);
                 @endphp
 
                 <article class="announcement-post">
@@ -134,7 +137,7 @@
                             <strong>{{ $announcement->creator?->name ?? 'Bearly Admin' }}</strong>
                             <span>{{ $postTime?->timezone('Asia/Manila')->format('M j, Y · g:i A') ?? 'Date unavailable' }}</span>
                         </div>
-                        <span class="announcement-status {{ $statusTone }}">{{ ucfirst($announcement->status) }}</span>
+                        <span class="announcement-status {{ $statusTone }}">{{ $statusLabel }}</span>
                     </header>
 
                     <div class="announcement-post-content">
@@ -220,6 +223,9 @@
                         <span class="announcement-post-avatar" aria-hidden="true"><i data-lucide="megaphone"></i></span>
                         <span><strong>{{ $admin['name'] ?? 'Bearly Admin' }}</strong><small>Editing a platform post</small></span>
                     </div>
+                    @if ($announcement->archive_reason === 'retention')
+                        <p class="announcement-retention-note"><i data-lucide="archive" aria-hidden="true"></i><span>This post was archived automatically to keep the latest 10 published posts. Its original audience can still read it.</span></p>
+                    @endif
 
                     <div class="announcement-composer-fields">
                         <label class="form-field">
@@ -252,10 +258,7 @@
                                 <input class="text-field" type="datetime-local" name="publish_at" value="{{ old('publish_at', $announcement->publish_at?->timezone('Asia/Manila')->format('Y-m-d\\TH:i')) }}">
                             </label>
 
-                            <label class="form-field">
-                                <span>Expiration date and time <small>Philippine time · keeps only the latest 10 posts</small></span>
-                                <input class="text-field" type="datetime-local" name="expires_at" value="{{ old('expires_at', $announcement->expires_at?->timezone('Asia/Manila')->format('Y-m-d\\TH:i')) }}">
-                            </label>
+                            <p class="announcement-retention-note"><i data-lucide="archive" aria-hidden="true"></i><span>No expiration is required. When more than 10 posts are published, the oldest move to retained history and remain readable to their selected audience.</span></p>
                         </div>
 
                         <label class="form-field">
@@ -357,10 +360,7 @@
                             <input class="text-field" type="datetime-local" name="publish_at" value="{{ old('publish_at') }}">
                         </label>
 
-                        <label class="form-field">
-                            <span>Expiration date and time (optional) <small>Philippine time · keeps only the latest 10 posts</small></span>
-                            <input class="text-field" type="datetime-local" name="expires_at" value="{{ old('expires_at') }}">
-                        </label>
+                        <p class="announcement-retention-note"><i data-lucide="archive" aria-hidden="true"></i><span>No expiration is required. When more than 10 posts are published, the oldest move to retained history and remain readable to their selected audience.</span></p>
                     </div>
 
                     <label class="form-field">

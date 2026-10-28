@@ -33,7 +33,7 @@ class BuyerReviewController extends Controller
             'order_item_id' => ['required', 'integer', 'min:1'],
             'rating' => ['required', 'integer', 'min:1', 'max:5'],
             'comment' => ['required', 'string', 'max:500'],
-            'photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
+            'photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
         ]);
 
         $review = $reviews->submitReview(

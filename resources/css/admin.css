@@ -542,7 +542,7 @@ svg { width: 20px; height: 20px; stroke-width: 1.8; }
 .bar-track { display: flex; align-items: flex-end; width: 100%; max-width: 32px; height: 235px; }
 .bar-track span { display: block; width: 100%; min-height: 10px; border-radius: 8px 8px 3px 3px; background: linear-gradient(to top, var(--brown-900), #a95a2b); box-shadow: 0 7px 16px rgba(74,44,32,.12); }
 .bar-column small { color: #8f7e74; font-size: 7.5px; }
-.notice-stack, .activity-list, .flagged-list { display: flex; flex-direction: column; gap: 9px; }
+.notice-stack, .activity-list { display: flex; flex-direction: column; gap: 9px; }
 .notice-card { display: grid; grid-template-columns: 32px 1fr; gap: 10px; padding: 12px; border: 1px solid #eee0d3; border-radius: 12px; background: #fffaf5; }
 .notice-marker { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; background: #fff0da; color: #af6618; }
 .notice-card strong { font-size: 10px; }
@@ -617,7 +617,7 @@ svg { width: 20px; height: 20px; stroke-width: 1.8; }
 .document-preview { display: grid; grid-template-columns: 36px 1fr 18px; align-items: center; gap: 9px; padding: 10px; border: 1px solid #eadfd6; border-radius: 11px; background: #fff; text-align: left; cursor: pointer; }.document-preview:hover { background: #fffaf5; }.document-preview > span { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 9px; background: #fff1e5; color: var(--brown-700); }.document-preview strong,.document-preview small { display:block; }.document-preview strong{font-size:8.5px}.document-preview small{margin-top:2px;color:var(--muted);font-size:7.2px}.document-preview > svg{width:14px;height:14px;color:#a89488}
 .decision-footer { border-top: 1px solid #eee5dd; padding-top: 15px; }
 
-.compliance-grid { align-items: start; }.flagged-panel { position: sticky; top: 96px; }.flag-card { display: grid; grid-template-columns: 34px 1fr auto; gap: 9px; align-items: start; width: 100%; padding: 11px; border: 1px solid #eeddd4; border-radius: 12px; background: #fffaf7; text-align: left; cursor: pointer; }.flag-card:hover { border-color: #d8aa91; transform: translateY(-1px); }.flag-icon { display:grid;place-items:center;width:34px;height:34px;border-radius:9px;background:var(--danger-soft);color:var(--danger);}.flag-copy strong,.flag-copy small,.flag-copy em{display:block}.flag-copy strong{font-size:9px}.flag-copy small{margin-top:2px;color:#8e7b71;font-size:7.5px}.flag-copy em{margin-top:5px;color:#75665d;font-size:7.5px;font-style:normal;line-height:1.45}
+.compliance-grid { align-items: start; }.compliance-summary-panel { position: sticky; top: 96px; }
 .drawer-card { position: absolute; z-index: 1; top: 0; right: 0; width: min(92vw, 430px); height: 100%; overflow-y: auto; padding: 22px; border-left: 1px solid var(--line); background: #fff; box-shadow: -20px 0 55px rgba(44,26,20,.15); }.drawer-section{padding:11px 0;border-bottom:1px solid #eee5de}.drawer-section span,.drawer-section strong{display:block}.drawer-section span{color:#8f7f75;font-size:8px}.drawer-section strong{margin-top:3px;font-size:10px}.drawer-callout{display:flex;gap:10px;margin:15px 0;padding:12px;border:1px solid #efd0ca;border-radius:11px;background:var(--danger-soft);color:#6a4038}.drawer-callout>svg{flex:0 0 20px;color:var(--danger)}.drawer-callout strong{font-size:9px}.drawer-callout p{margin:4px 0 0;font-size:8px;line-height:1.55}.drawer-actions{flex-direction:column}.drawer-actions .button{width:100%}
 
 .dispute-layout { display: grid; grid-template-columns: 320px minmax(0,1fr); gap: 16px; align-items: start; }.dispute-list-panel{position:sticky;top:96px}.case-list{display:flex;flex-direction:column;gap:8px;margin-top:12px}.case-card{width:100%;padding:12px;border:1px solid #eadfd5;border-radius:12px;background:#fff;text-align:left;cursor:pointer}.case-card:hover,.case-card.is-active{border-color:#d4aa8c;background:#fff8ef}.case-card-top,.case-card-bottom{display:flex;justify-content:space-between;gap:8px}.case-card-top{margin-bottom:6px;color:#8b776d;font-size:7.5px}.case-card>strong{display:block;font-size:9.5px}.case-card>small{display:block;margin-top:3px;color:var(--muted);font-size:7.5px}.case-card-bottom{margin-top:9px;color:#9a8a81;font-size:7px}.dispute-workspace{min-width:0}.dispute-summary-grid{grid-template-columns:repeat(4,minmax(0,1fr));margin-top:10px}.complaint-copy{margin-top:13px;padding:12px;border:1px solid #eee4da;border-radius:11px;background:#fcfaf8}.complaint-copy p{margin:5px 0 0;color:#655b55;font-size:8.5px;line-height:1.7}.evidence-grid{display:flex;flex-direction:column;gap:8px}.evidence-card{display:grid;grid-template-columns:35px 1fr 18px;align-items:center;gap:9px;padding:10px;border:1px solid #eadfd6;border-radius:10px;background:#fff;text-align:left;cursor:pointer}.evidence-card:hover{background:#fffaf5}.evidence-card>span{display:grid;place-items:center;width:35px;height:35px;border-radius:9px;background:#fff0e2;color:var(--brown-700)}.evidence-card strong,.evidence-card small{display:block}.evidence-card strong{font-size:8.5px}.evidence-card small{margin-top:2px;color:var(--muted);font-size:7.4px}.timeline-list{display:flex;flex-direction:column}.timeline-row{display:grid;grid-template-columns:55px 1fr;gap:8px;min-height:45px}.timeline-row>span{padding-top:2px;color:#9a887d;font-size:7px}.timeline-row>div{position:relative;padding:0 0 10px 14px;border-left:1px solid #e7d9ce}.timeline-row i{position:absolute;top:3px;left:-4px;width:7px;height:7px;border-radius:50%;background:var(--orange-500)}.timeline-row p{margin:0;color:#5e544e;font-size:8px;line-height:1.5}.coordination-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin-bottom:13px}.party-card{display:grid;grid-template-columns:36px 1fr auto;align-items:center;gap:9px;padding:11px;border:1px solid #eadfd5;border-radius:11px}.party-icon{display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:#fff0e3;color:var(--brown-700)}.party-card small,.party-card strong{display:block}.party-card small{color:#99887d;font-size:7px}.party-card strong{font-size:8.5px}
@@ -664,7 +664,7 @@ body.sidebar-collapsed .sidebar-logout { justify-content: center; }
     .sidebar-collapse-button { display: none; }.mobile-menu-button { display: grid; }
     .admin-search { width: min(38vw,320px); }
     .dashboard-grid-main, .settings-grid, .account-grid { grid-template-columns: 1fr; }
-    .flagged-panel, .dispute-list-panel { position: static; }
+    .compliance-summary-panel, .dispute-list-panel { position: static; }
     .dispute-layout { grid-template-columns: 1fr; }
     .dispute-list-panel { max-height: 390px; overflow: hidden; }.case-list { max-height: 270px; overflow-y: auto; }
     .messaging-shell { grid-template-columns: 290px minmax(0,1fr); }
@@ -5569,99 +5569,6 @@ table {
 }
 
 /* =========================================================
-   SELLER COMPLIANCE — FLAT FLAGGED LIST
-   ========================================================= */
-
-.flagged-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-}
-
-.flag-card {
-    display: grid;
-    grid-template-columns: 34px minmax(0, 1fr) auto;
-    align-items: start;
-    gap: 10px;
-
-    width: 100%;
-
-    padding: 14px 0;
-
-    border: 0;
-    border-top: 1px solid var(--admin-border-soft);
-    border-radius: 0;
-
-    background: transparent;
-    box-shadow: none;
-
-    text-align: left;
-}
-
-.flag-card:first-child {
-    border-top: 0;
-}
-
-.flag-card:hover {
-    background: #faf8f6;
-}
-
-.flag-icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-
-    width: 30px;
-    height: 30px;
-
-    border-radius: 7px;
-
-    background: #fff1ef;
-    color: #c43d32;
-}
-
-.flag-icon svg {
-    width: 15px;
-    height: 15px;
-}
-
-.flag-copy {
-    min-width: 0;
-}
-
-.flag-copy strong {
-    display: block;
-
-    color: var(--brown-950);
-
-    font-size: 11px;
-    font-weight: 600;
-    line-height: 1.35;
-}
-
-.flag-copy small {
-    display: block;
-
-    margin-top: 2px;
-
-    color: var(--admin-muted);
-
-    font-size: 9.5px;
-}
-
-.flag-copy em {
-    display: block;
-
-    margin-top: 5px;
-
-    color: var(--admin-muted);
-
-    font-size: 9.5px;
-    font-style: normal;
-    line-height: 1.45;
-}
-
-/* =========================================================
    COMPLAINTS & DISPUTES — FLAT CASE QUEUE
    ========================================================= */
 
@@ -10543,6 +10450,28 @@ table {
     gap: 11px;
 }
 
+.announcement-retention-note {
+    display: flex;
+    min-width: 0;
+    align-items: flex-start;
+    gap: 8px;
+    margin: 0;
+    padding: 10px 11px;
+    border: 1px solid #eee2d2;
+    border-radius: 8px;
+    color: #786a61;
+    background: #fcfaf7;
+    font-size: 10px;
+    line-height: 1.5;
+}
+
+.announcement-retention-note svg {
+    width: 15px;
+    height: 15px;
+    flex: 0 0 15px;
+    color: #8a5a36;
+}
+
 .announcement-audience-field {
     min-width: 0;
     margin: 0;
@@ -11574,7 +11503,7 @@ table {
 .admin-body .admin-category-review-guidance { max-width: 720px; margin: 7px 0 0; color: #75685f; font-size: 11px; line-height: 1.55; }
 .admin-body .admin-category-review-search { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .admin-body .admin-category-review-search .compact-field { min-width: 250px; }
-.admin-body .admin-category-review-table { min-width: 1460px; }
+.admin-body .admin-category-review-table { min-width: 1620px; }
 .admin-body .admin-category-review-table th,
 .admin-body .admin-category-review-table td { vertical-align: top; }
 .admin-category-review-product { display: grid; grid-template-columns: 58px minmax(0, 1fr); align-items: center; gap: 10px; min-width: 200px; }
@@ -11591,6 +11520,7 @@ table {
 .admin-category-review-product small,
 .admin-category-review-cell small { margin-top: 3px; color: #81746b; font-size: 10px; line-height: 1.45; overflow-wrap: anywhere; }
 .admin-category-review-cell { min-width: 100px; }
+.admin-category-review-image-check { min-width: 185px; max-width: 260px; }
 .admin-category-review-stale { display: inline-block; margin-top: 6px; padding: 4px 7px; border-radius: 5px; color: #785416; background: #fff5df; font-size: 9px; font-weight: 650; line-height: 1.35; }
 .admin-category-review-actions { display: grid; min-width: 220px; gap: 8px; }
 .admin-category-review-action { border: 1px solid #e8ded4; border-radius: 8px; background: #fffdfa; }

@@ -102,6 +102,7 @@ Conventions: money integers are centavos; timestamps are UTC at storage boundari
 | `title` | `varchar(180)` | NO | — |  |
 | `body` | `text` | NO | — |  |
 | `status` | `varchar(20)` | NO | draft |  |
+| `archive_reason` | `varchar(20)` | YES | — | MUL |
 | `created_by` | `bigint unsigned` | YES | — | MUL |
 | `publish_at` | `timestamp` | YES | — |  |
 | `published_at` | `timestamp` | YES | — |  |
@@ -116,6 +117,7 @@ Conventions: money integers are centavos; timestamps are UTC at storage boundari
 **Indexes**
 
 - `announcements_announcement_no_unique` (announcement_no) — unique.
+- `announcements_status_archive_reason_index` (status, archive_reason) — index.
 - `announcements_created_by_foreign` (created_by) — index.
 
 ## `application_documents`

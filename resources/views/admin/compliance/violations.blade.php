@@ -129,7 +129,12 @@
 
     <div class="table-wrap">
 
-        <table class="admin-table" id="violations-table">
+        <table
+            class="admin-table"
+            id="violations-table"
+            data-image-advisory-poll
+            data-image-advisories-url="{{ route('admin.compliance.image-advisories') }}"
+        >
 
             <thead>
                 <tr>
@@ -150,6 +155,7 @@
                     <tr
                         data-table-row
                         data-violation-id="{{ $violation['database_id'] }}"
+                        data-image-advisory-product-id="{{ $violation['product_record_id'] }}"
                         data-risk="{{ $violation['risk'] }}"
                         data-status="{{ $violation['status_value'] }}"
                         data-warnings="{{ $violation['warnings'] }}"
@@ -276,6 +282,7 @@
     data-modal="violation-{{ $violation['database_id'] }}"
     data-violation-modal
     data-violation-id="{{ $violation['database_id'] }}"
+    data-image-advisory-product-id="{{ $violation['product_record_id'] }}"
     @unless ($reopenViolationModal) hidden @endunless
 >
 
@@ -441,6 +448,18 @@
                         </strong>
                     </div>
 
+                </div>
+
+                <div class="detail-note admin-violation-image-advisory" aria-live="polite" aria-atomic="true">
+                    <span>Image check (advisory)</span>
+                    <p>
+                        <span class="status-badge {{ $violation['image_advisory_class'] }}" data-image-advisory-status data-image-advisory-code="{{ $violation['image_advisory_code'] }}">
+                            {{ $violation['image_advisory_status'] }}
+                        </span>
+                    </p>
+                    <p data-image-advisory-description data-image-advisory-description-prefix="Visible item: " @if (! $violation['image_advisory_description']) hidden @endif>Visible item: {{ $violation['image_advisory_description'] }}</p>
+                    <p data-image-advisory-reason @if (! $violation['image_advisory_reason']) hidden @endif>{{ $violation['image_advisory_reason'] }}</p>
+                    <small class="table-subtext" data-image-advisory-helper @if (! $violation['image_advisory_helper']) hidden @endif>{{ $violation['image_advisory_helper'] }}</small>
                 </div>
 
 

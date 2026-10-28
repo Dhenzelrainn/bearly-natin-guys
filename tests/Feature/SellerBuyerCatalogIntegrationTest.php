@@ -1752,7 +1752,7 @@ class SellerBuyerCatalogIntegrationTest extends TestCase
                     ['label' => 'White / 128GB', 'sku' => 'CREATE-MEDIA-WHT-128', 'price' => '699.90', 'stock' => 5, 'package_weight_kg' => '0.177', 'package_length_cm' => '14.960', 'package_width_cm' => '7.150', 'package_height_cm' => '0.795'],
                     ['label' => 'White / 256GB', 'sku' => 'CREATE-MEDIA-WHT-256', 'price' => '749.90', 'stock' => 5, 'package_weight_kg' => '0.177', 'package_length_cm' => '14.960', 'package_width_cm' => '7.150', 'package_height_cm' => '0.795'],
                 ],
-                'image' => UploadedFile::fake()->create('create-media-primary.jpg', 100, 'image/jpeg'),
+                'image' => UploadedFile::fake()->create('create-media-primary.jpg', 6000, 'image/jpeg'),
                 'gallery_images' => [
                     UploadedFile::fake()->create('create-media-gallery-1.jpg', 100, 'image/jpeg'),
                     UploadedFile::fake()->create('create-media-gallery-2.jpg', 100, 'image/jpeg'),
@@ -1776,6 +1776,7 @@ class SellerBuyerCatalogIntegrationTest extends TestCase
         $variantColorImages = $product->images->where('purpose', 'variant_color')->values();
 
         $this->assertNotNull($primaryImage);
+        $this->assertSame(6000 * 1024, (int) $primaryImage->size_bytes);
         $this->assertCount(2, $galleryImages);
         $this->assertCount(2, $variantColorImages);
         foreach ($product->images as $image) {
@@ -1826,6 +1827,61 @@ class SellerBuyerCatalogIntegrationTest extends TestCase
             $buyerPage->assertSee(Storage::disk('public')->url($galleryImage->path), false);
         }
         $this->assertSame(5, substr_count($buyerPage->getContent(), 'data-detail-thumbnail'));
+    }
+
+    public function test_product_image_upload_total_is_capped_at_fifty_mb_per_save(): void
+    {
+        $category = $this->category();
+        $seller = $this->seller($category);
+        Store::create([
+            'seller_profile_id' => $seller->sellerProfile->id,
+            'name' => 'Aggregate Image Store',
+            'slug' => 'aggregate-image-store',
+            'publication_status' => 'draft',
+        ]);
+
+        $largeImage = fn (string $name): UploadedFile => UploadedFile::fake()->create($name, 9000, 'image/jpeg');
+
+        $this->actingAs($seller)
+            ->from('/seller/products/create')
+            ->post('/seller/products', [
+                'product_mode' => 'with_variants',
+                'name' => 'Over Limit Product Images',
+                'category' => $category->name,
+                'description' => 'The combined product image upload exceeds its request limit.',
+                'price' => '100.00',
+                'stock' => 1,
+                'low_stock_threshold' => 0,
+                'option_one_name' => 'Color',
+                'option_one_values' => 'Black',
+                'option_two_name' => 'Size',
+                'option_two_values' => 'M',
+                'variants' => [[
+                    'label' => 'Black / M',
+                    'sku' => 'IMAGE-TOTAL-LIMIT-001',
+                    'price' => '100.00',
+                    'stock' => 1,
+                    'low_stock_threshold' => 0,
+                    'package_weight_kg' => '0.100',
+                    'package_length_cm' => '1',
+                    'package_width_cm' => '1',
+                    'package_height_cm' => '1',
+                ]],
+                'image' => $largeImage('product-primary.jpg'),
+                'gallery_images' => [
+                    $largeImage('gallery-1.jpg'),
+                    $largeImage('gallery-2.jpg'),
+                    $largeImage('gallery-3.jpg'),
+                    $largeImage('gallery-4.jpg'),
+                ],
+                'variant_images' => [$largeImage('variant.jpg')],
+                'payment_methods' => ['cod'],
+                'intent' => 'draft',
+            ])
+            ->assertRedirect('/seller/products/create')
+            ->assertSessionHasErrors('image');
+
+        $this->assertDatabaseMissing('products', ['name' => 'Over Limit Product Images']);
     }
 
     public function test_color_only_in_option_group_two_persists_and_resolves_its_shared_images(): void
@@ -2136,7 +2192,7 @@ class SellerBuyerCatalogIntegrationTest extends TestCase
                 'package_height_cm' => '8',
                 'intent' => 'publish',
             ])
-            ->assertRedirect('/seller/products');
+            ->assertRedirect(route('seller.products', ['status' => 'Blocked']));
 
         $product = Product::where('store_id', $store->id)->firstOrFail();
 

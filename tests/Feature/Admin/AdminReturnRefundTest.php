@@ -631,6 +631,7 @@ class AdminReturnRefundTest extends TestCase
 
     public function test_both_requested_parties_must_submit_evidence_before_admin_review(): void
     {
+        Storage::fake('local');
         $this->actingAs($this->admin)
             ->post(route('admin.compliance.returns-refunds.request-evidence', $this->returnRequest), [
                 'note' => 'Please provide additional context and supporting documentation.',
@@ -641,8 +642,15 @@ class AdminReturnRefundTest extends TestCase
         $this->actingAs($this->buyer)
             ->post(route('buyer.returns.evidence.store', $this->returnRequest->id), [
                 'note' => 'Here is more detail about the item I received.',
+                'evidence' => [$this->fakeBuyerImage('additional-buyer-evidence.png', 6000)],
             ])
             ->assertRedirect();
+
+        $this->assertDatabaseHas('return_evidence', [
+            'return_request_id' => $this->returnRequest->id,
+            'uploaded_by' => $this->buyer->id,
+            'size_bytes' => 6000 * 1024,
+        ]);
 
         $this->assertSame('awaiting_evidence', $this->returnRequest->fresh()->status);
 
@@ -1047,6 +1055,7 @@ class AdminReturnRefundTest extends TestCase
 
     public function test_buyer_can_create_a_persisted_request_for_a_paid_completed_item(): void
     {
+        Storage::fake('local');
         $this->returnRequest->update(['status' => 'rejected']);
 
         $response = $this->actingAs($this->buyer)->post(
@@ -1056,6 +1065,7 @@ class AdminReturnRefundTest extends TestCase
                 'reason_code' => 'item_not_as_described',
                 'item_quantities' => [$this->orderItem->id => 1],
                 'buyer_note' => 'The received item does not match the saved order description.',
+                'evidence' => [$this->fakeBuyerImage('initial-buyer-evidence.png', 6000)],
             ],
         );
 
@@ -1063,6 +1073,7 @@ class AdminReturnRefundTest extends TestCase
         $response->assertRedirect(route('buyer.returns.show', $case->id));
         $this->assertSame('awaiting_seller', $case->status);
         $this->assertSame(129900, (int) $case->requested_amount_minor);
+        $this->assertSame(6000 * 1024, (int) $case->evidence()->firstOrFail()->size_bytes);
         $this->assertDatabaseHas('return_items', [
             'return_request_id' => $case->id,
             'order_item_id' => $this->orderItem->id,
@@ -1278,6 +1289,17 @@ class AdminReturnRefundTest extends TestCase
             ->assertStatus(409);
 
         $this->assertSame('pending', $payment->fresh()->status);
+    }
+
+    private function fakeBuyerImage(string $name, int $sizeKilobytes): UploadedFile
+    {
+        $contents = base64_decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+        );
+
+        return UploadedFile::fake()
+            ->createWithContent($name, (string) $contents)
+            ->size($sizeKilobytes);
     }
 
     /** @return array{financially_responsible_party: string, financial_responsibility_reason: string} */

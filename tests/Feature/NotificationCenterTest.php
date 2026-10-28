@@ -136,6 +136,8 @@ class NotificationCenterTest extends TestCase
         $this->assertTrue($events['seller_withdrawal_status_changed']['email']);
         $this->assertTrue($events['seller_order_updates']['email']);
         $this->assertTrue($events['seller_buyer_message']['email']);
+        $this->assertTrue($events['seller_cod_cash_reconciled']['in_app']);
+        $this->assertFalse($events['seller_cod_cash_reconciled']['email']);
 
         $buyer = $this->buyer();
         $buyerEvents = collect($this->actingAs($buyer)
@@ -646,6 +648,8 @@ class NotificationCenterTest extends TestCase
             ->assertOk()
             ->assertSee('data-notification-center-page', false)
             ->assertSee('data-skin="buyer"', false)
+            ->assertSee(route('home'), false)
+            ->assertSee('Back to shopping')
             ->assertSee('data-nc-category="orders"', false)
             ->assertSee('Order updates')
             ->assertSee('Returns & refunds')

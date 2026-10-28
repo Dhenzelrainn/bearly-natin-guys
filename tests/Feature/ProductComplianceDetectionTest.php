@@ -41,7 +41,7 @@ class ProductComplianceDetectionTest extends TestCase
             'A product description for moderation coverage.',
         ));
 
-        $response->assertRedirect('/seller/products')
+        $response->assertRedirect(route('seller.products', ['status' => 'Blocked']))
             ->assertSessionHas('compliance_warning');
 
         $product = Product::query()->where('store_id', $store->id)->firstOrFail();
@@ -58,7 +58,7 @@ class ProductComplianceDetectionTest extends TestCase
         $this->assertSame(1, $product->violations()->firstOrFail()->warnings()->where('status', 'active')->count());
 
         $this->actingAs($seller)
-            ->get('/seller/products?status=Blocked')
+            ->get(route('seller.products', ['status' => 'Blocked']))
             ->assertOk()
             ->assertSee('Compliance warning: this product is blocked and hidden from Buyers. Review the reason beside the product before making changes.')
             ->assertSee('Critical compliance warning')
@@ -303,7 +303,7 @@ class ProductComplianceDetectionTest extends TestCase
                 'Flagship Smartphone 5G',
                 'Unlocked 5G smartphone with 128 GB storage and a bright display.',
             ))
-            ->assertRedirect('/seller/products')
+            ->assertRedirect(route('seller.products', ['status' => 'Needs Review']))
             ->assertSessionHas('compliance_warning');
 
         $product = Product::query()->where('store_id', $store->id)->firstOrFail();

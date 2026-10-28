@@ -54,6 +54,7 @@ Table announcements {
   title varchar(180) [not null]
   body text [not null]
   status varchar(20) [not null]
+  archive_reason varchar(20)
   created_by bigint
   publish_at timestamp
   published_at timestamp

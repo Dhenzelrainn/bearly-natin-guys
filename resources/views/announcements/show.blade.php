@@ -57,6 +57,10 @@
                 </time>
             </div>
 
+            @if ($announcement->archive_reason === 'retention')
+                <p class="announcement-retained-note">This post is archived from new announcements and kept here for your reference.</p>
+            @endif
+
             <div class="announcement-message">{{ $announcement->body }}</div>
 
             @if ($announcement->media->isNotEmpty())
@@ -143,7 +147,7 @@
                         </div>
 
                         <footer class="announcement-history-post-footer">
-                            <span>Platform announcement</span>
+                            <span>{{ $pastAnnouncement->archive_reason === 'retention' ? 'Archived · retained for reference' : 'Platform announcement' }}</span>
                             <a href="{{ route('announcements.show', $pastAnnouncement) }}" aria-label="Open full page for {{ $pastAnnouncement->title }}">
                                 Open post
                                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6" /></svg>

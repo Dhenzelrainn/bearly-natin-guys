@@ -91,10 +91,10 @@ $adminNavGroups = [
     ],
 
     [
-        'label' => 'Compliance & Disputes',
+        'label' => 'Product Compliance',
         'items' => [
             [
-                'label' => 'Seller Compliance',
+                'label' => 'Compliance Overview',
                 'route' => 'admin.compliance',
                 'icon' => 'shield-check',
             ],
@@ -104,14 +104,20 @@ $adminNavGroups = [
                 'icon' => 'scan-search',
             ],
             [
-                'label' => 'Complaints & Disputes',
-                'route' => 'admin.disputes',
-                'icon' => 'message-square-warning',
-            ],
-            [
                 'label' => 'Product Violations',
                 'route' => 'admin.compliance.violations',
                 'icon' => 'shield-alert',
+            ],
+        ],
+    ],
+
+    [
+        'label' => 'Customer Cases',
+        'items' => [
+            [
+                'label' => 'Complaints & Disputes',
+                'route' => 'admin.disputes',
+                'icon' => 'message-square-warning',
             ],
             [
                 'label' => 'Returns & Refunds',
@@ -417,7 +423,8 @@ $adminNavGroups = [
             request()->routeIs('admin.dashboard') => 'Dashboard Overview',
             request()->routeIs('admin.registrations*') => 'Registration Management',
             request()->routeIs('admin.users*') => 'User Management',
-            request()->routeIs('admin.compliance*', 'admin.disputes*', 'admin.violations*') => 'Compliance & Disputes',
+            request()->routeIs('admin.disputes*', 'admin.compliance.returns-refunds*') => 'Customer Cases',
+            request()->routeIs('admin.compliance*') => 'Product Compliance',
             request()->routeIs('admin.commissions', 'admin.transactions', 'admin.payments', 'admin.shipping-settlements.*', 'admin.seller-payouts.*', 'admin.reports', 'admin.orders', 'admin.fulfillment') => 'Finance & Reports',
             request()->routeIs('admin.messages', 'admin.announcements', 'admin.support-tickets') => 'Communication',
             request()->routeIs('admin.settings', 'admin.account', 'admin.policies', 'admin.audit-logs') => 'System Management',

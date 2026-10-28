@@ -129,11 +129,17 @@ class AdminAnnouncementController extends Controller
             $announcement = DB::transaction(function () use ($announcement, $request, $validated, $mediaService, &$storedFiles, &$removedFiles, &$becamePublished): Announcement {
                 $announcement = Announcement::query()->with(['roles', 'media'])->lockForUpdate()->findOrFail($announcement->id);
                 $wasPublished = $announcement->status === 'published';
+                $wasArchived = $announcement->status === 'archived';
+                $previousArchiveReason = $announcement->archive_reason;
                 $this->validateMediaCapacity($announcement, $validated);
                 $oldValues = $announcement->toArray();
                 $oldValues['media_summary'] = $this->mediaAuditValues($announcement->media);
                 unset($oldValues['media']);
-                $announcement->fill($this->attributes($validated, $announcement))->save();
+                $announcement->fill($this->attributes($validated, $announcement));
+                $announcement->archive_reason = $announcement->status === 'archived'
+                    ? ($wasArchived ? $previousArchiveReason : 'manual')
+                    : null;
+                $announcement->save();
                 $announcement->roles()->sync($this->roleIds($validated['audience_roles']));
                 $mediaService->removeSelected($announcement, $validated['remove_media_ids'] ?? [], $removedFiles);
                 $mediaService->storeUploads($announcement, $validated['media'] ?? [], $storedFiles);
@@ -212,7 +218,6 @@ class AdminAnnouncementController extends Controller
             'body' => ['required', 'string', 'max:10000'],
             'status' => ['required', Rule::in($statuses)],
             'publish_at' => ['nullable', 'date'],
-            'expires_at' => ['nullable', 'date'],
             'audience_roles' => ['required', 'array', 'min:1'],
             'audience_roles.*' => ['required', 'distinct', Rule::in(self::AUDIENCE_ROLES)],
             'media' => ['nullable', 'array', 'max:5'],
@@ -248,29 +253,12 @@ class AdminAnnouncementController extends Controller
         $publishAt = filled($validated['publish_at'] ?? null)
             ? Carbon::parse((string) $validated['publish_at'], self::TIMEZONE)
             : null;
-        $expiresAt = filled($validated['expires_at'] ?? null)
-            ? Carbon::parse((string) $validated['expires_at'], self::TIMEZONE)
-            : null;
-
         if ($validated['status'] === 'scheduled') {
             if (! $publishAt || now()->greaterThanOrEqualTo($publishAt)) {
                 throw ValidationException::withMessages([
                     'publish_at' => 'A scheduled announcement requires a future publish date.',
                 ]);
             }
-        }
-
-        if ($expiresAt && $expiresAt->lessThanOrEqualTo(now())) {
-            throw ValidationException::withMessages([
-                'expires_at' => 'The expiration date must be after the current time.',
-            ]);
-        }
-
-        $effectivePublishAt = $validated['status'] === 'published' ? now() : $publishAt;
-        if ($expiresAt && $effectivePublishAt && $expiresAt->lessThanOrEqualTo($effectivePublishAt)) {
-            throw ValidationException::withMessages([
-                'expires_at' => 'The expiration date must be after the publication date.',
-            ]);
         }
 
         return $validated;
@@ -349,9 +337,9 @@ class AdminAnnouncementController extends Controller
             'status' => $status,
             'publish_at' => $publishAt,
             'published_at' => $publishedAt,
-            'expires_at' => filled($validated['expires_at'] ?? null)
-                ? Carbon::parse((string) $validated['expires_at'], self::TIMEZONE)->utc()
-                : null,
+            // Preserve legacy expiry metadata for delivery backfill safety.
+            // New announcements no longer receive an expiry date.
+            'expires_at' => $announcement?->expires_at,
         ];
     }
 

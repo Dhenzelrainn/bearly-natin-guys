@@ -1,7 +1,6 @@
 <?php
 
 return [
-    
 
     /*
     |--------------------------------------------------------------------------
@@ -20,10 +19,19 @@ return [
     ],
 
     'google' => [
-    'client_id' => env('GOOGLE_CLIENT_ID'),
-    'client_secret' => env('GOOGLE_CLIENT_SECRET'),
-    'redirect' => env('GOOGLE_REDIRECT_URI'),
-],
+        'client_id' => env('GOOGLE_CLIENT_ID'),
+        'client_secret' => env('GOOGLE_CLIENT_SECRET'),
+        'redirect' => env('GOOGLE_REDIRECT_URI'),
+    ],
+
+    'gemini' => [
+        'api_key' => env('GEMINI_API_KEY'),
+        'product_image_check' => [
+            'enabled' => env('GEMINI_PRODUCT_IMAGE_CHECK_ENABLED', false),
+            'model' => env('GEMINI_PRODUCT_IMAGE_CHECK_MODEL', 'gemini-3.5-flash-lite'),
+            'timeout' => (int) env('GEMINI_PRODUCT_IMAGE_CHECK_TIMEOUT', 30),
+        ],
+    ],
 
     'resend' => [
         'key' => env('RESEND_API_KEY'),

@@ -21,6 +21,7 @@ use App\Services\SellerPayoutService;
 use App\Services\ShippingSettlementService;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -230,13 +231,23 @@ class AdminFinanceController extends Controller
             });
         $refundsReadyForCashDispatch = $refundCash->refundsReadyForCashDispatch();
         $refundCashPayouts = $refundCash->refundPayoutsForFinance();
+        $codCashVersion = $codCash->statusVersion($codCollections);
 
         return view('admin.finance.payments', $this->base($request) + compact(
             'payments',
             'codCollections',
+            'codCashVersion',
             'refundsReadyForCashDispatch',
             'refundCashPayouts',
         ));
+    }
+
+    public function codCashStatusVersion(CodCashCollectionService $codCash): JsonResponse
+    {
+        return response()->json([
+            'data' => ['version' => $codCash->statusVersion()],
+            'message' => 'COD cash status version loaded.',
+        ])->header('Cache-Control', 'private, no-store');
     }
 
     public function shippingSettlements(

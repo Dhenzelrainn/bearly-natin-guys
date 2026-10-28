@@ -34,7 +34,7 @@
         <section class="buyer-return-card"><div class="buyer-return-section-heading"><span class="material-symbols-outlined" aria-hidden="true">upload_file</span><div><h2>Additional evidence requested</h2><p>{{ $case->resolution ?: 'Please add the information requested by Admin.' }}</p></div></div>
             <form method="post" action="{{ route('buyer.returns.evidence.store', $case->id) }}" enctype="multipart/form-data" class="buyer-return-fields">@csrf
                 <label for="additional-note">Additional note<textarea id="additional-note" name="note" rows="3" maxlength="1000"></textarea></label>
-                <label class="buyer-return-upload" for="additional-evidence"><span class="material-symbols-outlined" aria-hidden="true">add_a_photo</span><span><strong>Upload more photos</strong><small>JPG, PNG, or WebP · up to 5 photos · 5 MB each</small></span><input id="additional-evidence" type="file" name="evidence[]" accept="image/jpeg,image/png,image/webp" multiple></label>
+                <label class="buyer-return-upload" for="additional-evidence"><span class="material-symbols-outlined" aria-hidden="true">add_a_photo</span><span><strong>Upload more photos</strong><small>JPG, PNG, or WebP · up to 5 photos · 10 MB each (50 MB total max)</small></span><input id="additional-evidence" type="file" name="evidence[]" accept="image/jpeg,image/png,image/webp" multiple></label>
                 <button class="buyer-return-primary" type="submit">Send additional evidence</button>
             </form>
         </section>

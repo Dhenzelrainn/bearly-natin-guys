@@ -1148,18 +1148,31 @@ class RiderController extends Controller
     public function mobileDashboard(Request $request): JsonResponse
     {
         $profile = $this->mobileRiderProfile($request);
+        $profile->loadMissing([
+            'logisticsProfile.user',
+            'homeSortingCenter',
+            'currentZone.sortingCenter',
+        ]);
         $user = $request->user();
         $pickups = $this->pickupAssignmentsFor($user);
         $deliveries = $this->currentDeliveryAssignmentsFor($user);
+
+        $logisticsUser = $profile->logisticsProfile?->user;
+        $currentZone = $profile->currentZone;
 
         return response()->json([
             'rider' => [
                 'name' => $user->name,
                 'vehicle_type' => $profile->vehicle_type,
+                'vehicle_model' => $profile->vehicle_model,
                 'plate_number' => $profile->plate_number,
                 'availability_status' => $profile->availability_status,
-                'logistics_provider' => $profile->logisticsProfile?->user?->business_name
-                    ?: $profile->logisticsProfile?->user?->name,
+                'logistics_provider' => $profile->logisticsProfile?->display_name
+                    ?: $logisticsUser?->business_name
+                    ?: $logisticsUser?->name,
+                'home_sorting_center' => $profile->homeSortingCenter?->name,
+                'current_zone' => $currentZone?->name,
+                'current_zone_center' => $currentZone?->sortingCenter?->name,
             ],
             'metrics' => [
                 'assigned_pickups' => $pickups->count(),
@@ -1173,6 +1186,128 @@ class RiderController extends Controller
                     'Out for Delivery'
                 )->count(),
             ],
+        ]);
+    }
+
+    public function mobileAccount(Request $request): JsonResponse
+    {
+        $profile = $this->mobileRiderProfile($request);
+        $profile->loadMissing([
+            'logisticsProfile.user',
+            'homeSortingCenter',
+            'currentZone.sortingCenter',
+        ]);
+
+        /** @var User $user */
+        $user = $request->user();
+        $application = $user->applications()
+            ->whereHas(
+                'requestedRole',
+                fn ($query) => $query->where('name', UserRole::Rider->value),
+            )
+            ->with('documents')
+            ->latest('id')
+            ->first();
+        $documents = $application?->documents ?? collect();
+
+        $documentStatus = function (string $type, ?string $legacyPath) use ($documents): string {
+            $document = $documents
+                ->where('document_type', $type)
+                ->sortByDesc('id')
+                ->first();
+
+            if ($document) {
+                return (string) $document->verification_status;
+            }
+
+            return filled($legacyPath) ? 'status_unavailable' : 'not_provided';
+        };
+
+        $addresses = $user->addresses()
+            ->orderByRaw("CASE WHEN label = 'Home' THEN 0 ELSE 1 END")
+            ->orderBy('label')
+            ->orderBy('id')
+            ->get()
+            ->map(fn ($address): array => [
+                'label' => (string) $address->label,
+                'address' => collect([
+                    $address->house_number,
+                    $address->street,
+                    filled($address->barangay) ? 'Brgy. '.$address->barangay : null,
+                    $address->city_municipality,
+                    $address->province,
+                    $address->postal_code,
+                ])->filter(fn ($part) => filled($part))->implode(', '),
+            ])
+            ->values()
+            ->all();
+
+        $logisticsUser = $profile->logisticsProfile?->user;
+        $currentZone = $profile->currentZone;
+
+        return response()->json([
+            'data' => [
+                'name' => (string) $user->name,
+                'email' => (string) $user->email,
+                'account_status' => (string) $user->status,
+                'verification_status' => (string) $profile->verification_status,
+                'availability_status' => (string) $profile->availability_status,
+                'vehicle' => [
+                    'type' => (string) $profile->vehicle_type,
+                    'model' => $profile->vehicle_model,
+                    'plate_number' => $profile->plate_number,
+                    'parcel_capacity' => $profile->parcel_capacity,
+                ],
+                'logistics_provider' => [
+                    'name' => $profile->logisticsProfile?->display_name
+                        ?: $logisticsUser?->business_name
+                        ?: $logisticsUser?->name,
+                ],
+                'sorting' => [
+                    'home_center' => $profile->homeSortingCenter?->name,
+                    'current_zone' => $currentZone?->name,
+                    'current_zone_center' => $currentZone?->sortingCenter?->name,
+                ],
+                'addresses' => $addresses,
+                'documents' => [
+                    'valid_id' => $documentStatus('valid_id', $user->valid_id_path),
+                    'or_cr' => $documentStatus('or_cr', $user->or_cr_path),
+                    'driver_license' => $documentStatus('driver_license', $user->driver_license_path),
+                ],
+            ],
+        ]);
+    }
+
+    public function mobileHistory(
+        Request $request,
+        RiderDeliveryHistoryService $historyService,
+        BuyerCatalogService $catalog,
+    ): JsonResponse {
+        $profile = $this->mobileRiderProfile($request);
+        $filters = $this->historyFilters($request);
+        $history = $historyService->paginate($profile, $filters, $catalog);
+
+        return response()->json([
+            'data' => $history->getCollection()
+                ->map(fn (array $row): array => [
+                    'shipment_no' => (string) $row['id'],
+                    'parcel_no' => (string) $row['parcel_no'],
+                    'date' => (string) $row['date'],
+                    'area' => (string) $row['area'],
+                    'status' => (string) $row['status'],
+                    'status_label' => (string) $row['status_label'],
+                    'earning' => (string) $row['earning'],
+                    'batch_no' => (string) $row['batch_no'],
+                    'attempt' => (string) $row['attempt'],
+                ])
+                ->values(),
+            'meta' => [
+                'current_page' => $history->currentPage(),
+                'last_page' => $history->lastPage(),
+                'per_page' => $history->perPage(),
+                'total' => $history->total(),
+            ],
+            'summary' => $historyService->summary($profile),
         ]);
     }
 

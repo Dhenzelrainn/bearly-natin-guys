@@ -55,6 +55,12 @@ Route::prefix('/mobile/rider')
         Route::get('/dashboard', [RiderController::class, 'mobileDashboard'])
             ->middleware('throttle:60,1')
             ->name('dashboard');
+        Route::get('/account', [RiderController::class, 'mobileAccount'])
+            ->middleware('throttle:60,1')
+            ->name('account');
+        Route::get('/history', [RiderController::class, 'mobileHistory'])
+            ->middleware('throttle:60,1')
+            ->name('history');
         Route::get('/pickups', [RiderController::class, 'mobilePickups'])
             ->middleware('throttle:60,1')
             ->name('pickups.index');

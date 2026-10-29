@@ -3,6 +3,9 @@
 namespace Tests\Feature;
 
 use App\Models\Address;
+use App\Models\AccountApplication;
+use App\Models\ApplicationDocument;
+use App\Models\DeliveryAttempt;
 use App\Models\DispatchBatch;
 use App\Models\LogisticsProfile;
 use App\Models\Order;
@@ -10,10 +13,12 @@ use App\Models\Parcel;
 use App\Models\PickupAssignment;
 use App\Models\PickupRequest;
 use App\Models\RiderProfile;
+use App\Models\Role;
 use App\Models\SellerOrder;
 use App\Models\SellerProfile;
 use App\Models\Shipment;
 use App\Models\SortingCenter;
+use App\Models\SortingZone;
 use App\Models\Store;
 use App\Models\User;
 use App\Models\Waybill;
@@ -118,6 +123,8 @@ class MobileRiderReadApiTest extends TestCase
 
         $this->getJson('/api/mobile/rider/dashboard')->assertForbidden();
         $this->getJson('/api/mobile/rider/pickups')->assertForbidden();
+        $this->getJson('/api/mobile/rider/account')->assertForbidden();
+        $this->getJson('/api/mobile/rider/history')->assertForbidden();
     }
 
     public function test_buyer_tokens_cannot_access_rider_mobile_routes(): void
@@ -130,6 +137,182 @@ class MobileRiderReadApiTest extends TestCase
 
         $this->getJson('/api/mobile/rider/dashboard')->assertForbidden();
         $this->getJson('/api/mobile/rider/pickups')->assertForbidden();
+        $this->getJson('/api/mobile/rider/account')->assertForbidden();
+        $this->getJson('/api/mobile/rider/history')->assertForbidden();
+    }
+
+    public function test_mobile_account_returns_only_the_authenticated_riders_profile_and_safe_document_statuses(): void
+    {
+        $provider = $this->makeProvider('account-display');
+        $provider['profile']->update(['display_name' => 'North Logistics Hub']);
+        $rider = $this->makeRider($provider, 'account-owner');
+        $otherRider = $this->makeRider($provider, 'account-other');
+        $rider['profile']->update([
+            'vehicle_model' => 'Click 160',
+            'parcel_capacity' => 18,
+        ]);
+        $address = $this->makeAddress($rider['user'], 'Home');
+        $address->update([
+            'house_number' => '10',
+            'street' => 'Test Road',
+            'postal_code' => '4012',
+        ]);
+        $homeCenter = SortingCenter::query()->create([
+            'logistics_profile_id' => $provider['profile']->id,
+            'address_id' => $address->id,
+            'name' => 'Rider Home Center',
+            'code' => 'RHC-1',
+        ]);
+        $zone = SortingZone::query()->create([
+            'sorting_center_id' => $homeCenter->id,
+            'name' => 'Lumban Zone',
+            'code' => 'LUM-1',
+        ]);
+        $rider['profile']->update([
+            'home_sorting_center_id' => $homeCenter->id,
+            'current_zone_id' => $zone->id,
+        ]);
+
+        $role = Role::query()->create([
+            'name' => 'rider',
+            'display_name' => 'Rider',
+        ]);
+        $application = AccountApplication::query()->create([
+            'application_no' => 'APP-RIDER-ACCOUNT',
+            'user_id' => $rider['user']->id,
+            'requested_role_id' => $role->id,
+            'status' => 'approved',
+        ]);
+        ApplicationDocument::query()->create([
+            'application_id' => $application->id,
+            'document_type' => 'or_cr',
+            'file_path' => 'private/should-not-be-returned/or-cr.pdf',
+            'original_name' => 'or-cr.pdf',
+            'mime_type' => 'application/pdf',
+            'size_bytes' => 10,
+            'verification_status' => 'approved',
+        ]);
+        ApplicationDocument::query()->create([
+            'application_id' => $application->id,
+            'document_type' => 'driver_license',
+            'file_path' => 'private/should-not-be-returned/license.pdf',
+            'original_name' => 'license.pdf',
+            'mime_type' => 'application/pdf',
+            'size_bytes' => 10,
+            'verification_status' => 'approved',
+        ]);
+
+        Sanctum::actingAs($rider['user']);
+
+        $response = $this->getJson('/api/mobile/rider/account')
+            ->assertOk()
+            ->assertJsonPath('data.name', $rider['user']->name)
+            ->assertJsonPath('data.email', $rider['user']->email)
+            ->assertJsonPath('data.vehicle.model', 'Click 160')
+            ->assertJsonPath('data.vehicle.parcel_capacity', 18)
+            ->assertJsonPath('data.logistics_provider.name', 'North Logistics Hub')
+            ->assertJsonPath('data.sorting.home_center', 'Rider Home Center')
+            ->assertJsonPath('data.sorting.current_zone', 'Lumban Zone')
+            ->assertJsonPath('data.sorting.current_zone_center', 'Rider Home Center')
+            ->assertJsonPath('data.addresses.0.label', 'Home')
+            ->assertJsonPath('data.documents.valid_id', 'not_provided')
+            ->assertJsonPath('data.documents.or_cr', 'approved')
+            ->assertJsonPath('data.documents.driver_license', 'approved')
+            ->assertJsonMissingPath('data.documents.or_cr.file_path')
+            ->assertJsonMissingPath('data.addresses.0.phone');
+
+        $this->getJson('/api/mobile/rider/dashboard')
+            ->assertOk()
+            ->assertJsonPath('rider.logistics_provider', 'North Logistics Hub')
+            ->assertJsonPath('rider.home_sorting_center', 'Rider Home Center')
+            ->assertJsonPath('rider.current_zone', 'Lumban Zone')
+            ->assertJsonPath('rider.current_zone_center', 'Rider Home Center');
+
+        $this->assertStringNotContainsString(
+            'private/should-not-be-returned',
+            $response->getContent(),
+        );
+
+        Sanctum::actingAs($otherRider['user']);
+        $this->getJson('/api/mobile/rider/account')
+            ->assertOk()
+            ->assertJsonPath('data.name', $otherRider['user']->name)
+            ->assertJsonPath('data.email', $otherRider['user']->email)
+            ->assertJsonPath('data.addresses', [])
+            ->assertJsonPath('data.documents.or_cr', 'not_provided');
+    }
+
+    public function test_mobile_account_handles_missing_optional_rider_data(): void
+    {
+        $provider = $this->makeProvider('account-empty');
+        $rider = $this->makeRider($provider, 'account-empty');
+        Sanctum::actingAs($rider['user']);
+
+        $this->getJson('/api/mobile/rider/account')
+            ->assertOk()
+            ->assertJsonPath('data.sorting.home_center', null)
+            ->assertJsonPath('data.sorting.current_zone', null)
+            ->assertJsonPath('data.addresses', [])
+            ->assertJsonPath('data.documents.valid_id', 'not_provided')
+            ->assertJsonPath('data.documents.or_cr', 'not_provided');
+    }
+
+    public function test_mobile_history_uses_existing_rider_delivery_records_and_scopes_them_to_the_owner(): void
+    {
+        $provider = $this->makeProvider('history-scope');
+        $rider = $this->makeRider($provider, 'history-owner');
+        $otherRider = $this->makeRider($provider, 'history-other');
+        $ownDelivery = $this->makeDelivery($provider, $rider, 'HISTORY-OWN');
+        $otherDelivery = $this->makeDelivery($provider, $otherRider, 'HISTORY-OTHER');
+
+        DeliveryAttempt::query()->create([
+            'parcel_id' => $ownDelivery['parcel']->id,
+            'dispatch_batch_id' => $ownDelivery['batch']->id,
+            'rider_profile_id' => $rider['profile']->id,
+            'attempt_no' => 1,
+            'outcome' => 'delivered',
+            'attempted_at' => now(),
+        ]);
+        DeliveryAttempt::query()->create([
+            'parcel_id' => $otherDelivery['parcel']->id,
+            'dispatch_batch_id' => $otherDelivery['batch']->id,
+            'rider_profile_id' => $otherRider['profile']->id,
+            'attempt_no' => 1,
+            'outcome' => 'delivered',
+            'attempted_at' => now(),
+        ]);
+
+        Sanctum::actingAs($rider['user']);
+
+        $this->getJson('/api/mobile/rider/history')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.shipment_no', $ownDelivery['shipment']->shipment_no)
+            ->assertJsonPath('data.0.parcel_no', $ownDelivery['parcel']->parcel_no)
+            ->assertJsonPath('data.0.status', 'delivered')
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonMissing(['shipment_no' => $otherDelivery['shipment']->shipment_no]);
+
+        $this->assertDatabaseHas('delivery_attempts', [
+            'parcel_id' => $ownDelivery['parcel']->id,
+            'outcome' => 'delivered',
+        ]);
+        $this->assertDatabaseHas('shipments', [
+            'id' => $ownDelivery['shipment']->id,
+            'status' => 'pending_waybill',
+        ]);
+    }
+
+    public function test_mobile_history_returns_empty_for_riders_without_history(): void
+    {
+        $provider = $this->makeProvider('history-empty');
+        $rider = $this->makeRider($provider, 'history-empty');
+        Sanctum::actingAs($rider['user']);
+
+        $this->getJson('/api/mobile/rider/history')
+            ->assertOk()
+            ->assertJsonPath('data', [])
+            ->assertJsonPath('meta.total', 0);
     }
 
     private function makeProvider(string $suffix): array

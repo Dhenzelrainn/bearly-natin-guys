@@ -123,6 +123,53 @@ class MobileBuyerCatalogApiTest extends TestCase
             ->assertJsonMissing(['id' => $emptyCategory->id]);
     }
 
+    public function test_mobile_product_resource_uses_approved_local_http_image_urls(): void
+    {
+        $this->app->detectEnvironment(static fn (): string => 'local');
+        config([
+            'app.url' => 'http://127.0.0.1:8011',
+            'filesystems.disks.public.url' => 'https://bearlymarket.com/storage',
+            'image_urls.local_http_hosts' => ['localhost', '127.0.0.1', '192.168.1.42'],
+        ]);
+
+        $category = $this->category('Local Product Images', 'local-product-images');
+        $store = $this->store($category);
+        $product = $this->product($store, $category, ['name' => 'Local Image Product']);
+        $this->variant($product);
+        ProductImage::create([
+            'product_id' => $product->id,
+            'path' => 'products/local-mobile-product.jpg',
+            'disk' => 'public',
+            'alt_text' => 'Local product image',
+            'position' => 0,
+            'is_primary' => true,
+        ]);
+        $buyer = $this->buyer();
+        $token = $buyer->createToken('local-image-catalog-test')->plainTextToken;
+        $imageUrl = 'http://127.0.0.1:8011/storage/products/local-mobile-product.jpg';
+
+        $this->withServerVariables([
+            'HTTP_HOST' => '127.0.0.1:8011',
+            'SERVER_NAME' => '127.0.0.1',
+            'SERVER_PORT' => 8011,
+            'HTTPS' => 'off',
+        ])->withToken($token)
+            ->getJson('http://127.0.0.1:8011/api/mobile/buyer/products')
+            ->assertOk()
+            ->assertJsonPath('data.0.image_url', $imageUrl);
+
+        $this->withServerVariables([
+            'HTTP_HOST' => '127.0.0.1:8011',
+            'SERVER_NAME' => '127.0.0.1',
+            'SERVER_PORT' => 8011,
+            'HTTPS' => 'off',
+        ])->withToken($token)
+            ->getJson('http://127.0.0.1:8011/api/mobile/buyer/products/'.$product->id)
+            ->assertOk()
+            ->assertJsonPath('data.image_url', $imageUrl)
+            ->assertJsonPath('data.images.0.url', $imageUrl);
+    }
+
     public function test_catalog_requires_an_active_buyer_account_and_rejects_other_roles(): void
     {
         $this->getJson('/api/mobile/buyer/products')->assertUnauthorized();

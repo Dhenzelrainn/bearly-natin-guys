@@ -94,8 +94,17 @@ class BuyerRankingDisplayTest extends TestCase
         $hiddenReview = $reviews->submitReview($buyer, (int) $hiddenReviewItem->id, 1, 'Hidden one-star review.');
         $hiddenReview->update(['is_visible' => false]);
 
-        $home = $this->actingAs($buyer)
-            ->get(route('home'))
+        $this->app->detectEnvironment(static fn (): string => 'local');
+        config([
+            'filesystems.disks.public.driver' => 'local',
+            'image_urls.local_http_hosts' => ['127.0.0.1', 'localhost'],
+        ]);
+        $home = $this->withServerVariables([
+            'HTTP_HOST' => '127.0.0.1:8011',
+            'SERVER_PORT' => '8011',
+            'HTTPS' => 'off',
+        ])->actingAs($buyer)
+            ->get('http://127.0.0.1:8011/home')
             ->assertOk()
             ->assertSee('Trending on Bearly')
             ->assertSee('Popular Picks')
@@ -111,6 +120,7 @@ class BuyerRankingDisplayTest extends TestCase
             ->assertSee('href="'.route('top-products').'"', false)
             ->assertSee('href="'.route('top-sales').'"', false)
             ->assertSee('seller-products/ranking/most-saved-headphones.jpg')
+            ->assertSee('src="http://127.0.0.1:8011/storage/seller-products/ranking/most-saved-headphones.jpg"', false)
             ->assertSee('aria-pressed="true"', false)
             ->assertDontSee('1.0 out of 5 from 1 verified review')
             ->assertDontSee('0.0 out of 5')

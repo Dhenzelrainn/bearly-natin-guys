@@ -9,6 +9,7 @@ use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\Store;
 use App\Models\User;
+use App\Support\ImageUrlPolicy;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
@@ -532,7 +533,7 @@ class CampaignService
             return null;
         }
 
-        return Storage::disk($campaign->banner_disk ?: 'public')->url($campaign->banner_path);
+        return ImageUrlPolicy::diskPathUrl($campaign->banner_disk ?: 'public', $campaign->banner_path);
     }
 
     /**

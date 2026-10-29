@@ -7,12 +7,12 @@ use App\Models\Product;
 use App\Models\ProductViolation;
 use App\Models\User;
 use App\Models\ViolationAction;
+use App\Support\ImageUrlPolicy;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -347,7 +347,7 @@ class ProductCategoryReviewService
         $image = $product->images->firstWhere('is_primary', true) ?? $product->images->first();
         $imageDisk = $image?->disk ?: 'public';
         $imageUrl = $image && filled($image->path) && config("filesystems.disks.{$imageDisk}")
-            ? Storage::disk($imageDisk)->url($image->path)
+            ? ImageUrlPolicy::diskPathUrl($imageDisk, $image->path)
             : null;
         $check = $product->latestComplianceCheck;
         $scanAt = $check?->completed_at ?? $check?->created_at;

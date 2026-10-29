@@ -4,6 +4,7 @@ namespace App\Http\Resources;
 
 use App\Models\Product;
 use App\Models\ProductImage;
+use App\Support\ImageUrlPolicy;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Storage;
@@ -141,11 +142,11 @@ class MobileBuyerProductResource extends JsonResource
         }
 
         if (preg_match('~^https?://~i', $path) === 1) {
-            return $this->forceHttps($path);
+            return ImageUrlPolicy::enforceHttpsUnlessApprovedLocal($path);
         }
 
         if (str_starts_with($path, '//')) {
-            return 'https:'.$path;
+            return ImageUrlPolicy::enforceHttpsUnlessApprovedLocal($path);
         }
 
         $diskUrl = (string) ($diskConfig['url'] ?? '');
@@ -155,20 +156,12 @@ class MobileBuyerProductResource extends JsonResource
             $path = ltrim(substr($path, strlen($basePath)), '/');
         }
 
-        $url = Storage::disk($diskName)->url($path);
+        $url = ImageUrlPolicy::localPublicDiskUrl($diskName, $path)
+            ?? Storage::disk($diskName)->url($path);
         if (! Str::startsWith($url, ['http://', 'https://', '//'])) {
             $url = url('/'.ltrim($url, '/'));
         }
 
-        return $this->forceHttps($url);
-    }
-
-    private function forceHttps(string $url): string
-    {
-        if (Str::startsWith($url, '//')) {
-            return 'https:'.$url;
-        }
-
-        return preg_replace('~^http://~i', 'https://', $url) ?: $url;
+        return ImageUrlPolicy::enforceHttpsUnlessApprovedLocal($url);
     }
 }

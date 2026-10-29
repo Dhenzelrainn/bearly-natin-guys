@@ -16,6 +16,8 @@ use App\Models\Store;
 use App\Models\StorePromotion;
 use App\Models\User;
 use App\Services\BuyerCatalogService;
+use App\Services\CampaignService;
+use App\Services\PromotionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -144,6 +146,9 @@ class BuyerCampaignDisplayTest extends TestCase
             'name' => '10.10 Sale',
             'position' => 2,
             'campaign_type' => PlatformPromotion::CAMPAIGN_PISO_SALE,
+            'is_featured' => true,
+            'banner_path' => 'campaigns/banners/local-home-policy.png',
+            'banner_disk' => 'public',
         ]);
         $hidden = $this->campaign([
             'name' => 'Hidden Open Campaign',
@@ -156,7 +161,18 @@ class BuyerCampaignDisplayTest extends TestCase
             'position' => 3,
         ]);
 
-        $home = $this->get(route('home'))
+        $this->app->detectEnvironment(static fn (): string => 'local');
+        config([
+            'filesystems.disks.public.driver' => 'local',
+            'image_urls.local_http_hosts' => ['127.0.0.1', 'localhost'],
+        ]);
+        $imageUrl = 'http://127.0.0.1:8011/storage/campaigns/banners/local-home-policy.png';
+
+        $home = $this->withServerVariables([
+            'HTTP_HOST' => '127.0.0.1:8011',
+            'SERVER_PORT' => '8011',
+            'HTTPS' => 'off',
+        ])->get('http://127.0.0.1:8011/home')
             ->assertOk()
             ->assertSee('Campaigns & Offers')
             ->assertSee('All Campaigns')
@@ -175,6 +191,11 @@ class BuyerCampaignDisplayTest extends TestCase
             ->assertDontSee('Brand Deals')
             ->assertDontSee('New User Deals')
             ->assertDontSee('11.11 Big Sale');
+
+        $home->assertSee('src="'.$imageUrl.'"', false);
+        $this->assertSame($imageUrl, app(CampaignService::class)->buyerCampaignSummaryPayload($doubleDate)['banner_url']);
+        $offers = app(PromotionService::class)->publicOffers([PlatformPromotion::KIND_SELLER_CAMPAIGN], true);
+        $this->assertSame($imageUrl, $offers->firstWhere('id', $doubleDate->id)['banner_url']);
 
         $home->assertSeeInOrder(['Payday Rush', '10.10 Sale']);
 

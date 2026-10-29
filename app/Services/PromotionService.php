@@ -11,6 +11,7 @@ use App\Models\PromotionRedemptionAllocation;
 use App\Models\SellerOrder;
 use App\Models\StorePromotion;
 use App\Models\User;
+use App\Support\ImageUrlPolicy;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -82,7 +83,7 @@ class PromotionService
                 'ends_at' => $promotion->endsAt()?->toIso8601String(),
                 'is_featured' => $isCampaign && (bool) $promotion->is_featured,
                 'banner_url' => $isCampaign && $promotion->banner_path
-                    ? Storage::disk($promotion->banner_disk ?: 'public')->url($promotion->banner_path)
+                    ? ImageUrlPolicy::diskPathUrl($promotion->banner_disk ?: 'public', $promotion->banner_path)
                     : null,
                 'banner_title' => $isCampaign ? $promotion->banner_title : null,
                 'banner_link' => $isCampaign ? $promotion->banner_link : null,

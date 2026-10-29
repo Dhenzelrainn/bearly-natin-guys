@@ -438,6 +438,45 @@ class BuyerAccountIntegrationTest extends TestCase
             ->assertJsonPath('data.items.1.image', Storage::disk('public')->url($primaryPath));
     }
 
+    public function test_web_cart_payload_uses_an_approved_local_http_image_url(): void
+    {
+        $this->app->detectEnvironment(static fn (): string => 'local');
+        config([
+            'app.url' => 'http://127.0.0.1:8011',
+            'filesystems.disks.public.url' => 'https://bearlymarket.com/storage',
+            'image_urls.local_http_hosts' => ['localhost', '127.0.0.1'],
+        ]);
+
+        $buyer = $this->makeBuyer('local-cart-image@example.test', 'Local Cart Buyer');
+        ['product' => $product, 'variant' => $variant] = $this->makeProduct();
+        ProductImage::create([
+            'product_id' => $product->id,
+            'path' => 'products/local-cart-bear.jpg',
+            'disk' => 'public',
+            'purpose' => 'primary',
+            'is_primary' => true,
+            'position' => 0,
+        ]);
+        $cart = Cart::create(['user_id' => $buyer->id, 'status' => 'active']);
+        CartItem::create([
+            'cart_id' => $cart->id,
+            'product_variant_id' => $variant->id,
+            'quantity' => 1,
+            'selected' => true,
+        ]);
+
+        $this->actingAs($buyer)
+            ->withServerVariables([
+                'HTTP_HOST' => '127.0.0.1:8011',
+                'SERVER_NAME' => '127.0.0.1',
+                'SERVER_PORT' => 8011,
+                'HTTPS' => 'off',
+            ])
+            ->getJson('http://127.0.0.1:8011/cart/data')
+            ->assertOk()
+            ->assertJsonPath('data.items.0.image', 'http://127.0.0.1:8011/storage/products/local-cart-bear.jpg');
+    }
+
     public function test_wishlist_keeps_online_only_legacy_items_removable_but_not_purchasable(): void
     {
         $buyer = $this->makeBuyer('online-wishlist@example.test', 'Wishlist Buyer');

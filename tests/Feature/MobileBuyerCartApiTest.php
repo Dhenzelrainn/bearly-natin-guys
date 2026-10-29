@@ -87,6 +87,44 @@ class MobileBuyerCartApiTest extends TestCase
             ->assertJsonMissing(['legal_business_name' => 'Private Legal Seller Name']);
     }
 
+    public function test_mobile_cart_payload_uses_an_approved_local_http_image_url(): void
+    {
+        $this->app->detectEnvironment(static fn (): string => 'local');
+        config([
+            'app.url' => 'http://127.0.0.1:8011',
+            'filesystems.disks.public.url' => 'https://bearlymarket.com/storage',
+            'image_urls.local_http_hosts' => ['localhost', '127.0.0.1'],
+        ]);
+
+        $buyer = $this->buyer();
+        ['product' => $product, 'variant' => $variant] = $this->productFixture();
+        ProductImage::create([
+            'product_id' => $product->id,
+            'path' => 'products/local-mobile-cart-bear.jpg',
+            'disk' => 'public',
+            'purpose' => 'primary',
+            'is_primary' => true,
+            'position' => 0,
+        ]);
+        $cart = Cart::create(['user_id' => $buyer->id, 'status' => 'active']);
+        CartItem::create([
+            'cart_id' => $cart->id,
+            'product_variant_id' => $variant->id,
+            'quantity' => 1,
+            'selected' => true,
+        ]);
+
+        $this->withServerVariables([
+            'HTTP_HOST' => '127.0.0.1:8011',
+            'SERVER_NAME' => '127.0.0.1',
+            'SERVER_PORT' => 8011,
+            'HTTPS' => 'off',
+        ])->withToken($this->token($buyer))
+            ->getJson('http://127.0.0.1:8011/api/mobile/buyer/cart')
+            ->assertOk()
+            ->assertJsonPath('data.items.0.image_url', 'http://127.0.0.1:8011/storage/products/local-mobile-cart-bear.jpg');
+    }
+
     public function test_mobile_add_merges_repeated_variant_and_uses_web_cart_records_and_server_price(): void
     {
         $buyer = $this->buyer();

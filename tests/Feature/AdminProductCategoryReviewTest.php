@@ -127,6 +127,37 @@ class AdminProductCategoryReviewTest extends TestCase
         $this->assertTrue(Product::visibleToBuyers()->whereKey($unscanned->id)->exists());
     }
 
+    public function test_category_review_thumbnails_use_the_shared_local_image_url_policy(): void
+    {
+        $this->app->detectEnvironment(static fn (): string => 'local');
+        config([
+            'filesystems.disks.public.driver' => 'local',
+            'filesystems.disks.public.url' => 'https://bearlymarket.com/storage',
+            'image_urls.local_http_hosts' => ['localhost', '127.0.0.1'],
+        ]);
+
+        $firstProduct = $this->product('Category review thumbnail one', 'A sample listing for local image URL coverage.');
+        $firstImage = $this->addImage($firstProduct);
+        $firstImage->update(['path' => 'seller-products/category-review-policy-one.png']);
+
+        $secondProduct = $this->product('Category review thumbnail two', 'Another sample listing for local image URL coverage.');
+        $secondImage = $this->addImage($secondProduct);
+        $secondImage->update(['path' => 'seller-products/category-review-policy-two.png']);
+
+        $response = $this->actingAs($this->admin)
+            ->withServerVariables([
+                'HTTP_HOST' => '127.0.0.1:8000',
+                'SERVER_NAME' => '127.0.0.1',
+                'SERVER_PORT' => '8000',
+                'HTTPS' => 'off',
+            ])
+            ->get('http://127.0.0.1:8000/admin/compliance/category-reviews')
+            ->assertOk();
+
+        $response->assertSee('src="http://127.0.0.1:8000/storage/'.$firstImage->path.'"', false);
+        $response->assertSee('src="http://127.0.0.1:8000/storage/'.$secondImage->path.'"', false);
+    }
+
     public function test_clear_review_records_actor_reason_snapshot_and_requeues_after_text_or_image_metadata_changes(): void
     {
         $product = $this->product('Short testing', 'The listing needs a manual category check.');

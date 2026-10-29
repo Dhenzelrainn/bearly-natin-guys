@@ -4,8 +4,8 @@ namespace App\Services;
 
 use App\Enums\SellerOrderStatus;
 use App\Models\Category;
-use App\Models\OrderItem;
 use App\Models\MarketplaceCategory;
+use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\ProductImage;
 use App\Models\ProductVariant;
@@ -13,6 +13,7 @@ use App\Models\Store;
 use App\Models\StoreSubcategory;
 use App\Models\User;
 use App\Models\Wishlist;
+use App\Support\ImageUrlPolicy;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Query\Builder as QueryBuilder;
@@ -779,31 +780,7 @@ class BuyerCatalogService
             return null;
         }
 
-        if (preg_match('~^https?://~i', $path) === 1) {
-            return preg_replace('~^http://~i', 'https://', $path) ?: $path;
-        }
-
-        if (str_starts_with($path, '//')) {
-            return 'https:'.$path;
-        }
-
-        $diskUrl = (string) ($diskConfig['url'] ?? '');
-        $basePath = trim((string) (parse_url($diskUrl, PHP_URL_PATH) ?: ''), '/');
-        $path = ltrim($path, '/');
-        if ($basePath !== '' && ($path === $basePath || str_starts_with($path, $basePath.'/'))) {
-            $path = ltrim(substr($path, strlen($basePath)), '/');
-        }
-
-        $url = Storage::disk($diskName)->url($path);
-        if (! Str::startsWith($url, ['http://', 'https://', '//'])) {
-            $url = url('/'.ltrim($url, '/'));
-        }
-
-        if (Str::startsWith($url, '//')) {
-            return 'https:'.$url;
-        }
-
-        return preg_replace('~^http://~i', 'https://', $url) ?: $url;
+        return ImageUrlPolicy::diskPathUrl($diskName, $path);
     }
 
     /**
@@ -989,12 +966,10 @@ class BuyerCatalogService
 
     private function imageUrl(?string $path, string $disk = 'public'): string
     {
-        if (! $path) {
-            return '';
+        if (str_starts_with((string) $path, '/')) {
+            return (string) $path;
         }
 
-        return Str::startsWith($path, ['http://', 'https://', '/'])
-            ? $path
-            : Storage::disk($disk)->url($path);
+        return ImageUrlPolicy::diskPathUrl($disk, (string) $path);
     }
 }

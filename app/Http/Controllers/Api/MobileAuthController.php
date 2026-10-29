@@ -67,6 +67,16 @@ class MobileAuthController extends Controller
             ], 403);
         }
 
+        if (
+            $user->role === UserRole::Rider->value
+            && $user->riderProfile()->where('verification_status', 'approved')->doesntExist()
+        ) {
+            return response()->json([
+                'message' => 'This Rider account is not approved for mobile access.',
+                'role' => $user->role,
+            ], 403);
+        }
+
         $user->forceFill([
             'last_login_at' => now(),
         ])->save();

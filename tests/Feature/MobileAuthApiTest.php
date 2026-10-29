@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use App\Models\LogisticsProfile;
+use App\Models\RiderProfile;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -52,10 +54,27 @@ class MobileAuthApiTest extends TestCase
 
     public function test_rider_can_sign_in_using_the_server_role(): void
     {
+        $logisticsUser = User::factory()->create([
+            'role' => 'logistics',
+            'status' => 'active',
+        ]);
+        $logisticsProfile = LogisticsProfile::query()->create([
+            'user_id' => $logisticsUser->id,
+            'legal_name' => 'Mobile Test Logistics',
+            'display_name' => 'Mobile Test Logistics',
+            'contact_phone' => '09170000000',
+            'status' => 'active',
+        ]);
         $rider = User::factory()->create([
             'email' => 'mobile.rider@example.test',
             'role' => 'rider',
             'status' => 'active',
+        ]);
+        RiderProfile::query()->create([
+            'user_id' => $rider->id,
+            'logistics_profile_id' => $logisticsProfile->id,
+            'vehicle_type' => 'Motorcycle',
+            'verification_status' => 'approved',
         ]);
 
         $response = $this->postJson('/api/mobile/login', [
@@ -68,6 +87,41 @@ class MobileAuthApiTest extends TestCase
         $this->assertNotEmpty($response->json('token'));
     }
 
+    public function test_active_but_unapproved_rider_cannot_sign_in(): void
+    {
+        $logisticsUser = User::factory()->create([
+            'role' => 'logistics',
+            'status' => 'active',
+        ]);
+        $logisticsProfile = LogisticsProfile::query()->create([
+            'user_id' => $logisticsUser->id,
+            'legal_name' => 'Pending Rider Logistics',
+            'display_name' => 'Pending Rider Logistics',
+            'contact_phone' => '09170000000',
+            'status' => 'active',
+        ]);
+        $rider = User::factory()->create([
+            'email' => 'unapproved.mobile.rider@example.test',
+            'role' => 'rider',
+            'status' => 'active',
+        ]);
+        RiderProfile::query()->create([
+            'user_id' => $rider->id,
+            'logistics_profile_id' => $logisticsProfile->id,
+            'vehicle_type' => 'Motorcycle',
+            'verification_status' => 'pending',
+        ]);
+
+        $this->postJson('/api/mobile/login', [
+            'email' => $rider->email,
+            'password' => 'password',
+        ])->assertForbidden();
+
+        $this->assertDatabaseMissing('personal_access_tokens', [
+            'tokenable_id' => $rider->id,
+        ]);
+    }
+
     public function test_login_rejects_inactive_accounts_and_non_mobile_roles(): void
     {
         foreach ([
@@ -77,6 +131,7 @@ class MobileAuthApiTest extends TestCase
             ['role' => 'buyer', 'status' => 'suspended'],
             ['role' => 'buyer', 'status' => 'deactivated'],
             ['role' => 'buyer', 'status' => 'banned'],
+            ['role' => 'rider', 'status' => 'suspended'],
             ['role' => 'seller', 'status' => 'active'],
             ['role' => 'logistics', 'status' => 'active'],
         ] as $index => $account) {

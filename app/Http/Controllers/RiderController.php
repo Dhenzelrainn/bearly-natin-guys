@@ -697,6 +697,125 @@ class RiderController extends Controller
         return 'Assigned';
     }
 
+    private function currentDeliveryAssignmentsFor(
+        ?User $user,
+        ?BuyerCatalogService $catalog = null,
+    ): Collection {
+        return $this->deliveryAssignmentsFor($user, $catalog)
+            ->filter(
+                fn (array $delivery): bool => in_array(
+                    $delivery['status'],
+                    [
+                        'Assigned',
+                        'Out for Delivery',
+                        'Delivery Failed',
+                    ],
+                    true
+                )
+            )
+            ->values();
+    }
+
+    private function mobileRiderProfile(Request $request): RiderProfile
+    {
+        $user = $request->user();
+
+        abort_unless(
+            $user instanceof User
+            && $user->status === AccountStatus::Active->value
+            && $user->hasRole(UserRole::Rider->value),
+            403
+        );
+
+        $profile = $user->riderProfile()->first();
+
+        abort_unless(
+            $profile
+            && $profile->verification_status === 'approved',
+            403,
+            'This Rider account is not approved for mobile access.'
+        );
+
+        return $profile;
+    }
+
+    private function mobilePickupPayload(
+        array $row,
+        bool $includeManifest = false,
+    ): array {
+        $payload = [
+            'kind' => 'pickup',
+            'id' => (string) $row['id'],
+            'title' => (string) $row['seller'],
+            'status' => (string) $row['status'],
+            'status_raw' => (string) $row['status_raw'],
+            'address' => (string) $row['address'],
+            'contact_name' => (string) $row['contact_name'],
+            'contact_phone' => (string) $row['contact'],
+            'parcel_count' => (int) $row['parcels'],
+            'window' => (string) $row['window'],
+            'assigned_at' => (string) $row['assigned_at'],
+            'instructions' => (string) $row['instructions'],
+        ];
+
+        if ($includeManifest) {
+            $payload['manifest'] = collect($row['manifest'] ?? [])
+                ->map(fn (array $group): array => [
+                    'waybill' => (string) ($group['waybill'] ?? ''),
+                    'products' => collect($group['products'] ?? [])
+                        ->map(fn (array $product): array => [
+                            'name' => (string) ($product['name'] ?? ''),
+                            'variant' => (string) ($product['variant'] ?? ''),
+                            'quantity' => (int) ($product['quantity'] ?? 0),
+                            'image_url' => (string) ($product['image_url'] ?? ''),
+                        ])
+                        ->values()
+                        ->all(),
+                    'parcels' => collect($group['parcels'] ?? [])
+                        ->map(fn (array $parcel): array => [
+                            'parcel_no' => (string) ($parcel['parcel_no'] ?? ''),
+                            'waybill' => (string) ($parcel['waybill'] ?? ''),
+                            'size' => (string) ($parcel['size'] ?? ''),
+                            'status' => (string) ($parcel['status'] ?? ''),
+                        ])
+                        ->values()
+                        ->all(),
+                ])
+                ->values()
+                ->all();
+        }
+
+        return $payload;
+    }
+
+    private function mobileDeliveryPayload(array $row): array
+    {
+        return [
+            'kind' => 'delivery',
+            'id' => (string) $row['id'],
+            'title' => (string) $row['customer'],
+            'status' => (string) $row['status'],
+            'address' => (string) $row['address'],
+            'contact_phone' => (string) $row['contact'],
+            'waybill' => (string) $row['waybill'],
+            'purpose' => (string) $row['purpose'],
+            'purpose_label' => (string) $row['purpose_label'],
+            'parcel_count' => (int) $row['parcel_count'],
+            'zone' => (string) $row['zone'],
+            'zone_name' => (string) $row['zone_name'],
+            'batch_no' => (string) $row['batch_no'],
+            'parcels' => collect($row['parcels'])
+                ->map(fn (array $parcel): array => [
+                    'parcel_no' => (string) $parcel['parcel_no'],
+                    'status' => (string) $parcel['status'],
+                    'size_class' => (string) $parcel['size_class'],
+                    'weight_kg' => $parcel['weight_kg'],
+                ])
+                ->values()
+                ->all(),
+        ];
+    }
+
     public function landing()
     {
         return view('rider.landing.index');
@@ -1026,6 +1145,95 @@ class RiderController extends Controller
         );
     }
 
+    public function mobileDashboard(Request $request): JsonResponse
+    {
+        $profile = $this->mobileRiderProfile($request);
+        $user = $request->user();
+        $pickups = $this->pickupAssignmentsFor($user);
+        $deliveries = $this->currentDeliveryAssignmentsFor($user);
+
+        return response()->json([
+            'rider' => [
+                'name' => $user->name,
+                'vehicle_type' => $profile->vehicle_type,
+                'plate_number' => $profile->plate_number,
+                'availability_status' => $profile->availability_status,
+                'logistics_provider' => $profile->logisticsProfile?->user?->business_name
+                    ?: $profile->logisticsProfile?->user?->name,
+            ],
+            'metrics' => [
+                'assigned_pickups' => $pickups->count(),
+                'pickup_in_progress' => $pickups->whereIn(
+                    'status_raw',
+                    ['accepted', 'arrived', 'picked_up']
+                )->count(),
+                'assigned_deliveries' => $deliveries->count(),
+                'out_for_delivery' => $deliveries->where(
+                    'status',
+                    'Out for Delivery'
+                )->count(),
+            ],
+        ]);
+    }
+
+    public function mobilePickups(Request $request): JsonResponse
+    {
+        $this->mobileRiderProfile($request);
+
+        return response()->json([
+            'data' => $this->pickupAssignmentsFor($request->user())
+                ->map(fn (array $row): array => $this->mobilePickupPayload($row))
+                ->values(),
+        ]);
+    }
+
+    public function mobilePickup(
+        Request $request,
+        string $pickupNo,
+        BuyerCatalogService $catalog,
+    ): JsonResponse {
+        $this->mobileRiderProfile($request);
+        $assignment = $this->pickupAssignmentFor(
+            $request->user(),
+            $pickupNo,
+            includeProducts: true,
+        );
+        $row = $this->pickupAssignmentRow($assignment, $catalog);
+
+        return response()->json([
+            'data' => $this->mobilePickupPayload($row, includeManifest: true),
+        ]);
+    }
+
+    public function mobileDeliveries(Request $request): JsonResponse
+    {
+        $this->mobileRiderProfile($request);
+
+        return response()->json([
+            'data' => $this->currentDeliveryAssignmentsFor($request->user())
+                ->map(fn (array $row): array => $this->mobileDeliveryPayload($row))
+                ->values(),
+        ]);
+    }
+
+    public function mobileDelivery(
+        Request $request,
+        string $shipmentNo,
+        BuyerCatalogService $catalog,
+    ): JsonResponse {
+        $this->mobileRiderProfile($request);
+        $job = $this->currentDeliveryAssignmentsFor(
+            $request->user(),
+            $catalog,
+        )->firstWhere('id', $shipmentNo);
+
+        abort_unless($job, 404);
+
+        return response()->json([
+            'data' => $this->mobileDeliveryPayload($job),
+        ]);
+    }
+
     public function updateAvailability(
         Request $request
     ): RedirectResponse {
@@ -1072,24 +1280,7 @@ class RiderController extends Controller
         /** @var User|null $user */
         $user = Auth::user();
 
-        $assignments =
-            $this->deliveryAssignmentsFor(
-                $user
-            );
-
-        $deliveries = $assignments
-            ->filter(
-                fn (array $delivery) => in_array(
-                    $delivery['status'],
-                    [
-                        'Assigned',
-                        'Out for Delivery',
-                        'Delivery Failed',
-                    ],
-                    true
-                )
-            )
-            ->values();
+        $deliveries = $this->currentDeliveryAssignmentsFor($user);
 
         $parcels = $deliveries
             ->pluck('parcels')
@@ -1141,43 +1332,8 @@ class RiderController extends Controller
         /** @var User|null $user */
         $user = Auth::user();
 
-        $profile = $user
-            ?->riderProfile()
-            ->first();
-
-        abort_unless(
-            $profile,
-            404
-        );
-
-        $assignment = $profile
-            ->pickupAssignments()
-            ->whereIn(
-                'status',
-                [
-                    'assigned',
-                    'accepted',
-                    'arrived',
-                    'picked_up',
-                    'completed',
-                ]
-            )
-            ->whereHas(
-                'pickupRequest',
-                fn ($query) => $query->where(
-                    'pickup_no',
-                    $id
-                )
-            )
-            ->with([
-                'pickupRequest.store.sellerProfile.user',
-                'pickupRequest.pickupAddress' => fn ($query) => $query->withTrashed(),
-                'pickupRequest.parcels.waybill',
-                'pickupRequest.parcels.shipment.sellerOrder.items.product.images.variant',
-                'pickupRequest.parcels.shipment.sellerOrder.items.variant',
-            ])
-            ->orderByDesc('id')
-            ->firstOrFail();
+        abort_unless($user instanceof User, 404);
+        $assignment = $this->pickupAssignmentFor($user, $id, includeProducts: true);
 
         return view(
             'rider.orders.pickup',
@@ -1188,6 +1344,45 @@ class RiderController extends Controller
                 ),
             ]
         );
+    }
+
+    private function pickupAssignmentFor(
+        User $user,
+        string $pickupNo,
+        bool $includeProducts = false,
+    ): PickupAssignment {
+        $profile = $user->riderProfile()->first();
+        abort_unless($profile, 404);
+
+        $query = $profile
+            ->pickupAssignments()
+            ->whereIn('status', [
+                'assigned',
+                'accepted',
+                'arrived',
+                'picked_up',
+                'completed',
+            ])
+            ->whereHas(
+                'pickupRequest',
+                fn ($query) => $query->where('pickup_no', $pickupNo)
+            )
+            ->with([
+                'pickupRequest.store.sellerProfile.user',
+                'pickupRequest.pickupAddress' => fn ($query) => $query->withTrashed(),
+                'pickupRequest.parcels.waybill',
+            ]);
+
+        if ($includeProducts) {
+            $query->with([
+                'pickupRequest.parcels.shipment.sellerOrder.items.product.images.variant',
+                'pickupRequest.parcels.shipment.sellerOrder.items.variant',
+            ]);
+        }
+
+        return $query
+            ->orderByDesc('id')
+            ->firstOrFail();
     }
 
     public function acceptPickup(

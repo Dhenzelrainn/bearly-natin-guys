@@ -22,6 +22,10 @@ class EnsureMobileAccountIsEligible
                 UserRole::Buyer->value,
                 UserRole::Rider->value,
             ], true)
+            && (
+                $user->role !== UserRole::Rider->value
+                || $user->riderProfile?->verification_status === 'approved'
+            )
         ) {
             return $next($request);
         }

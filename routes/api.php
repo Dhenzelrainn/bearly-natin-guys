@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\MobileBuyerOrderController;
 use App\Http\Controllers\Api\MobileBuyerWishlistController;
 use App\Http\Controllers\Api\MobileRegistrationController;
 use App\Http\Controllers\BuyerController;
+use App\Http\Controllers\RiderController;
 use App\Http\Middleware\EnsureMobileAccountIsEligible;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -46,6 +47,27 @@ Route::post('/mobile/register/buyer', [
 Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware(['auth:sanctum', EnsureMobileAccountIsEligible::class]);
+
+Route::prefix('/mobile/rider')
+    ->middleware(['auth:sanctum', EnsureMobileAccountIsEligible::class, 'role:rider'])
+    ->name('mobile.rider.')
+    ->group(function (): void {
+        Route::get('/dashboard', [RiderController::class, 'mobileDashboard'])
+            ->middleware('throttle:60,1')
+            ->name('dashboard');
+        Route::get('/pickups', [RiderController::class, 'mobilePickups'])
+            ->middleware('throttle:60,1')
+            ->name('pickups.index');
+        Route::get('/pickups/{pickupNo}', [RiderController::class, 'mobilePickup'])
+            ->middleware('throttle:60,1')
+            ->name('pickups.show');
+        Route::get('/deliveries', [RiderController::class, 'mobileDeliveries'])
+            ->middleware('throttle:60,1')
+            ->name('deliveries.index');
+        Route::get('/deliveries/{shipmentNo}', [RiderController::class, 'mobileDelivery'])
+            ->middleware('throttle:60,1')
+            ->name('deliveries.show');
+    });
 
 Route::prefix('/mobile/buyer')
     ->middleware(['auth:sanctum', EnsureMobileAccountIsEligible::class, 'role:buyer'])

@@ -421,12 +421,13 @@ class RiderController extends Controller
 
         return $profile
             ->pickupAssignments()
-            ->whereNotIn(
+            ->whereIn(
                 'status',
                 [
-                    'completed',
-                    'cancelled',
-                ]
+                    'assigned',
+                    'accepted',
+                    'arrived',
+                ],
             )
             ->with([
                 'pickupRequest.store.sellerProfile.user',
@@ -737,6 +738,43 @@ class RiderController extends Controller
         );
 
         return $profile;
+    }
+
+    private function mobilePickupAssignmentForProvider(
+        RiderProfile $profile,
+        string $pickupNo,
+    ): PickupAssignment {
+        $profile->loadMissing('logisticsProfile.user');
+        $provider = $profile->logisticsProfile;
+        $providerUser = $provider?->user;
+
+        abort_unless(
+            $provider
+            && $provider->status === AccountStatus::Active->value
+            && $providerUser?->status === AccountStatus::Active->value
+            && $providerUser->hasRole(UserRole::Logistics->value),
+            403,
+            'An active Logistics provider is required for pickup actions.',
+        );
+
+        $assignment = PickupAssignment::query()
+            ->where('rider_profile_id', $profile->id)
+            ->whereHas(
+                'pickupRequest',
+                fn ($query) => $query->where('pickup_no', $pickupNo),
+            )
+            ->with('pickupRequest')
+            ->orderByDesc('id')
+            ->firstOrFail();
+
+        abort_unless(
+            $assignment->pickupRequest
+            && (int) $assignment->pickupRequest->logistics_profile_id === (int) $profile->logistics_profile_id,
+            403,
+            'This pickup is not assigned through your Logistics provider.',
+        );
+
+        return $assignment;
     }
 
     private function mobilePickupPayload(
@@ -1337,6 +1375,70 @@ class RiderController extends Controller
 
         return response()->json([
             'data' => $this->mobilePickupPayload($row, includeManifest: true),
+        ]);
+    }
+
+    public function mobileAcceptPickup(
+        Request $request,
+        string $pickupNo,
+        RiderPickupService $pickupService,
+        BuyerCatalogService $catalog,
+    ): JsonResponse {
+        $profile = $this->mobileRiderProfile($request);
+        $this->mobilePickupAssignmentForProvider($profile, $pickupNo);
+
+        $pickupService->acceptPickup($pickupNo, $request->user());
+
+        $assignment = $this->pickupAssignmentFor(
+            $request->user(),
+            $pickupNo,
+            includeProducts: true,
+        );
+
+        return response()->json([
+            'message' => 'Pickup assignment accepted.',
+            'data' => $this->mobilePickupPayload(
+                $this->pickupAssignmentRow($assignment, $catalog),
+                includeManifest: true,
+            ),
+        ]);
+    }
+
+    public function mobileConfirmPickup(
+        Request $request,
+        string $pickupNo,
+        RiderPickupService $pickupService,
+        ReturnRefundService $returns,
+        BuyerCatalogService $catalog,
+    ): JsonResponse {
+        $data = $request->validate([
+            'waybill_identifier' => ['required', 'string', 'max:120'],
+            'scan_method' => ['sometimes', 'string', Rule::in(['camera', 'barcode', 'manual', 'image'])],
+        ]);
+
+        $profile = $this->mobileRiderProfile($request);
+        $this->mobilePickupAssignmentForProvider($profile, $pickupNo);
+
+        $pickupService->confirmPickup(
+            $pickupNo,
+            $request->user(),
+            $returns,
+            trim($data['waybill_identifier']),
+            $data['scan_method'] ?? 'manual',
+        );
+
+        $assignment = $this->pickupAssignmentFor(
+            $request->user(),
+            $pickupNo,
+            includeProducts: true,
+        );
+
+        return response()->json([
+            'message' => 'Pickup confirmed. Parcels are now marked as picked up.',
+            'data' => $this->mobilePickupPayload(
+                $this->pickupAssignmentRow($assignment, $catalog),
+                includeManifest: true,
+            ),
         ]);
     }
 

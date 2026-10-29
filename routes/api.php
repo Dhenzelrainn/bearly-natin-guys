@@ -67,6 +67,12 @@ Route::prefix('/mobile/rider')
         Route::get('/pickups/{pickupNo}', [RiderController::class, 'mobilePickup'])
             ->middleware('throttle:60,1')
             ->name('pickups.show');
+        Route::post('/pickups/{pickupNo}/accept', [RiderController::class, 'mobileAcceptPickup'])
+            ->middleware('throttle:60,1')
+            ->name('pickups.accept');
+        Route::post('/pickups/{pickupNo}/confirm', [RiderController::class, 'mobileConfirmPickup'])
+            ->middleware('throttle:60,1')
+            ->name('pickups.confirm');
         Route::get('/deliveries', [RiderController::class, 'mobileDeliveries'])
             ->middleware('throttle:60,1')
             ->name('deliveries.index');

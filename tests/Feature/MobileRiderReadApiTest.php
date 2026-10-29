@@ -315,6 +315,220 @@ class MobileRiderReadApiTest extends TestCase
             ->assertJsonPath('meta.total', 0);
     }
 
+    public function test_mobile_delivery_lists_and_details_exclude_delivered_history(): void
+    {
+        $provider = $this->makeProvider('delivered-history');
+        $rider = $this->makeRider($provider, 'delivered-history');
+        $delivery = $this->makeDelivery($provider, $rider, 'DELIVERED-HISTORY');
+        $delivery['shipment']->update(['status' => 'delivered']);
+        $delivery['parcel']->update(['status' => 'delivered']);
+        DeliveryAttempt::query()->create([
+            'parcel_id' => $delivery['parcel']->id,
+            'dispatch_batch_id' => $delivery['batch']->id,
+            'rider_profile_id' => $rider['profile']->id,
+            'attempt_no' => 1,
+            'outcome' => 'delivered',
+            'attempted_at' => now(),
+        ]);
+
+        Sanctum::actingAs($rider['user']);
+
+        $this->getJson('/api/mobile/rider/deliveries')
+            ->assertOk()
+            ->assertJsonPath('data', []);
+        $this->getJson("/api/mobile/rider/deliveries/{$delivery['shipment']->shipment_no}")
+            ->assertNotFound();
+        $this->getJson('/api/mobile/rider/history')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.shipment_no', $delivery['shipment']->shipment_no)
+            ->assertJsonPath('data.0.status', 'delivered');
+    }
+
+    public function test_mobile_pickup_list_excludes_collected_and_completed_assignments(): void
+    {
+        $provider = $this->makeProvider('pickup-history');
+        $rider = $this->makeRider($provider, 'pickup-history');
+        $activePickup = $this->makePickup($provider, $rider, 'PICKUP-ACTIVE');
+        $collectedPickup = $this->makePickup($provider, $rider, 'PICKUP-COLLECTED');
+        $collectedAssignment = PickupAssignment::query()
+            ->where('pickup_request_id', $collectedPickup->id)
+            ->where('rider_profile_id', $rider['profile']->id)
+            ->firstOrFail();
+        $collectedAssignment->update(['status' => 'picked_up']);
+        $collectedPickup->update(['status' => 'completed']);
+
+        Sanctum::actingAs($rider['user']);
+
+        $this->getJson('/api/mobile/rider/pickups')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $activePickup->pickup_no)
+            ->assertJsonPath('data.0.status_raw', 'assigned');
+        $this->getJson("/api/mobile/rider/pickups/{$collectedPickup->pickup_no}")
+            ->assertOk()
+            ->assertJsonPath('data.status_raw', 'picked_up');
+    }
+
+    public function test_mobile_pickup_acceptance_is_owner_scoped_and_replay_safe(): void
+    {
+        $provider = $this->makeProvider('mobile-accept');
+        $rider = $this->makeRider($provider, 'mobile-accept-owner');
+        $otherRider = $this->makeRider($provider, 'mobile-accept-other');
+        $pickup = $this->makePickup($provider, $rider, 'MOBILE-ACCEPT-OWN');
+        $otherPickup = $this->makePickup($provider, $otherRider, 'MOBILE-ACCEPT-OTHER');
+        $path = "/api/mobile/rider/pickups/{$pickup->pickup_no}/accept";
+
+        Sanctum::actingAs($rider['user']);
+
+        $this->postJson($path)
+            ->assertOk()
+            ->assertJsonPath('message', 'Pickup assignment accepted.')
+            ->assertJsonPath('data.id', $pickup->pickup_no)
+            ->assertJsonPath('data.status_raw', 'accepted');
+
+        $this->postJson($path)
+            ->assertOk()
+            ->assertJsonPath('data.status_raw', 'accepted');
+        $this->postJson("/api/mobile/rider/pickups/{$otherPickup->pickup_no}/accept")
+            ->assertNotFound();
+
+        $this->assertDatabaseHas('pickup_assignments', [
+            'pickup_request_id' => $pickup->id,
+            'rider_profile_id' => $rider['profile']->id,
+            'status' => 'accepted',
+        ]);
+        $this->assertDatabaseHas('pickup_assignments', [
+            'pickup_request_id' => $otherPickup->id,
+            'rider_profile_id' => $otherRider['profile']->id,
+            'status' => 'assigned',
+        ]);
+    }
+
+    public function test_mobile_pickup_actions_require_an_eligible_rider_and_active_matching_provider(): void
+    {
+        $provider = $this->makeProvider('mobile-eligibility');
+        $pendingRider = $this->makeRider($provider, 'mobile-pending', 'pending');
+        $pendingPickup = $this->makePickup($provider, $pendingRider, 'MOBILE-PENDING');
+        Sanctum::actingAs($pendingRider['user']);
+        $this->postJson("/api/mobile/rider/pickups/{$pendingPickup->pickup_no}/accept")
+            ->assertForbidden();
+
+        $suspendedRider = $this->makeRider($provider, 'mobile-suspended');
+        $suspendedRider['user']->update(['status' => 'suspended']);
+        $suspendedPickup = $this->makePickup($provider, $suspendedRider, 'MOBILE-SUSPENDED');
+        Sanctum::actingAs($suspendedRider['user']);
+        $this->postJson("/api/mobile/rider/pickups/{$suspendedPickup->pickup_no}/accept")
+            ->assertForbidden();
+
+        $inactiveProvider = $this->makeProvider('mobile-inactive-provider');
+        $inactiveRider = $this->makeRider($inactiveProvider, 'mobile-inactive-provider');
+        $inactivePickup = $this->makePickup($inactiveProvider, $inactiveRider, 'MOBILE-INACTIVE-PROVIDER');
+        $inactiveProvider['profile']->update(['status' => 'suspended']);
+        Sanctum::actingAs($inactiveRider['user']);
+        $this->postJson("/api/mobile/rider/pickups/{$inactivePickup->pickup_no}/accept")
+            ->assertForbidden();
+
+        $foreignProvider = $this->makeProvider('mobile-foreign-provider');
+        $matchingRider = $this->makeRider($provider, 'mobile-foreign-assignment');
+        $foreignPickup = $this->makePickup($foreignProvider, $matchingRider, 'MOBILE-FOREIGN-PROVIDER');
+        Sanctum::actingAs($matchingRider['user']);
+        $this->postJson("/api/mobile/rider/pickups/{$foreignPickup->pickup_no}/accept")
+            ->assertForbidden();
+
+        $this->assertDatabaseHas('pickup_assignments', [
+            'pickup_request_id' => $foreignPickup->id,
+            'rider_profile_id' => $matchingRider['profile']->id,
+            'status' => 'assigned',
+        ]);
+    }
+
+    public function test_mobile_pickup_actions_require_sanctum_authentication(): void
+    {
+        $this->postJson('/api/mobile/rider/pickups/UNKNOWN/accept')
+            ->assertUnauthorized();
+        $this->postJson('/api/mobile/rider/pickups/UNKNOWN/confirm', [
+            'waybill_identifier' => 'WB-UNKNOWN',
+        ])->assertUnauthorized();
+    }
+
+    public function test_mobile_pickup_confirmation_requires_an_exact_waybill_and_is_replay_protected(): void
+    {
+        $provider = $this->makeProvider('mobile-confirm');
+        $rider = $this->makeRider($provider, 'mobile-confirm');
+        $record = $this->makeConfirmablePickup($provider, $rider, 'MOBILE-CONFIRM');
+        Sanctum::actingAs($rider['user']);
+
+        $path = "/api/mobile/rider/pickups/{$record['pickup']->pickup_no}/confirm";
+        $this->postJson($path, ['waybill_identifier' => 'WB-NOT-ASSIGNED'])
+            ->assertStatus(409);
+        $this->assertSame('accepted', $record['assignment']->fresh()->status);
+        $this->assertSame('ready_for_pickup', $record['parcel']->fresh()->status);
+        $this->assertSame('pickup_assigned', $record['shipment']->fresh()->status);
+
+        $this->postJson($path, [
+            'waybill_identifier' => $record['waybill']->barcode_value,
+            'scan_method' => 'manual',
+        ])
+            ->assertOk()
+            ->assertJsonPath('message', 'Pickup confirmed. Parcels are now marked as picked up.')
+            ->assertJsonPath('data.status_raw', 'picked_up')
+            ->assertJsonPath('data.manifest.0.parcels.0.status', 'Picked Up');
+
+        $eventCount = \DB::table('shipment_events')->count();
+        $this->postJson($path, ['waybill_identifier' => $record['waybill']->waybill_no])
+            ->assertStatus(409);
+
+        $this->assertSame('picked_up', $record['assignment']->fresh()->status);
+        $this->assertSame('picked_up', $record['parcel']->fresh()->status);
+        $this->assertSame('picked_up', $record['shipment']->fresh()->status);
+        $this->assertSame('handed_to_logistics', $record['sellerOrder']->fresh()->status);
+        $this->assertSame($eventCount, \DB::table('shipment_events')->count());
+    }
+
+    public function test_mobile_pickup_confirmation_rejects_invalid_parcel_status_without_partial_changes(): void
+    {
+        $provider = $this->makeProvider('mobile-invalid-parcel');
+        $rider = $this->makeRider($provider, 'mobile-invalid-parcel');
+        $record = $this->makeConfirmablePickup(
+            $provider,
+            $rider,
+            'MOBILE-INVALID-PARCEL',
+            parcelStatus: 'dispatched',
+        );
+        Sanctum::actingAs($rider['user']);
+
+        $this->postJson(
+            "/api/mobile/rider/pickups/{$record['pickup']->pickup_no}/confirm",
+            ['waybill_identifier' => $record['waybill']->waybill_no],
+        )->assertStatus(409);
+
+        $this->assertSame('accepted', $record['assignment']->fresh()->status);
+        $this->assertSame('dispatched', $record['parcel']->fresh()->status);
+        $this->assertSame('pickup_assigned', $record['shipment']->fresh()->status);
+        $this->assertDatabaseCount('shipment_events', 0);
+    }
+
+    public function test_mobile_pickup_confirmation_validates_manual_waybill_payload(): void
+    {
+        $provider = $this->makeProvider('mobile-validation');
+        $rider = $this->makeRider($provider, 'mobile-validation');
+        $record = $this->makeConfirmablePickup($provider, $rider, 'MOBILE-VALIDATION');
+        Sanctum::actingAs($rider['user']);
+
+        $path = "/api/mobile/rider/pickups/{$record['pickup']->pickup_no}/confirm";
+        $this->postJson($path, ['waybill_identifier' => ''])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('waybill_identifier');
+        $this->postJson($path, [
+            'waybill_identifier' => $record['waybill']->waybill_no,
+            'scan_method' => 'unknown',
+        ])->assertUnprocessable()->assertJsonValidationErrors('scan_method');
+
+        $this->assertSame('accepted', $record['assignment']->fresh()->status);
+        $this->assertSame('ready_for_pickup', $record['parcel']->fresh()->status);
+    }
+
     private function makeProvider(string $suffix): array
     {
         $user = User::factory()->create([
@@ -392,6 +606,79 @@ class MobileRiderReadApiTest extends TestCase
         ]);
 
         return $pickup;
+    }
+
+    private function makeConfirmablePickup(
+        array $provider,
+        array $rider,
+        string $suffix,
+        string $parcelStatus = 'ready_for_pickup',
+    ): array {
+        $pickup = $this->makePickup($provider, $rider, $suffix);
+        $pickup->update(['status' => 'scheduled']);
+        $assignment = PickupAssignment::query()
+            ->where('pickup_request_id', $pickup->id)
+            ->where('rider_profile_id', $rider['profile']->id)
+            ->firstOrFail();
+        $assignment->update(['status' => 'accepted', 'accepted_at' => now()]);
+
+        $buyer = User::factory()->create([
+            'role' => 'buyer',
+            'status' => 'active',
+        ]);
+        $order = Order::query()->create([
+            'order_no' => "MOBILE-PICKUP-ORDER-{$suffix}",
+            'buyer_id' => $buyer->id,
+            'recipient_name' => 'Test Buyer',
+            'recipient_phone' => '09170000001',
+            'address_line' => 'Test Buyer Street',
+            'barangay' => 'Test Barangay',
+            'city_municipality' => 'San Pablo City',
+            'province' => 'Laguna',
+            'subtotal_minor' => 10000,
+            'total_minor' => 10000,
+            'status' => 'processing',
+            'payment_status' => 'paid',
+        ]);
+        $sellerOrder = SellerOrder::query()->create([
+            'seller_order_no' => "MOBILE-PICKUP-SELLER-ORDER-{$suffix}",
+            'order_id' => $order->id,
+            'store_id' => $pickup->store_id,
+            'status' => 'ready_for_pickup',
+            'subtotal_minor' => 10000,
+            'total_minor' => 10000,
+            'ready_at' => now(),
+        ]);
+        $shipment = Shipment::query()->create([
+            'shipment_no' => "MOBILE-PICKUP-SHIPMENT-{$suffix}",
+            'seller_order_id' => $sellerOrder->id,
+            'logistics_profile_id' => $provider['profile']->id,
+            'purpose' => 'outbound',
+            'status' => 'pickup_assigned',
+        ]);
+        $waybill = Waybill::query()->create([
+            'shipment_id' => $shipment->id,
+            'waybill_no' => "MOBILE-PICKUP-WAYBILL-{$suffix}",
+            'scan_token' => hash('sha256', "mobile-pickup-scan-{$suffix}"),
+            'barcode_value' => "MOBILE-PICKUP-BARCODE-{$suffix}",
+            'total_weight_kg' => 1.250,
+            'status' => 'printed',
+            'generated_at' => now(),
+            'printed_at' => now(),
+            'print_count' => 1,
+        ]);
+        $parcel = Parcel::query()->create([
+            'shipment_id' => $shipment->id,
+            'waybill_id' => $waybill->id,
+            'parcel_no' => "MOBILE-PICKUP-PARCEL-{$suffix}",
+            'piece_sequence' => 1,
+            'weight_kg' => 1.250,
+            'size_class' => 'small',
+            'status' => $parcelStatus,
+        ]);
+        $pickup->parcels()->attach($parcel->id);
+
+        return compact('pickup', 'assignment', 'sellerOrder', 'shipment', 'waybill', 'parcel');
     }
 
     private function makeDelivery(array $provider, array $rider, string $suffix): array

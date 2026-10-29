@@ -1930,7 +1930,7 @@ class BuyerController extends Controller
 
         return [
             'items' => $items,
-            'cart_count' => (int) array_sum(array_column($items, 'quantity')),
+            'cart_count' => count($items),
             'subtotal_minor' => (int) array_sum(array_column($items, 'line_subtotal_minor')),
             'currency' => 'PHP',
         ];

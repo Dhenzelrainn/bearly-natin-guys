@@ -65,7 +65,7 @@ class MobileBuyerCartApiTest extends TestCase
         $this->withToken($this->token($buyer))
             ->getJson('/api/mobile/buyer/cart')
             ->assertOk()
-            ->assertJsonPath('data.cart_count', 2)
+            ->assertJsonPath('data.cart_count', 1)
             ->assertJsonPath('data.subtotal_minor', 25000)
             ->assertJsonPath('data.currency', 'PHP')
             ->assertJsonPath('data.items.0.id', CartItem::query()->value('id'))
@@ -155,7 +155,7 @@ class MobileBuyerCartApiTest extends TestCase
                 'quantity' => 2,
             ])
             ->assertOk()
-            ->assertJsonPath('data.cart_count', 3)
+            ->assertJsonPath('data.cart_count', 1)
             ->assertJsonPath('data.items.0.quantity', 3)
             ->assertJsonPath('data.items.0.unit_price_minor', 17800)
             ->assertJsonPath('data.items.0.line_subtotal_minor', 53400)
@@ -178,7 +178,7 @@ class MobileBuyerCartApiTest extends TestCase
         $this->actingAs($buyer)
             ->getJson('/cart/data')
             ->assertOk()
-            ->assertJsonPath('data.cart_count', 3)
+            ->assertJsonPath('data.cart_count', 1)
             ->assertJsonPath('data.items.0.quantity', 3)
             ->assertJsonPath('data.subtotal_minor', 53400);
     }
@@ -197,7 +197,7 @@ class MobileBuyerCartApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.items.0.quantity', 2)
             ->assertJsonPath('data.item.quantity', 2)
-            ->assertJsonPath('data.cart_count', 2);
+            ->assertJsonPath('data.cart_count', 1);
 
         $this->withToken($token)
             ->patchJson('/api/mobile/buyer/cart/items/'.$otherItem->id, ['quantity' => 1])
@@ -216,6 +216,107 @@ class MobileBuyerCartApiTest extends TestCase
 
         $this->assertDatabaseMissing('cart_items', ['id' => $ownItem->id]);
         $this->assertDatabaseHas('cart_items', ['id' => $otherItem->id, 'quantity' => 2]);
+    }
+
+    public function test_mobile_cart_count_tracks_distinct_entries_and_keeps_variant_lines_separate(): void
+    {
+        $buyer = $this->buyer();
+        ['product' => $product, 'variant' => $variant] = $this->productFixture(
+            variantAttributes: ['stock_on_hand' => 30],
+        );
+        ['variant' => $otherProductVariant] = $this->productFixture(
+            variantAttributes: ['stock_on_hand' => 30],
+        );
+        $secondVariant = ProductVariant::create([
+            'product_id' => $product->id,
+            'sku' => 'MOBILE-CART-COUNT-SECOND-'.uniqid(),
+            'name' => 'Second option',
+            'options' => ['Color' => 'Blue'],
+            'price_minor' => 49900,
+            'stock_on_hand' => 30,
+            'stock_reserved' => 0,
+            'is_active' => true,
+            'position' => 2,
+        ]);
+        $token = $this->token($buyer);
+
+        $this->withToken($token)
+            ->getJson('/api/mobile/buyer/cart')
+            ->assertOk()
+            ->assertJsonPath('data.cart_count', 0);
+
+        $this->withToken($token)
+            ->postJson('/api/mobile/buyer/cart/items', [
+                'product_variant_id' => $variant->id,
+                'quantity' => 1,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.cart_count', 1)
+            ->assertJsonPath('data.item.quantity', 1);
+
+        $firstItem = CartItem::query()->where('product_variant_id', $variant->id)->firstOrFail();
+        $this->withToken($token)
+            ->patchJson('/api/mobile/buyer/cart/items/'.$firstItem->id, ['quantity' => 5])
+            ->assertOk()
+            ->assertJsonPath('data.cart_count', 1)
+            ->assertJsonPath('data.item.quantity', 5);
+
+        $this->withToken($token)
+            ->patchJson('/api/mobile/buyer/cart/items/'.$firstItem->id, ['quantity' => 10])
+            ->assertOk()
+            ->assertJsonPath('data.cart_count', 1)
+            ->assertJsonPath('data.item.quantity', 10);
+
+        $this->withToken($token)
+            ->postJson('/api/mobile/buyer/cart/items', [
+                'product_variant_id' => $otherProductVariant->id,
+                'quantity' => 10,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.cart_count', 2);
+
+        $this->withToken($token)
+            ->postJson('/api/mobile/buyer/cart/items', [
+                'product_variant_id' => $secondVariant->id,
+                'quantity' => 10,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.cart_count', 3);
+
+        $this->withToken($token)
+            ->getJson('/api/mobile/buyer/cart')
+            ->assertOk()
+            ->assertJsonPath('data.cart_count', 3)
+            ->assertJsonCount(3, 'data.items')
+            ->assertJsonPath('data.items.0.product_variant_id', $variant->id)
+            ->assertJsonPath('data.items.0.quantity', 10)
+            ->assertJsonPath('data.items.1.product_variant_id', $otherProductVariant->id)
+            ->assertJsonPath('data.items.1.quantity', 10)
+            ->assertJsonPath('data.items.2.product_variant_id', $secondVariant->id)
+            ->assertJsonPath('data.items.2.quantity', 10);
+
+        $otherProductItem = CartItem::query()
+            ->where('product_variant_id', $otherProductVariant->id)
+            ->firstOrFail();
+        $variantItem = CartItem::query()
+            ->where('product_variant_id', $secondVariant->id)
+            ->firstOrFail();
+
+        $this->withToken($token)
+            ->deleteJson('/api/mobile/buyer/cart/items/'.$variantItem->id)
+            ->assertOk()
+            ->assertJsonPath('data.cart_count', 2);
+
+        $this->withToken($token)
+            ->deleteJson('/api/mobile/buyer/cart/items/'.$otherProductItem->id)
+            ->assertOk()
+            ->assertJsonPath('data.cart_count', 1);
+
+        $this->withToken($token)
+            ->deleteJson('/api/mobile/buyer/cart/items/'.$firstItem->id)
+            ->assertOk()
+            ->assertJsonPath('data.cart_count', 0)
+            ->assertJsonPath('data.items', []);
     }
 
     public function test_invalid_or_mismatched_variant_and_unpublished_products_are_rejected(): void

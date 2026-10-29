@@ -359,6 +359,102 @@ class BuyerAccountIntegrationTest extends TestCase
             ->assertNotFound();
     }
 
+    public function test_web_cart_count_tracks_distinct_entries_and_keeps_variant_lines_separate(): void
+    {
+        $buyer = $this->makeBuyer('cart-count-buyer@example.test', 'Cart Count Buyer');
+        ['product' => $product, 'variant' => $variant] = $this->makeProduct();
+        ['variant' => $otherProductVariant] = $this->makeProduct();
+        $secondVariant = ProductVariant::create([
+            'product_id' => $product->id,
+            'sku' => 'CART-COUNT-SECOND-'.uniqid(),
+            'name' => 'Second option',
+            'options' => ['Color' => 'Blue'],
+            'price_minor' => 49900,
+            'stock_on_hand' => 20,
+            'stock_reserved' => 0,
+            'is_active' => true,
+            'position' => 2,
+        ]);
+
+        $this->actingAs($buyer)
+            ->getJson('/cart/data')
+            ->assertOk()
+            ->assertJsonPath('data.cart_count', 0);
+
+        $this->actingAs($buyer)
+            ->postJson('/cart/add', [
+                'product_variant_id' => $variant->id,
+                'quantity' => 1,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.cart_count', 1)
+            ->assertJsonPath('data.item.quantity', 1);
+
+        $firstItem = CartItem::query()->where('product_variant_id', $variant->id)->firstOrFail();
+        $this->actingAs($buyer)
+            ->patchJson('/cart/'.$firstItem->id, ['quantity' => 5])
+            ->assertOk()
+            ->assertJsonPath('data.cart_count', 1)
+            ->assertJsonPath('data.item.quantity', 5);
+
+        $this->actingAs($buyer)
+            ->patchJson('/cart/'.$firstItem->id, ['quantity' => 10])
+            ->assertOk()
+            ->assertJsonPath('data.cart_count', 1)
+            ->assertJsonPath('data.item.quantity', 10);
+
+        $this->actingAs($buyer)
+            ->postJson('/cart/add', [
+                'product_variant_id' => $otherProductVariant->id,
+                'quantity' => 10,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.cart_count', 2);
+
+        $this->actingAs($buyer)
+            ->postJson('/cart/add', [
+                'product_variant_id' => $secondVariant->id,
+                'quantity' => 10,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.cart_count', 3);
+
+        $this->actingAs($buyer)
+            ->getJson('/cart/data')
+            ->assertOk()
+            ->assertJsonPath('data.cart_count', 3)
+            ->assertJsonCount(3, 'data.items')
+            ->assertJsonPath('data.items.0.product_variant_id', $variant->id)
+            ->assertJsonPath('data.items.0.quantity', 10)
+            ->assertJsonPath('data.items.1.product_variant_id', $otherProductVariant->id)
+            ->assertJsonPath('data.items.1.quantity', 10)
+            ->assertJsonPath('data.items.2.product_variant_id', $secondVariant->id)
+            ->assertJsonPath('data.items.2.quantity', 10);
+
+        $otherProductItem = CartItem::query()
+            ->where('product_variant_id', $otherProductVariant->id)
+            ->firstOrFail();
+        $variantItem = CartItem::query()
+            ->where('product_variant_id', $secondVariant->id)
+            ->firstOrFail();
+
+        $this->actingAs($buyer)
+            ->deleteJson('/cart/'.$variantItem->id)
+            ->assertOk()
+            ->assertJsonPath('data.cart_count', 2);
+
+        $this->actingAs($buyer)
+            ->deleteJson('/cart/'.$otherProductItem->id)
+            ->assertOk()
+            ->assertJsonPath('data.cart_count', 1);
+
+        $this->actingAs($buyer)
+            ->deleteJson('/cart/'.$firstItem->id)
+            ->assertOk()
+            ->assertJsonPath('data.cart_count', 0)
+            ->assertJsonPath('data.items', []);
+    }
+
     public function test_cart_uses_selected_variant_color_image_and_falls_back_to_primary(): void
     {
         $buyer = $this->makeBuyer('cart-image-buyer@example.test', 'Cart Image Buyer');

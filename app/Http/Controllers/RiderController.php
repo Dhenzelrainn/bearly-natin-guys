@@ -1666,7 +1666,7 @@ class RiderController extends Controller
         abort_unless($hasOwnedProviderAssignment, 404);
 
         $validated = $request->validate([
-            'failure_reason' => ['required', 'string', 'max:500'],
+            'failure_reason' => ['required', 'string', 'max:100'],
             'notes' => ['nullable', 'string', 'max:1000'],
             'latitude' => ['nullable', 'numeric', 'between:-90,90'],
             'longitude' => ['nullable', 'numeric', 'between:-180,180'],
@@ -2191,7 +2191,7 @@ class RiderController extends Controller
             'failure_reason' => [
                 'required',
                 'string',
-                'max:500',
+                'max:100',
             ],
 
             'notes' => [

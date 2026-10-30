@@ -3050,6 +3050,65 @@ class RiderDeliveryWorkflowTest extends TestCase
         ]);
     }
 
+    public function test_fail_delivery_route_rejects_reasons_over_the_100_character_column_limit(): void
+    {
+        $rider = $this->makeRider('FAIL-REASON-LENGTH');
+        $assignment = $this->makeDispatchAssignment(
+            $rider,
+            'FAIL-REASON-LENGTH',
+            1,
+            0,
+            'Failure Reason Length Recipient'
+        );
+
+        app(RiderDeliveryService::class)->startDelivery(
+            $assignment['shipment']->shipment_no,
+            $rider->user
+        );
+
+        $this->actingAs($rider->user)
+            ->get(route('rider.orders.delivery', $assignment['shipment']->shipment_no))
+            ->assertOk()
+            ->assertSee('maxlength="100"', false)
+            ->assertSee('Maximum 100 characters.');
+
+        $this->actingAs($rider->user)
+            ->post(
+                route('rider.orders.delivery.fail', $assignment['shipment']->shipment_no),
+                ['failure_reason' => str_repeat('x', 101)]
+            )
+            ->assertSessionHasErrors('failure_reason');
+
+        $this->assertDatabaseCount('delivery_attempts', 0);
+        $this->assertDatabaseCount('cod_cash_collections', 0);
+        $this->assertSame(
+            ParcelStatus::OutForDelivery->value,
+            $assignment['parcels'][0]->fresh()->status
+        );
+        $this->assertSame(
+            ShipmentStatus::OutForDelivery->value,
+            $assignment['shipment']->fresh()->status
+        );
+        $this->assertSame(0, $assignment['shipment']->events()
+            ->whereIn('event_type', ['parcel_delivery_failed', 'shipment_delivery_failed'])
+            ->count());
+
+        $reason = str_repeat('y', 100);
+        $this->post(
+            route('rider.orders.delivery.fail', $assignment['shipment']->shipment_no),
+            ['failure_reason' => $reason]
+        )
+            ->assertRedirect(route('rider.orders.delivery', $assignment['shipment']->shipment_no))
+            ->assertSessionHas('job_status', 'Failed delivery attempt recorded.');
+
+        $this->assertDatabaseHas('delivery_attempts', [
+            'parcel_id' => $assignment['parcels'][0]->id,
+            'outcome' => DeliveryAttemptOutcome::Failed->value,
+            'failure_reason' => $reason,
+        ]);
+        $this->assertDatabaseCount('cod_cash_collections', 0);
+    }
+
     public function test_failed_delivery_cannot_be_failed_again(): void
     {
         $rider = $this->makeRider('FAIL-ONCE');

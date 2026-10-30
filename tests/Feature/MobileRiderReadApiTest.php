@@ -509,6 +509,50 @@ class MobileRiderReadApiTest extends TestCase
         $this->assertDatabaseCount('cod_cash_collections', 0);
     }
 
+    public function test_mobile_delivery_failure_reason_matches_the_100_character_column_limit(): void
+    {
+        Notification::fake();
+
+        $provider = $this->makeProvider('fail-reason-length');
+        $rider = $this->makeRider($provider, 'fail-reason-length');
+        $delivery = $this->makeDelivery($provider, $rider, 'FAIL-REASON-LENGTH');
+        $delivery['shipment']->update(['status' => 'out_for_delivery']);
+        $delivery['parcel']->update(['status' => 'out_for_delivery']);
+        Sanctum::actingAs($rider['user']);
+
+        $path = "/api/mobile/rider/deliveries/{$delivery['shipment']->shipment_no}/fail";
+
+        $this->postJson($path, ['failure_reason' => ''])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('failure_reason');
+
+        $this->postJson($path, ['failure_reason' => str_repeat('x', 101)])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('failure_reason');
+
+        $this->assertDatabaseCount('delivery_attempts', 0);
+        $this->assertDatabaseCount('cod_cash_collections', 0);
+        $this->assertSame('out_for_delivery', $delivery['parcel']->fresh()->status);
+        $this->assertSame('out_for_delivery', $delivery['shipment']->fresh()->status);
+        $this->assertSame(0, $delivery['shipment']->events()
+            ->whereIn('event_type', ['parcel_delivery_failed', 'shipment_delivery_failed'])
+            ->count());
+
+        $reason = str_repeat('y', 100);
+        $this->postJson($path, ['failure_reason' => $reason])
+            ->assertOk();
+
+        $this->assertDatabaseHas('delivery_attempts', [
+            'parcel_id' => $delivery['parcel']->id,
+            'attempt_no' => 1,
+            'outcome' => 'failed',
+            'failure_reason' => $reason,
+        ]);
+        $this->assertSame('failed', $delivery['parcel']->fresh()->status);
+        $this->assertSame('delivery_failed', $delivery['shipment']->fresh()->status);
+        $this->assertDatabaseCount('cod_cash_collections', 0);
+    }
+
     public function test_mobile_delivery_failure_requires_owned_assignment_and_active_provider(): void
     {
         Notification::fake();

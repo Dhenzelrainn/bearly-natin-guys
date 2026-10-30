@@ -542,14 +542,14 @@
                                     id="delivery-failure-reason"
                                     name="failure_reason"
                                     rows="3"
-                                    maxlength="500"
+                                    maxlength="100"
                                     aria-invalid="{{ $errors->has('failure_reason') ? 'true' : 'false' }}"
                                     aria-describedby="delivery-failure-help{{ $errors->has('failure_reason') ? ' delivery-failure-error' : '' }}"
                                     required
                                 >{{ old('failure_reason') }}</textarea>
 
                                 <small class="delivery-field-help" id="delivery-failure-help">
-                                    For example: recipient unavailable or address could not be located.
+                                    For example: recipient unavailable or address could not be located. Maximum 100 characters.
                                 </small>
 
                                 @error('failure_reason')

@@ -2,14 +2,17 @@
 
 namespace Tests\Feature;
 
-use App\Models\Address;
 use App\Models\AccountApplication;
+use App\Models\Address;
 use App\Models\ApplicationDocument;
+use App\Models\CodCashCollection;
 use App\Models\DeliveryAttempt;
+use App\Models\DeliveryProof;
 use App\Models\DispatchBatch;
 use App\Models\LogisticsProfile;
 use App\Models\Order;
 use App\Models\Parcel;
+use App\Models\Payment;
 use App\Models\PickupAssignment;
 use App\Models\PickupRequest;
 use App\Models\RiderProfile;
@@ -23,6 +26,9 @@ use App\Models\Store;
 use App\Models\User;
 use App\Models\Waybill;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -706,6 +712,340 @@ class MobileRiderReadApiTest extends TestCase
 
         $this->assertSame('accepted', $record['assignment']->fresh()->status);
         $this->assertSame('ready_for_pickup', $record['parcel']->fresh()->status);
+    }
+
+    public function test_mobile_delivery_completion_stores_private_proof_and_is_idempotent(): void
+    {
+        Storage::fake('local');
+        Notification::fake();
+
+        $provider = $this->makeProvider('complete-success');
+        $rider = $this->makeRider($provider, 'complete-success');
+        $delivery = $this->makeDelivery($provider, $rider, 'COMPLETE-SUCCESS');
+        $delivery['shipment']->update(['status' => 'out_for_delivery']);
+        $delivery['parcel']->update(['status' => 'out_for_delivery']);
+        Sanctum::actingAs($rider['user']);
+
+        $path = "/api/mobile/rider/deliveries/{$delivery['shipment']->shipment_no}";
+        $this->getJson("{$path}/completion-status")
+            ->assertOk()
+            ->assertJsonPath('data.status', 'Out for Delivery')
+            ->assertJsonPath('data.cod_due_minor', 0)
+            ->assertJsonPath('data.requires_cod_collection', false);
+
+        $completed = $this->post($this->completionPath($delivery['shipment']), [
+            'recipient_name' => '  Delivery Recipient  ',
+            'proof_photo' => $this->fakeProofPhoto('proof.png'),
+        ], ['Accept' => 'application/json']);
+        $completed
+            ->assertOk()
+            ->assertJsonPath('data.status', 'Delivered')
+            ->assertJsonPath('data.status_raw', 'delivered')
+            ->assertJsonPath('data.shipment_status', 'delivered')
+            ->assertJsonPath('data.parcels.0.status', 'delivered')
+            ->assertJsonPath('data.cod_collection', null)
+            ->assertJsonPath('data.already_completed', false);
+
+        $proof = DeliveryProof::query()->sole();
+        $this->assertSame('Delivery Recipient', $proof->recipient_name);
+        Storage::disk('local')->assertExists($proof->file_path);
+        $completed->assertDontSee('delivery-proofs/');
+        $this->assertDatabaseHas('shipments', [
+            'id' => $delivery['shipment']->id,
+            'status' => 'delivered',
+        ]);
+
+        $this->getJson("{$path}/completion-status")
+            ->assertOk()
+            ->assertJsonPath('data.status', 'Delivered')
+            ->assertJsonPath('data.shipment_status', 'delivered');
+        $this->getJson('/api/mobile/rider/deliveries')
+            ->assertOk()
+            ->assertJsonCount(0, 'data');
+        $this->getJson('/api/mobile/rider/history')
+            ->assertOk()
+            ->assertJsonPath('data.0.shipment_no', $delivery['shipment']->shipment_no)
+            ->assertJsonPath('data.0.status', 'delivered');
+
+        $this->post($this->completionPath($delivery['shipment']), [
+            'recipient_name' => 'Delivery Recipient',
+            'proof_photo' => $this->fakeProofPhoto('replay.png'),
+        ], ['Accept' => 'application/json'])
+            ->assertOk()
+            ->assertJsonPath('data.already_completed', true)
+            ->assertJsonPath('data.status', 'Delivered');
+
+        $this->assertDatabaseCount('delivery_attempts', 1);
+        $this->assertDatabaseCount('delivery_proofs', 1);
+        $this->assertSame(1, $delivery['shipment']->events()
+            ->where('event_type', 'shipment_delivered')->count());
+        $this->assertCount(1, Storage::disk('local')->allFiles('delivery-proofs'));
+    }
+
+    public function test_mobile_delivery_completion_requires_valid_recipient_and_photo(): void
+    {
+        Storage::fake('local');
+        $provider = $this->makeProvider('complete-validation');
+        $rider = $this->makeRider($provider, 'complete-validation');
+        $delivery = $this->makeDelivery($provider, $rider, 'COMPLETE-VALIDATION');
+        $delivery['shipment']->update(['status' => 'out_for_delivery']);
+        $delivery['parcel']->update(['status' => 'out_for_delivery']);
+        Sanctum::actingAs($rider['user']);
+
+        $path = $this->completionPath($delivery['shipment']);
+        $this->post($path, [], ['Accept' => 'application/json'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['recipient_name', 'proof_photo']);
+        $this->post($path, [
+            'recipient_name' => '   ',
+            'proof_photo' => $this->fakeProofPhoto('proof.png'),
+        ], ['Accept' => 'application/json'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('recipient_name');
+        $this->post($path, [
+            'recipient_name' => 'Recipient',
+            'proof_photo' => UploadedFile::fake()->create('proof.gif', 100, 'image/gif'),
+        ], ['Accept' => 'application/json'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('proof_photo');
+        $this->post($path, [
+            'recipient_name' => 'Recipient',
+            'proof_photo' => $this->fakeProofPhoto('large.png', 10 * 1024 * 1024 + 1),
+        ], ['Accept' => 'application/json'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('proof_photo');
+
+        $this->assertSame('out_for_delivery', $delivery['shipment']->fresh()->status);
+        $this->assertSame('out_for_delivery', $delivery['parcel']->fresh()->status);
+        $this->assertDatabaseCount('delivery_attempts', 0);
+        $this->assertDatabaseCount('delivery_proofs', 0);
+        $this->assertSame([], Storage::disk('local')->allFiles('delivery-proofs'));
+    }
+
+    public function test_mobile_delivery_completion_is_scoped_to_eligible_rider_and_provider(): void
+    {
+        Storage::fake('local');
+        $provider = $this->makeProvider('complete-scope');
+        $rider = $this->makeRider($provider, 'complete-owner');
+        $otherRider = $this->makeRider($provider, 'complete-other');
+        $own = $this->makeDelivery($provider, $rider, 'COMPLETE-OWN');
+        $foreign = $this->makeDelivery($provider, $otherRider, 'COMPLETE-FOREIGN');
+        $otherProvider = $this->makeProvider('complete-other-provider');
+        $otherProviderRider = $this->makeRider($otherProvider, 'complete-provider-rider');
+        $wrongProvider = $this->makeDelivery(
+            $otherProvider,
+            $otherProviderRider,
+            'COMPLETE-WRONG-PROVIDER',
+        );
+        foreach ([$own, $foreign, $wrongProvider] as $delivery) {
+            $delivery['shipment']->update(['status' => 'out_for_delivery']);
+            $delivery['parcel']->update(['status' => 'out_for_delivery']);
+        }
+
+        Sanctum::actingAs($rider['user']);
+        $this->getJson("/api/mobile/rider/deliveries/{$foreign['shipment']->shipment_no}/completion-status")
+            ->assertNotFound();
+        $this->post($this->completionPath($foreign['shipment']), [
+            'recipient_name' => 'Recipient',
+            'proof_photo' => $this->fakeProofPhoto('foreign.png'),
+        ], ['Accept' => 'application/json'])->assertNotFound();
+        $this->getJson("/api/mobile/rider/deliveries/{$wrongProvider['shipment']->shipment_no}/completion-status")
+            ->assertNotFound();
+        $this->post($this->completionPath($wrongProvider['shipment']), [
+            'recipient_name' => 'Recipient',
+            'proof_photo' => $this->fakeProofPhoto('wrong-provider.png'),
+        ], ['Accept' => 'application/json'])->assertNotFound();
+        $this->assertSame('out_for_delivery', $foreign['shipment']->fresh()->status);
+        $this->assertSame('out_for_delivery', $wrongProvider['shipment']->fresh()->status);
+        $this->assertDatabaseCount('delivery_proofs', 0);
+
+        $inactiveRider = $this->makeRider($provider, 'complete-inactive-user');
+        $inactive = $this->makeDelivery($provider, $inactiveRider, 'COMPLETE-INACTIVE');
+        $inactive['shipment']->update(['status' => 'out_for_delivery']);
+        $inactive['parcel']->update(['status' => 'out_for_delivery']);
+        $inactiveRider['user']->update(['status' => 'suspended']);
+        Sanctum::actingAs($inactiveRider['user']);
+        $this->post($this->completionPath($inactive['shipment']), [
+            'recipient_name' => 'Recipient',
+            'proof_photo' => $this->fakeProofPhoto('inactive.png'),
+        ], ['Accept' => 'application/json'])->assertForbidden();
+
+        $inactiveRider['user']->update(['status' => 'active']);
+        $provider['profile']->update(['status' => 'inactive']);
+        $this->post($this->completionPath($inactive['shipment']), [
+            'recipient_name' => 'Recipient',
+            'proof_photo' => $this->fakeProofPhoto('inactive-provider.png'),
+        ], ['Accept' => 'application/json'])->assertForbidden();
+
+        $provider['profile']->update(['status' => 'active']);
+        $provider['user']->update(['status' => 'suspended']);
+        $this->post($this->completionPath($inactive['shipment']), [
+            'recipient_name' => 'Recipient',
+            'proof_photo' => $this->fakeProofPhoto('inactive-owner.png'),
+        ], ['Accept' => 'application/json'])->assertForbidden();
+
+        $provider['user']->update(['status' => 'active']);
+        $inactiveRider['profile']->update(['verification_status' => 'pending']);
+        $this->post($this->completionPath($inactive['shipment']), [
+            'recipient_name' => 'Recipient',
+            'proof_photo' => $this->fakeProofPhoto('pending-rider.png'),
+        ], ['Accept' => 'application/json'])->assertForbidden();
+
+        $inactiveRider['profile']->update(['verification_status' => 'approved']);
+        $inactive['parcel']->update(['status' => 'dispatched']);
+        $this->post($this->completionPath($inactive['shipment']), [
+            'recipient_name' => 'Recipient',
+            'proof_photo' => $this->fakeProofPhoto('invalid-state.png'),
+        ], ['Accept' => 'application/json'])->assertStatus(409);
+
+        $this->assertSame('out_for_delivery', $own['shipment']->fresh()->status);
+        $this->assertSame('out_for_delivery', $inactive['shipment']->fresh()->status);
+        $this->assertDatabaseCount('delivery_attempts', 0);
+        $this->assertDatabaseCount('delivery_proofs', 0);
+    }
+
+    public function test_mobile_cod_completion_records_exact_and_disputed_cash_using_server_due(): void
+    {
+        Storage::fake('local');
+        Notification::fake();
+
+        foreach ([
+            ['EXACT', '100.00', 'collected', 0],
+            ['SHORT', '95.00', 'disputed', -500],
+        ] as [$suffix, $actual, $status, $discrepancy]) {
+            $provider = $this->makeProvider("cod-{$suffix}");
+            $rider = $this->makeRider($provider, "cod-{$suffix}");
+            $delivery = $this->makeDelivery($provider, $rider, "COD-{$suffix}");
+            $delivery['shipment']->update([
+                'status' => 'out_for_delivery',
+                'purpose' => 'outbound',
+                'cod_amount_minor' => 10000,
+            ]);
+            $delivery['parcel']->update(['status' => 'out_for_delivery']);
+            Payment::query()->create([
+                'payment_no' => "PAY-MOBILE-COD-{$suffix}",
+                'order_id' => $delivery['order']->id,
+                'method' => 'cod',
+                'amount_minor' => 10000,
+                'status' => 'pending',
+                'initiated_at' => now(),
+            ]);
+            Sanctum::actingAs($rider['user']);
+
+            $path = "/api/mobile/rider/deliveries/{$delivery['shipment']->shipment_no}";
+            $this->getJson("{$path}/completion-status")
+                ->assertOk()
+                ->assertJsonPath('data.cod_due_minor', 10000)
+                ->assertJsonPath('data.requires_cod_collection', true);
+            $this->post($this->completionPath($delivery['shipment']), [
+                'recipient_name' => 'COD Recipient',
+                'proof_photo' => $this->fakeProofPhoto("cod-{$suffix}.png"),
+                'cod_collected_amount' => $actual,
+            ], ['Accept' => 'application/json'])
+                ->assertOk()
+                ->assertJsonPath('data.shipment_status', 'delivered')
+                ->assertJsonPath('data.cod_collection.status', $status)
+                ->assertJsonPath('data.cod_collection.amount_due_minor', 10000)
+                ->assertJsonPath('data.cod_collection.discrepancy_minor', $discrepancy);
+
+            $collection = CodCashCollection::query()
+                ->where('shipment_id', $delivery['shipment']->id)
+                ->firstOrFail();
+            $this->assertSame($status, $collection->status);
+            $this->assertSame($discrepancy, (int) $collection->discrepancy_minor);
+        }
+    }
+
+    public function test_mobile_cod_completion_requires_actual_amount_and_rolls_back_all_completion_records(): void
+    {
+        Storage::fake('local');
+        $provider = $this->makeProvider('cod-required');
+        $rider = $this->makeRider($provider, 'cod-required');
+        $delivery = $this->makeDelivery($provider, $rider, 'COD-REQUIRED');
+        $delivery['shipment']->update([
+            'status' => 'out_for_delivery',
+            'purpose' => 'outbound',
+            'cod_amount_minor' => 10000,
+        ]);
+        $delivery['parcel']->update(['status' => 'out_for_delivery']);
+        Payment::query()->create([
+            'payment_no' => 'PAY-MOBILE-COD-REQUIRED',
+            'order_id' => $delivery['order']->id,
+            'method' => 'cod',
+            'amount_minor' => 10000,
+            'status' => 'pending',
+            'initiated_at' => now(),
+        ]);
+        Sanctum::actingAs($rider['user']);
+
+        $this->post($this->completionPath($delivery['shipment']), [
+            'recipient_name' => 'COD Recipient',
+            'proof_photo' => $this->fakeProofPhoto('cod-required.png'),
+        ], ['Accept' => 'application/json'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('cod_collected_amount');
+
+        $this->assertSame('out_for_delivery', $delivery['shipment']->fresh()->status);
+        $this->assertSame('out_for_delivery', $delivery['parcel']->fresh()->status);
+        $this->assertDatabaseCount('delivery_attempts', 0);
+        $this->assertDatabaseCount('delivery_proofs', 0);
+        $this->assertDatabaseCount('cod_cash_collections', 0);
+        $this->assertSame([], Storage::disk('local')->allFiles('delivery-proofs'));
+    }
+
+    public function test_mobile_delivery_completion_handles_all_owned_parcels_in_a_multi_parcel_shipment(): void
+    {
+        Storage::fake('local');
+        Notification::fake();
+        $provider = $this->makeProvider('complete-multi');
+        $rider = $this->makeRider($provider, 'complete-multi');
+        $delivery = $this->makeDelivery($provider, $rider, 'COMPLETE-MULTI');
+        $delivery['shipment']->update(['status' => 'out_for_delivery']);
+        $delivery['parcel']->update(['status' => 'out_for_delivery']);
+        $secondParcel = Parcel::query()->create([
+            'shipment_id' => $delivery['shipment']->id,
+            'waybill_id' => $delivery['parcel']->waybill_id,
+            'parcel_no' => 'PARCEL-COMPLETE-MULTI-2',
+            'piece_sequence' => 2,
+            'weight_kg' => 1.250,
+            'size_class' => 'small',
+            'status' => 'out_for_delivery',
+        ]);
+        $delivery['batch']->parcels()->attach($secondParcel->id);
+        Sanctum::actingAs($rider['user']);
+
+        $this->post($this->completionPath($delivery['shipment']), [
+            'recipient_name' => 'Multi Parcel Recipient',
+            'proof_photo' => $this->fakeProofPhoto('multi.png'),
+        ], ['Accept' => 'application/json'])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'Delivered')
+            ->assertJsonCount(2, 'data.parcels');
+
+        $this->assertSame('delivered', $delivery['shipment']->fresh()->status);
+        $this->assertSame('delivered', $delivery['parcel']->fresh()->status);
+        $this->assertSame('delivered', $secondParcel->fresh()->status);
+        $this->assertDatabaseCount('delivery_attempts', 2);
+        $this->assertDatabaseCount('delivery_proofs', 2);
+    }
+
+    private function completionPath(Shipment $shipment): string
+    {
+        return "/api/mobile/rider/deliveries/{$shipment->shipment_no}/complete";
+    }
+
+    private function fakeProofPhoto(string $filename, int $paddingBytes = 0): UploadedFile
+    {
+        $image = base64_decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC',
+            true,
+        );
+        $this->assertNotFalse($image);
+
+        return UploadedFile::fake()->createWithContent(
+            $filename,
+            $image.str_repeat('x', $paddingBytes),
+        );
     }
 
     private function makeProvider(string $suffix): array

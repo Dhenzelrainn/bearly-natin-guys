@@ -12,6 +12,7 @@ use App\Models\MessageAttachment;
 use App\Models\OrderItem;
 use App\Models\PickupAssignment;
 use App\Models\RiderProfile;
+use App\Models\Shipment;
 use App\Models\User;
 use App\Services\ApplicationReviewService;
 use App\Services\BuyerCatalogService;
@@ -846,12 +847,22 @@ class RiderController extends Controller
             'id' => (string) $row['id'],
             'title' => (string) $row['customer'],
             'status' => (string) $row['status'],
+            'status_raw' => match ((string) $row['status']) {
+                'Assigned' => 'assigned',
+                'Out for Delivery' => 'out_for_delivery',
+                'Delivered' => 'delivered',
+                'Delivery Failed' => 'delivery_failed',
+                default => 'unknown',
+            },
             'can_start_delivery' => (bool) ($row['can_start_delivery'] ?? false),
             'address' => (string) $row['address'],
             'contact_phone' => (string) $row['contact'],
             'waybill' => (string) $row['waybill'],
             'purpose' => (string) $row['purpose'],
             'purpose_label' => (string) $row['purpose_label'],
+            'cod_due_minor' => (int) ($row['cod_minor'] ?? 0),
+            'requires_cod_collection' => $row['purpose'] === 'outbound'
+                && (int) ($row['cod_minor'] ?? 0) > 0,
             'parcel_count' => (int) $row['parcel_count'],
             'zone' => (string) $row['zone'],
             'zone_name' => (string) $row['zone_name'],
@@ -865,6 +876,26 @@ class RiderController extends Controller
                 ])
                 ->values()
                 ->all(),
+        ];
+    }
+
+    private function mobileDeliveryCompletionPayload(
+        array $row,
+        Shipment $shipment,
+        bool $alreadyCompleted = false,
+    ): array {
+        $collection = $shipment->codCashCollection;
+
+        return [
+            ...$this->mobileDeliveryPayload($row),
+            'shipment_status' => (string) $shipment->status,
+            'already_completed' => $alreadyCompleted,
+            'cod_collection' => $collection ? [
+                'status' => (string) $collection->status,
+                'amount_due_minor' => (int) $collection->amount_due_minor,
+                'amount_collected_minor' => (int) $collection->amount_collected_minor,
+                'discrepancy_minor' => (int) $collection->discrepancy_minor,
+            ] : null,
         ];
     }
 
@@ -1485,6 +1516,54 @@ class RiderController extends Controller
         ]);
     }
 
+    public function mobileDeliveryCompletionStatus(
+        Request $request,
+        string $shipmentNo,
+    ): JsonResponse {
+        $profile = $this->mobileRiderProfile($request);
+        $profile->loadMissing('logisticsProfile.user');
+        $provider = $profile->logisticsProfile;
+        $providerUser = $provider?->user;
+
+        abort_unless(
+            $provider
+            && $provider->status === AccountStatus::Active->value
+            && $providerUser?->status === AccountStatus::Active->value
+            && $providerUser->hasRole(UserRole::Logistics->value),
+            403,
+            'An active Logistics provider is required for delivery actions.',
+        );
+
+        $hasOwnedProviderAssignment = DispatchBatch::query()
+            ->where('rider_profile_id', $profile->id)
+            ->where('status', 'dispatched')
+            ->whereHas('parcels', fn ($parcels) => $parcels
+                ->whereHas('shipment', fn ($shipments) => $shipments
+                    ->where('shipment_no', $shipmentNo)
+                    ->where('logistics_profile_id', $provider->id)))
+            ->exists();
+
+        abort_unless($hasOwnedProviderAssignment, 404);
+
+        $job = $this->deliveryAssignmentsFor($request->user())
+            ->firstWhere('id', $shipmentNo);
+        abort_unless($job, 404);
+
+        $shipment = Shipment::query()
+            ->where('shipment_no', $shipmentNo)
+            ->where('logistics_profile_id', $provider->id)
+            ->with(['parcels', 'codCashCollection'])
+            ->firstOrFail();
+
+        return response()->json([
+            'data' => $this->mobileDeliveryCompletionPayload(
+                $job,
+                $shipment,
+                $job['status'] === 'Delivered',
+            ),
+        ]);
+    }
+
     public function mobileStartDelivery(
         Request $request,
         string $shipmentNo,
@@ -1527,6 +1606,101 @@ class RiderController extends Controller
         return response()->json([
             'message' => 'Delivery started. Assigned parcels are now out for delivery.',
             'data' => $this->mobileDeliveryPayload($job),
+        ]);
+    }
+
+    public function mobileCompleteDelivery(
+        Request $request,
+        string $shipmentNo,
+        RiderDeliveryService $deliveryService,
+        ReturnRefundService $returns,
+        CodCashCollectionService $codCash,
+    ): JsonResponse {
+        $profile = $this->mobileRiderProfile($request);
+        $profile->loadMissing('logisticsProfile.user');
+        $provider = $profile->logisticsProfile;
+        $providerUser = $provider?->user;
+
+        abort_unless(
+            $provider
+            && $provider->status === AccountStatus::Active->value
+            && $providerUser?->status === AccountStatus::Active->value
+            && $providerUser->hasRole(UserRole::Logistics->value),
+            403,
+            'An active Logistics provider is required for delivery actions.',
+        );
+
+        $hasOwnedProviderAssignment = DispatchBatch::query()
+            ->where('rider_profile_id', $profile->id)
+            ->where('status', 'dispatched')
+            ->whereHas('parcels', fn ($parcels) => $parcels
+                ->whereHas('shipment', fn ($shipments) => $shipments
+                    ->where('shipment_no', $shipmentNo)
+                    ->where('logistics_profile_id', $provider->id)))
+            ->exists();
+
+        // Do not allow a Rider to upload proof for another Rider's shipment.
+        abort_unless($hasOwnedProviderAssignment, 404);
+
+        $shipmentReference = Shipment::query()
+            ->where('shipment_no', $shipmentNo)
+            ->where('logistics_profile_id', $provider->id)
+            ->firstOrFail();
+        $codIsDue = $shipmentReference->purpose === 'outbound'
+            && (int) $shipmentReference->cod_amount_minor > 0;
+
+        $validated = $request->validate([
+            'recipient_name' => ['required', 'string', 'max:160'],
+            'proof_photo' => [
+                'required',
+                'image',
+                'mimes:jpg,jpeg,png,webp',
+                'max:10240',
+            ],
+            'cod_collected_amount' => [
+                $codIsDue ? 'required' : 'nullable',
+                'string',
+                'regex:/^\\d{1,8}(?:\\.\\d{1,2})?$/',
+            ],
+            'notes' => ['nullable', 'string', 'max:1000'],
+            'latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'longitude' => ['nullable', 'numeric', 'between:-180,180'],
+        ]);
+
+        $completion = $deliveryService->completeDelivery(
+            $shipmentNo,
+            $request->user(),
+            $request->file('proof_photo'),
+            trim($validated['recipient_name']),
+            $validated['notes'] ?? null,
+            isset($validated['latitude']) ? (float) $validated['latitude'] : null,
+            isset($validated['longitude']) ? (float) $validated['longitude'] : null,
+            $returns,
+            isset($validated['cod_collected_amount'])
+                ? $this->amountToMinor($validated['cod_collected_amount'])
+                : null,
+            $codCash,
+        );
+
+        $job = $this->deliveryAssignmentsFor($request->user())
+            ->firstWhere('id', $shipmentNo);
+        abort_unless($job, 404);
+
+        $shipment = $completion->shipment->loadMissing('codCashCollection');
+        $collection = $shipment->codCashCollection;
+        $message = $completion->alreadyCompleted
+            ? 'This delivery was already completed.'
+            : ($collection?->status === 'disputed'
+                ? 'Delivery completed. The COD cash difference was recorded for review.'
+                : 'Delivery completion was recorded by the server.');
+
+        return response()->json([
+            'message' => $message,
+            'data' => $this->mobileDeliveryCompletionPayload(
+                $job,
+                $shipment,
+                $completion->alreadyCompleted,
+            ),
         ]);
     }
 

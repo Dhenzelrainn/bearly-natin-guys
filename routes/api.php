@@ -79,9 +79,15 @@ Route::prefix('/mobile/rider')
         Route::get('/deliveries/{shipmentNo}', [RiderController::class, 'mobileDelivery'])
             ->middleware('throttle:60,1')
             ->name('deliveries.show');
+        Route::get('/deliveries/{shipmentNo}/completion-status', [RiderController::class, 'mobileDeliveryCompletionStatus'])
+            ->middleware('throttle:60,1')
+            ->name('deliveries.completion-status');
         Route::post('/deliveries/{shipmentNo}/start', [RiderController::class, 'mobileStartDelivery'])
             ->middleware('throttle:60,1')
             ->name('deliveries.start');
+        Route::post('/deliveries/{shipmentNo}/complete', [RiderController::class, 'mobileCompleteDelivery'])
+            ->middleware('throttle:10,1')
+            ->name('deliveries.complete');
     });
 
 Route::prefix('/mobile/buyer')

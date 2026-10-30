@@ -88,6 +88,9 @@ Route::prefix('/mobile/rider')
         Route::post('/deliveries/{shipmentNo}/complete', [RiderController::class, 'mobileCompleteDelivery'])
             ->middleware('throttle:10,1')
             ->name('deliveries.complete');
+        Route::post('/deliveries/{shipmentNo}/fail', [RiderController::class, 'mobileFailDelivery'])
+            ->middleware('throttle:10,1')
+            ->name('deliveries.fail');
     });
 
 Route::prefix('/mobile/buyer')

@@ -1609,6 +1609,64 @@ class RiderController extends Controller
         ]);
     }
 
+    public function mobileFailDelivery(
+        Request $request,
+        string $shipmentNo,
+        RiderDeliveryService $deliveryService,
+    ): JsonResponse {
+        $profile = $this->mobileRiderProfile($request);
+        $profile->loadMissing('logisticsProfile.user');
+
+        $provider = $profile->logisticsProfile;
+        $providerUser = $provider?->user;
+
+        abort_unless(
+            $provider
+            && $provider->status === AccountStatus::Active->value
+            && $providerUser?->status === AccountStatus::Active->value
+            && $providerUser->hasRole(UserRole::Logistics->value),
+            403,
+            'An active Logistics provider is required for delivery actions.',
+        );
+
+        $hasOwnedProviderAssignment = DispatchBatch::query()
+            ->where('rider_profile_id', $profile->id)
+            ->where('status', 'dispatched')
+            ->whereHas('parcels', fn ($parcels) => $parcels
+                ->whereHas('shipment', fn ($shipments) => $shipments
+                    ->where('shipment_no', $shipmentNo)
+                    ->where('logistics_profile_id', $provider->id)))
+            ->exists();
+
+        abort_unless($hasOwnedProviderAssignment, 404);
+
+        $validated = $request->validate([
+            'failure_reason' => ['required', 'string', 'max:500'],
+            'notes' => ['nullable', 'string', 'max:1000'],
+            'latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'longitude' => ['nullable', 'numeric', 'between:-180,180'],
+        ]);
+
+        $deliveryService->failDelivery(
+            $shipmentNo,
+            $request->user(),
+            trim($validated['failure_reason']),
+            $validated['notes'] ?? null,
+            isset($validated['latitude']) ? (float) $validated['latitude'] : null,
+            isset($validated['longitude']) ? (float) $validated['longitude'] : null,
+        );
+
+        $job = $this->currentDeliveryAssignmentsFor($request->user())
+            ->firstWhere('id', $shipmentNo);
+
+        abort_unless($job, 404);
+
+        return response()->json([
+            'message' => 'Failed delivery attempt recorded.',
+            'data' => $this->mobileDeliveryPayload($job),
+        ]);
+    }
+
     public function mobileCompleteDelivery(
         Request $request,
         string $shipmentNo,

@@ -300,6 +300,140 @@ class MobileRiderReadApiTest extends TestCase
         $this->assertSame('out_for_delivery', $secondParcel->fresh()->status);
     }
 
+    public function test_mobile_rider_reports_failed_delivery_without_cod_or_duplicate_attempts(): void
+    {
+        Notification::fake();
+
+        $provider = $this->makeProvider('fail-success');
+        $rider = $this->makeRider($provider, 'fail-success');
+        $delivery = $this->makeDelivery($provider, $rider, 'FAIL-SUCCESS');
+        $delivery['shipment']->update([
+            'status' => 'out_for_delivery',
+            'cod_amount_minor' => 12500,
+        ]);
+        $delivery['parcel']->update(['status' => 'out_for_delivery']);
+
+        Sanctum::actingAs($rider['user']);
+
+        $path = "/api/mobile/rider/deliveries/{$delivery['shipment']->shipment_no}/fail";
+        $this->postJson($path, [
+            'failure_reason' => '  Recipient unavailable  ',
+        ])
+            ->assertOk()
+            ->assertJsonPath('message', 'Failed delivery attempt recorded.')
+            ->assertJsonPath('data.status', 'Delivery Failed')
+            ->assertJsonPath('data.status_raw', 'delivery_failed')
+            ->assertJsonPath('data.parcels.0.status', 'failed');
+
+        $this->getJson('/api/mobile/rider/deliveries')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.status_raw', 'delivery_failed');
+
+        $attempt = DeliveryAttempt::query()->sole();
+        $this->assertSame('failed', $attempt->outcome);
+        $this->assertSame('Recipient unavailable', $attempt->failure_reason);
+        $this->assertNull($attempt->next_attempt_at);
+        $this->assertSame('failed', $delivery['parcel']->fresh()->status);
+        $this->assertSame('delivery_failed', $delivery['shipment']->fresh()->status);
+        $this->assertDatabaseHas('shipment_events', [
+            'shipment_id' => $delivery['shipment']->id,
+            'event_type' => 'parcel_delivery_failed',
+            'to_status' => 'failed',
+        ]);
+        $this->assertDatabaseHas('shipment_events', [
+            'shipment_id' => $delivery['shipment']->id,
+            'event_type' => 'shipment_delivery_failed',
+            'to_status' => 'delivery_failed',
+        ]);
+        $this->assertFalse(CodCashCollection::query()
+            ->where('shipment_id', $delivery['shipment']->id)
+            ->exists());
+
+        $this->postJson($path, [
+            'failure_reason' => 'Recipient unavailable',
+        ])->assertStatus(409);
+
+        $this->assertDatabaseCount('delivery_attempts', 1);
+        $this->assertDatabaseCount('cod_cash_collections', 0);
+    }
+
+    public function test_mobile_delivery_failure_requires_a_reason_and_out_for_delivery_parcels(): void
+    {
+        Notification::fake();
+
+        $provider = $this->makeProvider('fail-validation');
+        $rider = $this->makeRider($provider, 'fail-validation');
+        $delivery = $this->makeDelivery($provider, $rider, 'FAIL-VALIDATION');
+        $delivery['shipment']->update(['status' => 'out_for_delivery']);
+        $delivery['parcel']->update(['status' => 'out_for_delivery']);
+        Sanctum::actingAs($rider['user']);
+
+        $path = "/api/mobile/rider/deliveries/{$delivery['shipment']->shipment_no}/fail";
+        $this->postJson($path, ['failure_reason' => '   '])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('failure_reason');
+
+        $this->assertDatabaseCount('delivery_attempts', 0);
+
+        $delivery['parcel']->update(['status' => 'dispatched']);
+        $this->postJson($path, [
+            'failure_reason' => 'Recipient unavailable',
+        ])->assertStatus(409);
+
+        $this->assertSame('dispatched', $delivery['parcel']->fresh()->status);
+        $this->assertSame('out_for_delivery', $delivery['shipment']->fresh()->status);
+        $this->assertDatabaseCount('delivery_attempts', 0);
+        $this->assertDatabaseCount('cod_cash_collections', 0);
+    }
+
+    public function test_mobile_delivery_failure_requires_owned_assignment_and_active_provider(): void
+    {
+        Notification::fake();
+
+        $provider = $this->makeProvider('fail-scope');
+        $rider = $this->makeRider($provider, 'fail-owner');
+        $otherRider = $this->makeRider($provider, 'fail-other');
+        $owned = $this->makeDelivery($provider, $rider, 'FAIL-OWNED');
+        $foreign = $this->makeDelivery($provider, $otherRider, 'FAIL-FOREIGN');
+        foreach ([$owned, $foreign] as $delivery) {
+            $delivery['shipment']->update(['status' => 'out_for_delivery']);
+            $delivery['parcel']->update(['status' => 'out_for_delivery']);
+        }
+
+        Sanctum::actingAs($rider['user']);
+        $this->postJson("/api/mobile/rider/deliveries/{$foreign['shipment']->shipment_no}/fail", [
+            'failure_reason' => 'Recipient unavailable',
+        ])->assertNotFound();
+        $this->assertSame('out_for_delivery', $foreign['parcel']->fresh()->status);
+        $this->assertDatabaseCount('delivery_attempts', 0);
+
+        $unapprovedRider = $this->makeRider($provider, 'fail-unapproved', 'pending');
+        $unapproved = $this->makeDelivery($provider, $unapprovedRider, 'FAIL-UNAPPROVED');
+        $unapproved['shipment']->update(['status' => 'out_for_delivery']);
+        $unapproved['parcel']->update(['status' => 'out_for_delivery']);
+        Sanctum::actingAs($unapprovedRider['user']);
+        $this->postJson("/api/mobile/rider/deliveries/{$unapproved['shipment']->shipment_no}/fail", [
+            'failure_reason' => 'Recipient unavailable',
+        ])->assertForbidden();
+
+        Sanctum::actingAs($rider['user']);
+
+        $provider['profile']->update(['status' => 'inactive']);
+        $this->postJson("/api/mobile/rider/deliveries/{$owned['shipment']->shipment_no}/fail", [
+            'failure_reason' => 'Recipient unavailable',
+        ])->assertForbidden();
+
+        $provider['profile']->update(['status' => 'active']);
+        $provider['user']->update(['status' => 'suspended']);
+        $this->postJson("/api/mobile/rider/deliveries/{$owned['shipment']->shipment_no}/fail", [
+            'failure_reason' => 'Recipient unavailable',
+        ])->assertForbidden();
+
+        $this->assertSame('out_for_delivery', $owned['parcel']->fresh()->status);
+        $this->assertDatabaseCount('delivery_attempts', 0);
+    }
+
     public function test_unapproved_rider_profiles_cannot_use_rider_mobile_routes(): void
     {
         $provider = $this->makeProvider('approval');

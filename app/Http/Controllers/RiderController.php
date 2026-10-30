@@ -344,7 +344,7 @@ class RiderController extends Controller
         * more than one dispatch batch. Merge those
         * rows into one customer delivery stop.
         */
-        return $rows
+        $assignments = $rows
             ->groupBy('shipment_id')
             ->map(
                 function (Collection $rows) {
@@ -415,6 +415,26 @@ class RiderController extends Controller
                 }
             )
             ->sortByDesc('dispatched_at')
+            ->values();
+
+        return $assignments
+            ->map(function (array $delivery) use ($user): array {
+                $retryState = [
+                    'can_retry' => false,
+                    'retry_available_at' => null,
+                    'retry_unavailable_reason' => null,
+                ];
+
+                if (
+                    $delivery['status'] === 'Delivery Failed'
+                    && $user instanceof User
+                ) {
+                    $retryState = app(RiderDeliveryService::class)
+                        ->retryEligibility($delivery['id'], $user);
+                }
+
+                return array_merge($delivery, $retryState);
+            })
             ->values();
     }
 
@@ -855,6 +875,11 @@ class RiderController extends Controller
                 default => 'unknown',
             },
             'can_start_delivery' => (bool) ($row['can_start_delivery'] ?? false),
+            'can_retry' => (bool) ($row['can_retry'] ?? false),
+            'retry_available_at' => $row['retry_available_at'] instanceof Carbon
+                ? $row['retry_available_at']->copy()->utc()->toIso8601String()
+                : null,
+            'retry_unavailable_reason' => $row['retry_unavailable_reason'] ?? null,
             'address' => (string) $row['address'],
             'contact_phone' => (string) $row['contact'],
             'waybill' => (string) $row['waybill'],
@@ -1663,6 +1688,49 @@ class RiderController extends Controller
 
         return response()->json([
             'message' => 'Failed delivery attempt recorded.',
+            'data' => $this->mobileDeliveryPayload($job),
+        ]);
+    }
+
+    public function mobileRetryDelivery(
+        Request $request,
+        string $shipmentNo,
+        RiderDeliveryService $deliveryService,
+    ): JsonResponse {
+        $profile = $this->mobileRiderProfile($request);
+        $profile->loadMissing('logisticsProfile.user');
+
+        $provider = $profile->logisticsProfile;
+        $providerUser = $provider?->user;
+
+        abort_unless(
+            $provider
+            && $provider->status === AccountStatus::Active->value
+            && $providerUser?->status === AccountStatus::Active->value
+            && $providerUser->hasRole(UserRole::Logistics->value),
+            403,
+            'An active Logistics provider is required for delivery actions.',
+        );
+
+        $hasOwnedProviderAssignment = DispatchBatch::query()
+            ->where('rider_profile_id', $profile->id)
+            ->where('status', 'dispatched')
+            ->whereHas('parcels', fn ($parcels) => $parcels
+                ->whereHas('shipment', fn ($shipments) => $shipments
+                    ->where('shipment_no', $shipmentNo)
+                    ->where('logistics_profile_id', $provider->id)))
+            ->exists();
+
+        abort_unless($hasOwnedProviderAssignment, 404);
+
+        $deliveryService->retryDelivery($shipmentNo, $request->user());
+
+        $job = $this->currentDeliveryAssignmentsFor($request->user())
+            ->firstWhere('id', $shipmentNo);
+        abort_unless($job, 404);
+
+        return response()->json([
+            'message' => 'Delivery retry started. Assigned parcels are out for delivery.',
             'data' => $this->mobileDeliveryPayload($job),
         ]);
     }

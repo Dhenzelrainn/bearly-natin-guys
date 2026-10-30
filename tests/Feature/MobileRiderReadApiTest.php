@@ -358,6 +358,128 @@ class MobileRiderReadApiTest extends TestCase
         $this->assertDatabaseCount('cod_cash_collections', 0);
     }
 
+    public function test_mobile_rider_retries_an_eligible_failed_delivery_once(): void
+    {
+        Notification::fake();
+        $provider = $this->makeProvider('retry-success');
+        $rider = $this->makeRider($provider, 'retry-success');
+        $delivery = $this->makeDelivery($provider, $rider, 'RETRY-SUCCESS');
+        $delivery['shipment']->update([
+            'status' => 'out_for_delivery',
+            'cod_amount_minor' => 12500,
+        ]);
+        $delivery['parcel']->update(['status' => 'out_for_delivery']);
+        Sanctum::actingAs($rider['user']);
+
+        $basePath = "/api/mobile/rider/deliveries/{$delivery['shipment']->shipment_no}";
+        $this->postJson("{$basePath}/fail", [
+            'failure_reason' => 'Recipient unavailable.',
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.status_raw', 'delivery_failed');
+
+        $this->getJson($basePath)
+            ->assertOk()
+            ->assertJsonPath('data.can_retry', true)
+            ->assertJsonPath('data.retry_available_at', null)
+            ->assertJsonPath('data.retry_unavailable_reason', null);
+
+        $this->postJson("{$basePath}/retry")
+            ->assertOk()
+            ->assertJsonPath('message', 'Delivery retry started. Assigned parcels are out for delivery.')
+            ->assertJsonPath('data.status', 'Out for Delivery')
+            ->assertJsonPath('data.status_raw', 'out_for_delivery')
+            ->assertJsonPath('data.can_retry', false)
+            ->assertJsonPath('data.parcels.0.status', 'out_for_delivery');
+
+        $this->postJson("{$basePath}/retry")->assertStatus(409);
+
+        $this->assertSame('out_for_delivery', $delivery['shipment']->fresh()->status);
+        $this->assertSame('out_for_delivery', $delivery['parcel']->fresh()->status);
+        $this->assertDatabaseCount('delivery_attempts', 1);
+        $this->assertDatabaseCount('delivery_proofs', 0);
+        $this->assertDatabaseCount('cod_cash_collections', 0);
+        $this->assertSame(1, $delivery['shipment']->events()
+            ->where('event_type', 'parcel_delivery_retried')->count());
+        $this->assertSame(1, $delivery['shipment']->events()
+            ->where('event_type', 'shipment_delivery_retried')->count());
+    }
+
+    public function test_mobile_retry_exposes_and_enforces_future_schedule(): void
+    {
+        Notification::fake();
+        $provider = $this->makeProvider('retry-scheduled');
+        $rider = $this->makeRider($provider, 'retry-scheduled');
+        $delivery = $this->makeDelivery($provider, $rider, 'RETRY-SCHEDULED');
+        $delivery['shipment']->update(['status' => 'out_for_delivery']);
+        $delivery['parcel']->update(['status' => 'out_for_delivery']);
+        Sanctum::actingAs($rider['user']);
+
+        $basePath = "/api/mobile/rider/deliveries/{$delivery['shipment']->shipment_no}";
+        $this->postJson("{$basePath}/fail", [
+            'failure_reason' => 'Recipient unavailable.',
+        ])->assertOk();
+
+        $futureAt = now()->addHour();
+        DeliveryAttempt::query()->sole()->update(['next_attempt_at' => $futureAt]);
+
+        $this->getJson($basePath)
+            ->assertOk()
+            ->assertJsonPath('data.can_retry', false)
+            ->assertJsonPath('data.retry_available_at', $futureAt->copy()->utc()->toIso8601String())
+            ->assertJsonPath('data.retry_unavailable_reason', 'Retry is scheduled for a later time.');
+
+        $this->postJson("{$basePath}/retry")->assertStatus(409);
+        $this->assertSame('failed', $delivery['parcel']->fresh()->status);
+        $this->assertSame('delivery_failed', $delivery['shipment']->fresh()->status);
+        $this->assertSame(0, $delivery['shipment']->events()
+            ->where('event_type', 'parcel_delivery_retried')->count());
+        $this->assertDatabaseCount('delivery_attempts', 1);
+        $this->assertDatabaseCount('cod_cash_collections', 0);
+    }
+
+    public function test_mobile_retry_rejects_foreign_riders_inactive_providers_and_non_dispatched_batches(): void
+    {
+        Notification::fake();
+        $provider = $this->makeProvider('retry-security');
+        $rider = $this->makeRider($provider, 'retry-security');
+        $foreignRider = $this->makeRider($provider, 'retry-foreign');
+        $delivery = $this->makeDelivery($provider, $rider, 'RETRY-SECURITY');
+        $delivery['shipment']->update(['status' => 'out_for_delivery']);
+        $delivery['parcel']->update(['status' => 'out_for_delivery']);
+        $basePath = "/api/mobile/rider/deliveries/{$delivery['shipment']->shipment_no}";
+
+        Sanctum::actingAs($rider['user']);
+        $this->postJson("{$basePath}/fail", [
+            'failure_reason' => 'Recipient unavailable.',
+        ])->assertOk();
+
+        Sanctum::actingAs($foreignRider['user']);
+        $this->postJson("{$basePath}/retry")->assertNotFound();
+        $this->assertSame('failed', $delivery['parcel']->fresh()->status);
+
+        Sanctum::actingAs($rider['user']);
+        $provider['profile']->update(['status' => 'inactive']);
+        $this->postJson("{$basePath}/retry")->assertForbidden();
+        $provider['profile']->update(['status' => 'active']);
+
+        $provider['user']->update(['status' => 'suspended']);
+        $this->postJson("{$basePath}/retry")->assertForbidden();
+        $provider['user']->update(['status' => 'active']);
+
+        $delivery['batch']->update(['status' => 'completed']);
+        $this->getJson($basePath)
+            ->assertOk()
+            ->assertJsonPath('data.can_retry', false);
+        $this->postJson("{$basePath}/retry")->assertNotFound();
+
+        $this->assertSame('failed', $delivery['parcel']->fresh()->status);
+        $this->assertSame('delivery_failed', $delivery['shipment']->fresh()->status);
+        $this->assertDatabaseCount('delivery_attempts', 1);
+        $this->assertSame(0, $delivery['shipment']->events()
+            ->where('event_type', 'parcel_delivery_retried')->count());
+    }
+
     public function test_mobile_delivery_failure_requires_a_reason_and_out_for_delivery_parcels(): void
     {
         Notification::fake();

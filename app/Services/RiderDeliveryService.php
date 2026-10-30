@@ -17,6 +17,7 @@ use App\Models\User;
 use App\Notifications\WorkflowNotification;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -554,6 +555,13 @@ class RiderDeliveryService
         ?float $longitude = null,
         mixed $nextAttemptAt = null
     ): Shipment {
+        if ($nextAttemptAt !== null) {
+            $nextAttemptAt = Carbon::parse(
+                $nextAttemptAt,
+                config('app.timezone', 'UTC'),
+            )->utc();
+        }
+
         return DB::transaction(
             function () use (
                 $shipmentNo,
@@ -855,6 +863,155 @@ class RiderDeliveryService
         );
     }
 
+    /**
+     * Return the server-authoritative retry state for an assigned delivery.
+     * This is used by Web and Mobile presentation; retryDelivery() repeats the
+     * same state checks while holding transaction locks before changing data.
+     *
+     * @return array{can_retry: bool, retry_available_at: Carbon|null, retry_unavailable_reason: string|null}
+     */
+    public function retryEligibility(string $shipmentNo, User $actor): array
+    {
+        $unavailable = static fn (string $reason): array => [
+            'can_retry' => false,
+            'retry_available_at' => null,
+            'retry_unavailable_reason' => $reason,
+        ];
+
+        if (
+            $actor->role !== UserRole::Rider->value
+            || $actor->status !== AccountStatus::Active->value
+        ) {
+            return $unavailable('This Rider account is not eligible to retry.');
+        }
+
+        $rider = $actor->riderProfile()->first();
+        if (! $rider || $rider->verification_status !== 'approved') {
+            return $unavailable('An approved Rider profile is required to retry.');
+        }
+
+        $rider->loadMissing('logisticsProfile.user');
+        $provider = $rider->logisticsProfile;
+        $providerUser = $provider?->user;
+        if (
+            ! $provider
+            || $provider->status !== AccountStatus::Active->value
+            || $providerUser?->status !== AccountStatus::Active->value
+            || ! $providerUser->hasRole(UserRole::Logistics->value)
+        ) {
+            return $unavailable('An active Logistics provider is required to retry.');
+        }
+
+        $shipment = Shipment::query()
+            ->where('shipment_no', $shipmentNo)
+            ->first();
+        if (
+            ! $shipment
+            || (int) $shipment->logistics_profile_id !== (int) $provider->id
+        ) {
+            return $unavailable('This delivery is not available for retry.');
+        }
+
+        $batches = DispatchBatch::query()
+            ->where('rider_profile_id', $rider->id)
+            ->where('status', 'dispatched')
+            ->whereHas('parcels', fn ($query) => $query
+                ->where('parcels.shipment_id', $shipment->id))
+            ->with(['parcels' => fn ($query) => $query
+                ->where('parcels.shipment_id', $shipment->id)])
+            ->get();
+
+        if ($batches->isEmpty()) {
+            return $unavailable('This delivery is not assigned to you for retry.');
+        }
+
+        $parcels = $batches
+            ->flatMap(fn (DispatchBatch $batch) => $batch->parcels)
+            ->unique('id')
+            ->values();
+
+        return $this->retryStateEligibility($shipment, $parcels);
+    }
+
+    /**
+     * Evaluate shipment, parcel, and most recent failed-attempt schedules.
+     * A missing attempt/schedule remains eligible; any future schedule blocks
+     * the grouped retry until the latest scheduled parcel is due.
+     *
+     * @param  Collection<int, Parcel>  $parcels
+     * @return array{can_retry: bool, retry_available_at: Carbon|null, retry_unavailable_reason: string|null}
+     */
+    private function retryStateEligibility(
+        Shipment $shipment,
+        Collection $parcels,
+        bool $lockAttempts = false,
+    ): array {
+        $unavailable = static fn (string $reason): array => [
+            'can_retry' => false,
+            'retry_available_at' => null,
+            'retry_unavailable_reason' => $reason,
+        ];
+
+        if (! in_array($shipment->status, [
+            ShipmentStatus::DeliveryFailed->value,
+            ShipmentStatus::OutForDelivery->value,
+        ], true)) {
+            return $unavailable('This shipment is no longer eligible for retry.');
+        }
+
+        if (
+            $parcels->isEmpty()
+            || $parcels->contains(fn (Parcel $parcel) => $parcel->status !== ParcelStatus::Failed->value)
+        ) {
+            return $unavailable('All assigned parcels must be in failed status to retry.');
+        }
+
+        $attemptsQuery = DeliveryAttempt::query()
+            ->whereIn('parcel_id', $parcels->pluck('id'))
+            ->where('outcome', DeliveryAttemptOutcome::Failed->value)
+            ->orderByDesc('attempt_no')
+            ->orderByDesc('id');
+
+        if ($lockAttempts) {
+            $attemptsQuery->lockForUpdate();
+        }
+
+        $latestAttempts = $attemptsQuery
+            ->get(['id', 'parcel_id', 'attempt_no', 'next_attempt_at'])
+            ->unique('parcel_id');
+
+        $now = now();
+        $latestFutureSchedule = $latestAttempts
+            ->map(function (DeliveryAttempt $attempt): ?Carbon {
+                $rawSchedule = $attempt->getRawOriginal('next_attempt_at');
+
+                return $rawSchedule
+                    ? Carbon::parse($rawSchedule, 'UTC')
+                    : null;
+            })
+            ->filter(fn (?Carbon $scheduledAt) => $scheduledAt
+                && $scheduledAt->greaterThan($now->copy()->utc()))
+            ->reduce(function (?Carbon $latest, Carbon $scheduledAt): Carbon {
+                return ! $latest || $scheduledAt->greaterThan($latest)
+                    ? $scheduledAt
+                    : $latest;
+            });
+
+        if ($latestFutureSchedule) {
+            return [
+                'can_retry' => false,
+                'retry_available_at' => $latestFutureSchedule->copy(),
+                'retry_unavailable_reason' => 'Retry is scheduled for a later time.',
+            ];
+        }
+
+        return [
+            'can_retry' => true,
+            'retry_available_at' => null,
+            'retry_unavailable_reason' => null,
+        ];
+    }
+
     public function retryDelivery(
         string $shipmentNo,
         User $actor
@@ -883,6 +1040,20 @@ class RiderDeliveryService
                 ) {
                     throw new AuthorizationException(
                         'An approved Rider profile is required.'
+                    );
+                }
+
+                $rider->loadMissing('logisticsProfile.user');
+                $provider = $rider->logisticsProfile;
+                $providerUser = $provider?->user;
+                if (
+                    ! $provider
+                    || $provider->status !== AccountStatus::Active->value
+                    || $providerUser?->status !== AccountStatus::Active->value
+                    || ! $providerUser->hasRole(UserRole::Logistics->value)
+                ) {
+                    throw new AuthorizationException(
+                        'An active Logistics provider is required to retry delivery.'
                     );
                 }
 
@@ -973,6 +1144,18 @@ class RiderDeliveryService
                             'Only failed parcels can retry delivery.'
                         );
                     }
+                }
+
+                $eligibility = $this->retryStateEligibility(
+                    $shipment,
+                    $parcels,
+                    lockAttempts: true,
+                );
+                if (! $eligibility['can_retry']) {
+                    throw new ConflictHttpException(
+                        $eligibility['retry_unavailable_reason']
+                            ?: 'This delivery is not currently eligible for retry.'
+                    );
                 }
 
                 $now = now();

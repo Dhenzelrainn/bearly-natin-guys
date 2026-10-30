@@ -574,7 +574,7 @@
                                     >
 
                                     <small class="delivery-field-help" id="delivery-next-attempt-help">
-                                        Leave blank if no retry time is scheduled.
+                                        Leave blank if no retry time is scheduled. Enter times in {{ config('app.timezone', 'UTC') }}.
                                     </small>
 
                                     @error('next_attempt_at')
@@ -617,17 +617,35 @@
                         </span>
                     </div>
 
-                    <form
-                        method="POST"
-                        action="{{ route('rider.orders.delivery.retry', $job['id']) }}"
-                    >
-                        @csrf
+                    @if(($job['can_retry'] ?? false) === true)
+                        <form
+                            method="POST"
+                            action="{{ route('rider.orders.delivery.retry', $job['id']) }}"
+                        >
+                            @csrf
 
-                        <button class="button button-primary delivery-primary-action" type="submit">
-                            <i data-lucide="rotate-ccw"></i>
-                            Retry delivery
-                        </button>
-                    </form>
+                            <button class="button button-primary delivery-primary-action" type="submit">
+                                <i data-lucide="rotate-ccw"></i>
+                                Retry delivery
+                            </button>
+                        </form>
+                    @elseif(!empty($job['retry_available_at']))
+                        <div class="delivery-action-note is-warning" role="status">
+                            <i data-lucide="clock-3"></i>
+                            <span>
+                                <strong>Retry is scheduled for a later time.</strong>
+                                <small>Retry will be available at {{ $job['retry_available_at']->copy()->timezone(config('app.timezone'))->format('M j, Y g:i A T') }}.</small>
+                            </span>
+                        </div>
+                    @else
+                        <div class="delivery-action-note is-warning" role="status">
+                            <i data-lucide="triangle-alert"></i>
+                            <span>
+                                <strong>Retry is unavailable for this delivery.</strong>
+                                <small>{{ $job['retry_unavailable_reason'] ?? 'The current shipment or parcel state does not allow another attempt.' }}</small>
+                            </span>
+                        </div>
+                    @endif
                 @elseif($job['status'] === 'Delivered')
                     <div class="delivery-action-note is-success" role="status">
                         <i data-lucide="circle-check"></i>

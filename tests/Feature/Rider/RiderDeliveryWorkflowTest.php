@@ -7,6 +7,7 @@ use App\Enums\ShipmentStatus;
 use App\Models\Address;
 use App\Models\Category;
 use App\Models\DispatchBatch;
+use App\Models\DeliveryAttempt;
 use App\Models\LogisticsProfile;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -37,6 +38,7 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 
@@ -3294,6 +3296,269 @@ class RiderDeliveryWorkflowTest extends TestCase
         ]);
     }
 
+    public function test_retry_allows_an_elapsed_schedule_and_the_exact_schedule_boundary(): void
+    {
+        Notification::fake();
+        $now = Carbon::parse('2026-10-30 12:00:00', 'UTC');
+        $this->travelTo($now);
+
+        $rider = $this->makeRider('RETRY-BOUNDARY');
+        $assignment = $this->makeDispatchAssignment(
+            $rider,
+            'RETRY-BOUNDARY',
+            1,
+            0,
+            'Retry Boundary Recipient',
+        );
+        $service = app(RiderDeliveryService::class);
+
+        $service->startDelivery($assignment['shipment']->shipment_no, $rider->user);
+        $scheduledAt = now()->addMinute();
+        $localScheduledAt = $scheduledAt->copy()->timezone('Asia/Manila');
+        $service->failDelivery(
+            $assignment['shipment']->shipment_no,
+            $rider->user,
+            'Recipient unavailable.',
+            nextAttemptAt: $localScheduledAt,
+        );
+
+        $storedSchedule = $assignment['parcels'][0]
+            ->deliveryAttempts()
+            ->latest('id')
+            ->firstOrFail()
+            ->next_attempt_at;
+        $this->assertTrue($storedSchedule->copy()->utc()->equalTo($scheduledAt));
+
+        $eligibility = $service->retryEligibility(
+            $assignment['shipment']->shipment_no,
+            $rider->user,
+        );
+        $this->assertFalse($eligibility['can_retry']);
+        $this->assertSame(
+            $scheduledAt->copy()->utc()->format('Y-m-d H:i:s'),
+            $eligibility['retry_available_at']->format('Y-m-d H:i:s'),
+        );
+
+        $this->travelTo($scheduledAt);
+        $this->assertTrue($service->retryEligibility(
+            $assignment['shipment']->shipment_no,
+            $rider->user,
+        )['can_retry']);
+        $service->retryDelivery($assignment['shipment']->shipment_no, $rider->user);
+
+        $this->assertSame('out_for_delivery', $assignment['parcels'][0]->fresh()->status);
+        $this->assertDatabaseCount('delivery_attempts', 1);
+    }
+
+    public function test_retry_allows_an_elapsed_schedule_but_blocks_a_future_schedule_without_changes(): void
+    {
+        Notification::fake();
+        $rider = $this->makeRider('RETRY-SCHEDULE');
+        $assignment = $this->makeDispatchAssignment(
+            $rider,
+            'RETRY-SCHEDULE',
+            1,
+            0,
+            'Retry Schedule Recipient',
+        );
+        $service = app(RiderDeliveryService::class);
+        $service->startDelivery($assignment['shipment']->shipment_no, $rider->user);
+        $service->failDelivery(
+            $assignment['shipment']->shipment_no,
+            $rider->user,
+            'Recipient unavailable.',
+        );
+
+        DeliveryAttempt::query()->sole()->update([
+            'next_attempt_at' => now()->subMinute(),
+        ]);
+        $this->assertTrue($service->retryEligibility(
+            $assignment['shipment']->shipment_no,
+            $rider->user,
+        )['can_retry']);
+
+        // Re-fail in an isolated second assignment to test a future schedule.
+        $futureAssignment = $this->makeDispatchAssignment(
+            $rider,
+            'RETRY-FUTURE-SCHEDULE',
+            1,
+            0,
+            'Future Retry Recipient',
+        );
+        $service->startDelivery($futureAssignment['shipment']->shipment_no, $rider->user);
+        $futureAt = now()->addHour();
+        $service->failDelivery(
+            $futureAssignment['shipment']->shipment_no,
+            $rider->user,
+            'Recipient unavailable.',
+            nextAttemptAt: $futureAt,
+        );
+
+        $eligibility = $service->retryEligibility(
+            $futureAssignment['shipment']->shipment_no,
+            $rider->user,
+        );
+        $this->assertFalse($eligibility['can_retry']);
+        $this->assertSame(
+            $futureAt->copy()->utc()->format('Y-m-d H:i:s'),
+            $eligibility['retry_available_at']->format('Y-m-d H:i:s'),
+        );
+
+        try {
+            $service->retryDelivery($futureAssignment['shipment']->shipment_no, $rider->user);
+            $this->fail('Expected a future retry schedule to block the retry.');
+        } catch (ConflictHttpException $exception) {
+            $this->assertSame('Retry is scheduled for a later time.', $exception->getMessage());
+        }
+
+        $this->assertSame('failed', $futureAssignment['parcels'][0]->fresh()->status);
+        $this->assertSame('delivery_failed', $futureAssignment['shipment']->fresh()->status);
+        $this->assertSame(0, $futureAssignment['shipment']->events()->where('event_type', 'parcel_delivery_retried')->count());
+    }
+
+    public function test_retry_blocks_when_any_parcel_in_the_rider_group_is_not_due(): void
+    {
+        Notification::fake();
+        $rider = $this->makeRider('RETRY-MULTI-SCHEDULE');
+        $assignment = $this->makeDispatchAssignment(
+            $rider,
+            'RETRY-MULTI-SCHEDULE',
+            2,
+            0,
+            'Multi Schedule Recipient',
+        );
+        $service = app(RiderDeliveryService::class);
+        $service->startDelivery($assignment['shipment']->shipment_no, $rider->user);
+        $service->failDelivery(
+            $assignment['shipment']->shipment_no,
+            $rider->user,
+            'Recipient unavailable.',
+        );
+
+        $assignment['parcels'][0]->deliveryAttempts()->latest('id')->firstOrFail()
+            ->update(['next_attempt_at' => now()->subMinute()]);
+        $futureAt = now()->addMinutes(20);
+        $assignment['parcels'][1]->deliveryAttempts()->latest('id')->firstOrFail()
+            ->update(['next_attempt_at' => $futureAt]);
+
+        $eligibility = $service->retryEligibility(
+            $assignment['shipment']->shipment_no,
+            $rider->user,
+        );
+        $this->assertFalse($eligibility['can_retry']);
+        $this->assertSame(
+            $futureAt->copy()->utc()->format('Y-m-d H:i:s'),
+            $eligibility['retry_available_at']->format('Y-m-d H:i:s'),
+        );
+
+        try {
+            $service->retryDelivery($assignment['shipment']->shipment_no, $rider->user);
+            $this->fail('Expected one future parcel schedule to block the grouped retry.');
+        } catch (ConflictHttpException) {
+            // Expected; neither parcel should transition.
+        }
+
+        $this->assertSame(
+            ['failed', 'failed'],
+            $assignment['parcels']->map(fn (Parcel $parcel) => $parcel->fresh()->status)->all(),
+        );
+        $this->assertSame(0, $assignment['shipment']->events()->where('event_type', 'parcel_delivery_retried')->count());
+    }
+
+    public function test_retry_rejects_terminal_shipment_and_terminal_parcel_states(): void
+    {
+        Notification::fake();
+        $rider = $this->makeRider('RETRY-TERMINAL');
+        $service = app(RiderDeliveryService::class);
+
+        foreach ([
+            ['suffix' => 'RETRY-DELIVERED', 'shipment' => ShipmentStatus::Delivered->value, 'parcel' => ParcelStatus::Failed->value],
+            ['suffix' => 'RETRY-CANCELLED', 'shipment' => ShipmentStatus::Cancelled->value, 'parcel' => ParcelStatus::Failed->value],
+            ['suffix' => 'RETRY-RTS', 'shipment' => ShipmentStatus::ReturnToSender->value, 'parcel' => ParcelStatus::Failed->value],
+            ['suffix' => 'RETRY-RETURNED', 'shipment' => ShipmentStatus::DeliveryFailed->value, 'parcel' => ParcelStatus::Returned->value],
+            ['suffix' => 'RETRY-LOST', 'shipment' => ShipmentStatus::DeliveryFailed->value, 'parcel' => ParcelStatus::Lost->value],
+            ['suffix' => 'RETRY-DAMAGED', 'shipment' => ShipmentStatus::DeliveryFailed->value, 'parcel' => ParcelStatus::Damaged->value],
+            ['suffix' => 'RETRY-DELIVERED-PARCEL', 'shipment' => ShipmentStatus::DeliveryFailed->value, 'parcel' => ParcelStatus::Delivered->value],
+        ] as $case) {
+            $assignment = $this->makeDispatchAssignment(
+                $rider,
+                $case['suffix'],
+                1,
+                0,
+                'Terminal Retry Recipient',
+            );
+            $service->startDelivery($assignment['shipment']->shipment_no, $rider->user);
+            $service->failDelivery($assignment['shipment']->shipment_no, $rider->user, 'Recipient unavailable.');
+            $assignment['shipment']->update(['status' => $case['shipment']]);
+            $assignment['parcels'][0]->update(['status' => $case['parcel']]);
+
+            $this->assertFalse($service->retryEligibility(
+                $assignment['shipment']->shipment_no,
+                $rider->user,
+            )['can_retry']);
+
+            try {
+                $service->retryDelivery($assignment['shipment']->shipment_no, $rider->user);
+                $this->fail("Expected {$case['suffix']} to be rejected.");
+            } catch (ConflictHttpException) {
+                // Expected; terminal state must remain unchanged.
+            }
+
+            $this->assertSame($case['shipment'], $assignment['shipment']->fresh()->status);
+            $this->assertSame($case['parcel'], $assignment['parcels'][0]->fresh()->status);
+        }
+    }
+
+    public function test_shared_retry_service_requires_an_active_logistics_provider_and_owner(): void
+    {
+        Notification::fake();
+        $rider = $this->makeRider('RETRY-PROVIDER-STATUS');
+        $assignment = $this->makeDispatchAssignment(
+            $rider,
+            'RETRY-PROVIDER-STATUS',
+            1,
+            0,
+            'Provider Eligibility Recipient',
+        );
+        $service = app(RiderDeliveryService::class);
+        $service->startDelivery($assignment['shipment']->shipment_no, $rider->user);
+        $service->failDelivery(
+            $assignment['shipment']->shipment_no,
+            $rider->user,
+            'Recipient unavailable.',
+        );
+
+        $this->logisticsProfile->update(['status' => 'inactive']);
+        $this->assertFalse($service->retryEligibility(
+            $assignment['shipment']->shipment_no,
+            $rider->user,
+        )['can_retry']);
+        try {
+            $service->retryDelivery($assignment['shipment']->shipment_no, $rider->user);
+            $this->fail('Expected an inactive Logistics provider to be denied.');
+        } catch (AuthorizationException) {
+            // Expected.
+        }
+
+        $this->logisticsProfile->update(['status' => 'active']);
+        $this->logistics->update(['status' => 'suspended']);
+        $this->assertFalse($service->retryEligibility(
+            $assignment['shipment']->shipment_no,
+            $rider->user,
+        )['can_retry']);
+        try {
+            $service->retryDelivery($assignment['shipment']->shipment_no, $rider->user);
+            $this->fail('Expected a suspended Logistics owner to be denied.');
+        } catch (AuthorizationException) {
+            // Expected.
+        }
+
+        $this->assertSame('failed', $assignment['parcels'][0]->fresh()->status);
+        $this->assertDatabaseCount('delivery_attempts', 1);
+        $this->assertSame(0, $assignment['shipment']->events()
+            ->where('event_type', 'parcel_delivery_retried')->count());
+    }
+
     public function test_retry_delivery_route_reopens_failed_delivery(): void
     {
         $rider = $this->makeRider('RETRY-HTTP');
@@ -3354,6 +3619,41 @@ class RiderDeliveryWorkflowTest extends TestCase
             'delivery_attempts',
             1
         );
+    }
+
+    public function test_web_retry_action_is_hidden_until_the_server_says_it_is_eligible(): void
+    {
+        Notification::fake();
+        $rider = $this->makeRider('RETRY-WEB-SCHEDULE');
+        $assignment = $this->makeDispatchAssignment(
+            $rider,
+            'RETRY-WEB-SCHEDULE',
+            1,
+            0,
+            'Web Retry Schedule Recipient',
+        );
+        $service = app(RiderDeliveryService::class);
+        $service->startDelivery($assignment['shipment']->shipment_no, $rider->user);
+        $futureAt = now()->addHour();
+        $service->failDelivery(
+            $assignment['shipment']->shipment_no,
+            $rider->user,
+            'Recipient unavailable.',
+            nextAttemptAt: $futureAt,
+        );
+
+        $this->actingAs($rider->user)
+            ->get(route('rider.orders.delivery', $assignment['shipment']->shipment_no))
+            ->assertOk()
+            ->assertSeeText('Retry is scheduled for a later time.')
+            ->assertDontSee(route('rider.orders.delivery.retry', $assignment['shipment']->shipment_no));
+
+        $assignment['parcels'][0]->deliveryAttempts()->latest('id')->firstOrFail()
+            ->update(['next_attempt_at' => now()->subMinute()]);
+
+        $this->get(route('rider.orders.delivery', $assignment['shipment']->shipment_no))
+            ->assertOk()
+            ->assertSeeText('Retry delivery');
     }
 
     public function test_retry_delivery_cannot_be_repeated_while_out_for_delivery(): void

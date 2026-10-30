@@ -115,6 +115,185 @@ class MobileRiderReadApiTest extends TestCase
         ]);
     }
 
+    public function test_mobile_rider_starts_an_owned_delivery_and_receives_server_state(): void
+    {
+        $provider = $this->makeProvider('start-success');
+        $rider = $this->makeRider($provider, 'start-success');
+        $delivery = $this->makeDelivery($provider, $rider, 'START-SUCCESS');
+        $delivery['shipment']->update(['status' => 'dispatched']);
+
+        Sanctum::actingAs($rider['user']);
+
+        $this->getJson("/api/mobile/rider/deliveries/{$delivery['shipment']->shipment_no}")
+            ->assertOk()
+            ->assertJsonPath('data.can_start_delivery', true);
+
+        $this->postJson("/api/mobile/rider/deliveries/{$delivery['shipment']->shipment_no}/start")
+            ->assertOk()
+            ->assertJsonPath('message', 'Delivery started. Assigned parcels are now out for delivery.')
+            ->assertJsonPath('data.id', $delivery['shipment']->shipment_no)
+            ->assertJsonPath('data.status', 'Out for Delivery')
+            ->assertJsonPath('data.can_start_delivery', false)
+            ->assertJsonPath('data.parcels.0.status', 'out_for_delivery');
+
+        $this->getJson('/api/mobile/rider/deliveries')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.status', 'Out for Delivery');
+
+        $this->assertSame('out_for_delivery', $delivery['shipment']->fresh()->status);
+        $this->assertSame('out_for_delivery', $delivery['parcel']->fresh()->status);
+        $this->assertDatabaseHas('shipment_events', [
+            'shipment_id' => $delivery['shipment']->id,
+            'event_type' => 'shipment_out_for_delivery',
+            'to_status' => 'out_for_delivery',
+        ]);
+    }
+
+    public function test_mobile_delivery_start_rejects_replayed_requests_without_duplicate_events(): void
+    {
+        $provider = $this->makeProvider('start-replay');
+        $rider = $this->makeRider($provider, 'start-replay');
+        $delivery = $this->makeDelivery($provider, $rider, 'START-REPLAY');
+        $delivery['shipment']->update(['status' => 'dispatched']);
+        Sanctum::actingAs($rider['user']);
+
+        $path = "/api/mobile/rider/deliveries/{$delivery['shipment']->shipment_no}/start";
+        $this->postJson($path)->assertOk();
+        $this->postJson($path)->assertStatus(409);
+
+        $this->assertSame(1, $delivery['shipment']->events()
+            ->where('event_type', 'shipment_out_for_delivery')->count());
+        $this->assertSame('out_for_delivery', $delivery['parcel']->fresh()->status);
+    }
+
+    public function test_mobile_delivery_start_is_hidden_from_other_riders_and_providers(): void
+    {
+        $provider = $this->makeProvider('start-scope');
+        $rider = $this->makeRider($provider, 'start-owner');
+        $otherRider = $this->makeRider($provider, 'start-other');
+        $own = $this->makeDelivery($provider, $rider, 'START-OWN');
+        $foreign = $this->makeDelivery($provider, $otherRider, 'START-FOREIGN');
+        $own['shipment']->update(['status' => 'dispatched']);
+        $foreign['shipment']->update(['status' => 'dispatched']);
+
+        Sanctum::actingAs($rider['user']);
+        $path = "/api/mobile/rider/deliveries/{$foreign['shipment']->shipment_no}";
+        $this->getJson($path)->assertNotFound();
+        $this->postJson("{$path}/start")->assertNotFound();
+
+        $otherProvider = $this->makeProvider('start-wrong-provider');
+        $mismatched = $this->makeDelivery($otherProvider, $rider, 'START-WRONG-PROVIDER');
+        $mismatched['shipment']->update(['status' => 'dispatched']);
+        $mismatchPath = "/api/mobile/rider/deliveries/{$mismatched['shipment']->shipment_no}/start";
+        $this->postJson($mismatchPath)->assertNotFound();
+
+        $this->assertSame('dispatched', $own['shipment']->fresh()->status);
+        $this->assertSame('dispatched', $foreign['shipment']->fresh()->status);
+        $this->assertSame('dispatched', $mismatched['shipment']->fresh()->status);
+    }
+
+    public function test_mobile_delivery_start_requires_active_approved_rider_and_logistics_provider(): void
+    {
+        $provider = $this->makeProvider('start-eligibility');
+        $unapproved = $this->makeRider($provider, 'start-unapproved', 'pending');
+        $unapprovedDelivery = $this->makeDelivery($provider, $unapproved, 'START-UNAPPROVED');
+        $unapprovedDelivery['shipment']->update(['status' => 'dispatched']);
+        Sanctum::actingAs($unapproved['user']);
+        $this->postJson("/api/mobile/rider/deliveries/{$unapprovedDelivery['shipment']->shipment_no}/start")
+            ->assertForbidden();
+        $this->assertSame('dispatched', $unapprovedDelivery['shipment']->fresh()->status);
+
+        $inactiveUserRider = $this->makeRider($provider, 'start-inactive-user');
+        $inactiveUserDelivery = $this->makeDelivery($provider, $inactiveUserRider, 'START-INACTIVE-USER');
+        $inactiveUserDelivery['shipment']->update(['status' => 'dispatched']);
+        $inactiveUserRider['user']->update(['status' => 'suspended']);
+        Sanctum::actingAs($inactiveUserRider['user']);
+        $this->postJson("/api/mobile/rider/deliveries/{$inactiveUserDelivery['shipment']->shipment_no}/start")
+            ->assertForbidden();
+
+        $provider['profile']->update(['status' => 'inactive']);
+        Sanctum::actingAs($unapproved['user']->fresh());
+        // Restore a valid Rider profile so this assertion isolates provider state.
+        $unapproved['profile']->update(['verification_status' => 'approved']);
+        $this->postJson("/api/mobile/rider/deliveries/{$unapprovedDelivery['shipment']->shipment_no}/start")
+            ->assertForbidden();
+
+        $provider['profile']->update(['status' => 'active']);
+        $provider['user']->update(['status' => 'suspended']);
+        $this->postJson("/api/mobile/rider/deliveries/{$unapprovedDelivery['shipment']->shipment_no}/start")
+            ->assertForbidden();
+        $this->assertSame('dispatched', $unapprovedDelivery['shipment']->fresh()->status);
+    }
+
+    public function test_mobile_delivery_start_rejects_invalid_shipment_and_parcel_states(): void
+    {
+        $provider = $this->makeProvider('start-invalid-state');
+        $rider = $this->makeRider($provider, 'start-invalid-state');
+        $shipmentInvalid = $this->makeDelivery($provider, $rider, 'START-SHIPMENT-INVALID');
+        $shipmentInvalid['shipment']->update(['status' => 'picked_up']);
+        $parcelInvalid = $this->makeDelivery($provider, $rider, 'START-PARCEL-INVALID');
+        $parcelInvalid['shipment']->update(['status' => 'dispatched']);
+        $parcelInvalid['parcel']->update(['status' => 'picked_up']);
+        Sanctum::actingAs($rider['user']);
+
+        $this->postJson("/api/mobile/rider/deliveries/{$shipmentInvalid['shipment']->shipment_no}/start")
+            ->assertStatus(409);
+        $this->postJson("/api/mobile/rider/deliveries/{$parcelInvalid['shipment']->shipment_no}/start")
+            ->assertStatus(409);
+
+        $this->assertSame('picked_up', $shipmentInvalid['shipment']->fresh()->status);
+        $this->assertSame('picked_up', $parcelInvalid['parcel']->fresh()->status);
+    }
+
+    public function test_mobile_start_preserves_multi_rider_shipment_aggregation(): void
+    {
+        $provider = $this->makeProvider('start-multi-rider');
+        $firstRider = $this->makeRider($provider, 'start-multi-first');
+        $secondRider = $this->makeRider($provider, 'start-multi-second');
+        $delivery = $this->makeDelivery($provider, $firstRider, 'START-MULTI');
+        $delivery['shipment']->update(['status' => 'dispatched']);
+
+        $secondParcel = Parcel::query()->create([
+            'shipment_id' => $delivery['shipment']->id,
+            'waybill_id' => $delivery['parcel']->waybill_id,
+            'parcel_no' => 'PARCEL-START-MULTI-2',
+            'piece_sequence' => 2,
+            'weight_kg' => 1.250,
+            'size_class' => 'small',
+            'status' => 'dispatched',
+        ]);
+        $secondBatch = DispatchBatch::query()->create([
+            'batch_no' => 'BATCH-START-MULTI-2',
+            'sorting_center_id' => $delivery['batch']->sorting_center_id,
+            'rider_profile_id' => $secondRider['profile']->id,
+            'status' => 'dispatched',
+            'dispatched_at' => now(),
+        ]);
+        $secondBatch->parcels()->attach($secondParcel->id);
+
+        Sanctum::actingAs($firstRider['user']);
+        $this->postJson("/api/mobile/rider/deliveries/{$delivery['shipment']->shipment_no}/start")
+            ->assertOk()
+            ->assertJsonPath('data.parcel_count', 1)
+            ->assertJsonPath('data.status', 'Out for Delivery');
+        $this->assertSame('dispatched', $delivery['shipment']->fresh()->status);
+        $this->assertSame('out_for_delivery', $delivery['parcel']->fresh()->status);
+        $this->assertSame('dispatched', $secondParcel->fresh()->status);
+
+        Sanctum::actingAs($secondRider['user']);
+        $this->getJson('/api/mobile/rider/deliveries')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.parcels.0.parcel_no', $secondParcel->parcel_no);
+        $this->postJson("/api/mobile/rider/deliveries/{$delivery['shipment']->shipment_no}/start")
+            ->assertOk()
+            ->assertJsonPath('data.status', 'Out for Delivery');
+
+        $this->assertSame('out_for_delivery', $delivery['shipment']->fresh()->status);
+        $this->assertSame('out_for_delivery', $secondParcel->fresh()->status);
+    }
+
     public function test_unapproved_rider_profiles_cannot_use_rider_mobile_routes(): void
     {
         $provider = $this->makeProvider('approval');

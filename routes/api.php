@@ -79,6 +79,9 @@ Route::prefix('/mobile/rider')
         Route::get('/deliveries/{shipmentNo}', [RiderController::class, 'mobileDelivery'])
             ->middleware('throttle:60,1')
             ->name('deliveries.show');
+        Route::post('/deliveries/{shipmentNo}/start', [RiderController::class, 'mobileStartDelivery'])
+            ->middleware('throttle:60,1')
+            ->name('deliveries.start');
     });
 
 Route::prefix('/mobile/buyer')

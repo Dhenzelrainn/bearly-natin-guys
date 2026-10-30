@@ -6,6 +6,7 @@ use App\Enums\AccountStatus;
 use App\Enums\ParcelStatus;
 use App\Enums\UserRole;
 use App\Models\Conversation;
+use App\Models\DispatchBatch;
 use App\Models\Message;
 use App\Models\MessageAttachment;
 use App\Models\OrderItem;
@@ -256,6 +257,8 @@ class RiderController extends Controller
                                 return [
                                     'shipment_id' => $shipment->id,
 
+                                    'shipment_status' => $shipment->status,
+
                                     'id' => $shipment
                                         ->shipment_no,
 
@@ -318,6 +321,8 @@ class RiderController extends Controller
                                                 'status' => $parcel
                                                     ->status,
 
+                                                'dispatch_batch_status' => $batch->status,
+
                                                 'size_class' => $parcel
                                                     ->size_class,
 
@@ -375,6 +380,14 @@ class RiderController extends Controller
                             'parcels' => $parcels,
 
                             'parcel_count' => $parcels->count(),
+
+                            'can_start_delivery' => $first['shipment_status'] === 'dispatched'
+                                && $parcels
+                                    ->filter(fn (array $parcel): bool => $parcel['dispatch_batch_status'] === 'dispatched')
+                                    ->isNotEmpty()
+                                && $parcels
+                                    ->filter(fn (array $parcel): bool => $parcel['dispatch_batch_status'] === 'dispatched')
+                                    ->every(fn (array $parcel): bool => $parcel['status'] === 'dispatched'),
 
                             'status' => $this
                                 ->deliveryAssignmentStatus(
@@ -833,6 +846,7 @@ class RiderController extends Controller
             'id' => (string) $row['id'],
             'title' => (string) $row['customer'],
             'status' => (string) $row['status'],
+            'can_start_delivery' => (bool) ($row['can_start_delivery'] ?? false),
             'address' => (string) $row['address'],
             'contact_phone' => (string) $row['contact'],
             'waybill' => (string) $row['waybill'],
@@ -1467,6 +1481,51 @@ class RiderController extends Controller
         abort_unless($job, 404);
 
         return response()->json([
+            'data' => $this->mobileDeliveryPayload($job),
+        ]);
+    }
+
+    public function mobileStartDelivery(
+        Request $request,
+        string $shipmentNo,
+        RiderDeliveryService $deliveryService,
+    ): JsonResponse {
+        $profile = $this->mobileRiderProfile($request);
+        $profile->loadMissing('logisticsProfile.user');
+
+        $provider = $profile->logisticsProfile;
+        $providerUser = $provider?->user;
+
+        abort_unless(
+            $provider
+            && $provider->status === AccountStatus::Active->value
+            && $providerUser?->status === AccountStatus::Active->value
+            && $providerUser->hasRole(UserRole::Logistics->value),
+            403,
+            'An active Logistics provider is required for delivery actions.',
+        );
+
+        $hasOwnedProviderAssignment = DispatchBatch::query()
+            ->where('rider_profile_id', $profile->id)
+            ->where('status', 'dispatched')
+            ->whereHas('parcels', fn ($parcels) => $parcels
+                ->whereHas('shipment', fn ($shipments) => $shipments
+                    ->where('shipment_no', $shipmentNo)
+                    ->where('logistics_profile_id', $provider->id)))
+            ->exists();
+
+        // Hide shipment numbers that are not assigned to this Rider/provider.
+        abort_unless($hasOwnedProviderAssignment, 404);
+
+        $deliveryService->startDelivery($shipmentNo, $request->user());
+
+        $job = $this->currentDeliveryAssignmentsFor($request->user())
+            ->firstWhere('id', $shipmentNo);
+
+        abort_unless($job, 404);
+
+        return response()->json([
+            'message' => 'Delivery started. Assigned parcels are now out for delivery.',
             'data' => $this->mobileDeliveryPayload($job),
         ]);
     }

@@ -6,6 +6,7 @@ use App\Enums\ParcelStatus;
 use App\Enums\ShipmentStatus;
 use App\Models\Address;
 use App\Models\LogisticsProfile;
+use App\Models\LinehaulRun;
 use App\Models\Order;
 use App\Models\Parcel;
 use App\Models\SellerOrder;
@@ -21,6 +22,7 @@ use App\Models\Store;
 use App\Models\User;
 use App\Models\Waybill;
 use App\Services\ParcelIntakeService;
+use App\Services\LinehaulRunService;
 use App\Services\ShipmentHandoffService;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -612,6 +614,7 @@ class WaybillIntakeTest extends TestCase
     public function test_sorting_center_directs_cross_city_parcels_to_city_handoffs(): void
     {
         $record = $this->makeCrossCityShipment('CROSS-CITY-GUIDE');
+        [$courierUser, $courier] = $this->makeCourier('CROSS-CITY-GUIDE');
 
         $this->actingAs($this->logisticsA)
             ->get(route('logistics.sorting.center'))
@@ -628,8 +631,12 @@ class WaybillIntakeTest extends TestCase
             ->assertOk()
             ->assertSee($record['waybill']->waybill_no)
             ->assertSee($this->profileB->display_name)
-            ->assertSee('Detected from destination city')
-            ->assertSee('Send handoff');
+            ->assertSee('Build a Courier manifest')
+            ->assertSee('name="courier_profile_id"', false)
+            ->assertSee('name="shipment_ids[]"', false)
+            ->assertSee('Assign manifest')
+            ->assertSee($courierUser->name)
+            ->assertDontSee('Send handoff');
     }
 
     public function test_city_handoffs_explains_when_destination_has_no_active_logistics_account(): void
@@ -843,10 +850,33 @@ class WaybillIntakeTest extends TestCase
             'current_sorting_center_id' => $this->centerA->id,
         ]);
 
+        [$courierUser, $courier] = $this->makeCourier('CITY-HANDOFF');
+
         $this->actingAs($this->logisticsA)
-            ->post(route('logistics.transfers.send', $record['shipment']))
+            ->post(route('logistics.transfers.manifests.store'), [
+                'courier_profile_id' => $courier->id,
+                'shipment_ids' => [$record['shipment']->id],
+            ])
             ->assertRedirect(route('logistics.transfers.index'))
             ->assertSessionHasNoErrors();
+
+        $run = LinehaulRun::query()->firstOrFail();
+        $this->assertSame('assigned', $run->status);
+        $this->assertSame(ShipmentStatus::AtSortingCenter->value, $record['shipment']->fresh()->status);
+        $this->assertSame(ParcelStatus::Received->value, $record['parcel']->fresh()->status);
+        $this->assertDatabaseMissing('shipment_transfers', [
+            'shipment_id' => $record['shipment']->id,
+        ]);
+
+        $this->actingAs($courierUser)
+            ->post(route('rider.courier.runs.start-loading', $run))
+            ->assertRedirect();
+        $this->actingAs($courierUser)
+            ->post(route('rider.courier.runs.loaded', $run))
+            ->assertRedirect();
+        $this->actingAs($courierUser)
+            ->post(route('rider.courier.runs.depart', $run))
+            ->assertRedirect();
 
         $transfer = ShipmentTransfer::query()
             ->where('shipment_id', $record['shipment']->id)
@@ -861,6 +891,18 @@ class WaybillIntakeTest extends TestCase
             'parcel_id' => $record['parcel']->id,
             'event_type' => 'logistics_handoff_sent',
         ]);
+
+        $this->actingAs($this->logisticsB)
+            ->post(route('logistics.transfers.accept'), [
+                'identifier' => $record['waybill']->waybill_no,
+                'scan_method' => 'barcode',
+            ])
+            ->assertStatus(409);
+
+        $this->actingAs($courierUser)
+            ->post(route('rider.courier.runs.arrive', $run))
+            ->assertRedirect();
+        $this->assertSame('arrived', $run->fresh()->status);
 
         $this->actingAs($this->logisticsB)
             ->get(route('logistics.transfers.index'))
@@ -909,6 +951,12 @@ class WaybillIntakeTest extends TestCase
             'scan_method' => 'barcode',
         ]);
         $this->assertSame(2, $record['shipment']->events()->count());
+        $this->assertSame('completed', $run->fresh()->status);
+        $this->assertDatabaseHas('linehaul_run_events', [
+            'linehaul_run_id' => $run->id,
+            'event_type' => 'completed',
+            'actor_user_id' => $this->logisticsB->id,
+        ]);
     }
 
     public function test_reverse_shipment_handoff_uses_its_immutable_seller_destination_city(): void
@@ -935,11 +983,105 @@ class WaybillIntakeTest extends TestCase
             'current_sorting_center_id' => $this->centerA->id,
         ]);
 
-        $transfer = app(ShipmentHandoffService::class)
-            ->send($record['shipment'], $this->logisticsA);
+        [$courierUser, $courier] = $this->makeCourier('RETURN-CITY-HANDOFF');
+        $runs = app(LinehaulRunService::class);
+        $run = $runs->assign([$record['shipment']->id], $courier->id, $this->logisticsA);
+        $runs->startLoading($run, $courierUser);
+        $runs->markLoaded($run, $courierUser);
+        $runs->depart($run, $courierUser);
+        $transfer = ShipmentTransfer::query()->where('shipment_id', $record['shipment']->id)->firstOrFail();
 
         $this->assertSame($this->profileB->id, $transfer->to_logistics_profile_id);
         $this->assertSame($this->profileB->psgc_city_code, $transfer->shipment->destination_city_code);
+    }
+
+    public function test_linehaul_manifest_rejects_parcel_load_above_verified_capacity(): void
+    {
+        $first = $this->makeCrossCityShipment('CAPACITY-CITY-A');
+        $second = $this->makeCrossCityShipment('CAPACITY-CITY-B');
+        [, $courier] = $this->makeCourier('CAPACITY-CITY');
+        $courier->update(['linehaul_parcel_capacity' => 1]);
+
+        try {
+            app(LinehaulRunService::class)->assign(
+                [$first['shipment']->id, $second['shipment']->id],
+                $courier->id,
+                $this->logisticsA,
+            );
+            $this->fail('The manifest must not exceed the Logistics-verified parcel capacity.');
+        } catch (ConflictHttpException) {
+            $this->assertDatabaseCount('linehaul_runs', 0);
+            $this->assertDatabaseCount('linehaul_run_shipments', 0);
+            $this->assertSame(ParcelStatus::Received->value, $first['parcel']->fresh()->status);
+            $this->assertSame(ParcelStatus::Received->value, $second['parcel']->fresh()->status);
+        }
+    }
+
+    public function test_linehaul_manifest_rejects_a_courier_from_another_provider(): void
+    {
+        $record = $this->makeCrossCityShipment('FOREIGN-COURIER');
+        [, $courier] = $this->makeCourier('FOREIGN-COURIER');
+        $courier->update(['logistics_profile_id' => $this->profileB->id]);
+
+        try {
+            app(LinehaulRunService::class)->assign(
+                [$record['shipment']->id],
+                $courier->id,
+                $this->logisticsA,
+            );
+            $this->fail('A Logistics provider must not assign a Courier belonging to another provider.');
+        } catch (AuthorizationException) {
+            $this->assertDatabaseCount('linehaul_runs', 0);
+            $this->assertDatabaseMissing('linehaul_run_shipments', [
+                'shipment_id' => $record['shipment']->id,
+            ]);
+        }
+    }
+
+    public function test_manifested_shipment_cannot_be_assigned_to_a_second_run(): void
+    {
+        $record = $this->makeCrossCityShipment('DUPLICATE-MANIFEST');
+        [$firstUser, $firstCourier] = $this->makeCourier('DUPLICATE-FIRST');
+        [, $secondCourier] = $this->makeCourier('DUPLICATE-SECOND');
+        $runs = app(LinehaulRunService::class);
+        $runs->assign([$record['shipment']->id], $firstCourier->id, $this->logisticsA);
+
+        try {
+            $runs->assign([$record['shipment']->id], $secondCourier->id, $this->logisticsA);
+            $this->fail('A shipment must not be duplicated across Courier manifests.');
+        } catch (ConflictHttpException) {
+            $this->assertDatabaseCount('linehaul_runs', 1);
+            $this->assertDatabaseCount('linehaul_run_shipments', 1);
+        }
+
+        $run = LinehaulRun::query()->firstOrFail();
+        $runs->reportException($run, $firstUser, 'Vehicle issue at loading bay');
+        $this->assertSame('exception', $run->fresh()->status);
+        $this->assertDatabaseHas('linehaul_run_events', [
+            'linehaul_run_id' => $run->id,
+            'event_type' => 'exception_reported',
+            'reason' => 'Vehicle issue at loading bay',
+        ]);
+
+        $runs->resolveException($run, $this->logisticsA, 'Replacement vehicle confirmed');
+        $this->assertSame('assigned', $run->fresh()->status);
+        $this->assertNull($run->fresh()->status_before_exception);
+    }
+
+    public function test_direct_city_handoff_send_is_blocked_without_changing_parcels(): void
+    {
+        $record = $this->makeCrossCityShipment('DIRECT-HANDOFF-BLOCKED');
+
+        try {
+            app(ShipmentHandoffService::class)->send($record['shipment'], $this->logisticsA);
+            $this->fail('A city handoff must be sent only by a departed Courier manifest.');
+        } catch (ConflictHttpException) {
+            $this->assertSame(ShipmentStatus::AtSortingCenter->value, $record['shipment']->fresh()->status);
+            $this->assertSame(ParcelStatus::Received->value, $record['parcel']->fresh()->status);
+            $this->assertDatabaseMissing('shipment_transfers', [
+                'shipment_id' => $record['shipment']->id,
+            ]);
+        }
     }
 
     public function test_only_destination_logistics_can_accept_a_pending_handoff_and_acceptance_is_single_use(): void
@@ -959,8 +1101,14 @@ class WaybillIntakeTest extends TestCase
             'current_sorting_center_id' => $this->centerA->id,
         ]);
 
+        [$courierUser, $courier] = $this->makeCourier('CITY-HANDOFF-OWNERSHIP');
+        $runs = app(LinehaulRunService::class);
+        $run = $runs->assign([$record['shipment']->id], $courier->id, $this->logisticsA);
+        $runs->startLoading($run, $courierUser);
+        $runs->markLoaded($run, $courierUser);
+        $runs->depart($run, $courierUser);
+        $runs->arrive($run, $courierUser);
         $service = app(ShipmentHandoffService::class);
-        $service->send($record['shipment'], $this->logisticsA);
 
         try {
             $service->accept($record['waybill']->waybill_no, $this->logisticsA);
@@ -1025,6 +1173,34 @@ class WaybillIntakeTest extends TestCase
         ]);
 
         return [$user, $profile, $center];
+    }
+
+    private function makeCourier(string $suffix): array
+    {
+        $user = User::factory()->create([
+            'name' => "Courier {$suffix}",
+            'email' => 'courier-'.strtolower($suffix).'@example.test',
+            'role' => 'rider',
+            'status' => 'active',
+            'logistics_id' => $this->logisticsA->id,
+            'vehicle_type' => 'Van',
+            'plate_number' => 'COURIER-'.$suffix,
+        ]);
+        $profile = RiderProfile::query()->create([
+            'user_id' => $user->id,
+            'logistics_profile_id' => $this->profileA->id,
+            'home_sorting_center_id' => $this->centerA->id,
+            'vehicle_type' => 'Van',
+            'plate_number' => 'COURIER-'.$suffix,
+            'work_type' => 'courier',
+            'linehaul_parcel_capacity' => 10,
+            'courier_vehicle_verified_by' => $this->logisticsA->id,
+            'courier_vehicle_verified_at' => now(),
+            'availability_status' => 'available',
+            'verification_status' => 'approved',
+        ]);
+
+        return [$user, $profile];
     }
 
     private function makeZone(

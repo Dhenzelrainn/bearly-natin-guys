@@ -1,3 +1,5 @@
+@import "./theme.css";
+
 /* BEARLY — shared buyer stylesheet.
    Section 1: homepage and legacy buyer styles (outside body.bc).
    Section 2: category V2 styles (body.bc only).
@@ -4979,7 +4981,7 @@ body:not(.bc).bh .buyer-home-footer .footer-bottom{
         gap:10px;
     }
     body:not(.bc).bh .header-actions a > span:not(.material-symbols-outlined):not(.notification-badge),
-    body:not(.bc).bh .header-actions button > span:not(.material-symbols-outlined):not(.notification-badge){
+    body:not(.bc).bh .header-actions button:not([data-theme-toggle]) > span:not(.material-symbols-outlined):not(.notification-badge){
         display:none;
     }
     body:not(.bc).bh .account-action{
@@ -5183,7 +5185,7 @@ body:not(.bc).bh .footer-bottom{display:none}
     body:not(.bc).bh .brand{min-width:120px}
     body:not(.bc).bh .brand img{width:122px}
     body:not(.bc).bh .header-actions>a>span:last-child:not(.notification-badge):not(.account-chevron),
-    body:not(.bc).bh .header-actions>button>span:last-child{display:none}
+    body:not(.bc).bh .header-actions>button:not([data-theme-toggle])>span:last-child{display:none}
     body:not(.bc).bh .account-name{display:none}
     body:not(.bc).bh .shell{display:block}
     body:not(.bc).bh .sidebar{position:fixed;top:0;left:0;z-index:90;width:min(320px,88vw);height:100dvh;transform:translateX(-105%);transition:transform .2s ease;box-shadow:10px 0 30px rgba(43,29,22,.16)}
@@ -5198,7 +5200,7 @@ body:not(.bc).bh .footer-bottom{display:none}
     body:not(.bc).bh .search{grid-column:1/-1;grid-row:2;width:100%}
     body:not(.bc).bh .header-actions{grid-column:3;grid-row:1}
     body:not(.bc).bh .header-actions>a:not(.account-action):not(:nth-last-child(2)),
-    body:not(.bc).bh .header-actions>button{display:none}
+    body:not(.bc).bh .header-actions>button:not([data-theme-toggle]){display:none}
     body:not(.bc).bh .top-products-grid-preview{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(150px,45vw);grid-template-columns:none;overflow-x:auto;scroll-snap-type:x proximity;padding-bottom:5px}
     body:not(.bc).bh .top-product-card{scroll-snap-align:start}
     body:not(.bc).bh .top-product-image{height:120px}
@@ -7616,9 +7618,9 @@ body.bc footer img{filter:none}
     body:not(.bc).bh .buyer-global-header .account-name,
     body.bc .buyer-global-header.bc-header .account-name{display:none}
     body:not(.bc).bh .buyer-global-header .header-actions>a>span:last-child:not(.notification-badge):not(.account-chevron),
-    body:not(.bc).bh .buyer-global-header .header-actions>button>span:last-child,
+    body:not(.bc).bh .buyer-global-header .header-actions>button:not([data-theme-toggle])>span:last-child,
     body.bc .buyer-global-header.bc-header .header-actions>a>span:last-child:not(.notification-badge):not(.account-chevron),
-    body.bc .buyer-global-header.bc-header .header-actions>button>span:last-child{display:none}
+    body.bc .buyer-global-header.bc-header .header-actions>button:not([data-theme-toggle])>span:last-child{display:none}
 }
 
 @media (max-width:720px){
@@ -7640,9 +7642,9 @@ body.bc footer img{filter:none}
     body:not(.bc).bh .buyer-global-header .header-actions,
     body.bc .buyer-global-header.bc-header .header-actions{gap:10px}
     body:not(.bc).bh .buyer-global-header .header-actions>a:not(.account-action):not(:nth-last-child(2)),
-    body:not(.bc).bh .buyer-global-header .header-actions>button,
+    body:not(.bc).bh .buyer-global-header .header-actions>button:not([data-theme-toggle]),
     body.bc .buyer-global-header.bc-header .header-actions>a:not(.account-action):not(:nth-last-child(2)),
-    body.bc .buyer-global-header.bc-header .header-actions>button{display:none}
+    body.bc .buyer-global-header.bc-header .header-actions>button:not([data-theme-toggle]){display:none}
     body:not(.bc).bh .buyer-global-header .account-avatar,
     body.bc .buyer-global-header.bc-header .account-avatar{width:32px;height:32px;flex-basis:32px}
     body:not(.bc).bh .buyer-global-header .account-chevron,
@@ -8168,6 +8170,10 @@ body.bc .buyer-global-header.bc-header .header-actions .buyer-notification-popov
 
 /* Buyer campaign detail page. */
 .buyer-campaign-page .campaign-hero{overflow:hidden;margin-bottom:28px;border:1px solid #e4d8ca;border-radius:14px;background:#fffdfa;box-shadow:0 8px 24px rgba(74,48,30,.05)}
+.buyer-campaign-page .campaign-back{display:inline-flex;min-height:38px;align-items:center;gap:6px;margin:0 0 12px;padding:7px 0;border:0;border-radius:0;background:transparent;color:#5b3827;font-size:13px;font-weight:600;text-decoration:none;transition:color .16s ease}
+.buyer-campaign-page .campaign-back:hover{background:transparent;color:#a96824;text-decoration:none}
+.buyer-campaign-page .campaign-back:focus-visible{outline:3px solid #a96824;outline-offset:2px}
+.buyer-campaign-page .campaign-back .material-symbols-outlined{font-size:18px}
 .buyer-campaign-page .campaign-hero-banner{display:block;width:100%;max-height:360px;object-fit:cover;background:#f2e9df}
 .buyer-campaign-page .campaign-hero-copy{padding:26px 28px 28px}
 .buyer-campaign-page .campaign-hero-copy h1{margin:0;color:#35251e;font-size:clamp(24px,3vw,38px);font-weight:800;letter-spacing:-.035em;line-height:1.1}
@@ -8408,7 +8414,7 @@ body:not(.bc).bh .home-ranking-grid::-webkit-scrollbar-track{border-radius:6px;b
 body:not(.bc).bh .home-ranking-grid::-webkit-scrollbar-thumb{border-radius:6px;background:#cbb9a6}
 body:not(.bc).bh .home-ranking-product{position:relative;display:flex;min-width:0;flex-direction:column;overflow:hidden;border:1px solid #e8dfd7;border-radius:9px;background:#fff;box-shadow:none;scroll-snap-align:start}
 body:not(.bc).bh .home-ranking-product:hover{transform:translateY(-2px);border-color:#d9c8b8;box-shadow:0 5px 15px rgba(53,37,30,.08)}
-body:not(.bc).bh .home-ranking-product .top-product-image{position:relative;display:block;width:auto;height:auto;aspect-ratio:1/1;margin:0;padding:0;overflow:hidden;border-radius:0;background:#f7f5f2}
+body:not(.bc).bh .home-ranking-product .top-product-image{position:relative;display:block;width:auto;height:auto;aspect-ratio:1/1;margin:0;padding:0;overflow:hidden;border-radius:0;background:#fff}
 body:not(.bc).bh .home-ranking-product .ranking-product-image-link{display:grid;width:100%;height:100%;place-items:center}
 body:not(.bc).bh .home-ranking-product .top-product-image img{width:100%;height:100%;padding:10px;object-fit:contain}
 body:not(.bc).bh .home-ranking-product .top-home-rank{top:0;left:0;min-width:36px;padding:6px 8px;border-radius:0 0 7px 0;background:#b98943;color:#fff;font-size:10px;font-weight:700}
@@ -8460,3 +8466,661 @@ body:not(.bc).top-products-page .ranking-empty{margin-top:8px}
     body:not(.bc).top-products-page .top-filter-row a{padding-inline:13px}
 }
 @media(max-width:560px){body:not(.bc).top-products-page .ranking-products-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}}
+
+/* Dark Buyer screenshot pass: keep discovery names and rating details legible. */
+:root[data-theme="dark"] body:not(.bc).bh .discover .discovery-card .product-category,
+:root[data-theme="dark"] body:not(.bc).bh .discover .discovery-card .discovery-meta,
+:root[data-theme="dark"] body:not(.bc).bh .home-ranking-product .top-product-copy > small,
+:root[data-theme="dark"] body:not(.bc).bh .home-ranking-product .ranking-product-rating,
+:root[data-theme="dark"] body:not(.bc).bh .home-ranking-product .ranking-product-rating small,
+:root[data-theme="dark"] body:not(.bc).top-products-page .ranking-product-card .ranking-product-rating,
+:root[data-theme="dark"] body:not(.bc).top-products-page .ranking-product-card .ranking-product-rating small {
+    color: #c0b2a5 !important;
+}
+
+:root[data-theme="dark"] body:not(.bc).bh .discover .discovery-card .product-copy h3,
+:root[data-theme="dark"] body:not(.bc).bh .home-ranking-product .top-product-copy h3,
+:root[data-theme="dark"] body:not(.bc).top-products-page .ranking-product-card .top-product-copy h3 {
+    color: #fff8ef !important;
+}
+
+:root[data-theme="dark"] body:not(.bc).bh .discover .discovery-card .discovery-meta b,
+:root[data-theme="dark"] body:not(.bc).bh .home-ranking-product .ranking-product-rating > span,
+:root[data-theme="dark"] body:not(.bc).top-products-page .ranking-product-card .ranking-product-rating > span,
+:root[data-theme="dark"] body:not(.bc).bh .home-ranking-product .ranking-product-rating strong,
+:root[data-theme="dark"] body:not(.bc).top-products-page .ranking-product-card .ranking-product-rating strong {
+    color: #efbd71 !important;
+}
+
+:root[data-theme="dark"] body:not(.bc).bh .discover .discovery-card .product-price,
+:root[data-theme="dark"] body:not(.bc).bh .home-ranking-product .top-product-bottom strong,
+:root[data-theme="dark"] body:not(.bc).top-products-page .ranking-product-card .top-product-bottom strong {
+    color: #efbd71 !important;
+}
+
+:root[data-theme="dark"] body.bc .card-meta,
+:root[data-theme="dark"] body.bc .card-sold {
+    color: #c0b2a5 !important;
+}
+
+:root[data-theme="dark"] body.bc .card-rating b {
+    color: #efbd71 !important;
+}
+
+:root[data-theme="dark"] body.bc .price-row strong {
+    color: #efbd71 !important;
+}
+
+:root[data-theme="dark"] body:not(.bc).bh #product-dialog .pd-rating,
+:root[data-theme="dark"] body:not(.bc).bh #product-dialog .pd-social-proof,
+:root[data-theme="dark"] body.bc .pd-rating {
+    color: #e4c39d !important;
+}
+
+:root[data-theme="dark"] body:not(.bc).bh #product-dialog .pd-rating .mi,
+:root[data-theme="dark"] body.bc .pd-rating .mi {
+    color: #efbd71 !important;
+}
+
+/* Product-preview ratings and review summaries stay readable on dark Buyer pages. */
+:root[data-theme="dark"] body:is(.bh, .bc) :is(.pd-reviews, .pd-review-item) {
+    border-color: var(--theme-border);
+    background: var(--theme-surface);
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body:is(.bh, .bc) .pd-reviews-summary {
+    border-color: var(--theme-border);
+    background: var(--theme-surface-soft);
+}
+
+:root[data-theme="dark"] body:is(.bh, .bc) .pd-reviews-head h3,
+:root[data-theme="dark"] body:is(.bh, .bc) .pd-review-copy > strong {
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body:is(.bh, .bc) :is(
+    .pd-review-score > span, .pd-review-score small,
+    .pd-review-meta, .pd-review-copy > p, .pd-reviews-empty
+) {
+    color: #c0b2a5;
+}
+
+:root[data-theme="dark"] body:is(.bh, .bc) :is(
+    .pd-review-score > strong, .pd-review-stars
+) {
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body:is(.bh, .bc) .pd-review-score {
+    border-color: var(--theme-border);
+}
+
+:root[data-theme="dark"] body:is(.bh, .bc) .pd-review-filters button {
+    border-color: #594232;
+    background: #211c18;
+    color: #e4c39d;
+}
+
+:root[data-theme="dark"] body:is(.bh, .bc) .pd-review-filters button:hover,
+:root[data-theme="dark"] body:is(.bh, .bc) .pd-review-filters button.is-active {
+    border-color: #806334;
+    background: #45331d;
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body:is(.bh, .bc) .pd-review-response {
+    background: #34271e;
+    color: #d5c2ad;
+}
+
+:root[data-theme="dark"] body:is(.bh, .bc) .pd-review-response > strong {
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body:is(.bh, .bc) .pd-review-response :is(p, time) {
+    color: #d5c2ad;
+}
+
+:root[data-theme="dark"] body:is(.bh, .bc) .pd-review-avatar {
+    border-color: var(--theme-border);
+    background: #382e27;
+    color: #d5c2ad;
+}
+
+/* Buyer notification popover; the role layouts place it outside account panels. */
+:root[data-theme="dark"] body:not(.bc).bh .buyer-notification-popover,
+:root[data-theme="dark"] body.bc .buyer-global-header.bc-header .buyer-notification-popover {
+    border-color: var(--theme-border);
+    background: var(--theme-surface);
+    color: var(--theme-text);
+    box-shadow: 0 18px 42px rgba(0, 0, 0, .38);
+}
+
+:root[data-theme="dark"] body:not(.bc).bh .buyer-notification-popover-head,
+:root[data-theme="dark"] body.bc .buyer-global-header.bc-header .buyer-notification-popover-head,
+:root[data-theme="dark"] body:not(.bc).bh .buyer-notification-popover-actions,
+:root[data-theme="dark"] body.bc .buyer-global-header.bc-header .buyer-notification-popover-actions {
+    border-color: var(--theme-border);
+    background: #211c18;
+}
+
+:root[data-theme="dark"] body:not(.bc).bh .buyer-notification-popover-head strong,
+:root[data-theme="dark"] body.bc .buyer-global-header.bc-header .buyer-notification-popover-head strong {
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body:not(.bc).bh .buyer-notification-popover-head span:not(.material-symbols-outlined),
+:root[data-theme="dark"] body.bc .buyer-global-header.bc-header .buyer-notification-popover-head span:not(.material-symbols-outlined),
+:root[data-theme="dark"] body:not(.bc).bh .buyer-notification-popover-empty,
+:root[data-theme="dark"] body.bc .buyer-global-header.bc-header .buyer-notification-popover-empty {
+    color: #c0b2a5;
+}
+
+:root[data-theme="dark"] body:not(.bc).bh .buyer-notification-popover-close,
+:root[data-theme="dark"] body.bc .buyer-global-header.bc-header .buyer-notification-popover-close {
+    color: #c0b2a5;
+}
+
+:root[data-theme="dark"] body:not(.bc).bh .buyer-notification-popover-close:hover,
+:root[data-theme="dark"] body:not(.bc).bh .buyer-notification-popover-close:focus-visible,
+:root[data-theme="dark"] body.bc .buyer-global-header.bc-header .buyer-notification-popover-close:hover,
+:root[data-theme="dark"] body.bc .buyer-global-header.bc-header .buyer-notification-popover-close:focus-visible {
+    background: #3b3027;
+    color: #fff8ef;
+    outline: 2px solid #806334;
+    outline-offset: 2px;
+}
+
+:root[data-theme="dark"] body:not(.bc).bh .buyer-notification-item,
+:root[data-theme="dark"] body.bc .buyer-global-header.bc-header .buyer-notification-item {
+    background: #211c18;
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body:not(.bc).bh .buyer-notification-item.unread,
+:root[data-theme="dark"] body.bc .buyer-global-header.bc-header .buyer-notification-item.unread {
+    background: #34271e;
+}
+
+:root[data-theme="dark"] body:not(.bc).bh .buyer-notification-item:hover,
+:root[data-theme="dark"] body:not(.bc).bh .buyer-notification-item:focus-visible,
+:root[data-theme="dark"] body:not(.bc).bh .buyer-notification-item.unread:hover,
+:root[data-theme="dark"] body.bc .buyer-global-header.bc-header .buyer-notification-item:hover,
+:root[data-theme="dark"] body.bc .buyer-global-header.bc-header .buyer-notification-item:focus-visible,
+:root[data-theme="dark"] body.bc .buyer-global-header.bc-header .buyer-notification-item.unread:hover {
+    background: #3b3027;
+    color: #fff8ef;
+    outline: 2px solid #806334;
+    outline-offset: -2px;
+}
+
+:root[data-theme="dark"] body:not(.bc).bh .buyer-notification-unread-dot,
+:root[data-theme="dark"] body.bc .buyer-global-header.bc-header .buyer-notification-unread-dot {
+    background: transparent;
+}
+
+:root[data-theme="dark"] body:not(.bc).bh .buyer-notification-item.unread .buyer-notification-unread-dot,
+:root[data-theme="dark"] body.bc .buyer-global-header.bc-header .buyer-notification-item.unread .buyer-notification-unread-dot {
+    background: #efbd71;
+}
+
+:root[data-theme="dark"] body:not(.bc).bh .buyer-notification-icon,
+:root[data-theme="dark"] body.bc .buyer-global-header.bc-header .buyer-notification-icon {
+    background: #45331d;
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body:not(.bc).bh .buyer-notification-copy strong,
+:root[data-theme="dark"] body.bc .buyer-global-header.bc-header .buyer-notification-copy strong {
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body:not(.bc).bh .buyer-notification-copy > span,
+:root[data-theme="dark"] body:not(.bc).bh .buyer-notification-copy small,
+:root[data-theme="dark"] body:not(.bc).bh .buyer-notification-arrow,
+:root[data-theme="dark"] body.bc .buyer-global-header.bc-header .buyer-notification-copy > span,
+:root[data-theme="dark"] body.bc .buyer-global-header.bc-header .buyer-notification-copy small,
+:root[data-theme="dark"] body.bc .buyer-global-header.bc-header .buyer-notification-arrow {
+    color: #c0b2a5;
+}
+
+:root[data-theme="dark"] body:not(.bc).bh .buyer-notification-popover-actions button,
+:root[data-theme="dark"] body:not(.bc).bh .buyer-notification-popover-actions a,
+:root[data-theme="dark"] body.bc .buyer-global-header.bc-header .buyer-notification-popover-actions button,
+:root[data-theme="dark"] body.bc .buyer-global-header.bc-header .buyer-notification-popover-actions a {
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body:not(.bc).bh .buyer-notification-popover-actions :is(button, a):hover,
+:root[data-theme="dark"] body:not(.bc).bh .buyer-notification-popover-actions :is(button, a):focus-visible,
+:root[data-theme="dark"] body.bc .buyer-global-header.bc-header .buyer-notification-popover-actions :is(button, a):hover,
+:root[data-theme="dark"] body.bc .buyer-global-header.bc-header .buyer-notification-popover-actions :is(button, a):focus-visible {
+    color: #fff8ef;
+}
+
+/* Buyer Search Results: brighten dark-on-dark labels while keeping gold accents. */
+:root[data-theme="dark"] body.buyer-search-page {
+    background: var(--theme-page);
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.buyer-search-page .buyer-search-breadcrumb {
+    color: #c0b2a5;
+}
+
+:root[data-theme="dark"] body.buyer-search-page .buyer-search-breadcrumb a {
+    color: #e4c39d;
+}
+
+:root[data-theme="dark"] body.buyer-search-page .buyer-search-heading {
+    border-bottom-color: var(--theme-border);
+}
+
+:root[data-theme="dark"] body.buyer-search-page .buyer-search-eyebrow {
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.buyer-search-page .buyer-search-heading h1 {
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.buyer-search-page .buyer-search-heading > p:last-child {
+    color: #c0b2a5;
+}
+
+:root[data-theme="dark"] body.buyer-search-page .buyer-search-heading > p:last-child strong {
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.buyer-search-page .buyer-search-section-heading h2 {
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.buyer-search-page .buyer-search-section-heading > span {
+    color: #c0b2a5;
+}
+
+:root[data-theme="dark"] body.buyer-search-page .buyer-search-store-card {
+    border-color: var(--theme-border);
+    background: var(--theme-surface);
+    box-shadow: none;
+}
+
+:root[data-theme="dark"] body.buyer-search-page .buyer-search-store-logo {
+    border-color: var(--theme-border);
+    background: #45331d;
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.buyer-search-page .buyer-search-store-copy strong {
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.buyer-search-page .buyer-search-store-copy > span {
+    color: #c0b2a5;
+}
+
+:root[data-theme="dark"] body.buyer-search-page .buyer-search-store-link {
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.buyer-search-page .buyer-search-store-link:hover,
+:root[data-theme="dark"] body.buyer-search-page .buyer-search-seller:hover {
+    color: #f4c66d;
+}
+
+:root[data-theme="dark"] body.buyer-search-page .buyer-search-product-card {
+    border-color: var(--theme-border);
+    background: var(--theme-surface);
+}
+
+:root[data-theme="dark"] body.buyer-search-page .buyer-search-product-card:hover {
+    border-color: #806334;
+    box-shadow: 0 8px 18px rgba(0, 0, 0, .32);
+}
+
+:root[data-theme="dark"] body.buyer-search-page .buyer-search-product-image {
+    background: var(--theme-surface-soft);
+    color: #c0b2a5;
+}
+
+:root[data-theme="dark"] body.buyer-search-page .buyer-search-product-copy > p {
+    color: #c0b2a5;
+}
+
+:root[data-theme="dark"] body.buyer-search-page .buyer-search-product-copy h3 a {
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.buyer-search-page .buyer-search-product-copy h3 a:hover {
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.buyer-search-page .buyer-search-price {
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.buyer-search-page .buyer-search-seller {
+    color: #c0b2a5;
+}
+
+:root[data-theme="dark"] body.buyer-search-page .buyer-search-price-line .buyer-price-regular {
+    color: #c0b2a5;
+}
+
+:root[data-theme="dark"] body.buyer-search-page .buyer-search-price-line .buyer-price-badge {
+    border-color: #806334;
+    background: #45331d;
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.buyer-search-page .buyer-search-price-line .buyer-price-campaign {
+    color: #e4c39d;
+}
+
+:root[data-theme="dark"] body.buyer-search-page .buyer-search-pagination {
+    color: #c0b2a5;
+}
+
+:root[data-theme="dark"] body.buyer-search-page .buyer-search-pagination a,
+:root[data-theme="dark"] body.buyer-search-page .buyer-search-pagination span[aria-disabled="true"] {
+    border-color: var(--theme-border);
+    background: var(--theme-surface);
+    color: #f1e9e1;
+}
+
+:root[data-theme="dark"] body.buyer-search-page .buyer-search-pagination a:hover {
+    border-color: #806334;
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.buyer-search-page .buyer-search-pagination span[aria-disabled="true"] {
+    background: var(--theme-surface-soft);
+    color: #b4a79c;
+}
+
+:root[data-theme="dark"] body.buyer-search-page .buyer-search-empty {
+    border-color: var(--theme-border);
+    background: var(--theme-surface);
+}
+
+:root[data-theme="dark"] body.buyer-search-page .buyer-search-empty > .material-symbols-outlined {
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.buyer-search-page .buyer-search-empty h3 {
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.buyer-search-page .buyer-search-empty p {
+    color: #c0b2a5;
+}
+
+/* Buyer Store page: the storefront chrome uses warm dark surfaces in dark mode,
+   while real banner/logo/product artwork stays untouched and light mode is
+   unchanged. */
+:root[data-theme="dark"] body.store-page {
+    background: var(--theme-page);
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.store-page .store-hero {
+    border-color: var(--theme-border);
+    background: var(--theme-surface);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .28);
+}
+
+:root[data-theme="dark"] body.store-page .store-avatar {
+    border-color: var(--theme-surface);
+}
+
+:root[data-theme="dark"] body.store-page .store-banner {
+    background-color: var(--theme-surface-soft);
+}
+
+:root[data-theme="dark"] body.store-page .store-identity h1,
+:root[data-theme="dark"] body.store-page .store-meta-item strong,
+:root[data-theme="dark"] body.store-page .store-stats strong,
+:root[data-theme="dark"] body.store-page .store-promo-copy strong,
+:root[data-theme="dark"] body.store-page .store-product-copy strong {
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.store-page .store-identity p,
+:root[data-theme="dark"] body.store-page .store-meta-item,
+:root[data-theme="dark"] body.store-page .store-meta-item span,
+:root[data-theme="dark"] body.store-page .store-stats span,
+:root[data-theme="dark"] body.store-page .store-promo-copy span,
+:root[data-theme="dark"] body.store-page .store-product-rating,
+:root[data-theme="dark"] body.store-page .store-variant-field {
+    color: #c0b2a5;
+}
+
+:root[data-theme="dark"] body.store-page .store-identity .store-category,
+:root[data-theme="dark"] body.store-page .store-meta-item > .material-symbols-outlined {
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.store-page .store-stats {
+    border-color: var(--theme-border);
+    background: var(--theme-border);
+}
+
+:root[data-theme="dark"] body.store-page .store-stats > div,
+:root[data-theme="dark"] body.store-page .store-meta-item {
+    background: var(--theme-surface-soft);
+}
+
+:root[data-theme="dark"] body.store-page .store-promo,
+:root[data-theme="dark"] body.store-page .store-product {
+    border-color: var(--theme-border);
+    background: var(--theme-surface);
+    color: var(--theme-text);
+}
+
+/* Theme the empty image stages only; real banner/logo/product artwork is not
+   filtered or recolored. */
+:root[data-theme="dark"] body.store-page .store-promo img,
+:root[data-theme="dark"] body.store-page .store-product img,
+:root[data-theme="dark"] body.store-page .store-product .store-product-image {
+    background: var(--theme-surface-soft);
+}
+
+:root[data-theme="dark"] body.store-page .store-product-rating .store-stars,
+:root[data-theme="dark"] body.store-page .store-product-copy .store-product-price {
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.store-page .store-product .buyer-price-regular {
+    color: #c0b2a5;
+}
+
+:root[data-theme="dark"] body.store-page .store-product .buyer-price-badge {
+    border-color: #6a4b2d;
+    background: #45331d;
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.store-page .store-product .buyer-price-campaign {
+    color: #e4c39d;
+}
+
+:root[data-theme="dark"] body.store-page .store-product-rating strong {
+    color: #f1e9e1;
+}
+
+:root[data-theme="dark"] body.store-page .store-product-subcategory {
+    background: #45331d;
+    color: #e4c39d !important;
+}
+
+:root[data-theme="dark"] body.store-page .store-product-stock {
+    color: #c0b2a5 !important;
+}
+
+:root[data-theme="dark"] body.store-page .store-toolbar input,
+:root[data-theme="dark"] body.store-page .store-toolbar select {
+    border-color: var(--theme-border);
+    background: var(--theme-input);
+    color: var(--theme-text);
+    color-scheme: dark;
+}
+
+:root[data-theme="dark"] body.store-page .store-filter-empty,
+:root[data-theme="dark"] body.store-page .store-empty {
+    border-color: var(--theme-border);
+    background: var(--theme-surface);
+    color: #c0b2a5;
+}
+
+:root[data-theme="dark"] body.store-page .store-pagination a {
+    border-color: var(--theme-border);
+    background: var(--theme-surface);
+    color: #f1e9e1;
+}
+
+:root[data-theme="dark"] body.store-page .store-pagination a:hover {
+    border-color: #efbd71;
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.store-page .store-product-feedback {
+    color: #88c99a;
+}
+
+:root[data-theme="dark"] body.store-page .store-product-feedback a {
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.store-page .store-about h2,
+:root[data-theme="dark"] body.store-page .store-policy-panel h2,
+:root[data-theme="dark"] body.store-page .store-products h2,
+:root[data-theme="dark"] body.store-page .store-promotions h2 {
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.store-page .store-policy-list dt {
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.store-page .store-about-panel p,
+:root[data-theme="dark"] body.store-page .store-policy-list dd {
+    color: #c0b2a5;
+}
+
+:root[data-theme="dark"] body.store-page .store-policy-list div {
+    border-bottom-color: var(--theme-border);
+}
+
+:root[data-theme="dark"] body.store-page .store-products-heading > span,
+:root[data-theme="dark"] body.store-page .store-section-filter-title,
+:root[data-theme="dark"] body.store-page .store-toolbar label,
+:root[data-theme="dark"] body.store-page .store-pagination {
+    color: #c0b2a5;
+}
+
+:root[data-theme="dark"] body.store-page .store-about-panel,
+:root[data-theme="dark"] body.store-page .store-policy-panel,
+:root[data-theme="dark"] body.store-page .store-toolbar {
+    border-color: var(--theme-border);
+    background: var(--theme-surface);
+}
+
+:root[data-theme="dark"] body.store-page .store-subcategory-filters a {
+    border-color: var(--theme-border);
+    background: var(--theme-surface-soft);
+    color: #f1e9e1;
+}
+
+:root[data-theme="dark"] body.store-page .store-subcategory-filters a[aria-current="page"] {
+    border-color: #806334;
+    background: #6f4a2e;
+    color: #fff8ef;
+}
+
+/* The shared buyer button reset outranks the page's inline button rules, so
+   restore explicit readable actions here without touching light mode. Keep the
+   Shop products link as the primary brown CTA and make Chat with seller a dark
+   secondary action. */
+:root[data-theme="dark"] body.store-page .store-shop-actions a {
+    border-color: #80664d;
+    background: #6f4a2e;
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.store-page .store-shop-actions button {
+    border: 1px solid #80664d;
+    background: #3b2c21;
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.store-page .store-shop-actions button:hover,
+:root[data-theme="dark"] body.store-page .store-shop-actions button:focus-visible {
+    border-color: #efbd71;
+    background: #493321;
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.store-page .store-product-add {
+    border: 1px solid #6f4a2e;
+    background: #6f4a2e;
+    color: #fff;
+}
+
+:root[data-theme="dark"] body.store-page .store-product-add:hover:not(:disabled) {
+    background: #563823;
+}
+
+:root[data-theme="dark"] body.store-page .store-product-add:disabled {
+    border-color: #5a4a3d;
+    background: #3a312a;
+    color: #b4a79c;
+}
+
+/* The variant control now sits inside a dark product card and follows the
+   theme input surface. */
+:root[data-theme="dark"] body.store-page .store-product-variant {
+    border-color: var(--theme-border);
+    background: var(--theme-input);
+    color: var(--theme-text);
+    color-scheme: dark;
+}
+
+/* The closed native control keeps painting a white arrow segment on its dark
+   input surface, so both Store selects drop the native chrome and draw a warm
+   muted caret instead. The border and the shared gold focus ring stay intact,
+   and the caret switches to gold on keyboard focus. The option list below
+   keeps its own dark palette. */
+:root[data-theme="dark"] body.store-page .store-toolbar select,
+:root[data-theme="dark"] body.store-page .store-product-variant {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    padding-right: 32px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23d3ad88' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    background-size: 12px;
+}
+
+:root[data-theme="dark"] body.store-page .store-toolbar select:focus-visible,
+:root[data-theme="dark"] body.store-page .store-product-variant:focus-visible {
+    outline: 2px solid #efbd71;
+    outline-offset: 2px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23efbd71' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+}
+
+/* Native <option> popups are painted by the browser/webview, so the open store
+   sort and variant dropdowns need their own dark palette instead of inheriting
+   the operating-system white list. Keep the checked/hover row gold-on-dark. */
+:root[data-theme="dark"] body.store-page select option {
+    background: #211c18;
+    color: #f1e9e1;
+}
+
+:root[data-theme="dark"] body.store-page select option:checked,
+:root[data-theme="dark"] body.store-page select option:hover {
+    background: #45331d;
+    color: #efbd71;
+}

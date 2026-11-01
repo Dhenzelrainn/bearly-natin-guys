@@ -81,6 +81,7 @@ class BuyerAccountIntegrationTest extends TestCase
         $this->actingAs($buyer)
             ->get('/cart')
             ->assertOk()
+            ->assertSee('class="cart-back" href="'.route('home').'" aria-label="Back to Home"', false)
             ->assertDontSee('View Wishlist');
 
         $this->actingAs($buyer)

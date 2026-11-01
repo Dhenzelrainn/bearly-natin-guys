@@ -451,13 +451,23 @@ const bootSeller = () => {
 
         const openAdjustment = (ids, label) => {
             if (!adjustModal || !adjustForm || ids.length === 0) return;
+            const selectedRows = ids
+                .map((id) => inventoryRows.find((row) => row.dataset.id === String(id)))
+                .filter(Boolean);
+            if (selectedRows.some((row) => row.dataset.complianceHeld === 'true')) {
+                if (toast) {
+                    toast.textContent = 'Stock adjustment is unavailable while a selected SKU is on compliance hold.';
+                    toast.classList.add('is-visible');
+                    window.clearTimeout(window.sellerToastTimer);
+                    window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3400);
+                }
+                return;
+            }
+
             adjustForm.reset();
             fillVariantIds(adjustForm.querySelector('[data-adjust-variant-ids]'), ids);
             const itemLabel = adjustForm.querySelector('[data-adjust-item-label]');
             if (itemLabel) itemLabel.textContent = label;
-            const selectedRows = ids
-                .map((id) => inventoryRows.find((row) => row.dataset.id === String(id)))
-                .filter(Boolean);
             if (adjustCurrent) {
                 adjustCurrent.textContent = selectedRows.length === 1
                     ? selectedRows[0].dataset.onHand
@@ -489,13 +499,15 @@ const bootSeller = () => {
             const visibleChecks = inventoryRows
                 .filter((row) => !row.hidden)
                 .map((row) => row.querySelector('[data-inventory-check]'));
-            const checked = inventoryRows.filter((row) => row.querySelector('[data-inventory-check]')?.checked).length;
+            const selectedRows = inventoryRows.filter((row) => row.querySelector('[data-inventory-check]')?.checked);
+            const checked = selectedRows.length;
+            const hasComplianceHeldSelection = selectedRows.some((row) => row.dataset.complianceHeld === 'true');
 
             if (selectedCount) selectedCount.textContent = checked;
             bulkButtons.forEach((button) => {
                 button.disabled = button.dataset.inventoryBulk === 'set-threshold'
                     ? visibleChecks.length === 0
-                    : checked === 0;
+                    : checked === 0 || hasComplianceHeldSelection;
             });
 
             if (checkAll) {
@@ -648,10 +660,45 @@ const bootSeller = () => {
     if (returnsWorkspace) {
         let activeReturnStatus = 'all';
         const rows = [...returnsWorkspace.querySelectorAll('[data-return-row]')];
+        const tabs = [...returnsWorkspace.querySelectorAll('[data-return-tab]')];
         const search = returnsWorkspace.querySelector('[data-return-search]');
         const type = returnsWorkspace.querySelector('[data-return-type]');
         const count = returnsWorkspace.querySelector('[data-return-count]');
         const empty = returnsWorkspace.querySelector('[data-returns-empty]');
+        const statusVersionUrl = returnsWorkspace.dataset.returnsStatusUrl;
+        let statusVersion = String(returnsWorkspace.dataset.returnsStatusVersion || '');
+        let statusCheckInFlight = false;
+        let statusRefreshScheduled = false;
+        const filterStorageKey = `seller-returns-filters:${window.location.pathname}`;
+        const refreshNoticeStorageKey = `seller-returns-refresh-notice:${window.location.pathname}`;
+
+        const setActiveReturnStatus = (status) => {
+            activeReturnStatus = tabs.some((tab) => tab.dataset.returnTab === status) ? status : 'all';
+            tabs.forEach((tab) => {
+                const active = tab.dataset.returnTab === activeReturnStatus;
+                tab.classList.toggle('is-active', active);
+                tab.setAttribute('aria-selected', String(active));
+            });
+        };
+
+        let restoredFilters = null;
+        let showStatusRefreshNotice = false;
+        try {
+            showStatusRefreshNotice = sessionStorage.getItem(refreshNoticeStorageKey) === '1';
+            if (showStatusRefreshNotice) {
+                restoredFilters = JSON.parse(sessionStorage.getItem(filterStorageKey) || 'null');
+                sessionStorage.removeItem(refreshNoticeStorageKey);
+                sessionStorage.removeItem(filterStorageKey);
+            }
+        } catch {
+            // Storage may be disabled; status refresh still works without restoring filters.
+        }
+
+        if (restoredFilters) {
+            if (search) search.value = String(restoredFilters.search || '');
+            if (type) type.value = String(restoredFilters.type || '');
+            setActiveReturnStatus(String(restoredFilters.status || 'all'));
+        }
 
         const applyReturnFilters = () => {
             const query = search?.value.trim().toLowerCase() ?? '';
@@ -668,14 +715,9 @@ const bootSeller = () => {
             if (empty) empty.hidden = visible > 0;
         };
 
-        returnsWorkspace.querySelectorAll('[data-return-tab]').forEach((tab) => {
+        tabs.forEach((tab) => {
             tab.addEventListener('click', () => {
-                activeReturnStatus = tab.dataset.returnTab;
-                returnsWorkspace.querySelectorAll('[data-return-tab]').forEach((item) => {
-                    const active = item === tab;
-                    item.classList.toggle('is-active', active);
-                    item.setAttribute('aria-selected', String(active));
-                });
+                setActiveReturnStatus(tab.dataset.returnTab);
                 applyReturnFilters();
             });
         });
@@ -684,12 +726,7 @@ const bootSeller = () => {
         returnsWorkspace.querySelector('[data-return-reset]')?.addEventListener('click', () => {
             if (search) search.value = '';
             if (type) type.value = '';
-            activeReturnStatus = 'all';
-            returnsWorkspace.querySelectorAll('[data-return-tab]').forEach((tab) => {
-                const active = tab.dataset.returnTab === 'all';
-                tab.classList.toggle('is-active', active);
-                tab.setAttribute('aria-selected', String(active));
-            });
+            setActiveReturnStatus('all');
             applyReturnFilters();
         });
         returnsWorkspace.querySelector('[data-return-export]')?.addEventListener('click', () => {
@@ -716,6 +753,77 @@ const bootSeller = () => {
             }
         });
         applyReturnFilters();
+
+        if (showStatusRefreshNotice && toast) {
+            toast.textContent = 'A return case status was updated.';
+            toast.classList.add('is-visible');
+            window.clearTimeout(window.sellerToastTimer);
+            window.sellerToastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), 3200);
+        }
+
+        const scheduleReturnListReload = () => {
+            if (statusRefreshScheduled) return;
+
+            statusRefreshScheduled = true;
+            try {
+                sessionStorage.setItem(filterStorageKey, JSON.stringify({
+                    search: search?.value || '',
+                    type: type?.value || '',
+                    status: activeReturnStatus,
+                }));
+                sessionStorage.setItem(refreshNoticeStorageKey, '1');
+            } catch {
+                // Continue with a clean page refresh if storage is unavailable.
+            }
+            window.location.reload();
+        };
+
+        const refreshReturnStatuses = async (force = false) => {
+            if (!statusVersionUrl
+                || document.hidden
+                || statusCheckInFlight
+                || statusRefreshScheduled
+                || (!force && window.BearlyRealtime?.connected)) return;
+
+            statusCheckInFlight = true;
+            try {
+                const response = await fetch(statusVersionUrl, {
+                    cache: 'no-store',
+                    credentials: 'same-origin',
+                    headers: {
+                        Accept: 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                });
+                const payload = await response.json().catch(() => ({}));
+                const nextVersion = String(payload?.data?.version || '');
+                if (!response.ok || !nextVersion) return;
+
+                if (statusVersion && nextVersion !== statusVersion) {
+                    scheduleReturnListReload();
+                    return;
+                }
+
+                statusVersion = nextVersion;
+            } catch {
+                // A later poll or return-status notification will retry the refresh.
+            } finally {
+                statusCheckInFlight = false;
+            }
+        };
+
+        window.addEventListener('bearly:notification-created', (event) => {
+            if (String(event.detail?.event || '') === 'seller_return_updates') scheduleReturnListReload();
+        });
+        window.addEventListener('bearly:seller-return-status-updated', scheduleReturnListReload);
+        window.addEventListener('bearly:realtime-status', (event) => {
+            if (event.detail?.connected) refreshReturnStatuses(true);
+        });
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) refreshReturnStatuses(true);
+        });
+        refreshReturnStatuses();
+        window.setInterval(refreshReturnStatuses, 10000);
     }
 
     document.querySelectorAll('[data-case-preview]').forEach((button) => {
@@ -768,6 +876,42 @@ const bootSeller = () => {
         const label = document.querySelector('[data-case-evidence-name]');
         if (!label) return;
         label.textContent = files.length ? `${files.length} file${files.length > 1 ? 's' : ''} selected` : 'Images, video, or PDF · Maximum 10 MB per file';
+    });
+
+    document.querySelectorAll('.case-inspection-item').forEach((item) => {
+        const condition = item.querySelector('[data-inspection-condition]');
+        const resolution = item.querySelector('[data-inspection-resolution]');
+        const guidance = item.querySelector('[data-inspection-guidance]');
+        if (!condition || !resolution) return;
+
+        const resolutionOptions = [...resolution.options].filter((option) => option.value !== '');
+        const updateInspectionOptions = () => {
+            const allowed = condition.value === 'sellable'
+                ? ['restock']
+                : ['damaged', 'opened', 'missing_parts'].includes(condition.value)
+                    ? ['quarantine', 'dispose']
+                    : [];
+
+            resolutionOptions.forEach((option) => {
+                const available = allowed.includes(option.value);
+                option.hidden = !available;
+                option.disabled = !available;
+            });
+
+            if (!allowed.includes(resolution.value)) resolution.value = '';
+            resolution.disabled = allowed.length === 0;
+
+            if (guidance) {
+                guidance.textContent = condition.value === 'sellable'
+                    ? 'A sellable item must be put back in stock.'
+                    : allowed.length
+                        ? 'Damaged, opened, or incomplete items can be held for review or discarded.'
+                        : 'Choose an item condition to see the available next steps.';
+            }
+        };
+
+        condition.addEventListener('change', updateInspectionOptions);
+        updateInspectionOptions();
     });
 
     const caseConfirmModal = document.querySelector('[data-modal="case-confirm"]');

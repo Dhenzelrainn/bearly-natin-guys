@@ -84,6 +84,13 @@
                             $sellerOrder = $shipment->sellerOrder;
                             $order = $sellerOrder?->order;
                             $latestEvent = $shipment->events->last();
+                            $deliveryProofs = $shipment->parcels
+                                ->flatMap(fn ($parcel) => $parcel->deliveryAttempts)
+                                ->flatMap(fn ($attempt) => $attempt->proofs)
+                                ->where('type', 'photo')
+                                ->sortByDesc('captured_at')
+                                ->unique('file_path')
+                                ->values();
                         @endphp
 
                         <tr>
@@ -114,6 +121,17 @@
                                 @else
                                     <span class="muted">No scan recorded</span>
                                 @endif
+                                @foreach ($deliveryProofs as $proof)
+                                    <a
+                                        class="button button-ghost button-small"
+                                        href="{{ route('admin.fulfillment.delivery-proofs.show', $proof) }}"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        aria-label="Preview delivery proof {{ $loop->iteration }} for {{ $shipment->shipment_no }}"
+                                    >
+                                        View delivery proof{{ $deliveryProofs->count() > 1 ? ' · '.$loop->iteration : '' }}
+                                    </a>
+                                @endforeach
                             </td>
                             <td>
                                 <form

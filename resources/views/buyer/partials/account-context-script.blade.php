@@ -1,4 +1,5 @@
 <meta name="csrf-token" content="{{ csrf_token() }}">
+@include('partials.theme-preload')
 @include('partials.session-safety')
 <script>
     window.bearlyBuyerProfile = @json($buyerProfilePayload ?? []);

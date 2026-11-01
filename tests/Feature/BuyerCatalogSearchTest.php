@@ -132,7 +132,8 @@ class BuyerCatalogSearchTest extends TestCase
             ->assertSee('action="'.route('products.index').'"', false)
             ->assertSee('method="get"', false)
             ->assertSee('name="search"', false)
-            ->assertSee('name="category"', false);
+            ->assertSee('name="category"', false)
+            ->assertDontSee('href="/seller/dashboard"', false);
     }
 
     private function category(): Category

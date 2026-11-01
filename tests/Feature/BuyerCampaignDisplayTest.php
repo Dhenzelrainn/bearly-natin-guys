@@ -68,6 +68,8 @@ class BuyerCampaignDisplayTest extends TestCase
 
         $this->get(route('campaigns.show', $campaign))
             ->assertOk()
+            ->assertSee('class="campaign-back" href="'.route('home').'"', false)
+            ->assertSee('Back to Home')
             ->assertSee('10.10 Sale')
             ->assertSee('Piso Sale')
             ->assertSee('Bearly-funded')

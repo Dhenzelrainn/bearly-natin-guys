@@ -4,6 +4,9 @@ namespace Tests\Feature;
 
 use App\Events\AnnouncementPublished;
 use App\Events\ConversationMessageCreated;
+use App\Events\LogisticsRefundCashPayoutUpdated;
+use App\Events\RiderShippingEarningUpdated;
+use App\Events\SellerReturnStatusUpdated;
 use App\Models\Announcement;
 use App\Models\Role;
 use App\Models\User;
@@ -59,6 +62,87 @@ class RealtimeDeliveryTest extends TestCase
                     && $payload['excerpt'] !== '';
             },
         );
+    }
+
+    public function test_seller_return_status_event_uses_the_seller_private_channel_and_minimal_payload(): void
+    {
+        $seller = $this->user('seller');
+        $event = new SellerReturnStatusUpdated(
+            sellerUserId: (int) $seller->id,
+            returnRequestId: 42,
+            returnNo: 'RR-TEST-42',
+            status: 'awaiting_inspection',
+            updatedAt: '2026-10-29T12:00:00+00:00',
+        );
+
+        $channels = collect($event->broadcastOn())
+            ->map(fn ($channel): string => $channel->name)
+            ->values()
+            ->all();
+
+        $this->assertSame('seller.return-status-updated', $event->broadcastAs());
+        $this->assertSame(['private-users.'.$seller->id], $channels);
+        $this->assertSame([
+            'return_request_id' => 42,
+            'return_no' => 'RR-TEST-42',
+            'status' => 'awaiting_inspection',
+            'updated_at' => '2026-10-29T12:00:00+00:00',
+        ], $event->broadcastWith());
+    }
+
+    public function test_logistics_refund_cash_event_uses_the_logistics_users_private_channel(): void
+    {
+        $logistics = $this->user('logistics');
+        $event = new LogisticsRefundCashPayoutUpdated(
+            logisticsUserId: (int) $logistics->id,
+            payoutId: 73,
+            payoutNo: 'RCP-TEST-73',
+            status: 'delivered_pending_verification',
+            updatedAt: '2026-10-29T12:00:00+00:00',
+        );
+
+        $channels = collect($event->broadcastOn())
+            ->map(fn ($channel): string => $channel->name)
+            ->values()
+            ->all();
+
+        $this->assertSame('logistics.refund-cash-updated', $event->broadcastAs());
+        $this->assertSame(['private-users.'.$logistics->id], $channels);
+        $this->assertSame([
+            'payout_id' => 73,
+            'payout_no' => 'RCP-TEST-73',
+            'status' => 'delivered_pending_verification',
+            'updated_at' => '2026-10-29T12:00:00+00:00',
+        ], $event->broadcastWith());
+    }
+
+    public function test_shipping_earning_event_targets_only_its_rider_and_logistics_private_channels(): void
+    {
+        $rider = $this->user('rider');
+        $logistics = $this->user('logistics');
+        $event = new RiderShippingEarningUpdated(
+            riderUserId: (int) $rider->id,
+            logisticsUserId: (int) $logistics->id,
+            earningId: 42,
+            status: 'paid',
+            updatedAt: '2026-10-29T12:00:00+00:00',
+        );
+
+        $channels = collect($event->broadcastOn())
+            ->map(fn ($channel): string => $channel->name)
+            ->values()
+            ->all();
+
+        $this->assertSame('shipping-settlement.rider-earning-updated', $event->broadcastAs());
+        $this->assertSame([
+            'private-users.'.$rider->id,
+            'private-users.'.$logistics->id,
+        ], $channels);
+        $this->assertSame([
+            'earning_id' => 42,
+            'status' => 'paid',
+            'updated_at' => '2026-10-29T12:00:00+00:00',
+        ], $event->broadcastWith());
     }
 
     public function test_announcement_broadcast_failure_is_logged_and_does_not_fail_publication(): void

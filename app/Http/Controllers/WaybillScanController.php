@@ -30,36 +30,31 @@ class WaybillScanController extends Controller
             ])
             ->firstOrFail();
 
+        $shipment = $waybill->shipment;
+        $destination = $shipment?->purpose === 'return'
+            ? trim(implode(', ', array_filter([
+                data_get($shipment->destination_address_snapshot, 'city_municipality'),
+                data_get($shipment->destination_address_snapshot, 'province'),
+            ])))
+            : trim(implode(', ', array_filter([
+                $shipment?->sellerOrder?->order?->city_municipality,
+                $shipment?->sellerOrder?->order?->province,
+            ])));
+
         return response()->json([
             'data' => [
                 'waybill_no' => $waybill->waybill_no,
-                'seller_order_no' => $waybill->shipment
-                    ->sellerOrder
-                    ->seller_order_no,
-                'store' => $waybill->shipment
-                    ->sellerOrder
-                    ->store
-                    ->name,
+                'purpose' => $shipment?->purpose,
+                'purpose_label' => $shipment?->purpose === 'return' ? 'Return to Seller' : 'Buyer delivery',
+                'seller_order_no' => $shipment?->sellerOrder?->seller_order_no,
+                'store' => $shipment?->sellerOrder?->store?->name,
                 'pieces' => $waybill->piece_count,
                 'weight_kg' => $waybill->total_weight_kg,
-                'destination' => $waybill->shipment
-                    ->sellerOrder
-                    ->order
-                    ->city_municipality
-                    . ', '
-                    . $waybill->shipment
-                        ->sellerOrder
-                        ->order
-                        ->province,
-                'status' => $waybill->shipment->status,
-                'parcels' => $waybill->shipment
-                    ->parcels
-                    ->map
-                    ->only([
-                        'parcel_no',
-                        'status',
-                        'weight_kg',
-                    ]),
+                'destination' => $destination,
+                'status' => $shipment?->status,
+                'parcels' => $shipment?->parcels?->map(
+                    fn ($parcel): array => $parcel->only(['parcel_no', 'status', 'weight_kg']),
+                ) ?? [],
             ],
         ]);
     }

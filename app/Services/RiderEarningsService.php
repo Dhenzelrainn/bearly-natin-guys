@@ -2,7 +2,10 @@
 
 namespace App\Services;
 
+use App\Models\OrderItem;
+use App\Models\ReturnItem;
 use App\Models\RiderProfile;
+use App\Models\Shipment;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
@@ -86,6 +89,7 @@ class RiderEarningsService
     public function paginate(
         RiderProfile $rider,
         array $filters,
+        BuyerCatalogService $catalog,
     ): LengthAwarePaginator {
         $this->materializeShippingSettlements((int) $rider->id);
         $page = $this->filteredQuery($rider, $filters)
@@ -94,7 +98,7 @@ class RiderEarningsService
             ->paginate(self::PER_PAGE)
             ->withQueryString();
 
-        $page->setCollection($this->presentPage($page->getCollection()));
+        $page->setCollection($this->presentPage($page->getCollection(), $catalog));
 
         return $page;
     }
@@ -109,6 +113,13 @@ class RiderEarningsService
         return $this->filteredQuery($rider, $filters)
             ->orderByDesc('earnings.earned_at')
             ->orderByDesc('earnings.id');
+    }
+
+    public function shippingEarningsStatusVersion(RiderProfile $rider): string
+    {
+        $this->materializeShippingSettlements((int) $rider->id);
+
+        return $this->shippingSettlements->riderEarningStatusVersionForRider($rider);
     }
 
     /**
@@ -230,6 +241,8 @@ class RiderEarningsService
             })
             ->leftJoin('parcels', 'parcels.id', '=', 'attempts.parcel_id')
             ->leftJoin('shipments', 'shipments.id', '=', 'parcels.shipment_id')
+            ->leftJoin('seller_orders as earning_seller_orders', 'earning_seller_orders.id', '=', 'shipments.seller_order_id')
+            ->leftJoin('orders as earning_orders', 'earning_orders.id', '=', 'earning_seller_orders.order_id')
             ->leftJoin('shipping_settlements as linked_settlements', 'linked_settlements.id', '=', 'earnings.shipping_settlement_id')
             ->leftJoin('seller_orders as settlement_orders', 'settlement_orders.id', '=', 'linked_settlements.seller_order_id')
             ->leftJoin('rider_earning_payouts as payouts', 'payouts.rider_earning_id', '=', 'earnings.id')
@@ -254,7 +267,9 @@ class RiderEarningsService
                 'assignments.id as linked_pickup_assignment_id',
                 'pickup_requests.pickup_no',
                 'attempts.id as linked_delivery_attempt_id',
+                'shipments.id as linked_shipment_id',
                 'shipments.shipment_no',
+                'earning_orders.order_no as linked_order_no',
             ]);
 
         if (filled($filters['search'] ?? null)) {
@@ -289,9 +304,58 @@ class RiderEarningsService
         return $query;
     }
 
-    private function presentPage(Collection $records): Collection
+    private function presentPage(Collection $records, BuyerCatalogService $catalog): Collection
     {
-        return $records->map(fn (object $record): array => $this->present($record));
+        $shipmentIds = $records
+            ->pluck('linked_shipment_id')
+            ->filter()
+            ->map(static fn (mixed $id): int => (int) $id)
+            ->unique()
+            ->values();
+
+        $productsByShipment = $shipmentIds->isEmpty()
+            ? collect()
+            : Shipment::query()
+                ->whereIn('id', $shipmentIds)
+                ->with([
+                    'sellerOrder.items.product.images.variant',
+                    'sellerOrder.items.variant',
+                    'returnRequest.items.orderItem.product.images.variant',
+                    'returnRequest.items.orderItem.variant',
+                ])
+                ->get()
+                ->mapWithKeys(function (Shipment $shipment) use ($catalog): array {
+                    $products = $shipment->purpose === 'return'
+                        ? ($shipment->returnRequest?->items ?? collect())
+                            ->map(fn (ReturnItem $returnItem): ?array => $returnItem->orderItem
+                                ? $this->productPreview($returnItem->orderItem, (int) $returnItem->quantity, $catalog)
+                                : null)
+                            ->filter()
+                            ->values()
+                            ->all()
+                        : ($shipment->sellerOrder?->items ?? collect())
+                            ->map(fn (OrderItem $item): array => $this->productPreview($item, (int) $item->quantity, $catalog))
+                            ->values()
+                            ->all();
+
+                    return [(int) $shipment->id => $products];
+                });
+
+        return $records->map(fn (object $record): array => $this->present(
+            $record,
+            $productsByShipment->get((int) ($record->linked_shipment_id ?? 0), []),
+        ));
+    }
+
+    /** @return array{name: string, variant: string, quantity: int, image_url: string} */
+    private function productPreview(OrderItem $item, int $quantity, BuyerCatalogService $catalog): array
+    {
+        return [
+            'name' => trim((string) $item->product_name) ?: 'Purchased item',
+            'variant' => trim((string) $item->variant_name),
+            'quantity' => $quantity,
+            'image_url' => $catalog->orderItemImageUrl($item),
+        ];
     }
 
     /**
@@ -312,9 +376,11 @@ class RiderEarningsService
      *     description: string,
      *     pickup_assignment_id: string,
      *     delivery_attempt_id: string,
+     *     order_no: string,
+     *     products: list<array{name: string, variant: string, quantity: int, image_url: string}>,
      * }
      */
-    private function present(object $record): array
+    private function present(object $record, array $products = []): array
     {
         $earnedAt = Carbon::parse($record->earned_at);
         $pickupAssignmentId = $record->linked_pickup_assignment_id
@@ -345,6 +411,8 @@ class RiderEarningsService
             'earned_at' => $earnedAt->format('M j, Y · g:i A'),
             'earned_at_iso' => $earnedAt->toIso8601String(),
             'job' => $job,
+            'order_no' => (string) ($record->linked_order_no ?? ''),
+            'products' => $products,
             'source' => $source,
             'type' => (string) $record->type,
             'type_label' => $this->label((string) $record->type),

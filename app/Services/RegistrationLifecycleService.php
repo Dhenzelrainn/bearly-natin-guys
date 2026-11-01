@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\AccountStatus;
+use App\Enums\RiderWorkType;
 use App\Enums\UserRole;
 use App\Models\AccountApplication;
 use App\Models\Address;
@@ -49,6 +50,12 @@ class RegistrationLifecycleService
         array $documents = [],
         ?int $sponsorLogisticsUserId = null
     ): AccountApplication {
+        if ($requestedRole === UserRole::Buyer->value) {
+            throw new ConflictHttpException(
+                'New Buyer registrations must use the verified-email activation lifecycle.'
+            );
+        }
+
         return DB::transaction(function () use (
             $user,
             $requestedRole,
@@ -125,6 +132,12 @@ class RegistrationLifecycleService
                     ),
                     'user_id' => $user->id,
                     'requested_role_id' => $role->id,
+                    'requested_work_type' => $requestedRole === UserRole::Rider->value
+                        ? ($application['requested_work_type'] ?? null)
+                        : null,
+                    'rider_vehicle_model' => $requestedRole === UserRole::Rider->value
+                        ? ($application['rider_vehicle_model'] ?? null)
+                        : null,
                     'sponsor_logistics_profile_id' =>
                         $sponsorProfile?->id,
                     'business_name' =>
@@ -144,6 +157,12 @@ class RegistrationLifecycleService
                         $sponsorProfile?->id
                         ?? $accountApplication
                             ->sponsor_logistics_profile_id,
+                    'requested_work_type' => $requestedRole === UserRole::Rider->value
+                        ? ($application['requested_work_type'] ?? $accountApplication->requested_work_type)
+                        : $accountApplication->requested_work_type,
+                    'rider_vehicle_model' => $requestedRole === UserRole::Rider->value
+                        ? ($application['rider_vehicle_model'] ?? $accountApplication->rider_vehicle_model)
+                        : $accountApplication->rider_vehicle_model,
                     'business_name' =>
                         $application['business_name']
                         ?? $accountApplication->business_name
@@ -191,9 +210,69 @@ class RegistrationLifecycleService
     }
 
     /**
-     * Notify the queue that owns the next decision: Admins for Buyer, Seller,
-     * and Logistics applications; the sponsoring Logistics account for Rider
-     * applications.
+     * Activate a newly registered Buyer after the caller has verified the
+     * submitted email proof. Buyer identity, address, and role assignment are
+     * committed together without creating a review application or reviewer
+     * attribution.
+     *
+     * @param  array<string, mixed>  $address
+     */
+    public function activateBuyer(User $user, array $address): User
+    {
+        return DB::transaction(function () use ($user, $address): User {
+            $lockedUser = User::query()
+                ->lockForUpdate()
+                ->findOrFail($user->id);
+
+            if ($lockedUser->role !== UserRole::Buyer->value) {
+                throw ValidationException::withMessages([
+                    'role' => 'Only a Buyer registration can use immediate Buyer activation.',
+                ]);
+            }
+
+            if (! $lockedUser->email_verified_at) {
+                throw ValidationException::withMessages([
+                    'email' => 'Verify your email address before activating your Buyer account.',
+                ]);
+            }
+
+            if ($lockedUser->status !== AccountStatus::Pending->value) {
+                throw new ConflictHttpException(
+                    'This Buyer registration is no longer awaiting activation.'
+                );
+            }
+
+            $this->storeAddress(
+                $lockedUser,
+                UserRole::Buyer->value,
+                $address,
+            );
+
+            $buyerRole = $this->role(UserRole::Buyer->value);
+
+            $lockedUser->forceFill([
+                'role' => UserRole::Buyer->value,
+                'status' => AccountStatus::Active->value,
+                'approved_by' => null,
+                'approved_at' => null,
+                'rejection_reason' => null,
+            ])->save();
+
+            $lockedUser->roles()->syncWithoutDetaching([
+                $buyerRole->id => [
+                    'assigned_by' => null,
+                    'assigned_at' => now(),
+                ],
+            ]);
+
+            return $lockedUser->fresh(['roles', 'addresses']);
+        });
+    }
+
+    /**
+     * Notify the queue that owns the next decision: Admins for Seller and
+     * Logistics applications; the sponsoring Logistics account for Rider
+     * applications. New Buyer registration has no review queue.
      */
     private function notifyRegistrationSubmitted(
         User $user,
@@ -221,7 +300,6 @@ class RegistrationLifecycleService
         }
 
         $url = match ($requestedRole) {
-            UserRole::Buyer->value => route('admin.registrations.buyers'),
             UserRole::Seller->value => route('admin.registrations.sellers'),
             UserRole::Logistics->value => route('admin.registrations.logistics'),
             default => route('admin.registrations'),
@@ -247,13 +325,15 @@ class RegistrationLifecycleService
     public function approve(
         User $user,
         User $approver,
-        ?int $applicationId = null
+        ?int $applicationId = null,
+        ?int $linehaulCapacity = null
     ): AccountApplication {
         try {
             return DB::transaction(function () use (
                 $user,
                 $approver,
-                $applicationId
+                $applicationId,
+                $linehaulCapacity,
             ): AccountApplication {
             $lockedUser = User::query()
                 ->lockForUpdate()
@@ -266,6 +346,13 @@ class RegistrationLifecycleService
             $role = $application->requestedRole;
 
             $this->ensureRequiredDocumentsAreVerified($application);
+
+            if (
+                $role->name === UserRole::Rider->value
+                && $application->requested_work_type === RiderWorkType::Courier->value
+            ) {
+                $this->ensureCourierApproval($application, $approver, $linehaulCapacity);
+            }
 
             $lockedUser->roles()->syncWithoutDetaching([
                 $role->id => [
@@ -294,7 +381,9 @@ class RegistrationLifecycleService
 
             $this->createApprovedProfile(
                 $lockedUser,
-                $application
+                $application,
+                $approver,
+                $linehaulCapacity,
             );
 
                 return $application->fresh([
@@ -529,6 +618,43 @@ class RegistrationLifecycleService
         }
     }
 
+    private function ensureCourierApproval(
+        AccountApplication $application,
+        User $approver,
+        ?int $linehaulCapacity
+    ): void {
+        $sponsor = $application->sponsorLogisticsProfile;
+        $approverProfile = $approver->logisticsProfile;
+
+        if (
+            ! $sponsor
+            || $sponsor->status !== AccountStatus::Active->value
+            || ! $approver->hasRole(UserRole::Logistics->value)
+            || $approver->status !== AccountStatus::Active->value
+            || (int) ($approverProfile?->id ?? 0) !== (int) $sponsor->id
+        ) {
+            throw new ConflictHttpException(
+                'Only the applicant’s active sponsoring Logistics provider can approve Courier work.'
+            );
+        }
+
+        if (! $linehaulCapacity || $linehaulCapacity > 1000) {
+            throw ValidationException::withMessages([
+                'linehaul_capacity' => 'Enter the Logistics-verified parcel capacity for this Courier vehicle.',
+            ]);
+        }
+
+        if (! in_array(
+            $application->user?->vehicle_type,
+            RiderWorkType::vehicleTypes(RiderWorkType::Courier),
+            true
+        )) {
+            throw ValidationException::withMessages([
+                'vehicle_type' => 'The submitted vehicle is not an approved Courier vehicle type.',
+            ]);
+        }
+    }
+
     /**
      * Keep an already-active legacy account represented in role_user.
      * This is safe to call on every successful login.
@@ -562,6 +688,20 @@ class RegistrationLifecycleService
 
         if ($user->role === UserRole::Admin->value) {
             $this->syncActiveRole($user);
+            return;
+        }
+
+        // Immediate Buyer registrations have no human approval record. Do not
+        // manufacture an approved AccountApplication when the legacy auth sync
+        // command later scans those active accounts.
+        if (
+            $user->role === UserRole::Buyer->value
+            && $user->status === AccountStatus::Active->value
+            && $user->approved_by === null
+            && $user->approved_at === null
+        ) {
+            $this->syncActiveRole($user);
+
             return;
         }
 
@@ -844,7 +984,9 @@ class RegistrationLifecycleService
 
     private function createApprovedProfile(
         User $user,
-        ?AccountApplication $application
+        ?AccountApplication $application,
+        ?User $approver = null,
+        ?int $linehaulCapacity = null
     ): void {
         if ($user->role === UserRole::Seller->value) {
             $sellerProfile = SellerProfile::updateOrCreate(
@@ -922,7 +1064,10 @@ class RegistrationLifecycleService
 
             $this->ensureRiderProfile(
                 $user,
-                $sponsorProfile
+                $sponsorProfile,
+                $application,
+                $approver,
+                $linehaulCapacity,
             );
 
             return;
@@ -932,7 +1077,10 @@ class RegistrationLifecycleService
 
     private function ensureRiderProfile(
         User $user,
-        LogisticsProfile $sponsorProfile
+        LogisticsProfile $sponsorProfile,
+        ?AccountApplication $application = null,
+        ?User $approver = null,
+        ?int $linehaulCapacity = null
     ): RiderProfile {
         $profile = RiderProfile::query()
             ->where(
@@ -956,8 +1104,27 @@ class RegistrationLifecycleService
             $user->vehicle_type
             ?: 'Not specified';
 
+        $profile->vehicle_model = $application?->rider_vehicle_model
+            ?? $profile->vehicle_model;
+
         $profile->plate_number =
             $user->plate_number;
+
+        if ($application?->requested_work_type === RiderWorkType::Local->value) {
+            $profile->work_type = RiderWorkType::Local->value;
+            $profile->linehaul_parcel_capacity = null;
+            $profile->courier_vehicle_verified_by = null;
+            $profile->courier_vehicle_verified_at = null;
+        } elseif (
+            $application?->requested_work_type === RiderWorkType::Courier->value
+            && $approver
+            && $linehaulCapacity
+        ) {
+            $profile->work_type = RiderWorkType::Courier->value;
+            $profile->linehaul_parcel_capacity = $linehaulCapacity;
+            $profile->courier_vehicle_verified_by = $approver->id;
+            $profile->courier_vehicle_verified_at = now();
+        }
 
         if ($isNew) {
             $profile->availability_status =

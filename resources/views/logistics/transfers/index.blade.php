@@ -39,36 +39,52 @@
     </form>
 </section>
 
-<section class="panel" id="ready-to-send" data-table-scope>
+<section class="panel" id="ready-to-send">
     <div class="panel-header">
         <div>
-            <h3>Ready to send</h3>
-            <p>Receiving Logistics is detected automatically from the destination city. Only active accounts with one active Sorting Center can receive a handoff.</p>
+            <h3>Build a Courier manifest</h3>
+            <p>Select shipments for one destination Logistics provider and assign an available Courier whose vehicle and parcel capacity have been verified by Logistics. Cargo moves only when the Courier departs.</p>
         </div>
     </div>
-    <div class="table-wrap">
-        <table class="data-table">
-            <thead><tr><th>Waybill / Seller Order</th><th>Seller</th><th>Destination</th><th>Receiving Logistics</th><th>Pieces</th><th>Action</th></tr></thead>
-            <tbody>
-                @forelse($eligibleShipments as $shipment)
-                    <tr>
-                        <td><span class="cell-title"><strong>{{ $shipment['waybill'] }}</strong><small>{{ $shipment['seller_order'] }} · {{ $shipment['purpose'] }}</small></span></td>
-                        <td>{{ $shipment['seller'] }}</td>
-                        <td>{{ $shipment['destination'] }}{{ $shipment['province'] ? ', '.$shipment['province'] : '' }}</td>
-                        <td><span class="cell-title"><strong>{{ $shipment['target'] }}</strong><small>Detected from destination city</small></span></td>
-                        <td>{{ $shipment['pieces'] }}</td>
-                        <td>
-                            <form method="POST" action="{{ route('logistics.transfers.send', $shipment['id']) }}" data-transfer-send-form>
-                                @csrf
-                                <button class="button button-small button-primary" type="submit"><i data-lucide="send"></i> Send handoff</button>
-                            </form>
-                        </td>
-                    </tr>
-                @empty
-                    <tr><td class="empty-row" colspan="6">No received cross-city shipments are ready to hand off.</td></tr>
-                @endforelse
-            </tbody>
-        </table>
+    <div class="panel-body">
+        @forelse($eligibleShipments->groupBy('target_profile_id') as $destinationProfileId => $destinationShipments)
+            <form method="POST" action="{{ route('logistics.transfers.manifests.store') }}" class="panel" style="margin-bottom:16px" data-manifest-form>
+                @csrf
+                <div class="panel-header">
+                    <div><h4>{{ $destinationShipments->first()['target'] }}</h4><p>{{ $destinationShipments->count() }} eligible shipment(s) to this destination city.</p></div>
+                    <label class="field">Available verified Courier
+                        <select name="courier_profile_id" required @disabled($availableCouriers->isEmpty())>
+                            <option value="">Select Courier</option>
+                            @foreach($availableCouriers as $courier)
+                                <option value="{{ $courier->id }}">{{ $courier->user?->name ?? 'Courier' }} · {{ $courier->vehicle_type }} · {{ $courier->linehaul_parcel_capacity }} parcels</option>
+                            @endforeach
+                        </select>
+                    </label>
+                </div>
+                <div class="table-wrap">
+                    <table class="data-table">
+                        <thead><tr><th>Select</th><th>Waybill / Seller Order</th><th>Seller</th><th>Destination</th><th>Parcels</th></tr></thead>
+                        <tbody>
+                            @foreach($destinationShipments as $shipment)
+                                <tr>
+                                    <td><input type="checkbox" name="shipment_ids[]" value="{{ $shipment['id'] }}" aria-label="Add {{ $shipment['waybill'] }} to manifest"></td>
+                                    <td><span class="cell-title"><strong>{{ $shipment['waybill'] }}</strong><small>{{ $shipment['seller_order'] }} · {{ $shipment['purpose'] }}</small></span></td>
+                                    <td>{{ $shipment['seller'] }}</td>
+                                    <td>{{ $shipment['destination'] }}{{ $shipment['province'] ? ', '.$shipment['province'] : '' }}</td>
+                                    <td>{{ $shipment['pieces'] }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+                <div class="form-actions">
+                    <button class="button button-primary" type="submit" @disabled($availableCouriers->isEmpty())><i data-lucide="truck"></i> Assign manifest</button>
+                    @if($availableCouriers->isEmpty())<small>No available, verified Courier with capacity is assigned to this Logistics provider.</small>@endif
+                </div>
+            </form>
+        @empty
+            <p class="empty-copy">No received cross-city shipments are ready for a Courier manifest.</p>
+        @endforelse
     </div>
 </section>
 
@@ -98,6 +114,38 @@
     </div>
 </section>
 @endif
+
+<section class="panel">
+    <div class="panel-header"><div><h3>Active line-haul manifests</h3><p>Origin and destination custody remain distinct. Arrival does not replace the destination acceptance scan.</p></div></div>
+    <div class="table-wrap">
+        <table class="data-table">
+            <thead><tr><th>Manifest</th><th>Route / Courier</th><th>Status</th><th>Shipments</th><th>Action</th></tr></thead>
+            <tbody>
+                @forelse($activeLinehaulRuns as $run)
+                    <tr>
+                        <td><strong>{{ $run->run_no }}</strong><small>Assigned {{ $run->assigned_at?->format('M j, Y · g:i A') }}</small></td>
+                        <td><span class="cell-title"><strong>{{ $run->originSortingCenter?->name ?? 'Origin' }} → {{ $run->destinationLogisticsProfile?->display_name ?? 'Destination' }}</strong><small>{{ $run->courierRiderProfile?->user?->name ?? 'Courier' }}</small></span></td>
+                        <td><span class="status-badge" data-status="{{ $run->status }}">{{ str($run->status)->replace('_', ' ')->title() }}</span></td>
+                        <td>{{ $run->shipments->count() }} shipment(s) · {{ $run->shipments->sum(fn ($shipment) => $shipment->parcels->count()) }} parcel(s)</td>
+                        <td>
+                            @if($run->status === 'exception' && (int) $run->origin_logistics_profile_id === (int) auth()->user()?->logisticsProfile?->id)
+                                <form method="POST" action="{{ route('logistics.transfers.runs.exceptions.resolve', $run) }}">
+                                    @csrf
+                                    <label class="field">Resolution notes<textarea name="resolution" minlength="5" maxlength="1000" required></textarea></label>
+                                    <button class="button button-small button-primary" type="submit">Resolve exception</button>
+                                </form>
+                            @else
+                                @if($run->status === 'arrived')<small>Awaiting destination acceptance of all shipments.</small>@else<small>See run history in Courier workspace.</small>@endif
+                            @endif
+                        </td>
+                    </tr>
+                @empty
+                    <tr><td class="empty-row" colspan="5">No active manifests involve this Logistics provider.</td></tr>
+                @endforelse
+            </tbody>
+        </table>
+    </div>
+</section>
 
 <div class="section-grid">
     <section class="panel">

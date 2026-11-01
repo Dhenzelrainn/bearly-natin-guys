@@ -195,8 +195,11 @@
             <div class="panel-body manifest-list">
                 @forelse($job['manifest'] as $group)
                     <section class="manifest-shipment-group">
-                        <div class="manifest-shipment-heading">
-                            <strong>Waybill {{ $group['waybill'] }}</strong>
+                        <div class="manifest-shipment-heading rider-manifest-shipment-heading">
+                            <div class="rider-waybill-code">
+                                <span>Waybill</span>
+                                <code>{{ $group['waybill'] }}</code>
+                            </div>
                             <small>Products in shipment</small>
                         </div>
 
@@ -346,16 +349,46 @@
                             data-single-submit
                         >
                             @csrf
-                            <label class="rider-waybill-scan-field">
-                                <span>Verify a waybill before pickup</span>
-                                <div class="waybill-scan-tools">
-                                    <input name="waybill_identifier" data-waybill-identifier required maxlength="120" placeholder="Scan or enter a waybill number" autocomplete="off">
-                                    <button type="button" class="waybill-camera-button" data-waybill-camera-open><i data-lucide="camera"></i>Scan</button>
+                            <div class="rider-waybill-verification">
+                                <div class="rider-waybill-verification-heading">
+                                    <i data-lucide="scan-line" aria-hidden="true"></i>
+                                    <div>
+                                        <strong>Match the parcel waybill</strong>
+                                        <p>Scan one code shown below from a parcel label to match it to this pickup.</p>
+                                    </div>
                                 </div>
-                                <input type="hidden" name="scan_method" value="manual" data-waybill-scan-method>
-                                <small>Use the assignment's Code 128 label. Manual entry and USB/Bluetooth scanners are supported.</small>
-                            </label>
-                            <div class="waybill-camera-panel" data-waybill-camera-panel hidden><video data-waybill-camera-video playsinline muted></video><p class="waybill-camera-status" data-waybill-camera-status>Point the camera at the Code 128 waybill barcode.</p><button type="button" class="button button-small" data-waybill-camera-close>Cancel camera</button></div>
+
+                                <div class="rider-waybill-expected" role="group" aria-label="Waybill codes assigned to this pickup">
+                                    <span>Assigned waybill codes</span>
+                                    @php
+                                        $assignedWaybills = collect($job['manifest'])
+                                            ->filter(fn ($group) => filled($group['waybill'] ?? null)
+                                                && ($group['waybill'] ?? null) !== 'Not generated');
+                                    @endphp
+                                    @forelse($assignedWaybills as $group)
+                                        <div class="rider-waybill-expected-item">
+                                            <code>{{ $group['waybill'] }}</code>
+                                            @if(filled($group['barcode_value'] ?? null)
+                                                && $group['barcode_value'] !== $group['waybill'])
+                                                <small>Code 128 barcode: <code>{{ $group['barcode_value'] }}</code></small>
+                                            @endif
+                                        </div>
+                                    @empty
+                                        <p class="rider-waybill-missing">No generated waybill is attached. Contact the seller before pickup.</p>
+                                    @endforelse
+                                </div>
+
+                                <div class="rider-waybill-scan-field">
+                                    <label for="rider-waybill-identifier">Scan or enter a waybill code</label>
+                                    <div class="waybill-scan-tools">
+                                        <input id="rider-waybill-identifier" type="text" name="waybill_identifier" data-waybill-identifier required maxlength="120" placeholder="Scan the barcode or type its code" autocomplete="off" spellcheck="false" aria-describedby="rider-waybill-scan-help">
+                                        <button type="button" class="waybill-camera-button" data-waybill-camera-open><i data-lucide="camera"></i>Scan</button>
+                                    </div>
+                                    <input type="hidden" name="scan_method" value="manual" data-waybill-scan-method>
+                                    <small id="rider-waybill-scan-help">Use the camera, a USB/Bluetooth scanner, or type the code shown on the label.</small>
+                                </div>
+                                <div class="waybill-camera-panel" data-waybill-camera-panel hidden><video data-waybill-camera-video playsinline muted></video><p class="waybill-camera-status" data-waybill-camera-status>Point the camera at the Code 128 waybill barcode.</p><button type="button" class="button button-small" data-waybill-camera-close>Cancel camera</button></div>
+                            </div>
 
                             <button
                                 type="submit"

@@ -1,7 +1,7 @@
 <?php
 
 return [
-    'version' => '2026-09-26-draft',
+    'version' => '2026-11-01-draft',
     // Draft notices remain labelled until the team completes its policy review.
     'draft' => true,
     'operator' => env('BEARLY_POLICY_OPERATOR', 'Bearly project team'),

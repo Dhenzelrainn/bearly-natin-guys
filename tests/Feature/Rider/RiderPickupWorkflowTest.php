@@ -766,7 +766,8 @@ class RiderPickupWorkflowTest extends TestCase
                 $provider,
                 $seller,
                 $rider,
-                'DETAIL'
+                'DETAIL',
+                'accepted'
             );
         $record['sellerOrder']->items()->create([
             'product_name' => 'Rider Pickup Preview Product',
@@ -805,6 +806,13 @@ class RiderPickupWorkflowTest extends TestCase
                 $record['waybill']
                     ->waybill_no
             )
+            ->assertSee(
+                $record['waybill']
+                    ->barcode_value
+            )
+            ->assertSee('rider-waybill-expected', false)
+            ->assertSee('data-waybill-identifier', false)
+            ->assertSee('Match the parcel waybill')
             ->assertSee('Rider Pickup Preview Product')
             ->assertSee('seller-products/rider-pickup-preview.png', false)
             ->assertSee(

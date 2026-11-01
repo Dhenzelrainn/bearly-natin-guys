@@ -24,8 +24,8 @@
     <header class="buyer-return-heading">
         <span class="section-kicker">Order {{ $seller_order->seller_order_no }}</span>
         <h1>Request a return or refund</h1>
-        <p>{{ $seller_order->store?->name ?? 'Seller' }} · Submitted within 3 days of order completion.</p>
-        @if ($deadline)<small>Request by {{ $deadline->format('M j, Y · g:i A') }}</small>@endif
+        <p>{{ $seller_order->store?->name ?? 'Seller' }}</p>
+        @if ($deadline)<small>Return deadline: {{ $deadline->format('M j, Y · g:i A') }}</small>@endif
     </header>
 
     @if ($can_request)
@@ -45,8 +45,24 @@
             </section>
 
             <section class="buyer-return-card buyer-return-fields">
-                <label for="return-type">What are you requesting?<select id="return-type" name="request_type" required><option value="return_refund" @selected(old('request_type') === 'return_refund')>Return item and request a refund</option><option value="refund_only" @selected(old('request_type') === 'refund_only')>Refund only — no physical return</option></select></label>
-                <p class="buyer-return-policy" data-return-policy>For a physical return, Admin approval requests pickup from the Logistics provider assigned to the original shipment. No return-shipping fee is collected in this phase. The Seller inspects the parcel before Admin can record a refund payout.</p>
+                <label for="return-type">What are you requesting?<select id="return-type" name="request_type" required><option value="return_refund" @selected(old('request_type', 'return_refund') === 'return_refund')>Return item and request a refund</option><option value="refund_only" @selected(old('request_type') === 'refund_only')>Refund only — no physical return</option></select></label>
+                <fieldset class="buyer-return-delivery-methods" id="return-delivery-methods">
+                    <legend>How would you return the parcel?</legend>
+                    <p>Admin approval is required before either return method starts. The return delivery fee is covered by the Seller or Platform based on Admin’s case decision; it is not deducted from your approved refund.</p>
+                    <label class="buyer-return-method-option">
+                        <input type="radio" name="return_delivery_method" value="rider_pickup" @checked(old('return_delivery_method', 'rider_pickup') === 'rider_pickup') required>
+                        <span><strong>Rider pickup</strong><small>Logistics arranges collection from your order address.</small></span>
+                    </label>
+                    @if ($dropoff_center)
+                        <label class="buyer-return-method-option">
+                            <input type="radio" name="return_delivery_method" value="buyer_dropoff" @checked(old('return_delivery_method') === 'buyer_dropoff') required>
+                            <span><strong>Drop off at Logistics</strong><small>{{ $dropoff_center->name }} · {{ $dropoff_center->address?->city_municipality }}, {{ $dropoff_center->address?->province }}. You will have 3 calendar days after Admin approval to hand over the parcel.</small></span>
+                        </label>
+                    @else
+                        <p class="buyer-return-policy">Buyer drop-off is unavailable because there is no active Logistics Sorting Center in this order city. Choose Rider pickup instead.</p>
+                    @endif
+                </fieldset>
+                <p class="buyer-return-policy" data-return-policy>The Seller inspects returned items before Admin can record the full approved refund payout. Choosing “Refund only” does not create a parcel or return-delivery fee.</p>
                 <label for="reason-code">Reason<select id="reason-code" name="reason_code" required><option value="">Choose a reason</option>@foreach ($reason_codes as $key => $label)<option value="{{ $key }}" @selected(old('reason_code') === $key)>{{ $label }}</option>@endforeach</select></label>
                 <label for="buyer-note">Tell the Seller what happened<textarea id="buyer-note" name="buyer_note" rows="5" maxlength="2000" placeholder="Add details that can help the Seller review your request.">{{ old('buyer_note') }}</textarea><small>Do not include passwords, payment PINs, or other private credentials.</small></label>
                 <label class="buyer-return-upload" for="return-evidence"><span class="material-symbols-outlined" aria-hidden="true">add_a_photo</span><span><strong>Add photo evidence (optional)</strong><small>JPG, PNG, or WebP · up to 5 photos · 10 MB each (50 MB total max)</small></span><input id="return-evidence" type="file" name="evidence[]" accept="image/jpeg,image/png,image/webp" multiple></label>
@@ -56,7 +72,7 @@
             <div class="buyer-return-actions"><a class="buyer-return-secondary" href="{{ route('buyer.profile') }}#purchases">Cancel</a><button type="submit" class="buyer-return-primary">Submit request</button></div>
         </form>
     @else
-        <section class="buyer-return-card buyer-return-unavailable"><span class="material-symbols-outlined" aria-hidden="true">event_busy</span><h2>No eligible quantities</h2><p>This Seller Order is outside the 3-day return window, is not completed, has no recorded payment, or all item quantities already belong to another case.</p></section>
+        <section class="buyer-return-card buyer-return-unavailable"><span class="material-symbols-outlined" aria-hidden="true">event_busy</span><h2>This order isn’t eligible for a return or refund</h2><p>Returns are available within 3 days after the order is completed and payment is confirmed. Items already included in another return request can’t be requested again.</p></section>
     @endif
 
     @if ($cases->isNotEmpty())
@@ -68,5 +84,21 @@
         </section>
     @endif
 </main>
+<script>
+    (() => {
+        const requestType = document.getElementById('return-type');
+        const deliveryMethods = document.getElementById('return-delivery-methods');
+        if (!requestType || !deliveryMethods) return;
+
+        const syncDeliveryMethods = () => {
+            const isPhysicalReturn = requestType.value === 'return_refund';
+            deliveryMethods.hidden = !isPhysicalReturn;
+            deliveryMethods.disabled = !isPhysicalReturn;
+        };
+
+        requestType.addEventListener('change', syncDeliveryMethods);
+        syncDeliveryMethods();
+    })();
+</script>
 </body>
 </html>

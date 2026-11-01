@@ -161,7 +161,7 @@
     <a class="button button-primary" href="{{ route('admin.seller-payouts.index') }}">Review withdrawal queue</a>
 </section>
 
-<section class="panel">
+<section class="panel" id="refund-cash-dispatch">
     <div class="panel-heading"><div><span class="eyebrow">Approved COD refunds</span><h2>Finance to Logistics cash handoff</h2><p>Record this step only after the exact refund cash has physically been handed to the case's original outbound Logistics provider.</p></div></div>
     <div class="table-wrap"><table class="admin-table">
         <thead><tr><th>Refund / Buyer</th><th>Seller / responsibility</th><th>Amount</th><th>Issue cash to Logistics</th></tr></thead>
@@ -186,7 +186,7 @@
 </section>
 
 @if($refundCashPayouts->isNotEmpty())
-    <section class="panel">
+    <section class="panel" id="refund-cash-assignments">
         <div class="panel-heading"><div><span class="eyebrow">Refund cash custody</span><h2>Open payout assignments</h2><p>Refund stays pending until signed Buyer receipt proof is reviewed by Logistics and verified by Finance.</p></div></div>
         <div class="table-wrap"><table class="admin-table finance-refund-cash-table">
             <thead><tr><th>Cash payout / refund</th><th>Buyer / provider</th><th>Amount</th><th>Status</th><th>Finance action</th></tr></thead>

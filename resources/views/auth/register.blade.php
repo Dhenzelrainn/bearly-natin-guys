@@ -13,6 +13,7 @@
 @php
 
     $googleRegistration = session('google_registration');
+    $registrationRole = old('role', 'buyer');
 
 @endphp
 
@@ -42,7 +43,7 @@
 
             <li data-step-marker="3"><span>3</span><b data-role-step-label>Business Details</b></li>
 
-            <li data-step-marker="4"><span>4</span><b>Documents &amp; Review</b></li>
+            <li data-step-marker="4"><span>4</span><b data-final-step-label>Review &amp; finish</b></li>
 
         </ol>
 
@@ -90,7 +91,7 @@
 
             <strong>Google account verified.</strong>
 
-            Your Google email is locked for this registration. Complete the remaining Bearly details and documents.
+            Your Google email is locked for this registration. Complete the remaining Bearly registration details.
 
         </div>
 
@@ -505,13 +506,13 @@
 
                 <div>
 
-                    <h2>Documents &amp; review</h2>
+                    <h2 data-documents-title>Review your registration</h2>
 
-                    <p>Upload the required documents and confirm your application.</p>
+                    <p data-documents-description>Check your details before continuing.</p>
 
                 </div>
 
-                <div class="document-security-note">
+                <div class="document-security-note" data-seller-document @if($registrationRole !== 'seller') hidden @endif>
 
                     <img src="{{ asset('images/security.png') }}" alt="" class="document-security-icon" aria-hidden="true">
 
@@ -523,7 +524,7 @@
 
             <div class="upload-grid" data-upload-grid>
 
-                <article class="document-upload" data-upload-card>
+                <article class="document-upload" data-upload-card data-seller-document @if($registrationRole !== 'seller') hidden @endif>
 
                     <div class="document-upload__header">
 
@@ -549,7 +550,7 @@
 
                     <label class="upload-dropzone" data-drop-zone>
 
-                        <input name="valid_id" type="file" accept=".png,.jpg,.jpeg,.pdf" data-file-preview required>
+                        <input name="valid_id" type="file" accept=".png,.jpg,.jpeg,.pdf" data-file-preview>
 
                         <img src="{{ asset('images/cloud.png') }}" alt="" class="upload-icon" aria-hidden="true">
 
@@ -577,19 +578,7 @@
 
                 </article>
 
-                <aside class="upload-guidance" data-buyer-guidance hidden>
-
-                    <h3>Before you upload</h3>
-
-                    <ul><li>Use a current government-issued ID.</li><li>Keep all four corners visible.</li><li>Make sure the name and photo are readable.</li><li>Avoid glare, blur, and covered details.</li></ul>
-
-                    <p>One file is enough. Upload a JPG, PNG, or PDF up to 5 MB.</p>
-
-                    <a href="{{ route('privacy') }}" target="_blank" rel="noopener">How we use your information</a>
-
-                </aside>
-
-                <article class="document-upload" data-upload-card data-seller-document>
+                <article class="document-upload" data-upload-card data-seller-document @if($registrationRole !== 'seller') hidden @endif>
 
                     <div class="document-upload__header">
 
@@ -653,7 +642,7 @@
 
                         <span class="summary-eyebrow">Final check</span>
 
-                        <h3 id="application-summary-title">Application summary</h3>
+                        <h3 id="application-summary-title" data-summary-title>Registration summary</h3>
 
                     </div>
 
@@ -671,7 +660,10 @@
 
                 </span>
 
-                <div><strong>What happens next?</strong><p data-approval-notice></p></div>
+                <div>
+                    <strong data-next-heading>{{ $registrationRole === 'seller' ? 'What happens next?' : 'Account activation' }}</strong>
+                    <p data-approval-notice>{{ $registrationRole === 'seller' ? 'A Bearly administrator will review your Seller application. Access stays pending until the application is approved.' : 'Verified email activates your Buyer account immediately. You can sign in after registration.' }}</p>
+                </div>
 
             </div>
 
@@ -683,7 +675,7 @@
 
             <button type="button" class="primary-button" data-next>Continue</button>
 
-            <button type="button" class="primary-button" data-submit>Submit application <span aria-hidden="true">→</span></button>
+            <button type="button" class="primary-button" data-submit><span data-submit-label>Continue</span> <span aria-hidden="true">→</span></button>
 
         </div>
 

@@ -1,3 +1,5 @@
+@import "./theme.css";
+
 /*
  * Bearly Notification Center page.
  *
@@ -592,5 +594,283 @@ body:not(.bc).bh main.nc-main {
     .nc-skeleton-dot,
     .nc-skeleton-lines i {
         animation: none;
+    }
+}
+
+/* Seller pages render this center inside .seller-content rather than a
+   notification-center-body wrapper, so give that role its own dark palette. */
+:root[data-theme="dark"] body.seller-body .nc-page--seller :is(.nc-toolbar, .nc-list, .nc-empty) {
+    border-color: var(--theme-border);
+    background: var(--theme-surface);
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.seller-body .nc-page--seller .nc-row {
+    border-color: var(--theme-border);
+    background: #211c18;
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.seller-body .nc-page--seller .nc-row.is-unread {
+    background: #3a2c20;
+    box-shadow: inset 3px 0 0 #e9a72f;
+}
+
+:root[data-theme="dark"] body.seller-body .nc-page--seller .nc-row:hover,
+:root[data-theme="dark"] body.seller-body .nc-page--seller .nc-row:focus-visible,
+:root[data-theme="dark"] body.seller-body .nc-page--seller .nc-row.is-unread:hover {
+    border-color: #a8792f;
+    background: #5a3b20;
+    color: #fff8ef;
+    box-shadow: inset 4px 0 0 #e9a72f;
+}
+
+:root[data-theme="dark"] body.seller-body .nc-page--seller :is(
+    .nc-row-head strong, .nc-row.is-unread .nc-row-head strong
+) {
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.seller-body .nc-page--seller :is(
+    .nc-row-copy p, .nc-row-head time, .nc-row-arrow
+) {
+    color: #c0b2a5;
+}
+
+:root[data-theme="dark"] body.seller-body .nc-page--seller .nc-row-icon {
+    background: #382e27;
+    color: #e4ba7d;
+}
+
+:root[data-theme="dark"] body.seller-body .nc-page--seller .nc-icon-success {
+    background: #1e3828;
+    color: #9bd5a8;
+}
+
+:root[data-theme="dark"] body.seller-body .nc-page--seller .nc-icon-warning {
+    background: #44331d;
+    color: #efc16a;
+}
+
+:root[data-theme="dark"] body.seller-body .nc-page--seller .nc-icon-info {
+    background: #1e3041;
+    color: #93c9eb;
+}
+
+:root[data-theme="dark"] body.seller-body .nc-page--seller .nc-search {
+    border-color: var(--theme-border);
+    background: #241c16;
+}
+
+:root[data-theme="dark"] body.seller-body .nc-page--seller .nc-search input {
+    background: transparent;
+    color: var(--theme-text);
+    color-scheme: dark;
+}
+
+:root[data-theme="dark"] body.seller-body .nc-page--seller .nc-search input::-webkit-search-cancel-button {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #b77a2a;
+    cursor: pointer;
+}
+
+:root[data-theme="dark"] body.seller-body .nc-page--seller .nc-link {
+    border-color: #806334;
+    background: #30241d;
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.seller-body .nc-page--seller .nc-link:hover,
+:root[data-theme="dark"] body.seller-body .nc-page--seller .nc-link:focus-visible {
+    border-color: #a8792f;
+    background: #5a3b20;
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.seller-body .nc-page--seller .nc-tab:hover {
+    background: #45331d;
+    color: #f0bd69;
+}
+
+:root[data-theme="dark"] body.seller-body .nc-page--seller .nc-page-button:hover:not(:disabled) {
+    border-color: #806334;
+    background: #45331d;
+    color: #f0bd69;
+}
+
+/* Admin, Logistics, and Rider render the shared center in their own body layouts. */
+:root[data-theme="dark"] .nc-page:is(.nc-page--admin, .nc-page--logistics, .nc-page--rider) :is(
+    .nc-toolbar, .nc-list, .nc-empty
+) {
+    border-color: var(--nc-line);
+    background: var(--nc-surface);
+    color: var(--nc-ink);
+}
+
+:root[data-theme="dark"] .nc-page:is(.nc-page--admin, .nc-page--logistics, .nc-page--rider) .nc-row {
+    border-color: var(--nc-line);
+    background: var(--nc-surface);
+    color: var(--nc-ink);
+}
+
+:root[data-theme="dark"] .nc-page:is(.nc-page--admin, .nc-page--logistics, .nc-page--rider) .nc-row.is-unread {
+    background: #34271e;
+    box-shadow: inset 3px 0 0 var(--nc-gold);
+}
+
+:root[data-theme="dark"] .nc-page:is(.nc-page--admin, .nc-page--logistics, .nc-page--rider) .nc-row:hover,
+:root[data-theme="dark"] .nc-page:is(.nc-page--admin, .nc-page--logistics, .nc-page--rider) .nc-row:focus-visible {
+    background: #3b3027;
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] .nc-page:is(.nc-page--admin, .nc-page--logistics, .nc-page--rider) .nc-row:focus-visible {
+    outline: 2px solid #806334;
+    outline-offset: -2px;
+}
+
+:root[data-theme="dark"] .nc-page:is(.nc-page--admin, .nc-page--logistics, .nc-page--rider) .nc-row-head :is(strong, time) {
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] .nc-page:is(.nc-page--admin, .nc-page--logistics, .nc-page--rider) .nc-row-head time {
+    color: #c0b2a5;
+}
+
+:root[data-theme="dark"] .nc-page:is(.nc-page--admin, .nc-page--logistics, .nc-page--rider) :is(
+    .nc-row-copy p, .nc-row-arrow, .nc-page-info
+) {
+    color: #c0b2a5;
+}
+
+:root[data-theme="dark"] .nc-page:is(.nc-page--admin, .nc-page--logistics, .nc-page--rider) .nc-row-icon {
+    background: #45331d;
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] .nc-page:is(.nc-page--admin, .nc-page--logistics, .nc-page--rider) .nc-icon-success {
+    background: #1e3828;
+    color: #a8d5b0;
+}
+
+:root[data-theme="dark"] .nc-page:is(.nc-page--admin, .nc-page--logistics, .nc-page--rider) .nc-icon-warning {
+    background: #44331d;
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] .nc-page:is(.nc-page--admin, .nc-page--logistics, .nc-page--rider) .nc-icon-info {
+    background: #1e3041;
+    color: #b2dcf4;
+}
+
+:root[data-theme="dark"] .nc-page:is(.nc-page--admin, .nc-page--logistics, .nc-page--rider) .nc-search {
+    border-color: var(--nc-line);
+    background: var(--theme-input);
+}
+
+:root[data-theme="dark"] .nc-page:is(.nc-page--admin, .nc-page--logistics, .nc-page--rider) .nc-search input {
+    background: transparent;
+    color: var(--nc-ink);
+    color-scheme: dark;
+}
+
+:root[data-theme="dark"] .nc-page:is(.nc-page--admin, .nc-page--logistics, .nc-page--rider) .nc-tab {
+    color: var(--nc-muted);
+}
+
+:root[data-theme="dark"] .nc-page:is(.nc-page--admin, .nc-page--logistics, .nc-page--rider) .nc-tab.is-active {
+    border-bottom-color: var(--nc-gold);
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] .nc-page:is(.nc-page--admin, .nc-page--logistics, .nc-page--rider) .nc-tab:hover {
+    background: #3b3027;
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] .nc-page:is(.nc-page--admin, .nc-page--logistics, .nc-page--rider) :is(.nc-link, .nc-page-button) {
+    border-color: #72563e;
+    background: #30241d;
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] .nc-page:is(.nc-page--admin, .nc-page--logistics, .nc-page--rider) :is(.nc-link, .nc-page-button):hover:not(:disabled),
+:root[data-theme="dark"] .nc-page:is(.nc-page--admin, .nc-page--logistics, .nc-page--rider) :is(.nc-link, .nc-page-button):focus-visible {
+    border-color: #9b7847;
+    background: #45331d;
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] .nc-page:is(.nc-page--admin, .nc-page--logistics, .nc-page--rider) .nc-mark-all {
+    background: #684a32;
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] .nc-page:is(.nc-page--admin, .nc-page--logistics, .nc-page--rider) .nc-mark-all:hover {
+    background: #806334;
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] .nc-page:is(.nc-page--admin, .nc-page--logistics, .nc-page--rider) .nc-retry {
+    background: #684a32;
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] .nc-page:is(.nc-page--admin, .nc-page--logistics, .nc-page--rider) .nc-retry:hover {
+    background: #806334;
+}
+
+:root[data-theme="dark"] .nc-page:is(.nc-page--admin, .nc-page--logistics, .nc-page--rider) .nc-empty h2 {
+    color: var(--nc-ink);
+}
+
+:root[data-theme="dark"] .nc-page:is(.nc-page--admin, .nc-page--logistics, .nc-page--rider) .nc-empty p {
+    color: var(--nc-muted);
+}
+
+:root[data-theme="dark"] .nc-page:is(.nc-page--admin, .nc-page--logistics, .nc-page--rider) .nc-skeleton {
+    border-color: var(--nc-line);
+}
+
+:root[data-theme="dark"] .nc-page:is(.nc-page--admin, .nc-page--logistics, .nc-page--rider) .nc-skeleton :is(.nc-skeleton-dot, .nc-skeleton-lines i) {
+    background: #382e27;
+}
+
+/* The Buyer Notification Center back link is navigation, not a boxed action. */
+:root[data-theme="dark"] body.notification-center-body .nc-page--buyer .nc-head-actions .nc-link {
+    border-color: transparent;
+    background: transparent;
+    color: #fff8ef;
+    box-shadow: none;
+    padding-inline: 0;
+}
+
+:root[data-theme="dark"] body.notification-center-body .nc-page--buyer .nc-head-actions .nc-link:hover {
+    border-color: transparent;
+    background: transparent;
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.notification-center-body .nc-page--buyer .nc-head-actions .nc-link:focus-visible {
+    border-color: transparent;
+    background: transparent;
+    color: #efbd71;
+    outline: 2px solid #efbd71;
+    outline-offset: 3px;
+}
+
+@media (min-width: 761px) {
+    :root[data-theme="dark"] body.notification-center-body .nc-page--buyer .nc-head-actions {
+        margin-right: 24px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    :root[data-theme="dark"] .nc-page:is(.nc-page--admin, .nc-page--logistics, .nc-page--rider) .nc-row {
+        transition: none;
     }
 }

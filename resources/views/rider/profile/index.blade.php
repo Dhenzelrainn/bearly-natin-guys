@@ -290,6 +290,7 @@
         <form
             class="panel-body"
             method="POST"
+            enctype="multipart/form-data"
             action="{{ route(
                 'rider.profile.vehicle.update'
             ) }}"
@@ -300,44 +301,30 @@
             <div class="field-grid">
 
                 <div class="field">
+                    <label for="rider-work-type">Requested work type</label>
+                    <select id="rider-work-type" name="work_type" data-rider-work-type required>
+                        <option value="local" @selected(old('work_type', $profile['work_type'] ?? 'local') === 'local')>Local Rider</option>
+                        <option value="courier" @selected(old('work_type', $profile['work_type'] ?? 'local') === 'courier')>City / line-haul Courier</option>
+                    </select>
+                    <small>Changes are not active until your sponsoring Logistics provider verifies the vehicle and documents.</small>
+                </div>
+
+                <div class="field">
                     <label for="rider-vehicle-type">
                         Vehicle type
                     </label>
 
-                    @php
-                        $selectedVehicleType = old(
-                            'vehicle_type',
-                            $profile['vehicle_type']
-                        );
-
-                        $vehicleTypes = collect([
-                            $selectedVehicleType,
-                            'Motorcycle',
-                            'Tricycle',
-                            'E-bike',
-                            'Van',
-                        ])
-                            ->filter()
-                            ->unique()
-                            ->values();
-                    @endphp
-
                     <select
                         id="rider-vehicle-type"
                         name="vehicle_type"
+                        data-rider-vehicle-type
                         required
                     >
-                        @foreach ($vehicleTypes as $vehicleType)
-                            <option
-                                value="{{ $vehicleType }}"
-                                @selected(
-                                    $selectedVehicleType
-                                    === $vehicleType
-                                )
-                            >
-                                {{ $vehicleType }}
-                            </option>
-                        @endforeach
+                        <option value="">Select a vehicle</option>
+                        <option value="Motorcycle" data-work-type="local" @selected(old('vehicle_type', $profile['vehicle_type']) === 'Motorcycle')>Motorcycle</option>
+                        <option value="Tricycle" data-work-type="local" @selected(old('vehicle_type', $profile['vehicle_type']) === 'Tricycle')>Tricycle</option>
+                        <option value="E-bike" data-work-type="local" @selected(old('vehicle_type', $profile['vehicle_type']) === 'E-bike')>E-bike</option>
+                        <option value="Van" data-work-type="courier" @selected(old('vehicle_type', $profile['vehicle_type']) === 'Van')>Van</option>
                     </select>
                 </div>
 
@@ -373,20 +360,26 @@
                 </div>
 
                 <div class="field">
-                    <label for="rider-parcel-capacity">
-                        Parcel capacity
-                    </label>
+                    <label for="rider-or-cr">Vehicle OR / CR <span>*</span></label>
+                    <input id="rider-or-cr" type="file" name="or_cr" accept=".jpg,.jpeg,.png,.pdf" required>
+                    <small>JPG, PNG, or PDF up to 5 MB.</small>
+                </div>
 
-                    <input
-                        id="rider-parcel-capacity"
-                        type="number"
-                        name="parcel_capacity"
-                        min="1"
-                        value="{{ old(
-                            'parcel_capacity',
-                            $profile['parcel_capacity']
-                        ) }}"
-                    >
+                <div class="field">
+                    <label for="rider-driver-license">Driver’s License / Valid ID <span>*</span></label>
+                    <input id="rider-driver-license" type="file" name="driver_license" accept=".jpg,.jpeg,.png,.pdf" required>
+                    <small>JPG, PNG, or PDF up to 5 MB.</small>
+                </div>
+
+                <div class="field span-3">
+                    <p>Current approved work type: <strong>{{ ucfirst($profile['work_type'] ?? 'local') }}</strong>. Local parcel capacity remains managed by Logistics.</p>
+                    @if(($profile['vehicle_change_status'] ?? null) === 'pending')
+                        <p class="zone-routing-note">A vehicle or work-type proposal is awaiting Logistics review. Your current vehicle and permissions remain active.</p>
+                    @elseif(($profile['vehicle_change_status'] ?? null) === 'rejected')
+                        <p class="zone-routing-note">Your last proposal was not approved: {{ $profile['vehicle_change_review_notes'] }}</p>
+                    @elseif(($profile['vehicle_change_status'] ?? null) === 'approved')
+                        <p class="zone-routing-note">Your latest vehicle/work-type proposal was approved by Logistics.</p>
+                    @endif
                 </div>
 
             </div>
@@ -396,7 +389,7 @@
                     class="button button-primary"
                     type="submit"
                 >
-                    Save vehicle details
+                    Submit for Logistics review
                 </button>
             </div>
         </form>
@@ -886,3 +879,27 @@
 </section>
 
 @endsection
+
+@push('scripts')
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const workType = document.querySelector('[data-rider-work-type]');
+    const vehicleType = document.querySelector('[data-rider-vehicle-type]');
+    if (!workType || !vehicleType) return;
+    const filterVehicles = () => {
+        const allowed = workType.value;
+        let selectedAllowed = false;
+        Array.from(vehicleType.options).forEach((option) => {
+            if (!option.dataset.workType) return;
+            const matches = option.dataset.workType === allowed;
+            option.hidden = !matches;
+            option.disabled = !matches;
+            if (option.selected && matches) selectedAllowed = true;
+        });
+        if (!selectedAllowed) vehicleType.value = '';
+    };
+    workType.addEventListener('change', filterVehicles);
+    filterVehicles();
+});
+</script>
+@endpush

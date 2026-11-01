@@ -43,7 +43,7 @@
                 @if ($statusFilter !== 'all')<input type="hidden" name="status" value="{{ $statusFilter }}">@endif
                 <label>
                     <i data-lucide="search" aria-hidden="true"></i>
-                    <input type="search" name="search" value="{{ $search }}" placeholder="Search order, tracking number, or recipient" aria-label="Search waybills">
+                    <input type="search" name="search" value="{{ $search }}" placeholder="Search order, item, SKU, waybill, courier, parcel, destination, or pickup" aria-label="Search waybills">
                 </label>
                 <button type="submit">Search</button>
                 @if ($search !== '')<a href="{{ route('seller.fulfillment.waybills', $statusFilter === 'all' ? [] : ['status' => $statusFilter]) }}">Clear</a>@endif
@@ -75,7 +75,28 @@
                             <td>
                                 <input type="checkbox" data-waybill-check value="{{ $item['id'] }}" {{ $item['status_key'] === 'voided' ? 'disabled' : '' }} aria-label="Select {{ $item['order'] }}">
                             </td>
-                            <td><strong>{{ $item['order'] }}</strong><small>{{ $item['customer'] }}</small></td>
+                            <td>
+                                <div class="waybill-order-cell">
+                                    <div class="waybill-product-thumbnails" role="group" aria-label="Products in {{ $item['order'] }}">
+                                        @forelse ($item['products'] as $product)
+                                            <span class="waybill-product-thumbnail">
+                                                @if (filled($product['image_url']))
+                                                    <img src="{{ $product['image_url'] }}" alt="{{ $product['name'] }}" loading="lazy">
+                                                @else
+                                                    <i data-lucide="shopping-bag" aria-hidden="true"></i>
+                                                    <span class="sr-only">{{ $product['name'] }}</span>
+                                                @endif
+                                            </span>
+                                        @empty
+                                            <span class="waybill-product-thumbnail is-empty" aria-hidden="true"><i data-lucide="shopping-bag"></i></span>
+                                        @endforelse
+                                        @if ($item['product_count'] > count($item['products']))
+                                            <span class="waybill-product-more" aria-label="{{ $item['product_count'] - count($item['products']) }} more products">+{{ $item['product_count'] - count($item['products']) }}</span>
+                                        @endif
+                                    </div>
+                                    <span class="waybill-order-copy"><strong>{{ $item['order'] }}</strong><small>{{ $item['customer'] }}</small></span>
+                                </div>
+                            </td>
                             <td><strong>{{ $item['tracking'] }}</strong><small>Generated {{ $item['generated_at'] }}</small></td>
                             <td>{{ $item['courier'] }}</td>
                             <td>

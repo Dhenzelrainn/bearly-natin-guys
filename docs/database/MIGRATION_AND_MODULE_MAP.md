@@ -26,7 +26,7 @@ The schema has been validated against a clean MySQL database for the migration s
 10. Pickup, sorting, dispatch, delivery, and shipment events
 11. Compliance checks, reports, violations, actions, and warnings
 12. Returns, refunds, and disputes
-13. Commissions, seller transactions/payouts, Seller Wallet/withdrawals, and rider earnings
+13. Commissions, seller transactions/payouts, Seller Wallet/withdrawals, Logistics payout destinations/remittances, and Rider earnings
 14. Conversations, messages, and notifications
 15. Announcements, policies, audits, settings, and support
 
@@ -41,6 +41,12 @@ The additive migration `2026_10_15_000001_create_seller_wallet_and_withdrawal_ta
 The additive migration `2026_10_15_000002_add_receiving_bank_name_to_seller_payouts` adds the optional `seller_payouts.receiving_bank_name` field used when Finance records a verified legacy bank transfer. Its rollback refuses to drop the column while any bank names have been recorded.
 
 The additive migration `2026_10_18_000002_add_category_snapshot_to_order_items` adds nullable `order_items.category_id_snapshot` (FK to `categories`, delete SET NULL) and `order_items.category_name_snapshot` for purchase-time category reporting. Legacy rows stay null and report as "Category not recorded"; its `down()` drops the FK and both columns.
+
+The additive migration `2026_10_29_000001_add_buyer_return_dropoff_and_return_shipping_settlement` adds Buyer-selected return delivery method/drop-off deadline/assigned center, a return route quote snapshot, an explicit return type on the existing shipping settlement ledger, and separate Seller refund-proceeds versus return-shipping recovery components. Existing outbound settlements remain `outbound`; historical return requests remain Rider-pickup compatible. Its rollback refuses while return delivery, quote, settlement, or fee-recovery records exist. It has only been exercised on guarded SQLite `:memory:` feature tests; do not run the project schema generator or a migration against the interrupted local MySQL database until it is reconciled.
+
+The additive migration `2026_10_30_000001_add_logistics_payout_destinations` adds encrypted, Finance-verified Logistics bank/GCash payout destinations and nullable destination links/snapshots on `shipping_settlements`. Finance still performs bank/GCash transfers externally and records the actual reference; this is not a Logistics wallet or automatic payout integration. Its rollback refuses while destination records or settlement links exist. MySQL migration/rollback behavior must be verified before release; do not run it against the interrupted local MySQL database until it is reconciled.
+
+The additive migration `2026_11_01_000001_add_courier_linehaul_workflows` adds optional Rider work-type and Courier vehicle-verification fields, applicant work-type/model snapshots, provider-scoped line-haul runs/manifests/events, and Logistics-reviewed Rider vehicle-change requests. A null work type preserves existing Rider profiles as legacy-local; no existing account is rewritten. A unique shipment assignment prevents duplicate manifests. Only Courier departure moves parcels in transit; destination Logistics acceptance remains the custody-transfer point. Its `down()` refuses rollback once Courier requests, Rider capability, or line-haul history exists. The migration has only been exercised by guarded SQLite feature tests; do not apply it to the interrupted local MySQL database, and verify MySQL migration/rollback behavior before release.
 
 ## Delivery priorities
 

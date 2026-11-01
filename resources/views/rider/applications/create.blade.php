@@ -14,6 +14,7 @@
         rel="stylesheet"
     >
 
+    @include('partials.theme-preload')
     @vite([
         'resources/css/rider.css',
         'resources/js/rider.js',
@@ -24,15 +25,13 @@
 
 <body class="registration-body" data-module="rider">
 <main class="registration-shell">
+    <div class="registration-theme-toggle">@include('partials.theme-toggle')</div>
     <a
         class="registration-brand registration-brand-compact"
         href="{{ route('rider.landing') }}"
         aria-label="Bearly home"
     >
-        <img
-            src="{{ asset('images/bearly-logo.png') }}"
-            alt="Bearly"
-        >
+        @include('partials.theme-aware-logo', ['themeLogoAlt' => 'Bearly'])
         <span class="registration-brand-context">
             Rider application
         </span>
@@ -688,6 +687,17 @@
                     <section class="form-step" data-form-step="3" hidden>
                         <div class="field-grid">
                             <div class="field">
+                                <label for="rider-work-type">
+                                    Work type requested <span>*</span>
+                                </label>
+                                <select id="rider-work-type" name="work_type" data-rider-work-type required>
+                                    <option value="local" @selected(old('work_type', 'local') === 'local')>Local Rider</option>
+                                    <option value="courier" @selected(old('work_type') === 'courier')>City / line-haul Courier</option>
+                                </select>
+                                <small>Courier work is available only after your sponsoring Logistics provider verifies your four-wheel vehicle and documents.</small>
+                            </div>
+
+                            <div class="field">
                                 <label for="rider-vehicle-type">
                                     Vehicle type <span>*</span>
                                 </label>
@@ -695,14 +705,20 @@
                                 <select
                                     id="rider-vehicle-type"
                                     name="vehicle_type"
+                                    data-rider-vehicle-type
                                     required
                                 >
                                     <option value="">Select vehicle</option>
-                                    <option>Motorcycle</option>
-                                    <option>Tricycle</option>
-                                    <option>E-bike</option>
-                                    <option>Van</option>
+                                    <option value="Motorcycle" data-work-type="local" @selected(old('vehicle_type') === 'Motorcycle')>Motorcycle</option>
+                                    <option value="Tricycle" data-work-type="local" @selected(old('vehicle_type') === 'Tricycle')>Tricycle</option>
+                                    <option value="E-bike" data-work-type="local" @selected(old('vehicle_type') === 'E-bike')>E-bike</option>
+                                    <option value="Van" data-work-type="courier" @selected(old('vehicle_type') === 'Van')>Van</option>
                                 </select>
+                            </div>
+
+                            <div class="field">
+                                <label for="rider-vehicle-model">Vehicle make / model</label>
+                                <input id="rider-vehicle-model" name="vehicle_model" value="{{ old('vehicle_model') }}" maxlength="160" autocomplete="off" placeholder="e.g. Toyota HiAce">
                             </div>
 
                             <div class="field">
@@ -830,5 +846,31 @@
 
 <div class="toast-stack" data-toast-stack></div>
 <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const workType = document.querySelector('[data-rider-work-type]');
+    const vehicleType = document.querySelector('[data-rider-vehicle-type]');
+
+    if (!workType || !vehicleType) return;
+
+    const filterVehicles = () => {
+        const allowed = workType.value;
+        let selectedAllowed = false;
+
+        Array.from(vehicleType.options).forEach((option) => {
+            if (!option.dataset.workType) return;
+            const matches = option.dataset.workType === allowed;
+            option.hidden = !matches;
+            option.disabled = !matches;
+            if (option.selected && matches) selectedAllowed = true;
+        });
+
+        if (!selectedAllowed) vehicleType.value = '';
+    };
+
+    workType.addEventListener('change', filterVehicles);
+    filterVehicles();
+});
+</script>
 </body>
 </html>

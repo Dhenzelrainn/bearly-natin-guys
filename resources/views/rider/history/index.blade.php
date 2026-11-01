@@ -28,7 +28,7 @@
             <i data-lucide="info" aria-hidden="true"></i>
             <span>
                 <strong>Delivery history and earnings are separate records</strong>
-                <small>A delivered attempt appears here even when no earning exists. The 3-calendar-day return/refund period starts at Seller Order completion; after it ends, payment, unresolved cases, and COD reconciliation still determine settlement eligibility. Finance remittance and Logistics' actual Rider payout are later steps, so this is not a promised pay date. A missing earning is not labeled pending because this history does not determine the reason.</small>
+                <small>Outbound delivery attempts can appear here before their earnings are eligible. Outbound earnings wait for the 3-calendar-day return/refund period and payment/COD checks; return-shipping earnings appear in Earnings after the approved return reaches the Seller. Finance remittance and Logistics' actual Rider payout are later steps, so this is not a promised pay date. A missing earning is not labeled pending because this history does not determine the reason.</small>
             </span>
         </div>
     </div>

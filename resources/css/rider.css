@@ -1061,6 +1061,80 @@ body[data-module="rider"] .earnings-job-cell small {
     overflow-wrap: anywhere;
 }
 
+body[data-module="rider"] .earnings-job-preview {
+    display: flex;
+    min-width: 320px;
+    align-items: center;
+    gap: 10px;
+}
+
+body[data-module="rider"] .earnings-product-thumbnails {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 4px;
+}
+
+body[data-module="rider"] .earnings-product-thumbnail,
+body[data-module="rider"] .earnings-product-thumbnail-placeholder {
+    display: grid;
+    width: 56px;
+    height: 56px;
+    flex: 0 0 56px;
+    place-items: center;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: #f7f4f0;
+    color: var(--muted);
+}
+
+body[data-module="rider"] .earnings-product-thumbnail:not(:first-child) {
+    width: 38px;
+    height: 38px;
+    flex-basis: 38px;
+}
+
+body[data-module="rider"] .earnings-product-thumbnail img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+body[data-module="rider"] .earnings-product-thumbnail-placeholder svg {
+    width: 15px;
+    height: 15px;
+}
+
+body[data-module="rider"] .earnings-product-thumbnail-more {
+    display: grid;
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
+    place-items: center;
+    border-radius: 50%;
+    background: #f5eee5;
+    color: var(--brown-800);
+    font-size: 10px;
+    font-weight: 700;
+}
+
+body[data-module="rider"] .earnings-job-preview .earnings-job-cell {
+    min-width: 0;
+    width: 100%;
+}
+
+body[data-module="rider"] .earnings-job-cell .earnings-job-product-preview {
+    max-width: 220px;
+    overflow: hidden;
+    font-size: 10.5px;
+    font-weight: 600;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 body[data-module="rider"] .history-secondary-value {
     display: block;
     margin-top: 3px;

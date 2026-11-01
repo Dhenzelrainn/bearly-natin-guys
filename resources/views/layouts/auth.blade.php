@@ -18,6 +18,7 @@
     <link
           href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap"rel="stylesheet">
 
+    @include('partials.theme-preload')
     @vite([
         'resources/css/bearly-auth.css',
         'resources/js/bearly-auth.js'
@@ -28,20 +29,20 @@
     @stack('styles')
 </head>
 
-<body>
+<body class="auth-body">
     <header class="auth-header">
         <a
             href="{{ route('login') }}"
             class="brand"
             aria-label="Bearly home"
         >
-            <img
-                src="{{ asset('images/bearly-logo.png') }}"
-                alt="Bearly"
-            >
+            @include('partials.theme-aware-logo', ['themeLogoAlt' => 'Bearly'])
         </a>
 
-        @yield('header-action')
+        <div class="auth-header-actions">
+            @include('partials.theme-toggle')
+            @yield('header-action')
+        </div>
     </header>
 
     <main>

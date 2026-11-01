@@ -2,19 +2,27 @@
 
 namespace Tests\Feature\Finance;
 
+use App\Events\RiderShippingEarningUpdated;
 use App\Models\Address;
 use App\Models\CodCashCollection;
 use App\Models\DeliveryAttempt;
+use App\Models\LogisticsPayoutAccount;
 use App\Models\LogisticsProfile;
 use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Payment;
 use App\Models\Parcel;
 use App\Models\PlatformCommission;
+use App\Models\Refund;
 use App\Models\RiderEarning;
 use App\Models\RiderEarningPayout;
 use App\Models\RiderProfile;
+use App\Models\ReturnEvent;
+use App\Models\ReturnItem;
+use App\Models\ReturnRequest;
 use App\Models\SellerOrder;
 use App\Models\SellerProfile;
+use App\Models\SellerRefundRecovery;
 use App\Models\Shipment;
 use App\Models\ShipmentEvent;
 use App\Models\ShippingSettlement;
@@ -27,6 +35,9 @@ use App\Services\CommissionLedgerService;
 use App\Services\ShippingSettlementService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -131,6 +142,76 @@ class ZoneShippingSettlementTest extends TestCase
         $this->assertSame('pending', RiderEarning::query()->sole()->status);
     }
 
+    public function test_finance_can_remit_only_to_verified_provider_owned_destination_matching_method(): void
+    {
+        $scenario = $this->scenario('dest-scope');
+        app(ShippingSettlementService::class)->materializeEligibleSettlements();
+        $settlement = ShippingSettlement::query()->sole();
+        $admin = $this->user('admin', 'Payout Destination Finance');
+
+        $pendingAccount = LogisticsPayoutAccount::query()->create([
+            'logistics_profile_id' => $scenario['provider']['profile']->id,
+            'channel' => 'bank_transfer',
+            'provider_name' => 'Pending Bank',
+            'account_name' => 'Pending Provider Account',
+            'destination_value' => '5555555555',
+            'destination_last4' => '5555',
+            'status' => 'pending_review',
+            'created_by' => $scenario['provider']['user']->id,
+        ]);
+        $gcashAccount = $this->verifiedPayoutAccount($scenario['provider']['profile'], 'gcash');
+        $inactiveAccount = $this->verifiedPayoutAccount($scenario['provider']['profile']);
+        $inactiveAccount->update(['status' => 'inactive', 'deactivated_at' => now()]);
+        $foreignProvider = $this->provider('foreign-payout-destination');
+        $foreignAccount = $this->verifiedPayoutAccount($foreignProvider['profile']);
+        $ownBank = $this->verifiedPayoutAccount($scenario['provider']['profile']);
+
+        $data = [
+            'settlement_id' => $settlement->id,
+            'remittance_confirmed' => '1',
+            'actual_amount' => '50.00',
+            'method' => 'bank_transfer',
+            'reference' => 'BANK-DESTINATION-5000',
+            'paid_on' => now()->toDateString(),
+            'reason' => 'Shipping allocation sent to provider.',
+        ];
+
+        $this->actingAs($admin)
+            ->post(route('admin.shipping-settlements.record-paid', $settlement), $data)
+            ->assertSessionHasErrors('logistics_payout_account_id');
+        $this->actingAs($admin)
+            ->post(route('admin.shipping-settlements.record-paid', $settlement), $data + ['logistics_payout_account_id' => $pendingAccount->id])
+            ->assertSessionHasErrors('logistics_payout_account_id');
+        $this->actingAs($admin)
+            ->post(route('admin.shipping-settlements.record-paid', $settlement), $data + ['logistics_payout_account_id' => $gcashAccount->id])
+            ->assertSessionHasErrors('logistics_payout_account_id');
+        $this->actingAs($admin)
+            ->post(route('admin.shipping-settlements.record-paid', $settlement), $data + ['logistics_payout_account_id' => $foreignAccount->id])
+            ->assertSessionHasErrors('logistics_payout_account_id');
+        $this->actingAs($admin)
+            ->post(route('admin.shipping-settlements.record-paid', $settlement), $data + ['logistics_payout_account_id' => $inactiveAccount->id])
+            ->assertSessionHasErrors('logistics_payout_account_id');
+
+        $this->assertSame('pending', $settlement->fresh()->status);
+
+        $validData = $data + ['logistics_payout_account_id' => $ownBank->id];
+        $this->actingAs($admin)
+            ->post(route('admin.shipping-settlements.record-paid', $settlement), $validData)
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+        $this->actingAs($admin)
+            ->post(route('admin.shipping-settlements.record-paid', $settlement), $validData)
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $settlement->refresh();
+        $this->assertSame('remitted', $settlement->status);
+        $this->assertSame($ownBank->id, (int) $settlement->logistics_payout_account_id);
+        $this->assertSame('Test Bank', $settlement->remitted_to_provider);
+        $this->assertSame('1234', $settlement->remitted_to_last4);
+        $this->assertSame(1, DB::table('audit_logs')->where('action', 'shipping_settlement.remitted_to_logistics')->count());
+    }
+
     public function test_all_five_zone_fees_have_exact_centavo_40_60_allocations(): void
     {
         $scenarios = [];
@@ -195,12 +276,33 @@ class ZoneShippingSettlementTest extends TestCase
         $settlement = ShippingSettlement::query()->sole();
         $earning = RiderEarning::query()->sole();
         $admin = $this->user('admin', 'Finance Admin');
+        $payoutAccount = $this->verifiedPayoutAccount($scenario['provider']['profile']);
+        $this->actingAs($admin)
+            ->get(route('admin.shipping-settlements.index'))
+            ->assertOk()
+            ->assertSee('data-logistics-payout-account-select', false)
+            ->assertSee('Test Bank')
+            ->assertSee('•••• 1234')
+            ->assertSee(route('admin.logistics-payout-accounts.show', $payoutAccount), false)
+            ->assertDontSee('1234561234');
+        $riderVersionResponse = $this->actingAs($scenario['finalRiderUser'])
+            ->get(route('rider.earnings.status-version'))
+            ->assertOk();
+        $this->assertStringContainsString('no-store', (string) $riderVersionResponse->headers->get('Cache-Control'));
+        $riderVersionBeforeRemittance = $riderVersionResponse->json('data.version');
+        $logisticsVersionResponse = $this->actingAs($scenario['provider']['user'])
+            ->get(route('logistics.settlements.status-version'))
+            ->assertOk();
+        $this->assertStringContainsString('no-store', (string) $logisticsVersionResponse->headers->get('Cache-Control'));
+        $logisticsVersionBeforeRemittance = $logisticsVersionResponse->json('data.version');
+        Event::fake([RiderShippingEarningUpdated::class]);
 
         $this->actingAs($admin)->post(route('admin.shipping-settlements.record-paid', $settlement), [
             'settlement_id' => $settlement->id,
             'remittance_confirmed' => '1',
             'actual_amount' => '49.99',
             'method' => 'bank_transfer',
+            'logistics_payout_account_id' => $payoutAccount->id,
             'reference' => 'BANK-SHIP-INVALID',
             'paid_on' => now()->toDateString(),
             'reason' => 'Record shipping transfer.',
@@ -208,11 +310,23 @@ class ZoneShippingSettlementTest extends TestCase
         $this->assertSame('pending', $settlement->fresh()->status);
         $this->assertSame('pending', $earning->fresh()->status);
 
+        $this->actingAs($admin)->post(route('admin.shipping-settlements.record-paid', $settlement), [
+            'settlement_id' => $settlement->id,
+            'remittance_confirmed' => '1',
+            'actual_amount' => '50.00',
+            'method' => 'bank_transfer',
+            'logistics_payout_account_id' => $payoutAccount->id,
+            'paid_on' => now()->toDateString(),
+            'reason' => 'Shipping allocation sent to provider.',
+        ])->assertSessionHasErrors('reference');
+        $this->assertSame('pending', $settlement->fresh()->status);
+
         $remittanceData = [
             'settlement_id' => $settlement->id,
             'remittance_confirmed' => '1',
             'actual_amount' => '50.00',
             'method' => 'bank_transfer',
+            'logistics_payout_account_id' => $payoutAccount->id,
             'reference' => 'BANK-SHIP-5000',
             'paid_on' => now()->toDateString(),
             'reason' => 'Shipping allocation sent to provider.',
@@ -228,9 +342,30 @@ class ZoneShippingSettlementTest extends TestCase
         $earning->refresh();
         $this->assertSame('remitted', $settlement->status);
         $this->assertSame(5000, (int) $settlement->remitted_amount_minor);
+        $this->assertSame($payoutAccount->id, (int) $settlement->logistics_payout_account_id);
+        $this->assertSame('Test Bank', $settlement->remitted_to_provider);
+        $this->assertSame('Test Logistics Account', $settlement->remitted_to_account_name);
+        $this->assertSame('1234', $settlement->remitted_to_last4);
         $this->assertSame('posted', $earning->status);
         $this->assertNull($earning->paid_at, 'Admin remittance to Logistics must not mark the Rider paid.');
         $this->assertSame(1, \App\Models\AuditLog::query()->where('action', 'shipping_settlement.remitted_to_logistics')->count());
+        $riderVersionAfterRemittance = $this->actingAs($scenario['finalRiderUser'])
+            ->get(route('rider.earnings.status-version'))
+            ->assertOk()
+            ->json('data.version');
+        $logisticsVersionAfterRemittance = $this->actingAs($scenario['provider']['user'])
+            ->get(route('logistics.settlements.status-version'))
+            ->assertOk()
+            ->json('data.version');
+        $this->assertNotSame($riderVersionBeforeRemittance, $riderVersionAfterRemittance);
+        $this->assertNotSame($logisticsVersionBeforeRemittance, $logisticsVersionAfterRemittance);
+        Event::assertDispatched(
+            RiderShippingEarningUpdated::class,
+            fn (RiderShippingEarningUpdated $event): bool => $event->riderUserId === (int) $scenario['finalRiderUser']->id
+                && $event->logisticsUserId === (int) $scenario['provider']['user']->id
+                && $event->earningId === (int) $earning->id
+                && $event->status === 'posted',
+        );
 
         $this->actingAs($admin)
             ->get(route('admin.shipping-settlements.index'))
@@ -243,10 +378,23 @@ class ZoneShippingSettlementTest extends TestCase
         $this->actingAs($scenario['provider']['user'])
             ->get(route('logistics.settlements.index'))
             ->assertOk()
+            ->assertSee('Total eligible Logistics share')
+            ->assertSee('Finance remitted')
+            ->assertSee('₱20.00')
+            ->assertSee('data-shipping-settlement-live', false)
+            ->assertSee('data-shipping-settlement-rows', false)
+            ->assertSee(route('logistics.settlements.status-version'), false)
             ->assertSee($scenario['finalRiderUser']->name)
             ->assertSee('Rider pool: ₱30.00')
             ->assertSeeText('3-day return period ended Oct 15, 2026')
             ->assertSee('Actual Rider payout');
+
+        $this->actingAs($scenario['finalRiderUser'])
+            ->get(route('rider.earnings.index'))
+            ->assertOk()
+            ->assertSee('data-rider-earnings-live', false)
+            ->assertSee('data-rider-earnings-rows', false)
+            ->assertSee('Posted');
 
         $payoutData = [
             'earning_id' => $earning->id,
@@ -269,6 +417,24 @@ class ZoneShippingSettlementTest extends TestCase
         $this->assertNotNull($earning->paid_at);
         $this->assertSame(1, RiderEarningPayout::query()->count());
         $this->assertSame(1, \App\Models\AuditLog::query()->where('action', 'rider_earning.externally_paid')->count());
+        $riderVersionAfterPayout = $this->actingAs($scenario['finalRiderUser'])
+            ->get(route('rider.earnings.status-version'))
+            ->assertOk()
+            ->json('data.version');
+        $logisticsVersionAfterPayout = $this->actingAs($scenario['provider']['user'])
+            ->get(route('logistics.settlements.status-version'))
+            ->assertOk()
+            ->json('data.version');
+        $this->assertNotSame($riderVersionAfterRemittance, $riderVersionAfterPayout);
+        $this->assertNotSame($logisticsVersionAfterRemittance, $logisticsVersionAfterPayout);
+        Event::assertDispatchedTimes(RiderShippingEarningUpdated::class, 2);
+        Event::assertDispatched(
+            RiderShippingEarningUpdated::class,
+            fn (RiderShippingEarningUpdated $event): bool => $event->riderUserId === (int) $scenario['finalRiderUser']->id
+                && $event->logisticsUserId === (int) $scenario['provider']['user']->id
+                && $event->earningId === (int) $earning->id
+                && $event->status === 'paid',
+        );
 
         $otherProvider = $this->provider('other-provider');
         $this->actingAs($otherProvider['user'])
@@ -283,11 +449,119 @@ class ZoneShippingSettlementTest extends TestCase
             ->assertSee('GCASH-RIDER-3000')
             ->assertSee('Rider received shipping pool payout.');
 
+        $this->actingAs($scenario['provider']['user'])
+            ->get(route('rider.earnings.status-version'))
+            ->assertForbidden();
+        $this->actingAs($scenario['finalRiderUser'])
+            ->get(route('logistics.settlements.status-version'))
+            ->assertForbidden();
+
         $this->actingAs($admin)
             ->get(route('admin.shipping-settlements.index'))
             ->assertOk()
             ->assertSee('GCASH-RIDER-3000')
             ->assertSee('Rider paid');
+    }
+
+    public function test_cash_rider_payout_uses_a_generated_reference_and_provider_scoped_print_receipt(): void
+    {
+        $scenario = $this->scenario('cash-rider-payout', ['shipping_fee_minor' => 5000]);
+        app(ShippingSettlementService::class)->materializeEligibleSettlements();
+        $settlement = ShippingSettlement::query()->sole();
+        $earning = RiderEarning::query()->sole();
+        $admin = $this->user('admin', 'Cash Rider Payout Finance');
+        $payoutAccount = $this->verifiedPayoutAccount($scenario['provider']['profile']);
+
+        $this->actingAs($admin)
+            ->post(route('admin.shipping-settlements.record-paid', $settlement), [
+                'settlement_id' => $settlement->id,
+                'remittance_confirmed' => '1',
+                'actual_amount' => '50.00',
+                'method' => 'bank_transfer',
+                'logistics_payout_account_id' => $payoutAccount->id,
+                'reference' => 'BANK-CASH-RIDER-5000',
+                'paid_on' => now()->toDateString(),
+                'reason' => 'Shipping allocation sent to Logistics.',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $providerUser = $scenario['provider']['user'];
+        $this->actingAs($providerUser)
+            ->withSession(['_old_input' => ['earning_id' => $earning->id, 'method' => 'cash']])
+            ->get(route('logistics.settlements.index'))
+            ->assertOk()
+            ->assertSee('data-rider-payout-form', false)
+            ->assertSee('data-external-rider-payout-reference', false)
+            ->assertSee('data-generated-rider-cash-reference hidden', false)
+            ->assertSee('Cash only: leave the external reference blank.');
+
+        $cashPayoutData = [
+            'earning_id' => $earning->id,
+            'actual_amount' => '30.00',
+            'method' => 'cash',
+            'paid_on' => now()->toDateString(),
+            'reason' => 'Cash physically handed to the Rider.',
+            'payout_confirmed' => '1',
+        ];
+
+        $digitalPayoutData = $cashPayoutData;
+        $digitalPayoutData['method'] = 'gcash';
+        $this->actingAs($providerUser)
+            ->post(route('logistics.settlements.rider-earnings.record-paid', $earning->id), $digitalPayoutData)
+            ->assertSessionHasErrors('reference');
+        $this->assertSame('posted', $earning->fresh()->status);
+        $this->assertSame(0, RiderEarningPayout::query()->count());
+
+        $this->actingAs($providerUser)
+            ->post(route('logistics.settlements.rider-earnings.record-paid', $earning->id), $cashPayoutData)
+            ->assertRedirect()
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('success', fn (string $message): bool => str_contains($message, 'Bearly reference: LRP-')
+                && str_contains($message, 'Print the receipt from the settlement row.'));
+        $this->actingAs($providerUser)
+            ->post(route('logistics.settlements.rider-earnings.record-paid', $earning->id), $cashPayoutData)
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $payout = RiderEarningPayout::query()->sole();
+        $reference = (string) $payout->reference;
+        $this->assertMatchesRegularExpression('/^LRP-[0-9A-HJKMNP-TV-Z]{26}$/', $reference);
+        $this->assertSame('cash', $payout->method);
+        $this->assertSame(3000, (int) $payout->amount_minor);
+        $this->assertSame('paid', $earning->fresh()->status);
+        $this->assertSame(1, \App\Models\AuditLog::query()->where('action', 'rider_earning.externally_paid')->count());
+
+        $this->actingAs($providerUser)
+            ->get(route('logistics.settlements.index'))
+            ->assertOk()
+            ->assertSee('Bearly cash payout reference:')
+            ->assertSee($reference)
+            ->assertSee(route('logistics.settlements.rider-earnings.cash-receipt', $earning->id), false)
+            ->assertSee('Print cash receipt');
+
+        $receiptResponse = $this->actingAs($providerUser)
+            ->get(route('logistics.settlements.rider-earnings.cash-receipt', $earning->id))
+            ->assertOk();
+        $this->assertStringContainsString('no-store', (string) $receiptResponse->headers->get('Cache-Control'));
+        $this->assertSame('nosniff', $receiptResponse->headers->get('X-Content-Type-Options'));
+        $receiptResponse
+            ->assertSee($reference)
+            ->assertSee($settlement->settlement_no)
+            ->assertSee($scenario['shipment']->shipment_no)
+            ->assertSee($scenario['finalRiderUser']->name)
+            ->assertSee('Rider amount physically paid')
+            ->assertSee('Print / Save as PDF')
+            ->assertSee('not a bank or GCash transaction number');
+        $this->assertSame(1, \App\Models\AuditLog::query()->where('action', 'rider_earning.cash_receipt_printed')->count());
+
+        $otherProvider = $this->provider('other-cash-payout-provider');
+        $this->actingAs($otherProvider['user'])
+            ->get(route('logistics.settlements.rider-earnings.cash-receipt', $earning->id))
+            ->assertNotFound();
+        $this->actingAs($scenario['finalRiderUser'])
+            ->get(route('logistics.settlements.rider-earnings.cash-receipt', $earning->id))
+            ->assertForbidden();
     }
 
     public function test_new_zone_orders_exclude_shipping_from_seller_commission_and_proceeds_but_legacy_orders_keep_their_basis(): void
@@ -319,8 +593,23 @@ class ZoneShippingSettlementTest extends TestCase
 
     public function test_rider_earnings_page_materializes_only_the_final_riders_eligible_settlement_and_remains_idempotent(): void
     {
+        Storage::fake('public');
         $scenario = $this->scenario('rider-page', ['shipping_fee_minor' => 5000]);
+        $productImagePath = 'seller-products/logistics-settlement-preview.jpg';
+        Storage::disk('public')->put($productImagePath, 'fixture image');
+        $scenario['sellerOrder']->items()->create([
+            'product_name' => 'Settlement Preview Headphones',
+            'variant_name' => 'Midnight',
+            'sku' => 'SETTLEMENT-PREVIEW-001',
+            'unit_price_minor' => 10_000,
+            'quantity' => 2,
+            'discount_minor' => 0,
+            'subtotal_minor' => 20_000,
+            'product_image_disk' => 'public',
+            'product_image_path' => $productImagePath,
+        ]);
         $this->assertSame(0, ShippingSettlement::query()->count());
+        Event::fake([RiderShippingEarningUpdated::class]);
 
         $this->actingAs($scenario['finalRiderUser'])
             ->get(route('rider.earnings.index'))
@@ -330,6 +619,12 @@ class ZoneShippingSettlementTest extends TestCase
             ->assertSee('Pending')
             ->assertSeeText('3-calendar-day return/refund period')
             ->assertSeeText('3-day return period ended Oct 15, 2026');
+        Event::assertDispatched(
+            RiderShippingEarningUpdated::class,
+            fn (RiderShippingEarningUpdated $event): bool => $event->riderUserId === (int) $scenario['finalRiderUser']->id
+                && $event->logisticsUserId === (int) $scenario['provider']['user']->id
+                && $event->status === 'pending',
+        );
 
         $settlement = ShippingSettlement::query()->sole();
         $earning = RiderEarning::query()->sole();
@@ -355,7 +650,7 @@ class ZoneShippingSettlementTest extends TestCase
             ->assertSee($scenario['shipment']->shipment_no)
             ->assertSee('₱30.00')
             ->assertSeeText('Delivery history and earnings are separate records')
-            ->assertSeeText('3-calendar-day return/refund period starts at Seller Order completion');
+            ->assertSeeText('Outbound delivery attempts can appear here before their earnings are eligible.');
 
         $this->actingAs($scenario['earlierRiderUser'])
             ->get(route('rider.history.index'))
@@ -366,20 +661,374 @@ class ZoneShippingSettlementTest extends TestCase
         $this->actingAs($scenario['provider']['user'])
             ->get(route('logistics.settlements.index'))
             ->assertOk()
+            ->assertSee('Total eligible Logistics share')
+            ->assertSee('Awaiting Finance remittance')
             ->assertSee($scenario['shipment']->shipment_no)
+            ->assertSee('Settlement Preview Headphones')
+            ->assertSee(Storage::disk('public')->url($productImagePath), false)
             ->assertSee('Rider pool: ₱30.00')
             ->assertSeeText('Awaiting Admin/Finance remittance to your provider.')
-            ->assertSeeText('the 3-calendar-day return/refund period');
+            ->assertSeeText('Outbound settlements wait for Seller Order eligibility checks.')
+            ->assertSeeText('3-day return period ended Oct 15, 2026');
 
         $this->actingAs($this->user('admin', 'Shipping Admin'))
             ->get(route('admin.shipping-settlements.index'))
             ->assertOk()
             ->assertSee($scenario['shipment']->shipment_no)
+            ->assertSee('Settlement Preview Headphones')
+            ->assertSee(Storage::disk('public')->url($productImagePath), false)
             ->assertSee('Shipping allocations to Logistics')
             ->assertSee(route('admin.shipping-settlements.record-paid', $settlement), false);
 
         $this->assertSame(1, ShippingSettlement::query()->count());
         $this->assertSame(1, RiderEarning::query()->count());
+    }
+
+    public function test_return_shipping_settlement_uses_delivery_completion_not_outbound_return_window_and_keeps_refund_fee_separate(): void
+    {
+        Storage::fake('public');
+        $scenario = $this->scenario('return-shipping', [
+            'shipping_fee_minor' => 5000,
+            'platform_subsidy_minor' => 0,
+        ]);
+        $scenario['sellerOrder']->update(['completed_at' => now()]);
+        $scenario['shipment']->update(['status' => 'delivery_failed', 'delivered_at' => null]);
+        $returnedProductImagePath = 'seller-products/returned-settlement-product.jpg';
+        $unreturnedProductImagePath = 'seller-products/unreturned-settlement-product.jpg';
+        Storage::disk('public')->put($returnedProductImagePath, 'returned product image');
+        Storage::disk('public')->put($unreturnedProductImagePath, 'unreturned product image');
+        $returnedProduct = OrderItem::query()->create([
+            'seller_order_id' => $scenario['sellerOrder']->id,
+            'product_name' => 'Returned Travel Mug',
+            'variant_name' => 'Stainless',
+            'sku' => 'RETURNED-MUG-001',
+            'unit_price_minor' => 10_000,
+            'quantity' => 1,
+            'discount_minor' => 0,
+            'subtotal_minor' => 10_000,
+            'product_image_disk' => 'public',
+            'product_image_path' => $returnedProductImagePath,
+        ]);
+        OrderItem::query()->create([
+            'seller_order_id' => $scenario['sellerOrder']->id,
+            'product_name' => 'Non-returned Phone Case',
+            'variant_name' => 'Clear',
+            'sku' => 'UNRETURNED-CASE-001',
+            'unit_price_minor' => 5_000,
+            'quantity' => 1,
+            'discount_minor' => 0,
+            'subtotal_minor' => 5_000,
+            'product_image_disk' => 'public',
+            'product_image_path' => $unreturnedProductImagePath,
+        ]);
+
+        $returnRequest = ReturnRequest::query()->create([
+            'return_no' => 'RR-RETURN-SHIPPING-001',
+            'order_id' => $scenario['order']->id,
+            'seller_order_id' => $scenario['sellerOrder']->id,
+            'buyer_id' => $scenario['buyer']->id,
+            'store_id' => $scenario['store']->id,
+            'request_type' => 'return_refund',
+            'return_delivery_method' => 'buyer_dropoff',
+            'reason_code' => 'item_arrived_damaged',
+            'status' => 'awaiting_inspection',
+            'requested_amount_minor' => 10000,
+            'submitted_at' => now()->subDays(4),
+        ]);
+        $returnShipment = Shipment::query()->create([
+            'shipment_no' => 'SHP-RETURN-FEE-'.Str::upper((string) Str::ulid()),
+            'seller_order_id' => $scenario['sellerOrder']->id,
+            'logistics_profile_id' => $scenario['provider']['profile']->id,
+            'origin_logistics_profile_id' => $scenario['provider']['profile']->id,
+            'destination_city_code' => '0403422000',
+            'destination_address_snapshot' => [
+                'city_municipality' => 'Pila',
+                'province' => 'Laguna',
+                'psgc_city_code' => '0403422000',
+            ],
+            'purpose' => 'return',
+            'status' => 'delivered',
+            'shipping_fee_minor' => 5501,
+            'return_shipping_quote' => [
+                'pricing_rule' => 'zone_based_v1',
+                'quote_kind' => 'return_shipping_v1',
+                'direction' => 'reverse',
+                'zone_level' => 1,
+                'base_fee_minor' => 5001,
+                'zone_surcharge_per_level_minor' => 500,
+                'zone_surcharge_minor' => 500,
+                'return_shipping_fee_minor' => 5501,
+            ],
+            'cod_amount_minor' => 0,
+            'delivered_at' => now(),
+        ]);
+        $returnRequest->update(['return_shipment_id' => $returnShipment->id]);
+        ReturnItem::query()->create([
+            'return_request_id' => $returnRequest->id,
+            'order_item_id' => $returnedProduct->id,
+            'quantity' => 1,
+            'refund_amount_minor' => 10_000,
+            'resolution' => 'return_required',
+        ]);
+        $refund = Refund::query()->create([
+            'refund_no' => 'RFD-RETURN-SHIPPING-001',
+            'return_request_id' => $returnRequest->id,
+            'payment_id' => $scenario['payment']->id,
+            'order_id' => $scenario['order']->id,
+            'amount_minor' => 10000,
+            'status' => 'pending',
+            'method' => 'manual',
+            'financially_responsible_party' => 'seller',
+            'financial_responsibility_reason' => 'Seller is responsible for the damaged return.',
+            'approved_by' => $this->user('admin', 'Return Shipping Finance')->id,
+            'approved_at' => now()->subDay(),
+        ]);
+        SellerRefundRecovery::query()->create([
+            'refund_id' => $refund->id,
+            'seller_profile_id' => $scenario['sellerProfile']->id,
+            'amount_minor' => 10000,
+            'recovered_amount_minor' => 2000,
+            'refund_recovery_minor' => 10000,
+            'refund_recovered_minor' => 2000,
+            'refund_recovery_voided_minor' => 8000,
+            'return_shipping_fee_minor' => 0,
+            'return_shipping_fee_recovered_minor' => 0,
+            'status' => 'voided',
+        ]);
+        $waybill = Waybill::query()->create([
+            'shipment_id' => $returnShipment->id,
+            'waybill_no' => 'WB-RETURN-FEE-'.Str::upper((string) Str::ulid()),
+            'scan_token' => Str::random(64),
+            'barcode_value' => 'BAR-RETURN-FEE-'.Str::upper((string) Str::ulid()),
+            'piece_count' => 1,
+            'total_weight_kg' => 1,
+            'generated_at' => now()->subDay(),
+        ]);
+        $parcel = Parcel::query()->create([
+            'shipment_id' => $returnShipment->id,
+            'waybill_id' => $waybill->id,
+            'parcel_no' => 'PCL-RETURN-FEE-'.Str::upper((string) Str::ulid()),
+            'piece_sequence' => 1,
+            'weight_kg' => 1,
+            'status' => 'delivered',
+        ]);
+        $attempt = DeliveryAttempt::query()->create([
+            'parcel_id' => $parcel->id,
+            'rider_profile_id' => $scenario['finalRider']->id,
+            'attempt_no' => 1,
+            'outcome' => 'delivered',
+            'attempted_at' => $returnShipment->delivered_at,
+        ]);
+        ShipmentEvent::query()->create([
+            'shipment_id' => $returnShipment->id,
+            'event_type' => 'shipment_delivered',
+            'from_status' => 'out_for_delivery',
+            'to_status' => 'delivered',
+            'actor_user_id' => $scenario['finalRiderUser']->id,
+            'source' => 'rider',
+            'metadata' => ['rider_profile_id' => $scenario['finalRider']->id, 'dispatch_batch_ids' => []],
+            'occurred_at' => $returnShipment->delivered_at,
+        ]);
+        app(ShippingSettlementService::class)->materializeEligibleSettlements();
+        $this->assertSame(0, ShippingSettlement::query()->count(), 'A delivered shipment without the return-case Seller-delivery event is not settlement-eligible.');
+
+        ReturnEvent::query()->create([
+            'return_request_id' => $returnRequest->id,
+            'event_type' => 'return_delivered_to_seller',
+            'actor_user_id' => $scenario['finalRiderUser']->id,
+            'from_status' => 'return_in_transit',
+            'to_status' => 'awaiting_inspection',
+            'note' => 'Return delivered to Seller.',
+            'created_at' => now(),
+        ]);
+
+        $service = app(ShippingSettlementService::class);
+        $service->materializeEligibleSettlements();
+        $service->materializeEligibleSettlements();
+
+        $settlement = ShippingSettlement::query()->sole();
+        $earning = RiderEarning::query()->sole();
+        $this->assertSame('return', $settlement->settlement_type);
+        $this->assertSame($returnRequest->id, (int) $settlement->return_request_id);
+        $this->assertSame(5501, (int) $settlement->return_shipping_fee_minor);
+        $this->assertSame(2200, (int) $settlement->logistics_share_minor);
+        $this->assertSame(3301, (int) $settlement->rider_share_minor);
+        $this->assertSame('return_shipping_delivery', $earning->type);
+        $this->assertSame($scenario['finalRider']->id, (int) $settlement->rider_profile_id);
+        $this->assertSame($attempt->id, (int) $settlement->delivery_attempt_id);
+        $this->assertSame(1, ShippingSettlement::query()->count());
+        $this->assertSame(10000, (int) $refund->amount_minor, 'Return shipping must remain separate from the full approved Buyer refund.');
+
+        $admin = $refund->approved_by ? User::query()->findOrFail($refund->approved_by) : $this->user('admin', 'Return Shipping Admin');
+        $this->actingAs($admin)
+            ->get(route('admin.shipping-settlements.index'))
+            ->assertOk()
+            ->assertSee('Return route fee')
+            ->assertSee($returnRequest->return_no)
+            ->assertSee('Returned Travel Mug')
+            ->assertSee(Storage::disk('public')->url($returnedProductImagePath), false)
+            ->assertDontSee(Storage::disk('public')->url($unreturnedProductImagePath), false);
+
+        $this->actingAs($scenario['provider']['user'])
+            ->get(route('logistics.settlements.index'))
+            ->assertOk()
+            ->assertSee($returnRequest->return_no)
+            ->assertSee('Return route fee')
+            ->assertSee('Returned Travel Mug')
+            ->assertSee(Storage::disk('public')->url($returnedProductImagePath), false)
+            ->assertDontSee(Storage::disk('public')->url($unreturnedProductImagePath), false);
+        $this->actingAs($scenario['finalRiderUser'])
+            ->get(route('rider.earnings.index'))
+            ->assertOk()
+            ->assertSee($returnShipment->shipment_no)
+            ->assertSee('Return Shipping Delivery');
+
+        $payoutAccount = $this->verifiedPayoutAccount($scenario['provider']['profile']);
+        $remittanceData = [
+            'settlement_id' => $settlement->id,
+            'remittance_confirmed' => '1',
+            'actual_amount' => '55.01',
+            'method' => 'bank_transfer',
+            'logistics_payout_account_id' => $payoutAccount->id,
+            'reference' => 'BANK-RETURN-FEE-5501',
+            'paid_on' => now()->toDateString(),
+            'reason' => 'Finance advanced return delivery fee.',
+        ];
+        Event::fake([RiderShippingEarningUpdated::class]);
+        $this->actingAs($admin)
+            ->post(route('admin.shipping-settlements.record-paid', $settlement), $remittanceData)
+            ->assertRedirect();
+        $this->actingAs($admin)
+            ->post(route('admin.shipping-settlements.record-paid', $settlement), $remittanceData)
+            ->assertRedirect();
+
+        $settlement->refresh();
+        $earning->refresh();
+        $this->assertSame('remitted', $settlement->status);
+        $this->assertSame('posted', $earning->status);
+        Event::assertDispatchedTimes(RiderShippingEarningUpdated::class, 1);
+        Event::assertDispatched(
+            RiderShippingEarningUpdated::class,
+            fn (RiderShippingEarningUpdated $event): bool => $event->riderUserId === (int) $scenario['finalRiderUser']->id
+                && $event->logisticsUserId === (int) $scenario['provider']['user']->id
+                && $event->earningId === (int) $earning->id
+                && $event->status === 'posted',
+        );
+        $recovery = SellerRefundRecovery::query()->where('refund_id', $refund->id)->firstOrFail();
+        $this->assertSame(5501, (int) $recovery->return_shipping_fee_minor);
+        $this->assertSame(10000, (int) $recovery->refund_recovery_minor);
+        $this->assertSame(8000, (int) $recovery->refund_recovery_voided_minor);
+
+        $refund->update(['status' => 'completed', 'completed_at' => now()]);
+        $returnRequest->update(['status' => 'resolved']);
+        $wallets = app(\App\Services\SellerWalletService::class);
+        $wallets->refreshForSeller($scenario['sellerProfile']);
+        $this->assertDatabaseMissing('seller_wallet_transactions', ['refund_id' => $refund->id]);
+        $this->assertSame(5501, $wallets->outstandingRecoveryMinor($scenario['sellerProfile']));
+
+        $recoveryData = [
+            'recovery_confirmed' => '1',
+            'recovery_component' => 'return_shipping_fee',
+            'amount' => '55.01',
+            'method' => 'external_collection',
+            'external_reference' => 'SELLER-RETURN-FEE-5501',
+            'recovered_on' => now()->toDateString(),
+            'note' => 'Seller returned the advanced return fee.',
+        ];
+        $this->actingAs($admin)
+            ->post(route('admin.compliance.returns-refunds.seller-recovery', $refund), $recoveryData)
+            ->assertRedirect();
+        $recovery->refresh();
+        $this->assertSame(5501, (int) $recovery->return_shipping_fee_recovered_minor);
+        $this->assertSame(0, $recovery->outstandingMinor());
+
+        $payoutData = [
+            'earning_id' => $earning->id,
+            'actual_amount' => '33.01',
+            'method' => 'gcash',
+            'reference' => 'GCASH-RETURN-RIDER-3301',
+            'paid_on' => now()->toDateString(),
+            'reason' => 'Rider received return delivery pool.',
+            'payout_confirmed' => '1',
+        ];
+        $this->actingAs($scenario['provider']['user'])
+            ->post(route('logistics.settlements.rider-earnings.record-paid', $earning->id), $payoutData)
+            ->assertRedirect();
+        $this->assertSame('paid', $earning->fresh()->status);
+        $this->assertSame(1, RiderEarningPayout::query()->count());
+    }
+
+    public function test_cash_shipping_remittance_generates_and_prints_an_internal_handoff_reference(): void
+    {
+        $scenario = $this->scenario('cash-remittance', [
+            'shipping_fee_minor' => 5000,
+            'platform_subsidy_minor' => 0,
+        ]);
+        app(ShippingSettlementService::class)->materializeEligibleSettlements();
+        $settlement = ShippingSettlement::query()->sole();
+        $earning = RiderEarning::query()->sole();
+        $admin = $this->user('admin', 'Cash Shipping Finance');
+        $cashRemittanceData = [
+            'settlement_id' => $settlement->id,
+            'remittance_confirmed' => '1',
+            'actual_amount' => '50.00',
+            'method' => 'cash',
+            'paid_on' => now()->toDateString(),
+            'reason' => 'Finance physically handed cash to Logistics.',
+        ];
+
+        $this->actingAs($admin)
+            ->get(route('admin.shipping-settlements.index'))
+            ->assertOk()
+            ->assertSee('data-shipping-remittance-form', false)
+            ->assertSee('data-external-transfer-reference', false)
+            ->assertSee('data-generated-cash-reference hidden', false)
+            ->assertSee('Cash only: leave the transfer reference blank.');
+
+        $this->actingAs($admin)
+            ->post(route('admin.shipping-settlements.record-paid', $settlement), $cashRemittanceData)
+            ->assertRedirect()
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('success', fn (string $message): bool => str_contains($message, 'Bearly reference: SRM-')
+                && str_contains($message, 'Print the cash receipt from the settlement row.'));
+
+        $settlement->refresh();
+        $reference = (string) $settlement->remittance_reference;
+        $this->assertMatchesRegularExpression('/^SRM-[0-9A-HJKMNP-TV-Z]{26}$/', $reference);
+        $this->assertSame('cash', $settlement->remittance_method);
+        $this->assertSame('remitted', $settlement->status);
+        $this->assertSame('posted', $earning->fresh()->status);
+
+        $this->actingAs($admin)
+            ->get(route('admin.shipping-settlements.index'))
+            ->assertOk()
+            ->assertSee('Bearly cash handoff reference:')
+            ->assertSee($reference)
+            ->assertSee(route('admin.shipping-settlements.cash-receipt', $settlement), false)
+            ->assertSee('Print cash receipt');
+
+        $receiptResponse = $this->actingAs($admin)
+            ->get(route('admin.shipping-settlements.cash-receipt', $settlement))
+            ->assertOk();
+        $this->assertStringContainsString('no-store', (string) $receiptResponse->headers->get('Cache-Control'));
+        $receiptResponse
+            ->assertSee($reference)
+            ->assertSee($settlement->settlement_no)
+            ->assertSee($scenario['shipment']->shipment_no)
+            ->assertSee('Total cash handed to Logistics')
+            ->assertSee('Print / Save as PDF')
+            ->assertSee('not a bank or GCash transaction number');
+
+        $this->actingAs($scenario['buyer'])
+            ->get(route('admin.shipping-settlements.cash-receipt', $settlement))
+            ->assertForbidden();
+
+        $this->actingAs($admin)
+            ->post(route('admin.shipping-settlements.record-paid', $settlement), $cashRemittanceData)
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+        $this->assertSame($reference, $settlement->fresh()->remittance_reference);
+        $this->assertSame(1, \App\Models\AuditLog::query()->where('action', 'shipping_settlement.remitted_to_logistics')->count());
     }
 
     public function test_legacy_flat_quote_delivery_is_excluded_and_pages_show_accurate_empty_states(): void
@@ -399,7 +1048,7 @@ class ZoneShippingSettlementTest extends TestCase
             ->assertOk()
             ->assertSeeText('No earning ledger entries are currently recorded for your Rider profile.')
             ->assertSeeText('Delivery History is separate and does not create an earning by itself.')
-            ->assertSeeText('After the 3-calendar-day return/refund period ends');
+            ->assertSeeText('Outbound shipping earnings wait for Seller Order completion');
 
         $this->actingAs($scenario['finalRiderUser'])
             ->get(route('rider.history.index'))
@@ -411,18 +1060,18 @@ class ZoneShippingSettlementTest extends TestCase
             ->get(route('admin.shipping-settlements.index'))
             ->assertOk()
             ->assertSeeText('No eligible shipping allocations are recorded yet.')
-            ->assertSeeText('legacy flat-fee or other non-zone quotes do not create a row here.');
+            ->assertSeeText('COD product cash is not a shipping settlement.');
 
         $this->actingAs($scenario['provider']['user'])
             ->get(route('logistics.settlements.index'))
             ->assertOk()
-            ->assertSeeText('After the 3-calendar-day return/refund period ends');
+            ->assertSeeText('Outbound deliveries appear after the 3-calendar-day return/refund period');
 
         $this->actingAs($scenario['provider']['user'])
             ->get(route('logistics.settlements.index'))
             ->assertOk()
-            ->assertSeeText('No shipping Rider earnings are currently recorded for this provider.')
-            ->assertSeeText('Delivery history alone does not create an earning.');
+            ->assertSeeText('No Rider-pool earnings are currently recorded for this provider.')
+            ->assertSeeText('A return-shipping earning appears only after an approved return is delivered to the Seller.');
 
         $this->assertSame(0, ShippingSettlement::query()->count());
         $this->assertSame(0, RiderEarning::query()->whereNotNull('shipping_settlement_id')->count());
@@ -701,6 +1350,26 @@ class ZoneShippingSettlementTest extends TestCase
             'parcel_capacity' => 20,
             'availability_status' => 'available',
             'verification_status' => 'approved',
+        ]);
+    }
+
+    private function verifiedPayoutAccount(LogisticsProfile $profile, string $channel = 'bank_transfer'): LogisticsPayoutAccount
+    {
+        $reviewer = $this->user('admin', 'Payout Destination Verifier');
+        $destination = $channel === 'gcash' ? '+639171234567' : '1234561234';
+
+        return LogisticsPayoutAccount::query()->create([
+            'logistics_profile_id' => $profile->id,
+            'channel' => $channel,
+            'provider_name' => $channel === 'gcash' ? 'GCash' : 'Test Bank',
+            'account_name' => 'Test Logistics Account',
+            'destination_value' => $destination,
+            'destination_last4' => substr(preg_replace('/\D/', '', $destination), -4),
+            'status' => 'verified',
+            'created_by' => $profile->user_id,
+            'reviewed_by' => $reviewer->id,
+            'reviewed_at' => now(),
+            'review_note' => 'Verified with provider outside Bearly.',
         ]);
     }
 

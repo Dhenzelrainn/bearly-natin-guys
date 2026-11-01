@@ -38,7 +38,7 @@
             <div class="nav-section-gap"></div>
             <button class="account-tab nav-parent" type="button" data-account-tab="purchases"><span class="material-symbols-outlined">receipt_long</span>My Purchases</button>
             <button class="account-tab nav-parent" type="button" data-account-tab="reviews"><span class="material-symbols-outlined">star</span>Reviews & Ratings</button>
-            <a class="account-tab nav-parent" href="{{ route('notifications.center') }}"><span class="material-symbols-outlined">notifications</span>Notifications <span id="notifications-nav-count" class="notifications-nav-count">0</span></a>
+            <a class="account-tab nav-parent" href="{{ route('notifications.center', ['source' => 'profile']) }}"><span class="material-symbols-outlined">notifications</span>Notifications <span id="notifications-nav-count" class="notifications-nav-count">0</span></a>
             <button class="account-tab nav-parent" type="button" data-account-tab="vouchers"><span class="material-symbols-outlined">confirmation_number</span>My Vouchers <span id="vouchers-nav-count" class="vouchers-nav-count" hidden>0</span></button>
             <button class="account-tab nav-parent" type="button" data-account-tab="help"><span class="material-symbols-outlined">help</span>Help Center</button>
         </nav>
@@ -165,6 +165,7 @@
             <label class="likes-sort" for="likes-sort">
                 <span class="material-symbols-outlined" aria-hidden="true">sort</span>
                 <span>Sort:</span>
+                <span class="likes-sort-current" data-likes-sort-label aria-hidden="true">Recently liked</span>
                 <select id="likes-sort">
                     <option value="recent">Recently liked</option>
                     <option value="price-low">Price: low to high</option>
@@ -202,6 +203,7 @@
             </div>
             <label class="purchase-sort" for="purchase-sort">
                 <span class="sr-only">Sort purchases</span>
+                <span class="purchase-sort-current" data-purchase-sort-label aria-hidden="true">Most Recent</span>
                 <select id="purchase-sort">
                     <option value="recent">Most Recent</option>
                     <option value="oldest">Oldest</option>

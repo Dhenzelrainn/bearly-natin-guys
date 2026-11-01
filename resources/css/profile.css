@@ -1029,6 +1029,7 @@ body.profile-page.bh .likes-more-menu button:hover{background:#fbf1e7;color:#8f4
 body.profile-page.bh .likes-sort{display:inline-flex;align-items:center;gap:5px;flex:0 0 auto;height:36px;padding:0 9px;border:1px solid #e8ddd4;border-radius:8px;background:#fff;color:#675950;font:inherit;font-size:11px;white-space:nowrap}
 body.profile-page.bh .likes-sort .material-symbols-outlined{font-size:16px;color:#5e5149}
 body.profile-page.bh .likes-sort select{max-width:132px;padding:0;border:0;outline:0;background:transparent;color:#332820;font:inherit;font-size:11px;cursor:pointer}
+body.profile-page.bh .likes-sort-current{display:none}
 body.profile-page.bh .likes-sort-chevron{font-size:16px!important;color:#75675e!important}
 body.profile-page.bh .likes-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;align-items:start}
 body.profile-page.bh .likes-grid[hidden]{display:none}
@@ -1281,6 +1282,10 @@ body.profile-page.bh #purchases-panel .purchase-sort select{
   font:inherit;
   cursor:pointer;
 }
+body.profile-page.bh #purchases-panel .purchase-sort{position:relative}
+body.profile-page.bh #purchases-panel .purchase-sort-current{min-width:120px;flex:1 1 120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;pointer-events:none}
+body.profile-page.bh #purchases-panel .purchase-sort select{position:absolute;inset:0;z-index:2;width:100%;max-width:none;height:100%;padding:0;color:transparent;cursor:pointer}
+body.profile-page.bh #purchases-panel .purchase-sort .material-symbols-outlined{pointer-events:none}
 body.profile-page.bh #purchases-panel .purchase-sort:focus-within{border-color:#a66b45;box-shadow:0 0 0 3px rgba(166,107,69,.12)}
 body.profile-page.bh #purchases-panel .purchase-sort .material-symbols-outlined{font-size:16px;color:#68635f}
 

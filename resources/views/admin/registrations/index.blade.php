@@ -8,7 +8,7 @@
     <div>
         <span class="eyebrow">Registration Management</span>
         <h1>Manage account registrations</h1>
-        <p>Review Buyer, Seller, and Logistics applications before granting platform access. Rider applications are approved by the selected Logistics partner.</p>
+        <p>Review Seller and Logistics applications that require Administrator approval. New Buyers activate after email verification; historical Buyer application records remain stored but are not in the active review queues.</p>
     </div>
 
     <div class="hero-context-stat">
@@ -58,7 +58,6 @@
                 data-filter-key="role"
             >
                 <option value="">All roles</option>
-                <option>Buyer</option>
                 <option>Seller</option>
                 <option>Logistics</option>
             </select>
@@ -159,7 +158,7 @@
             <div class="table-empty">
                 <i data-lucide="inbox"></i>
                 <strong>No pending applications</strong>
-                <span>New Buyer, Seller, or Logistics applications will appear here automatically.</span>
+                <span>New Seller and Logistics applications will appear here automatically.</span>
             </div>
         @else
             <div

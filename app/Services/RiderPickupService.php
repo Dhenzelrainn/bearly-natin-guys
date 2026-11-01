@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\ParcelStatus;
+use App\Enums\RiderWorkType;
 use App\Enums\SellerOrderStatus;
 use App\Enums\ShipmentStatus;
 use App\Models\Order;
@@ -34,6 +35,7 @@ class RiderPickupService
                 $profile = $rider
                     ->riderProfile()
                     ->firstOrFail();
+                $this->assertLocalRider($profile);
 
                 $assignment =
                     PickupAssignment::query()
@@ -113,6 +115,7 @@ class RiderPickupService
                 $profile = $rider
                     ->riderProfile()
                     ->firstOrFail();
+                $this->assertLocalRider($profile);
 
                 $assignment =
                     PickupAssignment::query()
@@ -448,6 +451,15 @@ class RiderPickupService
                 'reason' => 'Rider confirmed pickup and took custody of the parcel.',
                 'occurred_at' => $occurredAt,
             ]);
+        }
+    }
+
+    private function assertLocalRider(\App\Models\RiderProfile $profile): void
+    {
+        if (! RiderWorkType::isLocal($profile->work_type)) {
+            throw new \Illuminate\Auth\Access\AuthorizationException(
+                'Courier profiles cannot accept local pickup assignments.'
+            );
         }
     }
 

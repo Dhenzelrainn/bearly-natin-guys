@@ -59,9 +59,16 @@ class ApplicationReviewService
         $statusLabel = match ($state) {
             'approved' => 'Approved',
             'rejected' => 'Not approved',
-            'needs_revision' => 'Needs revision',
-            'under_review' => 'Under review',
+            'needs_revision' => $role === UserRole::Buyer->value
+                ? 'Historical needs revision'
+                : 'Needs revision',
+            'under_review' => $role === UserRole::Buyer->value
+                ? 'Historical under review'
+                : 'Under review',
             'unavailable' => 'Account unavailable',
+            'pending' => $role === UserRole::Buyer->value
+                ? 'Historical pending'
+                : 'Pending review',
             default => 'Pending review',
         };
 
@@ -81,17 +88,31 @@ class ApplicationReviewService
             'heading' => match ($state) {
                 'approved' => 'Account Verified',
                 'rejected' => 'Application not approved',
-                'needs_revision' => 'Your application needs an update',
-                'under_review' => 'Your application is being reviewed',
+                'needs_revision' => $role === UserRole::Buyer->value
+                    ? 'Historical Buyer application status'
+                    : 'Your application needs an update',
+                'under_review' => $role === UserRole::Buyer->value
+                    ? 'Historical Buyer application status'
+                    : 'Your application is being reviewed',
                 'unavailable' => 'Account unavailable',
+                'pending' => $role === UserRole::Buyer->value
+                    ? 'Historical Buyer application status'
+                    : 'Application received',
                 default => 'Application received',
             },
             'message' => match ($state) {
                 'approved' => 'Your '.strtolower($this->roleLabel($role)).' account is active. Sign in to continue to your dashboard.',
                 'rejected' => 'Bearly was unable to approve this application. Review the decision note below or contact Support.',
-                'needs_revision' => 'Bearly reviewed your application and needs a correction before it can be approved. Check the note below and update your details.',
-                'under_review' => 'Your documents are with '.$authority.'. This page will update when the review is complete.',
+                'needs_revision' => $role === UserRole::Buyer->value
+                    ? 'This historical Buyer application remains marked as needing revision but is no longer in the active Admin queues. Contact Support to discuss next steps.'
+                    : 'Bearly reviewed your application and needs a correction before it can be approved. Check the note below and update your details.',
+                'under_review' => $role === UserRole::Buyer->value
+                    ? 'This historical Buyer application remains marked under review but is no longer in the active Admin queues. Contact Support to discuss next steps.'
+                    : 'Your documents are with '.$authority.'. This page will update when the review is complete.',
                 'unavailable' => 'This account can no longer access the pending application page. Contact Bearly Support if you need help.',
+                'pending' => $role === UserRole::Buyer->value
+                    ? 'This Buyer application was submitted before immediate activation took effect. Its status and documents remain on record, but it is no longer in the active Admin registration queues. New Buyer registrations activate after email verification; contact Support about this existing account.'
+                    : 'Your application was submitted successfully. '.$authority.' will review your details before dashboard access is activated.',
                 default => 'Your application was submitted successfully. '.$authority.' will review your details before dashboard access is activated.',
             },
             'review_note' => match ($state) {

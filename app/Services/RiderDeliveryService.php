@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\AccountStatus;
 use App\Enums\DeliveryAttemptOutcome;
 use App\Enums\ParcelStatus;
+use App\Enums\RiderWorkType;
 use App\Enums\ShipmentStatus;
 use App\Enums\UserRole;
 use App\Models\DeliveryAttempt;
@@ -54,6 +55,7 @@ class RiderDeliveryService
                 $rider = $actor
                     ->riderProfile()
                     ->first();
+                $this->assertLocalRider($rider);
 
                 if (
                     ! $rider
@@ -353,6 +355,7 @@ class RiderDeliveryService
                 $rider = $actor
                     ->riderProfile()
                     ->first();
+                $this->assertLocalRider($rider);
 
                 if (
                     ! $rider
@@ -575,6 +578,7 @@ class RiderDeliveryService
                 $rider = $actor
                     ->riderProfile()
                     ->first();
+                $this->assertLocalRider($rider);
 
                 if (
                     ! $rider
@@ -875,6 +879,7 @@ class RiderDeliveryService
                 $rider = $actor
                     ->riderProfile()
                     ->first();
+                $this->assertLocalRider($rider);
 
                 if (
                     ! $rider
@@ -1118,6 +1123,7 @@ class RiderDeliveryService
                     $rider = $actor
                         ->riderProfile()
                         ->first();
+                    $this->assertLocalRider($rider);
 
                     if (
                         ! $rider
@@ -1534,6 +1540,15 @@ class RiderDeliveryService
             }
 
             throw $exception;
+        }
+    }
+
+    private function assertLocalRider(?\App\Models\RiderProfile $rider): void
+    {
+        if ($rider && ! RiderWorkType::isLocal($rider->work_type)) {
+            throw new AuthorizationException(
+                'Courier profiles cannot receive local delivery assignments.'
+            );
         }
     }
 

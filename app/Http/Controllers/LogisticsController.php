@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Enums\AccountStatus;
 use App\Enums\DeliveryAttemptOutcome;
 use App\Enums\ParcelStatus;
+use App\Enums\RiderWorkType;
 use App\Enums\ShipmentStatus;
 use App\Enums\UserRole;
 use App\Models\AccountApplication;
@@ -14,11 +15,13 @@ use App\Models\DispatchBatch;
 use App\Models\LogisticsProfile;
 use App\Models\Message;
 use App\Models\MessageAttachment;
+use App\Models\LinehaulRun;
 use App\Models\OrderItem;
 use App\Models\Parcel;
 use App\Models\PickupAssignment;
 use App\Models\PickupRequest;
 use App\Models\RiderProfile;
+use App\Models\RiderVehicleChangeRequest;
 use App\Models\Shipment;
 use App\Models\ShipmentEvent;
 use App\Models\ShipmentTransfer;
@@ -33,11 +36,13 @@ use App\Services\ConversationService;
 use App\Services\DispatchService;
 use App\Services\EmailVerificationService;
 use App\Services\InternationalPhone;
+use App\Services\LinehaulRunService;
 use App\Services\NotificationService;
 use App\Services\ParcelSortingService;
 use App\Services\PostalCodeLookup;
 use App\Services\RegistrationLifecycleService;
 use App\Services\RiderZoneAssignmentService;
+use App\Services\RiderVehicleChangeService;
 use App\Services\ShipmentHandoffService;
 use App\Services\SortingZoneMatcher;
 use Illuminate\Http\RedirectResponse;
@@ -660,6 +665,10 @@ class LogisticsController extends Controller
                         'verification_status',
                         'approved'
                     )
+                    ->where(function ($query): void {
+                        $query->whereNull('work_type')
+                            ->orWhere('work_type', RiderWorkType::Local->value);
+                    })
                     ->where(
                         'availability_status',
                         'available'
@@ -1336,6 +1345,17 @@ class LogisticsController extends Controller
                         ?: $user->vehicle_type
                         ?: 'Not specified',
 
+                    'vehicle_model' => $riderProfile?->vehicle_model
+                        ?: $accountApplication->rider_vehicle_model
+                        ?: '—',
+
+                    'requested_work_type' => $accountApplication->requested_work_type
+                        ?: RiderWorkType::Local->value,
+
+                    'linehaul_parcel_capacity' => $riderProfile?->linehaul_parcel_capacity,
+
+                    'courier_vehicle_verified_at' => $riderProfile?->courier_vehicle_verified_at,
+
                     'plate' => $riderProfile?->plate_number
                         ?: $user->plate_number
                         ?: '—',
@@ -1421,6 +1441,85 @@ class LogisticsController extends Controller
         );
     }
 
+    public function riderVehicleChanges(Request $request): View
+    {
+        $profile = $this->currentLogisticsProfile($request->user());
+        abort_unless($profile, 404);
+
+        $changes = RiderVehicleChangeRequest::query()
+            ->whereHas('riderProfile', fn ($query) => $query
+                ->where('logistics_profile_id', $profile->id))
+            ->with(['riderProfile.user', 'reviewer'])
+            ->latest('created_at')
+            ->limit(100)
+            ->get();
+
+        return view('logistics.riders.vehicle-changes', $this->shared() + [
+            'changes' => $changes,
+        ]);
+    }
+
+    public function approveRiderVehicleChange(
+        Request $request,
+        RiderVehicleChangeRequest $change,
+        RiderVehicleChangeService $reviews
+    ): RedirectResponse {
+        $data = $request->validate([
+            'linehaul_capacity' => ['nullable', 'integer', 'min:1', 'max:1000'],
+        ]);
+        $reviews->approve(
+            $change,
+            $request->user(),
+            isset($data['linehaul_capacity']) ? (int) $data['linehaul_capacity'] : null,
+        );
+
+        return redirect()->route('logistics.riders.vehicle-changes')
+            ->with('success', 'The Rider vehicle and work-type change was approved and is now active.');
+    }
+
+    public function rejectRiderVehicleChange(
+        Request $request,
+        RiderVehicleChangeRequest $change,
+        RiderVehicleChangeService $reviews
+    ): RedirectResponse {
+        $data = $request->validate([
+            'review_notes' => ['required', 'string', 'min:5', 'max:1000'],
+        ]);
+        $reviews->reject($change, $request->user(), $data['review_notes']);
+
+        return redirect()->route('logistics.riders.vehicle-changes')
+            ->with('success', 'The Rider vehicle/work-type proposal was rejected with review notes.');
+    }
+
+    public function riderVehicleChangeDocument(
+        Request $request,
+        RiderVehicleChangeRequest $change,
+        string $document
+    ): StreamedResponse {
+        $profile = $this->currentLogisticsProfile($request->user());
+        abort_unless($profile, 404);
+
+        $change = RiderVehicleChangeRequest::query()
+            ->whereKey($change->id)
+            ->whereHas('riderProfile', fn ($query) => $query
+                ->where('logistics_profile_id', $profile->id))
+            ->firstOrFail();
+
+        [$disk, $path, $name, $mime] = match ($document) {
+            'or-cr' => [$change->or_cr_disk, $change->or_cr_path, $change->or_cr_original_name, $change->or_cr_mime_type],
+            'driver-license' => [$change->driver_license_disk, $change->driver_license_path, $change->driver_license_original_name, $change->driver_license_mime_type],
+            default => abort(404),
+        };
+
+        abort_unless(Storage::disk($disk)->exists($path), 404);
+
+        return Storage::disk($disk)->response($path, $name, [
+            'Content-Type' => $mime,
+            'X-Content-Type-Options' => 'nosniff',
+            'Cache-Control' => 'private, no-store',
+        ]);
+    }
+
     public function pickups(BuyerCatalogService $catalog): View
     {
         /** @var User $operator */
@@ -1474,6 +1573,10 @@ class LogisticsController extends Controller
         $availableRiders = RiderProfile::query()
             ->where('logistics_profile_id', $profile->id)
             ->where('verification_status', 'approved')
+            ->where(function ($query): void {
+                $query->whereNull('work_type')
+                    ->orWhere('work_type', RiderWorkType::Local->value);
+            })
             ->where('availability_status', 'available')
             ->whereHas(
                 'user',
@@ -1754,7 +1857,7 @@ class LogisticsController extends Controller
             ),
             'status_key' => $pickupRequest->status,
             'instructions' => $pickupRequest->seller_instructions
-                ?: ($isReturnPickup ? 'Buyer return pickup. No return-shipping fee is collected.' : 'No seller instructions.'),
+                ?: ($isReturnPickup ? 'Buyer return pickup. The Seller or Platform covers the separately recorded return-delivery fee; do not collect COD from the Buyer.' : 'No seller instructions.'),
             'cancellation_reason' => $pickupRequest->cancellation_reason,
             'fulfillment_groups' => $fulfillmentGroups,
             'products' => $this->orderItemPreviewData($orderItems, $catalog),
@@ -2073,6 +2176,10 @@ class LogisticsController extends Controller
             ->whereKey($validated['rider_profile_id'])
             ->where('logistics_profile_id', $profile->id)
             ->where('verification_status', 'approved')
+            ->where(function ($query): void {
+                $query->whereNull('work_type')
+                    ->orWhere('work_type', RiderWorkType::Local->value);
+            })
             ->where('availability_status', 'available')
             ->whereHas(
                 'user',
@@ -2115,6 +2222,10 @@ class LogisticsController extends Controller
                 ->whereKey($rider->id)
                 ->where('logistics_profile_id', $profile->id)
                 ->where('verification_status', 'approved')
+                ->where(function ($query): void {
+                    $query->whereNull('work_type')
+                        ->orWhere('work_type', RiderWorkType::Local->value);
+                })
                 ->where('availability_status', 'available')
                 ->whereHas(
                     'user',
@@ -2902,6 +3013,7 @@ class LogisticsController extends Controller
                     'destination' => $destination,
                     'province' => $province,
                     'target' => $target?->display_name ?? 'No destination account',
+                    'target_profile_id' => $target?->id,
                     'handoff_ready' => (bool) $ready,
                     'handoff_issue' => $ready
                         ? null
@@ -2958,6 +3070,46 @@ class LogisticsController extends Controller
             ->limit(20)
             ->get();
 
+        $availableCouriers = RiderProfile::query()
+            ->where('logistics_profile_id', $profile->id)
+            ->where('work_type', RiderWorkType::Courier->value)
+            ->whereNotNull('courier_vehicle_verified_at')
+            ->where('linehaul_parcel_capacity', '>', 0)
+            ->whereIn('vehicle_type', RiderWorkType::vehicleTypes(RiderWorkType::Courier))
+            ->where('verification_status', 'approved')
+            ->where('availability_status', 'available')
+            ->whereDoesntHave('courierRuns', fn ($query) => $query
+                ->whereIn('status', ['assigned', 'loading', 'loaded', 'departed', 'arrived', 'exception']))
+            ->whereHas('user', fn ($query) => $query
+                ->where('status', AccountStatus::Active->value))
+            ->whereHas('courierVehicleVerifier', fn ($query) => $query
+                ->where('role', UserRole::Logistics->value)
+                ->where('status', AccountStatus::Active->value)
+                ->whereHas('logisticsProfile', fn ($profileQuery) => $profileQuery
+                    ->whereKey($profile->id)
+                    ->where('status', AccountStatus::Active->value)))
+            ->with('user')
+            ->orderBy('id')
+            ->get();
+
+        $activeLinehaulRuns = LinehaulRun::query()
+            ->where(function ($query) use ($profile): void {
+                $query->where('origin_logistics_profile_id', $profile->id)
+                    ->orWhere('destination_logistics_profile_id', $profile->id);
+            })
+            ->where('status', '<>', 'completed')
+            ->with([
+                'originSortingCenter',
+                'destinationLogisticsProfile',
+                'courierRiderProfile.user',
+                'shipments.waybill',
+                'shipments.parcels',
+                'events.actor',
+            ])
+            ->latest('assigned_at')
+            ->limit(50)
+            ->get();
+
         return view('logistics.transfers.index', $this->shared() + [
             'eligibleShipments' => $eligibleShipments,
             'unroutableShipments' => $unroutableShipments,
@@ -2965,6 +3117,8 @@ class LogisticsController extends Controller
             'incomingTransfers' => $incoming,
             'recentTransfers' => $recent,
             'sortingCenter' => $sortingCenter,
+            'availableCouriers' => $availableCouriers,
+            'activeLinehaulRuns' => $activeLinehaulRuns,
         ]);
     }
 
@@ -3003,6 +3157,40 @@ class LogisticsController extends Controller
         return redirect()
             ->route('logistics.transfers.index')
             ->with('success', "{$transfer->shipment?->waybill?->waybill_no} was accepted into your Sorting Center.");
+    }
+
+    public function createLinehaulManifest(
+        Request $request,
+        LinehaulRunService $runs
+    ): RedirectResponse {
+        $data = $request->validate([
+            'courier_profile_id' => ['required', 'integer', 'exists:rider_profiles,id'],
+            'shipment_ids' => ['required', 'array', 'min:1', 'max:100'],
+            'shipment_ids.*' => ['required', 'integer', 'distinct', 'exists:shipments,id'],
+        ]);
+
+        $run = $runs->assign(
+            array_map('intval', $data['shipment_ids']),
+            (int) $data['courier_profile_id'],
+            $request->user(),
+        );
+
+        return redirect()->route('logistics.transfers.index')
+            ->with('success', "Manifest {$run->run_no} was assigned. Cargo remains at the origin until the Courier records departure.");
+    }
+
+    public function resolveLinehaulException(
+        Request $request,
+        LinehaulRun $run,
+        LinehaulRunService $runs
+    ): RedirectResponse {
+        $data = $request->validate([
+            'resolution' => ['required', 'string', 'min:5', 'max:1000'],
+        ]);
+        $runs->resolveException($run, $request->user(), trim($data['resolution']));
+
+        return redirect()->route('logistics.transfers.index')
+            ->with('success', "Exception on {$run->run_no} was resolved and recorded.");
     }
 
     private function validateSortingZoneCoverage(
@@ -3629,6 +3817,10 @@ class LogisticsController extends Controller
                 'verification_status',
                 'approved'
             )
+            ->where(function ($query): void {
+                $query->whereNull('work_type')
+                    ->orWhere('work_type', RiderWorkType::Local->value);
+            })
             ->where(
                 'availability_status',
                 'available'
@@ -3930,6 +4122,9 @@ class LogisticsController extends Controller
                 'parcels.shipment.sellerOrder.items.product.images.variant',
                 'parcels.shipment.sellerOrder.items.variant',
                 'deliveryAttempts' => fn ($query) => $query->orderBy('attempted_at'),
+                'deliveryAttempts.proofs' => fn ($query) => $query
+                    ->where('type', 'photo')
+                    ->orderByDesc('captured_at'),
             ])
             ->orderByDesc('dispatched_at')
             ->orderByDesc('id')
@@ -4316,6 +4511,8 @@ class LogisticsController extends Controller
                 continue;
             }
 
+            $proof = $attempt->proofs->first();
+
             $timeline->push([
                 'time' => $attemptAt->format(
                     'M j, g:i A'
@@ -4337,6 +4534,13 @@ class LogisticsController extends Controller
                                 .$attempt->failure_reason
                             : 'Delivery attempt recorded.'
                     ),
+
+                'proof_url' => $proof
+                    ? route(
+                        'logistics.dispatch.monitoring.delivery-proofs.show',
+                        $proof,
+                    )
+                    : null,
 
                 'sort_at' => $attemptAt->timestamp,
             ]);
@@ -6198,10 +6402,16 @@ class LogisticsController extends Controller
         $center = $this->activeSortingCenter(
             $operator
         );
+        $logisticsProfile = $operator->logisticsProfile()->first();
+        $payoutAccounts = $logisticsProfile?->payoutAccounts()
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->get() ?? collect();
 
         return view(
             'logistics.profile.index',
             $this->shared() + [
+                'payoutAccounts' => $payoutAccounts,
                 'facility' => [
                     'id' => $center?->id,
                     'business_name' => $center?->name

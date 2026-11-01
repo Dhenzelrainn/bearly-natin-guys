@@ -221,6 +221,30 @@ function setupTabs() {
     });
 }
 
+function setupLogisticsPayoutDestinationForm() {
+    const channel = document.querySelector('[data-logistics-payout-channel]');
+    const providerField = document.querySelector('[data-bank-provider-field]');
+    const providerInput = providerField?.querySelector('[data-bank-provider-input]');
+    const destinationLabel = document.querySelector('[data-payout-destination-label]');
+    const destinationInput = document.querySelector('[data-payout-destination-input]');
+    const gcashHint = document.querySelector('[data-gcash-number-hint]');
+
+    if (!channel || !providerField || !providerInput || !destinationLabel || !destinationInput) return;
+
+    const update = () => {
+        const isGcash = channel.value === 'gcash';
+        providerField.hidden = isGcash;
+        providerInput.disabled = isGcash;
+        providerInput.required = !isGcash;
+        destinationLabel.textContent = isGcash ? 'GCash mobile number' : 'Bank account number';
+        destinationInput.setAttribute('inputmode', isGcash ? 'tel' : 'numeric');
+        if (gcashHint) gcashHint.hidden = !isGcash;
+    };
+
+    channel.addEventListener('change', update);
+    update();
+}
+
 function setupTables() {
     document.querySelectorAll('[data-table-scope]').forEach((scope) => {
         const rows = [...scope.querySelectorAll('tbody tr[data-row]')];
@@ -3192,6 +3216,294 @@ function setupShipmentTransfers() {
     });
 }
 
+function setupCashReferenceCopy() {
+    document.addEventListener('click', async (event) => {
+        const button = event.target.closest('[data-copy-cash-reference]');
+        if (!button) return;
+
+        const reference = button.dataset.copyValue || '';
+        const clipboard = navigator.clipboard;
+
+        if (!reference || !clipboard?.writeText) {
+            toast('Clipboard is unavailable. Select and copy the reference.');
+            return;
+        }
+
+        try {
+            await clipboard.writeText(reference);
+            toast('Cash reference copied.');
+        } catch {
+            toast('Could not copy. Select and copy the reference.');
+        }
+    });
+}
+
+function setupRiderPayoutCashReference() {
+    document.querySelectorAll('[data-rider-payout-form]').forEach((form) => {
+        const method = form.querySelector('select[name="method"]');
+        const referenceField = form.querySelector('[data-external-rider-payout-reference]');
+        const reference = referenceField?.querySelector('input[name="reference"]');
+        const cashReferenceHint = form.querySelector('[data-generated-rider-cash-reference]');
+        if (!method || !referenceField || !reference || !cashReferenceHint) return;
+
+        const updateReferenceField = () => {
+            const cashSelected = method.value === 'cash';
+            referenceField.hidden = cashSelected;
+            reference.disabled = cashSelected;
+            reference.required = !cashSelected;
+            cashReferenceHint.hidden = !cashSelected;
+            if (cashSelected) reference.value = '';
+        };
+
+        method.addEventListener('change', updateReferenceField);
+        updateReferenceField();
+    });
+}
+
+function setupShippingSettlementRealtime() {
+    const settlements = document.querySelector('[data-shipping-settlement-live]');
+    if (!settlements) return;
+
+    let statusVersion = settlements.dataset.statusVersion || '';
+    let statusCheckInFlight = false;
+    let rowsRefreshInFlight = false;
+    let refreshQueued = false;
+    let dirtyFormNoticeShown = false;
+    const statusUrl = settlements.dataset.statusUrl || '';
+
+    const dirtyForm = () => settlements.querySelector('[data-rider-payout-form][data-rider-payout-dirty="true"]');
+    const markFormDirty = (event) => {
+        if (!(event.target instanceof Element)) return;
+        const form = event.target.closest('[data-shipping-settlement-live] [data-rider-payout-form]');
+        if (form) form.dataset.riderPayoutDirty = 'true';
+    };
+
+    document.addEventListener('input', markFormDirty);
+    document.addEventListener('change', markFormDirty);
+
+    const refreshRows = async () => {
+        if (document.hidden) {
+            refreshQueued = true;
+            return;
+        }
+        if (dirtyForm()) {
+            refreshQueued = true;
+            if (!dirtyFormNoticeShown) {
+                toast('A settlement changed while this payout form has edits. Submit the form to load the latest status.');
+                dirtyFormNoticeShown = true;
+            }
+            return;
+        }
+        if (rowsRefreshInFlight) {
+            refreshQueued = true;
+            return;
+        }
+
+        rowsRefreshInFlight = true;
+        try {
+            const url = new URL(window.location.href);
+            url.hash = '';
+            const response = await fetch(url, {
+                cache: 'no-store',
+                credentials: 'same-origin',
+                headers: {
+                    Accept: 'text/html',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            });
+            if (!response.ok) return;
+
+            const html = await response.text();
+            const refreshedPage = new DOMParser().parseFromString(html, 'text/html');
+            const refreshedSettlements = refreshedPage.querySelector('[data-shipping-settlement-live]');
+            const refreshedRows = refreshedSettlements?.querySelector('[data-shipping-settlement-rows]');
+            if (!refreshedSettlements || !refreshedRows) return;
+
+            const nextVersion = refreshedSettlements.dataset.statusVersion || '';
+            if (!nextVersion || nextVersion === statusVersion) return;
+
+            settlements.querySelector('[data-shipping-settlement-rows]')?.replaceWith(refreshedRows);
+            statusVersion = nextVersion;
+            settlements.dataset.statusVersion = nextVersion;
+            dirtyFormNoticeShown = false;
+            setupRiderPayoutCashReference();
+            refreshIcons();
+            toast('Rider settlement status updated.');
+        } catch {
+            // The next event, reconnect check, or disconnected fallback retries.
+        } finally {
+            rowsRefreshInFlight = false;
+            if (refreshQueued && !document.hidden && !dirtyForm()) {
+                refreshQueued = false;
+                refreshRows();
+            }
+        }
+    };
+
+    const checkStatusVersion = async (force = false) => {
+        if (!statusUrl || document.hidden || statusCheckInFlight
+            || (!force && window.BearlyRealtime?.connected)) return;
+
+        statusCheckInFlight = true;
+        try {
+            const response = await fetch(statusUrl, {
+                cache: 'no-store',
+                credentials: 'same-origin',
+                headers: {
+                    Accept: 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            });
+            const payload = await response.json().catch(() => ({}));
+            const nextVersion = String(payload?.data?.version || '');
+            if (!response.ok || !nextVersion) return;
+
+            if (statusVersion && nextVersion !== statusVersion) {
+                await refreshRows();
+                return;
+            }
+
+            statusVersion = nextVersion;
+            settlements.dataset.statusVersion = nextVersion;
+        } catch {
+            // A later visibility change or disconnected poll retries.
+        } finally {
+            statusCheckInFlight = false;
+        }
+    };
+
+    window.addEventListener('bearly:rider-shipping-earning-updated', refreshRows);
+    window.addEventListener('bearly:realtime-status', (event) => {
+        if (event.detail?.connected) checkStatusVersion(true);
+    });
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) checkStatusVersion(true);
+    });
+
+    checkStatusVersion(true);
+    window.setInterval(() => checkStatusVersion(), 10000);
+}
+
+function setupRefundCashRealtime() {
+    let list = document.querySelector('[data-refund-cash-list]');
+    if (!list) return;
+
+    let statusVersion = list.dataset.statusVersion || '';
+    let statusCheckInFlight = false;
+    let listRefreshInFlight = false;
+    let refreshQueued = false;
+    let dirtyFormNoticeShown = false;
+    const statusUrl = list.dataset.statusUrl;
+
+    const dirtyForm = () => list.querySelector('form[data-cash-custody-dirty="true"]');
+    const markFormDirty = (event) => {
+        const form = event.target.closest('[data-refund-cash-list] form');
+        if (form) form.dataset.cashCustodyDirty = 'true';
+    };
+
+    document.addEventListener('input', markFormDirty);
+    document.addEventListener('change', markFormDirty);
+
+    const refreshAssignments = async () => {
+        if (document.hidden) {
+            refreshQueued = true;
+            return;
+        }
+        if (dirtyForm()) {
+            refreshQueued = true;
+            if (!dirtyFormNoticeShown) {
+                toast('A refund cash status changed. Finish or cancel this form to load the latest status.');
+                dirtyFormNoticeShown = true;
+            }
+            return;
+        }
+        if (listRefreshInFlight) {
+            refreshQueued = true;
+            return;
+        }
+
+        listRefreshInFlight = true;
+        try {
+            const url = new URL(window.location.href);
+            url.hash = '';
+            const response = await fetch(url, {
+                cache: 'no-store',
+                credentials: 'same-origin',
+                headers: {
+                    Accept: 'text/html',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            });
+            if (!response.ok) return;
+
+            const html = await response.text();
+            const refreshedPage = new DOMParser().parseFromString(html, 'text/html');
+            const refreshedList = refreshedPage.querySelector('[data-refund-cash-list]');
+            if (!refreshedList) return;
+
+            const nextVersion = refreshedList.dataset.statusVersion || '';
+            if (nextVersion && nextVersion === statusVersion) return;
+
+            list.replaceWith(refreshedList);
+            list = refreshedList;
+            statusVersion = nextVersion;
+            dirtyFormNoticeShown = false;
+            refreshIcons();
+            toast('Refund cash status updated.');
+        } catch {
+            // The next broadcast, reconnect check, or fallback poll retries.
+        } finally {
+            listRefreshInFlight = false;
+            if (refreshQueued && !document.hidden && !dirtyForm()) {
+                refreshQueued = false;
+                refreshAssignments();
+            }
+        }
+    };
+
+    const checkStatusVersion = async (force = false) => {
+        if (!statusUrl || document.hidden || statusCheckInFlight
+            || (!force && window.BearlyRealtime?.connected)) return;
+
+        statusCheckInFlight = true;
+        try {
+            const response = await fetch(statusUrl, {
+                cache: 'no-store',
+                credentials: 'same-origin',
+                headers: {
+                    Accept: 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            });
+            const payload = await response.json().catch(() => ({}));
+            const nextVersion = String(payload?.data?.version || '');
+            if (!response.ok || !nextVersion) return;
+
+            if (statusVersion && nextVersion !== statusVersion) {
+                await refreshAssignments();
+                return;
+            }
+
+            statusVersion = nextVersion;
+        } catch {
+            // The next visibility change or fallback poll retries.
+        } finally {
+            statusCheckInFlight = false;
+        }
+    };
+
+    window.addEventListener('bearly:logistics-refund-cash-updated', refreshAssignments);
+    window.addEventListener('bearly:realtime-status', (event) => {
+        if (event.detail?.connected) checkStatusVersion(true);
+    });
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) checkStatusVersion(true);
+    });
+
+    checkStatusVersion(true);
+    window.setInterval(() => checkStatusVersion(), 10000);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     setupShell();
     setupModals();
@@ -3203,8 +3515,13 @@ document.addEventListener('DOMContentLoaded', () => {
     setupRegistration();
     setupSortingZones();
     setupRiderZoneAssignment();
+    setupLogisticsPayoutDestinationForm();
     setupRefundAcknowledgmentPrinting();
     setupCashAmountFormatting();
+    setupCashReferenceCopy();
+    setupRiderPayoutCashReference();
+    setupShippingSettlementRealtime();
+    setupRefundCashRealtime();
     setupShipmentTransfers();
     refreshIcons();
 });

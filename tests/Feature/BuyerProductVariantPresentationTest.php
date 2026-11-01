@@ -98,6 +98,8 @@ class BuyerProductVariantPresentationTest extends TestCase
         $response = $this->actingAs($buyer)->get(route('products.show', $product));
 
         $response->assertOk()
+            ->assertSee('Back')
+            ->assertSee('href="'.route('home').'"', false)
             ->assertSee('Product Specifications')
             ->assertSee('Product Description')
             ->assertSee('data-option-group="color"', false)

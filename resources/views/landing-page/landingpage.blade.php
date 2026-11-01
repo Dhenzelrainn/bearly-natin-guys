@@ -15,12 +15,13 @@
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@400&display=block" rel="stylesheet">
     <link rel="preload" as="image" href="{{ asset('images/landing/hero.webp') }}">
+    @include('partials.theme-preload')
     @vite(['resources/css/landing.css', 'resources/js/landing.js'])
 </head>
-<body class="bl bearly-landing" data-shop-url="{{ url('/products') }}" style="--landing-logo:url('{{ asset('images/bearly-logo.png') }}');--mixed-atlas:url('{{ asset('images/landing/mixed-products.webp') }}');--existing-atlas:url('{{ asset('images/catalog-placeholders.png') }}')">
+<body class="bl bearly-landing" data-shop-url="{{ url('/products') }}" style="--landing-logo:url('{{ asset('images/bearly-logo.png') }}');--landing-logo-dark:url('{{ asset('images/bearly-logo-2.png') }}');--mixed-atlas:url('{{ asset('images/landing/mixed-products.webp') }}');--existing-atlas:url('{{ asset('images/catalog-placeholders.png') }}')">
 <a class="lp-skip" href="#lp-main">Skip to content</a>
 <header class="lp-header">
-    <a class="lp-logo" href="{{ url('/') }}" aria-label="Bearly home"><img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly" width="205" height="64"></a>
+    <a class="lp-logo" href="{{ url('/') }}" aria-label="Bearly home">@include('partials.theme-aware-logo', ['themeLogoAlt' => 'Bearly', 'themeLogoWidth' => 205, 'themeLogoHeight' => 64])</a>
     <nav class="lp-nav" aria-label="Main navigation">
         <a href="{{ url('/') }}" aria-current="page">Home</a><a href="{{ url('/products') }}">Shop</a><a href="{{ route('about') }}">About</a><a href="{{ route('contact') }}">Contact</a>
     </nav>
@@ -29,6 +30,7 @@
         <button class="lp-icon" aria-label="Search"><span class="material-symbols-outlined" aria-hidden="true">search</span></button>
     </form>
     <div class="lp-actions">
+        @include('partials.theme-toggle')
         <a class="lp-icon" href="{{ url('/login') }}" aria-label="Log in"><span class="material-symbols-outlined" aria-hidden="true">person</span></a>
         <button class="lp-icon" type="button" data-saved-open aria-label="Saved products"><span class="material-symbols-outlined" aria-hidden="true">favorite</span><span class="lp-badge" data-saved-count hidden>0</span></button>
         <a class="lp-icon" href="{{ url('/cart') }}" aria-label="Shopping cart"><span class="material-symbols-outlined" aria-hidden="true">shopping_bag</span></a>

@@ -124,7 +124,18 @@ class AccountApprovalController extends Controller
     ): RedirectResponse {
         $this->ensureRiderReviewable($request, $user);
 
-        $application = $lifecycle->approve($user, $request->user());
+        $review = $request->validate([
+            'linehaul_capacity' => ['nullable', 'integer', 'min:1', 'max:1000'],
+        ]);
+
+        $application = $lifecycle->approve(
+            $user,
+            $request->user(),
+            null,
+            isset($review['linehaul_capacity'])
+                ? (int) $review['linehaul_capacity']
+                : null,
+        );
         $this->notifyApplicant($application->user, 'approved');
 
         return back()->with(
@@ -212,7 +223,7 @@ class AccountApprovalController extends Controller
     private function staleApplicationResponse(User $user): RedirectResponse
     {
         $queueRoute = match ($user->role) {
-            UserRole::Buyer->value => 'admin.registrations.buyers',
+            UserRole::Buyer->value => 'admin.registrations',
             UserRole::Seller->value => 'admin.registrations.sellers',
             UserRole::Logistics->value => 'admin.registrations.logistics',
             default => 'admin.registrations',

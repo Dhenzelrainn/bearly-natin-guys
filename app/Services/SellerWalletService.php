@@ -16,12 +16,15 @@ use App\Models\SellerTransaction;
 use App\Models\SellerWallet;
 use App\Models\SellerWalletTransaction;
 use App\Models\SellerWithdrawal;
+use App\Models\ShippingSettlement;
+use App\Models\Store;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use LogicException;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 class SellerWalletService
 {
@@ -107,8 +110,120 @@ class SellerWalletService
         return (int) SellerRefundRecovery::query()
             ->where('seller_profile_id', $sellerProfileId)
             ->whereIn('status', ['pending', 'partially_recovered'])
-            ->selectRaw('COALESCE(SUM(amount_minor - recovered_amount_minor), 0) as outstanding')
+            ->selectRaw('COALESCE(SUM(CASE WHEN refund_recovery_minor > refund_recovered_minor + refund_recovery_voided_minor THEN refund_recovery_minor - refund_recovered_minor - refund_recovery_voided_minor ELSE 0 END + CASE WHEN return_shipping_fee_minor > return_shipping_fee_recovered_minor THEN return_shipping_fee_minor - return_shipping_fee_recovered_minor ELSE 0 END), 0) as outstanding')
             ->value('outstanding');
+    }
+
+    public function outstandingRefundRecoveryMinor(SellerProfile $profile): int
+    {
+        return $this->outstandingRefundRecoveryMinorForSellerId((int) $profile->id);
+    }
+
+    public function outstandingRefundRecoveryMinorForSellerId(int $sellerProfileId): int
+    {
+        return (int) SellerRefundRecovery::query()
+            ->where('seller_profile_id', $sellerProfileId)
+            ->whereIn('status', ['pending', 'partially_recovered'])
+            ->selectRaw('COALESCE(SUM(CASE WHEN refund_recovery_minor > refund_recovered_minor + refund_recovery_voided_minor THEN refund_recovery_minor - refund_recovered_minor - refund_recovery_voided_minor ELSE 0 END), 0) as outstanding')
+            ->value('outstanding');
+    }
+
+    public function recordReturnShippingRecovery(ShippingSettlement $settlementStub): SellerRefundRecovery
+    {
+        return DB::transaction(function () use ($settlementStub): SellerRefundRecovery {
+            $settlementRead = ShippingSettlement::query()->whereKey($settlementStub->id)->firstOrFail();
+            $requestStub = ReturnRequest::query()->whereKey($settlementRead->return_request_id)->firstOrFail();
+            Order::query()->whereKey($requestStub->order_id)->lockForUpdate()->firstOrFail();
+            $returnRequest = ReturnRequest::query()
+                ->whereKey($requestStub->id)
+                ->where('return_shipment_id', $settlementRead->shipment_id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $lockedRefund = Refund::query()
+                ->where('return_request_id', $returnRequest->id)
+                ->where('financially_responsible_party', 'seller')
+                ->orderByDesc('id')
+                ->lockForUpdate()
+                ->first();
+            $settlement = ShippingSettlement::query()
+                ->whereKey($settlementRead->id)
+                ->where('settlement_type', 'return')
+                ->where('return_request_id', $returnRequest->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $amountMinor = (int) $settlement->return_shipping_fee_minor;
+            if ($settlement->status !== 'remitted'
+                || ! $settlement->remitted_at
+                || $amountMinor < 1
+                || (int) $settlement->remitted_amount_minor !== $amountMinor
+                || (int) $settlement->return_request_id !== (int) $returnRequest->id
+                || (int) $settlement->shipment_id !== (int) $returnRequest->return_shipment_id
+                || ! $lockedRefund
+                || $settlement->financially_responsible_party !== 'seller'
+                || $returnRequest->request_type !== 'return_refund') {
+                throw new ConflictHttpException('Only a Seller-liable physical return can create a Seller return-shipping recovery.');
+            }
+
+            $store = Store::query()->whereKey($returnRequest->store_id)->lockForUpdate()->first();
+            $sellerProfileId = (int) ($store?->seller_profile_id ?? 0);
+            $sellerProfile = $sellerProfileId > 0
+                ? SellerProfile::query()->whereKey($sellerProfileId)->lockForUpdate()->first()
+                : null;
+            if (! $sellerProfile) {
+                throw new ConflictHttpException('The Seller profile for this return-shipping recovery is unavailable.');
+            }
+
+            $recovery = SellerRefundRecovery::query()
+                ->where('refund_id', $lockedRefund->id)
+                ->lockForUpdate()
+                ->first();
+            if ($recovery && (int) $recovery->seller_profile_id !== $sellerProfileId) {
+                throw new ConflictHttpException('The Seller recovery belongs to a different Seller profile.');
+            }
+            if ($recovery && (int) $recovery->return_shipping_fee_minor > 0) {
+                if ((int) $recovery->return_shipping_fee_minor !== $amountMinor) {
+                    throw new ConflictHttpException('An existing Seller return-shipping recovery has a different immutable amount.');
+                }
+
+                return $recovery;
+            }
+
+            $refundRecoveryMinor = (int) ($recovery?->refund_recovery_minor ?? 0);
+            $refundRecoveredMinor = (int) ($recovery?->refund_recovered_minor ?? 0);
+            $refundVoidedMinor = (int) ($recovery?->refund_recovery_voided_minor ?? 0);
+            $returnFeeRecoveredMinor = (int) ($recovery?->return_shipping_fee_recovered_minor ?? 0);
+            $totalAmountMinor = $refundRecoveryMinor + $amountMinor;
+            $totalRecoveredMinor = $refundRecoveredMinor + $returnFeeRecoveredMinor;
+            $outstandingMinor = max(0, $refundRecoveryMinor - $refundRecoveredMinor - $refundVoidedMinor)
+                + max(0, $amountMinor - $returnFeeRecoveredMinor);
+            $status = $outstandingMinor === 0
+                ? ($totalRecoveredMinor > 0 ? 'recovered' : 'voided')
+                : ($totalRecoveredMinor > 0 ? 'partially_recovered' : 'pending');
+
+            if (! $recovery) {
+                return SellerRefundRecovery::query()->create([
+                    'refund_id' => $lockedRefund->id,
+                    'seller_profile_id' => $sellerProfileId,
+                    'amount_minor' => $totalAmountMinor,
+                    'recovered_amount_minor' => $totalRecoveredMinor,
+                    'refund_recovery_minor' => $refundRecoveryMinor,
+                    'refund_recovered_minor' => $refundRecoveredMinor,
+                    'refund_recovery_voided_minor' => $refundVoidedMinor,
+                    'return_shipping_fee_minor' => $amountMinor,
+                    'return_shipping_fee_recovered_minor' => $returnFeeRecoveredMinor,
+                    'status' => $status,
+                ]);
+            }
+
+            $recovery->update([
+                'amount_minor' => $totalAmountMinor,
+                'recovered_amount_minor' => $totalRecoveredMinor,
+                'return_shipping_fee_minor' => $amountMinor,
+                'status' => $status,
+            ]);
+
+            return $recovery->fresh();
+        }, attempts: 3);
     }
 
     /**
@@ -150,7 +265,7 @@ class SellerWalletService
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            if ($recovery->status === 'voided') {
+            if ($recovery->refundOutstandingMinor() < 1) {
                 return ['wallet_transaction' => null, 'recovery' => $recovery];
             }
 
@@ -203,11 +318,24 @@ class SellerWalletService
                 );
             }
 
-            $recovery->update(['status' => 'voided']);
+            $refundComponentMinor = (int) $recovery->refund_recovery_minor;
+            $refundRecoveredMinor = (int) $recovery->refund_recovered_minor;
+            $returnShippingMinor = (int) $recovery->return_shipping_fee_minor;
+            $returnShippingRecoveredMinor = (int) $recovery->return_shipping_fee_recovered_minor;
+            $returnShippingOutstandingMinor = max(0, $returnShippingMinor - $returnShippingRecoveredMinor);
+            $recovery->update([
+                'refund_recovery_voided_minor' => max(0, $refundComponentMinor - $refundRecoveredMinor),
+                'amount_minor' => $refundComponentMinor + $returnShippingMinor,
+                'recovered_amount_minor' => $refundRecoveredMinor + $returnShippingRecoveredMinor,
+                'status' => $returnShippingOutstandingMinor > 0
+                    ? ($refundRecoveredMinor + $returnShippingRecoveredMinor > 0 ? 'partially_recovered' : 'pending')
+                    : ($refundRecoveredMinor + $returnShippingRecoveredMinor > 0 ? 'recovered' : 'voided'),
+            ]);
             SellerRefundRecoveryEvent::query()->create([
                 'seller_refund_recovery_id' => $recovery->id,
                 'recorded_by' => $actor->id,
                 'seller_payout_id' => null,
+                'component' => 'refund_recovery',
                 'method' => 'legacy_void',
                 'amount_minor' => 0,
                 'external_reference' => 'LEGACY-VOID-'.$lockedRefund->refund_no,
@@ -528,7 +656,9 @@ class SellerWalletService
             return null;
         }
 
-        $outstanding = $recovery->outstandingMinor();
+        // Automatically adjust only the refund-proceeds component. Return
+        // shipping liabilities are separately collected/verified by Finance.
+        $outstanding = $recovery->refundOutstandingMinor();
         if ($outstanding < 1) {
             return null;
         }
@@ -588,14 +718,23 @@ class SellerWalletService
             ],
         );
 
+        $refundRecoveredMinor = (int) $recovery->refund_recovered_minor + $outstanding;
+        $returnShippingRecoveredMinor = (int) $recovery->return_shipping_fee_recovered_minor;
+        $totalRecoveredMinor = $refundRecoveredMinor + $returnShippingRecoveredMinor;
+        $totalOutstandingMinor = max(
+            0,
+            (int) $recovery->refund_recovery_minor - $refundRecoveredMinor - (int) $recovery->refund_recovery_voided_minor,
+        ) + $recovery->returnShippingOutstandingMinor();
         $recovery->update([
-            'recovered_amount_minor' => (int) $recovery->amount_minor,
-            'status' => 'recovered',
+            'refund_recovered_minor' => $refundRecoveredMinor,
+            'recovered_amount_minor' => $totalRecoveredMinor,
+            'status' => $totalOutstandingMinor > 0 ? 'partially_recovered' : 'recovered',
         ]);
         SellerRefundRecoveryEvent::query()->create([
             'seller_refund_recovery_id' => $recovery->id,
             'recorded_by' => $actor?->id,
             'seller_payout_id' => null,
+            'component' => 'refund_recovery',
             'method' => 'wallet_offset',
             'amount_minor' => $outstanding,
             'external_reference' => $movement->transaction_no,

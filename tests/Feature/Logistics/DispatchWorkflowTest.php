@@ -5,6 +5,8 @@ namespace Tests\Feature\Logistics;
 use App\Enums\ParcelStatus;
 use App\Enums\ShipmentStatus;
 use App\Models\Address;
+use App\Models\DeliveryAttempt;
+use App\Models\DeliveryProof;
 use App\Models\DispatchBatch;
 use App\Models\LogisticsProfile;
 use App\Models\Order;
@@ -22,6 +24,7 @@ use App\Models\Waybill;
 use App\Services\DispatchService;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 use Tests\TestCase;
 
@@ -776,6 +779,180 @@ class DispatchWorkflowTest extends TestCase
             ->assertDontSee('Reassign delivery');
     }
 
+    public function test_delivery_proofs_are_private_to_admin_and_the_owning_logistics_provider(): void
+    {
+        Storage::fake('local');
+
+        $ownZone = $this->makeZone($this->centerA, 'PROOF-OWN');
+        $foreignZone = $this->makeZone($this->centerB, 'PROOF-FOREIGN');
+        $ownRider = $this->makeRider($this->profileA, $this->centerA, $ownZone, 'PROOF-OWN', 10);
+        $foreignRider = $this->makeRider($this->profileB, $this->centerB, $foreignZone, 'PROOF-FOREIGN', 10);
+        $own = $this->makeReadyShipmentFor($this->profileA, $this->centerA, $ownZone, 'PROOF-OWN', 2);
+        $foreign = $this->makeReadyShipmentFor($this->profileB, $this->centerB, $foreignZone, 'PROOF-FOREIGN');
+        $ownBatch = app(DispatchService::class)->dispatchZone($ownZone, $ownRider, $this->logisticsA);
+        $foreignBatch = app(DispatchService::class)->dispatchZone($foreignZone, $foreignRider, $this->logisticsB);
+
+        $png = base64_decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/Kj0AAAAASUVORK5CYII='
+        );
+        $ownFilePath = 'delivery-proofs/own-delivery-proof.png';
+        $foreignFilePath = 'delivery-proofs/foreign-delivery-proof.png';
+        Storage::disk('local')->put($ownFilePath, $png);
+        Storage::disk('local')->put($foreignFilePath, $png);
+
+        $ownProofs = collect();
+        foreach ($own['parcels'] as $index => $parcel) {
+            $attempt = DeliveryAttempt::query()->create([
+                'parcel_id' => $parcel->id,
+                'dispatch_batch_id' => $ownBatch->id,
+                'rider_profile_id' => $ownRider->id,
+                'attempt_no' => 1,
+                'outcome' => 'delivered',
+                'attempted_at' => now(),
+            ]);
+
+            $ownProofs->push(DeliveryProof::query()->create([
+                'delivery_attempt_id' => $attempt->id,
+                'type' => 'photo',
+                'file_path' => $ownFilePath,
+                'recipient_name' => 'Own Proof Recipient',
+                'captured_at' => $index === 0 ? now()->subMinute() : now(),
+                'uploaded_by' => $ownRider->user_id,
+            ]));
+        }
+
+        $foreignAttempt = DeliveryAttempt::query()->create([
+            'parcel_id' => $foreign['parcel']->id,
+            'dispatch_batch_id' => $foreignBatch->id,
+            'rider_profile_id' => $foreignRider->id,
+            'attempt_no' => 1,
+            'outcome' => 'delivered',
+            'attempted_at' => now(),
+        ]);
+        $foreignProof = DeliveryProof::query()->create([
+            'delivery_attempt_id' => $foreignAttempt->id,
+            'type' => 'photo',
+            'file_path' => $foreignFilePath,
+            'recipient_name' => 'Foreign Proof Recipient',
+            'captured_at' => now(),
+            'uploaded_by' => $foreignRider->user_id,
+        ]);
+
+        $logisticsProofUrl = route(
+            'logistics.dispatch.monitoring.delivery-proofs.show',
+            $ownProofs->last(),
+        );
+
+        $this->actingAs($this->logisticsA)
+            ->get(route('logistics.dispatch.monitoring'))
+            ->assertOk()
+            ->assertSee($logisticsProofUrl, false)
+            ->assertDontSee(route(
+                'logistics.dispatch.monitoring.delivery-proofs.show',
+                $foreignProof,
+            ), false);
+
+        $this->actingAs($this->logisticsA)
+            ->get($logisticsProofUrl)
+            ->assertOk()
+            ->assertHeader('Content-Type', 'image/png')
+            ->assertHeader('Cache-Control', 'no-store, private')
+            ->assertHeader('X-Content-Type-Options', 'nosniff');
+
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'delivery.proof.previewed',
+            'actor_user_id' => $this->logisticsA->id,
+            'auditable_id' => $ownProofs->last()->id,
+        ]);
+
+        $this->actingAs($this->logisticsB)
+            ->get($logisticsProofUrl)
+            ->assertNotFound();
+
+        $buyer = User::factory()->create([
+            'role' => 'buyer',
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($buyer)
+            ->get($logisticsProofUrl)
+            ->assertForbidden();
+
+        $this->actingAs($buyer)
+            ->get(route(
+                'admin.fulfillment.delivery-proofs.show',
+                $ownProofs->last(),
+            ))
+            ->assertForbidden();
+
+        $admin = User::factory()->create([
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $adminProofUrl = route(
+            'admin.fulfillment.delivery-proofs.show',
+            $ownProofs->last(),
+        );
+
+        $adminFulfillment = $this->actingAs($admin)
+            ->get(route('admin.fulfillment'))
+            ->assertOk()
+            ->assertSee($adminProofUrl, false)
+            ->assertSee(route(
+                'admin.fulfillment.delivery-proofs.show',
+                $foreignProof,
+            ), false);
+
+        $this->assertSame(
+            1,
+            substr_count($adminFulfillment->getContent(), $adminProofUrl),
+            'The Admin ledger should link one shared upload only once, even when it is attached to multiple parcel attempts.',
+        );
+
+        $this->actingAs($admin)
+            ->get($adminProofUrl)
+            ->assertOk()
+            ->assertHeader('Content-Type', 'image/png');
+
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'delivery.proof.previewed',
+            'actor_user_id' => $admin->id,
+            'auditable_id' => $ownProofs->last()->id,
+        ]);
+
+        Storage::disk('local')->delete($ownFilePath);
+
+        $this->actingAs($admin)
+            ->get($adminProofUrl)
+            ->assertNotFound();
+
+        $nonImagePath = 'delivery-proofs/not-an-image.txt';
+        Storage::disk('local')->put($nonImagePath, 'not an image');
+        $invalidMimeProof = DeliveryProof::query()->create([
+            'delivery_attempt_id' => $ownProofs->last()->delivery_attempt_id,
+            'type' => 'photo',
+            'file_path' => $nonImagePath,
+            'captured_at' => now(),
+            'uploaded_by' => $ownRider->user_id,
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.fulfillment.delivery-proofs.show', $invalidMimeProof))
+            ->assertNotFound();
+
+        $traversalProof = DeliveryProof::query()->create([
+            'delivery_attempt_id' => $ownProofs->last()->delivery_attempt_id,
+            'type' => 'photo',
+            'file_path' => 'delivery-proofs/../private-proof.png',
+            'captured_at' => now(),
+            'uploaded_by' => $ownRider->user_id,
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.fulfillment.delivery-proofs.show', $traversalProof))
+            ->assertNotFound();
+    }
+
     public function test_monitoring_derives_real_stages_progress_and_metrics(): void
     {
         $assignedZone = $this->makeZone(
@@ -1309,6 +1486,35 @@ class DispatchWorkflowTest extends TestCase
                     'logistics',
             ]
         );
+    }
+
+    public function test_courier_work_type_cannot_receive_a_local_dispatch(): void
+    {
+        $zone = $this->makeZone($this->centerA, 'COURIER-LOCAL-BLOCK');
+        $rider = $this->makeRider(
+            $this->profileA,
+            $this->centerA,
+            $zone,
+            'COURIER-LOCAL-BLOCK',
+            10,
+        );
+        $rider->update([
+            'work_type' => 'courier',
+            'vehicle_type' => 'Van',
+            'linehaul_parcel_capacity' => 20,
+            'courier_vehicle_verified_by' => $this->logisticsA->id,
+            'courier_vehicle_verified_at' => now(),
+        ]);
+        $this->makeReadyShipmentFor(
+            $this->profileA,
+            $this->centerA,
+            $zone,
+            'COURIER-LOCAL-BLOCK',
+            1,
+        );
+
+        $this->expectException(ConflictHttpException::class);
+        app(DispatchService::class)->dispatchZone($zone, $rider, $this->logisticsA);
     }
 
     public function test_logistics_cannot_dispatch_from_another_providers_zone(): void

@@ -23,11 +23,11 @@
     <div>
         <span class="section-kicker">Seller Finance</span>
         <h2>Seller Wallet</h2>
-        <p>Paid earnings may move to Available after the 3-calendar-day return/refund period ends, counted from Seller Order completion. Payment, open cases, and COD reconciliation can keep funds pending longer.</p>
+        <p>Paid earnings may move to Available after the 3-calendar-day return/refund period ends, counted from Seller Order completion. An uncaptured payment, open return/refund request, pending or processing refund, or incomplete COD reconciliation can keep funds pending longer.</p>
     </div>
     <div class="wallet-heading-actions">
         <a class="seller-secondary-button" href="{{ route('seller.finance.bank-accounts') }}"><i data-lucide="landmark" aria-hidden="true"></i>Bank Accounts</a>
-        <button class="seller-primary-button" type="button" data-modal-open="wallet-withdrawal" @disabled((int) $wallet->available_balance_minor < 1 || $bankAccounts->isEmpty() || $outstandingRecoveryMinor > 0)>
+        <button class="seller-primary-button" type="button" data-modal-open="wallet-withdrawal" @disabled((int) $wallet->available_balance_minor < 1 || $bankAccounts->isEmpty() || $outstandingRefundRecoveryMinor > 0)>
             <i data-lucide="arrow-up-right" aria-hidden="true"></i>Withdraw Funds
         </button>
     </div>
@@ -62,8 +62,8 @@
 @if($outstandingRecoveryMinor > 0)
     <div class="seller-wallet-notice" role="alert">
         <div>
-            <strong>Refund recovery outstanding: {{ $money((int) $outstandingRecoveryMinor) }}</strong>
-            <p>New withdrawals are blocked until this Seller-liable refund balance is fully deducted or settled. The wallet will apply the recovery automatically when this sale has enough pending or available funds.</p>
+            <strong>Seller recovery outstanding: {{ $money((int) $outstandingRecoveryMinor) }}</strong>
+            <p>Refund-proceeds recovery blocks new withdrawals under the existing policy. Return-delivery fees are tracked separately and do not block or automatically deduct Seller Wallet funds.</p>
         </div>
     </div>
 @endif
@@ -71,17 +71,17 @@
 @if($recoveries->isNotEmpty())
     <section class="seller-panel seller-wallet-section" aria-labelledby="refund-recoveries-title">
         <div class="seller-panel-heading">
-            <div><span class="section-kicker">Return &amp; refund</span><h3 id="refund-recoveries-title">Seller Recoveries</h3><p>Completed Seller-liable refunds are deducted from this wallet when funds are available. Any remaining balance stays visible here.</p></div>
+            <div><span class="section-kicker">Return &amp; refund</span><h3 id="refund-recoveries-title">Seller Recoveries</h3><p>Refund-proceeds recovery and Seller-liable return-delivery fees are tracked separately. Only the refund-proceeds component may be adjusted from this wallet.</p></div>
         </div>
         <div class="seller-wallet-table-wrap">
             <table class="seller-wallet-table">
-                <thead><tr><th>Refund</th><th>Seller Order</th><th>Assigned</th><th>Recovered</th><th>Outstanding</th><th>Status</th></tr></thead>
+                    <thead><tr><th>Refund</th><th>Seller Order</th><th>Recovery components</th><th>Recovered</th><th>Outstanding</th><th>Status</th></tr></thead>
                 <tbody>
                 @foreach($recoveries as $recovery)
                     <tr>
                         <td><strong>{{ $recovery->refund?->refund_no ?? 'Refund unavailable' }}</strong><small>{{ $recovery->refund?->returnRequest?->return_no }}</small></td>
                         <td>{{ $recovery->refund?->returnRequest?->sellerOrder?->seller_order_no ?? '—' }}</td>
-                        <td>{{ $money((int) $recovery->amount_minor) }}</td>
+                        <td><small>Refund proceeds: {{ $money((int) $recovery->refund_recovery_minor) }}</small><small>Return delivery: {{ $money((int) $recovery->return_shipping_fee_minor) }}</small></td>
                         <td>{{ $money((int) $recovery->recovered_amount_minor) }}</td>
                         <td><strong>{{ $money($recovery->outstandingMinor()) }}</strong></td>
                         <td><span class="wallet-status wallet-status--{{ str_replace('_', '-', $recovery->status) }}">{{ $statusLabel($recovery->status) }}</span></td>
@@ -239,7 +239,7 @@
             <p class="wallet-bank-transfer-note">Bearly will not send an automatic transfer. Finance will review the request and manually process the bank transfer.</p>
             <div class="wallet-modal-actions">
                 <button class="seller-secondary-button" type="button" data-modal-close>Cancel</button>
-                <button class="seller-primary-button" type="submit" @disabled($bankAccounts->isEmpty() || (int) $wallet->available_balance_minor < 1 || $outstandingRecoveryMinor > 0)>Confirm Withdrawal</button>
+                <button class="seller-primary-button" type="submit" @disabled($bankAccounts->isEmpty() || (int) $wallet->available_balance_minor < 1 || $outstandingRefundRecoveryMinor > 0)>Confirm Withdrawal</button>
             </div>
         </form>
     </section>

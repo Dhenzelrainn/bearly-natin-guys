@@ -33,8 +33,8 @@
         'emptyBody' => 'Updates about your Bearly orders and account will appear here.',
         'links' => [
             [
-                'url' => route('home'),
-                'label' => 'Back to shopping',
+                'url' => request()->query('source') === 'profile' ? route('buyer.profile') : route('home'),
+                'label' => request()->query('source') === 'profile' ? 'Back to Profile' : 'Back to shopping',
                 'icon' => 'arrow_back',
             ],
         ],

@@ -268,6 +268,15 @@ return [
             'defaults' => ['in_app' => true, 'email' => true],
         ],
 
+        'logistics_return_dropoff_expected' => [
+            'label' => 'Buyer return drop-offs',
+            'description' => 'Approved return parcels expected at your assigned Sorting Center.',
+            'group' => 'pickups',
+            'audience' => ['logistics'],
+            'mandatory' => false,
+            'defaults' => ['in_app' => true, 'email' => true],
+        ],
+
         'logistics_handoff_sent' => [
             'label' => 'Incoming handoffs',
             'description' => 'Parcels sent to your facility through a cross-city Logistics handoff.',

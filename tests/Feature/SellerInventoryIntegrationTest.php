@@ -271,8 +271,66 @@ class SellerInventoryIntegrationTest extends TestCase
             ->assertOk()
             ->assertSee('Blocked')
             ->assertSee('Compliance hold')
+            ->assertSee('data-compliance-held="true"', false)
+            ->assertSee('aria-label="Select INV-BLOCKED-1 for threshold updates; stock adjustment remains blocked during compliance review"', false)
             ->assertSee('data-inventory-tab="blocked"', false)
             ->assertDontSee('stock-in-stock');
+    }
+
+    public function test_compliance_held_skus_can_be_selected_for_threshold_updates_but_not_stock_adjustments(): void
+    {
+        $category = $this->category();
+        [$seller, $store] = $this->sellerAndStore($category, 'inventory-compliance-selection');
+
+        $blockedProduct = $this->product($store, $category, 'Blocked Selection Item', 'blocked-selection-item');
+        $blockedProduct->update(['product_status' => 'blocked', 'compliance_status' => 'blocked']);
+        $blockedVariant = $this->variant($blockedProduct, 'INV-SELECT-BLOCKED', 'Default', 5, 0, 2);
+
+        $flaggedProduct = $this->product($store, $category, 'Flagged Selection Item', 'flagged-selection-item');
+        $flaggedProduct->update(['product_status' => 'flagged', 'compliance_status' => 'flagged']);
+        $flaggedVariant = $this->variant($flaggedProduct, 'INV-SELECT-FLAGGED', 'Default', 7, 1, 3);
+
+        $response = $this->actingAs($seller)
+            ->get(route('seller.inventory'))
+            ->assertOk()
+            ->assertSee('data-compliance-held="true"', false)
+            ->assertSee('aria-label="Select INV-SELECT-BLOCKED for threshold updates; stock adjustment remains blocked during compliance review"', false)
+            ->assertSee('aria-label="Select INV-SELECT-FLAGGED for threshold updates; stock adjustment remains blocked during compliance review"', false);
+
+        preg_match_all('/<input(?=[^>]*\bdata-inventory-check(?:\s|=|>))([^>]*)>/i', $response->getContent(), $checkboxMatches);
+        $this->assertCount(2, $checkboxMatches[0]);
+        foreach ($checkboxMatches[1] as $attributes) {
+            $this->assertDoesNotMatchRegularExpression('/\sdisabled(?:\s|=|$)/i', $attributes);
+        }
+
+        $this->actingAs($seller)
+            ->from(route('seller.inventory'))
+            ->post(route('seller.inventory.thresholds'), [
+                'inventory_action' => 'threshold',
+                'variant_ids' => [$blockedVariant->id, $flaggedVariant->id],
+                'threshold' => 9,
+            ])
+            ->assertRedirect(route('seller.inventory'))
+            ->assertSessionHas('success', 'Low-stock threshold saved for 2 SKU(s).');
+
+        $this->assertSame(9, (int) $blockedVariant->fresh()->low_stock_threshold);
+        $this->assertSame(9, (int) $flaggedVariant->fresh()->low_stock_threshold);
+
+        $this->actingAs($seller)
+            ->from(route('seller.inventory'))
+            ->post(route('seller.inventory.adjustments'), [
+                'inventory_action' => 'adjust',
+                'variant_ids' => [$blockedVariant->id, $flaggedVariant->id],
+                'mode' => 'add',
+                'quantity' => 2,
+                'reason' => 'new_stock_received',
+            ])
+            ->assertRedirect(route('seller.inventory'))
+            ->assertSessionHasErrors('variant_ids');
+
+        $this->assertSame(5, (int) $blockedVariant->fresh()->stock_on_hand);
+        $this->assertSame(7, (int) $flaggedVariant->fresh()->stock_on_hand);
+        $this->assertSame(0, InventoryMovement::query()->count());
     }
 
     public function test_stock_adjustment_persists_balance_and_auditable_movement(): void

@@ -90,7 +90,7 @@ class ApplicationDocumentReviewTest extends TestCase
         $url = route('admin.application-documents.update', [$application, $document]);
 
         $this->actingAs($this->admin)
-            ->from(route('admin.registrations.buyers'))
+            ->from(route('admin.registrations'))
             ->patch($url, [
                 'review_application_id' => $application->id,
                 'verification_status' => 'rejected',

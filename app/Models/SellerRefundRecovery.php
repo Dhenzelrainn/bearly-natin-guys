@@ -25,10 +25,21 @@ class SellerRefundRecovery extends Model
 
     public function outstandingMinor(): int
     {
-        if ($this->status === 'voided') {
-            return 0;
-        }
+        return $this->refundOutstandingMinor() + $this->returnShippingOutstandingMinor();
+    }
 
-        return max(0, (int) $this->amount_minor - (int) $this->recovered_amount_minor);
+    public function refundOutstandingMinor(): int
+    {
+        return max(
+            0,
+            (int) $this->refund_recovery_minor
+                - (int) $this->refund_recovered_minor
+                - (int) $this->refund_recovery_voided_minor,
+        );
+    }
+
+    public function returnShippingOutstandingMinor(): int
+    {
+        return max(0, (int) $this->return_shipping_fee_minor - (int) $this->return_shipping_fee_recovered_minor);
     }
 }

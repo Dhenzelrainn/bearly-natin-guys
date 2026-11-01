@@ -5,23 +5,32 @@ namespace Tests\Feature\Rider;
 use App\Enums\AccountStatus;
 use App\Enums\UserRole;
 use App\Models\Address;
+use App\Models\LinehaulRun;
 use App\Models\LogisticsProfile;
 use App\Models\RiderProfile;
+use App\Models\RiderVehicleChangeRequest;
 use App\Models\SortingCenter;
 use App\Models\SortingZone;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Http\UploadedFile;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
+use App\Services\RiderVehicleChangeService;
 use Tests\TestCase;
 
 class RiderAccountSettingsTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_rider_can_update_normalized_vehicle_details(): void
+    public function test_rider_vehicle_change_stays_pending_until_sponsoring_logistics_approves(): void
     {
+        Storage::fake('local');
+
         [
+            'logisticsUser' => $logisticsUser,
             'rider' => $rider,
             'riderProfile' => $riderProfile,
         ] = $this->makeRiderAccount();
@@ -33,6 +42,7 @@ class RiderAccountSettingsTest extends TestCase
                     'rider.profile.vehicle.update'
                 ),
                 [
+                    'work_type' => 'local',
                     'vehicle_type' =>
                         'Motorcycle',
 
@@ -41,9 +51,8 @@ class RiderAccountSettingsTest extends TestCase
 
                     'vehicle_model' =>
                         'Honda Click 160',
-
-                    'parcel_capacity' =>
-                        18,
+                    'or_cr' => UploadedFile::fake()->create('new-or-cr.pdf', 100, 'application/pdf'),
+                    'driver_license' => UploadedFile::fake()->create('new-license.pdf', 100, 'application/pdf'),
                 ]
             )
             ->assertRedirect(
@@ -52,50 +61,65 @@ class RiderAccountSettingsTest extends TestCase
             )
             ->assertSessionHas(
                 'success',
-                'Vehicle details updated successfully.'
+                'Vehicle and work-type changes were sent to your sponsoring Logistics provider for review. Your current permissions remain unchanged until approval.'
             );
+
+        $change = RiderVehicleChangeRequest::query()->firstOrFail();
+        $this->assertSame('pending', $change->status);
+        Storage::disk('local')->assertExists($change->or_cr_path);
+        Storage::disk('local')->assertExists($change->driver_license_path);
 
         $riderProfile->refresh();
         $rider->refresh();
 
         $this->assertSame(
-            'Motorcycle',
+            'E-bike',
             $riderProfile->vehicle_type
         );
 
         $this->assertSame(
-            'ABC-1234',
+            'RDR-2026',
             $riderProfile->plate_number
         );
 
         $this->assertSame(
-            'Honda Click 160',
+            'Honda EM1 e:',
             $riderProfile->vehicle_model
         );
 
         $this->assertSame(
-            18,
-            $riderProfile->parcel_capacity
+            null,
+            $riderProfile->work_type
         );
 
-        /*
-        * Legacy compatibility fields remain
-        * synchronized with RiderProfile.
-        */
         $this->assertSame(
-            'Motorcycle',
+            'Legacy Motorcycle',
             $rider->vehicle_type
         );
 
         $this->assertSame(
-            'ABC-1234',
+            'LEG-001',
             $rider->plate_number
         );
+
+        app(RiderVehicleChangeService::class)->approve($change, $logisticsUser);
+
+        $this->assertSame('approved', $change->fresh()->status);
+        $this->assertSame('Motorcycle', $riderProfile->fresh()->vehicle_type);
+        $this->assertSame('ABC-1234', $riderProfile->fresh()->plate_number);
+        $this->assertSame('Honda Click 160', $riderProfile->fresh()->vehicle_model);
+        $this->assertSame('local', $riderProfile->fresh()->work_type);
+        $this->assertNull($riderProfile->fresh()->linehaul_parcel_capacity);
+        $this->assertSame('Motorcycle', $rider->fresh()->vehicle_type);
+        $this->assertSame('ABC-1234', $rider->fresh()->plate_number);
     }
 
     public function test_vehicle_update_cannot_change_rider_operational_assignment(): void
     {
+        Storage::fake('local');
+
         [
+            'logisticsUser' => $logisticsUser,
             'rider' => $rider,
             'riderProfile' => $riderProfile,
         ] = $this->makeRiderAccount();
@@ -122,6 +146,7 @@ class RiderAccountSettingsTest extends TestCase
                     'rider.profile.vehicle.update'
                 ),
                 [
+                    'work_type' => 'courier',
                     'vehicle_type' =>
                         'Van',
 
@@ -131,8 +156,8 @@ class RiderAccountSettingsTest extends TestCase
                     'vehicle_model' =>
                         'Toyota LiteAce',
 
-                    'parcel_capacity' =>
-                        40,
+                    'or_cr' => UploadedFile::fake()->create('courier-or-cr.pdf', 100, 'application/pdf'),
+                    'driver_license' => UploadedFile::fake()->create('courier-license.pdf', 100, 'application/pdf'),
 
                     /*
                     * Malicious / out-of-scope input.
@@ -151,6 +176,10 @@ class RiderAccountSettingsTest extends TestCase
 
                     'availability_status' =>
                         'offline',
+
+                    'linehaul_parcel_capacity' => 999,
+                    'courier_vehicle_verified_by' => $logisticsUser->id,
+                    'courier_vehicle_verified_at' => now()->toDateTimeString(),
                 ]
             )
             ->assertRedirect(
@@ -186,14 +215,48 @@ class RiderAccountSettingsTest extends TestCase
         );
 
         $this->assertSame(
-            'Van',
+            'E-bike',
             $riderProfile->vehicle_type
         );
 
         $this->assertSame(
-            'SAFE-2026',
+            'RDR-2026',
             $riderProfile->plate_number
         );
+
+        $this->assertNull($riderProfile->work_type);
+        $this->assertNull($riderProfile->linehaul_parcel_capacity);
+        $this->assertNull($riderProfile->courier_vehicle_verified_at);
+        $this->assertDatabaseHas('rider_vehicle_change_requests', [
+            'rider_profile_id' => $riderProfile->id,
+            'requested_work_type' => 'courier',
+            'vehicle_type' => 'Van',
+            'plate_number' => 'SAFE-2026',
+            'status' => 'pending',
+        ]);
+
+        $foreignLogistics = User::factory()->create([
+            'role' => UserRole::Logistics->value,
+            'status' => AccountStatus::Active->value,
+        ]);
+        LogisticsProfile::query()->create([
+            'user_id' => $foreignLogistics->id,
+            'legal_name' => 'Foreign Logistics',
+            'display_name' => 'Foreign Logistics',
+            'contact_phone' => '09170000003',
+            'psgc_city_code' => '0403422000',
+            'status' => 'active',
+        ]);
+
+        $change = RiderVehicleChangeRequest::query()->firstOrFail();
+        $this->actingAs($foreignLogistics)
+            ->post(route('logistics.riders.vehicle-changes.approve', $change), [
+                'linehaul_capacity' => 40,
+            ])
+            ->assertForbidden();
+
+        $this->assertSame('pending', $change->fresh()->status);
+        $this->assertSame('E-bike', $riderProfile->fresh()->vehicle_type);
     }
 
     public function test_rider_can_update_personal_profile(): void
@@ -330,6 +393,80 @@ class RiderAccountSettingsTest extends TestCase
                 'plate_number' => 'DUP-2026',
             ])
             ->assertSessionHasErrors('plate_number');
+    }
+
+    public function test_rider_cannot_request_a_vehicle_outside_the_selected_work_type(): void
+    {
+        Storage::fake('local');
+        ['rider' => $rider] = $this->makeRiderAccount();
+
+        $this->from(route('rider.profile.index'))
+            ->actingAs($rider)
+            ->patch(route('rider.profile.vehicle.update'), [
+                'work_type' => 'courier',
+                'vehicle_type' => 'Motorcycle',
+                'plate_number' => 'INVALID-01',
+                'or_cr' => UploadedFile::fake()->create('or-cr.pdf', 100, 'application/pdf'),
+                'driver_license' => UploadedFile::fake()->create('license.pdf', 100, 'application/pdf'),
+            ])
+            ->assertRedirect(route('rider.profile.index'))
+            ->assertSessionHasErrors('vehicle_type');
+
+        $this->assertDatabaseCount('rider_vehicle_change_requests', 0);
+    }
+
+    public function test_logistics_cannot_approve_vehicle_change_during_active_linehaul_run(): void
+    {
+        Storage::fake('local');
+        [
+            'logisticsUser' => $logisticsUser,
+            'logisticsProfile' => $logisticsProfile,
+            'center' => $center,
+            'rider' => $rider,
+            'riderProfile' => $riderProfile,
+        ] = $this->makeRiderAccount();
+        $riderProfile->update([
+            'work_type' => 'courier',
+            'vehicle_type' => 'Van',
+            'linehaul_parcel_capacity' => 10,
+            'courier_vehicle_verified_by' => $logisticsUser->id,
+            'courier_vehicle_verified_at' => now(),
+        ]);
+
+        $this->actingAs($rider)
+            ->patch(route('rider.profile.vehicle.update'), [
+                'work_type' => 'local',
+                'vehicle_type' => 'Motorcycle',
+                'vehicle_model' => 'Honda Click',
+                'plate_number' => 'LOCAL-NEW-01',
+                'or_cr' => UploadedFile::fake()->create('local-or-cr.pdf', 100, 'application/pdf'),
+                'driver_license' => UploadedFile::fake()->create('local-license.pdf', 100, 'application/pdf'),
+            ])
+            ->assertRedirect(route('rider.profile.index').'#vehicle')
+            ->assertSessionHasNoErrors();
+
+        $change = RiderVehicleChangeRequest::query()->firstOrFail();
+        LinehaulRun::query()->create([
+            'run_no' => 'LHR-ACTIVE-CHANGE-01',
+            'origin_logistics_profile_id' => $logisticsProfile->id,
+            'destination_logistics_profile_id' => $logisticsProfile->id,
+            'origin_sorting_center_id' => $center->id,
+            'courier_rider_profile_id' => $riderProfile->id,
+            'status' => 'departed',
+            'assigned_by' => $logisticsUser->id,
+            'assigned_at' => now()->subHour(),
+            'departed_at' => now(),
+        ]);
+
+        try {
+            app(RiderVehicleChangeService::class)->approve($change, $logisticsUser);
+            $this->fail('The Courier vehicle must not change while its line-haul run is active.');
+        } catch (ConflictHttpException) {
+            $this->assertSame('pending', $change->fresh()->status);
+            $this->assertSame('courier', $riderProfile->fresh()->work_type);
+            $this->assertSame('Van', $riderProfile->fresh()->vehicle_type);
+            $this->assertSame('LOCAL-NEW-01', $change->fresh()->plate_number);
+        }
     }
 
     public function test_profile_update_cannot_change_email_role_or_status(): void

@@ -125,6 +125,7 @@ class SellerWalletController extends Controller
             'bankAccounts' => $bankAccounts,
             'recoveries' => $recoveries,
             'outstandingRecoveryMinor' => $recoveries->sum(fn (SellerRefundRecovery $recovery): int => $recovery->outstandingMinor()),
+            'outstandingRefundRecoveryMinor' => $wallets->outstandingRefundRecoveryMinor($sellerProfile),
             'idempotencyKey' => old('idempotency_key', (string) Str::uuid()),
             'codCashVersion' => $codCashVersion,
         ]);

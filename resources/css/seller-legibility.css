@@ -1361,3 +1361,1842 @@
         background: rgba(255,255,255,.38);
     }
 }
+
+/* =========================================================
+   22. SELLER DARK MODE
+   Keep the light theme as-is. This layer is loaded after the
+   legacy Seller page styles so hard-coded cream/white surfaces
+   do not leak through on less frequently visited pages.
+   ========================================================= */
+
+:root[data-theme="dark"] body.seller-body {
+    --seller-surface: #211c18;
+    --seller-surface-raised: #30241d;
+    --seller-surface-soft: #2b241f;
+    --seller-border: #4a3d34;
+    --seller-muted: #c0b2a5;
+    --seller-text: #f1e9e1;
+    --seller-line: #4a3d34;
+    --seller-white: #211c18;
+    --seller-cream: #211c18;
+    --seller-bg: #171411;
+    --seller-shadow: none;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content {
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(h1, h2, h3, h4, h5, h6) {
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(p, small, time, dt, .section-kicker, .seller-muted, [class*="-caption"], [class*="-helper"], [class*="-hint"], [class*="-description"], [class*="-subtext"], [class*="-subtitle"], [class*="-empty"]) {
+    color: var(--theme-muted);
+}
+
+/* Primary work surfaces across all Seller Center page families. */
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .seller-panel, .seller-modal-panel, .modal-card, .workspace-card,
+    .workspace-kpi-strip, .dashboard-ref-panel, .dashboard-ref-reminder,
+    .dashboard-ref-action-card, .dashboard-ref-performance-card,
+    .orders-workspace, .order-queue, .order-queue-item, .order-flow-strip,
+    .order-detail-preview, .bearly-action-card, .bearly-action-summary,
+    .bearly-action-items-section, .returns-workspace, .returns-summary,
+    .returns-summary-card, .return-role-flow,
+    .return-case-section, .return-seller-response, .case-overview-strip,
+    .case-panel, .case-financial-impact > div, .case-help-panel,
+    .case-image-preview-dialog, .fulfillment-workspace,
+    .fulfillment-summary article, .pickup-ready-banner, .tracking-attention,
+    .inventory-summary-strip, .inventory-quick-metric, .inventory-workspace, .inventory-table-panel,
+    .stock-history-panel, .pricing-workspace, .pricing-panel-surface,
+    .product-onboarding-card, .product-stat-card, .product-table-card,
+    .product-form-section, .product-media-gallery-preview,
+    .product-buyer-preview-card, .variant-matrix-card,
+    .pricing-summary-metric, .promotion-create-card, .promotion-form-surface,
+    .promotion-summary, .campaign-detail-hero, .finance-summary-card, .finance-ledger,
+    .finance-settlements-card, .finance-recent-card, .seller-wallet-summary,
+    .seller-wallet-section, .seller-bank-account-panel,
+    .account-profile-card, .account-panel, .account-audit-bar,
+    .settings-panel, .store-information-card, .store-management-panel,
+    .storefront-panel, .storefront-preview-card, .publication-overview-card,
+    .report-ledger, .report-analysis-sheet, .report-detail-summary,
+    .report-detail-sheet, .sales-momentum-panel, .sales-leaderboard-panel,
+    .financial-current-statement, .financial-deduction-panel, .report-scope,
+    .message-workspace, .feedback-overview, .feedback-content
+) {
+    border-color: var(--seller-border);
+    background-color: var(--seller-surface);
+    color: var(--theme-text);
+    box-shadow: none;
+}
+
+/* Tonal inner rows and controls; avoid changing the simulated buyer store. */
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .workspace-toolbar, .workspace-footer, .dashboard-ref-section-header,
+    .dashboard-ref-panel-heading, .dashboard-ref-product-head,
+    .dashboard-ref-chart-controls button,
+    .order-tabs, .order-toolbar, .orders-table-footer,
+    .returns-tabs, .returns-toolbar, .returns-footer,
+    .fulfillment-tabs, .fulfillment-toolbar, .fulfillment-footer,
+    .waybill-workspace-head, .waybill-toolbar, .inventory-toolbar,
+    .inventory-table-footer, .stock-history-heading,
+    .pricing-panel-head, .pricing-filters, .pricing-table-footer,
+    .finance-ledger-toolbar, .finance-ledger-footer,
+    .report-detail-heading, .report-detail-footer,
+    .feedback-toolbar, .notification-table-heading,
+    .storefront-preview-heading, .publication-control-card dl,
+    .promotion-create-toolbar, .promotion-form-section,
+    .message-inbox-heading, .message-thread-header,
+    .conversation-details > h3, .wallet-withdrawal-summary,
+    .seller-wallet-notice, .account-note, .settings-note,
+    .two-factor-state, .inventory-current-stock, .inventory-preview-note
+) {
+    border-color: var(--seller-border);
+    background-color: var(--seller-surface-soft);
+    color: var(--theme-text);
+}
+
+/* Dashboard detail rows stay flat, and muted copy remains readable in the dark palette. */
+:root[data-theme="dark"] body.seller-body .seller-content .dashboard-ref-page :is(
+    .dashboard-ref-earnings-breakdown > div,
+    .dashboard-ref-pickup-summary > div
+) {
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .dashboard-ref-page :is(
+    .dashboard-ref-earnings-total strong,
+    .dashboard-ref-pickup-summary strong,
+    .dashboard-ref-pickup-schedule strong
+) {
+    color: #fff8ef !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .dashboard-ref-page :is(
+    .dashboard-ref-earnings-total span,
+    .dashboard-ref-earnings-breakdown dt,
+    .dashboard-ref-pickup-summary span,
+    .dashboard-ref-pickup-summary small,
+    .dashboard-ref-pickup-schedule span,
+    .dashboard-ref-pickup-schedule small,
+    .dashboard-ref-health-row > span:nth-child(2)
+) {
+    color: #d5c2ad !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .dashboard-ref-page .dashboard-ref-earnings-breakdown dd {
+    color: #e4c39d !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .dashboard-ref-page .dashboard-ref-earnings-breakdown .is-total :is(dt, dd) {
+    color: #fff8ef !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .dashboard-ref-page .dashboard-ref-earnings-total small {
+    color: #a8d5b0 !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .dashboard-ref-page .dashboard-ref-pickup-schedule > svg {
+    color: #c0b2a5;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .dashboard-ref-page .dashboard-ref-health-row.tone-success :is(.dashboard-ref-health-icon, strong) {
+    color: #a8d5b0 !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .dashboard-ref-page .dashboard-ref-health-row.tone-warning :is(.dashboard-ref-health-icon, strong) {
+    color: #efbd71 !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .dashboard-ref-page .dashboard-ref-health-row.tone-neutral :is(.dashboard-ref-health-icon, strong) {
+    color: #c0b2a5 !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .dashboard-ref-page .dashboard-ref-view-link {
+    color: #efbd71 !important;
+    text-decoration-color: currentColor;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .dashboard-ref-page .dashboard-ref-view-link:hover {
+    color: #fff8ef !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .store-profile-section, .case-content-section, .return-case-section,
+    .publication-readiness-card, .publication-requirements,
+    .promotion-product-option, .promotion-input-shell,
+    .product-onboarding-checklist > span, .variant-package-shared-panel,
+    .variant-package-progress-panel, .variant-package-copy-panel,
+    .product-commission-preview > div, .product-primary-upload,
+    .product-gallery-field, .product-variant-image-upload-row,
+    .storefront-profile-drop, .storefront-cover-drop, .storefront-upload,
+    .publication-information-card > p, .report-bridge .is-total,
+    .financial-current-statement .is-net, .earnings-bridge-list .is-total,
+    .wallet-withdrawal-summary > div
+) {
+    border-color: var(--seller-border);
+    background-color: var(--seller-surface-raised);
+    color: var(--theme-text);
+}
+
+/* Tables, filters, pagers, and menus. */
+:root[data-theme="dark"] body.seller-body .seller-content :is(table, th, td) {
+    border-color: var(--seller-border);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(thead, th) {
+    background-color: var(--seller-surface-soft);
+    color: var(--theme-muted);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content tbody tr {
+    background-color: var(--seller-surface);
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content tbody tr:nth-child(even) {
+    background-color: #261f1a;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .workspace-search, .product-search, .product-filter-bar,
+    .product-filter-select, .inventory-search, .inventory-select,
+    .returns-search, .returns-select, .fulfillment-toolbar label,
+    .report-date-control, .report-detail-heading label,
+    .finance-ledger-toolbar label, .seller-availability, .message-search,
+    .message-field, .message-heading-actions .message-filter-tabs,
+    .case-evidence-gallery button, .case-upload, .storefront-field,
+    .campaign-detail-facts > div, .campaign-detail-section,
+    .promotion-date-field, .pricing-row-menu-panel
+) {
+    border-color: var(--seller-border);
+    background-color: var(--seller-surface-raised);
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    input:not([type="checkbox"]):not([type="radio"]), select, textarea
+) {
+    border-color: var(--seller-border);
+    background-color: var(--theme-input);
+    color: var(--theme-text);
+    color-scheme: dark;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .workspace-search input, .product-search input, .message-search input,
+    .message-field textarea, .message-attach-chip button,
+    .product-filter-bar select, .fulfillment-toolbar select,
+    .pickup-date-filter select, .report-date-control select,
+    .seller-availability select
+) {
+    border-color: var(--seller-border);
+    background-color: transparent;
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .workspace-row-action, .order-row-action, .orders-export-button, .return-action,
+    .return-secondary, .case-readonly-action button, .case-report-button,
+    .case-print-button, .case-tracking-card button,
+    .fulfillment-row-action, .inventory-row-action,
+    .inventory-secondary-button, .inventory-reset-button,
+    .inventory-filter-submit, .seller-secondary-button,
+    .seller-tertiary-button, .seller-content .tracking-page .seller-secondary-button,
+    .report-date-range button, .report-export-button, .finance-receipt-link,
+    .wallet-proof-link, .waybill-toolbar form > button,
+    .waybill-toolbar form > a, .seller-modal-close, .tracking-export-button,
+    .tracking-reset-button, .tracking-action-cell .fulfillment-row-action
+) {
+    border-color: #72563e;
+    background-color: var(--seller-surface-raised);
+    color: #e4c39d;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .seller-primary-button:not(.is-danger), .product-filter-actions button,
+    .pricing-panel-action, .publication-primary-action:not(:disabled),
+    .message-send, .seller-bank-account-form > button
+) {
+    border-color: #806334;
+    background-color: #684a32;
+    color: #fff8ef;
+    box-shadow: none;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .return-approve, .case-accept-button
+) {
+    border-color: #806334;
+    background: #684a32;
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .return-decline, .case-dispute-button
+) {
+    border-color: #79443d;
+    background: #34211e;
+    color: #ffaaa2;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .publish-button:disabled, .seller-primary-button:disabled,
+    .seller-secondary-button:disabled, .fulfillment-row-action:disabled,
+    .order-bulk-actions button:disabled
+) {
+    border-color: #594737;
+    background: #3b3027;
+    color: #b9ab9e;
+    opacity: .75;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .seller-content .orders-workspace .order-row-action,
+    .orders-export-button,
+    .seller-content .orders-workspace .order-bulk-actions button:not(:disabled)
+) {
+    border-color: #806334 !important;
+    background-color: #684a32 !important;
+    color: #fff8ef !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .seller-content .orders-workspace .order-row-action:hover,
+    .orders-export-button:hover,
+    .seller-content .orders-workspace .order-bulk-actions button:not(:disabled):hover
+) {
+    border-color: #9b7847 !important;
+    background-color: #3b3027 !important;
+    color: #fff8ef !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .workspace-row-action:hover, .order-row-action:hover, .return-action:hover,
+    .case-readonly-action button:hover, .case-report-button:hover,
+    .case-print-button:hover, .fulfillment-row-action:hover,
+    .inventory-row-action:hover, .inventory-secondary-button:hover,
+    .inventory-reset-button:hover, .report-date-range button:hover,
+    .finance-receipt-link:hover, .waybill-toolbar form > button:hover,
+    .waybill-toolbar form > a:hover
+) {
+    border-color: #9b7847;
+    background-color: #3b3027;
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .product-filter-bar select, .inventory-filter-submit,
+    .returns-reset, .returns-export, .fulfillment-toolbar > button,
+    .fulfillment-toolbar > select, .message-inbox-heading button,
+    .message-thread-header > button, .seller-modal-close
+):focus-visible,
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    button, a, input, select, textarea, [tabindex="0"]
+):focus-visible {
+    outline-color: #f0b84d;
+}
+
+/* Seller copy that previously used fixed near-black text on white panels. */
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .dashboard-ref-page, .dashboard-ref-page strong,
+    .dashboard-ref-reminder-copy strong, .dashboard-ref-action-card strong,
+    .dashboard-ref-performance-card > strong, .order-queue-item,
+    .order-queue-item strong, .order-queue-item span:not(.order-queue-icon),
+    .returns-refined, .return-case-page, .case-overview-strip strong,
+    .case-panel, .fulfillment-summary strong, .fulfillment-table td,
+    .inventory-product-copy strong, .inventory-management-table td,
+    .product-stat-card strong, .product-onboarding-copy,
+    .pricing-summary-copy strong, .pricing-panel-copy,
+    .seller-wallet-available strong, .seller-wallet-secondary-balances dd,
+    .seller-wallet-table td, .seller-wallet-table td strong,
+    .wallet-withdrawal-modal h3, .wallet-withdrawal-summary dd,
+    .seller-bank-account-row strong, .seller-bank-account-row span,
+    .account-profile-copy p, .account-profile-meta dd,
+    .report-ledger strong, .report-bridge dt, .report-bridge dd,
+    .report-table td, .financial-current-statement dt,
+    .financial-current-statement dd, .customer-service-heading h2,
+    .feedback-review, .feedback-review blockquote,
+    .message-order-reference, .conversation-meta-actions button,
+    .conversation-meta-actions .meta-row, .detail-section-label,
+    .detail-product b, .campaign-detail-page, .campaign-detail-facts,
+    .publication-status-main h3, .storefront-panel-heading h3,
+    .inventory-quick-metric strong, .pricing-summary-metric strong,
+    .case-resolution-hero > div:last-child strong,
+    .financial-current-statement .is-net :is(dt, dd),
+    .report-detail-summary small
+) {
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .message-order-reference:not(.is-dispute) {
+    border-color: #d69b43;
+    background: #efbd71;
+    color: #2b1d16;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .message-order-reference.is-dispute {
+    border-color: #d69b43;
+    background: #efbd71;
+    color: #2b1d16;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .seller-panel-heading p, .dashboard-ref-page p,
+    .dashboard-ref-page small, .dashboard-ref-reminder-copy p,
+    .dashboard-ref-chart-note, .order-queue-item small,
+    .orders-workflow-note, .orders-table td small,
+    .returns-page-heading p, .returns-table td small,
+    .case-panel p, .case-panel small, .case-panel dt,
+    .fulfillment-table td small, .fulfillment-summary p,
+    .inventory-product-copy small, .stock-history-table td small,
+    .product-onboarding-copy > p, .product-form-section-heading p,
+    .pricing-panel-copy p, .pricing-summary-copy > span,
+    .seller-wallet-available > span, .seller-wallet-available small,
+    .seller-wallet-secondary-balances dt,
+    .seller-wallet-secondary-balances small, .seller-wallet-table td small,
+    .wallet-modal-intro, .wallet-bank-transfer-note,
+    .seller-bank-account-row small, .report-statement-header p,
+    .report-section-heading p, .report-detail-heading p,
+    .report-table td small, .financial-current-statement small,
+    .customer-service-heading p, .feedback-review small,
+    .conversation-details small, .message-thread-empty,
+    .publication-status-main p, .storefront-panel-heading p
+) {
+    color: var(--theme-muted);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .seller-panel-heading > a, .settings-text-button, .session-row button,
+    .wallet-ledger-heading > a, .wallet-proof-link, .detail-order-button,
+    .message-context-strip a, .report-section-heading > a,
+    .report-bridge-panel > a, .report-scope a, .seller-wallet-table a
+) {
+    color: #efbd71;
+}
+
+/* Neutral surfaces nested inside pages, while keeping image stages untouched. */
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .product-empty-icon, .product-onboarding-checklist svg,
+    .product-section-icon, .product-variant-image-preview,
+    .product-media-gallery-thumbnail, .inventory-product-thumb,
+    .waybill-product-thumbnail, .waybill-product-more,
+    .order-item-preview-image, .finance-product-placeholder,
+    .detail-product-thumb, .product-buyer-preview-image,
+    .storefront-profile-placeholder, .buyer-store-avatar
+) {
+    border-color: #594737;
+    background-color: #382e27;
+    color: #e4c39d;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .product-media-gallery-stage, .product-buyer-preview-image,
+    .storefront-profile-drop img, .storefront-cover-drop img,
+    .campaign-card-media img, .campaign-detail-media img,
+    .waybill-label
+) {
+    background-color: #fff;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .product-media-gallery-stage img, .product-media-gallery-thumbnail img,
+    .product-variant-image-preview img, .inventory-product-thumb img,
+    .waybill-product-thumbnail img, .order-item-preview-image img,
+    .finance-product-placeholder img, .detail-product-thumb img,
+    .product-buyer-preview-image img, .storefront-profile-drop img,
+    .storefront-cover-drop img, .campaign-card-media img,
+    .campaign-detail-media img, .chat-attachment-preview,
+    .feedback-review-photo img
+) {
+    filter: none;
+}
+
+/* Semantic status and alert colors stay green/amber/blue/red in dark mode. */
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .badge-success, .status-success, .status-active,
+    .publication-badge.is-published, .fulfillment-status.is-printed,
+    .fulfillment-status.is-picked-up, .fulfillment-status.is-delivered,
+    .fulfillment-status.is-received, .return-status.status-resolved,
+    .stock-in-stock, .movement-addition, .wallet-status--completed,
+    .wallet-status--available, .wallet-status--sale-earning-available,
+    .wallet-status--withdrawal-completion, .wallet-status--withdrawal-release,
+    .report-status.is-paid, .publication-state-badge.is-live,
+    .account-badge.is-active, .settings-security-status
+) {
+    border-color: #386146;
+    background-color: #1e3828;
+    color: #a8d5b0;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .badge-warning, .status-warning, .workspace-status,
+    .fulfillment-status.is-ready, .fulfillment-status.is-pending,
+    .fulfillment-status.is-out-delivery,
+    .return-status.status-warning, .stock-low-stock, .stock-held-for-review,
+    .stock-pending-review, .movement-reservation, .status-draft,
+    .status-needs-review, .status-pending-review,
+    .publication-badge:not(.is-published),
+    .wallet-status--pending-review, .wallet-status--approved,
+    .wallet-status--reserved, .wallet-status--sale-earning-pending,
+    .wallet-status--withdrawal-reservation,
+    .report-status:not(.is-paid):not(.is-reversed),
+    .campaign-status.is-paused, .campaign-status.is-scheduled,
+    .publication-state-badge:not(.is-live), .account-badge.is-verified,
+    .pricing-tab-count
+) {
+    border-color: #806334;
+    background-color: #44331d;
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .badge-info, .status-info, .fulfillment-status.is-sorting,
+    .fulfillment-status.is-transit, .fulfillment-status.is-assigned,
+    .return-status.status-shipping, .stock-held-for-review.is-info,
+    .wallet-status--processing
+) {
+    border-color: #3d5d73;
+    background-color: #1e3041;
+    color: #b2dcf4;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .badge-danger, .status-danger, .fulfillment-status.is-reprint,
+    .fulfillment-status.is-failed, .fulfillment-status.is-cancelled,
+    .return-status.status-danger, .stock-out-of-stock, .stock-blocked,
+    .movement-damage, .status-blocked, .wallet-status--rejected, .wallet-status--failed,
+    .report-status.is-reversed, .seller-field-error, .case-response-field > span b
+) {
+    border-color: #79443d;
+    background-color: #452521;
+    color: #ffaaa2;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .order-status-badge.order-status-prepare,
+    .order-status-badge.order-status-completed,
+    .order-status-badge.order-status-new,
+    .order-status-badge.order-status-pickup,
+    .order-status-badge.order-status-waybill,
+    .order-status-badge.order-status-transit,
+    .order-status-badge.order-status-cancelled
+) {
+    border-color: var(--seller-border);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .product-compliance-feedback, .form-alert, .seller-wallet-errors,
+    .pickup-validation-note, .waybill-alert.is-error,
+    .seller-alert.is-error, .campaign-detail-page .seller-alert:not(.is-success)
+) {
+    border-color: #79443d;
+    background-color: #34211e;
+    color: #ffaaa2;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .product-compliance-feedback, .form-alert, .seller-wallet-errors,
+    .pickup-validation-note, .waybill-alert.is-error,
+    .seller-alert.is-error, .campaign-detail-page .seller-alert:not(.is-success)
+) :is(p, small, strong, li) {
+    color: inherit;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .waybill-alert.is-success, .delivery-proof, .case-resolution-complete,
+    .case-resolution-hero, .delivery-completion-notice,
+    .category-compliance-banner, .campaign-detail-page .seller-alert.is-success
+) {
+    border-color: #386146;
+    background-color: #1e3828;
+    color: #a8d5b0;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .waybill-alert.is-success, .delivery-proof, .case-resolution-complete,
+    .case-resolution-hero, .delivery-completion-notice,
+    .category-compliance-banner, .campaign-detail-page .seller-alert.is-success
+) :is(p, small, strong) {
+    color: inherit;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .dashboard-ref-reminder, .seller-wallet-notice, .case-deadline-banner,
+    .pickup-ready-banner, .tracking-attention, .inventory-attention-bar,
+    .workflow-notice, .commission-rule-banner, .report-commission-note,
+    .finance-ledger-note, .promotion-scope-notice, .locked-information-note
+) {
+    border-color: #72563e;
+    background-color: #3a2c20;
+    color: #f1e9e1;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .dashboard-ref-reminder, .seller-wallet-notice, .case-deadline-banner,
+    .pickup-ready-banner, .tracking-attention, .inventory-attention-bar,
+    .workflow-notice, .commission-rule-banner, .report-commission-note,
+    .finance-ledger-note, .promotion-scope-notice, .locked-information-note
+) :is(p, small) {
+    color: #d5c2ad;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .case-deadline-banner.is-complete {
+    border-color: #386146;
+    background: #1e3828;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .case-deadline-banner.is-complete :is(strong, p, small) {
+    color: #a8d5b0;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .case-deadline-banner.is-shipping {
+    border-color: #3d5d73;
+    background: #1e3041;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .case-deadline-banner.is-shipping :is(strong, p, small) {
+    color: #b2dcf4;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .case-deadline-banner.is-review {
+    border-color: var(--seller-border);
+    background: #30241d;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .stock-helper {
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .order-queue-icon, .product-stat-icon, .product-section-icon,
+    .product-empty-icon, .product-onboarding-checklist svg,
+    .fulfillment-summary article > span, .returns-summary-icon,
+    .case-impact-icon, .store-profile-section-icon, .storefront-panel-icon,
+    .settings-icon, .session-device-icon, .notification-type-icon,
+    .account-avatar, .publication-status-icon, .report-scope > svg,
+    .report-product > svg, .detail-product > span
+) {
+    border-color: #594737;
+    background-color: #382e27;
+    color: #e4c39d;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .returns-summary-card.tone-success .returns-summary-icon,
+    .case-resolution-complete > svg, .case-resolution-hero > span,
+    .stock-in-stock, .movement-addition
+) {
+    color: #a8d5b0;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .returns-summary-card.tone-danger .returns-summary-icon,
+    .stock-out-of-stock, .stock-blocked, .movement-damage
+) {
+    color: #ffaaa2;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .product-name-copy .product-compliance-warning strong,
+    .seller-wallet-table td.is-negative, .quantity-negative,
+    .report-deduction-value, .case-financial-impact .is-negative,
+    .case-financial-impact .tone-danger
+) {
+    color: #ffaaa2;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .quantity-positive, .report-net-value, .feedback-score > strong,
+    .feedback-response-summary p b, .report-ledger .is-primary strong,
+    .financial-current-statement .is-credit dd
+) {
+    color: #a8d5b0;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .message-inbox, .message-thread, .conversation-details,
+    .message-thread-scroll, .conversation, .message-day span,
+    .detail-empty-card, .detail-product-card, .detail-dispute-card,
+    .message-attach-chip, .chat-attachment, .message-context-strip,
+    .message-context-strip.is-static
+) {
+    border-color: var(--seller-border);
+    background-color: var(--seller-surface);
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .conversation, .conversation:hover, .conversation.is-active
+) {
+    background-color: #30241d;
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .chat-bubble-row:not(.is-seller) p {
+    border-color: #594232;
+    background-color: #3b3027;
+    color: #f1e9e1;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .chat-bubble-row.is-seller p {
+    border-color: #806334;
+    background-color: #684a32;
+    color: #fff8ef;
+}
+
+/* The shared messaging stylesheet deliberately marks its light canvas !important. */
+:root[data-theme="dark"] body.seller-body .seller-content .messages-standard-page {
+    border-color: var(--seller-border) !important;
+    background: var(--seller-surface) !important;
+    color: var(--theme-text);
+    box-shadow: none !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .messages-standard-page :is(
+    .message-inbox, .message-thread, .conversation-details, .messages-standard-details,
+    .message-thread-scroll, .chat-sidebar, .chat-main, .chat-pane, .chat-messages,
+    .message-composer, .chat-compose, .message-thread-header, .chat-head,
+    .chat-header, .conversation, .conversation-item, .conversation-row
+) {
+    border-color: var(--seller-border);
+    background: var(--seller-surface) !important;
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .messages-standard-page :is(
+    .conversation:hover, .conversation-item:hover, .conversation-row:hover,
+    .conversation.is-active, .conversation-item.is-active, .conversation-row.is-active
+) {
+    border-color: #806334;
+    background: #30241d !important;
+    color: #fff8ef;
+}
+
+/* Older tracking refinements use !important light colors; keep their layout but theme them. */
+:root[data-theme="dark"] body.seller-body .seller-content .tracking-page .tracking-export-button,
+:root[data-theme="dark"] body.seller-body .seller-content .tracking-page .tracking-reset-button {
+    border-color: #72563e !important;
+    background: var(--seller-surface-raised) !important;
+    color: #e4c39d !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .tracking-page .tracking-attention-banner {
+    border-color: #72563e;
+    background: #3a2c20;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .tracking-page .tracking-attention-copy :is(strong, p) {
+    color: #f1e9e1;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .tracking-page .tracking-attention-action {
+    color: #efbd71 !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .tracking-page .tracking-workspace {
+    border-color: var(--seller-border) !important;
+    background: var(--seller-surface) !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .tracking-page .tracking-tabs {
+    border-color: var(--seller-border);
+    background: var(--seller-surface) !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .tracking-page .tracking-tabs button {
+    color: var(--theme-muted) !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .tracking-page .tracking-tabs button.is-active {
+    color: #efbd71 !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .tracking-page .tracking-tabs button span {
+    border-color: #806334;
+    background: #44331d !important;
+    color: #efbd71 !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .tracking-page :is(
+    .tracking-toolbar, .tracking-search, .tracking-table-wrap,
+    .tracking-footer
+) {
+    border-color: var(--seller-border);
+    background: var(--seller-surface) !important;
+    color: var(--theme-muted) !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .tracking-page .tracking-search {
+    background: var(--seller-surface-raised) !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .tracking-page :is(
+    .tracking-table th, .tracking-table td
+) {
+    border-color: var(--seller-border) !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .tracking-page .tracking-table th {
+    background: var(--seller-surface-soft) !important;
+    color: var(--theme-muted) !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .tracking-page .tracking-table td {
+    background: var(--seller-surface) !important;
+    color: var(--theme-text) !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .tracking-page .tracking-table tbody tr:hover td {
+    background: #30241d !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .tracking-page .tracking-table :is(
+    td > strong, .tracking-shipment-copy > strong
+) {
+    color: #f1e9e1 !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .tracking-page .tracking-table :is(
+    td > small, .tracking-shipment-copy > small
+) {
+    color: #c0b2a5 !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .tracking-page .tracking-status-cell .fulfillment-status.is-sorting,
+:root[data-theme="dark"] body.seller-body .seller-content .tracking-page .tracking-status-cell .fulfillment-status.is-transit {
+    border-color: #3d5d73 !important;
+    background: #1e3041 !important;
+    color: #b2dcf4 !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .tracking-page .tracking-status-cell .fulfillment-status.is-out-delivery {
+    border-color: #806334 !important;
+    background: #44331d !important;
+    color: #efbd71 !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .tracking-page .tracking-status-cell .fulfillment-status.is-delivered {
+    border-color: #386146 !important;
+    background: #1e3828 !important;
+    color: #a8d5b0 !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .tracking-page .tracking-status-cell .fulfillment-status.is-failed {
+    border-color: #79443d !important;
+    background: #452521 !important;
+    color: #ffaaa2 !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .tracking-page .tracking-action-cell .fulfillment-row-action {
+    border-color: #72563e !important;
+    background: var(--seller-surface-raised) !important;
+    color: #e4c39d !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .tracking-page .tracking-action-cell .fulfillment-row-action:hover {
+    border-color: #9b7847 !important;
+    background: #3b3027 !important;
+    color: #fff8ef !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .message-context-strip p, .detail-dispute-heading span,
+    .message-thread-header > div small, .message-bubble-row .message-meta
+) {
+    color: var(--theme-muted);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .message-filter-tabs button.is-active, .pricing-tab.is-active,
+    .feedback-tabs button.is-active, .order-tab.is-active,
+    .fulfillment-tabs button.is-active, .returns-tab.is-active,
+    .inventory-tab.is-active
+) {
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .campaign-status.is-closed, .stock-archived, .status-archived, .badge-neutral,
+    .return-status.status-review, .case-locked-label, .account-edit-state,
+    .product-sales-status
+) {
+    border-color: #594737;
+    background-color: #3b3027;
+    color: #d2c2b3;
+}
+
+/* Topbar controls and popovers sit outside .seller-content. */
+:root[data-theme="dark"] body.seller-body .seller-nav-link.is-active {
+    border-color: #806334;
+    background: #45331d;
+    color: #efbd71;
+    box-shadow: none;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-icon-button:hover {
+    border-color: var(--seller-border);
+    background: #30241d;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-avatar {
+    border-color: #806334;
+    background: #382e27;
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-popover {
+    border-color: var(--seller-border);
+    background: var(--seller-surface);
+    color: var(--theme-text);
+    box-shadow: 0 18px 42px rgba(0, 0, 0, .38);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-popover :is(
+    .seller-popover-heading, .popover-footer
+) {
+    border-color: var(--seller-border);
+    background: var(--seller-surface-soft);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-popover .notification-row {
+    border-color: var(--seller-border);
+    background: var(--seller-surface);
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-popover .notification-row.unread {
+    background: #34271e;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-popover .notification-row:hover,
+:root[data-theme="dark"] body.seller-body .seller-popover .notification-row:focus-visible,
+:root[data-theme="dark"] body.seller-body .seller-popover .notification-row.unread:hover {
+    background: #3b3027;
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-popover .notification-icon {
+    background: #45331d;
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-popover .notification-copy strong,
+:root[data-theme="dark"] body.seller-body .profile-popover > strong {
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-popover :is(
+    .notification-copy > span, .notification-copy small,
+    .notification-chevron, .seller-notification-empty,
+    .seller-popover-heading small, .profile-popover > small
+) {
+    color: var(--theme-muted);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-popover .popover-footer :is(
+    .notification-mark-all, .seller-notification-view-all
+),
+:root[data-theme="dark"] body.seller-body .profile-popover a {
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.seller-body .profile-popover :is(a:hover, button:hover) {
+    background: #3b3027;
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-topbar-controls :is(
+    .seller-date-control, .seller-date-control select, button
+) {
+    border-color: var(--seller-border);
+    background-color: var(--seller-surface-raised);
+    color: var(--theme-text);
+}
+
+/* Final screenshot pass: legacy one-off white surfaces and their controls. */
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .orders-workflow-note, .returns-customer-product, .case-recovery-details,
+    .handover-check, .store-document-status, .store-management-link,
+    .product-payment-methods, .product-payment-method-options label,
+    .product-toggle-field, .product-mode-current, .product-mode-option,
+    .product-variant-images, .product-variant-image-uploads,
+    .sale-price-preview, .product-variant-pricing-note,
+    .storefront-promo-drop,
+    .product-commission-preview, .product-commission-preview > div,
+    .product-sku-managed-value, .locked-category-value,
+    .product-buyer-preview, .product-buyer-preview-variant,
+    .product-buyer-preview-payments span, .campaign-detail-facts > div,
+    .return-request-label,
+    .pricing-row-menu-panel, .pricing-page .campaign-card,
+    .pricing-page .pricing-discount-table,
+    .pricing-page .promotion-table, .report-scope,
+    .financial-current-statement .is-net,
+    .financial-summary article:nth-child(3),
+    .feedback-review-context, .feedback-order-context,
+    .detail-product-card, .detail-empty-card,
+    .quick-reply-list button, .message-attach,
+    .message-attachment-button, .seller-notification-search
+) {
+    border-color: var(--seller-border);
+    background-color: var(--seller-surface-raised) !important;
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .store-document-status, .store-management-link,
+    .product-payment-method-options label, .product-mode-option,
+    .feedback-review-context, .feedback-order-context,
+    .detail-product-card, .quick-reply-list button, .message-attach
+) :is(strong, span, small, p, label) {
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .store-document-status small, .store-management-link small,
+    .product-payment-method-options small, .product-mode-option small,
+    .product-toggle-field small, .sale-price-preview small,
+    .product-commission-preview span, .product-buyer-preview-copy small,
+    .product-buyer-preview-unit-price del, .product-buyer-preview-payment,
+    .feedback-review-context small, .feedback-order-context small
+) {
+    color: var(--theme-muted);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .orders-workflow-note, .case-recovery-details, .store-admin-note,
+    .inventory-attention-bar, .commission-rule-banner,
+    .finance-ledger-note, .report-commission-note,
+    .promotion-scope-notice, .product-variant-images-empty,
+    .product-package-help, .product-editor-note,
+    .marketplace-request-approved-category
+) {
+    border-color: #72563e;
+    background-color: #3a2c20 !important;
+    color: #f1e9e1;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .orders-workflow-note, .case-recovery-details, .store-admin-note,
+    .inventory-attention-bar, .commission-rule-banner,
+    .finance-ledger-note, .report-commission-note,
+    .promotion-scope-notice, .product-variant-images-empty,
+    .product-package-help, .product-editor-note,
+    .marketplace-request-approved-category
+) :is(p, small, li, dt) {
+    color: #d5c2ad;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .product-editor-note svg {
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .marketplace-request-approved-category {
+    border-color: #72563e;
+    background: #3a2c20 !important;
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .marketplace-request-approved-category small {
+    color: #d5c2ad;
+}
+
+/* Shared dark Seller filter controls: soften composite search and select fields. */
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .workspace-search, .product-search,
+    .order-search, .order-select,
+    .returns-search, .returns-select,
+    .inventory-search, .inventory-select,
+    .tracking-search, .pricing-search-control, .pricing-select,
+    .message-search, .pickup-date-filter, .report-date-control,
+    .seller-availability, .fulfillment-toolbar > label,
+    .waybill-toolbar form label, .finance-ledger-toolbar > label,
+    .report-detail-heading > label, .feedback-toolbar > label
+) {
+    border-color: transparent !important;
+    border-radius: 10px !important;
+    background-color: #30241d !important;
+    box-shadow: none;
+    outline: 0;
+    transition: border-color .16s ease, background-color .16s ease, box-shadow .16s ease;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .workspace-search, .product-search,
+    .order-search, .order-select,
+    .returns-search, .returns-select,
+    .inventory-search, .inventory-select,
+    .tracking-search, .pricing-search-control, .pricing-select,
+    .message-search, .pickup-date-filter, .report-date-control,
+    .seller-availability, .fulfillment-toolbar > label,
+    .waybill-toolbar form label, .finance-ledger-toolbar > label,
+    .report-detail-heading > label, .feedback-toolbar > label
+):focus-within {
+    border-color: #806334 !important;
+    background-color: #342820 !important;
+    box-shadow: 0 0 0 2px rgba(233, 167, 47, .12);
+}
+
+/* High-specificity theme form rules otherwise paint a square inside these controls. */
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .workspace-search, .product-search,
+    .order-search, .order-select,
+    .returns-search, .returns-select,
+    .inventory-search, .inventory-select,
+    .tracking-search, .pricing-search-control, .pricing-select,
+    .message-search, .pickup-date-filter, .report-date-control,
+    .seller-availability, .fulfillment-toolbar > label,
+    .waybill-toolbar form label, .finance-ledger-toolbar > label,
+    .report-detail-heading > label, .feedback-toolbar > label
+) :is(input[type="search"], select) {
+    border-color: transparent !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .workspace-search input, .product-search input,
+    .order-search input, .returns-search input, .inventory-search input,
+    .tracking-search input, .pricing-search-control input, .message-search input,
+    .fulfillment-toolbar > label input, .waybill-toolbar form label input,
+    .finance-ledger-toolbar > label input, .report-detail-heading > label input,
+    .feedback-toolbar > label input
+)::placeholder {
+    color: #a39486;
+    opacity: 1;
+}
+
+/* Standalone Seller filter fields use the same quiet surface and clear focus ring. */
+:root[data-theme="dark"] body.seller-body .seller-content .product-filter-bar .product-filter-select select,
+:root[data-theme="dark"] body.seller-body .seller-content .finance-ledger .finance-ledger-toolbar > select {
+    border-color: transparent !important;
+    border-radius: 10px;
+    background-color: #30241d !important;
+    box-shadow: none !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .product-filter-bar .product-filter-select select:focus-visible,
+:root[data-theme="dark"] body.seller-body .seller-content .finance-ledger .finance-ledger-toolbar > select:focus-visible {
+    border-color: #806334 !important;
+    box-shadow: 0 0 0 2px rgba(233, 167, 47, .12) !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .report-date-range input[type="date"] {
+    border-color: transparent !important;
+    border-radius: 10px;
+    background-color: #30241d !important;
+    box-shadow: none !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .report-date-range {
+    border: 0;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .report-date-range label {
+    color: #d5c2ad;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .report-date-range input[type="date"]:focus-visible {
+    border-color: #806334 !important;
+    box-shadow: 0 0 0 2px rgba(233, 167, 47, .12) !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .finance-ledger-toolbar button {
+    border-color: #72563e !important;
+    background: #30241d !important;
+    color: #e4c39d !important;
+    box-shadow: none !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .finance-ledger-toolbar button:hover,
+:root[data-theme="dark"] body.seller-body .seller-content .finance-ledger-toolbar button:focus-visible {
+    border-color: #9b7847 !important;
+    background: #3b3027 !important;
+    color: #fff8ef !important;
+}
+
+/* The Seller Dashboard date picker lives in the shared top bar, outside .seller-content. */
+:root[data-theme="dark"] body.seller-body .seller-date-control {
+    border-color: transparent !important;
+    border-radius: 10px;
+    background-color: #30241d !important;
+    box-shadow: none !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-date-control:focus-within {
+    border-color: #806334 !important;
+    background-color: #342820 !important;
+    box-shadow: 0 0 0 2px rgba(233, 167, 47, .12) !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-date-control select {
+    background-color: transparent !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    :root[data-theme="dark"] body.seller-body .seller-content :is(
+        .workspace-search, .product-search,
+        .order-search, .order-select,
+        .returns-search, .returns-select,
+        .inventory-search, .inventory-select,
+        .tracking-search, .pricing-search-control, .pricing-select,
+        .message-search, .pickup-date-filter, .report-date-control,
+        .seller-availability, .fulfillment-toolbar > label,
+        .waybill-toolbar form label, .finance-ledger-toolbar > label,
+        .report-detail-heading > label, .feedback-toolbar > label
+    ) {
+        transition: none;
+    }
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .orders-success-note {
+    border-color: #386146;
+    background: #1e3828;
+    color: #a8d5b0;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .order-tab > span, .returns-tab span, .fulfillment-tabs button span,
+    .fulfillment-tabs a span, .inventory-tab > span, .pricing-tab-count,
+    .product-status-tab > strong, .waybill-workspace .fulfillment-tabs a span,
+    .feedback-tabs button b
+) {
+    border-color: transparent;
+    border-radius: 0;
+    background: transparent;
+    color: #efbd71;
+    box-shadow: none;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .order-tab.is-active > span, .returns-tab.is-active span,
+    .inventory-tab.is-active > span, .product-status-tab.is-active > strong
+) {
+    border-color: transparent;
+    background: transparent;
+    color: #f0bd69;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .fulfillment-tabs :is(button, a) span {
+    min-width: 0;
+    height: auto;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: #efbd71;
+    box-shadow: none;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .product-status-tab {
+    border-color: var(--seller-border);
+    background: var(--seller-surface);
+    color: var(--theme-muted);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .product-status-tab.is-active {
+    border-color: #806334;
+    background: #3a2c20;
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .order-filter-reset, .orders-export-button, .returns-reset, .returns-export,
+    .inventory-reset-button, .inventory-secondary-button,
+    .inventory-bulk-bar button, .inventory-row-action,
+    .stock-history-heading > button, .row-action,
+    .seller-modal .modal-heading > button,
+    .seller-modal .modal-actions .draft-button, .product-draft-button,
+    .waybill-toolbar form > a, .waybill-history-modal button,
+    button[data-waybill-history], .tracking-reset-button,
+    .tracking-export-button, .pricing-row-button,
+    .promotion-row-action, .pricing-row-menu-trigger,
+    .report-date-form button, .report-header-actions button,
+    .quick-reply-list button, .message-attach,
+    .feedback-review-context > a
+) {
+    border-color: #72563e;
+    background: #30241d !important;
+    color: #e4c39d;
+    box-shadow: none;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .order-filter-reset:hover, .returns-reset:hover, .returns-export:hover,
+    .inventory-reset-button:hover, .inventory-secondary-button:hover,
+    .inventory-bulk-bar button:not(:disabled):hover,
+    .inventory-row-action:hover, .row-action:hover,
+    .seller-modal .modal-heading > button:hover,
+    .seller-modal .modal-actions .draft-button:hover,
+    .waybill-toolbar form > a:hover, .tracking-reset-button:hover,
+    .pricing-row-button:hover, .promotion-row-action:hover,
+    .pricing-row-menu-trigger:hover, .quick-reply-list button:hover,
+    .message-attach:hover, .feedback-review-context > a:hover
+) {
+    border-color: #9b7847;
+    background: #3b3027 !important;
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .order-bulk-actions button:disabled, .inventory-bulk-bar button:disabled,
+    .pricing-row-button:disabled, .waybill-bulk-button:disabled,
+    .seller-modal .modal-actions button:disabled
+) {
+    border-color: #594737 !important;
+    background: #3b3027 !important;
+    color: #b9ab9e !important;
+    opacity: .75;
+}
+
+/* Pricing tables and report summaries have stronger, page-specific light fills. */
+:root[data-theme="dark"] body.seller-body .seller-content .pricing-page :is(
+    .pricing-discount-table, .promotion-table, .pricing-table-footer,
+    .pricing-summary-metric, .campaign-card
+) {
+    border-color: var(--seller-border);
+    background: var(--seller-surface) !important;
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .pricing-page :is(
+    .pricing-discount-table th, .promotion-table th
+) {
+    border-color: var(--seller-border);
+    background: var(--seller-surface-soft) !important;
+    color: var(--theme-muted);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .pricing-page :is(
+    .pricing-discount-table td, .promotion-table td
+) {
+    border-color: var(--seller-border);
+    background: var(--seller-surface) !important;
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .pricing-page .campaign-card-body {
+    background: var(--seller-surface);
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .pricing-page :is(
+    .pricing-status-pill, .campaign-participation-note,
+    .campaign-type-badge, .report-preview-badge
+) {
+    border-color: #806334;
+    background: #44331d;
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .pricing-page :is(
+    .pricing-status-pill.is-active, .pricing-status-pill.is-approved,
+    .campaign-participation-note.is-approved
+) {
+    border-color: #386146;
+    background: #1e3828;
+    color: #a8d5b0;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .pricing-page :is(
+    .pricing-status-pill.is-open
+) {
+    border-color: #3d5d73;
+    background: #1e3041;
+    color: #b2dcf4;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .pricing-page :is(
+    .pricing-status-pill.is-ended, .pricing-status-pill.is-closed,
+    .pricing-status-pill.is-draft
+) {
+    border-color: #594737;
+    background: #3b3027;
+    color: #d2c2b3;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .pricing-page :is(
+    .promotion-row-action.is-danger, .pricing-row-menu-item.is-danger
+) {
+    color: #ffaaa2;
+}
+
+/* Modal close buttons, white callouts, and the Pickup Requests detail dialog. */
+:root[data-theme="dark"] body.seller-body .seller-content .seller-modal .modal-heading > button {
+    border-color: var(--seller-border);
+    background: #30241d;
+    color: #e4c39d;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .handover-check {
+    border: 1px solid #72563e;
+    border-radius: 9px;
+    background: #3a2c20;
+    color: #f1e9e1;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .handover-check p {
+    color: #d5c2ad;
+}
+
+/* Store documentation/management rows and finance callouts. */
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .store-document-status, .store-management-link,
+    .publication-control-card dl, .publication-information-card > p,
+    .finance-summary-card.is-primary, .commission-rule-banner,
+    .financial-summary article:nth-child(3), .report-bridge .is-total
+) {
+    border-color: var(--seller-border);
+    background: var(--seller-surface-soft) !important;
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .financial-summary article:nth-child(3) {
+    border-color: #386146;
+    background: #1e3828 !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .financial-summary article:nth-child(3) strong {
+    color: #a8d5b0;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .store-document-status small {
+    color: #a8d5b0;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .product-status-tab.is-active {
+    border-color: #806334;
+    background: #3a2c20;
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .product-status-tab.is-active strong {
+    color: #efbd71;
+}
+
+/* Keep navigation/filter tabs flat across Seller pages in dark mode. */
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .product-status-tab, .order-tab, .returns-tab, .inventory-tab,
+    .pricing-tab, .fulfillment-tabs button, .fulfillment-tabs a,
+    .feedback-tabs button, .message-filter-tabs button
+),
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .product-status-tab, .order-tab, .returns-tab, .inventory-tab,
+    .pricing-tab, .fulfillment-tabs button, .fulfillment-tabs a,
+    .feedback-tabs button, .message-filter-tabs button
+):is(:hover, :focus-visible, .is-active) {
+    box-shadow: none !important;
+    filter: none !important;
+}
+
+/* Flat surfaces are easier to scan in dark mode; keep overlay depth for actual dialogs. */
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .seller-panel, .seller-card, .card, [class*="-card"], [class*="-panel"],
+    [class*="-workspace"], [class*="-strip"], [class*="-summary"],
+    [class*="-hero"], .fulfillment-summary article, .delivery-proof
+):not(.modal-card):not(.seller-modal-panel):not(.bearly-action-card):not(.case-image-preview-dialog) {
+    box-shadow: none !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .storefront-preview-heading > span, .buyer-store-announcement,
+    .buyer-store-tabs, .buyer-store-tab-panel,
+    .buyer-store-policy-list > div, .buyer-store-reviews
+) {
+    border-color: var(--seller-border);
+    background: var(--seller-surface-soft) !important;
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .buyer-store-preview > p, .buyer-store-profile small,
+    .buyer-store-hours, .buyer-store-policy-list dd,
+    .buyer-store-about-intro
+) {
+    color: var(--theme-muted);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .buyer-store-products i {
+    background: #382e27;
+}
+
+/* Customer-service reply actions and the order summary inside feedback rows. */
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .feedback-review-context, .feedback-order-context, .detail-product-card,
+    .detail-empty-card, .quick-reply-list button, .message-attach
+) {
+    border-color: var(--seller-border);
+    background: var(--seller-surface-raised) !important;
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .feedback-review-status {
+    border-color: #806334;
+    background: #44331d;
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .feedback-review-status.is-replied {
+    border-color: #386146;
+    background: #1e3828;
+    color: #a8d5b0;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .return-request-label {
+    border-color: #72563e;
+    background: #3b3027 !important;
+    color: #e4c39d;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .storefront-cover-drop > span:not(:has(img)),
+    .buyer-store-cover:not(:has(img)),
+    .pricing-page .campaign-card-media:not(:has(img)),
+    .campaign-detail-media:not(:has(img))
+) {
+    background: #30241d !important;
+    color: var(--theme-muted);
+}
+
+/* Chromium search clear and native select affordances must not paint white. */
+:root[data-theme="dark"] body.seller-body .seller-content input[type="search"]::-webkit-search-cancel-button {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #8f8174;
+    cursor: pointer;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    select, .order-select select, .inventory-select select,
+    .pickup-date-filter select, .product-filter-bar select
+) {
+    color-scheme: dark;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .seller-field select, .order-select select, .inventory-select select,
+    .product-filter-bar select, .fulfillment-toolbar > select,
+    .pickup-date-filter select, .report-date-control select,
+    .product-buyer-preview-variant select, .wallet-withdrawal-modal select
+) {
+    appearance: none;
+    -webkit-appearance: none;
+    border-color: var(--seller-border);
+    background-color: var(--theme-input) !important;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23c0b2a5' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-size: 12px;
+    color: var(--theme-text);
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .order-select select, .inventory-select select, .product-filter-bar select,
+    .fulfillment-toolbar > select, .pickup-date-filter select,
+    .report-date-control select
+) {
+    padding-right: 34px;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .product-variant-images-field {
+    border-color: #806334;
+    background: #3a2c20 !important;
+    color: #f1e9e1;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content input[type="file"] {
+    border-color: #594737;
+    background: #211c18;
+    color: #c0b2a5;
+    color-scheme: dark;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content input[type="file"]::file-selector-button,
+:root[data-theme="dark"] body.seller-body .seller-content input[type="file"]::-webkit-file-upload-button {
+    margin-right: 8px;
+    padding: 7px 10px;
+    border: 1px solid #806334;
+    border-radius: 6px;
+    background: #45331d;
+    color: #efbd71;
+    font: inherit;
+    cursor: pointer;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .waybills-page .waybill-toolbar input[type="search"]::-webkit-search-cancel-button {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 15px;
+    height: 15px;
+    border-radius: 0;
+    background-color: #efbd71;
+    -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='m6 6 12 12M18 6 6 18' fill='none' stroke='%23000' stroke-linecap='round' stroke-width='2.5'/%3E%3C/svg%3E");
+    mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='m6 6 12 12M18 6 6 18' fill='none' stroke='%23000' stroke-linecap='round' stroke-width='2.5'/%3E%3C/svg%3E");
+    -webkit-mask-position: center;
+    mask-position: center;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-size: contain;
+    mask-size: contain;
+    cursor: pointer;
+}
+
+/* Warm Bearly brown/gold palette for the remaining screenshot surfaces. */
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .orders-workflow-note, .returns-customer-product,
+    .case-recovery-details, .handover-check, .store-document-status,
+    .store-management-link, .product-payment-methods,
+    .product-payment-method-options label, .product-toggle-field,
+    .product-mode-current, .product-mode-option, .product-variant-images,
+    .product-variant-image-uploads, .sale-price-preview,
+    .product-variant-pricing-note, .product-commission-preview,
+    .product-buyer-preview, .inventory-attention-bar,
+    .commission-rule-banner, .pricing-page .campaign-card,
+    .feedback-review-context, .feedback-order-context,
+    .detail-product-card, .quick-reply-list button, .message-attach
+) {
+    border-color: #72563e !important;
+    background-color: #3a2c20 !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .seller-modal .modal-heading > button,
+    .seller-modal .modal-actions .draft-button, .product-draft-button,
+    .order-filter-reset, .orders-export-button, .returns-reset, .returns-export,
+    .inventory-reset-button, .inventory-secondary-button,
+    .inventory-bulk-bar button, .inventory-row-action, .row-action,
+    .waybill-toolbar form > a, button[data-waybill-history],
+    .tracking-reset-button, .tracking-export-button, .pricing-row-button,
+    .promotion-row-action, .pricing-row-menu-trigger,
+    .report-date-form button, .report-header-actions button,
+    .quick-reply-list button, .message-attach
+) {
+    border-color: #806334 !important;
+    background-color: #45331d !important;
+    color: #efbd71 !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .seller-field select, .order-select select, .inventory-select select,
+    .product-filter-bar select, .fulfillment-toolbar > select,
+    .pickup-date-filter select, .report-date-control select,
+    .product-buyer-preview-variant select, .wallet-withdrawal-modal select
+) {
+    background-color: #2b2118 !important;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .pricing-page :is(
+    .pricing-discount-table td, .promotion-table td
+) {
+    background-color: #30241d !important;
+}
+
+/* Orders filters were still inheriting white wrapper backgrounds. */
+:root[data-theme="dark"] body.seller-body .seller-content :is(.order-search, .order-select) {
+    border-color: #806334;
+    background-color: #3a2c20 !important;
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .order-search input {
+    background-color: transparent !important;
+    color: var(--theme-text);
+}
+
+/* Nested cards inside Seller modals/popups need their own dark surfaces too. */
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .modal-heading, .modal-footer, .seller-modal .modal-actions,
+    .bearly-action-items, .bearly-action-check-card,
+    .bearly-action-address-box, .bearly-action-waybill-preview,
+    .bearly-action-cancel-fields, .order-workflow-items-list,
+    .order-workflow-checklist, .order-workflow-guidance,
+    .document-preview-dialog, .document-preview-header,
+    .document-preview-frame-wrap, .case-confirm-content,
+    .case-help-panel, .inventory-current-stock, .inventory-preview-note,
+    .wallet-withdrawal-summary
+) {
+    border-color: #72563e;
+    background-color: #3a2c20 !important;
+    color: #f1e9e1;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .bearly-action-item, .order-workflow-item, .order-workflow-summary,
+    .order-workflow-guidance, .bearly-action-next, .bearly-action-notice,
+    .bearly-action-check-card, .bearly-action-address-box,
+    .bearly-action-waybill-preview, .case-confirm-content
+) {
+    border-color: #806334;
+    background-color: #45331d !important;
+    color: #f1e9e1;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .bearly-action-x, .order-workflow-x,
+    .document-preview-close, .case-image-preview-dialog > header button,
+    .wallet-withdrawal-modal .seller-modal-close
+) {
+    border-color: #806334;
+    background: #45331d !important;
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .bearly-action-header-icon, .order-workflow-icon,
+    .order-workflow-guidance-icon, .bearly-action-next > span,
+    .bearly-action-notice > span, .case-confirm-content > span
+) {
+    border-color: #806334;
+    background: #684a32;
+    color: #f0bd69;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .bearly-action-primary:not(.is-danger), .bearly-action-secondary,
+    .order-workflow-actions button:not(.is-danger)
+) {
+    border-color: #806334;
+    background: #684a32 !important;
+    color: #fff8ef;
+    box-shadow: none;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content .bearly-action-badge,
+:root[data-theme="dark"] body.seller-body .seller-content .order-workflow-status {
+    border-color: #806334;
+    background: #44331d;
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .bearly-action-timeline-marker, .order-workflow-timeline li > span
+) {
+    border-color: #72563e;
+    background: #30241d;
+    color: #c0b2a5;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .bearly-action-timeline li.is-done .bearly-action-timeline-marker,
+    .bearly-action-timeline li.is-current .bearly-action-timeline-marker,
+    .order-workflow-timeline li.is-done > span
+) {
+    border-color: #b77a2a;
+    background: #b77a2a;
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .bearly-action-heading-copy h3, .order-workflow-heading-copy h3,
+    .bearly-action-item-copy strong, .order-workflow-item strong,
+    .bearly-action-summary strong, .order-workflow-summary strong,
+    .bearly-action-section-heading h4, .order-workflow-section-heading h4,
+    .bearly-action-timeline-copy strong, .order-workflow-timeline strong
+) {
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .bearly-action-heading-copy p, .order-workflow-heading-copy > p,
+    .bearly-action-item-copy small, .order-workflow-item small,
+    .bearly-action-summary span, .order-workflow-summary span,
+    .bearly-action-item-side, .bearly-action-timeline-copy small,
+    .order-workflow-timeline small, .order-workflow-deadline,
+    .bearly-action-history li small, .bearly-action-history li p,
+    .bearly-action-check-note, .bearly-action-next small
+) {
+    color: #d5c2ad;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .bearly-action-guidance, .order-workflow-guidance,
+    .bearly-action-next, .bearly-action-notice,
+    .order-workflow-checklist, .bearly-action-check-card
+) {
+    border-color: #806334;
+    background-color: #45331d !important;
+    color: #f1e9e1;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .bearly-action-error, .bearly-action-cancel-fields,
+    .case-confirm-content.is-danger
+) {
+    border-color: #79443d;
+    background-color: #34211e !important;
+    color: #ffaaa2;
+}
+
+/* Keep actual product/store/campaign imagery and printable shipping labels intact. */
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .product-media-gallery-stage:has(img:not([hidden])),
+    .product-buyer-preview-image:has(img:not([hidden])),
+    .pricing-product-image:has(img), .waybill-label
+) {
+    border-color: #d9d0c7;
+    background-color: #fff;
+    color: #2e2723;
+}
+
+:root[data-theme="dark"] body.seller-body .seller-content :is(
+    .product-media-gallery-stage:not(:has(img:not([hidden]))),
+    .product-buyer-preview-image:not(:has(img:not([hidden]))),
+    .pricing-product-image:not(:has(img))
+) {
+    border-color: var(--seller-border);
+    background-color: #30241d;
+    color: var(--theme-muted);
+}
+
+@media print {
+    :root[data-theme="dark"] body.seller-body .seller-content :is(
+        .seller-panel, .seller-modal-panel, .modal-card, .workspace-card,
+        .dashboard-ref-panel, .orders-workspace, .returns-workspace,
+        .case-panel, .fulfillment-workspace, .inventory-workspace,
+        .stock-history-panel, .pricing-workspace, .pricing-panel-surface,
+        .finance-summary-card, .seller-wallet-summary, .seller-wallet-section,
+        .account-panel, .settings-panel, .store-information-card,
+        .storefront-panel, .storefront-preview-card, .report-ledger,
+        .report-analysis-sheet, .report-detail-sheet, .message-workspace,
+        .feedback-overview, .feedback-content
+    ) {
+        border-color: #ddd !important;
+        background: #fff !important;
+        color: #111 !important;
+        box-shadow: none !important;
+    }
+
+    :root[data-theme="dark"] body.seller-body .seller-content :is(
+        h1, h2, h3, h4, h5, h6, p, small, time, dt, dd, th, td
+    ) {
+        color: #111 !important;
+    }
+
+    :root[data-theme="dark"] body.seller-body .seller-content :is(
+        table, thead, tbody, tr, th, td,
+        .orders-workflow-note, .returns-customer-product,
+        .case-recovery-details, .handover-check, .store-document-status,
+        .store-management-link, .product-payment-methods,
+        .product-payment-method-options label, .product-toggle-field,
+        .product-mode-current, .product-mode-option, .product-variant-images,
+        .product-variant-image-uploads, .sale-price-preview,
+        .product-variant-pricing-note, .product-commission-preview,
+        .product-buyer-preview, .inventory-attention-bar,
+        .commission-rule-banner, .financial-summary article,
+        .quick-reply-list button, .feedback-review-context,
+        .feedback-order-context
+    ) {
+        border-color: #ddd !important;
+        background: #fff !important;
+        color: #111 !important;
+        box-shadow: none !important;
+    }
+}

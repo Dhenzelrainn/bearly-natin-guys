@@ -19,6 +19,10 @@
     ])
 
     <main class="buyer-search-shell">
+        <a class="campaign-back" href="{{ route('home') }}">
+            <span class="material-symbols-outlined" aria-hidden="true">arrow_back</span>
+            <span>Back to Home</span>
+        </a>
         <nav class="buyer-search-breadcrumb" aria-label="Breadcrumb">
             <a href="{{ route('home') }}">Home</a>
             <span aria-hidden="true">/</span>

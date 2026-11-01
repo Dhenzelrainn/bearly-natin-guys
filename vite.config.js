@@ -6,6 +6,10 @@ export default defineConfig({
     plugins: [
         laravel({
             input: [
+                // Shared appearance
+                'resources/css/theme.css',
+                'resources/js/theme.js',
+
                 // Auth
                 'resources/css/bearly-auth.css',
                 'resources/js/bearly-auth.js',

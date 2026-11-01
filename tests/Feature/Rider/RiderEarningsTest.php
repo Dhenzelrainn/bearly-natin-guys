@@ -6,11 +6,14 @@ use App\Models\Address;
 use App\Models\DeliveryAttempt;
 use App\Models\LogisticsProfile;
 use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Parcel;
 use App\Models\PickupAssignment;
 use App\Models\PickupRequest;
 use App\Models\RiderEarning;
 use App\Models\RiderProfile;
+use App\Models\ReturnItem;
+use App\Models\ReturnRequest;
 use App\Models\SellerOrder;
 use App\Models\SellerProfile;
 use App\Models\Shipment;
@@ -21,6 +24,7 @@ use App\Models\User;
 use App\Models\Waybill;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -160,7 +164,139 @@ class RiderEarningsTest extends TestCase
                     && $summary['active_total_minor'] === 15000
                     && $summary['active_entries'] === 3
                     && $summary['excluded_entries'] === 2;
-            });
+        });
+    }
+
+    public function test_earnings_preview_snapshot_product_images_and_only_returned_items(): void
+    {
+        Storage::fake('public');
+        $rider = $this->makeRider('PRODUCT-PREVIEW');
+        $outboundAttempt = $this->makeDeliveryAttempt($rider, 'PRODUCT-PREVIEW');
+        $outboundShipment = Shipment::query()
+            ->where('shipment_no', 'DL-EARNINGS-PRODUCT-PREVIEW')
+            ->firstOrFail();
+        $sellerOrder = SellerOrder::query()->findOrFail($outboundShipment->seller_order_id);
+        $order = Order::query()->findOrFail($sellerOrder->order_id);
+        $products = [];
+
+        foreach ([
+            ['Wireless Headphones', 'Midnight', 1],
+            ['Desk Lamp', 'Warm White', 1],
+            ['Phone Case', 'Clear', 2],
+            ['Travel Mug', 'Stainless', 2],
+        ] as $index => [$name, $variant, $quantity]) {
+            $imagePath = 'rider-earnings/product-preview-'.$index.'.jpg';
+            Storage::disk('public')->put($imagePath, 'fixture image');
+            $products[] = OrderItem::query()->create([
+                'seller_order_id' => $sellerOrder->id,
+                'product_name' => $name,
+                'variant_name' => $variant,
+                'sku' => 'EARNINGS-PREVIEW-'.($index + 1),
+                'unit_price_minor' => 2500,
+                'quantity' => $quantity,
+                'discount_minor' => 0,
+                'subtotal_minor' => 2500 * $quantity,
+                'product_image_disk' => 'public',
+                'product_image_path' => $imagePath,
+            ]);
+        }
+
+        $this->makeEarning($rider, [
+            'delivery_attempt_id' => $outboundAttempt->id,
+            'type' => 'shipping_delivery',
+            'amount_minor' => 3300,
+            'status' => 'pending',
+            'description' => 'Rider pool for '.$outboundShipment->shipment_no,
+            'earned_at' => Carbon::parse('2026-10-18 09:00:00'),
+        ]);
+
+        $returnShipment = Shipment::query()->create([
+            'shipment_no' => 'SHP-RETURN-EARNINGS-PREVIEW',
+            'seller_order_id' => $sellerOrder->id,
+            'logistics_profile_id' => $this->logisticsProfile->id,
+            'purpose' => 'return',
+            'status' => 'delivered',
+            'shipping_fee_minor' => 0,
+            'cod_amount_minor' => 0,
+            'delivered_at' => now(),
+        ]);
+        $returnRequest = ReturnRequest::query()->create([
+            'return_no' => 'RR-EARNINGS-PREVIEW-001',
+            'order_id' => $order->id,
+            'seller_order_id' => $sellerOrder->id,
+            'buyer_id' => $order->buyer_id,
+            'store_id' => $sellerOrder->store_id,
+            'request_type' => 'return_refund',
+            'reason_code' => 'item_arrived_damaged',
+            'status' => 'awaiting_inspection',
+            'requested_amount_minor' => 2500,
+            'response_due_at' => now()->addDay(),
+            'submitted_at' => now(),
+            'return_shipment_id' => $returnShipment->id,
+        ]);
+        ReturnItem::query()->create([
+            'return_request_id' => $returnRequest->id,
+            'order_item_id' => $products[3]->id,
+            'quantity' => 1,
+            'refund_amount_minor' => 2500,
+            'resolution' => 'return_required',
+        ]);
+
+        $returnWaybill = Waybill::query()->create([
+            'shipment_id' => $returnShipment->id,
+            'waybill_no' => 'WB-RETURN-EARNINGS-PREVIEW',
+            'scan_token' => hash('sha256', 'return-earnings-preview-token'),
+            'barcode_value' => 'BAR-RETURN-EARNINGS-PREVIEW',
+            'piece_count' => 1,
+            'total_weight_kg' => 1,
+            'generated_at' => now(),
+        ]);
+        $returnParcel = Parcel::query()->create([
+            'shipment_id' => $returnShipment->id,
+            'waybill_id' => $returnWaybill->id,
+            'parcel_no' => 'PCL-RETURN-EARNINGS-PREVIEW',
+            'piece_sequence' => 1,
+            'weight_kg' => 1,
+            'status' => 'delivered',
+        ]);
+        $returnAttempt = DeliveryAttempt::query()->create([
+            'parcel_id' => $returnParcel->id,
+            'rider_profile_id' => $rider->id,
+            'attempt_no' => 1,
+            'outcome' => 'delivered',
+            'attempted_at' => now(),
+        ]);
+        $this->makeEarning($rider, [
+            'delivery_attempt_id' => $returnAttempt->id,
+            'shipment_id' => $returnShipment->id,
+            'type' => 'return_shipping_delivery',
+            'amount_minor' => 1500,
+            'status' => 'pending',
+            'description' => 'Final Seller delivery for '.$returnShipment->shipment_no,
+            'earned_at' => Carbon::parse('2026-10-18 10:00:00'),
+        ]);
+
+        $response = $this->actingAs($rider->user)
+            ->get(route('rider.earnings.index'));
+
+        $response->assertOk()
+            ->assertSee($outboundShipment->shipment_no)
+            ->assertSee('Order '.$order->order_no)
+            ->assertSee('alt="Wireless Headphones"', false)
+            ->assertSee(Storage::disk('public')->url('rider-earnings/product-preview-0.jpg'), false)
+            ->assertSee('class="earnings-product-thumbnail-more" aria-label="1 more product">+1</span>', false)
+            ->assertSee('alt="Travel Mug"', false)
+            ->assertSee('SHP-RETURN-EARNINGS-PREVIEW');
+
+        $response->assertViewHas('logs', function ($logs) use ($outboundShipment, $returnShipment): bool {
+            $outbound = $logs->getCollection()->firstWhere('job', $outboundShipment->shipment_no);
+            $return = $logs->getCollection()->firstWhere('job', $returnShipment->shipment_no);
+
+            return $logs->total() === 2
+                && count($outbound['products'] ?? []) === 4
+                && array_column($return['products'] ?? [], 'name') === ['Travel Mug']
+                && $return['products'][0]['quantity'] === 1;
+        });
     }
 
     public function test_earnings_filters_paginate_and_export_the_full_server_side_result(): void

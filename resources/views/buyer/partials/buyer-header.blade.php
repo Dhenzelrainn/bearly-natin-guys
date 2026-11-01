@@ -60,6 +60,7 @@
     @endif
 
     <nav class="header-actions" aria-label="Account">
+        @include('partials.theme-toggle')
         @include('buyer.partials.buyer-notification-popover')
         <a href="{{ url('/profile#purchases') }}" class="{{ $headerActive === 'orders' ? 'active' : '' }}">
             <span class="material-symbols-outlined" aria-hidden="true">receipt_long</span>

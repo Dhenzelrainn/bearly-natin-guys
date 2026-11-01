@@ -14,6 +14,7 @@
         rel="stylesheet"
     >
 
+    @include('partials.theme-preload')
     @vite([
         'resources/css/logistics.css',
         'resources/js/logistics.js',
@@ -24,15 +25,13 @@
 
 <body class="registration-body" data-module="logistics">
 <main class="registration-shell">
+    <div class="registration-theme-toggle">@include('partials.theme-toggle')</div>
     <a
         class="registration-brand registration-brand-compact"
         href="{{ route('logistics.landing') }}"
         aria-label="Bearly home"
     >
-        <img
-            src="{{ asset('images/bearly-logo.png') }}"
-            alt="Bearly"
-        >
+        @include('partials.theme-aware-logo', ['themeLogoAlt' => 'Bearly'])
         <span class="registration-brand-context">
             Logistics partner application
         </span>

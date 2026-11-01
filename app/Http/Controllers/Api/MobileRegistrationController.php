@@ -15,9 +15,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
-use Throwable;
 
 class MobileRegistrationController extends Controller
 {
@@ -249,13 +247,6 @@ class MobileRegistrationController extends Controller
                 'digits:4',
             ],
 
-            'valid_id' => [
-                'required',
-                'file',
-                'mimes:jpg,jpeg,png,pdf',
-                'max:5120',
-            ],
-
             'password' => [
                 'required',
                 'confirmed',
@@ -307,164 +298,52 @@ class MobileRegistrationController extends Controller
                 )
             ) . '.';
 
-        /*
-        |--------------------------------------------------------------------------
-        | Store government ID
-        |--------------------------------------------------------------------------
-        */
+        $user = DB::transaction(function () use (
+            $data,
+            $verifiedAt,
+            $lifecycle
+        ): User {
+            $user = User::create([
+                'name' => trim(
+                    $data['first_name'].' '.($data['middle_initial'] ?? '').' '.$data['last_name']
+                ),
+                'first_name' => $data['first_name'],
+                'last_name' => $data['last_name'],
+                'middle_initial' => $data['middle_initial'],
+                'sex' => $data['sex'],
+                'birthday' => $data['birthday'],
+                'email' => $data['email'],
+                'google_id' => null,
+                'phone' => $data['contact_number'],
+                'contact_number' => $data['contact_number'],
+                'phone_country' => $data['phone_country'],
+                'phone_verified_at' => null,
+                'email_verified_at' => $verifiedAt,
+                'terms_accepted_at' => now(),
+                'terms_version' => config('bearly-policies.version'),
+                'privacy_version' => config('bearly-policies.version'),
+                'role' => UserRole::Buyer->value,
+                'status' => AccountStatus::Pending->value,
+                'province' => $data['province'],
+                'city' => $data['city'],
+                'barangay' => $data['barangay'],
+                'street_address' => trim($data['house_number'].' '.$data['street_name']).', '.$data['postal_code'],
+                'business_name' => null,
+                'business_category' => null,
+                'business_permit_path' => null,
+                'password' => Hash::make($data['password']),
+            ]);
 
-        $validIdFile = $request->file('valid_id');
-
-        $validIdPath = $validIdFile->store(
-            'registration-documents/valid-ids',
-            'local'
-        );
-
-        try {
-            $user = DB::transaction(function () use (
-                $data,
-                $verifiedAt,
-                $validIdPath,
-                $validIdFile,
-                $lifecycle
-            ) {
-                $user = User::create([
-                    'name' => trim(
-                        $data['first_name']
-                        . ' '
-                        . ($data['middle_initial'] ?? '')
-                        . ' '
-                        . $data['last_name']
-                    ),
-
-                    'first_name' =>
-                        $data['first_name'],
-
-                    'last_name' =>
-                        $data['last_name'],
-
-                    'middle_initial' =>
-                        $data['middle_initial'],
-
-                    'sex' =>
-                        $data['sex'],
-
-                    'birthday' =>
-                        $data['birthday'],
-
-                    'email' =>
-                        $data['email'],
-
-                    'google_id' => null,
-
-                    'phone' => $data['contact_number'],
-
-                    'contact_number' =>
-                        $data['contact_number'],
-
-                    'phone_country' =>
-                        $data['phone_country'],
-
-                    'phone_verified_at' => null,
-
-                    'email_verified_at' =>
-                        $verifiedAt,
-
-                    'terms_accepted_at' =>
-                        now(),
-
-                    'terms_version' =>
-                        config(
-                            'bearly-policies.version'
-                        ),
-
-                    'privacy_version' =>
-                        config(
-                            'bearly-policies.version'
-                        ),
-
-                    'role' =>
-                        UserRole::Buyer->value,
-
-                    'status' =>
-                        AccountStatus::Pending->value,
-
-                    'province' =>
-                        $data['province'],
-
-                    'city' =>
-                        $data['city'],
-
-                    'barangay' =>
-                        $data['barangay'],
-
-                    'street_address' => trim(
-                        $data['house_number']
-                        . ' '
-                        . $data['street_name']
-                    )
-                        . ', '
-                        . $data['postal_code'],
-
-                    'business_name' => null,
-
-                    'business_category' => null,
-
-                    'valid_id_path' =>
-                        $validIdPath,
-
-                    'business_permit_path' => null,
-
-                    'password' =>
-                        Hash::make(
-                            $data['password']
-                        ),
-                ]);
-
-                $lifecycle->recordPendingApplication(
-                    $user,
-                    UserRole::Buyer->value,
-                    [
-                        'house_number' =>
-                            $data['house_number'],
-
-                        'street_name' =>
-                            $data['street_name'],
-
-                        'barangay' =>
-                            $data['barangay'],
-
-                        'city' =>
-                            $data['city'],
-
-                        'province' =>
-                            $data['province'],
-
-                        'postal_code' =>
-                            $data['postal_code'],
-
-                        'city_code' =>
-                            $data['city_code']
-                            ?? null,
-                    ],
-                    [],
-                    [
-                        [
-                            'type' => 'valid-id',
-                            'path' => $validIdPath,
-                            'file' => $validIdFile,
-                        ],
-                    ]
-                );
-
-                return $user;
-            });
-        } catch (Throwable $exception) {
-            Storage::disk('local')
-                ->delete($validIdPath);
-
-            throw $exception;
-        }
+            return $lifecycle->activateBuyer($user, [
+                'house_number' => $data['house_number'],
+                'street_name' => $data['street_name'],
+                'barangay' => $data['barangay'],
+                'city' => $data['city'],
+                'province' => $data['province'],
+                'postal_code' => $data['postal_code'],
+                'city_code' => $data['city_code'] ?? null,
+            ]);
+        });
 
         /*
         |--------------------------------------------------------------------------
@@ -477,11 +356,9 @@ class MobileRegistrationController extends Controller
         );
 
         return response()->json([
-            'message' =>
-                'Buyer registration submitted successfully.',
-
-            'application' => [
-                'user_id' => $user->id,
+            'message' => 'Buyer account created and activated. You can now sign in.',
+            'data' => [
+                'user_id' => (int) $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
                 'role' => $user->role,

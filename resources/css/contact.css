@@ -1,3 +1,5 @@
+@import "./theme.css";
+
 :root {
     --brown: #432214;
     --brown-deep: #2b1d16;

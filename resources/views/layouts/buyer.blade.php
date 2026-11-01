@@ -45,6 +45,7 @@
 
 <body>
 
+    <div class="buyer-layout-theme-toggle">@include('partials.theme-toggle')</div>
     @yield('content')
 
 </body>

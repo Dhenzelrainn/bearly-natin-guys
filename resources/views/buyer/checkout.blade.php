@@ -17,7 +17,7 @@
 ])
 
 <main class="checkout-shell">
-<a class="checkout-back" href="{{ url('/cart') }}"><span class="material-symbols-outlined">arrow_back</span> Back to Cart</a>
+<a class="checkout-back" href="{{ $checkoutBackUrl }}"><span class="material-symbols-outlined" aria-hidden="true">arrow_back</span> {{ $checkoutBackLabel }}</a>
 <p class="preview-notice">Shipping is charged once per combined Seller Order shipment. The zone uses verified PSGC locations; package dimensions are for delivery planning and do not change the fee.</p>
 <p id="local-preview-warning" class="checkout-warning" hidden>Browser-only preview items are not saved as Bearly cart products and will not be included in this order.</p>
 

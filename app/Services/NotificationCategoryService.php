@@ -80,7 +80,7 @@ class NotificationCategoryService
         'logistics' => [
             'pickups' => [
                 'label' => 'Pickup requests',
-                'events' => ['logistics_pickup_requested'],
+                'events' => ['logistics_pickup_requested', 'logistics_return_dropoff_expected'],
             ],
             'handoffs' => [
                 'label' => 'Handoffs',

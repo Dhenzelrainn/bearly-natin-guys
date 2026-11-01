@@ -10,7 +10,10 @@ class Shipment extends Model
 
     protected function casts(): array
     {
-        return ['destination_address_snapshot' => 'array'];
+        return [
+            'destination_address_snapshot' => 'array',
+            'return_shipping_quote' => 'array',
+        ];
     }
 
     public function sellerOrder()
@@ -34,6 +37,11 @@ class Shipment extends Model
     public function transfer()
     {
         return $this->hasOne(ShipmentTransfer::class);
+    }
+
+    public function linehaulRunAssignment()
+    {
+        return $this->hasOne(LinehaulRunShipment::class);
     }
 
     public function originAddress()
@@ -69,5 +77,10 @@ class Shipment extends Model
     public function shippingSettlement()
     {
         return $this->hasOne(ShippingSettlement::class);
+    }
+
+    public function returnRequest()
+    {
+        return $this->hasOne(ReturnRequest::class, 'return_shipment_id');
     }
 }

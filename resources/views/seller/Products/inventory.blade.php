@@ -203,6 +203,7 @@
                             data-store-section="{{ $item['subcategory_id'] ?? 'uncategorized' }}"
                             data-marketplace-subcategory="{{ $item['marketplace_subcategory_id'] ?? 'unclassified' }}"
                             data-status="{{ $item['status_key'] }}"
+                            data-compliance-held="{{ $item['is_compliance_held'] ? 'true' : 'false' }}"
                             data-parent="{{ $item['parent'] }}"
                             data-variation-row="{{ $item['variation_row'] ? 'true' : 'false' }}"
                             data-on-hand="{{ $item['on_hand'] }}"
@@ -212,9 +213,11 @@
                             <td>
                                 <input
                                     type="checkbox"
-                                    aria-label="Select {{ $item['sku'] }}"
+                                    aria-label="Select {{ $item['sku'] }}{{ $item['is_compliance_held'] ? ' for threshold updates; stock adjustment remains blocked during compliance review' : '' }}"
                                     data-inventory-check
-                                    @disabled($item['is_compliance_held'])
+                                    @if ($item['is_compliance_held'])
+                                        title="This SKU can be selected for threshold updates. Stock adjustment stays blocked until its compliance hold is resolved."
+                                    @endif
                                 >
                             </td>
 

@@ -59,11 +59,12 @@ class AdminReturnRefundController extends Controller
     {
         $data = $request->validate([
             'external_payout_confirmed' => ['required', 'accepted'],
-            'method' => ['required', Rule::in(['gcash', 'bank_transfer', 'cash', 'other'])],
+            'method' => ['required', Rule::in(['gcash', 'bank_transfer', 'other'])],
             'provider_reference' => ['required', 'string', 'max:150'],
             'external_paid_on' => ['required', 'date_format:Y-m-d', 'before_or_equal:today'],
             'receipt' => ['required', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:5120'],
         ], [
+            'method.in' => 'Choose GCash, bank transfer, or other for an external payout. Cash refunds must use the Finance-to-Logistics cash custody workflow.',
             'external_payout_confirmed.required' => 'Confirm that the external payout has already been made before recording it.',
             'external_payout_confirmed.accepted' => 'Confirm that the external payout has already been made before recording it.',
             'receipt.required' => 'Upload the payout receipt or Buyer acknowledgment before recording the completed payout.',
@@ -106,6 +107,7 @@ class AdminReturnRefundController extends Controller
         $data = $request->validate([
             'recovery_confirmed' => ['required', 'accepted'],
             'amount' => ['required', 'string', 'regex:/^\\d{1,8}(?:\\.\\d{1,2})?$/'],
+            'recovery_component' => ['nullable', Rule::in(['refund_recovery', 'return_shipping_fee'])],
             'method' => ['required', Rule::in(['external_collection', 'seller_payout_offset'])],
             'external_reference' => ['required', 'string', 'max:150'],
             'recovered_on' => ['required', 'date_format:Y-m-d', 'before_or_equal:today'],
@@ -127,6 +129,7 @@ class AdminReturnRefundController extends Controller
             trim($data['note']),
             isset($data['seller_payout_id']) ? (int) $data['seller_payout_id'] : null,
             $request,
+            $data['recovery_component'] ?? 'refund_recovery',
         );
 
         return back()->with('success', 'Verified Seller recovery recorded. ₱'.number_format((int) $recovery->recovered_amount_minor / 100, 2).' recovered; the remaining balance is ₱'.number_format($recovery->outstandingMinor() / 100, 2).'.');

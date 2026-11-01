@@ -8,16 +8,43 @@
     <div>
         <span class="eyebrow">Provider earnings</span>
         <h1>Shipping settlement and Rider payouts</h1>
-        <p>A shipment becomes settlement-eligible only after Seller Order completion, the 3-calendar-day return/refund period, and payment/COD checks. Admin/Finance must then remit the original shipping allocation to your provider. Record the actual Rider-pool payout here; the Rider earning becomes Paid only after you confirm it.</p>
+        <p>Outbound settlements wait for Seller Order eligibility checks. A return-shipping settlement becomes eligible after the approved return is delivered to the Seller. Admin/Finance must remit the exact 40/60 allocation to your provider; record the actual final Rider payout here.</p>
     </div>
 </section>
 
-<section class="panel">
+<section class="metric-strip" aria-label="Logistics shipping earnings summary">
+    <article class="metric-item">
+        <span class="metric-icon"><i data-lucide="wallet" aria-hidden="true"></i></span>
+        <span class="metric-copy">
+            <small>Total eligible Logistics share</small>
+            <strong>₱{{ number_format((int) $earningsSummary['total_minor'] / 100, 2) }}</strong>
+            <span>Your 40% share across eligible outbound and return shipping settlements</span>
+        </span>
+    </article>
+    <article class="metric-item">
+        <span class="metric-icon"><i data-lucide="clock-3" aria-hidden="true"></i></span>
+        <span class="metric-copy">
+            <small>Awaiting Finance remittance</small>
+            <strong>₱{{ number_format((int) $earningsSummary['pending_minor'] / 100, 2) }}</strong>
+            <span>Logistics share on settlements not yet marked remitted</span>
+        </span>
+    </article>
+    <article class="metric-item">
+        <span class="metric-icon"><i data-lucide="circle-check-big" aria-hidden="true"></i></span>
+        <span class="metric-copy">
+            <small>Finance remitted</small>
+            <strong>₱{{ number_format((int) $earningsSummary['remitted_minor'] / 100, 2) }}</strong>
+            <span>40% Logistics share; Rider pool is tracked separately below</span>
+        </span>
+    </article>
+</section>
+
+<section class="panel" data-shipping-settlement-live data-status-url="{{ route('logistics.settlements.status-version') }}" data-status-version="{{ $earningsStatusVersion }}">
     <div class="panel-heading">
         <div>
             <span class="eyebrow">Your provider only</span>
             <h2>Rider shipping earnings</h2>
-            <p>COD product cash is not Logistics or Rider revenue. This page records only the Rider share of the original shipping fee.</p>
+            <p>COD product cash is not Logistics or Rider revenue. This page records the Rider pool for eligible outbound deliveries and approved returns.</p>
         </div>
     </div>
 
@@ -32,29 +59,45 @@
                     <th>Actual Rider payout</th>
                 </tr>
             </thead>
-            <tbody>
+            <tbody data-shipping-settlement-rows>
                 @forelse($earnings as $earning)
                     @php
                         $settlement = $earning->shippingSettlement;
                         $payout = $earning->payout;
                         $isSelected = (int) old('earning_id', 0) === (int) $earning->id;
                         $sellerOrder = $earning->shipment?->sellerOrder;
-                        $returnWindowEndedAt = $sellerOrder?->completed_at
+                        $settlementIsReturn = $settlement?->settlement_type === 'return';
+                        $returnRequest = $settlement?->returnRequest;
+                        $returnWindowEndedAt = ! $settlementIsReturn && $sellerOrder?->completed_at
                             ? \Carbon\CarbonImmutable::parse($sellerOrder->completed_at)
                                 ->addDays(\App\Services\ReturnRefundService::RETURN_WINDOW_DAYS)
                                 ->endOfDay()
                             : null;
+                        $productPreviews = $earning->product_previews ?? [];
+                        $productCount = (int) ($earning->product_count ?? 0);
                     @endphp
                     <tr>
                         <td>
                             <strong>{{ $earning->shipment?->shipment_no ?? 'Shipment' }}</strong>
-                            <small class="table-subline">{{ $earning->shipment?->sellerOrder?->seller_order_no ?? 'Seller Order' }} · {{ $earning->shipment?->sellerOrder?->store?->name ?? 'Seller' }}</small>
+                            @if ($settlementIsReturn)
+                                <small class="table-subline">Return {{ $returnRequest?->return_no ?? 'case unavailable' }} · {{ $sellerOrder?->store?->name ?? 'Seller' }}</small>
+                            @else
+                                <small class="table-subline">{{ $sellerOrder?->seller_order_no ?? 'Seller Order' }} · {{ $sellerOrder?->store?->name ?? 'Seller' }}</small>
+                            @endif
                             <small class="table-subline">Settlement {{ $settlement?->settlement_no ?? 'pending' }}</small>
+                            @if($productPreviews)
+                                <div class="shipping-settlement-products">
+                                    @include('partials.order-item-preview-list', ['items' => $productPreviews])
+                                    @if($productCount > count($productPreviews))
+                                        <small class="shipping-settlement-products-more">+{{ $productCount - count($productPreviews) }} more {{ $settlementIsReturn ? 'returned ' : '' }}{{ $productCount - count($productPreviews) === 1 ? 'item' : 'items' }}</small>
+                                    @endif
+                                </div>
+                            @endif
                         </td>
                         <td>{{ $earning->riderProfile?->user?->name ?? 'Rider' }}</td>
                         <td>
                             <strong>Rider pool: ₱{{ number_format((int) $earning->amount_minor / 100, 2) }}</strong>
-                            <small class="table-subline">Original fee ₱{{ number_format((int) ($settlement?->original_shipping_fee_minor ?? 0) / 100, 2) }}</small>
+                            <small class="table-subline">{{ $settlementIsReturn ? 'Return route fee' : 'Original fee' }} ₱{{ number_format((int) ($settlement?->feeAmountMinor() ?? 0) / 100, 2) }}</small>
                             <small class="table-subline">Logistics 40%: ₱{{ number_format((int) ($settlement?->logistics_share_minor ?? 0) / 100, 2) }}</small>
                         </td>
                         <td><span class="status-badge" data-status="{{ $earning->status }}">{{ str($earning->status)->replace('_', ' ')->title() }}</span>
@@ -70,12 +113,17 @@
                             @if($payout)
                                 <strong>{{ str($payout->method)->replace('_', ' ')->title() }}</strong>
                                 <small class="table-subline">₱{{ number_format((int) $payout->amount_minor / 100, 2) }} · {{ $payout->paid_on?->format('M j, Y') }}</small>
-                                <small class="table-subline">Reference: <code>{{ $payout->reference }}</code></small>
+                                @if($payout->method === 'cash' && str_starts_with((string) $payout->reference, 'LRP-'))
+                                    <small class="table-subline">Bearly cash payout reference: <code>{{ $payout->reference }}</code></small>
+                                    <a class="button button-secondary button-small logistics-cash-payout-receipt-link" href="{{ route('logistics.settlements.rider-earnings.cash-receipt', $earning->id) }}" target="_blank" rel="noopener"><i data-lucide="printer" aria-hidden="true"></i>Print cash receipt</a>
+                                @else
+                                    <small class="table-subline">Reference: <code>{{ $payout->reference }}</code></small>
+                                @endif
                                 <small class="table-subline">Recorded by {{ $payout->recorder?->name ?? 'Logistics' }}</small>
                             @elseif($earning->status === 'pending')
                                 <span class="empty-copy">Awaiting Admin/Finance remittance to your provider.</span>
                             @elseif($earning->status === 'posted')
-                                <form method="POST" action="{{ route('logistics.settlements.rider-earnings.record-paid', $earning->id) }}" class="cash-action-form">
+                                <form method="POST" action="{{ route('logistics.settlements.rider-earnings.record-paid', $earning->id) }}" class="cash-action-form" data-rider-payout-form>
                                     @csrf
                                     <input type="hidden" name="earning_id" value="{{ $earning->id }}">
                                     <label for="rider-payout-amount-{{ $earning->id }}">Amount actually paid (₱)
@@ -90,9 +138,10 @@
                                             <option value="other" @selected($isSelected && old('method') === 'other')>Other</option>
                                         </select>
                                     </label>
-                                    <label for="rider-payout-reference-{{ $earning->id }}">Actual payout reference
-                                        <input id="rider-payout-reference-{{ $earning->id }}" type="text" name="reference" maxlength="150" value="{{ $isSelected ? old('reference') : '' }}" required>
+                                    <label for="rider-payout-reference-{{ $earning->id }}" data-external-rider-payout-reference>External payout reference
+                                        <input id="rider-payout-reference-{{ $earning->id }}" type="text" name="reference" maxlength="150" value="{{ $isSelected ? old('reference') : '' }}">
                                     </label>
+                                    <small class="table-subline" data-generated-rider-cash-reference hidden>Cash only: leave the external reference blank. Bearly will generate an internal receipt reference after you confirm the cash was already paid to the Rider.</small>
                                     <label for="rider-payout-date-{{ $earning->id }}">Paid on
                                         <input id="rider-payout-date-{{ $earning->id }}" type="date" name="paid_on" max="{{ now()->toDateString() }}" value="{{ $isSelected ? old('paid_on', now()->toDateString()) : now()->toDateString() }}" required>
                                     </label>
@@ -111,7 +160,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="5"><p class="empty-copy">No shipping Rider earnings are currently recorded for this provider. Delivery history alone does not create an earning. After the 3-calendar-day return/refund period ends, payment, unresolved-case, and COD checks still determine eligibility. Eligible zone-priced shipments appear here only after those checks pass; Admin/Finance remittance and your recorded Rider payout are separate later steps.</p></td></tr>
+                    <tr><td colspan="5"><p class="empty-copy">No Rider-pool earnings are currently recorded for this provider. Outbound deliveries appear after the 3-calendar-day return/refund period, payment, case, and COD checks pass. A return-shipping earning appears only after an approved return is delivered to the Seller. Admin/Finance remittance and your actual Rider payout are separate steps.</p></td></tr>
                 @endforelse
             </tbody>
         </table>

@@ -15,6 +15,7 @@
 
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
+    @include('partials.theme-preload')
     @vite([
         'resources/css/admin.css',
         'resources/css/messages-standard.css',
@@ -40,11 +41,6 @@ $adminNavGroups = [
                 'label' => 'All Applications',
                 'route' => 'admin.registrations',
                 'icon' => 'clipboard-check',
-            ],
-            [
-                'label' => 'Buyer Applications',
-                'route' => 'admin.registrations.buyers',
-                'icon' => 'user-plus',
             ],
             [
                 'label' => 'Seller Applications',
@@ -456,6 +452,8 @@ $adminNavGroups = [
 
 
     <div class="admin-topbar-actions">
+
+    @include('partials.theme-toggle')
 
     {{-- ================================
          Notifications

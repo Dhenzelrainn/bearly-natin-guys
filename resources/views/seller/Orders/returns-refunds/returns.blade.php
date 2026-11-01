@@ -32,7 +32,7 @@
     @endforeach
 </section>
 
-<section class="returns-workspace" data-returns-workspace>
+<section class="returns-workspace" data-returns-workspace data-returns-status-url="{{ route('seller.orders.returns.status-version') }}" data-returns-status-version="{{ $returnStatusVersion }}">
     <div class="returns-tabs" role="tablist" aria-label="Filter return and refund cases">
         @foreach ($tabs as $tab)
             <button class="returns-tab {{ $tab['key'] === 'all' ? 'is-active' : '' }}" type="button" role="tab" aria-selected="{{ $tab['key'] === 'all' ? 'true' : 'false' }}" data-return-tab="{{ $tab['key'] }}">
@@ -68,13 +68,15 @@
                             </div>
                         </td>
                         <td>
-                            <div class="returns-table-primary">
-                                <span class="returns-table-icon"><i data-lucide="user-round" aria-hidden="true"></i></span>
-                                <div class="returns-table-primary-copy">
+                            <div class="returns-customer-product">
+                                <a class="returns-customer-header" href="{{ route('seller.orders.returns.show', ['caseId' => $case['id']]) }}" aria-label="View return case for {{ $case['customer'] }}">
+                                    <span class="returns-customer-avatar"><i data-lucide="user-round" aria-hidden="true"></i></span>
                                     <strong>{{ $case['customer'] }}</strong>
-                                    <div class="returns-table-product">
-                                        @include('partials.order-item-preview-list', ['items' => $case['items']])
-                                    </div>
+                                    <i class="returns-customer-chevron" data-lucide="chevron-right" aria-hidden="true"></i>
+                                </a>
+                                <div class="returns-customer-divider" aria-hidden="true"></div>
+                                <div class="returns-table-product returns-customer-products">
+                                    @include('partials.order-item-preview-list', ['items' => $case['items']])
                                 </div>
                             </div>
                         </td>
@@ -105,7 +107,7 @@
         </table>
         <div class="returns-empty" data-returns-empty hidden><i data-lucide="search-x"></i><strong>No matching cases</strong><span>Try changing the status, type, or search term.</span></div>
     </div>
-    <footer class="returns-footer"><span class="returns-footer-count">Showing <strong data-return-count>{{ count($returns) }}</strong> of {{ count($returns) }} cases</span><span class="returns-footer-note"><i data-lucide="info" aria-hidden="true"></i><span>Seller-liable refunds may be deducted from Seller Wallet after the refund is completed; any remaining recovery blocks new withdrawals.</span></span></footer>
+    <footer class="returns-footer"><span class="returns-footer-count">Showing <strong data-return-count>{{ count($returns) }}</strong> of {{ count($returns) }} cases</span><span class="returns-footer-note"><i data-lucide="info" aria-hidden="true"></i><span>Eligible Seller-liable refund-proceeds recovery may be adjusted from Seller Wallet; any remaining refund-proceeds balance blocks withdrawals. Return-delivery fees are recovered separately and do not block or deduct Seller Wallet withdrawals.</span></span></footer>
 </section>
 </div>
 @endsection

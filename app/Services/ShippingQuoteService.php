@@ -68,6 +68,69 @@ class ShippingQuoteService
         ];
     }
 
+    /**
+     * Quote a reverse route from persisted address and package snapshots.
+     * Return quotes must not read mutable live catalog package data.
+     *
+     * @param  list<array{sku?: string, quantity: int, package_weight_kg: int|float|string, package_dimensions_cm: array{length: int|float|string, width: int|float|string, height: int|float|string}}>  $packageItems
+     * @return array<string, mixed>
+     */
+    public function quoteReturnRoute(
+        Address $origin,
+        Address $destination,
+        array $packageItems,
+        bool $lockConfiguration = false,
+    ): array {
+        $zone = $this->zones->classify($origin, $destination);
+        $divisor = $this->volumetricDivisor($lockConfiguration);
+        $baseFee = $this->baseFeeMinor($lockConfiguration);
+        $surchargePerLevel = $this->zoneSurchargePerLevelMinor($lockConfiguration);
+        $zoneSurcharge = $surchargePerLevel * (int) $zone['level'];
+        if ($baseFee < 1 || $baseFee > PHP_INT_MAX - $zoneSurcharge) {
+            throw ValidationException::withMessages([
+                'return' => 'The return delivery fee could not be calculated from the current shipping settings.',
+            ]);
+        }
+
+        $package = $this->combinedPackageFromSnapshots($packageItems);
+        $volumetricWeight = $package['dimensions_known']
+            ? ($package['length_cm'] * $package['width_cm'] * $package['height_cm']) / $divisor
+            : null;
+        $billableWeight = max(1, (int) ceil(max($package['actual_weight_kg'], $volumetricWeight ?? 0) - 0.0000001));
+        $feeMinor = $baseFee + $zoneSurcharge;
+
+        return [
+            'provider_key' => (string) config('shipping.provider_key'),
+            'provider_label' => (string) config('shipping.provider_label'),
+            'pricing_rule' => 'zone_based_v1',
+            'quote_kind' => 'return_shipping_v1',
+            'direction' => 'reverse',
+            'zone_level' => (int) $zone['level'],
+            'zone_classification' => (string) $zone['classification'],
+            'zone_label' => (string) $zone['label'],
+            'base_fee_minor' => $baseFee,
+            'zone_surcharge_per_level_minor' => $surchargePerLevel,
+            'zone_surcharge_minor' => $zoneSurcharge,
+            'return_shipping_fee_minor' => $feeMinor,
+            'volumetric_divisor' => $divisor,
+            'actual_weight_kg' => round($package['actual_weight_kg'], 3),
+            'volumetric_weight_kg' => $volumetricWeight === null ? null : round($volumetricWeight, 3),
+            'billable_weight_kg' => $billableWeight,
+            'parcel_dimensions_cm' => $package['dimensions_known'] ? [
+                'length' => round($package['length_cm'], 3),
+                'width' => round($package['width_cm'], 3),
+                'height' => round($package['height_cm'], 3),
+            ] : ['length' => null, 'width' => null, 'height' => null],
+            'package_estimator' => $package['dimensions_known']
+                ? 'greedy_minimum_bounding_box_v1'
+                : 'legacy_waybill_snapshot_without_dimensions',
+            'package_items' => $package['items'],
+            'origin' => $this->addressSnapshot($origin, $zone['origin']),
+            'destination' => $this->addressSnapshot($destination, $zone['destination']),
+            'currency' => 'PHP',
+        ];
+    }
+
     /** Lock quote configuration in the same order used by Admin edits. */
     public function lockQuoteConfiguration(): void
     {
@@ -125,6 +188,86 @@ class ShippingQuoteService
             'height_cm' => (float) $parcel[2],
             'actual_weight_kg' => $actualWeight,
             'items' => $packageItems,
+        ];
+    }
+
+    /** @param list<array<string, mixed>> $lines */
+    private function combinedPackageFromSnapshots(array $lines): array
+    {
+        $boxes = [];
+        $actualWeight = 0.0;
+        $packageItems = [];
+        $dimensionsKnown = true;
+
+        foreach ($lines as $line) {
+            $quantity = (int) ($line['quantity'] ?? 0);
+            $dimensions = $line['package_dimensions_cm'] ?? null;
+            $weight = (float) ($line['package_weight_kg'] ?? 0);
+            if ($quantity < 1 || $weight <= 0) {
+                throw ValidationException::withMessages([
+                    'return' => 'The saved return package snapshot is incomplete.',
+                ]);
+            }
+
+            $unit = is_array($dimensions) ? [
+                (float) ($dimensions['length'] ?? 0),
+                (float) ($dimensions['width'] ?? 0),
+                (float) ($dimensions['height'] ?? 0),
+            ] : [0.0, 0.0, 0.0];
+            if (min($unit) <= 0) {
+                $dimensionsKnown = false;
+            } else {
+                rsort($unit, SORT_NUMERIC);
+                $boxes[] = $this->packRepeatedBoxes($unit, $quantity);
+            }
+            $actualWeight += $weight * $quantity;
+            $packageItems[] = [
+                'sku' => (string) ($line['sku'] ?? ''),
+                'quantity' => $quantity,
+                'package_weight_kg' => round($weight, 3),
+                'package_dimensions_cm' => min($unit) <= 0 ? null : [
+                    'length' => round((float) $dimensions['length'], 3),
+                    'width' => round((float) $dimensions['width'], 3),
+                    'height' => round((float) $dimensions['height'], 3),
+                ],
+            ];
+        }
+
+        if ($boxes === []) {
+            throw ValidationException::withMessages([
+                'return' => 'No immutable package dimensions are available for the return shipment.',
+            ]);
+        }
+
+        if (! $dimensionsKnown || $boxes === []) {
+            return [
+                'length_cm' => null,
+                'width_cm' => null,
+                'height_cm' => null,
+                'actual_weight_kg' => $actualWeight,
+                'items' => $packageItems,
+                'dimensions_known' => false,
+            ];
+        }
+
+        usort($boxes, static function (array $left, array $right): int {
+            $volumeOrder = ($right[0] * $right[1] * $right[2]) <=> ($left[0] * $left[1] * $left[2]);
+
+            return $volumeOrder !== 0 ? $volumeOrder : ($right[0] <=> $left[0]);
+        });
+
+        $parcel = array_shift($boxes);
+        foreach ($boxes as $box) {
+            $parcel = $this->combineBoundingBoxes($parcel, $box);
+        }
+
+        return [
+            'length_cm' => (float) $parcel[0],
+            'width_cm' => (float) $parcel[1],
+            'height_cm' => (float) $parcel[2],
+            'actual_weight_kg' => $actualWeight,
+            'items' => $packageItems,
+            'dimensions_known' => true,
         ];
     }
 

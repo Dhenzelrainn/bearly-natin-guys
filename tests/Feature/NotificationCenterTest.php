@@ -644,6 +644,11 @@ class NotificationCenterTest extends TestCase
         $buyer = $this->buyer();
 
         $this->actingAs($buyer)
+            ->get(route('buyer.profile'))
+            ->assertOk()
+            ->assertSee(route('notifications.center', ['source' => 'profile']), false);
+
+        $this->actingAs($buyer)
             ->get(route('notifications.center'))
             ->assertOk()
             ->assertSee('data-notification-center-page', false)
@@ -654,6 +659,12 @@ class NotificationCenterTest extends TestCase
             ->assertSee('Order updates')
             ->assertSee('Returns & refunds')
             ->assertSee('data-nc-category="announcements"', false);
+
+        $this->actingAs($buyer)
+            ->get(route('notifications.center', ['source' => 'profile']))
+            ->assertOk()
+            ->assertSee('href="'.route('buyer.profile').'"', false)
+            ->assertSee('Back to Profile');
 
         $seller = $this->seller();
 

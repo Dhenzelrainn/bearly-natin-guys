@@ -8,6 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    @include('partials.theme-preload')
     @vite([
         'resources/css/seller.css',
         'resources/css/messages-standard.css',
@@ -46,7 +47,7 @@
             ['label' => 'Store Appearance', 'route' => 'seller.store.appearance'],
             ['label' => 'Publication Settings', 'route' => 'seller.store.publication'],
         ]],
-        ['key' => 'finance', 'label' => 'Finance', 'icon' => 'wallet-cards', 'active' => request()->routeIs('seller.finance*'), 'children' => [
+        ['key' => 'finance', 'label' => 'Finance', 'icon' => 'wallet', 'active' => request()->routeIs('seller.finance*'), 'children' => [
             ['label' => 'Wallet', 'route' => 'seller.finance.wallet'],
             ['label' => 'My Earnings', 'route' => 'seller.finance.earnings'],
             ['label' => 'Transaction History', 'route' => 'seller.finance.transactions'],
@@ -140,6 +141,7 @@
                     <div class="seller-topbar-controls">@yield('topbar-controls')</div>
                     <span class="topbar-divider seller-topbar-controls-divider"></span>
                 @endif
+                @include('partials.theme-toggle')
                 <div class="seller-popover-wrap" data-notification-center data-notification-skin="seller">
                     <button class="seller-icon-button notification-trigger" type="button" data-seller-popover-toggle="notifications" aria-label="Open notifications">
                         <i class="seller-ui-icon" data-lucide="bell" aria-hidden="true"></i><span data-notification-badge="dot" hidden></span>

@@ -495,7 +495,12 @@
             // Checkout can still open if browser storage is unavailable.
         }
 
-        window.location.href = '/checkout';
+        const checkout = new URL('/checkout', window.location.origin);
+        checkout.searchParams.set(
+            'return_to',
+            `${window.location.pathname}${window.location.search}${window.location.hash}`
+        );
+        window.location.assign(checkout.toString());
     });
 
     render();

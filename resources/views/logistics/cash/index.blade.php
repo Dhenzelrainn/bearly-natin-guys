@@ -26,155 +26,252 @@
             @endif
         </div>
     </div>
-    <div class="cash-custody-table-wrap" role="region" aria-label="COD cash collections" tabindex="0">
-        <table class="cash-custody-table cash-custody-table--cod">
-            <thead><tr><th>Collection / order</th><th>Rider</th><th>Expected amount</th><th>Collected amount</th><th>Difference</th><th>Custody action</th></tr></thead>
-            <tbody>
-            @forelse($codCollections as $collection)
-                @php
-                    $amount = number_format((int) $collection->amount_collected_minor / 100, 2, '.', '');
-                    $due = number_format((int) $collection->amount_due_minor / 100, 2);
-                    $difference = (int) $collection->discrepancy_minor;
-                @endphp
-                <tr>
-                    <td>
-                        <strong>{{ $collection->collection_no }}</strong>
-                        <small class="table-subline">{{ $collection->order?->order_no ?? 'Order' }} · {{ $collection->sellerOrder?->store?->name ?? 'Seller' }}</small>
-                        @if($collection->logistics_reference)
-                            <small class="table-subline">Rider-to-Logistics reference: <code>{{ $collection->logistics_reference }}</code></small>
-                        @elseif(in_array($collection->status, ['collected', 'disputed'], true))
-                            <small class="table-subline">Bearly creates this number after you confirm the Rider's cash.</small>
+    <div class="cash-custody-card-list" role="list" aria-label="COD cash collections">
+        @forelse($codCollections as $collection)
+            @php
+                $amount = number_format((int) $collection->amount_collected_minor / 100, 2, '.', '');
+                $due = number_format((int) $collection->amount_due_minor / 100, 2);
+                $difference = (int) $collection->discrepancy_minor;
+                $collectionStatusLabel = str($collection->status)->replace('_', ' ')->title();
+            @endphp
+            <article class="cash-custody-card" role="listitem">
+                <section class="cash-custody-card-column" aria-labelledby="cod-collection-details-{{ $collection->id }}">
+                    <div class="cash-custody-card-heading">
+                        <span class="cash-custody-card-icon" aria-hidden="true"><i data-lucide="receipt-text"></i></span>
+                        <div>
+                            <h3 id="cod-collection-details-{{ $collection->id }}">Collection details</h3>
+                            <p>Order, Rider, and cash reference information.</p>
+                        </div>
+                    </div>
+                    <dl class="cash-custody-reference-list">
+                        <div class="cash-custody-reference-item">
+                            <dt>COD collection ID</dt>
+                            <dd><code>{{ $collection->collection_no }}</code><button class="cash-custody-copy" type="button" data-copy-cash-reference data-copy-value="{{ $collection->collection_no }}" aria-label="Copy COD collection ID"><i data-lucide="copy" aria-hidden="true"></i></button></dd>
+                        </div>
+                        <div class="cash-custody-reference-item">
+                            <dt>Order / Seller</dt>
+                            <dd><span>{{ $collection->order?->order_no ?? 'Order' }} · {{ $collection->sellerOrder?->store?->name ?? 'Seller' }}</span>@if($collection->order?->order_no)<button class="cash-custody-copy" type="button" data-copy-cash-reference data-copy-value="{{ $collection->order->order_no }}" aria-label="Copy order ID"><i data-lucide="copy" aria-hidden="true"></i></button>@endif</dd>
+                        </div>
+                        <div class="cash-custody-reference-item">
+                            <dt>Rider</dt>
+                            <dd>{{ $collection->riderProfile?->user?->name ?? 'Rider' }}</dd>
+                        </div>
+                        <div class="cash-custody-reference-item">
+                            <dt>Rider-to-Logistics reference</dt>
+                            <dd>@if($collection->logistics_reference)<code>{{ $collection->logistics_reference }}</code><button class="cash-custody-copy" type="button" data-copy-cash-reference data-copy-value="{{ $collection->logistics_reference }}" aria-label="Copy Rider-to-Logistics reference"><i data-lucide="copy" aria-hidden="true"></i></button>@elseif(in_array($collection->status, ['collected', 'disputed'], true))<span class="empty-copy">Generated after cash is acknowledged</span>@else<span class="empty-copy">Not recorded</span>@endif</dd>
+                        </div>
+                        @if($collection->finance_remittance_reference)
+                            <div class="cash-custody-reference-item">
+                                <dt>Logistics-to-Finance reference</dt>
+                                <dd><code>{{ $collection->finance_remittance_reference }}</code><button class="cash-custody-copy" type="button" data-copy-cash-reference data-copy-value="{{ $collection->finance_remittance_reference }}" aria-label="Copy Logistics-to-Finance reference"><i data-lucide="copy" aria-hidden="true"></i></button></dd>
+                            </div>
                         @endif
-                    </td>
-                    <td>{{ $collection->riderProfile?->user?->name ?? 'Rider' }}</td>
-                    <td>₱{{ $due }}</td>
-                    <td>₱{{ number_format((int) $collection->amount_collected_minor / 100, 2) }}</td>
-                    <td>
+                    </dl>
+                </section>
+
+                <section class="cash-custody-card-column" aria-labelledby="cod-collection-amount-{{ $collection->id }}">
+                    <div class="cash-custody-card-heading">
+                        <span class="cash-custody-card-icon" aria-hidden="true"><i data-lucide="coins"></i></span>
+                        <div>
+                            <h3 id="cod-collection-amount-{{ $collection->id }}">Amount &amp; status</h3>
+                            <p>Compare the Rider's collection with the order amount.</p>
+                        </div>
+                    </div>
+                    <div class="cash-custody-amount-card cod-cash-amount-card">
+                        <div class="cod-cash-amount-item">
+                            <span>Expected amount</span>
+                            <strong>₱{{ $due }}</strong>
+                        </div>
+                        <div class="cod-cash-amount-item">
+                            <span>Collected amount</span>
+                            <strong>₱{{ number_format((int) $collection->amount_collected_minor / 100, 2) }}</strong>
+                        </div>
+                    </div>
+                    <div class="cash-custody-status-card cod-cash-difference-card">
+                        <span class="cash-custody-status-label">Difference</span>
                         @if($difference === 0)
-                            <span class="status-badge badge-success">Matched</span>
+                            <span class="status-badge badge-success"><i data-lucide="circle-check" aria-hidden="true"></i>Matched</span>
                         @else
-                            <span class="status-badge badge-danger">{{ $difference < 0 ? 'Short' : 'Over' }} ₱{{ number_format(abs($difference) / 100, 2) }}</span>
+                            <span class="status-badge badge-danger"><i data-lucide="triangle-alert" aria-hidden="true"></i>{{ $difference < 0 ? 'Short' : 'Over' }} ₱{{ number_format(abs($difference) / 100, 2) }}</span>
                         @endif
-                    </td>
-                    <td>
-                        @if(in_array($collection->status, ['collected', 'disputed'], true))
-                            <form method="POST" action="{{ route('logistics.cash.cod.receive', $collection) }}" class="cash-action-form">
-                                @csrf
-                                <label>Cash physically received <input type="number" min="0" step="0.01" inputmode="decimal" name="actual_amount" value="{{ $amount }}" required></label>
-                                <small class="table-subline">Count the cash. Enter the amount you received. It must match the Rider's record. Then select “Acknowledge receipt.”</small>
-                                <button class="button button-primary button-small" type="submit">Acknowledge receipt</button>
-                            </form>
-                        @elseif($collection->status === 'received_by_logistics')
-                            @if($selectedCodCollection && (int) $selectedCodCollection->id === (int) $collection->id)
-                                <span class="status-badge badge-info" aria-current="true">Selected</span>
-                            @else
-                                <a
-                                    class="button button-secondary button-small cash-remittance-select"
-                                    href="{{ route('logistics.cash.index', ['cod_remittance' => $collection->id]) }}#finance-remittance"
-                                    aria-label="Select COD collection {{ $collection->collection_no }} for remittance"
-                                >Select</a>
-                            @endif
+                        <small>Collection status</small>
+                        <strong>{{ $collectionStatusLabel }}</strong>
+                    </div>
+                </section>
+
+                <section class="cash-custody-card-column cash-custody-card-action" aria-labelledby="cod-collection-action-{{ $collection->id }}">
+                    <div class="cash-custody-card-heading">
+                        <span class="cash-custody-card-icon" aria-hidden="true"><i data-lucide="shield-check"></i></span>
+                        <div>
+                            <h3 id="cod-collection-action-{{ $collection->id }}">Custody action</h3>
+                            <p>Confirm the cash handover using the amount you counted.</p>
+                        </div>
+                    </div>
+                    @if(in_array($collection->status, ['collected', 'disputed'], true))
+                        <form method="POST" action="{{ route('logistics.cash.cod.receive', $collection) }}" class="cash-action-form cash-custody-action-form">
+                            @csrf
+                            <label for="cod-cash-received-{{ $collection->id }}">Cash physically received <input id="cod-cash-received-{{ $collection->id }}" type="number" min="0" step="0.01" inputmode="decimal" name="actual_amount" value="{{ $amount }}" required></label>
+                            <p class="cash-custody-action-note">Count the cash and enter the amount received. Then acknowledge the receipt.</p>
+                            <button class="button button-primary" type="submit"><i data-lucide="check" aria-hidden="true"></i>Acknowledge receipt <i data-lucide="arrow-right" aria-hidden="true"></i></button>
+                        </form>
+                    @elseif($collection->status === 'received_by_logistics')
+                        @if($selectedCodCollection && (int) $selectedCodCollection->id === (int) $collection->id)
+                            <span class="status-badge badge-info" aria-current="true">Selected for Finance handoff</span>
                         @else
-                            <span class="status-badge badge-info">{{ str($collection->status)->replace('_', ' ')->title() }}</span>
-                            @if($collection->logistics_reference)<small class="table-subline">Rider-to-Logistics: {{ $collection->logistics_reference }}</small>@endif
-                            @if($collection->finance_remittance_reference)<small class="table-subline">Logistics-to-Finance: {{ $collection->finance_remittance_reference }}</small>@endif
+                            <a
+                                class="button button-secondary cash-custody-action-button cash-remittance-select"
+                                href="{{ route('logistics.cash.index', ['cod_remittance' => $collection->id]) }}#finance-remittance"
+                                aria-label="Select COD collection {{ $collection->collection_no }} for remittance"
+                            ><i data-lucide="arrow-right-left" aria-hidden="true"></i>Select for Finance remittance</a>
                         @endif
-                    </td>
-                </tr>
-            @empty
-                <tr><td colspan="6"><p class="empty-copy">No COD cash is waiting for provider custody.</p></td></tr>
-            @endforelse
-            </tbody>
-        </table>
+                    @else
+                        <span class="status-badge badge-info">{{ $collectionStatusLabel }}</span>
+                        @if($collection->logistics_reference)<p class="cash-custody-action-note">Rider-to-Logistics: {{ $collection->logistics_reference }}</p>@endif
+                        @if($collection->finance_remittance_reference)<p class="cash-custody-action-note">Logistics-to-Finance: {{ $collection->finance_remittance_reference }}</p>@endif
+                    @endif
+                </section>
+            </article>
+        @empty
+            <div class="cash-custody-assignment-empty"><i data-lucide="wallet-cards" aria-hidden="true"></i><strong>No COD cash is waiting for provider custody.</strong></div>
+        @endforelse
     </div>
 </section>
 
 <section class="panel">
     <div class="panel-heading"><div><span class="eyebrow">Buyer refunds</span><h2>Assigned cash deliveries</h2><p>After the Rider gives the refund to the Buyer, check the signed receipt here. Finance can finish the record after you confirm it.</p></div></div>
-    <div class="cash-custody-table-wrap" role="region" aria-label="Refund cash assignments" tabindex="0">
-        <table class="cash-custody-table cash-custody-table--refund">
-            <thead><tr><th>Cash payout details</th><th>Amount</th><th>Status</th><th>Custody action</th></tr></thead>
-            <tbody>
-            @forelse($refundPayouts as $payout)
-                <tr>
-                    <td>
-                        <dl class="cash-reference-list">
-                            <div><dt>Cash payout ID</dt><dd><code>{{ $payout->payout_no }}</code></dd></div>
-                            <div><dt>Refund ID</dt><dd><code>{{ $payout->refund?->refund_no ?? 'Not available' }}</code></dd></div>
-                            <div><dt>Buyer</dt><dd>{{ $payout->refund?->order?->buyer?->name ?? 'Buyer' }}</dd></div>
-                            <div><dt>Buyer acknowledgment reference</dt><dd>@if($payout->acknowledgment_reference)<code>{{ $payout->acknowledgment_reference }}</code>@else<span class="empty-copy">Generated when Rider is assigned</span>@endif</dd></div>
-                            <div><dt>Finance handoff reference</dt><dd>@if($payout->finance_issue_reference)<code>{{ $payout->finance_issue_reference }}</code>@else<span class="empty-copy">Not recorded</span>@endif</dd></div>
-                        </dl>
-                    </td>
-                    <td>₱{{ number_format((int) $payout->amount_minor / 100, 2) }}</td>
-                    <td><span class="status-badge {{ in_array($payout->status, ['cash_return_pending', 'logistics_return_verification'], true) ? 'badge-warning' : 'badge-info' }}">{{ str($payout->status)->replace('_', ' ')->title() }}</span>
-                        @if($payout->riderProfile?->user)<small class="table-subline">Rider: {{ $payout->riderProfile->user->name }}</small>@endif
-                    </td>
-                    <td>
-                        @if($payout->status === 'awaiting_logistics_receipt')
-                            <form method="POST" action="{{ route('logistics.cash.refunds.receive', $payout) }}" class="cash-action-form">
+    <div class="cash-custody-card-list" role="list" aria-label="Refund cash assignments" data-refund-cash-list data-status-url="{{ route('logistics.cash.refunds.status-version') }}" data-status-version="{{ $refundCashStatusVersion }}">
+        @forelse($refundPayouts as $payout)
+            @php
+                $refundStatusLabel = str($payout->status)->replace('_', ' ')->title();
+                $refundStatusWarning = in_array($payout->status, ['cash_return_pending', 'logistics_return_verification'], true);
+            @endphp
+            <article class="cash-custody-card" role="listitem">
+                <section class="cash-custody-card-column" aria-labelledby="refund-cash-details-{{ $payout->id }}">
+                    <div class="cash-custody-card-heading">
+                        <span class="cash-custody-card-icon" aria-hidden="true"><i data-lucide="file-text"></i></span>
+                        <div>
+                            <h3 id="refund-cash-details-{{ $payout->id }}">Cash payout details</h3>
+                            <p>Reference information for this refund.</p>
+                        </div>
+                    </div>
+                    <dl class="cash-custody-reference-list">
+                        <div class="cash-custody-reference-item">
+                            <dt>Cash payout ID</dt>
+                            <dd><code>{{ $payout->payout_no }}</code><button class="cash-custody-copy" type="button" data-copy-cash-reference data-copy-value="{{ $payout->payout_no }}" aria-label="Copy cash payout ID"><i data-lucide="copy" aria-hidden="true"></i></button></dd>
+                        </div>
+                        <div class="cash-custody-reference-item">
+                            <dt>Refund ID</dt>
+                            <dd><code>{{ $payout->refund?->refund_no ?? 'Not available' }}</code>@if($payout->refund?->refund_no)<button class="cash-custody-copy" type="button" data-copy-cash-reference data-copy-value="{{ $payout->refund->refund_no }}" aria-label="Copy refund ID"><i data-lucide="copy" aria-hidden="true"></i></button>@endif</dd>
+                        </div>
+                        <div class="cash-custody-reference-item">
+                            <dt>Buyer</dt>
+                            <dd>{{ $payout->refund?->order?->buyer?->name ?? 'Buyer' }}</dd>
+                        </div>
+                        <div class="cash-custody-reference-item">
+                            <dt>Buyer acknowledgment reference</dt>
+                            <dd>@if($payout->acknowledgment_reference)<code>{{ $payout->acknowledgment_reference }}</code><button class="cash-custody-copy" type="button" data-copy-cash-reference data-copy-value="{{ $payout->acknowledgment_reference }}" aria-label="Copy Buyer acknowledgment reference"><i data-lucide="copy" aria-hidden="true"></i></button>@else<span class="empty-copy">Generated when Rider is assigned</span>@endif</dd>
+                        </div>
+                        <div class="cash-custody-reference-item">
+                            <dt>Finance handoff reference</dt>
+                            <dd>@if($payout->finance_issue_reference)<code>{{ $payout->finance_issue_reference }}</code><button class="cash-custody-copy" type="button" data-copy-cash-reference data-copy-value="{{ $payout->finance_issue_reference }}" aria-label="Copy Finance handoff reference"><i data-lucide="copy" aria-hidden="true"></i></button>@else<span class="empty-copy">Not recorded</span>@endif</dd>
+                        </div>
+                    </dl>
+                </section>
+
+                <section class="cash-custody-card-column" aria-labelledby="refund-cash-status-{{ $payout->id }}">
+                    <div class="cash-custody-card-heading">
+                        <span class="cash-custody-card-icon" aria-hidden="true"><i data-lucide="coins"></i></span>
+                        <div>
+                            <h3 id="refund-cash-status-{{ $payout->id }}">Amount &amp; status</h3>
+                            <p>Refund amount and current status.</p>
+                        </div>
+                    </div>
+                    <div class="cash-custody-amount-card">
+                        <span>Refund amount</span>
+                        <strong>₱{{ number_format((int) $payout->amount_minor / 100, 2) }}</strong>
+                        <i data-lucide="coins" aria-hidden="true"></i>
+                    </div>
+                    <div class="cash-custody-status-card">
+                        <span class="cash-custody-status-label">Status</span>
+                        <span class="status-badge {{ $refundStatusWarning ? 'badge-warning' : 'badge-info' }}">
+                            <i data-lucide="{{ $refundStatusWarning ? 'triangle-alert' : 'clock-3' }}" aria-hidden="true"></i>
+                            {{ $refundStatusLabel }}
+                        </span>
+                        @if($payout->riderProfile?->user)
+                            <small>Assigned Rider</small>
+                            <strong>{{ $payout->riderProfile->user->name }}</strong>
+                        @endif
+                    </div>
+                </section>
+
+                <section class="cash-custody-card-column cash-custody-card-action" aria-labelledby="refund-cash-action-{{ $payout->id }}">
+                    <div class="cash-custody-card-heading">
+                        <span class="cash-custody-card-icon" aria-hidden="true"><i data-lucide="shield-check"></i></span>
+                        <div>
+                            <h3 id="refund-cash-action-{{ $payout->id }}">Custody action</h3>
+                            <p>Confirm the cash handover using the receipt.</p>
+                        </div>
+                    </div>
+                    @if($payout->status === 'awaiting_logistics_receipt')
+                        <form method="POST" action="{{ route('logistics.cash.refunds.receive', $payout) }}" class="cash-action-form cash-custody-action-form">
+                            @csrf
+                            <label for="refund-cash-received-{{ $payout->id }}">Cash received <input id="refund-cash-received-{{ $payout->id }}" type="number" min="0.01" step="0.01" inputmode="decimal" name="actual_amount" value="{{ number_format((int) $payout->amount_minor / 100, 2, '.', '') }}" required></label>
+                            <label for="refund-cash-reference-{{ $payout->id }}">Receipt reference <input id="refund-cash-reference-{{ $payout->id }}" type="text" name="reference" maxlength="150" placeholder="Enter receipt reference" required></label>
+                            <button class="button button-primary" type="submit"><i data-lucide="check" aria-hidden="true"></i>Acknowledge cash <i data-lucide="arrow-right" aria-hidden="true"></i></button>
+                        </form>
+                    @elseif($payout->status === 'awaiting_rider_assignment')
+                        @if($riders->isNotEmpty())
+                            <form method="POST" action="{{ route('logistics.cash.refunds.assign', $payout) }}" class="cash-action-form cash-custody-action-form">
                                 @csrf
-                                <label>Cash received <input type="number" min="0.01" step="0.01" inputmode="decimal" name="actual_amount" value="{{ number_format((int) $payout->amount_minor / 100, 2, '.', '') }}" required></label>
-                                <label>Receipt reference <input type="text" name="reference" maxlength="150" required></label>
-                                <button class="button button-primary button-small" type="submit">Acknowledge cash</button>
-                            </form>
-                        @elseif($payout->status === 'awaiting_rider_assignment')
-                            @if($riders->isNotEmpty())
-                                <form method="POST" action="{{ route('logistics.cash.refunds.assign', $payout) }}" class="cash-action-form">
-                                    @csrf
-                                    <label>Approved available Rider
-                                        <select name="rider_user_id" required>
-                                            <option value="">Select Rider</option>
-                                            @foreach($riders as $rider)<option value="{{ $rider->user_id }}">{{ $rider->user?->name }} · {{ $rider->user?->email }}</option>@endforeach
-                                        </select>
-                                    </label>
-                                    <button class="button button-primary button-small" type="submit">Assign refund cash</button>
-                                </form>
-                            @else
-                                <span class="empty-copy">No approved Rider is available for this cash delivery.</span>
-                            @endif
-                        @elseif(in_array($payout->status, ['assigned_to_rider', 'cash_with_rider', 'out_for_delivery'], true))
-                            @if($payout->acknowledgment_reference)
-                                <small class="table-subline">Print this form. Give it to the assigned Rider with the cash before they leave.</small>
-                                <a class="button button-secondary button-small" href="{{ route('logistics.cash.refunds.acknowledgment-slip', $payout) }}" target="_blank" rel="noopener">
-                                    <i data-lucide="printer" aria-hidden="true"></i>
-                                    Print / Save as PDF
-                                </a>
-                            @else
-                                <form method="POST" action="{{ route('logistics.cash.refunds.acknowledgment-slip.prepare', $payout) }}" class="cash-action-form">
-                                    @csrf
-                                    <small class="table-subline">Create the paper form before the Rider leaves.</small>
-                                    <button class="button button-primary button-small" type="submit">Prepare acknowledgment slip</button>
-                                </form>
-                            @endif
-                        @elseif($payout->status === 'logistics_return_verification')
-                            <form method="POST" action="{{ route('logistics.cash.refunds.confirm-return', $payout) }}" class="cash-action-form">
-                                @csrf
-                                <label>Cash physically returned <input type="number" min="0.01" step="0.01" inputmode="decimal" name="actual_amount" value="{{ number_format((int) $payout->amount_minor / 100, 2, '.', '') }}" required></label>
-                                <label>Logistics receipt reference <input type="text" name="reference" maxlength="150" required></label>
-                                <button class="button button-primary button-small" type="submit">Confirm cash return</button>
-                            </form>
-                        @elseif($payout->status === 'delivered_pending_verification')
-                            <small class="table-subline">Check that the number above matches the number on the Buyer's signed receipt.</small>
-                            <a class="button button-secondary button-small" href="{{ route('logistics.cash.refunds.acknowledgment', $payout) }}">Review signed acknowledgment</a>
-                            <form method="POST" action="{{ route('logistics.cash.refunds.verify-receipt', $payout) }}" class="cash-action-form">
-                                @csrf
-                                <label>Verification notes <textarea name="verification_note" minlength="5" maxlength="1000" required></textarea></label>
-                                <button class="button button-primary button-small" type="submit">Verify Buyer receipt</button>
+                                <label for="refund-cash-rider-{{ $payout->id }}">Approved available Rider
+                                    <select id="refund-cash-rider-{{ $payout->id }}" name="rider_user_id" required>
+                                        <option value="">Select Rider</option>
+                                        @foreach($riders as $rider)<option value="{{ $rider->user_id }}">{{ $rider->user?->name }} · {{ $rider->user?->email }}</option>@endforeach
+                                    </select>
+                                </label>
+                                <button class="button button-primary" type="submit"><i data-lucide="bike" aria-hidden="true"></i>Assign refund cash <i data-lucide="arrow-right" aria-hidden="true"></i></button>
                             </form>
                         @else
-                            @if($payout->cash_return_reference)<small class="table-subline">Rider return: {{ $payout->cash_return_reference }}</small>@endif
-                            @if($payout->logistics_cash_return_reference)<small class="table-subline">Logistics receipt: {{ $payout->logistics_cash_return_reference }}</small>@endif
-                            @if($payout->acknowledgment_reference)<small class="table-subline">Buyer acknowledgment: {{ $payout->acknowledgment_reference }}</small>@endif
-                            <span class="empty-copy">No action available at this custody step.</span>
+                            <p class="cash-custody-action-note">No approved Rider is available for this cash delivery.</p>
                         @endif
-                    </td>
-                </tr>
-            @empty
-                <tr><td colspan="4"><p class="empty-copy">No refund cash assignments are active.</p></td></tr>
-            @endforelse
-            </tbody>
-        </table>
+                    @elseif(in_array($payout->status, ['assigned_to_rider', 'cash_with_rider', 'out_for_delivery'], true))
+                        @if($payout->acknowledgment_reference)
+                            <p class="cash-custody-action-note">Print this form and give it to the assigned Rider with the cash before they leave.</p>
+                            <a class="button button-secondary cash-custody-action-button" href="{{ route('logistics.cash.refunds.acknowledgment-slip', $payout) }}" target="_blank" rel="noopener">
+                                <i data-lucide="printer" aria-hidden="true"></i>Print / Save as PDF
+                            </a>
+                        @else
+                            <form method="POST" action="{{ route('logistics.cash.refunds.acknowledgment-slip.prepare', $payout) }}" class="cash-action-form cash-custody-action-form">
+                                @csrf
+                                <p class="cash-custody-action-note">Create the paper form before the Rider leaves.</p>
+                                <button class="button button-primary" type="submit"><i data-lucide="file-plus-2" aria-hidden="true"></i>Prepare acknowledgment slip</button>
+                            </form>
+                        @endif
+                    @elseif($payout->status === 'logistics_return_verification')
+                        <form method="POST" action="{{ route('logistics.cash.refunds.confirm-return', $payout) }}" class="cash-action-form cash-custody-action-form">
+                            @csrf
+                            <label for="refund-cash-returned-{{ $payout->id }}">Cash physically returned <input id="refund-cash-returned-{{ $payout->id }}" type="number" min="0.01" step="0.01" inputmode="decimal" name="actual_amount" value="{{ number_format((int) $payout->amount_minor / 100, 2, '.', '') }}" required></label>
+                            <label for="refund-cash-return-reference-{{ $payout->id }}">Logistics receipt reference <input id="refund-cash-return-reference-{{ $payout->id }}" type="text" name="reference" maxlength="150" required></label>
+                            <button class="button button-primary" type="submit"><i data-lucide="check" aria-hidden="true"></i>Confirm cash return <i data-lucide="arrow-right" aria-hidden="true"></i></button>
+                        </form>
+                    @elseif($payout->status === 'delivered_pending_verification')
+                        <p class="cash-custody-action-note">Check that the number above matches the number on the Buyer's signed receipt.</p>
+                        <a class="button button-secondary cash-custody-action-button" href="{{ route('logistics.cash.refunds.acknowledgment', $payout) }}"><i data-lucide="file-check-2" aria-hidden="true"></i>Review signed acknowledgment</a>
+                        <form method="POST" action="{{ route('logistics.cash.refunds.verify-receipt', $payout) }}" class="cash-action-form cash-custody-action-form">
+                            @csrf
+                            <label for="refund-cash-verification-{{ $payout->id }}">Verification notes <textarea id="refund-cash-verification-{{ $payout->id }}" name="verification_note" minlength="5" maxlength="1000" required></textarea></label>
+                            <button class="button button-primary" type="submit"><i data-lucide="shield-check" aria-hidden="true"></i>Verify Buyer receipt <i data-lucide="arrow-right" aria-hidden="true"></i></button>
+                        </form>
+                    @else
+                        @if($payout->cash_return_reference)<p class="cash-custody-action-note">Rider return: {{ $payout->cash_return_reference }}</p>@endif
+                        @if($payout->logistics_cash_return_reference)<p class="cash-custody-action-note">Logistics receipt: {{ $payout->logistics_cash_return_reference }}</p>@endif
+                        <p class="cash-custody-action-note">No action is available at this custody step.</p>
+                    @endif
+                </section>
+            </article>
+        @empty
+            <div class="cash-custody-assignment-empty"><i data-lucide="wallet-cards" aria-hidden="true"></i><strong>No refund cash assignments are active.</strong></div>
+        @endforelse
     </div>
 </section>
     </div>

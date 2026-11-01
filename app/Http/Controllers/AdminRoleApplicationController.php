@@ -6,18 +6,16 @@ use App\Enums\AccountStatus;
 use App\Enums\UserRole;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 
 class AdminRoleApplicationController extends Controller
 {
-    public function buyers(): View
+    public function buyers(): RedirectResponse
     {
-        return $this->renderRoleQueue(
-            role: UserRole::Buyer->value,
-            view: 'admin.registrations.buyers'
-        );
+        return redirect()->route('admin.registrations');
     }
 
     public function sellers(): View
@@ -165,7 +163,7 @@ class AdminRoleApplicationController extends Controller
     private function notifications(): array
     {
         $pendingCount = User::query()
-            ->whereIn('role', UserRole::adminApproved())
+            ->whereIn('role', UserRole::adminReviewQueueRoles())
             ->whereIn('status', [
                 AccountStatus::Pending->value,
                 AccountStatus::NeedsRevision->value,

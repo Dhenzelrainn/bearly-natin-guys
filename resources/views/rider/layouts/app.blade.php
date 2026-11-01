@@ -4,6 +4,7 @@
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><meta name="csrf-token" content="{{ csrf_token() }}">
     <title>@yield('title','Rider Center') | Bearly Marketplace</title>
     <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    @include('partials.theme-preload')
     @vite(['resources/css/rider.css','resources/css/messages-standard.css','resources/css/maps.css','resources/css/waybill-scanner.css','resources/js/messages-standard.js','resources/js/realtime.js','resources/js/waybill-scanner.js','resources/js/destination-map.js','resources/js/rider.js'])
     @include('partials.session-safety')
     @stack('styles')
@@ -18,12 +19,16 @@
         </div>
         <nav class="ops-nav">
             <p class="ops-nav-label">Workspace</p>
-            <a href="{{ route('rider.dashboard.pickups') }}" class="ops-nav-link {{ request()->routeIs('rider.dashboard.pickups','rider.orders.pickup*') ? 'is-active' : '' }}"><i data-lucide="package-plus"></i><span>Items for Pickup</span></a>
-            <a href="{{ route('rider.dashboard.deliveries') }}" class="ops-nav-link {{ request()->routeIs('rider.dashboard.deliveries','rider.orders.delivery*') ? 'is-active' : '' }}"><i data-lucide="bike"></i><span>Items for Delivery</span></a>
-            <a href="{{ route('rider.refund-cash.index') }}" class="ops-nav-link {{ request()->routeIs('rider.refund-cash.*') ? 'is-active' : '' }}"><i data-lucide="hand-coins"></i><span>Cash custody</span></a>
-            <p class="ops-nav-label">Finance & records</p>
-            <a href="{{ route('rider.earnings.index') }}" class="ops-nav-link {{ request()->routeIs('rider.earnings.*') ? 'is-active' : '' }}"><i data-lucide="wallet-cards"></i><span>Earnings</span></a>
-            <a href="{{ route('rider.history.index') }}" class="ops-nav-link {{ request()->routeIs('rider.history.*') ? 'is-active' : '' }}"><i data-lucide="history"></i><span>Delivery History</span></a>
+            @if(auth()->user()?->riderProfile?->work_type === \App\Enums\RiderWorkType::Courier->value)
+                <a href="{{ route('rider.courier.dashboard') }}" class="ops-nav-link {{ request()->routeIs('rider.courier.*') ? 'is-active' : '' }}"><i data-lucide="truck"></i><span>Courier runs</span></a>
+            @else
+                <a href="{{ route('rider.dashboard.pickups') }}" class="ops-nav-link {{ request()->routeIs('rider.dashboard.pickups','rider.orders.pickup*') ? 'is-active' : '' }}"><i data-lucide="package-plus"></i><span>Items for Pickup</span></a>
+                <a href="{{ route('rider.dashboard.deliveries') }}" class="ops-nav-link {{ request()->routeIs('rider.dashboard.deliveries','rider.orders.delivery*') ? 'is-active' : '' }}"><i data-lucide="bike"></i><span>Items for Delivery</span></a>
+                <a href="{{ route('rider.refund-cash.index') }}" class="ops-nav-link {{ request()->routeIs('rider.refund-cash.*') ? 'is-active' : '' }}"><i data-lucide="hand-coins"></i><span>Cash custody</span></a>
+                <p class="ops-nav-label">Finance & records</p>
+                <a href="{{ route('rider.earnings.index') }}" class="ops-nav-link {{ request()->routeIs('rider.earnings.*') ? 'is-active' : '' }}"><i data-lucide="wallet"></i><span>Earnings</span></a>
+                <a href="{{ route('rider.history.index') }}" class="ops-nav-link {{ request()->routeIs('rider.history.*') ? 'is-active' : '' }}"><i data-lucide="history"></i><span>Delivery History</span></a>
+            @endif
             <p class="ops-nav-label">Support</p>
             <a href="{{ route('rider.messages.index') }}" class="ops-nav-link {{ request()->routeIs('rider.messages.*') ? 'is-active' : '' }}"><i data-lucide="message-circle"></i><span>Messages</span></a>
             <a href="{{ route('notifications.center') }}" class="ops-nav-link {{ request()->routeIs('notifications.center') ? 'is-active' : '' }}"><i data-lucide="bell"></i><span>Notifications</span></a>
@@ -39,6 +44,7 @@
         <header class="ops-topbar">
             <div class="ops-topbar-left"><button class="icon-button mobile-menu" type="button" data-mobile-menu aria-label="Open navigation"><i data-lucide="menu"></i></button><h1>@yield('page-title','Rider Center')</h1></div>
             <div class="ops-topbar-actions">
+                @include('partials.theme-toggle')
                 <div class="popover-wrap" data-notification-center data-notification-skin="rider">
                     <button class="icon-button notification-trigger" type="button" data-popover-toggle="notifications" aria-label="Open notifications"><i data-lucide="bell"></i><span class="notification-dot" data-notification-badge="dot" hidden></span></button>
                     <div class="topbar-popover notification-popover" data-popover="notifications" hidden>

@@ -36,6 +36,18 @@ import { galleryIndexForDirection, gallerySwipeDirection } from './product-galle
   const gallery = root.querySelector('.detail-primary-image');
   const thumbnails = [...root.querySelectorAll('[data-detail-thumbnail]')];
   const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+  const checkoutBackTarget = () => {
+    const productUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    try {
+      const referrer = new URL(document.referrer);
+      if (referrer.origin === window.location.origin && !/^\/checkout(?:\/|$)/.test(referrer.pathname)) {
+        return `${referrer.pathname}${referrer.search}${referrer.hash}`;
+      }
+    } catch {
+      // If the referrer is unavailable, fall back to the product page.
+    }
+    return productUrl;
+  };
   let selectedVariantId = Number(select?.value || variants[0]?.id || 0);
   let busy = false;
   let activeFilter = 'all';
@@ -336,6 +348,7 @@ import { galleryIndexForDirection, gallerySwipeDirection } from './product-galle
       const checkout = new URL(data.checkoutUrl, window.location.origin);
       if (checkout.origin !== window.location.origin) throw new Error('Checkout must remain on Bearly.');
       checkout.searchParams.set('item', String(cartItemId));
+      checkout.searchParams.set('return_to', checkoutBackTarget());
       window.location.assign(checkout.toString());
     } catch (error) {
       setToast(error.message || 'Unable to prepare checkout.', true);

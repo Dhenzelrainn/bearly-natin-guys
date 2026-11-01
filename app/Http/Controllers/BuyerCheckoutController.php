@@ -18,6 +18,7 @@ class BuyerCheckoutController extends Controller
     public function index(Request $request): View
     {
         $buyer = $request->user();
+        $checkoutBackTarget = $this->checkoutBackTarget($request);
         $name = trim((string) ($buyer->name ?: trim(implode(' ', array_filter([
             $buyer->first_name,
             $buyer->middle_initial,
@@ -28,7 +29,68 @@ class BuyerCheckoutController extends Controller
             'buyerName' => $name ?: 'Buyer',
             'buyerPhone' => (string) ($buyer->phone ?: $buyer->contact_number ?: ''),
             'checkoutRequestKey' => (string) Str::uuid(),
+            'checkoutBackUrl' => $checkoutBackTarget['checkoutBackUrl'],
+            'checkoutBackLabel' => $checkoutBackTarget['checkoutBackLabel'],
         ]);
+    }
+
+    /** @return array{checkoutBackUrl: string, checkoutBackLabel: string} */
+    private function checkoutBackTarget(Request $request): array
+    {
+        foreach ([$request->query('return_to'), $request->headers->get('referer')] as $candidate) {
+            if (! is_string($candidate) || trim($candidate) === '' || preg_match('/[\x00-\x20\x7f]/', $candidate)) {
+                continue;
+            }
+
+            $parsed = parse_url($candidate);
+            if (! is_array($parsed)) {
+                continue;
+            }
+
+            $scheme = strtolower((string) ($parsed['scheme'] ?? ''));
+            if ($scheme !== '' && ! in_array($scheme, ['http', 'https'], true)) {
+                continue;
+            }
+
+            $host = $parsed['host'] ?? null;
+            if ($host !== null && strcasecmp((string) $host, $request->getHost()) !== 0) {
+                continue;
+            }
+
+            $path = (string) ($parsed['path'] ?? '/');
+            if ($path === '' || ! str_starts_with($path, '/') || str_starts_with($path, '//')) {
+                continue;
+            }
+
+            if (preg_match('#^/checkout(?:/|$)#', $path) === 1) {
+                continue;
+            }
+
+            $url = url($path)
+                .(isset($parsed['query']) ? '?'.$parsed['query'] : '')
+                .(isset($parsed['fragment']) ? '#'.$parsed['fragment'] : '');
+
+            $homePath = parse_url(route('home'), PHP_URL_PATH) ?: '/home';
+            $cartPath = parse_url(route('cart.view'), PHP_URL_PATH) ?: '/cart';
+            $label = match (true) {
+                $path === $cartPath => 'Back to Cart',
+                $path === $homePath, $path === '/' => 'Back to Home',
+                preg_match('#^/products/[^/]+$#', $path) === 1 => 'Back to Product',
+                str_starts_with($path, '/products') => 'Back to Products',
+                str_starts_with($path, '/profile') => 'Back to Profile',
+                default => 'Back',
+            };
+
+            return [
+                'checkoutBackUrl' => $url,
+                'checkoutBackLabel' => $label,
+            ];
+        }
+
+        return [
+            'checkoutBackUrl' => route('home'),
+            'checkoutBackLabel' => 'Back to Home',
+        ];
     }
 
     public function quote(Request $request, CheckoutService $checkout): JsonResponse

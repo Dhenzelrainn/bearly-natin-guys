@@ -215,7 +215,7 @@
 @if ($reportKey === 'refund')
     <section class="panel">
         <div class="panel-heading"><div><span class="eyebrow">Refund report</span><h2>Refund amounts and resolution status</h2><p>Refund cases created in {{ $dateRange['label'] }}.</p></div><a class="text-button" href="{{ route('admin.compliance.returns-refunds') }}">Open returns &amp; refunds</a></div>
-        <div class="table-wrap"><table class="admin-table" data-report-export-table><thead><tr><th>Case</th><th>Order</th><th>Seller</th><th class="align-right">Amount</th><th>Financially responsible</th><th>Seller recovery balance</th><th>Status</th></tr></thead><tbody>
+        <div class="table-wrap"><table class="admin-table" data-report-export-table><thead><tr><th>Case</th><th>Order</th><th>Seller</th><th class="align-right">Amount</th><th>Financially responsible</th><th>Seller recovery components</th><th>Status</th></tr></thead><tbody>
             @forelse ($refundRows as $row)
                 <tr><td><strong>{{ $row['case'] }}</strong></td><td>{{ $row['order'] }}</td><td>{{ $row['seller'] }}</td><td class="align-right">{{ $row['amount'] }}</td><td>{{ $row['responsible_party'] }}</td><td>{{ $row['seller_recovery'] }}</td><td><span class="status-badge {{ $row['status'] === 'Completed' ? 'badge-success' : ($row['status'] === 'Approved' ? 'badge-info' : 'badge-warning') }}">{{ $row['status'] }}</span></td></tr>
             @empty

@@ -15,7 +15,7 @@
     'headerSearchAction' => route('products.index'),
 ])
 <main class="checkout-shell">
-    <a class="checkout-back" href="{{ route('products.index') }}"><span class="material-symbols-outlined">arrow_back</span> Continue Shopping</a>
+    <a class="checkout-back" href="{{ route('home') }}"><span class="material-symbols-outlined">arrow_back</span> Continue Shopping</a>
     @if (session('success'))<p class="checkout-success" role="status">{{ session('success') }}</p>@endif
     <section class="checkout-card confirmation-card">
         <span class="material-symbols-outlined" aria-hidden="true">{{ $order->status === 'cancelled' ? 'cancel' : ($order->status === 'fulfilled' ? 'verified' : 'check_circle') }}</span>

@@ -3,6 +3,7 @@
 namespace Tests\Feature\Finance;
 
 use App\Enums\UserRole;
+use App\Events\LogisticsRefundCashPayoutUpdated;
 use App\Models\AuditLog;
 use App\Models\LogisticsProfile;
 use App\Models\Order;
@@ -27,6 +28,7 @@ use App\Services\SellerWalletService;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
@@ -85,8 +87,17 @@ class CodCashAndRefundCashWorkflowTest extends TestCase
         $this->actingAs($scenario['provider_user'])
             ->get(route('logistics.cash.index'))
             ->assertOk()
-            ->assertSee('Count the cash. Enter the amount you received.')
-            ->assertSee('Bearly creates this number after you confirm the Rider');
+            ->assertSee('cash-custody-card-list', false)
+            ->assertSee(route('logistics.cash.refunds.status-version'), false)
+            ->assertSee('data-status-version=', false)
+            ->assertSee('cash-custody-card', false)
+            ->assertSee('Collection details')
+            ->assertSee('Amount &amp; status', false)
+            ->assertSee('Custody action')
+            ->assertSee('COD collection ID')
+            ->assertSee('data-copy-cash-reference', false)
+            ->assertSee('Count the cash and enter the amount received.')
+            ->assertSee('Generated after cash is acknowledged');
 
         $acknowledgment = $this->actingAs($scenario['provider_user'])
             ->post(route('logistics.cash.cod.receive', $collection), [
@@ -114,7 +125,7 @@ class CodCashAndRefundCashWorkflowTest extends TestCase
             ->assertDontSee('Record Finance remittance')
             ->assertSee('Expected amount')
             ->assertSee('Collected amount')
-            ->assertSee('Rider-to-Logistics reference:')
+            ->assertSee('Rider-to-Logistics reference')
             ->assertSee($handoffReference)
             ->assertSee('Bearly creates a unique L2F (Logistics-to-Finance) reference.')
             ->assertDontSee('Finance handoff reference')
@@ -589,6 +600,11 @@ class CodCashAndRefundCashWorkflowTest extends TestCase
         $this->assertSame(500, (int) $collection->discrepancy_minor);
         $this->assertSame(20500, (int) $collection->amount_collected_minor);
         $this->assertSame('pending', $scenario['payment']->fresh()->status);
+        $this->actingAs($scenario['provider_user'])
+            ->get(route('logistics.cash.index'))
+            ->assertOk()
+            ->assertSee('Over ₱5.00')
+            ->assertSee('Disputed');
     }
 
     public function test_unpaid_cod_refund_cannot_enter_cash_custody(): void
@@ -620,6 +636,11 @@ class CodCashAndRefundCashWorkflowTest extends TestCase
         $this->assertSame('disputed', $collection->status);
         $this->assertSame(-2500, (int) $collection->discrepancy_minor);
         $this->assertSame('pending', $scenario['payment']->fresh()->status);
+        $this->actingAs($scenario['provider_user'])
+            ->get(route('logistics.cash.index'))
+            ->assertOk()
+            ->assertSee('Short ₱25.00')
+            ->assertSee('Disputed');
 
         $otherProvider = $this->provider('different provider');
         $this->actingAs($otherProvider['user'])
@@ -697,6 +718,15 @@ class CodCashAndRefundCashWorkflowTest extends TestCase
         ]);
 
         $this->actingAs($this->admin)
+            ->get(route('admin.compliance.returns-refunds'))
+            ->assertOk()
+            ->assertSee('Cash refund in progress')
+            ->assertSee('Awaiting Logistics Receipt')
+            ->assertSee('Logistics must acknowledge the physical cash handoff.')
+            ->assertSee(route('admin.payments').'#refund-cash-assignments', false)
+            ->assertDontSee(route('admin.compliance.returns-refunds.record-payout', $refund), false);
+
+        $this->actingAs($this->admin)
             ->post(route('admin.payments.refunds.issue-cash', $refund), ['cash_issued_confirmed' => '1'])
             ->assertRedirect()
             ->assertSessionHasNoErrors();
@@ -707,10 +737,15 @@ class CodCashAndRefundCashWorkflowTest extends TestCase
         $this->actingAs($scenario['provider_user'])
             ->get(route('logistics.cash.index'))
             ->assertOk()
-            ->assertSee('cash-custody-table-wrap', false)
-            ->assertSee('cash-custody-table--refund', false)
+            ->assertSee('cash-custody-card-list', false)
+            ->assertSee(route('logistics.cash.refunds.status-version'), false)
+            ->assertSee('data-status-version=', false)
+            ->assertSee('cash-custody-card', false)
             ->assertSee('Cash payout ID')
             ->assertSee('Refund ID')
+            ->assertSee('Amount &amp; status', false)
+            ->assertSee('Custody action')
+            ->assertSee('data-copy-cash-reference', false)
             ->assertSee('Finance handoff reference')
             ->assertSee($payout->finance_issue_reference);
 
@@ -902,6 +937,13 @@ class CodCashAndRefundCashWorkflowTest extends TestCase
             ->assertSessionHas('success', fn (string $message): bool => str_contains($message, 'form provided by Logistics'));
         $this->assertSame($secondReference, $payout->fresh()->acknowledgment_reference);
         $this->assertNotSame($firstReference, $secondReference);
+        $versionBeforeBuyerReceipt = $this->actingAs($scenario['provider_user'])
+            ->getJson(route('logistics.cash.refunds.status-version'))
+            ->assertOk()
+            ->assertJsonStructure(['data' => ['version']])
+            ->json('data.version');
+        Event::fake([LogisticsRefundCashPayoutUpdated::class]);
+
         $this->actingAs($secondRider)
             ->post(route('rider.refund-cash.deliver', $payout), [
                 'actual_amount' => '50.00',
@@ -914,6 +956,21 @@ class CodCashAndRefundCashWorkflowTest extends TestCase
             ->assertRedirect()
             ->assertSessionHasNoErrors();
 
+        Event::assertDispatched(
+            LogisticsRefundCashPayoutUpdated::class,
+            fn (LogisticsRefundCashPayoutUpdated $event): bool => $event->logisticsUserId === (int) $scenario['provider_user']->id
+                && $event->payoutId === (int) $payout->id
+                && $event->status === 'delivered_pending_verification',
+        );
+        $versionAfterBuyerReceipt = $this->actingAs($scenario['provider_user'])
+            ->getJson(route('logistics.cash.refunds.status-version'))
+            ->assertOk()
+            ->json('data.version');
+        $this->assertNotSame($versionBeforeBuyerReceipt, $versionAfterBuyerReceipt);
+        $this->actingAs($secondRider)
+            ->getJson(route('logistics.cash.refunds.status-version'))
+            ->assertForbidden();
+
         $this->assertSame('delivered_pending_verification', $payout->fresh()->status);
         $this->assertSame($secondReference, $payout->fresh()->acknowledgment_reference);
         $this->assertSame('pending', $refund->fresh()->status);
@@ -923,6 +980,7 @@ class CodCashAndRefundCashWorkflowTest extends TestCase
         $this->actingAs($scenario['provider_user'])
             ->get(route('logistics.cash.index'))
             ->assertOk()
+            ->assertSee('Delivered Pending Verification')
             ->assertSee('Buyer acknowledgment reference')
             ->assertSee("Check that the number above matches the number on the Buyer's signed receipt.", false)
             ->assertSee($secondReference);

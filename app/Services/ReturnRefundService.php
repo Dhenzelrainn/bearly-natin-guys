@@ -3,7 +3,10 @@
 namespace App\Services;
 
 use App\Enums\ReturnRequestStatus;
+use App\Enums\ReturnDeliveryMethod;
+use App\Enums\ShipmentStatus;
 use App\Enums\UserRole;
+use App\Events\SellerReturnStatusUpdated;
 use App\Models\Address;
 use App\Models\InventoryMovement;
 use App\Models\LogisticsProfile;
@@ -26,18 +29,24 @@ use App\Models\SellerOrder;
 use App\Models\SellerPayout;
 use App\Models\SellerRefundRecovery;
 use App\Models\SellerRefundRecoveryEvent;
+use App\Models\ShippingSettlement;
+use App\Models\SortingCenter;
 use App\Models\Shipment;
+use App\Models\ShipmentEvent;
 use App\Models\Store;
 use App\Models\User;
 use App\Models\Waybill;
 use App\Notifications\WorkflowNotification;
 use Carbon\CarbonImmutable;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 use Throwable;
 
 class ReturnRefundService
@@ -52,6 +61,7 @@ class ReturnRefundService
         private readonly NotificationService $notifications,
         private readonly SellerWalletService $wallets,
         private readonly PromotionService $promotions,
+        private readonly ShippingQuoteService $shippingQuotes,
     ) {}
 
     /** @return array<string, mixed> */
@@ -107,7 +117,61 @@ class ReturnRefundService
                 'missing_item' => 'Item missing from the parcel',
                 'other' => 'Other issue',
             ],
+            'dropoff_center' => $this->activeBuyerDropoffCenter($sellerOrder->order),
         ];
+    }
+
+    private function activeBuyerDropoffCenter(Order $order, bool $lock = false): ?SortingCenter
+    {
+        $cityCode = trim((string) $order->psgc_city_code);
+        if (! preg_match('/^\d{10}$/D', $cityCode)
+            || ! app(PostalCodeLookup::class)->findByCanonicalCityCode($cityCode)) {
+            $cityCode = app(PostalCodeLookup::class)->canonicalCityCode(
+                null,
+                (string) $order->province,
+                (string) $order->city_municipality,
+            ) ?? '';
+        }
+        if (! preg_match('/^\d{10}$/D', $cityCode)
+            || ! app(PostalCodeLookup::class)->findByCanonicalCityCode($cityCode)) {
+            return null;
+        }
+
+        $providerQuery = LogisticsProfile::query()
+            ->where('psgc_city_code', $cityCode)
+            ->where('status', 'active')
+            ->whereHas('sortingCenters', fn ($query) => $query
+                ->where('status', 'active')
+                ->whereHas('address', fn ($address) => $address->where('psgc_city_code', $cityCode)))
+            ->whereHas('user', fn ($query) => $query
+                ->where('status', 'active')
+                ->where(fn ($roles) => $roles
+                    ->where('role', UserRole::Logistics->value)
+                    ->orWhereHas('roles', fn ($roleQuery) => $roleQuery
+                        ->where('roles.name', UserRole::Logistics->value))))
+            ->orderBy('id');
+        if ($lock) {
+            $providerQuery->lockForUpdate();
+        }
+        $provider = $providerQuery->first();
+        if (! $provider) {
+            return null;
+        }
+
+        $centerQuery = SortingCenter::query()
+            ->where('logistics_profile_id', $provider->id)
+            ->where('status', 'active')
+            ->whereHas('address', fn ($query) => $query->where('psgc_city_code', $cityCode))
+            ->with('address');
+        if ($lock) {
+            $centerQuery->lockForUpdate();
+        }
+        $center = $centerQuery->orderBy('id')->first();
+        if (! $center?->address || trim((string) $center->address->psgc_city_code) !== $cityCode) {
+            return null;
+        }
+
+        return $center;
     }
 
     public function canRequest(User $buyer, SellerOrder $sellerOrder): bool
@@ -137,6 +201,7 @@ class ReturnRefundService
         string $reasonCode,
         ?string $buyerNote,
         array $evidenceFiles,
+        ?string $returnDeliveryMethod = null,
     ): ReturnRequest {
         $storedPaths = [];
 
@@ -149,6 +214,7 @@ class ReturnRefundService
                 $reasonCode,
                 $buyerNote,
                 $evidenceFiles,
+                $returnDeliveryMethod,
                 &$storedPaths,
             ): ReturnRequest {
                 $sellerOrderStub = SellerOrder::query()
@@ -176,6 +242,27 @@ class ReturnRefundService
 
                 if (! in_array($requestType, ['return_refund', 'refund_only'], true)) {
                     throw ValidationException::withMessages(['request_type' => 'Choose a valid request type.']);
+                }
+
+                if ($requestType === 'return_refund') {
+                    $returnDeliveryMethod = $returnDeliveryMethod ?: ReturnDeliveryMethod::RiderPickup->value;
+                    if (! in_array($returnDeliveryMethod, array_map(
+                        static fn (ReturnDeliveryMethod $method): string => $method->value,
+                        ReturnDeliveryMethod::cases(),
+                    ), true)) {
+                        throw ValidationException::withMessages(['return_delivery_method' => 'Choose Rider pickup or Buyer drop-off.']);
+                    }
+                    if ($returnDeliveryMethod === ReturnDeliveryMethod::BuyerDropoff->value
+                        && ! $this->activeBuyerDropoffCenter($order)) {
+                        throw ValidationException::withMessages([
+                            'return_delivery_method' => 'Buyer drop-off is unavailable because there is no active Logistics Sorting Center in the order city. Choose Rider pickup instead.',
+                        ]);
+                    }
+                } else {
+                    if (filled($returnDeliveryMethod)) {
+                        throw ValidationException::withMessages(['return_delivery_method' => 'A delivery method is only available for a physical return.']);
+                    }
+                    $returnDeliveryMethod = null;
                 }
 
                 if (! in_array($reasonCode, [
@@ -265,6 +352,7 @@ class ReturnRefundService
                     'buyer_id' => $buyer->id,
                     'store_id' => $sellerOrder->store_id,
                     'request_type' => $requestType,
+                    'return_delivery_method' => $returnDeliveryMethod,
                     'reason_code' => $reasonCode,
                     'buyer_note' => filled($buyerNote) ? trim((string) $buyerNote) : null,
                     'status' => ReturnRequestStatus::AwaitingSeller->value,
@@ -495,14 +583,32 @@ class ReturnRefundService
             ]);
 
             $oldStatus = $returnRequest->status;
+            $dropoffDueAt = null;
+            $dropoffCenterId = null;
             if ($returnRequest->request_type === 'return_refund') {
-                $pickupRequest = $this->createReturnShipment($returnRequest, $order, $payment, $admin);
-                $newStatus = ReturnRequestStatus::ReturnPickupRequested->value;
-                $resolution = 'Admin approved the physical return and refund. Pickup is handled by the Logistics provider serving the Buyer’s city; a cross-city return is handed to the Seller-address city provider before final delivery. Refund waits for Seller inspection. '.ucfirst($financiallyResponsibleParty).' is financially responsible for the approved refund.';
+                $fulfillment = $this->createReturnShipment($returnRequest, $order, $admin);
+                $pickupRequest = $fulfillment['pickup_request'];
+                $method = $fulfillment['method'];
+                $dropoffCenterId = $fulfillment['dropoff_center']?->id;
+                $dropoffDueAt = $method === ReturnDeliveryMethod::BuyerDropoff->value
+                    ? CarbonImmutable::now(config('app.timezone'))->addDays(3)->endOfDay()
+                    : null;
+                $newStatus = $method === ReturnDeliveryMethod::BuyerDropoff->value
+                    ? ReturnRequestStatus::ReturnDropoffPending->value
+                    : ReturnRequestStatus::ReturnPickupRequested->value;
+                $resolution = $method === ReturnDeliveryMethod::BuyerDropoff->value
+                    ? 'Admin approved the physical return and refund. Drop off the sealed parcel at the active Logistics Sorting Center in the Buyer’s city by '.$dropoffDueAt->format('M j, Y').'; if missed, switch to Rider pickup. The reverse route then follows the current city-handoff and Seller delivery flow. Seller inspection is still required before the Buyer refund. '
+                        .ucfirst($financiallyResponsibleParty).' is financially responsible for the refund and return-delivery fee; Finance remits the return fee separately and it is not deducted from the Buyer refund.'
+                    : 'Admin approved the physical return and refund. The Buyer-city Logistics provider will arrange Rider pickup; a cross-city return is handed to the Seller-address city provider before final delivery. Seller inspection is still required before the Buyer refund. '
+                        .ucfirst($financiallyResponsibleParty).' is financially responsible for the refund and return-delivery fee; Finance remits the return fee separately and it is not deducted from the Buyer refund.';
                 $metadata = [
                     'refund_id' => $refund->id,
-                    'pickup_request_id' => $pickupRequest->id,
+                    'pickup_request_id' => $pickupRequest?->id,
                     'shipment_id' => $returnRequest->return_shipment_id,
+                    'return_delivery_method' => $method,
+                    'dropoff_due_at' => $dropoffDueAt?->toIso8601String(),
+                    'return_shipping_fee_minor' => (int) $fulfillment['shipment']->shipping_fee_minor,
+                    'return_shipping_quote' => $fulfillment['shipment']->return_shipping_quote,
                     'financially_responsible_party' => $financiallyResponsibleParty,
                     'financial_responsibility_reason' => trim($financialResponsibilityReason),
                 ];
@@ -522,6 +628,8 @@ class ReturnRefundService
                 'reviewed_at' => now(),
                 'resolved_at' => null,
                 'resolution' => $resolution,
+                'dropoff_due_at' => $dropoffDueAt,
+                'dropoff_sorting_center_id' => $dropoffCenterId,
             ]);
             $this->event($returnRequest, $admin, 'admin_approved', $oldStatus, $newStatus, $resolution, $metadata);
             $this->audit->record(
@@ -544,11 +652,15 @@ class ReturnRefundService
             $this->notifyBuyerOfReturnUpdate(
                 $returnRequest,
                 'Return approved',
-                "Your return {$returnRequest->return_no} was approved.",
+                $returnRequest->request_type === 'return_refund'
+                    ? ($returnRequest->return_delivery_method === ReturnDeliveryMethod::BuyerDropoff->value
+                        ? "Your return {$returnRequest->return_no} was approved. Drop off the parcel at the assigned Logistics center within 3 calendar days."
+                        : "Your return {$returnRequest->return_no} was approved. Logistics will arrange Rider pickup.")
+                    : "Your refund {$returnRequest->return_no} was approved.",
                 'success',
             );
 
-            return $returnRequest->fresh(['refunds', 'returnShipment.waybill', 'events']);
+            return $returnRequest->fresh(['refunds', 'returnShipment.waybill', 'returnShipment.logisticsProfile.sortingCenters.address', 'events']);
         }, attempts: 3);
     }
 
@@ -742,7 +854,7 @@ class ReturnRefundService
         $fromStatus = $returnRequest->status;
         $returnRequest->update([
             'status' => ReturnRequestStatus::AwaitingInspection->value,
-            'resolution' => 'Return parcel was delivered to the Seller. Seller inspection is required before payout.',
+            'resolution' => 'Return parcel was delivered to the Seller. Seller inspection is required before the Buyer refund; return-delivery settlement is handled separately.',
         ]);
         $this->event($returnRequest, $actor, 'return_delivered_to_seller', $fromStatus, ReturnRequestStatus::AwaitingInspection->value, 'Rider recorded delivery to the Seller.');
 
@@ -859,8 +971,12 @@ class ReturnRefundService
         ?int $cashPayoutId = null,
         ?string $completionReason = null,
     ): Refund {
-        if (! in_array($method, ['gcash', 'bank_transfer', 'cash', 'other'], true)) {
-            throw ValidationException::withMessages(['method' => 'Choose a valid manual payout method.']);
+        $isExternalPayoutMethod = in_array($method, ['gcash', 'bank_transfer', 'other'], true);
+        $isCustodyCashCompletion = $method === 'cash' && $cashPayoutId !== null;
+        if (! $isExternalPayoutMethod && ! $isCustodyCashCompletion) {
+            throw ValidationException::withMessages([
+                'method' => 'Choose GCash, bank transfer, or other for a completed external payout. Cash refunds must use the Finance-to-Logistics cash custody workflow.',
+            ]);
         }
         if (trim($reference) === '') {
             throw ValidationException::withMessages(['provider_reference' => 'Enter the external payout reference or receipt or acknowledgment number.']);
@@ -1079,6 +1195,7 @@ class ReturnRefundService
         string $note,
         ?int $sellerPayoutId,
         Request $request,
+        string $component = 'refund_recovery',
     ): SellerRefundRecovery {
         if ($amountMinor <= 0) {
             throw ValidationException::withMessages(['amount' => 'Enter a recovery amount greater than zero.']);
@@ -1086,11 +1203,14 @@ class ReturnRefundService
         if (! in_array($method, ['external_collection', 'seller_payout_offset'], true)) {
             throw ValidationException::withMessages(['method' => 'Choose a valid Seller recovery method.']);
         }
+        if (! in_array($component, ['refund_recovery', 'return_shipping_fee'], true)) {
+            throw ValidationException::withMessages(['component' => 'Choose a valid Seller recovery component.']);
+        }
         if (trim($reference) === '' || mb_strlen(trim($note)) < 5) {
             throw ValidationException::withMessages(['external_reference' => 'Enter the verified collection or payout reference and a short note.']);
         }
 
-        return DB::transaction(function () use ($admin, $refundId, $amountMinor, $method, $reference, $recoveredOn, $note, $sellerPayoutId, $request): SellerRefundRecovery {
+        return DB::transaction(function () use ($admin, $refundId, $amountMinor, $method, $reference, $recoveredOn, $note, $sellerPayoutId, $request, $component): SellerRefundRecovery {
             $stub = Refund::query()->findOrFail($refundId);
             Order::query()->whereKey($stub->order_id)->lockForUpdate()->firstOrFail();
             $refund = Refund::query()->whereKey($stub->id)->lockForUpdate()->firstOrFail();
@@ -1099,11 +1219,25 @@ class ReturnRefundService
                 : null;
             $recovery = SellerRefundRecovery::query()->where('refund_id', $refund->id)->lockForUpdate()->first();
 
-            if ($refund->status !== 'completed'
-                || $refund->financially_responsible_party !== 'seller'
+            $returnShippingSettlement = $component === 'return_shipping_fee' && $returnRequest
+                ? ShippingSettlement::query()
+                    ->where('return_request_id', $returnRequest->id)
+                    ->where('settlement_type', 'return')
+                    ->where('status', 'remitted')
+                    ->lockForUpdate()
+                    ->first()
+                : null;
+            $componentOutstandingMinor = $component === 'return_shipping_fee'
+                ? ($recovery?->returnShippingOutstandingMinor() ?? 0)
+                : ($recovery?->refundOutstandingMinor() ?? 0);
+
+            if ($refund->financially_responsible_party !== 'seller'
                 || ! $returnRequest
                 || ! $recovery
-                || ! in_array($recovery->status, ['pending', 'partially_recovered'], true)) {
+                || $recovery->status === 'voided'
+                || ($component === 'refund_recovery' && $refund->status !== 'completed')
+                || ($component === 'return_shipping_fee' && ! $returnShippingSettlement)
+                || $componentOutstandingMinor < 1) {
                 throw ValidationException::withMessages(['refund' => 'There is no outstanding Seller recovery to record for this refund.']);
             }
 
@@ -1135,15 +1269,12 @@ class ReturnRefundService
                 throw ValidationException::withMessages(['seller_payout_id' => 'A Seller payout may only be selected when recording an applied payout offset.']);
             }
 
-            $outstandingMinor = $recovery->outstandingMinor();
-            if ($outstandingMinor < 1) {
-                throw ValidationException::withMessages(['refund' => 'There is no outstanding Seller recovery to record for this refund.']);
-            }
-            if ($amountMinor > $outstandingMinor) {
-                throw ValidationException::withMessages(['amount' => 'The recovery amount cannot exceed the outstanding Seller balance of ₱'.number_format($outstandingMinor / 100, 2).'.']);
+            if ($amountMinor > $componentOutstandingMinor) {
+                throw ValidationException::withMessages(['amount' => 'The recovery amount cannot exceed this component’s outstanding Seller balance of ₱'.number_format($componentOutstandingMinor / 100, 2).'.']);
             }
             if (SellerRefundRecoveryEvent::query()
                 ->where('seller_refund_recovery_id', $recovery->id)
+                ->where('component', $component)
                 ->where('method', $method)
                 ->where('external_reference', trim($reference))
                 ->exists()) {
@@ -1151,12 +1282,32 @@ class ReturnRefundService
             }
 
             $previouslyRecoveredMinor = (int) $recovery->recovered_amount_minor;
-            $newRecoveredMinor = $previouslyRecoveredMinor + $amountMinor;
-            $newStatus = $newRecoveredMinor >= (int) $recovery->amount_minor ? 'recovered' : 'partially_recovered';
+            $newRefundRecoveredMinor = (int) $recovery->refund_recovered_minor;
+            $newReturnShippingRecoveredMinor = (int) $recovery->return_shipping_fee_recovered_minor;
+            if ($component === 'return_shipping_fee') {
+                $newReturnShippingRecoveredMinor += $amountMinor;
+            } else {
+                $newRefundRecoveredMinor += $amountMinor;
+            }
+            $newRecoveredMinor = $newRefundRecoveredMinor + $newReturnShippingRecoveredMinor;
+            $refundOutstandingMinor = max(
+                0,
+                (int) $recovery->refund_recovery_minor
+                    - $newRefundRecoveredMinor
+                    - (int) $recovery->refund_recovery_voided_minor,
+            );
+            $returnShippingOutstandingMinor = max(
+                0,
+                (int) $recovery->return_shipping_fee_minor - $newReturnShippingRecoveredMinor,
+            );
+            $newStatus = ($refundOutstandingMinor + $returnShippingOutstandingMinor) < 1
+                ? 'recovered'
+                : ($newRecoveredMinor > 0 ? 'partially_recovered' : 'pending');
             SellerRefundRecoveryEvent::query()->create([
                 'seller_refund_recovery_id' => $recovery->id,
                 'recorded_by' => $admin->id,
                 'seller_payout_id' => $sellerPayout?->id,
+                'component' => $component,
                 'method' => $method,
                 'amount_minor' => $amountMinor,
                 'external_reference' => trim($reference),
@@ -1165,21 +1316,25 @@ class ReturnRefundService
                 'created_at' => now(),
             ]);
             $recovery->update([
+                'refund_recovered_minor' => $newRefundRecoveredMinor,
+                'return_shipping_fee_recovered_minor' => $newReturnShippingRecoveredMinor,
                 'recovered_amount_minor' => $newRecoveredMinor,
                 'status' => $newStatus,
             ]);
 
-            $remainingMinor = (int) $recovery->amount_minor - $newRecoveredMinor;
+            $remainingMinor = $refundOutstandingMinor + $returnShippingOutstandingMinor;
+            $componentLabel = $component === 'return_shipping_fee' ? 'return-shipping fee' : 'refund proceeds';
             $this->event(
                 $returnRequest,
                 $admin,
                 'seller_recovery_recorded',
                 $returnRequest->status,
                 $returnRequest->status,
-                'Admin recorded a verified Seller '.str_replace('_', ' ', $method).' of ₱'.number_format($amountMinor / 100, 2).'. This manual recovery action did not perform an automatic payout deduction.',
+                'Admin recorded a verified Seller '.str_replace('_', ' ', $method).' of ₱'.number_format($amountMinor / 100, 2).' for the '.$componentLabel.'. This manual recovery action did not perform an automatic payout deduction.',
                 [
                     'refund_id' => $refund->id,
                     'seller_refund_recovery_id' => $recovery->id,
+                    'component' => $component,
                     'method' => $method,
                     'amount_minor' => $amountMinor,
                     'recovered_on' => $recoveredDate->toDateString(),
@@ -1194,10 +1349,11 @@ class ReturnRefundService
                 action: 'refund.seller_recovery_recorded',
                 module: 'Returns & Refunds',
                 subject: $refund,
-                description: "A verified legacy or external Seller refund recovery was recorded for {$refund->refund_no}; this action did not automatically deduct or transfer funds.",
+                description: "A verified Seller {$componentLabel} recovery was recorded for {$refund->refund_no}; this action did not automatically deduct or transfer funds.",
                 oldValues: ['recovered_amount_minor' => $previouslyRecoveredMinor],
                 newValues: [
                     'method' => $method,
+                    'component' => $component,
                     'amount_minor' => $amountMinor,
                     'external_reference' => trim($reference),
                     'recovered_on' => $recoveredDate->toDateString(),
@@ -1292,15 +1448,48 @@ class ReturnRefundService
             if ($sellerProfileId < 1) {
                 throw ValidationException::withMessages(['refund' => 'The Seller account is unavailable for recovery accounting.']);
             }
-            SellerRefundRecovery::query()->firstOrCreate(
-                ['refund_id' => $refund->id],
-                [
+            $recovery = SellerRefundRecovery::query()
+                ->where('refund_id', $refund->id)
+                ->lockForUpdate()
+                ->first();
+            if (! $recovery) {
+                SellerRefundRecovery::query()->create([
+                    'refund_id' => $refund->id,
                     'seller_profile_id' => $sellerProfileId,
                     'amount_minor' => $sellerRecoveryMinor,
                     'recovered_amount_minor' => 0,
+                    'refund_recovery_minor' => $sellerRecoveryMinor,
+                    'refund_recovered_minor' => 0,
+                    'refund_recovery_voided_minor' => 0,
+                    'return_shipping_fee_minor' => 0,
+                    'return_shipping_fee_recovered_minor' => 0,
                     'status' => 'pending',
-                ],
-            );
+                ]);
+            } else {
+                if ((int) $recovery->seller_profile_id !== $sellerProfileId
+                    || ((int) $recovery->refund_recovery_minor > 0
+                        && (int) $recovery->refund_recovery_minor !== $sellerRecoveryMinor)) {
+                    throw new ConflictHttpException('The Seller refund recovery no longer matches the finalized refund ledger.');
+                }
+
+                $refundRecoveredMinor = (int) $recovery->refund_recovered_minor;
+                $returnFeeMinor = (int) $recovery->return_shipping_fee_minor;
+                $returnFeeRecoveredMinor = (int) $recovery->return_shipping_fee_recovered_minor;
+                $totalAmountMinor = $sellerRecoveryMinor + $returnFeeMinor;
+                $totalRecoveredMinor = $refundRecoveredMinor + $returnFeeRecoveredMinor;
+                $outstandingMinor = max(
+                    0,
+                    $sellerRecoveryMinor - $refundRecoveredMinor - (int) $recovery->refund_recovery_voided_minor,
+                ) + max(0, $returnFeeMinor - $returnFeeRecoveredMinor);
+                $recovery->update([
+                    'amount_minor' => $totalAmountMinor,
+                    'recovered_amount_minor' => $totalRecoveredMinor,
+                    'refund_recovery_minor' => $sellerRecoveryMinor,
+                    'status' => $outstandingMinor > 0
+                        ? ($totalRecoveredMinor > 0 ? 'partially_recovered' : 'pending')
+                        : 'recovered',
+                ]);
+            }
         }
 
         return [
@@ -1360,7 +1549,10 @@ class ReturnRefundService
         ));
     }
 
-    private function createReturnShipment(ReturnRequest $returnRequest, Order $order, Payment $payment, User $admin): PickupRequest
+    /**
+     * @return array{shipment: Shipment, pickup_request: ?PickupRequest, method: string, dropoff_center: ?SortingCenter}
+     */
+    private function createReturnShipment(ReturnRequest $returnRequest, Order $order, User $admin): array
     {
         $store = Store::query()
             ->whereKey($returnRequest->store_id)
@@ -1383,20 +1575,28 @@ class ReturnRefundService
             throw ValidationException::withMessages(['return' => 'The original fulfilled shipment has no usable package dimensions for a reverse waybill.']);
         }
 
-        $buyerCityCode = $order->psgc_city_code
-            ?: app(PostalCodeLookup::class)->canonicalCityCode(
+        $buyerCityCode = trim((string) $order->psgc_city_code);
+        if (! preg_match('/^\d{10}$/D', $buyerCityCode)
+            || ! app(PostalCodeLookup::class)->findByCanonicalCityCode($buyerCityCode)) {
+            $buyerCityCode = app(PostalCodeLookup::class)->canonicalCityCode(
                 null,
                 (string) $order->province,
                 (string) $order->city_municipality,
-            );
-
-        if (! $buyerCityCode) {
+            ) ?? '';
+        }
+        if (! preg_match('/^\d{10}$/D', $buyerCityCode)
+            || ! app(PostalCodeLookup::class)->findByCanonicalCityCode($buyerCityCode)) {
             throw ValidationException::withMessages([
                 'return' => 'The Buyer’s order address needs a verified municipality/city before a physical return can be approved.',
             ]);
         }
 
-        $provider = LogisticsProfile::query()
+        $method = $returnRequest->return_delivery_method ?: ReturnDeliveryMethod::RiderPickup->value;
+        if (! in_array($method, array_map(static fn (ReturnDeliveryMethod $option): string => $option->value, ReturnDeliveryMethod::cases()), true)) {
+            throw ValidationException::withMessages(['return' => 'The return delivery method is invalid. Ask the Buyer to submit the request again.']);
+        }
+
+        $providerQuery = LogisticsProfile::query()
             ->where('psgc_city_code', $buyerCityCode)
             ->where('status', 'active')
             ->whereHas('user', fn ($query) => $query
@@ -1405,6 +1605,13 @@ class ReturnRefundService
                     ->where('role', UserRole::Logistics->value)
                     ->orWhereHas('roles', fn ($roleQuery) => $roleQuery
                         ->where('roles.name', UserRole::Logistics->value))))
+            ->orderBy('id');
+        if ($method === ReturnDeliveryMethod::BuyerDropoff->value) {
+            $providerQuery->whereHas('sortingCenters', fn ($query) => $query
+                ->where('status', 'active')
+                ->whereHas('address', fn ($address) => $address->where('psgc_city_code', $buyerCityCode)));
+        }
+        $provider = $providerQuery
             ->lockForUpdate()
             ->first();
 
@@ -1414,63 +1621,67 @@ class ReturnRefundService
             ]);
         }
 
+        $dropoffCenter = null;
+        if ($method === ReturnDeliveryMethod::BuyerDropoff->value) {
+            $dropoffCenter = $this->activeBuyerDropoffCenter($order, lock: true);
+            if (! $dropoffCenter || (int) $dropoffCenter->logistics_profile_id !== (int) $provider->id) {
+                throw ValidationException::withMessages([
+                    'return' => 'Buyer drop-off requires an active Sorting Center in the Buyer’s order city. Choose Rider pickup or restore the city center before approval.',
+                ]);
+            }
+        }
+
         $destinationCityCode = app(PostalCodeLookup::class)->canonicalCityCode(
             $sellerAddress->psgc_city_code,
             (string) $sellerAddress->province,
             (string) $sellerAddress->city_municipality,
         );
-
         if (! $destinationCityCode) {
             throw ValidationException::withMessages([
                 'return' => 'The Seller pickup address needs a verified municipality/city before a cross-city return can be approved.',
             ]);
         }
 
+        $originAddress = $method === ReturnDeliveryMethod::BuyerDropoff->value
+            ? $dropoffCenter->address
+            : $this->buyerOrderAddress($order, $buyerCityCode);
+        if (! $originAddress) {
+            throw ValidationException::withMessages(['return' => 'The selected return origin has no verified address.']);
+        }
+
+        $packageItems = $this->returnPackageItems($returnRequest, $package);
+        $this->shippingQuotes->lockQuoteConfiguration();
+        $returnQuote = $this->shippingQuotes->quoteReturnRoute(
+            $originAddress,
+            $sellerAddress,
+            $packageItems,
+            lockConfiguration: true,
+        );
+        $returnQuote['origin_address_detail'] = $this->returnAddressSnapshot($originAddress);
+        $returnQuote['destination_address_detail'] = $this->returnAddressSnapshot($sellerAddress);
+        if ($dropoffCenter) {
+            $returnQuote['dropoff_center'] = [
+                'id' => (int) $dropoffCenter->id,
+                'name' => (string) $dropoffCenter->name,
+                'address' => $this->returnAddressSnapshot($dropoffCenter->address),
+            ];
+        }
+
         $now = now();
-        $requestedDate = CarbonImmutable::tomorrow(config('app.timezone'));
-        $window = SellerPickupRequestService::PICKUP_WINDOWS['10:00-12:00'];
-        $windowStart = $requestedDate->setTimeFromTimeString($window['start']);
-        $windowEnd = $requestedDate->setTimeFromTimeString($window['end']);
         $pickupAddressId = $order->shipping_address_id
             ? Address::withTrashed()->whereKey($order->shipping_address_id)->value('id')
             : null;
-
-        $pickupRequest = PickupRequest::query()->create([
-            'pickup_no' => 'PU-'.Str::upper((string) Str::ulid()),
-            'store_id' => $store->id,
-            'return_request_id' => $returnRequest->id,
-            // The JSON snapshot is the pickup authority. This FK preserves the
-            // legacy non-null relationship when a historical address is gone.
-            'pickup_address_id' => $pickupAddressId ?: $sellerAddress->id,
-            'pickup_address_snapshot' => [
-                'recipient_name' => (string) $order->recipient_name,
-                'phone' => (string) $order->recipient_phone,
-                'house_number' => null,
-                'street' => (string) $order->address_line,
-                'barangay' => (string) $order->barangay,
-                'city_municipality' => (string) $order->city_municipality,
-                'province' => (string) $order->province,
-                'postal_code' => $order->postal_code,
-                'psgc_city_code' => $buyerCityCode,
-            ],
-            'logistics_profile_id' => $provider->id,
-            'status' => 'requested',
-            'requested_date' => $requestedDate->toDateString(),
-            'window_start' => $windowStart,
-            'window_end' => $windowEnd,
-            'return_pickup_date' => $requestedDate->toDateString(),
-            'return_pickup_window' => '10:00-12:00',
-            'seller_instructions' => 'Buyer return pickup. No return-shipping fee is collected in this phase.',
-        ]);
-
-        $this->notifyProviderOfReturnPickup($pickupRequest, $returnRequest);
+        $originAddressId = $method === ReturnDeliveryMethod::BuyerDropoff->value
+            ? $dropoffCenter->address_id
+            : $pickupAddressId;
+        $pickupRequest = null;
 
         $shipment = Shipment::query()->create([
             'shipment_no' => 'SHP-'.Str::upper((string) Str::ulid()),
             'seller_order_id' => $returnRequest->seller_order_id,
             'logistics_profile_id' => $provider->id,
             'origin_logistics_profile_id' => $provider->id,
-            'origin_address_id' => $pickupAddressId,
+            'origin_address_id' => $originAddressId,
             'destination_address_id' => $sellerAddress->id,
             'destination_city_code' => $destinationCityCode,
             'destination_address_snapshot' => [
@@ -1485,10 +1696,14 @@ class ReturnRefundService
                 'psgc_city_code' => $destinationCityCode,
             ],
             'purpose' => 'return',
-            'status' => 'ready_for_pickup',
-            'shipping_fee_minor' => 0,
+            'status' => $method === ReturnDeliveryMethod::BuyerDropoff->value
+                ? ShipmentStatus::AwaitingBuyerDropoff->value
+                : ShipmentStatus::ReadyForPickup->value,
+            'shipping_fee_minor' => (int) $returnQuote['return_shipping_fee_minor'],
+            'return_shipping_quote' => $returnQuote,
             'cod_amount_minor' => 0,
         ]);
+
         $waybillNo = 'BRLY-RET-'.Str::upper((string) Str::ulid());
         $waybill = Waybill::query()->create([
             'shipment_id' => $shipment->id,
@@ -1496,10 +1711,10 @@ class ReturnRefundService
             'scan_token' => Str::random(64),
             'barcode_value' => $waybillNo,
             'piece_count' => 1,
-            'total_weight_kg' => (float) $package->total_weight_kg,
-            'length_cm' => $package->length_cm,
-            'width_cm' => $package->width_cm,
-            'height_cm' => $package->height_cm,
+            'total_weight_kg' => (float) $returnQuote['actual_weight_kg'],
+            'length_cm' => data_get($returnQuote, 'parcel_dimensions_cm.length'),
+            'width_cm' => data_get($returnQuote, 'parcel_dimensions_cm.width'),
+            'height_cm' => data_get($returnQuote, 'parcel_dimensions_cm.height'),
             'status' => 'generated',
             'generated_by' => $admin->id,
             'generated_at' => $now,
@@ -1509,28 +1724,473 @@ class ReturnRefundService
             'waybill_id' => $waybill->id,
             'parcel_no' => 'PCL-'.Str::upper((string) Str::ulid()),
             'piece_sequence' => 1,
-            'weight_kg' => (float) $package->total_weight_kg,
-            'length_cm' => $package->length_cm,
-            'width_cm' => $package->width_cm,
-            'height_cm' => $package->height_cm,
+            'weight_kg' => (float) $returnQuote['actual_weight_kg'],
+            'length_cm' => data_get($returnQuote, 'parcel_dimensions_cm.length'),
+            'width_cm' => data_get($returnQuote, 'parcel_dimensions_cm.width'),
+            'height_cm' => data_get($returnQuote, 'parcel_dimensions_cm.height'),
             'status' => 'created',
             'last_event_at' => $now,
         ]);
-        $pickupRequest->parcels()->attach($returnParcel->id, ['added_at' => $now]);
+
+        if ($method === ReturnDeliveryMethod::RiderPickup->value) {
+            $pickupRequest = $this->createReturnPickupRequest(
+                $returnRequest,
+                $order,
+                $sellerAddress,
+                $provider,
+                $pickupAddressId,
+                $returnParcel,
+                $now,
+            );
+            $this->notifyProviderOfReturnPickup($pickupRequest, $returnRequest);
+        } else {
+            $this->notifyProviderOfBuyerReturnDropoff($provider, $returnRequest, $shipment, $dropoffCenter);
+        }
+
         $shipment->events()->create([
             'parcel_id' => $returnParcel->id,
-            'event_type' => 'return_shipment_ready_for_pickup',
+            'event_type' => $method === ReturnDeliveryMethod::BuyerDropoff->value
+                ? 'return_shipment_awaiting_buyer_dropoff'
+                : 'return_shipment_ready_for_pickup',
             'from_status' => null,
-            'to_status' => 'ready_for_pickup',
+            'to_status' => $shipment->status,
             'actor_user_id' => $admin->id,
             'source' => 'admin',
             'notes' => "Reverse shipment created from return request {$returnRequest->return_no}.",
-            'metadata' => ['return_request_id' => $returnRequest->id, 'pickup_request_id' => $pickupRequest->id],
+            'metadata' => [
+                'return_request_id' => $returnRequest->id,
+                'pickup_request_id' => $pickupRequest?->id,
+                'return_delivery_method' => $method,
+                'return_shipping_fee_minor' => (int) $returnQuote['return_shipping_fee_minor'],
+                'financially_responsible_party' => $returnRequest->refunds()->latest('id')->value('financially_responsible_party'),
+            ],
             'occurred_at' => $now,
         ]);
-        $returnRequest->update(['return_shipment_id' => $shipment->id]);
+        $returnRequest->update([
+            'return_shipment_id' => $shipment->id,
+            'return_delivery_method' => $method,
+        ]);
+
+        return [
+            'shipment' => $shipment->fresh(['waybill', 'parcels', 'logisticsProfile']),
+            'pickup_request' => $pickupRequest,
+            'method' => $method,
+            'dropoff_center' => $dropoffCenter,
+        ];
+    }
+
+    private function buyerOrderAddress(Order $order, string $cityCode): Address
+    {
+        return new Address([
+            'user_id' => $order->buyer_id,
+            'label' => 'Buyer order address',
+            'recipient_name' => (string) $order->recipient_name,
+            'phone' => (string) $order->recipient_phone,
+            'street' => (string) $order->address_line,
+            'barangay' => (string) $order->barangay,
+            'city_municipality' => (string) $order->city_municipality,
+            'province' => (string) $order->province,
+            'postal_code' => $order->postal_code,
+            'psgc_city_code' => $cityCode,
+        ]);
+    }
+
+    /** @return array<string, string|null> */
+    private function returnAddressSnapshot(Address $address): array
+    {
+        return [
+            'recipient_name' => $address->recipient_name,
+            'phone' => $address->phone,
+            'house_number' => $address->house_number,
+            'street' => $address->street,
+            'barangay' => $address->barangay,
+            'city_municipality' => $address->city_municipality,
+            'province' => $address->province,
+            'postal_code' => $address->postal_code,
+            'psgc_city_code' => $address->psgc_city_code,
+        ];
+    }
+
+    /** @param array<string, mixed> $snapshot */
+    private function addressFromSnapshot(array $snapshot): Address
+    {
+        return new Address([
+            'label' => 'Return shipment address snapshot',
+            'recipient_name' => (string) ($snapshot['recipient_name'] ?? ''),
+            'phone' => (string) ($snapshot['phone'] ?? ''),
+            'house_number' => $snapshot['house_number'] ?? null,
+            'street' => (string) ($snapshot['street'] ?? ''),
+            'barangay' => (string) ($snapshot['barangay'] ?? ''),
+            'city_municipality' => (string) ($snapshot['city_municipality'] ?? ''),
+            'province' => (string) ($snapshot['province'] ?? ''),
+            'postal_code' => $snapshot['postal_code'] ?? null,
+            'psgc_city_code' => (string) ($snapshot['psgc_city_code'] ?? ''),
+        ]);
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function returnPackageItems(ReturnRequest $returnRequest, Waybill $fallbackPackage): array
+    {
+        $snapshotItems = collect((array) data_get($returnRequest->sellerOrder?->shipping_quote, 'package_items', []))
+            ->keyBy('sku');
+        $lines = [];
+
+        foreach ($returnRequest->items as $item) {
+            $sku = (string) $item->orderItem?->sku;
+            $snapshot = $snapshotItems->get($sku);
+            if (! is_array($snapshot)) {
+                return [[
+                    'sku' => $sku ?: 'RETURN-PACKAGE',
+                    'quantity' => 1,
+                    'package_weight_kg' => (float) $fallbackPackage->total_weight_kg,
+                    'package_dimensions_cm' => [
+                        'length' => (float) $fallbackPackage->length_cm,
+                        'width' => (float) $fallbackPackage->width_cm,
+                        'height' => (float) $fallbackPackage->height_cm,
+                    ],
+                ]];
+            }
+            $dimensions = (array) ($snapshot['package_dimensions_cm'] ?? []);
+            $weight = (float) ($snapshot['package_weight_kg'] ?? 0);
+            if ($weight <= 0 || $dimensions === []) {
+                return [[
+                    'sku' => $sku ?: 'RETURN-PACKAGE',
+                    'quantity' => 1,
+                    'package_weight_kg' => (float) $fallbackPackage->total_weight_kg,
+                    'package_dimensions_cm' => [
+                        'length' => (float) $fallbackPackage->length_cm,
+                        'width' => (float) $fallbackPackage->width_cm,
+                        'height' => (float) $fallbackPackage->height_cm,
+                    ],
+                ]];
+            }
+            $lines[] = [
+                'sku' => $sku,
+                'quantity' => (int) $item->quantity,
+                'package_weight_kg' => $weight,
+                'package_dimensions_cm' => $dimensions,
+            ];
+        }
+
+        return $lines !== [] ? $lines : [[
+            'sku' => 'RETURN-PACKAGE',
+            'quantity' => 1,
+            'package_weight_kg' => (float) $fallbackPackage->total_weight_kg,
+            'package_dimensions_cm' => [
+                'length' => (float) $fallbackPackage->length_cm,
+                'width' => (float) $fallbackPackage->width_cm,
+                'height' => (float) $fallbackPackage->height_cm,
+            ],
+        ]];
+    }
+
+    private function createReturnPickupRequest(
+        ReturnRequest $returnRequest,
+        Order $order,
+        Address $sellerAddress,
+        LogisticsProfile $provider,
+        ?int $pickupAddressId,
+        Parcel $returnParcel,
+        mixed $now,
+    ): PickupRequest {
+        $requestedDate = CarbonImmutable::tomorrow(config('app.timezone'));
+        $window = SellerPickupRequestService::PICKUP_WINDOWS['10:00-12:00'];
+        $windowStart = $requestedDate->setTimeFromTimeString($window['start']);
+        $windowEnd = $requestedDate->setTimeFromTimeString($window['end']);
+        $pickupRequest = PickupRequest::query()->create([
+            'pickup_no' => 'PU-'.Str::upper((string) Str::ulid()),
+            'store_id' => $returnRequest->store_id,
+            'return_request_id' => $returnRequest->id,
+            'pickup_address_id' => $pickupAddressId ?: $sellerAddress->id,
+            'pickup_address_snapshot' => [
+                'recipient_name' => (string) $order->recipient_name,
+                'phone' => (string) $order->recipient_phone,
+                'house_number' => null,
+                'street' => (string) $order->address_line,
+                'barangay' => (string) $order->barangay,
+                'city_municipality' => (string) $order->city_municipality,
+                'province' => (string) $order->province,
+                'postal_code' => $order->postal_code,
+                'psgc_city_code' => (string) $order->psgc_city_code,
+            ],
+            'logistics_profile_id' => $provider->id,
+            'status' => 'requested',
+            'requested_date' => $requestedDate->toDateString(),
+            'window_start' => $windowStart,
+            'window_end' => $windowEnd,
+            'return_pickup_date' => $requestedDate->toDateString(),
+            'return_pickup_window' => '10:00-12:00',
+            'seller_instructions' => 'Buyer return pickup. Return delivery fee is covered by the Seller or Platform responsibility recorded for this case; it is not deducted from the Buyer refund.',
+        ]);
+        $pickupRequest->parcels()->attach($returnParcel->id, ['added_at' => $now]);
 
         return $pickupRequest;
+    }
+
+    private function notifyProviderOfBuyerReturnDropoff(
+        LogisticsProfile $provider,
+        ReturnRequest $returnRequest,
+        Shipment $shipment,
+        SortingCenter $center,
+    ): void {
+        $providerUser = $provider->user;
+        if (! $providerUser) {
+            return;
+        }
+
+        $this->notifications->sendAfterCommit($providerUser, new WorkflowNotification(
+            eventKey: 'logistics_return_dropoff_expected',
+            title: 'Buyer return drop-off expected',
+            body: "Return {$returnRequest->return_no} (shipment {$shipment->shipment_no}) is assigned to {$center->name}. Scan its return waybill when the Buyer hands over the parcel.",
+            actionUrl: route('logistics.sorting.incoming'),
+            type: 'info',
+            meta: ['return_request_id' => (int) $returnRequest->id, 'shipment_id' => (int) $shipment->id],
+        ));
+    }
+
+    public function switchExpiredDropoffToPickup(User $buyer, int $returnRequestId): ReturnRequest
+    {
+        return DB::transaction(function () use ($buyer, $returnRequestId): ReturnRequest {
+            $stub = ReturnRequest::query()
+                ->whereKey($returnRequestId)
+                ->where('buyer_id', $buyer->id)
+                ->firstOrFail();
+            $order = Order::query()
+                ->whereKey($stub->order_id)
+                ->where('buyer_id', $buyer->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $returnRequest = ReturnRequest::query()
+                ->whereKey($stub->id)
+                ->where('buyer_id', $buyer->id)
+                ->lockForUpdate()
+                ->with(['sellerOrder', 'items.orderItem', 'store.sellerProfile.pickupAddress'])
+                ->firstOrFail();
+
+            if ($returnRequest->request_type !== 'return_refund'
+                || $returnRequest->return_delivery_method !== ReturnDeliveryMethod::BuyerDropoff->value
+                || $returnRequest->status !== ReturnRequestStatus::ReturnDropoffPending->value
+                || ! $returnRequest->dropoff_due_at
+                || ! now()->greaterThan($returnRequest->dropoff_due_at)) {
+                throw ValidationException::withMessages([
+                    'return' => 'Rider pickup becomes available only after an approved Buyer drop-off deadline has passed.',
+                ]);
+            }
+
+            $shipment = Shipment::query()
+                ->whereKey($returnRequest->return_shipment_id)
+                ->where('purpose', 'return')
+                ->lockForUpdate()
+                ->with(['waybill', 'parcels'])
+                ->firstOrFail();
+            if ($shipment->status !== ShipmentStatus::AwaitingBuyerDropoff->value
+                || $shipment->parcels->isEmpty()
+                || $shipment->parcels->contains(fn (Parcel $parcel): bool => $parcel->status !== 'created')
+                || ShipmentEvent::query()
+                    ->where('shipment_id', $shipment->id)
+                    ->where('event_type', 'buyer_return_dropoff_received')
+                    ->exists()) {
+                throw ValidationException::withMessages([
+                    'return' => 'This return parcel has already entered Logistics custody and cannot be switched to Rider pickup.',
+                ]);
+            }
+
+            $buyerCityCode = trim((string) $order->psgc_city_code);
+            if (! preg_match('/^\d{10}$/D', $buyerCityCode)
+                || ! app(PostalCodeLookup::class)->findByCanonicalCityCode($buyerCityCode)) {
+                $buyerCityCode = app(PostalCodeLookup::class)->canonicalCityCode(
+                    null,
+                    (string) $order->province,
+                    (string) $order->city_municipality,
+                ) ?? '';
+            }
+            if (! preg_match('/^\d{10}$/D', $buyerCityCode)
+                || ! app(PostalCodeLookup::class)->findByCanonicalCityCode($buyerCityCode)) {
+                throw ValidationException::withMessages(['return' => 'The Buyer’s order address needs a verified municipality/city before Rider pickup can be scheduled.']);
+            }
+
+            $provider = LogisticsProfile::query()
+                ->where('psgc_city_code', $buyerCityCode)
+                ->where('status', 'active')
+                ->whereHas('user', fn ($query) => $query
+                    ->where('status', 'active')
+                    ->where(fn ($roles) => $roles
+                        ->where('role', UserRole::Logistics->value)
+                        ->orWhereHas('roles', fn ($roleQuery) => $roleQuery
+                            ->where('roles.name', UserRole::Logistics->value))))
+                ->lockForUpdate()
+                ->first();
+            if (! $provider || (int) $provider->id !== (int) $shipment->logistics_profile_id) {
+                throw ValidationException::withMessages([
+                    'return' => 'The Buyer-city Logistics provider is unavailable. Contact Admin before changing this return to Rider pickup.',
+                ]);
+            }
+
+            $sellerPickupAddress = $returnRequest->store?->sellerProfile?->pickupAddress;
+            $destinationSnapshot = (array) $shipment->destination_address_snapshot;
+            if (! $sellerPickupAddress || ! $shipment->waybill || ! filled($destinationSnapshot['psgc_city_code'] ?? null)) {
+                throw ValidationException::withMessages(['return' => 'The return shipment is missing its saved Seller destination or waybill.']);
+            }
+
+            $buyerAddress = $this->buyerOrderAddress($order, $buyerCityCode);
+            $sellerAddressSnapshot = $this->addressFromSnapshot($destinationSnapshot);
+            $this->shippingQuotes->lockQuoteConfiguration();
+            $quote = $this->shippingQuotes->quoteReturnRoute(
+                $buyerAddress,
+                $sellerAddressSnapshot,
+                $this->returnPackageItems($returnRequest, $shipment->waybill),
+                lockConfiguration: true,
+            );
+            $quote['origin_address_detail'] = $this->returnAddressSnapshot($buyerAddress);
+            $quote['destination_address_detail'] = $destinationSnapshot;
+            $pickupAddressId = $order->shipping_address_id
+                ? Address::withTrashed()->whereKey($order->shipping_address_id)->value('id')
+                : null;
+
+            $shipment->update([
+                'origin_address_id' => $pickupAddressId,
+                'status' => ShipmentStatus::ReadyForPickup->value,
+                'shipping_fee_minor' => (int) $quote['return_shipping_fee_minor'],
+                'return_shipping_quote' => $quote,
+            ]);
+
+            $now = now();
+            $pickupRequest = $this->createReturnPickupRequest(
+                $returnRequest,
+                $order,
+                $sellerPickupAddress,
+                $provider,
+                $pickupAddressId,
+                $shipment->parcels->first(),
+                $now,
+            );
+            $fromStatus = $returnRequest->status;
+            $returnRequest->update([
+                'return_delivery_method' => ReturnDeliveryMethod::RiderPickup->value,
+                'status' => ReturnRequestStatus::ReturnPickupRequested->value,
+                'resolution' => 'The Buyer missed the approved drop-off deadline and switched to Rider pickup. The existing Seller/Platform responsibility decision and full Buyer refund remain unchanged.',
+            ]);
+            $this->event(
+                $returnRequest,
+                $buyer,
+                'buyer_switched_return_to_rider_pickup',
+                $fromStatus,
+                ReturnRequestStatus::ReturnPickupRequested->value,
+                'Buyer switched to Rider pickup after the drop-off deadline.',
+                [
+                    'pickup_request_id' => (int) $pickupRequest->id,
+                    'shipment_id' => (int) $shipment->id,
+                    'return_shipping_fee_minor' => (int) $quote['return_shipping_fee_minor'],
+                ],
+            );
+            $shipment->events()->create([
+                'event_type' => 'return_pickup_requested_after_dropoff_deadline',
+                'from_status' => ShipmentStatus::AwaitingBuyerDropoff->value,
+                'to_status' => ShipmentStatus::ReadyForPickup->value,
+                'actor_user_id' => $buyer->id,
+                'source' => 'buyer',
+                'notes' => 'Buyer switched to Rider pickup after the drop-off deadline.',
+                'metadata' => [
+                    'return_request_id' => $returnRequest->id,
+                    'pickup_request_id' => $pickupRequest->id,
+                    'return_shipping_fee_minor' => (int) $quote['return_shipping_fee_minor'],
+                ],
+                'occurred_at' => $now,
+            ]);
+            $this->notifyProviderOfReturnPickup($pickupRequest, $returnRequest);
+            $this->notifyBuyerOfReturnUpdate(
+                $returnRequest,
+                'Rider pickup selected',
+                "Your return {$returnRequest->return_no} is now scheduled for Rider pickup.",
+                'info',
+            );
+
+            return $returnRequest->fresh(['returnShipment.waybill', 'events']);
+        }, attempts: 3);
+    }
+
+    /** Called inside the provider-scoped ParcelIntakeService transaction. */
+    public function recordReturnDropoffReceived(int $returnRequestId, User $logisticsUser, int $shipmentId): void
+    {
+        $returnRequest = ReturnRequest::query()->whereKey($returnRequestId)->lockForUpdate()->first();
+        if (! $returnRequest || (int) $returnRequest->return_shipment_id !== $shipmentId) {
+            throw new ConflictHttpException('This return waybill is not linked to the expected return case.');
+        }
+        $shipment = Shipment::query()
+            ->whereKey($shipmentId)
+            ->where('purpose', 'return')
+            ->where('status', ShipmentStatus::AtSortingCenter->value)
+            ->first();
+        $centerId = (int) ShipmentEvent::query()
+            ->where('shipment_id', $shipmentId)
+            ->where('event_type', 'buyer_return_dropoff_received')
+            ->orderByDesc('id')
+            ->value('sorting_center_id');
+        $logisticsProfileId = (int) ($logisticsUser->logisticsProfile?->id ?? 0);
+        $order = Order::query()
+            ->whereKey($returnRequest->order_id)
+            ->where('buyer_id', $returnRequest->buyer_id)
+            ->first();
+        $orderCityCode = trim((string) $order?->psgc_city_code);
+        if (! preg_match('/^\d{10}$/D', $orderCityCode)
+            || ! app(PostalCodeLookup::class)->findByCanonicalCityCode($orderCityCode)) {
+            $orderCityCode = $order
+                ? (app(PostalCodeLookup::class)->canonicalCityCode(
+                    null,
+                    (string) $order->province,
+                    (string) $order->city_municipality,
+                ) ?? '')
+                : '';
+        }
+        $center = $centerId > 0 ? SortingCenter::query()
+            ->whereKey($centerId)
+            ->where('logistics_profile_id', $logisticsProfileId)
+            ->where('status', 'active')
+            ->with('address')
+            ->lockForUpdate()
+            ->first() : null;
+        $centerCityCode = trim((string) $center?->address?->psgc_city_code);
+        $quotedCenterCityCode = trim((string) data_get(
+            $shipment?->return_shipping_quote,
+            'dropoff_center.address.psgc_city_code',
+        ));
+        $centerIsAssigned = $center !== null
+            && $centerCityCode !== ''
+            && $centerCityCode === $orderCityCode
+            && $centerCityCode === $quotedCenterCityCode;
+        if ($logisticsUser->role !== UserRole::Logistics->value
+            || $logisticsUser->status !== 'active'
+            || ! $shipment
+            || (int) $shipment->logistics_profile_id !== $logisticsProfileId
+            || ! $centerIsAssigned
+            || $centerId < 1
+            || $centerId !== (int) $returnRequest->dropoff_sorting_center_id) {
+            throw new AuthorizationException('Only the assigned Buyer-city Sorting Center can accept this return drop-off.');
+        }
+        if ($returnRequest->return_delivery_method !== ReturnDeliveryMethod::BuyerDropoff->value
+            || $returnRequest->status !== ReturnRequestStatus::ReturnDropoffPending->value
+            || ! $returnRequest->dropoff_due_at
+            || now()->greaterThan($returnRequest->dropoff_due_at)) {
+            throw new ConflictHttpException('This Buyer drop-off is expired or no longer awaiting Logistics receipt.');
+        }
+
+        $fromStatus = $returnRequest->status;
+        $returnRequest->update(['status' => ReturnRequestStatus::ReturnInTransit->value]);
+        $this->event(
+            $returnRequest,
+            $logisticsUser,
+            'buyer_return_dropoff_received',
+            $fromStatus,
+            ReturnRequestStatus::ReturnInTransit->value,
+            'Logistics scanned and accepted the Buyer’s return parcel at the assigned Sorting Center.',
+            ['shipment_id' => $shipmentId],
+        );
+        $this->notifyBuyerOfReturnUpdate(
+            $returnRequest,
+            'Return parcel received by Logistics',
+            "Logistics accepted your return parcel for {$returnRequest->return_no}.",
+            'info',
+        );
     }
 
     private function assertAdminReviewable(ReturnRequest $returnRequest): void
@@ -1762,6 +2422,34 @@ class ReturnRefundService
             'metadata' => $metadata ?: null,
             'created_at' => now(),
         ]);
+
+        if ($from === $to) {
+            return;
+        }
+
+        $sellerUserId = (int) (Store::query()
+            ->whereKey($returnRequest->store_id)
+            ->with('sellerProfile')
+            ->first()?->sellerProfile?->user_id ?? 0);
+        if ($sellerUserId < 1) {
+            return;
+        }
+
+        $statusUpdate = new SellerReturnStatusUpdated(
+            sellerUserId: $sellerUserId,
+            returnRequestId: (int) $returnRequest->id,
+            returnNo: (string) $returnRequest->return_no,
+            status: (string) ($to ?? $returnRequest->status),
+            updatedAt: $returnRequest->updated_at?->toIso8601String() ?? now()->toIso8601String(),
+        );
+
+        DB::afterCommit(function () use ($statusUpdate): void {
+            try {
+                Event::dispatch($statusUpdate);
+            } catch (Throwable $exception) {
+                report($exception);
+            }
+        });
     }
 
     private function orderItemImageUrl(OrderItem $item): ?string

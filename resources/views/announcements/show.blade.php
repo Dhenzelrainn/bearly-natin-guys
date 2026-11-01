@@ -10,6 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     @include('partials.session-safety')
     @include('partials.realtime-identity')
+    @include('partials.theme-preload')
     @vite(['resources/css/announcement.css', 'resources/js/realtime.js', 'resources/js/announcement.js'])
 </head>
 <body
@@ -21,13 +22,14 @@
     <main class="announcement-shell">
         <header class="announcement-topbar">
             <a class="announcement-brand" href="{{ $dashboardUrl }}" aria-label="Bearly {{ $roleLabel }} dashboard">
-                <img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly Marketplace">
+                @include('partials.theme-aware-logo', ['themeLogoAlt' => 'Bearly Marketplace', 'themeLogoWidth' => 210, 'themeLogoHeight' => 66])
             </a>
 
             <a class="announcement-back" href="{{ $dashboardUrl }}">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.5 5-7 7 7 7M8 12h12" /></svg>
                 Back to {{ $roleLabel }} dashboard
             </a>
+            @include('partials.theme-toggle')
         </header>
 
         <div class="announcement-live" data-announcement-live hidden role="status" aria-live="polite"></div>

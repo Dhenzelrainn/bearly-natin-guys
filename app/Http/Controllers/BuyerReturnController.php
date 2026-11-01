@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Refund;
+use App\Enums\ReturnDeliveryMethod;
 use App\Models\ReturnEvidence;
 use App\Models\ReturnRequest;
 use App\Services\AuditService;
@@ -27,6 +28,11 @@ class BuyerReturnController extends Controller
     {
         $data = $request->validate([
             'request_type' => ['required', Rule::in(['return_refund', 'refund_only'])],
+            'return_delivery_method' => [
+                Rule::requiredIf(fn (): bool => $request->input('request_type') === 'return_refund'),
+                'nullable',
+                Rule::in(array_map(static fn (ReturnDeliveryMethod $method): string => $method->value, ReturnDeliveryMethod::cases())),
+            ],
             'reason_code' => ['required', Rule::in([
                 'item_arrived_damaged',
                 'wrong_item_received',
@@ -49,11 +55,23 @@ class BuyerReturnController extends Controller
             $data['reason_code'],
             $data['buyer_note'] ?? null,
             array_values($request->file('evidence', [])),
+            $data['request_type'] === 'return_refund'
+                ? ($data['return_delivery_method'] ?? null)
+                : null,
         );
 
         return redirect()
             ->route('buyer.returns.show', $returnRequest->id)
             ->with('success', 'Your request was sent to the Seller for a response.');
+    }
+
+    public function switchToPickup(Request $request, int $returnRequest, ReturnRefundService $returns): RedirectResponse
+    {
+        $case = $returns->switchExpiredDropoffToPickup($request->user(), $returnRequest);
+
+        return redirect()
+            ->route('buyer.returns.show', $case->id)
+            ->with('success', 'Rider pickup has been requested. Logistics will arrange collection from your order address.');
     }
 
     public function show(Request $request, int $returnRequest): View
@@ -70,9 +88,14 @@ class BuyerReturnController extends Controller
                 'events.actor',
                 'returnShipment.events',
                 'returnShipment.waybill',
+                'returnShipment.originAddress',
                 'refunds',
             ])
             ->firstOrFail();
+        $dropoffCenter = $case->return_delivery_method === ReturnDeliveryMethod::BuyerDropoff->value
+            ? data_get($case->returnShipment?->return_shipping_quote, 'dropoff_center')
+            : null;
+        $dropoffCenter = is_array($dropoffCenter) ? $dropoffCenter : null;
         $evidenceRequest = $case->events->where('event_type', 'additional_evidence_requested')->last();
         $buyerEvidenceSubmitted = $evidenceRequest && $case->events->contains(
             fn ($event): bool => (int) $event->id > (int) $evidenceRequest->id
@@ -81,6 +104,7 @@ class BuyerReturnController extends Controller
 
         return view('buyer.returns.show', [
             'case' => $case,
+            'dropoffCenter' => $dropoffCenter,
             'evidenceRequestedFrom' => (string) ($evidenceRequest?->metadata['requested_from'] ?? 'both'),
             'buyerEvidenceSubmitted' => $buyerEvidenceSubmitted,
         ]);

@@ -16,14 +16,28 @@
     <img
         src="{{ asset('images/bearly-login-bear.png') }}"
         alt=""
-        class="login-bear"
+        class="login-bear login-art-light"
+        aria-hidden="true"
+    >
+
+    <img
+        src="{{ asset('images/bearly-login-bear-cutout.png') }}"
+        alt=""
+        class="login-bear login-art-dark"
         aria-hidden="true"
     >
 
     <img
         src="{{ asset('images/bearly-login-truck.png') }}"
         alt=""
-        class="login-truck"
+        class="login-truck login-art-light"
+        aria-hidden="true"
+    >
+
+    <img
+        src="{{ asset('images/bearly-login-truck-cutout.png') }}"
+        alt=""
+        class="login-truck login-art-dark"
         aria-hidden="true"
     >
 
@@ -175,6 +189,12 @@
             <img
                 src="{{ asset('images/bearly-login-bear.png') }}"
                 alt=""
+                class="login-art-light"
+            >
+            <img
+                src="{{ asset('images/bearly-login-bear-cutout.png') }}"
+                alt=""
+                class="login-art-dark"
             >
         </div>
     </div>

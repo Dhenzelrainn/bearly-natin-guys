@@ -11,16 +11,21 @@
     }
 
     $isBuyer = $role === 'buyer' && $state !== 'unavailable';
+    $isHistoricalBuyerApplication = $isBuyer && in_array($state, ['pending', 'under_review', 'needs_revision'], true);
     $isApproved = $state === 'approved';
     $isRejected = $state === 'rejected';
     $needsRevision = $state === 'needs_revision';
     $isFinal = (bool) ($review['final'] ?? ($state === 'unavailable'));
-    $statusUrl = $review ? route('application.pending.status') : null;
+    $statusUrl = $review && ! $isHistoricalBuyerApplication ? route('application.pending.status') : null;
     $statusLabel = $review['status_label'] ?? ($state === 'unavailable' ? 'Status unavailable' : 'Pending review');
-    $heading = $review['heading'] ?? ($state === 'unavailable' ? 'Application status unavailable' : 'Application received');
+    $heading = $review['heading'] ?? ($state === 'unavailable'
+        ? 'Application status unavailable'
+        : ($role === 'buyer' ? 'Historical Buyer application status' : 'Application received'));
     $message = $review['message'] ?? ($state === 'unavailable'
         ? 'Open this page from the registration or sign-in flow so Bearly can securely check the correct application.'
-        : 'Your application was submitted successfully. The reviewing team will check your details before dashboard access is activated.');
+        : ($role === 'buyer'
+            ? 'This Buyer application was submitted before immediate activation took effect. Its status and documents remain on record, but it is no longer in the active Admin registration queues. New Buyer registrations activate after email verification; contact Support about this existing account.'
+            : 'Your application was submitted successfully. The reviewing team will check your details before dashboard access is activated.'));
     $roleLabel = $review['role_label'] ?? ucfirst($role);
     $applicant = $review['name'] ?? ($fallback['name'] ?? ($fallback['full_name'] ?? 'Applicant'));
     $company = $review['company'] ?? ($fallback['business_name'] ?? ($fallback['logistics_partner'] ?? null));
@@ -89,9 +94,9 @@
         @endif
 
         <ol class="pending-timeline" aria-label="Application progress">
-            <li class="is-complete"><span aria-hidden="true">✓</span><div><strong>Application submitted</strong><p>Your details and identity documents have been received.</p></div></li>
-            <li class="{{ $timelineReviewState }}" @if($timelineReviewState === 'is-current') aria-current="step" @endif><span aria-hidden="true">2</span><div><strong>{{ $isApproved || $isRejected ? 'Application reviewed' : ($needsRevision ? 'Update needed' : 'Under review') }}</strong><p>{{ $authority }} checks your application against Bearly requirements.</p></div></li>
-            <li class="{{ $timelineDecisionState }}" @if($timelineDecisionState === 'is-upcoming') aria-current="step" @endif><span aria-hidden="true">3</span><div><strong>{{ $isApproved ? 'Account approved' : ($isRejected ? 'Application not approved' : 'Decision') }}</strong><p>{{ $isApproved ? 'Your account is active and ready to use.' : ($isRejected ? 'Contact Support if you need help understanding the decision.' : 'Dashboard access becomes available only after approval.') }}</p></div></li>
+            <li class="is-complete"><span aria-hidden="true">✓</span><div><strong>Application submitted</strong><p>{{ $isHistoricalBuyerApplication ? 'This historical record and its submitted documents remain on file.' : 'Your details and identity documents have been received.' }}</p></div></li>
+            <li class="{{ $timelineReviewState }}" @if($timelineReviewState === 'is-current') aria-current="step" @endif><span aria-hidden="true">2</span><div><strong>{{ $isHistoricalBuyerApplication ? 'Historical application status' : ($isApproved || $isRejected ? 'Application reviewed' : ($needsRevision ? 'Update needed' : 'Under review')) }}</strong><p>{{ $isHistoricalBuyerApplication ? 'Its existing status is preserved, but it is not in an active Admin registration queue.' : $authority.' checks your application against Bearly requirements.' }}</p></div></li>
+            <li class="{{ $timelineDecisionState }}" @if($timelineDecisionState === 'is-upcoming') aria-current="step" @endif><span aria-hidden="true">3</span><div><strong>{{ $isHistoricalBuyerApplication ? 'Contact Support' : ($isApproved ? 'Account approved' : ($isRejected ? 'Application not approved' : 'Decision')) }}</strong><p>{{ $isHistoricalBuyerApplication ? 'No automatic status change was applied. Contact Support about access to this existing account.' : ($isApproved ? 'Your account is active and ready to use.' : ($isRejected ? 'Contact Support if you need help understanding the decision.' : 'Dashboard access becomes available only after approval.')) }}</p></div></li>
         </ol>
 
         <div class="pending-next">
@@ -101,6 +106,8 @@
                     Your {{ strtolower($roleLabel) }} account is active. Sign in with your registered email and password to continue.
                 @elseif($isRejected)
                     This application was not approved. You can return to sign in or contact Bearly Support for guidance.
+                @elseif($isHistoricalBuyerApplication)
+                    This historical Buyer application remains unchanged and is outside the active Admin queues. Contact Bearly Support about account access.
                 @elseif($needsRevision)
                     Review the note above and contact Bearly Support with the requested correction. Do not submit a duplicate account.
                 @else
@@ -109,7 +116,7 @@
             </p>
         </div>
 
-        @if(!$isFinal && $statusUrl)
+        @if(!$isFinal && $statusUrl && ! $isHistoricalBuyerApplication)
             <p class="pending-live" data-application-live aria-live="polite">Checking for a review decision automatically.</p>
         @endif
 

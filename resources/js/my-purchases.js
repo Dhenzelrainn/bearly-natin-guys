@@ -127,7 +127,9 @@ function initMyPurchases(){
     filters.forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.purchase-filter').forEach(x=>{x.classList.toggle('active',x===b);x.setAttribute('aria-selected',x===b?'true':'false')});purchaseFilter=b.dataset.orderFilter;renderMyPurchases();}));
   }
   const sort=document.querySelector('#purchase-sort');
-  if(sort)sort.addEventListener('change',()=>{purchaseSort=sort.value||'recent';renderMyPurchases()});
+  const sortLabel=document.querySelector('[data-purchase-sort-label]');
+  const syncSortLabel=()=>{if(sort&&sortLabel)sortLabel.textContent=sort.selectedOptions[0]?.textContent?.trim()||'Most Recent'};
+  if(sort){syncSortLabel();sort.addEventListener('change',()=>{purchaseSort=sort.value||'recent';syncSortLabel();renderMyPurchases()})}
   const list=document.querySelector('#purchase-list');
    if(list) list.addEventListener('click',e=>{const btn=e.target.closest('.order-track');if(!btn)return;sessionStorage.setItem(window.bearlyStorageKey?.('tracking-order-id')||'bearly-tracking-order-id',btn.dataset.order||'');if(typeof window.bearlyShowAccountPanel==='function')window.bearlyShowAccountPanel('tracking');else location.hash='tracking';renderOrderTracking();});
   const back=document.querySelector('#tracking-back'); if(back) back.addEventListener('click',()=>{if(typeof window.bearlyShowAccountPanel==='function')window.bearlyShowAccountPanel('purchases');else location.hash='purchases'});

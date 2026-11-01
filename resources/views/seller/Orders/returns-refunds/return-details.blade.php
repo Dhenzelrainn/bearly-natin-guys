@@ -56,13 +56,21 @@
             'is-review',
             'scan-search',
         ],
+        $status === 'return_dropoff_pending' => [
+            'Buyer drop-off pending',
+            'The Buyer has three calendar days after Admin approval to hand the sealed parcel to the assigned city Sorting Center.',
+            'Drop-off by',
+            $case['dropoff_due_at'] ?? 'Deadline unavailable',
+            'is-shipping',
+            'package-check',
+        ],
         in_array($status, ['return_pickup_requested', 'return_in_transit', 'awaiting_inspection'], true) => [
             $canInspect
                 ? 'Check the returned items'
                 : ($status === 'return_pickup_requested' ? 'Pickup is being arranged' : 'Return delivery in progress'),
             $canInspect
                 ? 'Check each item before Bearly processes the refund.'
-                : 'The Logistics provider assigned to the original shipment is bringing the items back to you.',
+                : 'Logistics is moving the return parcel through the required handoffs to your pickup address.',
             'Delivery status',
             $case['return_status'] ? ucwords(str_replace('_', ' ', $case['return_status'])) : 'Being arranged',
             'is-shipping',
@@ -243,6 +251,7 @@
                             <p class="case-refund-summary">{{ $case['refund']['status'] === 'completed' ? ($case['refund']['payout_amount'] ?? $case['refund']['amount']).' paid' : $case['refund']['amount'].' approved' }} · {{ ucwords(str_replace('_', ' ', $case['refund']['status'])) }}</p>
                             <dl class="case-refund-details">
                                 <div><dt>Financially responsible</dt><dd>{{ $case['refund']['financially_responsible_party'] ? ucfirst($case['refund']['financially_responsible_party']) : 'Not recorded' }}</dd></div>
+                                @if ($case['return_shipping_fee_minor'] !== null)<div><dt>Return delivery fee</dt><dd>₱{{ number_format((int) $case['return_shipping_fee_minor'] / 100, 2) }} · covered by {{ ucfirst((string) $case['return_shipping_fee_payer']) }}; not deducted from the Buyer refund</dd></div>@endif
                                 @if ($case['refund']['financial_responsibility_reason'])<div><dt>Admin’s reason</dt><dd>{{ $case['refund']['financial_responsibility_reason'] }}</dd></div>@endif
                                 @if ($case['refund']['status'] === 'completed')
                                     <div><dt>Paid externally by Admin</dt><dd>{{ ucfirst(str_replace('_', ' ', $case['refund']['method'])) }} · {{ $case['refund']['paid_on'] ?? 'Date unavailable' }}</dd></div>
@@ -254,12 +263,12 @@
                             @if ($case['refund']['seller_recovery'])
                                 <div class="case-recovery-details">
                                     <strong>Recoverable Seller balance</strong>
-                                    <p>₱{{ number_format($case['refund']['seller_recovery']['amount_minor'] / 100, 2) }} assigned · ₱{{ number_format($case['refund']['seller_recovery']['recovered_amount_minor'] / 100, 2) }} recovered · ₱{{ number_format($case['refund']['seller_recovery']['outstanding_minor'] / 100, 2) }} outstanding.</p>
-                                    <small>Seller-liable refunds completed on or after the wallet cutoff are deducted automatically when this sale has funds in Seller Wallet. Any remaining balance blocks new withdrawals until it is settled.</small>
+                                    <p>Refund proceeds: ₱{{ number_format($case['refund']['seller_recovery']['refund_recovery_minor'] / 100, 2) }} · Return delivery: ₱{{ number_format($case['refund']['seller_recovery']['return_shipping_fee_minor'] / 100, 2) }} · ₱{{ number_format($case['refund']['seller_recovery']['outstanding_minor'] / 100, 2) }} total outstanding.</p>
+                                    <small>Eligible refund-proceeds recovery may be adjusted from Seller Wallet when funds are available and any remaining refund-proceeds balance blocks withdrawals. Return-delivery fees require separate verified recovery and neither block nor automatically deduct Seller Wallet withdrawals.</small>
                                     @if (count($case['refund']['seller_recovery']['events']))
                                         <ul>
                                             @foreach ($case['refund']['seller_recovery']['events'] as $recoveryEvent)
-                                                <li>{{ ucfirst(str_replace('_', ' ', $recoveryEvent['method'])) }} · ₱{{ number_format($recoveryEvent['amount_minor'] / 100, 2) }} · {{ $recoveryEvent['recovered_on'] }} · {{ $recoveryEvent['reference'] }}@if ($recoveryEvent['payout_no']) · {{ $recoveryEvent['payout_no'] }}@endif</li>
+                                                <li>{{ ucfirst(str_replace('_', ' ', $recoveryEvent['component'])) }} · {{ ucfirst(str_replace('_', ' ', $recoveryEvent['method'])) }} · ₱{{ number_format($recoveryEvent['amount_minor'] / 100, 2) }} · {{ $recoveryEvent['recovered_on'] }} · {{ $recoveryEvent['reference'] }}@if ($recoveryEvent['payout_no']) · {{ $recoveryEvent['payout_no'] }}@endif</li>
                                             @endforeach
                                         </ul>
                                     @endif
@@ -340,25 +349,26 @@
                             <fieldset class="case-inspection-item">
                                 <legend>{{ $item['name'] }} · {{ $item['variant'] }} · {{ $item['quantity'] }} {{ $item['quantity'] === 1 ? 'item' : 'items' }}</legend>
                                 <label><span>Item condition</span>
-                                    <select name="items[{{ $item['id'] }}][condition_code]" required>
+                                    <select name="items[{{ $item['id'] }}][condition_code]" required data-inspection-condition>
                                         <option value="">Select condition</option>
-                                        <option value="sellable">Can be sold</option>
-                                        <option value="damaged">Damaged</option>
-                                        <option value="opened">Opened</option>
-                                        <option value="missing_parts">Missing parts</option>
+                                        <option value="sellable" @selected(old('items.'.$item['id'].'.condition_code') === 'sellable')>Can be sold</option>
+                                        <option value="damaged" @selected(old('items.'.$item['id'].'.condition_code') === 'damaged')>Damaged</option>
+                                        <option value="opened" @selected(old('items.'.$item['id'].'.condition_code') === 'opened')>Opened</option>
+                                        <option value="missing_parts" @selected(old('items.'.$item['id'].'.condition_code') === 'missing_parts')>Missing parts</option>
                                     </select>
                                 </label>
                                 <label><span>What should happen next?</span>
-                                    <select name="items[{{ $item['id'] }}][resolution]" required>
+                                    <select name="items[{{ $item['id'] }}][resolution]" required data-inspection-resolution aria-describedby="inspection-guidance-{{ $item['id'] }}">
                                         <option value="">Select disposition</option>
-                                        <option value="restock">Put back in stock</option>
-                                        <option value="quarantine">Hold for review</option>
-                                        <option value="dispose">Discard</option>
+                                        <option value="restock" @selected(old('items.'.$item['id'].'.resolution') === 'restock')>Put back in stock</option>
+                                        <option value="quarantine" @selected(old('items.'.$item['id'].'.resolution') === 'quarantine')>Hold for review</option>
+                                        <option value="dispose" @selected(old('items.'.$item['id'].'.resolution') === 'dispose')>Discard</option>
                                     </select>
                                 </label>
+                                <small class="case-inspection-guidance" id="inspection-guidance-{{ $item['id'] }}" data-inspection-guidance role="status" aria-live="polite">Choose an item condition first.</small>
                             </fieldset>
                         @endforeach
-                        <p class="case-form-note">Only items in good condition can be put back in stock. Hold or discard damaged or incomplete items.</p>
+                        <p class="case-form-note">Sellable items must be restocked. Damaged, opened, or incomplete items must be held for review or discarded.</p>
                         <button class="seller-primary-button" type="submit"><i data-lucide="clipboard-check" aria-hidden="true"></i>Save item checks</button>
                     </form>
                 </section>

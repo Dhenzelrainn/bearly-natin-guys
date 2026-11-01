@@ -64,21 +64,27 @@ class VoidLegacyRefundWallet extends Command
             : 0;
 
         $this->table(
-            ['Refund', 'Status', 'Completed at', 'Cutoff', 'Recovery', 'Outstanding', 'Sale pending', 'Sale available'],
+            ['Refund', 'Status', 'Completed at', 'Cutoff', 'Refund proceeds outstanding', 'Return delivery outstanding', 'Sale pending', 'Sale available'],
             [[
                 $refund->refund_no,
                 $refund->status,
                 $refund->completed_at?->toDateTimeString() ?? '—',
                 (string) config('seller-wallet.refund_cutoff_at'),
-                $recovery->status,
-                '₱'.number_format($recovery->outstandingMinor() / 100, 2),
+                '₱'.number_format($recovery->refundOutstandingMinor() / 100, 2),
+                '₱'.number_format($recovery->returnShippingOutstandingMinor() / 100, 2),
                 '₱'.number_format($pendingMinor / 100, 2),
                 '₱'.number_format($availableMinor / 100, 2),
             ]],
         );
 
-        if ($recovery->status === 'voided') {
-            $this->info('This refund is already marked as a legacy void. No changes were made.');
+        if ($recovery->refundOutstandingMinor() < 1) {
+            $this->info(match (true) {
+                $recovery->status === 'voided' && $recovery->returnShippingOutstandingMinor() < 1
+                    => 'This refund is already marked as a legacy void. No changes were made.',
+                $recovery->returnShippingOutstandingMinor() > 0
+                    => 'There is no refund-proceeds recovery to void. The separate return-delivery fee balance was left unchanged.',
+                default => 'There is no outstanding refund-proceeds recovery to void. No changes were made.',
+            });
 
             return self::SUCCESS;
         }

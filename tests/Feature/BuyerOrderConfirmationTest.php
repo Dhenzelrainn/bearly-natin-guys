@@ -33,6 +33,32 @@ class BuyerOrderConfirmationTest extends TestCase
         $this->seed(DatabaseSeeder::class);
     }
 
+    public function test_checkout_back_link_follows_safe_same_origin_return_context(): void
+    {
+        $buyer = $this->buyer('checkout-back');
+        $homeUrl = route('home');
+        $cartUrl = route('cart.view');
+
+        $this->actingAs($buyer)
+            ->from($homeUrl)
+            ->get(route('checkout'))
+            ->assertOk()
+            ->assertSee('class="checkout-back" href="'.$homeUrl.'"', false)
+            ->assertSee('Back to Home');
+
+        $this->from($cartUrl)
+            ->get(route('checkout'))
+            ->assertOk()
+            ->assertSee('class="checkout-back" href="'.$cartUrl.'"', false)
+            ->assertSee('Back to Cart');
+
+        $this->from($homeUrl)
+            ->get(route('checkout', ['return_to' => 'https://outside.example/']))
+            ->assertOk()
+            ->assertSee('class="checkout-back" href="'.$homeUrl.'"', false)
+            ->assertDontSee('outside.example');
+    }
+
     public function test_buyer_can_confirm_fully_delivered_order_and_everything_completes(): void
     {
         $buyer = $this->buyer('confirm');
@@ -77,7 +103,8 @@ class BuyerOrderConfirmationTest extends TestCase
             ->get(route('checkout.confirmation', $order->order_no))
             ->assertOk()
             ->assertSee('Order completed')
-            ->assertDontSee('Confirm receipt');
+            ->assertDontSee('Confirm receipt')
+            ->assertSee('class="checkout-back" href="'.route('home').'"', false);
 
         $this->actingAs($seller)
             ->get(route('seller.orders'))

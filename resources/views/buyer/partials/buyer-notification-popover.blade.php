@@ -50,7 +50,7 @@
                 <span class="material-symbols-outlined" aria-hidden="true">mark_email_read</span>
                 Mark all as read
             </button>
-            <a href="{{ route('notifications.center') }}" data-notification-view-all>
+            <a href="{{ route('notifications.center', request()->routeIs('buyer.profile') ? ['source' => 'profile'] : []) }}" data-notification-view-all>
                 View all notifications
                 <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
             </a>

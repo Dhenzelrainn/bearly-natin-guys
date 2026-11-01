@@ -254,6 +254,26 @@ class RiderReviewUiTest extends TestCase
         );
     }
 
+    public function test_rider_management_and_vehicle_reviews_never_share_the_active_navigation_state(): void
+    {
+        $provider = $this->makeLogisticsProvider();
+        $riderManagementLink = '<a href="'.route('logistics.riders.index').'" class="ops-nav-link';
+        $vehicleReviewsLink = '<a href="'.route('logistics.riders.vehicle-changes').'" class="ops-nav-link';
+
+        $reviewResponse = $this->actingAs($provider['user'])
+            ->get(route('logistics.riders.vehicle-changes'));
+
+        $reviewResponse->assertOk()
+            ->assertSee($vehicleReviewsLink.' is-active"', false)
+            ->assertSee($riderManagementLink.' "', false);
+
+        $managementResponse = $this->get(route('logistics.riders.index'));
+
+        $managementResponse->assertOk()
+            ->assertSee($riderManagementLink.' is-active"', false)
+            ->assertSee($vehicleReviewsLink.' "', false);
+    }
+
     public function test_pending_rider_keeps_read_only_vehicle_panel_without_assignment_controls(): void
     {
         $provider = $this->makeLogisticsProvider();

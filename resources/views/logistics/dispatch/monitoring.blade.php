@@ -331,6 +331,17 @@
                             <small>
                                 {{ $event['detail'] }}
                             </small>
+
+                            @if(filled($event['proof_url'] ?? null))
+                                <a
+                                    class="button button-small"
+                                    href="{{ $event['proof_url'] }}"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                >
+                                    View delivery proof
+                                </a>
+                            @endif
                         </span>
                     </div>
                 @empty

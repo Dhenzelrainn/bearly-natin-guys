@@ -2,11 +2,13 @@
 
 namespace Tests\Feature\Admin;
 
+use App\Events\SellerReturnStatusUpdated;
 use App\Models\Address;
 use App\Models\LogisticsProfile;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Payment;
+use App\Models\PickupRequest;
 use App\Models\Refund;
 use App\Models\ReturnEvidence;
 use App\Models\ReturnItem;
@@ -17,6 +19,7 @@ use App\Models\SellerPayout;
 use App\Models\SellerProfile;
 use App\Models\SellerRefundRecovery;
 use App\Models\SellerTransaction;
+use App\Models\SortingCenter;
 use App\Models\Shipment;
 use App\Models\Store;
 use App\Models\User;
@@ -26,6 +29,7 @@ use App\Services\SellerWalletService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -237,7 +241,7 @@ class AdminReturnRefundTest extends TestCase
             ->assertSee('Refund requested')
             ->assertSee('Admin decision')
             ->assertSee('Who is financially responsible?')
-            ->assertSee('Admin sends the Buyer’s external payout either way')
+            ->assertSee('The Buyer receives the full approved refund.')
             ->assertSee('Reason for rejection')
             ->assertSee('What evidence is needed?')
             ->assertSee(route('admin.compliance.returns-refunds.approve', $this->returnRequest->id), false)
@@ -245,13 +249,24 @@ class AdminReturnRefundTest extends TestCase
             ->assertSee(route('admin.compliance.returns-refunds.request-evidence', $this->returnRequest->id), false);
     }
 
-    public function test_admin_approval_creates_a_zero_fee_reverse_shipment(): void
+    public function test_admin_approval_creates_a_quoted_rider_pickup_reverse_shipment(): void
     {
         // The Buyer-city provider handles pickup; the Seller-city provider is
         // resolved later as the reverse shipment's destination custodian.
         $this->createLogisticsProvider('Alternate Sorting Center');
         $logistics = $this->createLogisticsProvider('PB Sorting Center');
         ['seller_address' => $sellerAddress, 'outbound' => $outbound] = $this->preparePhysicalReturn($logistics);
+        $sellerOrder = SellerOrder::query()->findOrFail($this->returnRequest->seller_order_id);
+        $sellerOrder->update([
+            'shipping_quote' => [
+                'package_items' => [[
+                    'sku' => $this->orderItem->sku,
+                    'quantity' => 1,
+                    'package_weight_kg' => 0.4,
+                    'package_dimensions_cm' => ['length' => 10, 'width' => 8, 'height' => 5],
+                ]],
+            ],
+        ]);
 
         $this->actingAs($this->admin)
             ->post(route('admin.compliance.returns-refunds.approve', $this->returnRequest), $this->responsibilityData('platform'))
@@ -271,13 +286,234 @@ class AdminReturnRefundTest extends TestCase
         $this->assertSame('0403422000', $returnShipment->destination_city_code);
         $this->assertSame('Pila', $returnShipment->destination_address_snapshot['city_municipality']);
         $this->assertSame('0403422000', $returnShipment->destination_address_snapshot['psgc_city_code']);
-        $this->assertSame(0, (int) $returnShipment->shipping_fee_minor);
+        $this->assertSame('rider_pickup', $this->returnRequest->fresh()->return_delivery_method);
+        $this->assertGreaterThan(0, (int) $returnShipment->shipping_fee_minor);
+        $this->assertSame('return_shipping_v1', $returnShipment->return_shipping_quote['quote_kind']);
+        $this->assertSame((int) $returnShipment->shipping_fee_minor, (int) $returnShipment->return_shipping_quote['return_shipping_fee_minor']);
+        $this->assertEquals(0.4, (float) $returnShipment->waybill->total_weight_kg);
+        $this->assertEquals(10, (float) $returnShipment->waybill->length_cm);
         $this->assertSame($sellerAddress->id, (int) $returnShipment->destination_address_id);
         $this->assertDatabaseHas('shipment_events', [
             'shipment_id' => $returnShipment->id,
             'event_type' => 'return_shipment_ready_for_pickup',
             'to_status' => 'ready_for_pickup',
             'actor_user_id' => $this->admin->id,
+        ]);
+    }
+
+    public function test_buyer_can_choose_same_city_dropoff_for_a_physical_return_only(): void
+    {
+        Storage::fake('local');
+        $this->returnRequest->update(['status' => 'rejected']);
+        $provider = $this->createLogisticsProvider('PB Sorting Center');
+        $center = $this->createSortingCenterForProvider($provider);
+
+        $this->actingAs($this->buyer)
+            ->get(route('buyer.returns.create', $this->returnRequest->seller_order_id))
+            ->assertOk()
+            ->assertSee('Drop off at Logistics')
+            ->assertSee($center->name)
+            ->assertSee('3 calendar days after Admin approval');
+
+        $this->actingAs($this->buyer)
+            ->post(route('buyer.returns.store', $this->returnRequest->seller_order_id), [
+                'request_type' => 'return_refund',
+                'return_delivery_method' => 'buyer_dropoff',
+                'reason_code' => 'item_not_as_described',
+                'item_quantities' => [$this->orderItem->id => 1],
+                'buyer_note' => 'The received item does not match the saved order description.',
+            ])
+            ->assertRedirect();
+
+        $case = ReturnRequest::query()
+            ->where('buyer_id', $this->buyer->id)
+            ->where('id', '!=', $this->returnRequest->id)
+            ->firstOrFail();
+        $this->assertSame('buyer_dropoff', $case->return_delivery_method);
+        $this->assertSame('awaiting_seller', $case->status);
+        $this->assertNull($case->return_shipment_id, 'Admin approval remains required before a return waybill is generated.');
+    }
+
+    public function test_refund_only_never_creates_a_return_shipment_or_delivery_fee(): void
+    {
+        $this->returnRequest->update(['status' => 'rejected']);
+
+        $this->actingAs($this->buyer)
+            ->post(route('buyer.returns.store', $this->returnRequest->seller_order_id), [
+                'request_type' => 'refund_only',
+                'return_delivery_method' => 'buyer_dropoff',
+                'reason_code' => 'item_not_as_described',
+                'item_quantities' => [$this->orderItem->id => 1],
+            ])
+            ->assertRedirect();
+
+        $case = ReturnRequest::query()
+            ->where('buyer_id', $this->buyer->id)
+            ->where('id', '!=', $this->returnRequest->id)
+            ->firstOrFail();
+        $this->assertSame('refund_only', $case->request_type);
+        $this->assertNull($case->return_delivery_method);
+        $this->assertNull($case->return_shipment_id);
+        $this->assertDatabaseMissing('shipments', [
+            'seller_order_id' => $case->seller_order_id,
+            'purpose' => 'return',
+        ]);
+    }
+
+    public function test_admin_approval_creates_buyer_dropoff_waybill_at_the_assigned_city_center(): void
+    {
+        $provider = $this->createLogisticsProvider('PB Sorting Center');
+        $center = $this->createSortingCenterForProvider($provider);
+        $this->preparePhysicalReturn($provider);
+        $this->returnRequest->update(['return_delivery_method' => 'buyer_dropoff']);
+
+        $this->actingAs($this->admin)
+            ->post(route('admin.compliance.returns-refunds.approve', $this->returnRequest), $this->responsibilityData('seller'))
+            ->assertRedirect();
+
+        $this->returnRequest->refresh();
+        $shipment = Shipment::query()->whereKey($this->returnRequest->return_shipment_id)->firstOrFail();
+        $refund = Refund::query()->where('return_request_id', $this->returnRequest->id)->firstOrFail();
+
+        $this->assertSame('return_dropoff_pending', $this->returnRequest->status);
+        $this->assertSame('buyer_dropoff', $this->returnRequest->return_delivery_method);
+        $this->assertSame((int) $center->id, (int) $this->returnRequest->dropoff_sorting_center_id);
+        $this->assertNotNull($this->returnRequest->dropoff_due_at);
+        $this->assertSame('awaiting_buyer_dropoff', $shipment->status);
+        $this->assertSame((int) $center->address_id, (int) $shipment->origin_address_id);
+        $this->assertGreaterThan(0, (int) $shipment->shipping_fee_minor);
+        $this->assertSame((int) $shipment->shipping_fee_minor, (int) $shipment->return_shipping_quote['return_shipping_fee_minor']);
+        $this->assertSame('seller', $refund->financially_responsible_party);
+        $this->assertSame(129900, (int) $refund->amount_minor, 'Return shipping must not reduce the approved full refund.');
+        $this->assertDatabaseMissing('pickup_requests', ['return_request_id' => $this->returnRequest->id]);
+        $this->assertDatabaseHas('shipment_events', [
+            'shipment_id' => $shipment->id,
+            'event_type' => 'return_shipment_awaiting_buyer_dropoff',
+            'to_status' => 'awaiting_buyer_dropoff',
+            'actor_user_id' => $this->admin->id,
+        ]);
+        $dropoffNotification = User::query()->findOrFail($provider->user_id)->notifications()
+            ->where('data->event', 'logistics_return_dropoff_expected')
+            ->first();
+        $this->assertNotNull($dropoffNotification);
+        $this->assertSame(route('logistics.sorting.incoming'), $dropoffNotification->data['url']);
+    }
+
+    public function test_logistics_can_receive_an_assigned_buyer_dropoff_once_only(): void
+    {
+        $provider = $this->createLogisticsProvider('PB Sorting Center');
+        $center = $this->createSortingCenterForProvider($provider);
+        $otherProvider = $this->createLogisticsProvider('Alternate Sorting Center');
+        $otherCenter = $this->createSortingCenterForProvider($otherProvider);
+        $this->preparePhysicalReturn($provider);
+        $this->returnRequest->update(['return_delivery_method' => 'buyer_dropoff']);
+        $this->actingAs($this->admin)
+            ->post(route('admin.compliance.returns-refunds.approve', $this->returnRequest), $this->responsibilityData('platform'))
+            ->assertRedirect();
+        $shipment = Shipment::query()->whereKey($this->returnRequest->fresh()->return_shipment_id)->firstOrFail();
+        $waybill = $shipment->waybill()->firstOrFail();
+        $logisticsUser = User::query()->findOrFail($provider->user_id);
+        $otherLogisticsUser = User::query()->findOrFail($otherProvider->user_id);
+
+        $this->actingAs($otherLogisticsUser)
+            ->post(route('logistics.sorting.incoming.receive'), [
+                'identifier' => $waybill->waybill_no,
+                'sorting_center_id' => $otherCenter->id,
+                'scan_method' => 'manual',
+            ])
+            ->assertNotFound();
+
+        $centerAddress = Address::query()->findOrFail($center->address_id);
+        $centerAddress->update([
+            'city_municipality' => 'Pila',
+            'psgc_city_code' => '0403422000',
+        ]);
+        $this->actingAs($logisticsUser)
+            ->post(route('logistics.sorting.incoming.receive'), [
+                'identifier' => $waybill->waybill_no,
+                'sorting_center_id' => $center->id,
+                'scan_method' => 'manual',
+            ])
+            ->assertForbidden();
+        $this->assertSame('awaiting_buyer_dropoff', $shipment->fresh()->status);
+        $this->assertSame('return_dropoff_pending', $this->returnRequest->fresh()->status);
+
+        $centerAddress->update([
+            'city_municipality' => 'Calamba',
+            'psgc_city_code' => '0403405000',
+        ]);
+
+        $this->actingAs($logisticsUser)
+            ->post(route('logistics.sorting.incoming.receive'), [
+                'identifier' => $waybill->barcode_value,
+                'sorting_center_id' => $center->id,
+                'scan_method' => 'manual',
+            ])
+            ->assertRedirect();
+
+        $this->assertSame('return_in_transit', $this->returnRequest->fresh()->status);
+        $this->assertSame('at_sorting_center', $shipment->fresh()->status);
+        $this->assertDatabaseHas('return_events', [
+            'return_request_id' => $this->returnRequest->id,
+            'event_type' => 'buyer_return_dropoff_received',
+            'from_status' => 'return_dropoff_pending',
+            'to_status' => 'return_in_transit',
+            'actor_user_id' => $logisticsUser->id,
+        ]);
+
+        $this->actingAs($logisticsUser)
+            ->post(route('logistics.sorting.incoming.receive'), [
+                'identifier' => $waybill->waybill_no,
+                'sorting_center_id' => $center->id,
+                'scan_method' => 'manual',
+            ])
+            ->assertStatus(409);
+    }
+
+    public function test_buyer_can_switch_expired_unreceived_dropoff_to_rider_pickup(): void
+    {
+        $provider = $this->createLogisticsProvider('PB Sorting Center');
+        $center = $this->createSortingCenterForProvider($provider);
+        $this->preparePhysicalReturn($provider);
+        $this->returnRequest->update(['return_delivery_method' => 'buyer_dropoff']);
+        $this->actingAs($this->admin)
+            ->post(route('admin.compliance.returns-refunds.approve', $this->returnRequest), $this->responsibilityData('platform'))
+            ->assertRedirect();
+
+        $this->returnRequest->refresh();
+        $dueAt = $this->returnRequest->dropoff_due_at;
+        $shipmentId = (int) $this->returnRequest->return_shipment_id;
+        $shipment = Shipment::query()->whereKey($shipmentId)->with('waybill')->firstOrFail();
+
+        Carbon::setTestNow($dueAt->copy()->subMinute());
+        $this->actingAs($this->buyer)
+            ->post(route('buyer.returns.switch-to-pickup', $this->returnRequest->id))
+            ->assertSessionHasErrors('return');
+        $this->assertSame('return_dropoff_pending', $this->returnRequest->fresh()->status);
+
+        Carbon::setTestNow($dueAt->copy()->addSecond());
+        $this->actingAs(User::query()->findOrFail($provider->user_id))
+            ->post(route('logistics.sorting.incoming.receive'), [
+                'identifier' => $shipment->waybill->waybill_no,
+                'sorting_center_id' => $center->id,
+                'scan_method' => 'manual',
+            ])
+            ->assertStatus(409);
+        $this->actingAs($this->buyer)
+            ->post(route('buyer.returns.switch-to-pickup', $this->returnRequest->id))
+            ->assertRedirect(route('buyer.returns.show', $this->returnRequest->id));
+
+        $this->returnRequest->refresh();
+        $shipment = Shipment::query()->whereKey($shipmentId)->firstOrFail();
+        $this->assertSame('rider_pickup', $this->returnRequest->return_delivery_method);
+        $this->assertSame('return_pickup_requested', $this->returnRequest->status);
+        $this->assertSame('ready_for_pickup', $shipment->status);
+        $this->assertSame(1, PickupRequest::query()->where('return_request_id', $this->returnRequest->id)->count());
+        $this->assertGreaterThan(0, (int) $shipment->shipping_fee_minor);
+        $this->assertDatabaseHas('return_events', [
+            'return_request_id' => $this->returnRequest->id,
+            'event_type' => 'buyer_switched_return_to_rider_pickup',
+            'actor_user_id' => $this->buyer->id,
         ]);
     }
 
@@ -493,6 +729,41 @@ class AdminReturnRefundTest extends TestCase
             ->assertDontSee('Save as draft');
     }
 
+    public function test_seller_inspection_form_exposes_condition_and_disposition_guidance(): void
+    {
+        $provider = $this->createLogisticsProvider('PB Sorting Center');
+        ['seller_address' => $sellerAddress] = $this->preparePhysicalReturn($provider);
+        $returnShipment = Shipment::query()->create([
+            'shipment_no' => 'SHP-RETURN-INSPECT-UI-001',
+            'seller_order_id' => $this->returnRequest->seller_order_id,
+            'logistics_profile_id' => $provider->id,
+            'origin_logistics_profile_id' => $provider->id,
+            'destination_address_id' => $sellerAddress->id,
+            'destination_city_code' => '0403422000',
+            'purpose' => 'return',
+            'status' => 'delivered',
+            'shipping_fee_minor' => 5000,
+            'cod_amount_minor' => 0,
+            'delivered_at' => now(),
+        ]);
+        $this->returnRequest->update([
+            'status' => 'awaiting_inspection',
+            'return_shipment_id' => $returnShipment->id,
+        ]);
+
+        $this->actingAs($this->seller)
+            ->get(route('seller.orders.returns.show', $this->returnRequest->return_no))
+            ->assertOk()
+            ->assertSee('data-inspection-condition', false)
+            ->assertSee('data-inspection-resolution', false)
+            ->assertSee('data-inspection-guidance', false)
+            ->assertSee('value="sellable"', false)
+            ->assertSee('value="damaged"', false)
+            ->assertSee('value="opened"', false)
+            ->assertSee('value="missing_parts"', false)
+            ->assertSee('Sellable items must be restocked. Damaged, opened, or incomplete items must be held for review or discarded.');
+    }
+
     public function test_seller_returns_list_uses_the_aligned_case_row_layout(): void
     {
         $this->actingAs($this->seller)
@@ -502,12 +773,59 @@ class AdminReturnRefundTest extends TestCase
             ->assertSee('return-case-id', false)
             ->assertSee('<wbr>', false)
             ->assertSee('return-case-submitted', false)
+            ->assertSee('returns-customer-product', false)
+            ->assertSee('returns-customer-header', false)
+            ->assertSee(route('seller.orders.returns.show', $this->returnRequest->return_no), false)
+            ->assertSee(route('seller.orders.returns.status-version'), false)
+            ->assertSee('data-returns-status-version=', false)
             ->assertSee('returns-table-product', false)
             ->assertSee('Within 3 days after Bearly marks the order complete')
             ->assertSee('attach at least one helpful file')
             ->assertSee('Logistics picks it up and brings it to you')
             ->assertSee('It will not be taken from your payout automatically.')
             ->assertSee('REF-TEST-001');
+    }
+
+    public function test_seller_return_status_version_is_private_and_changes_when_a_case_updates(): void
+    {
+        $before = $this->actingAs($this->seller)
+            ->get(route('seller.orders.returns.status-version'))
+            ->assertOk()
+            ->assertJsonStructure(['data' => ['version']])
+            ->json('data.version');
+
+        $this->returnRequest->update(['status' => 'awaiting_evidence']);
+
+        $after = $this->actingAs($this->seller)
+            ->get(route('seller.orders.returns.status-version'))
+            ->assertOk()
+            ->json('data.version');
+
+        $this->assertNotSame($before, $after);
+        $this->actingAs($this->buyer)
+            ->get(route('seller.orders.returns.status-version'))
+            ->assertForbidden();
+    }
+
+    public function test_return_status_transition_broadcasts_to_owning_seller_after_database_commit(): void
+    {
+        $this->returnRequest->update(['status' => 'under_review']);
+        Event::fake([SellerReturnStatusUpdated::class]);
+
+        $this->actingAs($this->admin)
+            ->post(route('admin.compliance.returns-refunds.reject', $this->returnRequest), [
+                'reason' => 'The available evidence does not support this request.',
+            ])
+            ->assertRedirect();
+
+        Event::assertDispatched(
+            SellerReturnStatusUpdated::class,
+            fn (SellerReturnStatusUpdated $event): bool => $event->sellerUserId === (int) $this->seller->id
+                && $event->returnRequestId === (int) $this->returnRequest->id
+                && $event->returnNo === $this->returnRequest->return_no
+                && $event->status === 'rejected'
+                && $this->returnRequest->fresh()->status === 'rejected',
+        );
     }
 
     public function test_seller_return_case_displays_the_order_item_image_snapshot(): void
@@ -678,11 +996,14 @@ class AdminReturnRefundTest extends TestCase
         $this->actingAs($this->admin)
             ->get(route('admin.compliance.returns-refunds'))
             ->assertOk()
-            ->assertSee('External payout only')
-            ->assertSee('Bearly does not transfer money')
+            ->assertSee('Completed external payout only')
+            ->assertSee('Bearly records the proof; it does not send money.')
             ->assertSee('Record completed external payout')
             ->assertSee('<details class="return-payout-disclosure">', false)
             ->assertDontSee('<details class="return-payout-disclosure" open', false)
+            ->assertSee('External payout method')
+            ->assertDontSee('<option value="cash">Cash</option>', false)
+            ->assertSee(route('admin.payments').'#refund-cash-dispatch', false)
             ->assertSee('I confirm this exact payout was already sent to the Buyer.')
             ->assertSee('name="external_payout_confirmed" value="1" required', false)
             ->assertSee('name="external_paid_on" type="date"', false)
@@ -711,9 +1032,10 @@ class AdminReturnRefundTest extends TestCase
                 'method' => 'cash',
                 'provider_reference' => 'BUYER-ACKNOWLEDGMENT-123',
                 'external_paid_on' => now()->toDateString(),
+                'receipt' => UploadedFile::fake()->create('cash-acknowledgment.pdf', 10, 'application/pdf'),
             ])
             ->assertRedirect(route('admin.compliance.returns-refunds'))
-            ->assertSessionHasErrors('receipt');
+            ->assertSessionHasErrors('method');
 
         $this->assertSame('pending', $refund->fresh()->status);
 
@@ -1124,6 +1446,14 @@ class AdminReturnRefundTest extends TestCase
         $this->returnRequest->sellerOrder()->update(['completed_at' => now()->subDays(4)]);
 
         $this->actingAs($this->buyer)
+            ->get(route('buyer.returns.create', $this->returnRequest->seller_order_id))
+            ->assertOk()
+            ->assertSee('This order isn’t eligible for a return or refund')
+            ->assertSee('Return deadline:')
+            ->assertSee('Returns are available within 3 days after the order is completed and payment is confirmed.')
+            ->assertDontSee('Submitted within 3 days of order completion.');
+
+        $this->actingAs($this->buyer)
             ->from(route('buyer.returns.create', $this->returnRequest->seller_order_id))
             ->post(route('buyer.returns.store', $this->returnRequest->seller_order_id), [
                 'request_type' => 'refund_only',
@@ -1342,10 +1672,46 @@ class AdminReturnRefundTest extends TestCase
         ]);
     }
 
+    private function createSortingCenterForProvider(LogisticsProfile $provider): SortingCenter
+    {
+        $user = User::query()->findOrFail($provider->user_id);
+        $cityCode = (string) $provider->psgc_city_code;
+        $isBuyerCity = $cityCode === '0403405000';
+        $address = Address::query()->create([
+            'user_id' => $user->id,
+            'label' => 'Sorting Center',
+            'recipient_name' => $provider->display_name,
+            'phone' => '09171112222',
+            'street' => 'Logistics Road',
+            'barangay' => 'Real',
+            'city_municipality' => $isBuyerCity ? 'Calamba' : 'Pila',
+            'province' => 'Laguna',
+            'postal_code' => $isBuyerCity ? '4027' : '4010',
+            'psgc_city_code' => $cityCode,
+        ]);
+
+        return SortingCenter::query()->create([
+            'logistics_profile_id' => $provider->id,
+            'address_id' => $address->id,
+            'name' => $provider->display_name.' Center',
+            'code' => fake()->unique()->bothify('SC-#####'),
+            'status' => 'active',
+        ]);
+    }
+
     /** @return array{seller_address: Address, outbound: Shipment} */
     private function preparePhysicalReturn(LogisticsProfile $provider): array
     {
         $this->returnRequest->update(['request_type' => 'return_refund']);
+        if (! $this->returnRequest->items()->exists()) {
+            ReturnItem::query()->create([
+                'return_request_id' => $this->returnRequest->id,
+                'order_item_id' => $this->orderItem->id,
+                'quantity' => 1,
+                'refund_amount_minor' => (int) $this->returnRequest->requested_amount_minor,
+                'resolution' => 'return_required',
+            ]);
+        }
         $sellerProfile = SellerProfile::query()->where('user_id', $this->seller->id)->firstOrFail();
         $sellerAddress = Address::query()->create([
             'user_id' => $this->seller->id,

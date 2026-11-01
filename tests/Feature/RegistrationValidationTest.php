@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\AccountStatus;
 use App\Enums\UserRole;
 use App\Models\AccountApplication;
+use App\Models\Address;
 use App\Models\Category;
 use App\Models\User;
 use Database\Seeders\DatabaseSeeder;
@@ -14,6 +15,9 @@ use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
+use Laravel\Socialite\Facades\Socialite;
+use Laravel\Socialite\Two\User as SocialiteUser;
+use Mockery;
 use Tests\TestCase;
 
 class RegistrationValidationTest extends TestCase
@@ -67,6 +71,7 @@ class RegistrationValidationTest extends TestCase
                 'role' => UserRole::Seller->value,
                 'business_name' => 'Registration Option Seller '.($index + 1),
                 'business_category_id' => (string) $category->id,
+                'valid_id' => UploadedFile::fake()->create('seller-id.pdf', 100, 'application/pdf'),
                 'business_permit' => UploadedFile::fake()->create('permit.pdf', 100, 'application/pdf'),
             ]);
             $this->grantEmailProof($email);
@@ -75,6 +80,7 @@ class RegistrationValidationTest extends TestCase
                 ->assertRedirect(route('application.pending'));
 
             $user = User::query()->where('email', $email)->firstOrFail();
+            $this->assertSame(AccountStatus::Pending->value, $user->status);
             $application = AccountApplication::query()->where('user_id', $user->id)->firstOrFail();
             $buyerCategory = $category->marketplaceCategories->sole();
 
@@ -99,6 +105,114 @@ class RegistrationValidationTest extends TestCase
         $this->assertDatabaseMissing('users', ['email' => 'legacy-category-choice@example.test']);
     }
 
+    public function test_buyer_registration_hides_the_seller_id_upload_and_does_not_mark_it_required(): void
+    {
+        $response = $this->get(route('register'))
+            ->assertOk()
+            ->assertSee('Verified email activates your Buyer account', false);
+
+        $html = $response->getContent();
+        preg_match('/<input name="valid_id"[^>]*>/s', $html, $matches);
+
+        $this->assertNotEmpty($matches[0] ?? null);
+        $this->assertDoesNotMatchRegularExpression('/\srequired(?:\s|>)/', $matches[0]);
+        $this->assertMatchesRegularExpression('/data-seller-document\s+hidden/', $html);
+    }
+
+    public function test_buyer_registration_rejects_missing_email_proof_without_persisting_user_or_address(): void
+    {
+        $payload = $this->buyerData(
+            'missing-proof@example.test',
+            '09171234567',
+        );
+
+        $this->from(route('register'))
+            ->post(route('register.submit'), $payload)
+            ->assertRedirect(route('register'))
+            ->assertSessionHasErrors('email');
+
+        $this->assertDatabaseMissing('users', ['email' => $payload['email']]);
+        $this->assertFalse(Address::query()->where('recipient_name', 'Bianca Santos')->exists());
+        $this->assertFalse(AccountApplication::query()->exists());
+        $this->assertSame([], Storage::disk('local')->allFiles('registration-documents/valid-ids'));
+    }
+
+    public function test_seller_registration_still_requires_id_and_business_permit(): void
+    {
+        $category = Category::query()
+            ->where('is_registration_option', true)
+            ->where('is_active', true)
+            ->firstOrFail();
+        $payload = $this->buyerData('seller-documents@example.test', '09181234567', [
+            'role' => UserRole::Seller->value,
+            'business_name' => 'Seller Documents Store',
+            'business_category_id' => (string) $category->id,
+        ]);
+        unset($payload['valid_id']);
+
+        $this->from(route('register'))
+            ->post(route('register.submit'), $payload)
+            ->assertRedirect(route('register'))
+            ->assertSessionHasErrors(['valid_id', 'business_permit']);
+
+        $this->assertDatabaseMissing('users', ['email' => $payload['email']]);
+    }
+
+    public function test_verified_google_email_can_register_a_buyer_without_id_or_manual_review(): void
+    {
+        $email = 'google-buyer@example.test';
+        $googleUser = (new SocialiteUser)
+            ->setRaw([
+                'email_verified' => true,
+                'given_name' => 'Google',
+                'family_name' => 'Buyer',
+            ])
+            ->map([
+                'id' => 'google-new-buyer-1',
+                'name' => 'Google Buyer',
+                'email' => $email,
+            ]);
+        $driver = Mockery::mock();
+        $driver->shouldReceive('user')->once()->andReturn($googleUser);
+        Socialite::shouldReceive('driver')->with('google')->once()->andReturn($driver);
+
+        $this->get(route('google.callback'))
+            ->assertRedirect(route('register'))
+            ->assertSessionHas('google_registration');
+
+        $this->post(route('register.submit'), $this->buyerData($email, '09181234567'))
+            ->assertRedirect(route('login'));
+
+        $buyer = User::query()->where('email', $email)->firstOrFail();
+        $this->assertSame(AccountStatus::Active->value, $buyer->status);
+        $this->assertNotNull($buyer->email_verified_at);
+        $this->assertSame('google-new-buyer-1', $buyer->google_id);
+        $this->assertNull($buyer->valid_id_path);
+        $this->assertNull($buyer->phone_verified_at);
+        $this->assertFalse($buyer->applications()->exists());
+    }
+
+    public function test_unverified_google_email_cannot_start_buyer_registration(): void
+    {
+        $email = 'unverified-google-buyer@example.test';
+        $googleUser = (new SocialiteUser)
+            ->setRaw(['email_verified' => false])
+            ->map([
+                'id' => 'google-unverified-buyer-1',
+                'name' => 'Unverified Buyer',
+                'email' => $email,
+            ]);
+        $driver = Mockery::mock();
+        $driver->shouldReceive('user')->once()->andReturn($googleUser);
+        Socialite::shouldReceive('driver')->with('google')->once()->andReturn($driver);
+
+        $this->get(route('google.callback'))
+            ->assertRedirect(route('login'))
+            ->assertSessionHasErrors('email');
+
+        $this->assertDatabaseMissing('users', ['email' => $email]);
+    }
+
     public function test_buyer_names_support_unicode_and_enforce_two_to_fifty_characters(): void
     {
         $twoCharacterName = $this->buyerData(
@@ -109,7 +223,7 @@ class RegistrationValidationTest extends TestCase
         $this->grantEmailProof($twoCharacterName['email']);
 
         $this->post(route('register.submit'), $twoCharacterName)
-            ->assertRedirect(route('application.pending'));
+            ->assertRedirect(route('login'));
 
         $this->assertDatabaseHas('users', [
             'email' => 'jo@example.test',
@@ -125,7 +239,7 @@ class RegistrationValidationTest extends TestCase
         $this->grantEmailProof($fiftyCharacterName['email']);
 
         $this->post(route('register.submit'), $fiftyCharacterName)
-            ->assertRedirect(route('application.pending'));
+            ->assertRedirect(route('login'));
 
         $this->assertDatabaseHas('users', [
             'email' => 'fifty@example.test',
@@ -183,7 +297,7 @@ class RegistrationValidationTest extends TestCase
             $this->grantEmailProof($eighteenToday['email']);
 
             $this->post(route('register.submit'), $eighteenToday)
-                ->assertRedirect(route('application.pending'));
+                ->assertRedirect(route('login'));
 
             $eighteen = User::query()
                 ->where('email', 'eighteen@example.test')
@@ -499,7 +613,6 @@ class RegistrationValidationTest extends TestCase
             'street_name' => 'Bearly Street',
             'house_number' => '12',
             'postal_code' => '4000',
-            'valid_id' => UploadedFile::fake()->create('buyer-id.pdf', 100, 'application/pdf'),
             'password' => 'Password123',
             'password_confirmation' => 'Password123',
             'terms' => '1',

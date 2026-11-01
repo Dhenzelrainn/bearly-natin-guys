@@ -47,7 +47,7 @@
         <h2>{{ $application['name'] }}</h2>
 
         <p>
-            Inspect the Rider profile, vehicle, and submitted credentials.
+            Inspect the Rider profile, requested work type, vehicle, and submitted credentials.
         </p>
     </div>
 
@@ -87,6 +87,14 @@
                 action="{{ route('logistics.riders.approve', $application['user_id']) }}"
             >
                 @csrf
+
+                @if($application['requested_work_type'] === 'courier')
+                    <label class="field">
+                        <span>Logistics-verified line-haul parcel capacity</span>
+                        <input type="number" name="linehaul_capacity" min="1" max="1000" required value="{{ old('linehaul_capacity', $application['linehaul_parcel_capacity']) }}">
+                        <small>Approve only after checking the submitted vehicle and both verified documents.</small>
+                    </label>
+                @endif
 
                 <button
                     class="button button-primary"
@@ -184,6 +192,11 @@
                         </div>
 
                         <div class="detail-item">
+                            <small>Requested work type / model</small>
+                            <strong>{{ ucfirst($application['requested_work_type']) }} · {{ $application['vehicle_model'] }}</strong>
+                        </div>
+
+                        <div class="detail-item">
                             <small>Plate number</small>
                             <strong>{{ $application['plate'] }}</strong>
                         </div>
@@ -215,6 +228,11 @@
                     <div class="detail-item">
                         <small>Vehicle type</small>
                         <strong>{{ $application['vehicle'] }}</strong>
+                    </div>
+
+                    <div class="detail-item">
+                        <small>Requested work type / model</small>
+                        <strong>{{ ucfirst($application['requested_work_type']) }} · {{ $application['vehicle_model'] }}</strong>
                     </div>
 
                     <div class="detail-item">

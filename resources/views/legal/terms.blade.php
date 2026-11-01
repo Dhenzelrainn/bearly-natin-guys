@@ -6,11 +6,11 @@
     <p class="legal-meta">Version {{ config('bearly-policies.version') }}</p>
     <h1>Terms of Service</h1>
     @if(config('bearly-policies.draft'))<p class="legal-draft">Project draft for testing. These terms need approval by the Bearly team before public launch.</p>@endif
-    <p>These terms explain the use of Bearly, a marketplace project operated by {{ config('bearly-policies.operator') }}. By submitting an application, you agree to these terms.</p>
+    <p>These terms explain the use of Bearly, a marketplace project operated by {{ config('bearly-policies.operator') }}. By creating an account or submitting a role-specific application, you agree to these terms.</p>
     <h2>1. Your account</h2>
     <p>Provide accurate details and an email address you control and a valid contact number. Keep your password and verification codes private. Do not share your account, impersonate someone else, or submit another person’s identity documents.</p>
     <h2>2. Registration and review</h2>
-    <p>Buyer applications require email verification and administrator review. An email code confirms access to an email inbox; it does not guarantee identity or application approval. Submission alone does not activate an account. Contact Bearly if you need to correct a submitted application.</p>
+    <p>New Buyer accounts activate after Bearly verifies access to the registered email address through an OTP or verified Google email. Buyers do not need to upload a government ID or wait for Administrator approval. Email proof confirms inbox access only; it does not verify a phone number or identity. Buyer applications submitted under the previous review process retain their status and records and are no longer in the active Admin queues; contact Bearly Support about an existing pending account. Seller, Logistics, and Rider registrations retain their role-specific document and approval requirements.</p>
     <h2>3. Using the marketplace</h2>
     <p>Use Bearly only for lawful transactions. Do not create fraudulent orders, upload harmful content, harass other users, sell prohibited goods, bypass access controls, or interfere with the service.</p>
     <h2>4. Orders, delivery, and returns</h2>

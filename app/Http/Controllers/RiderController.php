@@ -4,13 +4,16 @@ namespace App\Http\Controllers;
 
 use App\Enums\AccountStatus;
 use App\Enums\ParcelStatus;
+use App\Enums\RiderWorkType;
 use App\Enums\UserRole;
+use App\Models\LinehaulRun;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\MessageAttachment;
 use App\Models\OrderItem;
 use App\Models\PickupAssignment;
 use App\Models\RiderProfile;
+use App\Models\RiderVehicleChangeRequest;
 use App\Models\User;
 use App\Services\ApplicationReviewService;
 use App\Services\BuyerCatalogService;
@@ -18,6 +21,7 @@ use App\Services\CodCashCollectionService;
 use App\Services\ConversationService;
 use App\Services\EmailVerificationService;
 use App\Services\InternationalPhone;
+use App\Services\LinehaulRunService;
 use App\Services\PostalCodeLookup;
 use App\Services\RegistrationLifecycleService;
 use App\Services\ReturnRefundService;
@@ -26,6 +30,7 @@ use App\Services\RiderDeliveryService;
 use App\Services\RiderEarningsService;
 use App\Services\RiderPickupService;
 use App\Services\RiderZoneAssignmentService;
+use App\Services\RiderVehicleChangeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -542,6 +547,8 @@ class RiderController extends Controller
                 return [
                     'waybill' => $firstParcel?->waybill?->waybill_no
                         ?: 'Not generated',
+                    'barcode_value' => $firstParcel?->waybill?->barcode_value
+                        ?: $firstParcel?->waybill?->waybill_no,
                     'products' => $catalog
                         ? $this->orderItemPreviewData(
                             $shipment?->sellerOrder?->items ?? collect(),
@@ -748,11 +755,16 @@ class RiderController extends Controller
             $profileQuery = RiderProfile::withTrashed()
                 ->whereRaw('UPPER(TRIM(plate_number)) = ?', [$plateNumber]);
 
+            $changeQuery = RiderVehicleChangeRequest::query()
+                ->where('status', 'pending')
+                ->whereRaw('UPPER(TRIM(plate_number)) = ?', [$plateNumber]);
+
             if ($ignoreProfileId !== null) {
                 $profileQuery->where('id', '<>', $ignoreProfileId);
+                $changeQuery->where('rider_profile_id', '<>', $ignoreProfileId);
             }
 
-            if ($userQuery->exists() || $profileQuery->exists()) {
+            if ($userQuery->exists() || $profileQuery->exists() || $changeQuery->exists()) {
                 $fail('This plate number is already registered to a Rider.');
             }
         };
@@ -763,6 +775,7 @@ class RiderController extends Controller
         $request->merge([
             'email' => strtolower(trim((string) $request->input('email'))),
             'plate_number' => strtoupper(trim((string) $request->input('plate_number'))),
+            'work_type' => $request->input('work_type', RiderWorkType::Local->value),
         ]);
 
         $contactNumber = trim((string) $request->input('contact_number'));
@@ -815,7 +828,15 @@ class RiderController extends Controller
             'postal_code' => ['required', 'digits:4'],
             'city_code' => ['required', 'regex:/^[0-9]{6,10}$/D'],
             'postal_manual' => ['nullable', 'boolean'],
-            'vehicle_type' => ['required', 'string', 'max:80'],
+            'work_type' => ['required', Rule::in(array_column(RiderWorkType::cases(), 'value'))],
+            'vehicle_type' => [
+                'required',
+                Rule::in(array_merge(
+                    RiderWorkType::vehicleTypes(RiderWorkType::Local),
+                    RiderWorkType::vehicleTypes(RiderWorkType::Courier),
+                )),
+            ],
+            'vehicle_model' => ['nullable', 'string', 'max:160'],
             'plate_number' => [
                 'required',
                 'string',
@@ -837,6 +858,16 @@ class RiderController extends Controller
             'terms' => ['accepted'],
             'password' => ['required', 'confirmed', 'min:8', 'regex:/[a-z]/', 'regex:/[A-Z]/', 'regex:/[0-9]/'],
         ]);
+
+        $requestedWorkType = RiderWorkType::from($validated['work_type']);
+
+        if (! in_array($validated['vehicle_type'], RiderWorkType::vehicleTypes($requestedWorkType), true)) {
+            throw ValidationException::withMessages([
+                'vehicle_type' => $requestedWorkType === RiderWorkType::Courier
+                    ? 'Courier applicants must submit a supported four-wheel parcel vehicle.'
+                    : 'Motorcycle, Tricycle, or E-bike vehicles are eligible for local Rider work.',
+            ]);
+        }
 
         app(PostalCodeLookup::class)->validate([
             'province' => $validated['province'],
@@ -935,7 +966,10 @@ class RiderController extends Controller
                             'postal_code' => $validated['postal_code'] ?? null,
                             'city_code' => $validated['city_code'] ?? null,
                         ],
-                        [],
+                        [
+                            'requested_work_type' => $validated['work_type'],
+                            'rider_vehicle_model' => $validated['vehicle_model'] ?? null,
+                        ],
                         [
                             [
                                 'type' => 'or_cr',
@@ -1024,6 +1058,108 @@ class RiderController extends Controller
                 ],
             ]
         );
+    }
+
+    public function courierDashboard(Request $request, LinehaulRunService $runs): View
+    {
+        $profile = $this->courierProfileFor($request);
+
+        return view('rider.dashboard.courier', $this->shared() + [
+            'courierProfile' => $profile,
+            'runs' => $runs->courierRunsFor($profile),
+        ]);
+    }
+
+    public function courierStartLoading(
+        Request $request,
+        LinehaulRun $run,
+        LinehaulRunService $runs
+    ): RedirectResponse {
+        $this->courierProfileFor($request);
+        $runs->startLoading($run, $request->user());
+
+        return back()->with('success', 'Loading has started for '.$run->run_no.'.');
+    }
+
+    public function courierMarkLoaded(
+        Request $request,
+        LinehaulRun $run,
+        LinehaulRunService $runs
+    ): RedirectResponse {
+        $this->courierProfileFor($request);
+        $runs->markLoaded($run, $request->user());
+
+        return back()->with('success', 'All listed shipments were recorded as loaded.');
+    }
+
+    public function courierDepart(
+        Request $request,
+        LinehaulRun $run,
+        LinehaulRunService $runs
+    ): RedirectResponse {
+        $this->courierProfileFor($request);
+        $runs->depart($run, $request->user());
+
+        return back()->with('success', 'Departure recorded. Destination Logistics will accept custody after arrival.');
+    }
+
+    public function courierArrive(
+        Request $request,
+        LinehaulRun $run,
+        LinehaulRunService $runs
+    ): RedirectResponse {
+        $this->courierProfileFor($request);
+        $runs->arrive($run, $request->user());
+
+        return back()->with('success', 'Arrival recorded. Destination Logistics must scan and accept each handoff.');
+    }
+
+    public function courierReportException(
+        Request $request,
+        LinehaulRun $run,
+        LinehaulRunService $runs
+    ): RedirectResponse {
+        $this->courierProfileFor($request);
+        $data = $request->validate([
+            'reason' => ['required', 'string', 'min:5', 'max:1000'],
+        ]);
+        $runs->reportException($run, $request->user(), trim($data['reason']));
+
+        return back()->with('success', 'The line-haul exception was recorded and the run is on hold for review.');
+    }
+
+    public function courierResolveException(
+        Request $request,
+        LinehaulRun $run,
+        LinehaulRunService $runs
+    ): RedirectResponse {
+        $this->courierProfileFor($request);
+        $data = $request->validate([
+            'resolution' => ['required', 'string', 'min:5', 'max:1000'],
+        ]);
+        $runs->resolveException($run, $request->user(), trim($data['resolution']));
+
+        return back()->with('success', 'The exception resolution was recorded.');
+    }
+
+    private function courierProfileFor(Request $request): RiderProfile
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $profile = $user->riderProfile()->first();
+
+        abort_unless(
+            $profile
+            && $profile->verification_status === 'approved'
+            && $profile->work_type === RiderWorkType::Courier->value
+            && $profile->courier_vehicle_verified_by
+            && $profile->courier_vehicle_verified_at
+            && (int) $profile->linehaul_parcel_capacity > 0,
+            403,
+            'A Logistics-verified Courier profile is required.'
+        );
+
+        return $profile;
     }
 
     public function updateAvailability(
@@ -1482,17 +1618,32 @@ class RiderController extends Controller
     public function earnings(
         Request $request,
         RiderEarningsService $earningsService,
+        BuyerCatalogService $catalog,
     ): View {
         $riderProfile = $this->authenticatedRiderProfile($request);
         $filters = $this->earningsFilters($request);
+        $earningsStatusVersion = $earningsService->shippingEarningsStatusVersion($riderProfile);
+        $earnings = $earningsService->summary($riderProfile);
+        $logs = $earningsService->paginate($riderProfile, $filters, $catalog);
 
         return view('rider.earnings.index', $this->shared() + [
-            'earnings' => $earningsService->summary($riderProfile),
-            'logs' => $earningsService->paginate($riderProfile, $filters),
+            'earnings' => $earnings,
+            'logs' => $logs,
             'filters' => $filters,
             'statusOptions' => $earningsService->statusOptions($riderProfile),
             'typeOptions' => $earningsService->typeOptions($riderProfile),
+            'earningsStatusVersion' => $earningsStatusVersion,
         ]);
+    }
+
+    public function earningsStatusVersion(Request $request, RiderEarningsService $earningsService): JsonResponse
+    {
+        $riderProfile = $this->authenticatedRiderProfile($request);
+
+        return response()->json([
+            'data' => ['version' => $earningsService->shippingEarningsStatusVersion($riderProfile)],
+            'message' => 'Rider shipping earnings status version loaded.',
+        ])->header('Cache-Control', 'private, no-store');
     }
 
     public function exportEarnings(
@@ -2471,7 +2622,8 @@ class RiderController extends Controller
     }
 
     public function updateVehicle(
-        Request $request
+        Request $request,
+        RiderVehicleChangeService $changes
     ): RedirectResponse {
         /** @var User $user */
         $user = $request->user();
@@ -2487,10 +2639,16 @@ class RiderController extends Controller
         ]);
 
         $validated = $request->validate([
+            'work_type' => [
+                'required',
+                Rule::in(array_column(RiderWorkType::cases(), 'value')),
+            ],
             'vehicle_type' => [
                 'required',
-                'string',
-                'max:80',
+                Rule::in(array_merge(
+                    RiderWorkType::vehicleTypes(RiderWorkType::Local),
+                    RiderWorkType::vehicleTypes(RiderWorkType::Courier),
+                )),
             ],
 
             'plate_number' => [
@@ -2505,61 +2663,26 @@ class RiderController extends Controller
                 'string',
                 'max:160',
             ],
-
-            'parcel_capacity' => [
-                'nullable',
-                'integer',
-                'min:1',
-            ],
+            'or_cr' => ['required', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:5120'],
+            'driver_license' => ['required', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:5120'],
+            'parcel_capacity' => ['prohibited'],
         ]);
 
-        $vehicleType = trim(
-            $validated['vehicle_type']
-        );
+        $workType = RiderWorkType::from($validated['work_type']);
 
-        $plateNumber = trim($validated['plate_number']);
+        if (! in_array($validated['vehicle_type'], RiderWorkType::vehicleTypes($workType), true)) {
+            throw ValidationException::withMessages([
+                'vehicle_type' => $workType === RiderWorkType::Courier
+                    ? 'Courier work requires a supported four-wheel parcel vehicle.'
+                    : 'Local Rider work supports Motorcycle, Tricycle, or E-bike vehicles.',
+            ]);
+        }
 
-        DB::transaction(
-            function () use (
-                $user,
-                $riderProfile,
-                $validated,
-                $vehicleType,
-                $plateNumber
-            ): void {
-                /*
-                * RiderProfile is authoritative.
-                */
-                $riderProfile->update([
-                    'vehicle_type' => $vehicleType,
-
-                    'plate_number' => $plateNumber,
-
-                    'vehicle_model' => filled(
-                        $validated['vehicle_model']
-                        ?? null
-                    )
-                            ? trim(
-                                $validated['vehicle_model']
-                            )
-                            : null,
-
-                    'parcel_capacity' => $validated[
-                            'parcel_capacity'
-                        ] ?? null,
-                ]);
-
-                /*
-                * Keep legacy compatibility fields
-                * synchronized because lifecycle code
-                * may still read these during migration.
-                */
-                $user->update([
-                    'vehicle_type' => $vehicleType,
-
-                    'plate_number' => $plateNumber,
-                ]);
-            }
+        $changes->submit(
+            $user,
+            $validated,
+            $request->file('or_cr'),
+            $request->file('driver_license'),
         );
 
         return redirect(
@@ -2567,7 +2690,7 @@ class RiderController extends Controller
             .'#vehicle'
         )->with(
             'success',
-            'Vehicle details updated successfully.'
+            'Vehicle and work-type changes were sent to your sponsoring Logistics provider for review. Your current permissions remain unchanged until approval.'
         );
     }
 
@@ -2689,6 +2812,9 @@ class RiderController extends Controller
         $verificationStatus =
             $riderProfile?->verification_status
             ?: 'pending';
+        $latestVehicleChange = $riderProfile?->vehicleChangeRequests()
+            ->latest('id')
+            ->first();
 
         return view(
             'rider.profile.index',
@@ -2718,6 +2844,14 @@ class RiderController extends Controller
 
                     'vehicle_type' => $riderProfile?->vehicle_type
                         ?: 'Not specified',
+
+                    'work_type' => $riderProfile?->work_type,
+
+                    'linehaul_parcel_capacity' => $riderProfile?->linehaul_parcel_capacity,
+
+                    'vehicle_change_status' => $latestVehicleChange?->status,
+
+                    'vehicle_change_review_notes' => $latestVehicleChange?->review_notes,
 
                     'plate_number' => $riderProfile?->plate_number
                         ?: '',

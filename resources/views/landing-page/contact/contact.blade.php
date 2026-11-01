@@ -12,6 +12,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@300&display=block" rel="stylesheet">
 
+    @include('partials.theme-preload')
     @vite(['resources/css/contact.css', 'resources/js/contact.js'])
 </head>
 <body class="bearly-public contact-page">
@@ -19,7 +20,7 @@
 
 <header class="public-header">
     <a class="public-logo" href="{{ url('/') }}" aria-label="Bearly home">
-        <img src="{{ asset('images/bearly-logo.png') }}" alt="Bearly">
+        @include('partials.theme-aware-logo', ['themeLogoAlt' => 'Bearly'])
     </a>
 
     <nav class="public-nav" aria-label="Main navigation">
@@ -38,6 +39,7 @@
     </form>
 
     <div class="public-actions">
+        @include('partials.theme-toggle')
         <a href="{{ url('/login') }}" aria-label="Log in">
             <span class="material-symbols-outlined" aria-hidden="true">person</span>
         </a>

@@ -281,6 +281,7 @@ document.addEventListener('DOMContentLoaded', () => {
         seller: [
             'business_name',
             'business_category_id',
+            'valid_id',
             'business_permit',
         ],
     };
@@ -290,12 +291,53 @@ document.addEventListener('DOMContentLoaded', () => {
         registration.dataset.role = role;
         phone.updateRole();
         emailVerification.updateRole();
-        registration.querySelector('[data-buyer-guidance]').hidden = role !== 'buyer';
         const stepLabel = registration.querySelector('[data-role-step-label]');
+        const finalStepLabel = registration.querySelector('[data-final-step-label]');
+        const documentsTitle = registration.querySelector('[data-documents-title]');
+        const documentsDescription = registration.querySelector('[data-documents-description]');
+        const summaryTitle = registration.querySelector('[data-summary-title]');
+        const nextHeading = registration.querySelector('[data-next-heading]');
+        const submitLabel = registration.querySelector('[data-submit-label]');
 
         if (stepLabel) {
             stepLabel.textContent =
                 role === 'seller' ? 'Business Details' : 'Buyer Details';
+        }
+
+        if (finalStepLabel) {
+            finalStepLabel.textContent = role === 'seller'
+                ? 'Documents & Review'
+                : 'Review & finish';
+        }
+
+        if (documentsTitle) {
+            documentsTitle.textContent = role === 'seller'
+                ? 'Documents & review'
+                : 'Review your Buyer details';
+        }
+
+        if (documentsDescription) {
+            documentsDescription.textContent = role === 'seller'
+                ? 'Upload your required Seller documents and confirm your application.'
+                : 'Check your information before creating your Buyer account. No government ID is required.';
+        }
+
+        if (summaryTitle) {
+            summaryTitle.textContent = role === 'seller'
+                ? 'Application summary'
+                : 'Registration summary';
+        }
+
+        if (nextHeading) {
+            nextHeading.textContent = role === 'seller'
+                ? 'What happens next?'
+                : 'Account activation';
+        }
+
+        if (submitLabel) {
+            submitLabel.textContent = role === 'seller'
+                ? 'Submit application'
+                : 'Create Buyer account';
         }
 
         registration.querySelectorAll('.role-card').forEach((card) => {
@@ -426,9 +468,9 @@ document.addEventListener('DOMContentLoaded', () => {
             registration.querySelector('[data-approval-notice]');
 
         if (approvalNotice) {
-            approvalNotice.textContent =
-                `A Bearly administrator will review your ${role} application. ` +
-                'Access stays pending until the application is approved.';
+            approvalNotice.textContent = role === 'buyer'
+                ? 'After your email is verified, your Buyer account activates immediately. You can sign in right after registration.'
+                : 'A Bearly administrator will review your Seller application. Access stays pending until the application is approved.';
         }
     }
 

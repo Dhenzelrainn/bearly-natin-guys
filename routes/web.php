@@ -11,6 +11,7 @@ use App\Http\Controllers\AdminDashboardController;
 use App\Http\Controllers\AdminDisputeController;
 use App\Http\Controllers\AdminFinanceController;
 use App\Http\Controllers\AdminFulfillmentController;
+use App\Http\Controllers\AdminLogisticsPayoutAccountController;
 use App\Http\Controllers\AdminMessageController;
 use App\Http\Controllers\AdminMarketplaceTaxonomyController;
 use App\Http\Controllers\AdminPolicyController;
@@ -35,8 +36,10 @@ use App\Http\Controllers\BuyerReturnController;
 use App\Http\Controllers\BuyerReviewController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\DisputeParticipantController;
+use App\Http\Controllers\DeliveryProofController;
 use App\Http\Controllers\LogisticsCashController;
 use App\Http\Controllers\LogisticsController;
+use App\Http\Controllers\LogisticsPayoutAccountController;
 use App\Http\Controllers\MapLocationController;
 use App\Http\Controllers\MessageReceiptController;
 use App\Http\Controllers\NotificationController;
@@ -285,6 +288,10 @@ Route::middleware(['auth', 'role:buyer'])->group(function () {
     Route::get('/profile/returns/{returnRequest}', [BuyerReturnController::class, 'show'])
         ->whereNumber('returnRequest')
         ->name('buyer.returns.show');
+
+    Route::post('/profile/returns/{returnRequest}/switch-to-pickup', [BuyerReturnController::class, 'switchToPickup'])
+        ->whereNumber('returnRequest')
+        ->name('buyer.returns.switch-to-pickup');
 
     Route::post('/profile/returns/{returnRequest}/evidence', [BuyerReturnController::class, 'addEvidence'])
         ->whereNumber('returnRequest')
@@ -735,6 +742,18 @@ Route::prefix('admin')
         Route::get('/shipping-settlements', [AdminFinanceController::class, 'shippingSettlements'])
             ->name('shipping-settlements.index');
 
+        Route::get('/logistics-payout-accounts/{account}', [AdminLogisticsPayoutAccountController::class, 'show'])
+            ->whereNumber('account')
+            ->name('logistics-payout-accounts.show');
+
+        Route::post('/logistics-payout-accounts/{account}/verify', [AdminLogisticsPayoutAccountController::class, 'verify'])
+            ->whereNumber('account')
+            ->name('logistics-payout-accounts.verify');
+
+        Route::post('/logistics-payout-accounts/{account}/reject', [AdminLogisticsPayoutAccountController::class, 'reject'])
+            ->whereNumber('account')
+            ->name('logistics-payout-accounts.reject');
+
         Route::get('/seller-payouts', [AdminSellerPayoutController::class, 'index'])
             ->name('seller-payouts.index');
 
@@ -777,6 +796,10 @@ Route::prefix('admin')
         Route::get('/payments/cod/{collection}/receipt', [AdminFinanceController::class, 'printCodCashReceipt'])
             ->whereNumber('collection')
             ->name('payments.cod.receipt');
+
+        Route::get('/shipping-settlements/{settlement}/cash-receipt', [AdminFinanceController::class, 'printShippingSettlementCashReceipt'])
+            ->whereNumber('settlement')
+            ->name('shipping-settlements.cash-receipt');
 
         Route::post('/shipping-settlements/{settlement}/record-paid', [AdminFinanceController::class, 'recordShippingSettlement'])
             ->whereNumber('settlement')
@@ -823,6 +846,10 @@ Route::prefix('admin')
 
         Route::get('/fulfillment', [AdminFulfillmentController::class, 'index'])
             ->name('fulfillment');
+
+        Route::get('/fulfillment/delivery-proofs/{deliveryProof}', [DeliveryProofController::class, 'show'])
+            ->whereNumber('deliveryProof')
+            ->name('fulfillment.delivery-proofs.show');
 
         Route::patch(
             '/fulfillment/{shipment}/override',
@@ -1025,6 +1052,9 @@ Route::prefix('seller')
 
         Route::get('/orders/returns-refunds', [SellerWorkflowController::class, 'returns'])
             ->name('orders.returns');
+
+        Route::get('/orders/returns-refunds/status-version', [SellerWorkflowController::class, 'returnStatusVersion'])
+            ->name('orders.returns.status-version');
 
         Route::get('/orders/returns-refunds/{caseId}', [SellerWorkflowController::class, 'returnDetails'])
             ->name('orders.returns.show');
@@ -1348,15 +1378,34 @@ Route::prefix('logistics')->name('logistics.')->group(function () {
         Route::get('/riders', [LogisticsController::class, 'riders'])
             ->name('riders.index');
 
+        Route::get('/riders/vehicle-changes', [LogisticsController::class, 'riderVehicleChanges'])
+            ->name('riders.vehicle-changes');
+        Route::get('/riders/vehicle-changes/{change}/documents/{document}', [LogisticsController::class, 'riderVehicleChangeDocument'])
+            ->whereNumber('change')
+            ->name('riders.vehicle-changes.documents.show');
+        Route::post('/riders/vehicle-changes/{change}/approve', [LogisticsController::class, 'approveRiderVehicleChange'])
+            ->whereNumber('change')
+            ->name('riders.vehicle-changes.approve');
+        Route::post('/riders/vehicle-changes/{change}/reject', [LogisticsController::class, 'rejectRiderVehicleChange'])
+            ->whereNumber('change')
+            ->name('riders.vehicle-changes.reject');
+
         Route::get('/cash', [LogisticsCashController::class, 'index'])
             ->name('cash.index');
 
         Route::get('/settlements', [LogisticsCashController::class, 'shippingSettlements'])
             ->name('settlements.index');
 
+        Route::get('/settlements/status-version', [LogisticsCashController::class, 'shippingSettlementsStatusVersion'])
+            ->name('settlements.status-version');
+
         Route::post('/settlements/rider-earnings/{earning}/record-paid', [LogisticsCashController::class, 'recordRiderShippingPayout'])
             ->whereNumber('earning')
             ->name('settlements.rider-earnings.record-paid');
+
+        Route::get('/settlements/rider-earnings/{earning}/cash-receipt', [LogisticsCashController::class, 'printRiderCashPayoutReceipt'])
+            ->whereNumber('earning')
+            ->name('settlements.rider-earnings.cash-receipt');
 
         Route::post('/cash/cod/{collection}/receive', [LogisticsCashController::class, 'receiveCod'])
             ->whereNumber('collection')
@@ -1365,6 +1414,9 @@ Route::prefix('logistics')->name('logistics.')->group(function () {
         Route::post('/cash/cod/{collection}/remit', [LogisticsCashController::class, 'remitCod'])
             ->whereNumber('collection')
             ->name('cash.cod.remit');
+
+        Route::get('/cash/refunds/status-version', [LogisticsCashController::class, 'refundCashStatusVersion'])
+            ->name('cash.refunds.status-version');
 
         Route::post('/cash/refunds/{payout}/receive', [LogisticsCashController::class, 'receiveRefundCash'])
             ->whereNumber('payout')
@@ -1425,6 +1477,12 @@ Route::prefix('logistics')->name('logistics.')->group(function () {
             ->whereNumber('shipment')
             ->name('transfers.send');
 
+        Route::post('/transfers/manifests', [LogisticsController::class, 'createLinehaulManifest'])
+            ->name('transfers.manifests.store');
+        Route::post('/transfers/runs/{run}/resolve-exception', [LogisticsController::class, 'resolveLinehaulException'])
+            ->whereNumber('run')
+            ->name('transfers.runs.exceptions.resolve');
+
         Route::post('/transfers/accept', [LogisticsController::class, 'acceptTransfer'])
             ->name('transfers.accept');
 
@@ -1464,6 +1522,10 @@ Route::prefix('logistics')->name('logistics.')->group(function () {
         Route::get('/monitoring', [LogisticsController::class, 'monitoring'])
             ->name('dispatch.monitoring');
 
+        Route::get('/dispatch/monitoring/delivery-proofs/{deliveryProof}', [DeliveryProofController::class, 'show'])
+            ->whereNumber('deliveryProof')
+            ->name('dispatch.monitoring.delivery-proofs.show');
+
         Route::get('/reports/export', [LogisticsController::class, 'exportReports'])
             ->name('reports.export');
 
@@ -1496,6 +1558,13 @@ Route::prefix('logistics')->name('logistics.')->group(function () {
 
         Route::patch('/account/facility', [LogisticsController::class, 'updateFacility'])
             ->name('profile.facility.update');
+
+        Route::post('/account/payout-destinations', [LogisticsPayoutAccountController::class, 'store'])
+            ->name('profile.payout-accounts.store');
+
+        Route::post('/account/payout-destinations/{account}/deactivate', [LogisticsPayoutAccountController::class, 'deactivate'])
+            ->whereNumber('account')
+            ->name('profile.payout-accounts.deactivate');
 
         Route::get('/account', [LogisticsController::class, 'account'])
             ->name('profile.index');
@@ -1567,6 +1636,27 @@ Route::prefix('rider')->name('rider.')->group(function () {
         Route::redirect('/dashboard', '/rider/dashboard/pickups')
             ->name('dashboard');
 
+        Route::get('/courier', [RiderController::class, 'courierDashboard'])
+            ->name('courier.dashboard');
+        Route::post('/courier/runs/{run}/start-loading', [RiderController::class, 'courierStartLoading'])
+            ->whereNumber('run')
+            ->name('courier.runs.start-loading');
+        Route::post('/courier/runs/{run}/loaded', [RiderController::class, 'courierMarkLoaded'])
+            ->whereNumber('run')
+            ->name('courier.runs.loaded');
+        Route::post('/courier/runs/{run}/depart', [RiderController::class, 'courierDepart'])
+            ->whereNumber('run')
+            ->name('courier.runs.depart');
+        Route::post('/courier/runs/{run}/arrive', [RiderController::class, 'courierArrive'])
+            ->whereNumber('run')
+            ->name('courier.runs.arrive');
+        Route::post('/courier/runs/{run}/exceptions', [RiderController::class, 'courierReportException'])
+            ->whereNumber('run')
+            ->name('courier.runs.exceptions.store');
+        Route::post('/courier/runs/{run}/resolve-exception', [RiderController::class, 'courierResolveException'])
+            ->whereNumber('run')
+            ->name('courier.runs.exceptions.resolve');
+
         Route::get('/dashboard/pickups', [RiderController::class, 'pickupsDashboard'])
             ->name('dashboard.pickups');
 
@@ -1625,6 +1715,9 @@ Route::prefix('rider')->name('rider.')->group(function () {
 
         Route::get('/earnings', [RiderController::class, 'earnings'])
             ->name('earnings.index');
+
+        Route::get('/earnings/status-version', [RiderController::class, 'earningsStatusVersion'])
+            ->name('earnings.status-version');
 
         Route::get('/earnings/export', [RiderController::class, 'exportEarnings'])
             ->name('earnings.export');

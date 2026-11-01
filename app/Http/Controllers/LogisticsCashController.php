@@ -5,11 +5,16 @@ namespace App\Http\Controllers;
 use App\Enums\UserRole;
 use App\Models\AccountApplication;
 use App\Models\CodCashCollection;
+use App\Models\OrderItem;
 use App\Models\RefundCashPayout;
+use App\Models\ReturnItem;
+use App\Models\RiderEarning;
 use App\Services\AuditService;
+use App\Services\BuyerCatalogService;
 use App\Services\CodCashCollectionService;
 use App\Services\RefundCashPayoutService;
 use App\Services\ShippingSettlementService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -17,6 +22,7 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\Response;
 
 class LogisticsCashController extends Controller
 {
@@ -44,11 +50,67 @@ class LogisticsCashController extends Controller
         ]);
     }
 
-    public function shippingSettlements(Request $request, ShippingSettlementService $settlements): View
+    public function refundCashStatusVersion(Request $request, RefundCashPayoutService $cash): JsonResponse
     {
+        return response()->json([
+            'data' => ['version' => $cash->logisticsRefundCashStatusVersion($request->user())],
+            'message' => 'Refund cash custody status version loaded.',
+        ])->header('Cache-Control', 'private, no-store');
+    }
+
+    public function shippingSettlements(
+        Request $request,
+        ShippingSettlementService $settlements,
+        BuyerCatalogService $catalog,
+    ): View {
+        $earningsStatusVersion = $settlements->riderEarningStatusVersionForLogistics($request->user());
+        $earningsSummary = $settlements->logisticsEarningsSummary($request->user(), materialize: false);
+        $earnings = $settlements->riderEarningsForLogistics($request->user(), materialize: false)
+            ->map(function (RiderEarning $earning) use ($catalog): RiderEarning {
+                $settlement = $earning->shippingSettlement;
+                $isReturn = $settlement?->settlement_type === 'return';
+                $itemEntries = $isReturn
+                    ? ($settlement->returnRequest?->items ?? collect())
+                        ->map(fn (ReturnItem $returnItem): array => [
+                            'item' => $returnItem->orderItem,
+                            'quantity' => (int) $returnItem->quantity,
+                        ])
+                    : ($earning->shipment?->sellerOrder?->items ?? collect())
+                        ->map(fn (OrderItem $item): array => [
+                            'item' => $item,
+                            'quantity' => (int) $item->quantity,
+                        ]);
+                $itemEntries = $itemEntries
+                    ->filter(fn (array $entry): bool => $entry['item'] instanceof OrderItem)
+                    ->values();
+
+                $earning->setAttribute('product_count', $itemEntries->count());
+                $earning->setAttribute('product_previews', $itemEntries
+                    ->take(3)
+                    ->map(fn (array $entry): array => [
+                        'name' => trim((string) $entry['item']->product_name) ?: 'Purchased item',
+                        'variant' => trim((string) $entry['item']->variant_name),
+                        'quantity' => (int) $entry['quantity'],
+                        'image_url' => $catalog->orderItemImageUrl($entry['item']),
+                    ])
+                    ->all());
+
+                return $earning;
+            });
+
         return view('logistics.cash.shipping-settlements', $this->layoutData($request) + [
-            'earnings' => $settlements->riderEarningsForLogistics($request->user()),
+            'earnings' => $earnings,
+            'earningsSummary' => $earningsSummary,
+            'earningsStatusVersion' => $earningsStatusVersion,
         ]);
+    }
+
+    public function shippingSettlementsStatusVersion(Request $request, ShippingSettlementService $settlements): JsonResponse
+    {
+        return response()->json([
+            'data' => ['version' => $settlements->riderEarningStatusVersionForLogistics($request->user())],
+            'message' => 'Logistics Rider earning status version loaded.',
+        ])->header('Cache-Control', 'private, no-store');
     }
 
     public function recordRiderShippingPayout(
@@ -60,7 +122,7 @@ class LogisticsCashController extends Controller
             'earning_id' => ['required', 'integer'],
             'actual_amount' => ['required', 'string', 'regex:/^\d{1,8}(?:\.\d{1,2})?$/'],
             'method' => ['required', 'in:bank_transfer,gcash,cash,other'],
-            'reference' => ['required', 'string', 'max:150'],
+            'reference' => ['nullable', 'required_unless:method,cash', 'string', 'max:150'],
             'paid_on' => ['required', 'date_format:Y-m-d', 'before_or_equal:today'],
             'reason' => ['required', 'string', 'min:5', 'max:1000'],
             'payout_confirmed' => ['required', 'accepted'],
@@ -78,15 +140,51 @@ class LogisticsCashController extends Controller
             $earning,
             $this->amountToMinor($data['actual_amount']),
             $data['method'],
-            trim($data['reference']),
+            $data['method'] === 'cash' ? '' : trim((string) ($data['reference'] ?? '')),
             $data['paid_on'],
             trim($data['reason']),
             $request,
         );
 
+        $successMessage = $payout->method === 'cash'
+            ? "Cash paid to the Rider was recorded. Bearly reference: {$payout->reference}. Print the receipt from the settlement row."
+            : "Rider payout {$payout->reference} was recorded. The Rider earning is now marked paid.";
+
         return redirect()
             ->route('logistics.settlements.index')
-            ->with('success', "Rider payout {$payout->reference} was recorded. The Rider earning is now marked paid.");
+            ->with('success', $successMessage);
+    }
+
+    public function printRiderCashPayoutReceipt(
+        Request $request,
+        int $earning,
+        ShippingSettlementService $settlements,
+        AuditService $audit,
+    ): Response {
+        $payout = $settlements->cashRiderPayoutForLogistics($request->user(), $earning);
+        $riderEarning = $payout->riderEarning;
+        $settlement = $riderEarning?->shippingSettlement;
+        $riderName = $riderEarning?->riderProfile?->user?->name ?? 'Rider';
+
+        $audit->record(
+            action: 'rider_earning.cash_receipt_printed',
+            module: 'Logistics',
+            subject: $payout,
+            description: "Cash Rider payout receipt {$payout->reference} viewed for earning {$riderEarning?->id}.",
+            newValues: ['cash_payout_reference' => $payout->reference],
+            severity: 'info',
+            request: $request,
+        );
+
+        return response()
+            ->view('logistics.cash.rider-payout-receipt', $this->layoutData($request) + [
+                'payout' => $payout,
+                'riderEarning' => $riderEarning,
+                'settlement' => $settlement,
+                'riderName' => $riderName,
+            ])
+            ->header('Cache-Control', 'private, no-store')
+            ->header('X-Content-Type-Options', 'nosniff');
     }
 
     public function receiveCod(Request $request, CodCashCollection $collection, CodCashCollectionService $cash): RedirectResponse

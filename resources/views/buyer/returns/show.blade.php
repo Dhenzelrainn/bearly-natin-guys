@@ -23,6 +23,33 @@
     @if ($case->returnShipment)
         <section class="buyer-return-card"><div class="buyer-return-section-heading"><span class="material-symbols-outlined" aria-hidden="true">local_shipping</span><div><h2>Return shipment tracking</h2><p>Waybill {{ $case->returnShipment->waybill?->waybill_no ?? 'Preparing' }} · {{ Str::headline($case->returnShipment->status) }}</p></div></div>
             <ol class="buyer-return-timeline">@foreach ($case->returnShipment->events as $event)<li><strong>{{ Str::headline(str_replace(['shipment_', 'parcel_'], '', $event->event_type)) }}</strong><small>{{ $event->occurred_at?->format('M j, Y · g:i A') ?? 'Time unavailable' }}</small>@if($event->notes)<p>{{ $event->notes }}</p>@endif</li>@endforeach</ol>
+            @if ($case->request_type === 'return_refund' && data_get($case->returnShipment->return_shipping_quote, 'quote_kind') === 'return_shipping_v1')
+                @php($refund = $case->refunds->sortByDesc('id')->first())
+                <p class="buyer-return-policy">Return delivery fee: ₱{{ number_format((int) $case->returnShipment->shipping_fee_minor / 100, 2) }} · covered by {{ ucfirst($refund?->financially_responsible_party ?? 'the responsible party') }}. It is not deducted from your approved refund.</p>
+            @endif
+            @if ($case->return_delivery_method === 'buyer_dropoff' && $case->status === 'return_dropoff_pending')
+                <section class="buyer-return-dropoff" aria-labelledby="buyer-return-dropoff-title">
+                    <h3 id="buyer-return-dropoff-title">Drop off your return at Logistics</h3>
+                    @if (is_array($dropoffCenter) && is_array($dropoffCenter['address'] ?? null))
+                        <p><strong>{{ $dropoffCenter['name'] ?? 'Assigned Logistics Sorting Center' }}</strong><br>{{ $dropoffCenter['address']['street'] ?? '' }} {{ $dropoffCenter['address']['house_number'] ?? '' }} · {{ $dropoffCenter['address']['barangay'] ?? '' }}, {{ $dropoffCenter['address']['city_municipality'] ?? '' }}, {{ $dropoffCenter['address']['province'] ?? '' }}</p>
+                    @else
+                        <p>The assigned Logistics center is temporarily unavailable. Contact Bearly Support before handing over the parcel.</p>
+                    @endif
+                    <p>Bring the sealed parcel and present this return waybill to Logistics:</p>
+                    <code>{{ $case->returnShipment->waybill?->barcode_value ?: $case->returnShipment->waybill?->waybill_no }}</code>
+                    @if ($case->dropoff_due_at)
+                        <p>Drop-off deadline: <strong>{{ $case->dropoff_due_at->format('M j, Y · g:i A') }}</strong></p>
+                    @endif
+                    @if ($case->dropoff_due_at && now()->greaterThan($case->dropoff_due_at))
+                        <form method="POST" action="{{ route('buyer.returns.switch-to-pickup', $case->id) }}">
+                            @csrf
+                            <button class="buyer-return-primary" type="submit">Switch to Rider pickup</button>
+                        </form>
+                    @endif
+                </section>
+            @elseif ($case->return_delivery_method === 'rider_pickup' && $case->status === 'return_pickup_requested')
+                <p class="buyer-return-policy">Logistics is arranging Rider pickup from your order address. The Seller or Platform covers the return delivery fee; it will not be deducted from your refund.</p>
+            @endif
         </section>
     @endif
 

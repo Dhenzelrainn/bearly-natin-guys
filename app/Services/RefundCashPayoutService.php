@@ -3,7 +3,9 @@
 namespace App\Services;
 
 use App\Enums\AccountStatus;
+use App\Enums\RiderWorkType;
 use App\Enums\UserRole;
+use App\Events\LogisticsRefundCashPayoutUpdated;
 use App\Models\CodCashCollection;
 use App\Models\LogisticsProfile;
 use App\Models\Order;
@@ -20,6 +22,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -192,6 +195,7 @@ class RefundCashPayoutService
                 || $riderUser->status !== AccountStatus::Active->value
                 || ! $rider
                 || $rider->verification_status !== 'approved'
+                || ! RiderWorkType::isLocal($rider->work_type)
                 || $rider->availability_status !== 'available'
                 || (int) $rider->logistics_profile_id !== (int) $provider->id) {
                 throw ValidationException::withMessages(['rider_user_id' => 'Choose an active, approved, available Rider belonging to this Logistics provider.']);
@@ -622,6 +626,12 @@ class RefundCashPayoutService
     public function logisticsWorkspace(User $user): array
     {
         $provider = $this->logisticsProfile($user);
+        $refundPayouts = RefundCashPayout::query()
+            ->where('logistics_profile_id', $provider->id)
+            ->whereNotIn('status', ['completed'])
+            ->with(['refund.order.buyer', 'returnRequest.store', 'riderProfile.user'])
+            ->orderBy('created_at')
+            ->get();
 
         return [
             'codCollections' => CodCashCollection::query()
@@ -630,12 +640,8 @@ class RefundCashPayoutService
                 ->whereIn('status', ['collected', 'disputed', 'received_by_logistics'])
                 ->orderBy('collected_at')
                 ->get(),
-            'refundPayouts' => RefundCashPayout::query()
-                ->where('logistics_profile_id', $provider->id)
-                ->whereNotIn('status', ['completed'])
-                ->with(['refund.order.buyer', 'returnRequest.store', 'riderProfile.user'])
-                ->orderBy('created_at')
-                ->get(),
+            'refundPayouts' => $refundPayouts,
+            'refundCashStatusVersion' => $this->refundCashStatusVersion($refundPayouts),
             'riders' => $provider->riders()
                 ->where('verification_status', 'approved')
                 ->where('availability_status', 'available')
@@ -684,6 +690,33 @@ class RefundCashPayoutService
             ->get();
     }
 
+    public function logisticsRefundCashStatusVersion(User $user): string
+    {
+        $provider = $this->logisticsProfile($user);
+        $payouts = RefundCashPayout::query()
+            ->where('logistics_profile_id', $provider->id)
+            ->whereNotIn('status', ['completed'])
+            ->orderBy('id')
+            ->get(['id', 'status', 'updated_at']);
+
+        return $this->refundCashStatusVersion($payouts);
+    }
+
+    /** @param iterable<RefundCashPayout> $payouts */
+    private function refundCashStatusVersion(iterable $payouts): string
+    {
+        $snapshot = collect($payouts)
+            ->sortBy('id')
+            ->map(fn (RefundCashPayout $payout): string => implode(':', [
+                (string) $payout->id,
+                (string) $payout->status,
+                $payout->updated_at?->format('Y-m-d H:i:s.u') ?? '',
+            ]))
+            ->implode('|');
+
+        return hash('sha256', $snapshot);
+    }
+
     private function riderPayout(User $user, int $payoutId): RefundCashPayout
     {
         $this->riderProfile($user);
@@ -699,7 +732,8 @@ class RefundCashPayoutService
         if ($user->role !== UserRole::Rider->value
             || $user->status !== AccountStatus::Active->value
             || ! $rider
-            || $rider->verification_status !== 'approved') {
+            || $rider->verification_status !== 'approved'
+            || ! RiderWorkType::isLocal($rider->work_type)) {
             throw new AuthorizationException('An active, approved Rider account is required.');
         }
 
@@ -788,6 +822,29 @@ class RefundCashPayoutService
             'note' => $note,
             'occurred_at' => $occurredAt,
         ]);
+
+        $logisticsUserId = (int) LogisticsProfile::query()
+            ->whereKey($payout->logistics_profile_id)
+            ->value('user_id');
+        if ($logisticsUserId < 1) {
+            return;
+        }
+
+        $statusUpdate = new LogisticsRefundCashPayoutUpdated(
+            logisticsUserId: $logisticsUserId,
+            payoutId: (int) $payout->id,
+            payoutNo: (string) $payout->payout_no,
+            status: (string) ($toStatus ?? $payout->status),
+            updatedAt: $payout->updated_at?->toIso8601String() ?? now()->toIso8601String(),
+        );
+
+        DB::afterCommit(function () use ($statusUpdate): void {
+            try {
+                Event::dispatch($statusUpdate);
+            } catch (Throwable $exception) {
+                report($exception);
+            }
+        });
     }
 
     private function safeOriginalName(string $name): string

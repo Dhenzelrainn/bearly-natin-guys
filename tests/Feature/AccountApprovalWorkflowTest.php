@@ -12,7 +12,7 @@ use App\Models\Role;
 use App\Models\SortingCenter;
 use App\Models\SortingZone;
 use App\Models\User;
-use App\Notifications\WorkflowNotification;
+use App\Services\RegistrationLifecycleService;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -53,7 +53,7 @@ class AccountApprovalWorkflowTest extends TestCase
         Mail::fake();
     }
 
-    public function test_buyer_application_is_saved_for_admin_approval(): void
+    public function test_new_buyer_registration_activates_after_email_proof_without_id_or_admin_review(): void
     {
         Storage::fake('local');
         Notification::fake();
@@ -82,14 +82,15 @@ class AccountApprovalWorkflowTest extends TestCase
             'house_number' => '12',
             'postal_code' => '4000',
             'valid_id' => UploadedFile::fake()->create(
-                'buyer-id.pdf',
+                'unused-buyer-id.pdf',
                 100,
                 'application/pdf'
             ),
             'password' => 'Password123',
             'password_confirmation' => 'Password123',
             'terms' => '1',
-        ])->assertRedirect(route('application.pending'));
+        ])->assertRedirect(route('login'))
+            ->assertSessionHas('status', 'Your Buyer account is active. Sign in with your email and password to start shopping.');
 
         $buyer = User::where(
             'email',
@@ -102,64 +103,56 @@ class AccountApprovalWorkflowTest extends TestCase
         );
 
         $this->assertSame(
-            AccountStatus::Pending->value,
+            AccountStatus::Active->value,
             $buyer->status
         );
 
+        $this->assertNotNull($buyer->email_verified_at);
+        $this->assertNull($buyer->phone_verified_at);
+        $this->assertNull($buyer->valid_id_path);
+        $this->assertNull($buyer->approved_by);
+        $this->assertNull($buyer->approved_at);
         $this->assertGuest();
 
-        Storage::disk('local')
-            ->assertExists($buyer->valid_id_path);
+        $this->assertDatabaseHas('role_user', [
+            'user_id' => $buyer->id,
+            'role_id' => Role::query()->where('name', UserRole::Buyer->value)->value('id'),
+            'assigned_by' => null,
+        ]);
 
-        $application = $buyer
-            ->applications()
-            ->with(
-                'requestedRole',
-                'documents'
-            )
-            ->sole();
+        $address = $buyer->addresses()->where('label', 'Home')->sole();
+        $this->assertTrue($address->is_default_shipping);
+        $this->assertSame('+639171234567', $address->phone);
+        $this->assertSame('12', $address->house_number);
+        $this->assertSame('Bearly Street', $address->street);
+        $this->assertSame('San Pablo City', $address->city_municipality);
+        $this->assertSame('Laguna', $address->province);
+        $this->assertSame('4000', $address->postal_code);
 
-        $this->assertSame(
-            UserRole::Buyer->value,
-            $application->requestedRole->name
-        );
+        $this->assertFalse($buyer->applications()->exists());
+        $this->assertSame([], Storage::disk('local')->allFiles('registration-documents/valid-ids'));
+        Notification::assertNothingSent();
 
-        $this->assertSame(
-            'submitted',
-            $application->status
-        );
+        $this->post(route('login.submit'), [
+            'email' => 'bianca@example.test',
+            'password' => 'Password123',
+        ])->assertRedirect(route('home'));
+        $this->assertAuthenticatedAs($buyer);
+        $this->get(route('home'))->assertOk();
 
-        $this->assertNotNull(
-            $application->submitted_at
-        );
+        $this->actingAs($admin)
+            ->get(route('admin.registrations'))
+            ->assertOk()
+            ->assertDontSee('Bianca M. Santos');
 
-        $this->assertCount(
-            1,
-            $application->documents
-        );
+        $this->actingAs($admin)
+            ->get(route('admin.registrations.buyers'))
+            ->assertRedirect(route('admin.registrations'));
 
-        $this->assertSame(
-            'government_id',
-            $application
-                ->documents
-                ->sole()
-                ->document_type
-        );
-
-        $this->assertSame(
-            $buyer->valid_id_path,
-            $application
-                ->documents
-                ->sole()
-                ->file_path
-        );
-
-        Notification::assertSentTo(
-            $admin,
-            WorkflowNotification::class,
-            fn (WorkflowNotification $notification): bool => $notification->eventKey() === 'admin_registration_submitted'
-                && $notification->meta()['application_id'] === (int) $application->id,
-        );
+        app(RegistrationLifecycleService::class)->backfillUser($buyer->fresh());
+        $this->assertFalse($buyer->applications()->exists());
+        $this->assertNull($buyer->fresh()->approved_by);
+        $this->assertNull($buyer->fresh()->approved_at);
     }
 
     public function test_seller_application_uses_the_canonical_category_and_document_records(): void
@@ -212,6 +205,11 @@ class AccountApprovalWorkflowTest extends TestCase
             'email',
             'selena@example.test'
         )->firstOrFail();
+
+        $this->assertSame(
+            AccountStatus::Pending->value,
+            $seller->status
+        );
 
         $application = $seller
             ->applications()
@@ -465,10 +463,15 @@ class AccountApprovalWorkflowTest extends TestCase
                 'city_code' => '0403424000',
                 'postal_code' => '4000',
                 'postal_manual' => '0',
+                'work_type' => 'courier',
                 'vehicle_type' =>
-                    'Motorcycle',
+                    'Van',
+                'vehicle_model' => 'Toyota Hiace',
                 'plate_number' =>
                     'abc 1234',
+                // Applicants cannot grant themselves verified parcel capacity.
+                'linehaul_capacity' => 999,
+                'courier_vehicle_verified_by' => $logistics->id,
                 'or_cr' =>
                     UploadedFile::fake()
                         ->create(
@@ -507,6 +510,14 @@ class AccountApprovalWorkflowTest extends TestCase
             AccountStatus::Pending->value,
             $rider->status
         );
+
+        $riderApplication = AccountApplication::query()
+            ->where('user_id', $rider->id)
+            ->firstOrFail();
+        $this->assertSame('courier', $riderApplication->requested_work_type);
+        $this->assertSame('Toyota Hiace', $riderApplication->rider_vehicle_model);
+        $this->assertNull($rider->riderProfile);
+        $this->assertNull($riderApplication->getAttribute('linehaul_capacity'));
 
         $this->assertSame(
             $logistics->id,
@@ -708,7 +719,7 @@ class AccountApprovalWorkflowTest extends TestCase
             }
 
             $queueRoute = match ($role) {
-                UserRole::Buyer->value => 'admin.registrations.buyers',
+                UserRole::Buyer->value => 'admin.registrations',
                 UserRole::Seller->value => 'admin.registrations.sellers',
                 UserRole::Logistics->value => 'admin.registrations.logistics',
             };
@@ -1242,6 +1253,88 @@ class AccountApprovalWorkflowTest extends TestCase
             $matchingZone->id,
             $rider->riderProfile->current_zone_id
         );
+    }
+
+    public function test_courier_applicant_stays_pending_until_sponsor_verifies_capacity(): void
+    {
+        $logistics = User::factory()->create([
+            'role' => UserRole::Logistics->value,
+            'status' => AccountStatus::Active->value,
+            'business_name' => 'Courier Sponsor Logistics',
+        ]);
+        $logisticsProfile = LogisticsProfile::query()->create([
+            'user_id' => $logistics->id,
+            'legal_name' => 'Courier Sponsor Logistics Inc.',
+            'display_name' => 'Courier Sponsor Logistics',
+            'contact_phone' => '09170000011',
+            'psgc_city_code' => '0403424000',
+            'status' => AccountStatus::Active->value,
+        ]);
+        $rider = User::factory()->create([
+            'role' => UserRole::Rider->value,
+            'status' => AccountStatus::Pending->value,
+            'logistics_id' => $logistics->id,
+            'vehicle_type' => 'Van',
+            'plate_number' => 'COURIER-APP-01',
+        ]);
+        Address::query()->create([
+            'user_id' => $rider->id,
+            'label' => 'Home',
+            'recipient_name' => $rider->name,
+            'phone' => '09170000012',
+            'street' => 'Courier Road',
+            'barangay' => 'San Rafael',
+            'city_municipality' => 'City of San Pablo',
+            'province' => 'Laguna',
+            'postal_code' => '4000',
+            'psgc_city_code' => '0403424000',
+        ]);
+        $application = AccountApplication::query()->create([
+            'application_no' => 'APP-COURIER-APPROVAL-01',
+            'user_id' => $rider->id,
+            'requested_role_id' => Role::query()->where('name', UserRole::Rider->value)->value('id'),
+            'requested_work_type' => 'courier',
+            'rider_vehicle_model' => 'Toyota Hiace',
+            'sponsor_logistics_profile_id' => $logisticsProfile->id,
+            'status' => 'under_review',
+            'submitted_at' => now(),
+            'review_started_at' => now(),
+        ]);
+
+        foreach (['driver_license', 'or_cr'] as $documentType) {
+            $application->documents()->create([
+                'document_type' => $documentType,
+                'file_path' => "test/courier-{$documentType}.pdf",
+                'original_name' => "{$documentType}.pdf",
+                'mime_type' => 'application/pdf',
+                'size_bytes' => 100,
+                'verification_status' => 'verified',
+                'verified_by' => $logistics->id,
+                'verified_at' => now(),
+            ]);
+        }
+
+        $this->actingAs($logistics)
+            ->post(route('logistics.riders.approve', $rider))
+            ->assertSessionHasErrors('linehaul_capacity');
+
+        $this->assertSame(AccountStatus::Pending->value, $rider->fresh()->status);
+        $this->assertSame('under_review', $application->fresh()->status);
+        $this->assertDatabaseMissing('rider_profiles', ['user_id' => $rider->id]);
+
+        $this->actingAs($logistics)
+            ->post(route('logistics.riders.approve', $rider), ['linehaul_capacity' => 24])
+            ->assertSessionHasNoErrors();
+
+        $profile = $rider->fresh()->riderProfile;
+        $this->assertSame(AccountStatus::Active->value, $rider->fresh()->status);
+        $this->assertSame('approved', $application->fresh()->status);
+        $this->assertSame('courier', $profile->work_type);
+        $this->assertSame('Van', $profile->vehicle_type);
+        $this->assertSame('Toyota Hiace', $profile->vehicle_model);
+        $this->assertSame(24, $profile->linehaul_parcel_capacity);
+        $this->assertSame($logistics->id, $profile->courier_vehicle_verified_by);
+        $this->assertNotNull($profile->courier_vehicle_verified_at);
     }
 
     public function test_pending_accounts_cannot_enter_a_role_dashboard(): void

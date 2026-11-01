@@ -5,16 +5,148 @@ namespace Tests\Feature\Logistics;
 use App\Enums\AccountStatus;
 use App\Enums\UserRole;
 use App\Models\Address;
+use App\Models\LogisticsPayoutAccount;
 use App\Models\LogisticsProfile;
 use App\Models\SortingCenter;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
 class LogisticsAccountSettingsTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_logistics_can_register_encrypted_bank_and_gcash_destinations_for_finance_review(): void
+    {
+        ['user' => $user] = $this->makeLogisticsFacility();
+
+        $this->actingAs($user)
+            ->post(route('logistics.profile.payout-accounts.store'), [
+                'channel' => 'bank_transfer',
+                'provider_name' => 'Union Bank',
+                'account_name' => 'Logistics Hub Inc.',
+                'destination_value' => '1234 5678 9012',
+            ])
+            ->assertRedirect(route('logistics.profile.index') . '#payouts')
+            ->assertSessionHas('success');
+
+        $bank = LogisticsPayoutAccount::query()->sole();
+        $this->assertSame('pending_review', $bank->status);
+        $this->assertSame('123456789012', $bank->destination_value);
+        $this->assertSame('9012', $bank->destination_last4);
+        $this->assertNotSame('123456789012', DB::table('logistics_payout_accounts')->where('id', $bank->id)->value('destination_value'));
+
+        $this->actingAs($user)
+            ->from(route('logistics.profile.index'))
+            ->post(route('logistics.profile.payout-accounts.store'), [
+                'channel' => 'bank_transfer',
+                'account_name' => 'Logistics Hub Inc.',
+                'destination_value' => '9876543210',
+            ])
+            ->assertSessionHasErrors('provider_name')
+            ->assertSessionMissing('_old_input.destination_value');
+
+        $this->actingAs($user)
+            ->post(route('logistics.profile.payout-accounts.store'), [
+                'channel' => 'gcash',
+                'account_name' => 'Logistics Hub Inc.',
+                'destination_value' => '0917 123 4567',
+            ])
+            ->assertRedirect(route('logistics.profile.index') . '#payouts')
+            ->assertSessionHas('success');
+
+        $gcash = LogisticsPayoutAccount::query()->where('channel', 'gcash')->sole();
+        $this->assertSame('GCash', $gcash->provider_name);
+        $this->assertSame('+639171234567', $gcash->destination_value);
+        $this->assertSame('4567', $gcash->destination_last4);
+
+        $this->actingAs($user)
+            ->get(route('logistics.profile.index') . '#payouts')
+            ->assertOk()
+            ->assertSee('•••• 9012')
+            ->assertSee('•••• 4567')
+            ->assertSee('Pending Review')
+            ->assertDontSee('123456789012')
+            ->assertDontSee('+639171234567');
+    }
+
+    public function test_finance_views_sensitive_destination_with_audit_and_verifies_it_before_use(): void
+    {
+        ['user' => $user] = $this->makeLogisticsFacility();
+        $this->actingAs($user)->post(route('logistics.profile.payout-accounts.store'), [
+            'channel' => 'bank_transfer',
+            'provider_name' => 'Union Bank',
+            'account_name' => 'Logistics Hub Inc.',
+            'destination_value' => '123456789012',
+        ])->assertRedirect();
+        $account = LogisticsPayoutAccount::query()->sole();
+        $admin = User::factory()->create(['role' => UserRole::Admin->value, 'status' => AccountStatus::Active->value]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.shipping-settlements.index'))
+            ->assertOk()
+            ->assertSee('Logistics payout destinations')
+            ->assertSee('•••• 9012')
+            ->assertDontSee('123456789012');
+
+        $detailsResponse = $this->actingAs($admin)
+            ->get(route('admin.logistics-payout-accounts.show', $account))
+            ->assertOk()
+            ->assertSee('123456789012')
+            ->assertSee('I independently confirmed this destination');
+        $this->assertStringContainsString('no-store', (string) $detailsResponse->headers->get('Cache-Control'));
+        $this->assertSame(1, DB::table('audit_logs')->where('action', 'logistics_payout_account.details_viewed')->count());
+        $auditValues = (string) DB::table('audit_logs')->where('action', 'logistics_payout_account.details_viewed')->value('new_values');
+        $this->assertStringNotContainsString('123456789012', $auditValues);
+
+        $this->actingAs($admin)
+            ->post(route('admin.logistics-payout-accounts.verify', $account), [
+                'verification_note' => 'Confirmed with registered provider contact.',
+                'destination_verified' => '1',
+            ])
+            ->assertRedirect(route('admin.shipping-settlements.index'));
+
+        $this->assertSame('verified', $account->fresh()->status);
+        $this->assertSame($admin->id, (int) $account->fresh()->reviewed_by);
+        $this->assertSame(1, DB::table('audit_logs')->where('action', 'logistics_payout_account.verified')->count());
+
+        $this->actingAs($user)
+            ->get(route('logistics.profile.index') . '#payouts')
+            ->assertOk()
+            ->assertSee('Verified')
+            ->assertSee('•••• 9012')
+            ->assertDontSee('123456789012');
+    }
+
+    public function test_logistics_cannot_deactivate_another_providers_destination_and_finance_can_reject_pending_details(): void
+    {
+        ['user' => $owner] = $this->makeLogisticsFacility('A', 'payout-owner@example.test');
+        ['user' => $other] = $this->makeLogisticsFacility('B', 'payout-other@example.test');
+        $this->actingAs($owner)->post(route('logistics.profile.payout-accounts.store'), [
+            'channel' => 'gcash',
+            'account_name' => 'Owner Logistics',
+            'destination_value' => '09171234567',
+        ])->assertRedirect();
+        $account = LogisticsPayoutAccount::query()->sole();
+
+        $this->actingAs($other)
+            ->post(route('logistics.profile.payout-accounts.deactivate', $account))
+            ->assertNotFound();
+        $this->assertSame('pending_review', $account->fresh()->status);
+
+        $admin = User::factory()->create(['role' => UserRole::Admin->value, 'status' => AccountStatus::Active->value]);
+        $this->actingAs($admin)
+            ->post(route('admin.logistics-payout-accounts.reject', $account), [
+                'review_reason' => 'Unable to confirm the registered destination.',
+            ])
+            ->assertRedirect(route('admin.shipping-settlements.index'));
+
+        $this->assertSame('rejected', $account->fresh()->status);
+        $this->assertSame('Unable to confirm the registered destination.', $account->fresh()->review_note);
+        $this->actingAs($other)->get(route('admin.logistics-payout-accounts.show', $account))->assertForbidden();
+    }
 
     public function test_operator_can_update_name_and_contact(): void
     {

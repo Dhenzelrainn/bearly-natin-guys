@@ -258,7 +258,33 @@ class SellerInventoryService
         }
 
         return DB::transaction(function () use ($store, $user, $variantIds, $mode, $quantity, $reasonText): int {
+            // Match SellerProductService's product-before-variant lock order so
+            // a product edit cannot deadlock against a stock adjustment.
+            $productIds = ProductVariant::query()
+                ->whereIn('id', $variantIds)
+                ->whereHas('product', fn ($products) => $products->where('store_id', $store->id))
+                ->distinct()
+                ->orderBy('product_id')
+                ->pluck('product_id');
+            $products = Product::query()
+                ->whereIn('id', $productIds)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get(['id', 'product_status'])
+                ->keyBy('id');
             $variants = $this->lockOwnedVariants($store, $variantIds);
+            $complianceHeldVariant = $variants->first(fn (ProductVariant $variant): bool => in_array(
+                (string) ($products->get($variant->product_id)?->product_status ?? ''),
+                ['blocked', 'flagged'],
+                true,
+            ));
+
+            if ($complianceHeldVariant) {
+                throw ValidationException::withMessages([
+                    'variant_ids' => "Stock adjustment is unavailable while {$complianceHeldVariant->sku} is on compliance hold.",
+                ]);
+            }
+
             $changes = [];
 
             foreach ($variants as $variant) {

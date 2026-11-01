@@ -40,8 +40,9 @@ class ApplicationPendingStatusTest extends TestCase
 
         $this->get(route('application.pending', ['user_id' => $other->id, 'email' => $other->email]))
             ->assertOk()
-            ->assertSee('Application received')
-            ->assertSee('Pending review')
+            ->assertSee('Historical Buyer application status')
+            ->assertSee('New Buyer registrations activate after email verification')
+            ->assertSee('Historical pending')
             ->assertSee('data-final="0"', false)
             ->assertDontSee($other->email)
             ->assertDontSee($other->name);
@@ -111,7 +112,8 @@ class ApplicationPendingStatusTest extends TestCase
             ApplicationReviewService::SESSION_KEY => $revision->id,
         ])->get(route('application.pending'))
             ->assertOk()
-            ->assertSee('Your application needs an update')
+            ->assertSee('Historical Buyer application status')
+            ->assertSee('outside the active Admin queues')
             ->assertSee('Upload a clearer front-side ID image.')
             ->assertSee('data-final="0"', false)
             ->assertSee('Return to sign in')

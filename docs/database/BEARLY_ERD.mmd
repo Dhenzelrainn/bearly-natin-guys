@@ -1,9 +1,12 @@
 erDiagram
+    %% Courier line-haul entities are transcribed from the additive migration; MySQL validation is pending.
     account_applications {
         bigint id PK
         varchar application_no UK
         bigint user_id
         bigint requested_role_id
+        varchar requested_work_type
+        varchar rider_vehicle_model
         bigint sponsor_logistics_profile_id
         varchar business_name
         bigint business_category_id
@@ -281,6 +284,60 @@ erDiagram
         timestamp created_at
         timestamp updated_at
         timestamp deleted_at
+    }
+    logistics_payout_accounts {
+        bigint id PK
+        bigint logistics_profile_id
+        varchar channel
+        varchar provider_name
+        varchar account_name
+        text destination_value
+        char destination_last4
+        varchar status
+        bigint created_by
+        bigint reviewed_by
+        timestamp reviewed_at
+        text review_note
+        timestamp deactivated_at
+        timestamp created_at
+        timestamp updated_at
+    }
+    linehaul_run_events {
+        bigint id PK
+        bigint linehaul_run_id
+        bigint actor_user_id
+        varchar event_type
+        varchar from_status
+        varchar to_status
+        text reason
+        json metadata
+        timestamp occurred_at
+    }
+    linehaul_run_shipments {
+        bigint id PK
+        bigint linehaul_run_id
+        bigint shipment_id UK
+        timestamp loaded_at
+        timestamp created_at
+        timestamp updated_at
+    }
+    linehaul_runs {
+        bigint id PK
+        varchar run_no UK
+        bigint origin_logistics_profile_id
+        bigint destination_logistics_profile_id
+        bigint origin_sorting_center_id
+        bigint courier_rider_profile_id
+        varchar status
+        varchar status_before_exception
+        bigint assigned_by
+        timestamp assigned_at
+        timestamp loaded_at
+        timestamp departed_at
+        timestamp arrived_at
+        timestamp completed_at
+        timestamp created_at
+        timestamp updated_at
     }
     message_attachments {
         bigint id PK
@@ -669,6 +726,41 @@ erDiagram
         timestamp created_at
         timestamp updated_at
     }
+    shipping_settlements {
+        bigint id PK
+        varchar settlement_no UK
+        varchar settlement_type
+        bigint seller_order_id
+        bigint shipment_id UK
+        bigint return_request_id UK
+        bigint logistics_profile_id
+        bigint rider_profile_id
+        bigint delivery_attempt_id
+        int zone_level
+        bigint original_shipping_fee_minor
+        bigint return_shipping_fee_minor
+        bigint buyer_paid_shipping_fee_minor
+        bigint platform_shipping_subsidy_minor
+        varchar shipping_funding_source
+        varchar financially_responsible_party
+        bigint logistics_share_minor
+        bigint rider_share_minor
+        varchar status
+        timestamp eligible_at
+        bigint remitted_amount_minor
+        varchar remittance_method
+        varchar remittance_reference
+        date remitted_on
+        timestamp remitted_at
+        bigint remitted_by
+        text remittance_reason
+        timestamp created_at
+        timestamp updated_at
+        bigint logistics_payout_account_id
+        varchar remitted_to_provider
+        varchar remitted_to_account_name
+        char remitted_to_last4
+    }
     rider_profiles {
         bigint id PK
         bigint user_id UK
@@ -683,9 +775,37 @@ erDiagram
         varchar emergency_contact_phone
         varchar availability_status
         varchar verification_status
+        varchar work_type
+        smallint linehaul_parcel_capacity
+        bigint courier_vehicle_verified_by
+        timestamp courier_vehicle_verified_at
         timestamp created_at
         timestamp updated_at
         timestamp deleted_at
+    }
+    rider_vehicle_change_requests {
+        bigint id PK
+        bigint rider_profile_id
+        varchar requested_work_type
+        varchar vehicle_type
+        varchar vehicle_model
+        varchar plate_number
+        varchar or_cr_disk
+        varchar or_cr_path
+        varchar or_cr_original_name
+        varchar or_cr_mime_type
+        bigint or_cr_size_bytes
+        varchar driver_license_disk
+        varchar driver_license_path
+        varchar driver_license_original_name
+        varchar driver_license_mime_type
+        bigint driver_license_size_bytes
+        varchar status
+        bigint reviewed_by
+        timestamp reviewed_at
+        text review_notes
+        timestamp created_at
+        timestamp updated_at
     }
     role_user {
         bigint role_id PK
@@ -1151,6 +1271,15 @@ erDiagram
     users ||--o{ account_applications : reviewed_by
     logistics_profiles ||--o{ account_applications : sponsor_logistics_profile_id
     users ||--|{ account_applications : user_id
+    users ||--o{ linehaul_run_events : actor_user_id
+    linehaul_runs ||--|{ linehaul_run_events : linehaul_run_id
+    linehaul_runs ||--|{ linehaul_run_shipments : linehaul_run_id
+    shipments ||--o| linehaul_run_shipments : shipment_id
+    users ||--o{ linehaul_runs : assigned_by
+    rider_profiles ||--o{ linehaul_runs : courier_rider_profile_id
+    logistics_profiles ||--o{ linehaul_runs : destination_logistics_profile_id
+    logistics_profiles ||--o{ linehaul_runs : origin_logistics_profile_id
+    sorting_centers ||--o{ linehaul_runs : origin_sorting_center_id
     users ||--o{ addresses : user_id
     announcements ||--|{ announcement_roles : announcement_id
     roles ||--|{ announcement_roles : role_id
@@ -1197,6 +1326,9 @@ erDiagram
     product_variants ||--|{ inventory_movements : variant_id
     account_applications ||--o{ logistics_profiles : application_id
     users ||--|{ logistics_profiles : user_id
+    logistics_profiles ||--o{ logistics_payout_accounts : logistics_profile_id
+    users o|--o{ logistics_payout_accounts : created_by
+    users o|--o{ logistics_payout_accounts : reviewed_by
     messages ||--|{ message_attachments : message_id
     conversations ||--|{ messages : conversation_id
     users ||--o{ messages : sender_id
@@ -1260,10 +1392,13 @@ erDiagram
     delivery_attempts ||--o{ rider_earnings : delivery_attempt_id
     pickup_assignments ||--o{ rider_earnings : pickup_assignment_id
     rider_profiles ||--|{ rider_earnings : rider_profile_id
+    users ||--o{ rider_profiles : courier_vehicle_verified_by
     sorting_zones ||--o{ rider_profiles : current_zone_id
     sorting_centers ||--o{ rider_profiles : home_sorting_center_id
     logistics_profiles ||--|{ rider_profiles : logistics_profile_id
     users ||--|{ rider_profiles : user_id
+    rider_profiles ||--o{ rider_vehicle_change_requests : rider_profile_id
+    users ||--o{ rider_vehicle_change_requests : reviewed_by
     users ||--o{ role_user : assigned_by
     roles ||--|{ role_user : role_id
     users ||--|{ role_user : user_id
@@ -1316,6 +1451,8 @@ erDiagram
     sorting_zones ||--o{ shipment_events : sorting_zone_id
     addresses ||--o{ shipments : destination_address_id
     logistics_profiles ||--|{ shipments : logistics_profile_id
+    logistics_profiles ||--o{ shipping_settlements : logistics_profile_id
+    logistics_payout_accounts o|--o{ shipping_settlements : logistics_payout_account_id
     addresses ||--o{ shipments : origin_address_id
     seller_orders ||--|{ shipments : seller_order_id
     addresses ||--|{ sorting_centers : address_id

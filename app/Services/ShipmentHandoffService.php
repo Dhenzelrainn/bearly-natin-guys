@@ -5,6 +5,8 @@ namespace App\Services;
 use App\Enums\ParcelStatus;
 use App\Enums\ShipmentStatus;
 use App\Enums\UserRole;
+use App\Models\LinehaulRun;
+use App\Models\LinehaulRunShipment;
 use App\Models\LogisticsProfile;
 use App\Models\Parcel;
 use App\Models\Shipment;
@@ -69,155 +71,19 @@ class ShipmentHandoffService
 
     public function send(Shipment $shipment, User $actor): ShipmentTransfer
     {
-        return DB::transaction(function () use ($shipment, $actor): ShipmentTransfer {
-            $shipment = Shipment::query()
-                ->with([
-                    'sellerOrder.order',
-                    'destinationAddress',
-                ])
-                ->lockForUpdate()
-                ->findOrFail($shipment->id);
+        throw new ConflictHttpException(
+            'City handoffs can be sent only through an assigned Courier manifest after cargo is loaded and departed.'
+        );
+    }
 
-            $origin = LogisticsProfile::query()
-                ->whereKey($shipment->logistics_profile_id)
-                ->lockForUpdate()
-                ->firstOrFail();
-            $actorProfileId = (int) ($actor->logisticsProfile?->id ?? 0);
-
-            if ($actorProfileId < 1 || $actorProfileId !== (int) $origin->id) {
-                throw new AuthorizationException(
-                    'You cannot transfer a shipment owned by another Logistics account.'
-                );
-            }
-
-            if (! in_array($shipment->purpose, ['outbound', 'return'], true)) {
-                throw new ConflictHttpException('This shipment purpose cannot be transferred.');
-            }
-
-            if ($shipment->status !== ShipmentStatus::AtSortingCenter->value) {
-                throw new ConflictHttpException(
-                    'A shipment can be transferred only after all parcels are received at a Sorting Center.'
-                );
-            }
-
-            if (ShipmentTransfer::query()->where('shipment_id', $shipment->id)->exists()) {
-                throw new ConflictHttpException('This shipment already has a recorded Logistics handoff.');
-            }
-
-            $target = $this->destinationProviderFor($shipment);
-
-            if (! $target) {
-                throw new ConflictHttpException(
-                    'No active Logistics account is configured for the shipment destination municipality/city.'
-                );
-            }
-
-            if ((int) $target->id === (int) $origin->id) {
-                throw new ConflictHttpException(
-                    'This shipment is already assigned to the Logistics account serving its destination city.'
-                );
-            }
-
-            $target = LogisticsProfile::query()
-                ->whereKey($target->id)
-                ->lockForUpdate()
-                ->firstOrFail();
-            $targetUser = User::query()
-                ->whereKey($target->user_id)
-                ->lockForUpdate()
-                ->first();
-
-            if (
-                $target->status !== 'active'
-                || ! $targetUser
-                || $targetUser->status !== 'active'
-                || ! $targetUser->hasRole(UserRole::Logistics->value)
-                || ! $this->singleActiveSortingCenterForUpdate($target)
-            ) {
-                throw new ConflictHttpException(
-                    'The destination Logistics account is not currently able to receive parcels.'
-                );
-            }
-
-            $parcels = Parcel::query()
-                ->where('shipment_id', $shipment->id)
-                ->orderBy('id')
-                ->lockForUpdate()
-                ->get();
-
-            if ($parcels->isEmpty() || $parcels->contains(
-                fn (Parcel $parcel): bool => $parcel->status !== ParcelStatus::Received->value
-            )) {
-                throw new ConflictHttpException(
-                    'Every parcel must be received and unsorted before a Logistics handoff.'
-                );
-            }
-
-            $centerIds = $parcels->pluck('current_sorting_center_id')->unique()->values();
-
-            if ($centerIds->count() !== 1 || ! $centerIds->first()) {
-                throw new ConflictHttpException(
-                    'All shipment parcels must be at the same Sorting Center before transfer.'
-                );
-            }
-
-            $originCenter = SortingCenter::query()
-                ->whereKey((int) $centerIds->first())
-                ->where('logistics_profile_id', $origin->id)
-                ->where('status', 'active')
-                ->lockForUpdate()
-                ->first();
-
-            if (! $originCenter) {
-                throw new ConflictHttpException(
-                    'The shipment is not at an active Sorting Center owned by the current Logistics account.'
-                );
-            }
-
-            $now = now();
-            $transfer = ShipmentTransfer::query()->create([
-                'shipment_id' => $shipment->id,
-                'from_logistics_profile_id' => $origin->id,
-                'to_logistics_profile_id' => $target->id,
-                'from_sorting_center_id' => $originCenter->id,
-                'status' => 'sent',
-                'sent_by' => $actor->id,
-                'sent_at' => $now,
-            ]);
-
-            $shipment->update(['status' => ShipmentStatus::HandoffPending->value]);
-
-            foreach ($parcels as $parcel) {
-                $parcel->update([
-                    'status' => ParcelStatus::InTransit->value,
-                    'last_event_at' => $now,
-                ]);
-
-                $shipment->events()->create([
-                    'parcel_id' => $parcel->id,
-                    'event_type' => 'logistics_handoff_sent',
-                    'from_status' => ParcelStatus::Received->value,
-                    'to_status' => ParcelStatus::InTransit->value,
-                    'sorting_center_id' => $originCenter->id,
-                    'actor_user_id' => $actor->id,
-                    'source' => 'logistics',
-                    'metadata' => [
-                        'shipment_transfer_id' => $transfer->id,
-                        'from_logistics_profile_id' => $origin->id,
-                        'to_logistics_profile_id' => $target->id,
-                    ],
-                    'occurred_at' => $now,
-                ]);
-            }
-
-            $this->notifyDestinationOfHandoff($transfer, $origin, $targetUser);
-
-            return $transfer->fresh([
-                'shipment.waybill',
-                'fromLogisticsProfile',
-                'toLogisticsProfile',
-            ]);
-        }, attempts: 3);
+    public function notifyCourierDeparture(ShipmentTransfer $transfer): void
+    {
+        $transfer->loadMissing(['fromLogisticsProfile', 'toLogisticsProfile.user']);
+        $this->notifyDestinationOfHandoff(
+            $transfer,
+            $transfer->fromLogisticsProfile,
+            $transfer->toLogisticsProfile?->user,
+        );
     }
 
     /**
@@ -266,6 +132,20 @@ class ShipmentHandoffService
 
             if (! $transfer) {
                 throw (new ModelNotFoundException)->setModel(ShipmentTransfer::class);
+            }
+
+            $runAssignment = LinehaulRunShipment::query()
+                ->where('shipment_id', $shipment->id)
+                ->lockForUpdate()
+                ->first();
+            $linehaulRun = $runAssignment
+                ? LinehaulRun::query()->whereKey($runAssignment->linehaul_run_id)->lockForUpdate()->firstOrFail()
+                : null;
+
+            if ($linehaulRun && $linehaulRun->status !== 'arrived') {
+                throw new ConflictHttpException(
+                    'Destination Logistics can accept the transfer only after its assigned Courier records arrival.'
+                );
             }
 
             $recipient = LogisticsProfile::query()
@@ -377,6 +257,10 @@ class ShipmentHandoffService
                     ],
                     'occurred_at' => $now,
                 ]);
+            }
+
+            if ($linehaulRun) {
+                app(LinehaulRunService::class)->recordDestinationAcceptance($linehaulRun, $actor);
             }
 
             $this->notifyOriginOfAcceptance($transfer, $recipient);

@@ -9,11 +9,12 @@
     $hasFilters = collect($filters)->filter(static fn ($value) => filled($value))->isNotEmpty();
 @endphp
 
+<div data-rider-earnings-live data-status-url="{{ route('rider.earnings.status-version') }}" data-status-version="{{ $earningsStatusVersion }}">
 <div class="page-header">
     <div>
         <p class="page-kicker">Rider ledger</p>
         <h2>Recorded earnings</h2>
-        <p>A shipping earning can enter this ledger only after Seller Order completion, the 3-calendar-day return/refund period, and the payment/COD checks. That starts eligibility; it is not a payout promise. Admin/Finance must remit to your Logistics provider, which then records your actual payout.</p>
+        <p>Outbound shipping earnings wait for Seller Order completion, the 3-calendar-day return/refund period, and payment/COD checks. A return-shipping earning becomes eligible after the approved return is delivered to the Seller. Both wait for Admin/Finance remittance; Logistics records your actual payout afterward.</p>
     </div>
     <div class="page-actions">
         <a class="button" href="{{ route('rider.history.index') }}">
@@ -27,7 +28,7 @@
     </div>
 </div>
 
-<section class="metric-strip" aria-label="Earnings ledger summary">
+<section class="metric-strip" aria-label="Earnings ledger summary" data-rider-earnings-summary>
     <article class="metric-item">
         <span class="metric-icon"><i data-lucide="sun" aria-hidden="true"></i></span>
         <span class="metric-copy">
@@ -67,8 +68,8 @@
         <div class="attention-item">
             <i data-lucide="info" aria-hidden="true"></i>
             <span>
-                <strong>Three-day return period, then settlement</strong>
-                <small>The 3-calendar-day return/refund period starts when the Seller Order is completed. After it ends, payment, unresolved cases, and COD reconciliation can still delay eligibility. Pending means the earning is recorded and waiting for Admin/Finance remittance; Posted means it was remitted to your provider; Paid means your provider recorded the actual payout. A missing row is not labeled pending, and this page does not guess why it is missing.</small>
+                <strong>Outbound and return earnings have different eligibility checks</strong>
+                <small>Outbound earnings wait for the 3-calendar-day return/refund period from Seller Order completion, captured payment, no open return/refund request or pending/processing refund, and exact COD reconciliation. A return-shipping earning becomes eligible when the approved return is delivered to the Seller. Pending means Finance has not remitted to your provider; Posted means remittance was recorded; Paid means Logistics recorded your actual payout. A missing row is not labeled pending, and this page does not guess why it is missing.</small>
             </span>
         </div>
     </div>
@@ -141,20 +142,48 @@
                     <th>Payout details</th>
                 </tr>
             </thead>
-            <tbody>
+            <tbody data-rider-earnings-rows>
                 @forelse($logs as $log)
                     <tr>
                         <td><time datetime="{{ $log['earned_at_iso'] }}">{{ $log['earned_at'] }}</time></td>
                         <td>
-                            <div class="earnings-job-cell">
-                                <strong>{{ $log['job'] }}</strong>
-                                <small>{{ $log['source'] }}</small>
-                                @if(filled($log['description']))
-                                    <small>{{ $log['description'] }}</small>
+                            @php($jobProducts = $log['products'] ?? [])
+                            <div class="earnings-job-preview">
+                                @if($jobProducts)
+                                    <div class="earnings-product-thumbnails" role="group" aria-label="Product images for {{ $log['job'] }}">
+                                        @foreach(array_slice($jobProducts, 0, 3) as $product)
+                                            <span class="earnings-product-thumbnail">
+                                                @if(filled($product['image_url']))
+                                                    <img src="{{ $product['image_url'] }}" alt="{{ $product['name'] }}" title="{{ $product['name'] }}" loading="lazy" decoding="async">
+                                                @else
+                                                    <span class="earnings-product-thumbnail-placeholder" role="img" aria-label="No image for {{ $product['name'] }}">
+                                                        <i data-lucide="package" aria-hidden="true"></i>
+                                                    </span>
+                                                @endif
+                                            </span>
+                                        @endforeach
+                                        @if(count($jobProducts) > 3)
+                                            @php($additionalImages = count($jobProducts) - 3)
+                                            <span class="earnings-product-thumbnail-more" aria-label="{{ $additionalImages }} more {{ $additionalImages === 1 ? 'product' : 'products' }}">+{{ $additionalImages }}</span>
+                                        @endif
+                                    </div>
                                 @endif
-                                @if(filled($log['return_window_ended_at']))
-                                    <small>3-day return period ended {{ $log['return_window_ended_at'] }}</small>
-                                @endif
+                                <div class="earnings-job-cell">
+                                    <strong>{{ $log['job'] }}</strong>
+                                    @if(filled($log['order_no']))<small>Order {{ $log['order_no'] }}</small>@endif
+                                    <small>{{ $log['source'] }}</small>
+                                    @if($jobProducts)
+                                        @php($previewProduct = $jobProducts[0])
+                                        <small class="earnings-job-product-preview">{{ $previewProduct['name'] }}@if(filled($previewProduct['variant'])) · {{ $previewProduct['variant'] }}@endif · Qty {{ $previewProduct['quantity'] }}</small>
+                                        @if(count($jobProducts) > 1)<small>{{ count($jobProducts) - 1 }} more {{ count($jobProducts) - 1 === 1 ? 'product' : 'products' }} in this job</small>@endif
+                                    @endif
+                                    @if(filled($log['description']))
+                                        <small>{{ $log['description'] }}</small>
+                                    @endif
+                                    @if(filled($log['return_window_ended_at']))
+                                        <small>3-day return period ended {{ $log['return_window_ended_at'] }}</small>
+                                    @endif
+                                </div>
                             </div>
                         </td>
                         <td>{{ $log['type_label'] }}</td>
@@ -180,7 +209,7 @@
                                 No earning ledger entries match these filters.
                             @else
                                 <strong>No earning ledger entries are currently recorded for your Rider profile.</strong>
-                                <span>Delivery History is separate and does not create an earning by itself. After the 3-calendar-day return/refund period ends, payment, open-case, and COD checks still determine eligibility. Finance remits eligible allocations to your provider; your provider records the actual Rider payout.</span>
+                                <span>Delivery History is separate and does not create an earning by itself. Outbound earnings appear after the 3-calendar-day return/refund period and payment/COD checks pass. A return-shipping earning appears after an approved return is delivered to the Seller. Finance remits the exact 40/60 allocation to your provider; Logistics records the final Rider payout.</span>
                                 <a class="button button-small" href="{{ route('rider.history.index') }}">Review Delivery History</a>
                             @endif
                         </td>
@@ -190,7 +219,7 @@
         </table>
     </div>
 
-    <div class="history-pagination" role="status" aria-live="polite">
+    <div class="history-pagination" role="status" aria-live="polite" data-rider-earnings-pagination>
         <span>Showing {{ $logs->firstItem() ?? 0 }}–{{ $logs->lastItem() ?? 0 }} of {{ number_format($logs->total()) }} records</span>
         <div class="page-actions">
             @if($logs->previousPageUrl())
@@ -202,4 +231,5 @@
         </div>
     </div>
 </section>
+</div>
 @endsection

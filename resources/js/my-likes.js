@@ -135,6 +135,7 @@ function initMyLikes() {
     const tabs = document.getElementById('likes-category-tabs');
     const grid = document.getElementById('likes-grid');
     const sort = document.getElementById('likes-sort');
+    const sortLabel = document.querySelector('[data-likes-sort-label]');
     if (!tabs || !grid || window.bearlyLikesControlsInitialized) return;
     window.bearlyLikesControlsInitialized = true;
 
@@ -145,10 +146,19 @@ function initMyLikes() {
         renderMyLikes();
     });
 
-    sort?.addEventListener('change', () => {
-        sortMode = sort.value || 'recent';
-        renderMyLikes();
-    });
+    const syncSortLabel = () => {
+        if (sortLabel && sort) {
+            sortLabel.textContent = sort.selectedOptions[0]?.textContent?.trim() || 'Recently liked';
+        }
+    };
+    if (sort) {
+        syncSortLabel();
+        sort.addEventListener('change', () => {
+            sortMode = sort.value || 'recent';
+            syncSortLabel();
+            renderMyLikes();
+        });
+    }
 
     grid.addEventListener('click', async event => {
         const card = event.target.closest('[data-live-like-card]');

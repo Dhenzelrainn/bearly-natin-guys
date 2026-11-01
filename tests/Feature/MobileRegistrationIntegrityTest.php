@@ -5,13 +5,15 @@ namespace Tests\Feature;
 use App\Enums\AccountStatus;
 use App\Enums\UserRole;
 use App\Mail\RegistrationCode;
+use App\Models\AccountApplication;
+use App\Models\Role;
 use App\Models\User;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -81,9 +83,10 @@ class MobileRegistrationIntegrityTest extends TestCase
         ]);
     }
 
-    public function test_mobile_buyer_registration_accepts_the_eighteenth_birthday_and_saves_e164_phone(): void
+    public function test_mobile_buyer_registration_activates_without_id_and_allows_immediate_mobile_login(): void
     {
         Carbon::setTestNow('2026-10-08 12:00:00');
+        Notification::fake();
 
         try {
             $email = 'mobile-buyer@example.test';
@@ -115,17 +118,71 @@ class MobileRegistrationIntegrityTest extends TestCase
             ]), ['Accept' => 'application/json']);
 
             $response->assertCreated()
-                ->assertJsonPath('application.email', $email)
-                ->assertJsonPath('application.status', AccountStatus::Pending->value);
+                ->assertJsonPath('message', 'Buyer account created and activated. You can now sign in.')
+                ->assertJsonPath('data.email', $email)
+                ->assertJsonPath('data.role', UserRole::Buyer->value)
+                ->assertJsonPath('data.status', AccountStatus::Active->value);
 
             $user = User::query()->where('email', $email)->firstOrFail();
 
+            $this->assertSame(AccountStatus::Active->value, $user->status);
             $this->assertSame('+639171234567', $user->contact_number);
             $this->assertSame('+639171234567', $user->phone);
-            Storage::disk('local')->assertExists($user->valid_id_path);
+            $this->assertNotNull($user->email_verified_at);
+            $this->assertNull($user->phone_verified_at);
+            $this->assertNull($user->valid_id_path);
+            $this->assertNull($user->approved_by);
+            $this->assertNull($user->approved_at);
+            $this->assertFalse($user->applications()->exists());
+            $this->assertDatabaseHas('role_user', [
+                'user_id' => $user->id,
+                'role_id' => Role::query()->where('name', UserRole::Buyer->value)->value('id'),
+                'assigned_by' => null,
+            ]);
+
+            $address = $user->addresses()->sole();
+            $this->assertTrue($address->is_default_shipping);
+            $this->assertSame('+639171234567', $address->phone);
+            $this->assertSame('12', $address->house_number);
+            $this->assertSame('Bearly Street', $address->street);
+            $this->assertSame('City of San Pablo', $address->city_municipality);
+            $this->assertSame('0403424000', $address->psgc_city_code);
+            $this->assertDatabaseMissing('account_applications', ['user_id' => $user->id]);
+            $this->assertSame([], Storage::disk('local')->allFiles('registration-documents/valid-ids'));
+            Notification::assertNothingSent();
+
+            $login = $this->postJson('/api/mobile/login', [
+                'email' => $email,
+                'password' => 'Password123',
+            ])->assertOk()
+                ->assertJsonPath('user.role', UserRole::Buyer->value)
+                ->assertJsonPath('user.status', AccountStatus::Active->value);
+
+            $this->withHeader('Authorization', 'Bearer '.$login->json('token'))
+                ->getJson('/api/user')
+                ->assertOk()
+                ->assertJsonPath('id', $user->id)
+                ->assertJsonPath('role', UserRole::Buyer->value);
         } finally {
             Carbon::setTestNow();
         }
+    }
+
+    public function test_mobile_buyer_registration_rejects_missing_or_unverified_email_proof(): void
+    {
+        $payload = $this->buyerData([
+            'email' => 'unverified-mobile-buyer@example.test',
+            'verification_id' => str_repeat('f', 64),
+        ]);
+
+        $this->postJson('/api/mobile/register/buyer', $payload)
+            ->assertUnprocessable();
+
+        $this->assertDatabaseMissing('users', [
+            'email' => 'unverified-mobile-buyer@example.test',
+        ]);
+        $this->assertFalse(AccountApplication::query()->exists());
+        $this->assertSame([], Storage::disk('local')->allFiles('registration-documents/valid-ids'));
     }
 
     private function buyerData(array $overrides = []): array
@@ -147,7 +204,6 @@ class MobileRegistrationIntegrityTest extends TestCase
             'house_number' => '12',
             'postal_code' => '4000',
             'postal_manual' => '0',
-            'valid_id' => UploadedFile::fake()->create('buyer-id.pdf', 100, 'application/pdf'),
             'password' => 'Password123',
             'password_confirmation' => 'Password123',
             'terms' => '1',

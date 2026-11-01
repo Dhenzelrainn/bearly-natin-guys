@@ -364,6 +364,11 @@ class SellerWalletWithdrawalTest extends TestCase
             'seller_profile_id' => $profile->id,
             'amount_minor' => 27_000,
             'recovered_amount_minor' => 0,
+            'refund_recovery_minor' => 27_000,
+            'refund_recovered_minor' => 0,
+            'refund_recovery_voided_minor' => 0,
+            'return_shipping_fee_minor' => 0,
+            'return_shipping_fee_recovered_minor' => 0,
             'status' => 'pending',
         ]);
         $payment->update(['status' => 'refunded']);
@@ -549,6 +554,57 @@ class SellerWalletWithdrawalTest extends TestCase
         $this->assertSame(0, SellerWithdrawal::query()->count());
     }
 
+    public function test_return_shipping_recovery_does_not_block_or_deduct_seller_wallet_withdrawals(): void
+    {
+        [$seller, $profile, $store] = $this->sellerFixture('Return fee withdrawal seller');
+        [$order, $sellerOrder, $payment] = $this->saleFixture(
+            $profile,
+            $store,
+            'return-fee-withdrawal-sale',
+            completedDaysAgo: 10,
+            method: 'gcash',
+            grossMinor: 5_000,
+            netMinor: 5_000,
+        );
+        [$returnRequest, $refund, $recovery] = $this->completedSellerRefund(
+            $profile,
+            $order,
+            $sellerOrder,
+            $payment,
+            amountMinor: 2_000,
+            recoveryMinor: 0,
+        );
+        $recovery->update([
+            'amount_minor' => 2_500,
+            'refund_recovery_minor' => 0,
+            'refund_recovered_minor' => 0,
+            'refund_recovery_voided_minor' => 0,
+            'return_shipping_fee_minor' => 2_500,
+            'return_shipping_fee_recovered_minor' => 0,
+            'status' => 'pending',
+        ]);
+
+        $wallets = app(SellerWalletService::class);
+        $wallet = $wallets->refreshForSeller($profile);
+        $this->assertSame(2_500, $wallets->outstandingRecoveryMinor($profile));
+        $this->assertSame(0, $wallets->outstandingRefundRecoveryMinor($profile));
+        $this->assertSame(5_000, (int) $wallet->available_balance_minor);
+        $this->assertDatabaseMissing('seller_wallet_transactions', ['refund_id' => $refund->id]);
+
+        $account = $this->createBankAccount($seller, '5555666677778899');
+        $this->actingAs($seller)
+            ->post(route('seller.finance.withdrawals.store'), [
+                'amount' => '25.00',
+                'seller_bank_account_id' => $account->id,
+                'idempotency_key' => (string) Str::uuid(),
+            ])
+            ->assertRedirect();
+
+        $this->assertSame(1, SellerWithdrawal::query()->where('seller_profile_id', $profile->id)->count());
+        $this->assertDatabaseMissing('seller_wallet_transactions', ['refund_id' => $refund->id]);
+        $this->assertSame(2_500, $recovery->fresh()->returnShippingOutstandingMinor());
+    }
+
     public function test_legacy_void_command_closes_pre_cutoff_refund_and_pending_balance(): void
     {
         Carbon::setTestNow('2026-10-22 12:00:00');
@@ -593,6 +649,54 @@ class SellerWalletWithdrawalTest extends TestCase
             'pending_delta_minor' => -90_000,
         ]);
         $this->assertDatabaseHas('seller_refund_recovery_events', [
+            'seller_refund_recovery_id' => $recovery->id,
+            'method' => 'legacy_void',
+        ]);
+    }
+
+    public function test_legacy_refund_void_command_leaves_return_fee_recovery_untouched(): void
+    {
+        Carbon::setTestNow('2026-10-22 12:00:00');
+        [$seller, $profile, $store] = $this->sellerFixture('Legacy return fee seller');
+        [$order, $sellerOrder, $payment] = $this->saleFixture(
+            $profile,
+            $store,
+            'legacy-return-fee-sale',
+            completedDaysAgo: 10,
+            method: 'gcash',
+        );
+        [$returnRequest, $refund, $recovery] = $this->completedSellerRefund(
+            $profile,
+            $order,
+            $sellerOrder,
+            $payment,
+            amountMinor: 2_000,
+            recoveryMinor: 0,
+            completedAt: Carbon::parse('2026-10-20 12:00:00'),
+        );
+        $returnRequest->update(['request_type' => 'return_refund']);
+        $recovery->update([
+            'amount_minor' => 2_500,
+            'refund_recovery_minor' => 0,
+            'refund_recovered_minor' => 0,
+            'refund_recovery_voided_minor' => 0,
+            'return_shipping_fee_minor' => 2_500,
+            'return_shipping_fee_recovered_minor' => 0,
+            'status' => 'pending',
+        ]);
+
+        $this->artisan('seller-wallet:void-legacy-refund', [
+            'refund' => $refund->refund_no,
+            '--apply' => true,
+            '--reason' => 'Refund proceeds are clear; fee stays separate.',
+            '--actor' => $this->admin->id,
+        ])
+            ->expectsOutput('There is no refund-proceeds recovery to void. The separate return-delivery fee balance was left unchanged.')
+            ->assertExitCode(0);
+
+        $this->assertSame('pending', $recovery->fresh()->status);
+        $this->assertSame(2_500, $recovery->fresh()->returnShippingOutstandingMinor());
+        $this->assertDatabaseMissing('seller_refund_recovery_events', [
             'seller_refund_recovery_id' => $recovery->id,
             'method' => 'legacy_void',
         ]);
@@ -1112,6 +1216,11 @@ class SellerWalletWithdrawalTest extends TestCase
             'seller_profile_id' => $profile->id,
             'amount_minor' => $recoveryMinor,
             'recovered_amount_minor' => 0,
+            'refund_recovery_minor' => $recoveryMinor,
+            'refund_recovered_minor' => 0,
+            'refund_recovery_voided_minor' => 0,
+            'return_shipping_fee_minor' => 0,
+            'return_shipping_fee_recovered_minor' => 0,
             'status' => 'pending',
         ]);
 

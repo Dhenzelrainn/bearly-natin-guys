@@ -8,6 +8,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+@include('partials.theme-preload')
+@vite('resources/css/theme.css')
 
 <style>
 :root{--brown:#4b2e1f;--brown2:#6b4226;--orange:#e9822c;--cream:#fffaf3;--line:#eadfd2;--text:#2e211a;--muted:#75665d;--white:#fff;--green:#2d7a4f}
@@ -22,11 +24,12 @@ a{text-decoration:none;color:inherit}.shell{min-height:100vh;display:grid;grid-t
 .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.full{grid-column:1/-1}.field label{display:block;font-size:13px;font-weight:700;margin-bottom:7px}.field input,.field select{width:100%;padding:12px 13px;border:1px solid #dbcdbf;border-radius:10px;font:inherit;background:white}.field input:focus,.field select:focus{outline:2px solid rgba(233,130,44,.18);border-color:var(--orange)}
 .notice{padding:14px 16px;border-radius:12px;background:#fff2df;border:1px solid #f1c995;color:#71471f;margin:16px 0}.success{background:#edf8f1;border-color:#b9dfc7;color:#255f3f}
 .toplink{display:inline-block;margin-bottom:18px;color:var(--brown);font-weight:700}.small{font-size:13px}.divider{height:1px;background:var(--line);margin:22px 0}
+.portal-theme-toggle{display:flex;justify-content:flex-end;margin-bottom:12px}
 @media(max-width:880px){.shell{grid-template-columns:1fr}.hero{min-height:auto;padding:38px 24px}.panel{padding:28px 18px}.form-grid{grid-template-columns:1fr}.full{grid-column:auto}}
 </style>
 
 </head>
-<body>
+<body class="logistics-public-landing">
 <div class="shell">
 <section class="hero">
 <div class="brand">Bearly</div>
@@ -39,6 +42,7 @@ a{text-decoration:none;color:inherit}.shell{min-height:100vh;display:grid;grid-t
 </section>
 <section class="panel">
 <div class="card">
+<div class="portal-theme-toggle">@include('partials.theme-toggle')</div>
 <h2>Logistics Partner Portal</h2>
 <p class="muted">For sorting centers and logistics companies that want to operate within Bearly.</p>
 <div class="actions">

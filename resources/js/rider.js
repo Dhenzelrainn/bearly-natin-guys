@@ -51,6 +51,124 @@ function setupShell() {
     document.addEventListener('click', (event) => { if (!event.target.closest('.popover-wrap')) document.querySelectorAll('[data-popover]').forEach((popover) => { popover.hidden = true; }); });
 }
 
+function setupRiderEarningsRealtime() {
+    const earnings = document.querySelector('[data-rider-earnings-live]');
+    if (!earnings) return;
+
+    let statusVersion = earnings.dataset.statusVersion || '';
+    let statusCheckInFlight = false;
+    let pageRefreshInFlight = false;
+    let refreshQueued = false;
+    const statusUrl = earnings.dataset.statusUrl || '';
+
+    const refreshEarnings = async () => {
+        if (document.hidden) {
+            refreshQueued = true;
+            return;
+        }
+        if (pageRefreshInFlight) {
+            refreshQueued = true;
+            return;
+        }
+
+        pageRefreshInFlight = true;
+        try {
+            const url = new URL(window.location.href);
+            url.hash = '';
+            const response = await fetch(url, {
+                cache: 'no-store',
+                credentials: 'same-origin',
+                headers: {
+                    Accept: 'text/html',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            });
+            if (!response.ok) return;
+
+            const html = await response.text();
+            const refreshedPage = new DOMParser().parseFromString(html, 'text/html');
+            const refreshedEarnings = refreshedPage.querySelector('[data-rider-earnings-live]');
+            if (!refreshedEarnings) return;
+
+            const nextVersion = refreshedEarnings.dataset.statusVersion || '';
+            if (!nextVersion || nextVersion === statusVersion) return;
+
+            const replacements = [
+                [
+                    earnings.querySelector('[data-rider-earnings-summary]'),
+                    refreshedEarnings.querySelector('[data-rider-earnings-summary]'),
+                ],
+                [
+                    earnings.querySelector('[data-rider-earnings-rows]'),
+                    refreshedEarnings.querySelector('[data-rider-earnings-rows]'),
+                ],
+                [
+                    earnings.querySelector('[data-rider-earnings-pagination]'),
+                    refreshedEarnings.querySelector('[data-rider-earnings-pagination]'),
+                ],
+            ];
+            if (replacements.some(([current, next]) => !current || !next)) return;
+
+            replacements.forEach(([current, next]) => current.replaceWith(next));
+            statusVersion = nextVersion;
+            earnings.dataset.statusVersion = nextVersion;
+            refreshIcons();
+            toast('Your Rider earnings were updated.');
+        } catch {
+            // The next event, reconnect check, or disconnected fallback retries.
+        } finally {
+            pageRefreshInFlight = false;
+            if (refreshQueued && !document.hidden) {
+                refreshQueued = false;
+                refreshEarnings();
+            }
+        }
+    };
+
+    const checkStatusVersion = async (force = false) => {
+        if (!statusUrl || document.hidden || statusCheckInFlight
+            || (!force && window.BearlyRealtime?.connected)) return;
+
+        statusCheckInFlight = true;
+        try {
+            const response = await fetch(statusUrl, {
+                cache: 'no-store',
+                credentials: 'same-origin',
+                headers: {
+                    Accept: 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            });
+            const payload = await response.json().catch(() => ({}));
+            const nextVersion = String(payload?.data?.version || '');
+            if (!response.ok || !nextVersion) return;
+
+            if (statusVersion && nextVersion !== statusVersion) {
+                await refreshEarnings();
+                return;
+            }
+
+            statusVersion = nextVersion;
+            earnings.dataset.statusVersion = nextVersion;
+        } catch {
+            // A later visibility change or disconnected poll retries.
+        } finally {
+            statusCheckInFlight = false;
+        }
+    };
+
+    window.addEventListener('bearly:rider-shipping-earning-updated', refreshEarnings);
+    window.addEventListener('bearly:realtime-status', (event) => {
+        if (event.detail?.connected) checkStatusVersion(true);
+    });
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) checkStatusVersion(true);
+    });
+
+    checkStatusVersion(true);
+    window.setInterval(() => checkStatusVersion(), 10000);
+}
+
 function setupModals() {
     const backdrop = document.querySelector('[data-modal-backdrop]');
     const close = () => { document.querySelectorAll('.modal').forEach((modal) => { modal.hidden = true; }); if (backdrop) backdrop.hidden = true; document.body.style.overflow = ''; };
@@ -2166,6 +2284,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupForms();
     setupSingleSubmitForms();
     setupDeliveryConfirmation();
+    setupRiderEarningsRealtime();
     setupRegistration();
     refreshIcons();
 });

@@ -79,6 +79,15 @@ if (userId > 0 && key) {
                 window.BearlyNotifications?.refresh?.();
                 window.dispatchEvent(new CustomEvent('bearly:notification-created', { detail: payload }));
             })
+            .listen('.seller.return-status-updated', (payload) => {
+                window.dispatchEvent(new CustomEvent('bearly:seller-return-status-updated', { detail: payload }));
+            })
+            .listen('.logistics.refund-cash-updated', (payload) => {
+                window.dispatchEvent(new CustomEvent('bearly:logistics-refund-cash-updated', { detail: payload }));
+            })
+            .listen('.shipping-settlement.rider-earning-updated', (payload) => {
+                window.dispatchEvent(new CustomEvent('bearly:rider-shipping-earning-updated', { detail: payload }));
+            })
             .listen('.message.created', (payload) => {
                 window.dispatchEvent(new CustomEvent('bearly:message-created', { detail: payload }));
 

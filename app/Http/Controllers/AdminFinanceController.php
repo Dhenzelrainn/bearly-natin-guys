@@ -4,9 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Models\Category;
 use App\Models\CodCashCollection;
+use App\Models\LogisticsPayoutAccount;
+use App\Models\OrderItem;
 use App\Models\PlatformCommission;
 use App\Models\Refund;
 use App\Models\RefundCashPayout;
+use App\Models\ReturnItem;
 use App\Models\SellerPayout;
 use App\Models\SellerTransaction;
 use App\Models\ShippingSettlement;
@@ -253,9 +256,58 @@ class AdminFinanceController extends Controller
     public function shippingSettlements(
         Request $request,
         ShippingSettlementService $shippingSettlementService,
+        BuyerCatalogService $catalog,
     ): View {
+        $shippingSettlements = $shippingSettlementService->financeSettlements()
+            ->map(function (ShippingSettlement $settlement) use ($catalog): ShippingSettlement {
+                $itemEntries = $settlement->settlement_type === 'return'
+                    ? ($settlement->returnRequest?->items ?? collect())
+                        ->map(fn (ReturnItem $returnItem): array => [
+                            'item' => $returnItem->orderItem,
+                            'quantity' => (int) $returnItem->quantity,
+                        ])
+                    : ($settlement->sellerOrder?->items ?? collect())
+                        ->map(fn (OrderItem $item): array => [
+                            'item' => $item,
+                            'quantity' => (int) $item->quantity,
+                        ]);
+                $itemEntries = $itemEntries
+                    ->filter(fn (array $entry): bool => $entry['item'] instanceof OrderItem)
+                    ->values();
+
+                $settlement->setAttribute('product_count', $itemEntries->count());
+                $settlement->setAttribute('product_previews', $itemEntries
+                    ->take(3)
+                    ->map(fn (array $entry): array => [
+                        'name' => trim((string) $entry['item']->product_name) ?: 'Purchased item',
+                        'variant' => trim((string) $entry['item']->variant_name),
+                        'quantity' => (int) $entry['quantity'],
+                        'image_url' => $catalog->orderItemImageUrl($entry['item']),
+                    ])
+                    ->all());
+
+                return $settlement;
+            });
+
+        $providerIds = $shippingSettlements->pluck('logistics_profile_id')->unique()->all();
+        $payoutAccountsByProvider = LogisticsPayoutAccount::query()
+            ->whereIn('logistics_profile_id', $providerIds)
+            ->where('status', 'verified')
+            ->orderBy('provider_name')
+            ->orderBy('id')
+            ->get()
+            ->groupBy('logistics_profile_id');
+        $pendingPayoutAccounts = LogisticsPayoutAccount::query()
+            ->with('logisticsProfile')
+            ->where('status', 'pending_review')
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->get();
+
         return view('admin.finance.shipping-settlements', $this->base($request) + [
-            'shippingSettlements' => $shippingSettlementService->financeSettlements(),
+            'shippingSettlements' => $shippingSettlements,
+            'payoutAccountsByProvider' => $payoutAccountsByProvider,
+            'pendingPayoutAccounts' => $pendingPayoutAccounts,
         ]);
     }
 
@@ -290,7 +342,8 @@ class AdminFinanceController extends Controller
             'remittance_confirmed' => ['required', 'accepted'],
             'actual_amount' => ['required', 'string', 'regex:/^\d{1,8}(?:\.\d{1,2})?$/'],
             'method' => ['required', Rule::in(['bank_transfer', 'gcash', 'cash', 'other'])],
-            'reference' => ['required', 'string', 'max:150'],
+            'logistics_payout_account_id' => ['nullable', 'required_if:method,bank_transfer,gcash', 'integer'],
+            'reference' => ['nullable', 'required_unless:method,cash', 'string', 'max:150'],
             'paid_on' => ['required', 'date_format:Y-m-d', 'before_or_equal:today'],
             'reason' => ['required', 'string', 'min:5', 'max:1000'],
         ], [
@@ -307,13 +360,57 @@ class AdminFinanceController extends Controller
             (int) $settlement->id,
             $this->amountToMinor($data['actual_amount']),
             $data['method'],
-            trim($data['reference']),
+            isset($data['logistics_payout_account_id']) ? (int) $data['logistics_payout_account_id'] : null,
+            $data['method'] === 'cash' ? '' : trim((string) ($data['reference'] ?? '')),
             $data['paid_on'],
             trim($data['reason']),
             $request,
         );
 
-        return back()->with('success', "Shipping allocation {$recorded->settlement_no} was recorded as remitted to Logistics.");
+        $successMessage = $recorded->remittance_method === 'cash'
+            ? "Cash handoff recorded. Bearly reference: {$recorded->remittance_reference}. Print the cash receipt from the settlement row."
+            : "Shipping allocation {$recorded->settlement_no} was recorded as remitted to Logistics.";
+
+        return back()->with('success', $successMessage);
+    }
+
+    public function printShippingSettlementCashReceipt(
+        Request $request,
+        ShippingSettlement $settlement,
+        AuditService $audit,
+    ): Response {
+        $settlement = ShippingSettlement::query()
+            ->whereKey($settlement->id)
+            ->with([
+                'sellerOrder.order',
+                'sellerOrder.store',
+                'returnRequest.order',
+                'returnRequest.store',
+                'shipment',
+                'logisticsProfile',
+                'riderProfile.user',
+                'remitter',
+            ])
+            ->firstOrFail();
+
+        abort_unless($settlement->status === 'remitted'
+            && $settlement->remittance_method === 'cash'
+            && str_starts_with((string) $settlement->remittance_reference, 'SRM-'), 404);
+
+        $audit->record(
+            action: 'shipping_settlement.cash_receipt_printed',
+            module: 'Finance',
+            subject: $settlement,
+            description: "Cash handoff receipt {$settlement->remittance_reference} viewed for {$settlement->settlement_no}.",
+            newValues: ['cash_handoff_reference' => $settlement->remittance_reference],
+            severity: 'info',
+            request: $request,
+        );
+
+        return response()
+            ->view('admin.finance.shipping-settlement-cash-receipt', compact('settlement'))
+            ->header('Cache-Control', 'private, no-store')
+            ->header('X-Content-Type-Options', 'nosniff');
     }
 
     public function printCodCashReceipt(Request $request, CodCashCollection $collection, AuditService $audit): Response
@@ -890,10 +987,12 @@ class AdminFinanceController extends Controller
                     ? str($refund->financially_responsible_party)->title()->toString()
                     : 'Not recorded',
                 'seller_recovery' => $refund->sellerRecovery
-                    ? $this->money(max(0, (int) $refund->sellerRecovery->amount_minor - (int) $refund->sellerRecovery->recovered_amount_minor)).' outstanding'
+                    ? 'Refund proceeds '.$this->money($refund->sellerRecovery->refundOutstandingMinor())
+                        .' outstanding; return delivery '.$this->money($refund->sellerRecovery->returnShippingOutstandingMinor())
+                        .' outstanding'
                     : 'None',
             ])->values()->all(),
-            'exportColumns' => ['Case', 'Order', 'Seller', 'Amount', 'Status', 'Financially responsible', 'Seller recovery'],
+            'exportColumns' => ['Case', 'Order', 'Seller', 'Amount', 'Status', 'Financially responsible', 'Seller recovery components'],
             'exportRows' => $refunds->map(fn (Refund $refund): array => [
                 $refund->refund_no,
                 $refund->order?->order_no ?? '—',
@@ -904,7 +1003,9 @@ class AdminFinanceController extends Controller
                     ? str($refund->financially_responsible_party)->title()->toString()
                     : 'Not recorded',
                 $refund->sellerRecovery
-                    ? $this->decimal(max(0, (int) $refund->sellerRecovery->amount_minor - (int) $refund->sellerRecovery->recovered_amount_minor)).' outstanding'
+                    ? 'Refund proceeds '.$this->decimal($refund->sellerRecovery->refundOutstandingMinor())
+                        .' outstanding; return delivery '.$this->decimal($refund->sellerRecovery->returnShippingOutstandingMinor())
+                        .' outstanding'
                     : 'None',
             ])->values()->all(),
         ];

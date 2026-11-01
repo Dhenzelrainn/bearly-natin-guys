@@ -186,6 +186,10 @@
     ])
 
     <main class="catalog-detail-shell">
+        <a class="product-back-link" href="{{ route('home') }}">
+            <span class="material-symbols-outlined" aria-hidden="true">arrow_back</span>
+            <span>Back</span>
+        </a>
         <nav class="catalog-breadcrumb" aria-label="Breadcrumb">
             <a href="{{ route('home') }}">Home</a><span aria-hidden="true">/</span>
             <a href="{{ route('products.index', ['category' => $productCard['category_slug']]) }}">{{ $productCard['marketplace_category_name'] ?? $product->category?->name }}</a><span aria-hidden="true">/</span>

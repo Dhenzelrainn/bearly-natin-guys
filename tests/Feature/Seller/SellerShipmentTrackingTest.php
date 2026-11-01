@@ -20,11 +20,131 @@ use App\Models\User;
 use App\Models\Waybill;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class SellerShipmentTrackingTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_waybill_list_shows_immutable_order_product_images(): void
+    {
+        Storage::fake('public');
+        [$seller, , $store] = $this->sellerFixture('Waybill Image Seller', 'waybill-image-seller');
+        $record = $this->makeShipment($store, 'WAYBILL-IMAGE', 'ready_for_pickup');
+        $imagePath = 'products/waybill-headphones.jpg';
+        Storage::disk('public')->put($imagePath, 'test-image');
+        OrderItem::query()->create([
+            'seller_order_id' => $record['sellerOrder']->id,
+            'product_name' => 'Wireless Headphones',
+            'variant_name' => 'Black',
+            'sku' => 'HEADPHONES-BLK-001',
+            'unit_price_minor' => 25_000,
+            'quantity' => 1,
+            'discount_minor' => 0,
+            'subtotal_minor' => 25_000,
+            'product_image_disk' => 'public',
+            'product_image_path' => $imagePath,
+        ]);
+
+        $this->actingAs($seller)
+            ->get(route('seller.fulfillment.waybills'))
+            ->assertOk()
+            ->assertSee(Storage::disk('public')->url($imagePath), false)
+            ->assertSee('alt="Wireless Headphones"', false)
+            ->assertSee('Products in SO-WAYBILL-IMAGE', false);
+    }
+
+    public function test_waybill_search_matches_waybill_order_product_courier_parcel_and_pickup_details(): void
+    {
+        [$seller, , $store] = $this->sellerFixture('Waybill Search Seller', 'waybill-search-seller');
+        $logistics = $this->logisticsProfile('PB Sorting Center');
+        $record = $this->makeShipment(
+            $store,
+            'SEARCH-DETAILS',
+            'ready_for_pickup',
+            logisticsProfile: $logistics,
+        );
+
+        $record['waybill']->update([
+            'waybill_no' => 'BRLY-SEARCH-DETAILS',
+            'barcode_value' => 'BARCODE-SEARCH-DETAILS',
+            'piece_count' => 2,
+            'total_weight_kg' => '1.250',
+            'length_cm' => '14.96',
+            'width_cm' => '7.15',
+            'height_cm' => '0.80',
+            'generated_at' => CarbonImmutable::parse('2026-10-29 07:57:00'),
+        ]);
+        $record['sellerOrder']->order->update([
+            'recipient_name' => 'Dhenzel Search Recipient',
+            'recipient_phone' => '09179990000',
+            'address_line' => '12 Search Way',
+            'barangay' => 'San Rafael',
+            'city_municipality' => 'San Pablo City',
+            'province' => 'Laguna',
+            'postal_code' => '4000',
+        ]);
+        OrderItem::query()->create([
+            'seller_order_id' => $record['sellerOrder']->id,
+            'product_name' => 'Wireless Headphones',
+            'variant_name' => 'Black Large',
+            'sku' => 'HEADSET-BLK-001',
+            'unit_price_minor' => 25_000,
+            'quantity' => 1,
+            'discount_minor' => 0,
+            'subtotal_minor' => 25_000,
+        ]);
+        $pickup = $this->pickupRequest($store, $logistics, 'PU-SEARCH-DETAILS');
+        $pickup->update([
+            'requested_date' => '2026-10-29',
+            'window_start' => '2026-10-29 15:00:00',
+            'window_end' => '2026-10-29 17:00:00',
+        ]);
+        $pickup->parcels()->attach($record['parcel']->id);
+
+        $unrelated = $this->makeShipment($store, 'UNRELATED', 'ready_for_pickup');
+        $unrelated['sellerOrder']->order->update([
+            'recipient_name' => 'Other Recipient',
+            'recipient_phone' => '09170001111',
+            'address_line' => '9 Other Way',
+            'barangay' => 'Other Barangay',
+            'city_municipality' => 'Other City',
+            'province' => 'Other Province',
+        ]);
+        $unrelated['waybill']->update([
+            'total_weight_kg' => '3.555',
+            'printed_at' => CarbonImmutable::parse('2026-10-30 08:00:00'),
+        ]);
+        $unrelated['parcel']->update(['weight_kg' => '3.555']);
+        $this->actingAs($seller);
+
+        foreach ([
+            'BRLY-SEARCH-DETAILS',
+            'BARCODE-SEARCH-DETAILS',
+            'SO-SEARCH-DETAILS',
+            'Dhenzel Search Recipient',
+            '09179990000',
+            '12 Search Way',
+            'San Rafael',
+            'San Pablo City',
+            'HEADSET-BLK-001',
+            'Wireless Headphones',
+            'Black Large',
+            'PB Sorting Center',
+            'PCL-SEARCH-DETAILS',
+            'PU-SEARCH-DETAILS',
+            '14.96',
+            '1.250',
+            'Oct 29, 2026',
+            'Ready to Print',
+        ] as $term) {
+            $this->get(route('seller.fulfillment.waybills', ['search' => $term]))
+                ->assertOk()
+                ->assertSee('SO-SEARCH-DETAILS')
+                ->assertDontSee('SO-UNRELATED');
+        }
+    }
 
     public function test_tracking_page_is_seller_scoped_and_excludes_return_and_pre_handover_shipments(): void
     {

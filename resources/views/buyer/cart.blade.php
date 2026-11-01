@@ -20,7 +20,7 @@
 
 <main class="cart-shell">
 <div class="cart-page-top">
-<a class="cart-back" href="javascript:history.back()" aria-label="Back"><span class="material-symbols-outlined">arrow_back</span></a>
+<a class="cart-back" href="{{ route('home') }}" aria-label="Back to Home"><span class="material-symbols-outlined" aria-hidden="true">arrow_back</span></a>
 <div><h1>Shopping Cart</h1><p><span id="cart-selected-count">0 items</span> selected (<span id="cart-count">0 items</span> in your cart)</p></div>
 </div>
 

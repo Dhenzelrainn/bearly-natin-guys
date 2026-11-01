@@ -72,11 +72,13 @@ class AdminController extends Controller
         $role = (string) $request->query('role');
         $status = (string) $request->query('status');
         $reviewableStatuses = ['submitted', 'under_review', 'needs_revision'];
+        $queueRoles = UserRole::adminReviewQueueRoles();
+        $unsupportedRoleFilter = $role !== '' && ! in_array($role, $queueRoles, true);
 
         $applications = AccountApplication::query()
             ->with(['user', 'requestedRole', 'businessCategory', 'documents'])
             ->whereIn('status', $reviewableStatuses)
-            ->whereHas('requestedRole', fn ($query) => $query->whereIn('name', UserRole::adminApproved()))
+            ->whereHas('requestedRole', fn ($query) => $query->whereIn('name', $queueRoles))
             ->whereHas('user', fn ($query) => $query->whereIn('status', [
                 AccountStatus::Pending->value,
                 AccountStatus::NeedsRevision->value,
@@ -90,7 +92,8 @@ class AdminController extends Controller
                             ->orWhere('email', 'like', "%{$search}%"));
                 });
             })
-            ->when(in_array($role, UserRole::adminApproved(), true), fn ($query) => $query
+            ->when($unsupportedRoleFilter, fn ($query) => $query->whereRaw('1 = 0'))
+            ->when(in_array($role, $queueRoles, true), fn ($query) => $query
                 ->whereHas('requestedRole', fn ($roleQuery) => $roleQuery->where('name', $role)))
             ->when(in_array($status, $reviewableStatuses, true), fn ($query) => $query->where('status', $status))
             ->orderByDesc('submitted_at')
@@ -141,143 +144,6 @@ class AdminController extends Controller
         return view('admin.registrations.index', $this->base([
             'applications' => $applications,
             'filters' => compact('search', 'role', 'status'),
-        ]));
-    }
-
-    public function buyerApplications(): View
-    {
-        return view('admin.registrations.buyers', $this->base([
-            'applications' => [
-                [
-                    'id' => 'BUY-2043',
-                    'first_name' => 'Bianca',
-                    'middle_initial' => 'M.',
-                    'last_name' => 'Lim',
-                    'name' => 'Bianca M. Lim',
-                    'sex' => 'Female',
-                    'email' => 'bianca@example.test',
-                    'contact' => '0917 845 2031',
-                    'birthday' => 'March 18, 2004',
-                    'age' => 22,
-
-                    'province' => 'Laguna',
-                    'municipality' => 'San Pablo City',
-                    'barangay' => 'San Francisco',
-                    'street' => 'Mabini Street',
-                    'house_number' => '24',
-
-                    'submitted' => 'Aug 23, 2026',
-                    'status' => 'Pending',
-
-                    'documents' => [
-                        'Government ID',
-                    ],
-                ],
-
-                [
-                    'id' => 'BUY-2046',
-                    'first_name' => 'Carlo',
-                    'middle_initial' => 'D.',
-                    'last_name' => 'Reyes',
-                    'name' => 'Carlo D. Reyes',
-                    'sex' => 'Male',
-                    'email' => 'carlo.reyes@example.test',
-                    'contact' => '0918 632 4185',
-                    'birthday' => 'November 7, 2002',
-                    'age' => 23,
-
-                    'province' => 'Laguna',
-                    'municipality' => 'Calamba City',
-                    'barangay' => 'Real',
-                    'street' => 'Rizal Street',
-                    'house_number' => '108',
-
-                    'submitted' => 'Aug 24, 2026',
-                    'status' => 'Pending',
-
-                    'documents' => [
-                        'Government ID',
-                    ],
-                ],
-
-                [
-                    'id' => 'BUY-2049',
-                    'first_name' => 'Angela',
-                    'middle_initial' => 'P.',
-                    'last_name' => 'Torres',
-                    'name' => 'Angela P. Torres',
-                    'sex' => 'Female',
-                    'email' => 'angela.torres@example.test',
-                    'contact' => '0920 554 7712',
-                    'birthday' => 'January 26, 2005',
-                    'age' => 21,
-
-                    'province' => 'Laguna',
-                    'municipality' => 'Los Baños',
-                    'barangay' => 'Batong Malake',
-                    'street' => 'National Highway',
-                    'house_number' => '67',
-
-                    'submitted' => 'Aug 25, 2026',
-                    'status' => 'Needs Review',
-
-                    'documents' => [
-                        'Government ID',
-                    ],
-                ],
-
-                [
-                    'id' => 'BUY-2053',
-                    'first_name' => 'Miguel',
-                    'middle_initial' => 'S.',
-                    'last_name' => 'Navarro',
-                    'name' => 'Miguel S. Navarro',
-                    'sex' => 'Male',
-                    'email' => 'miguel.navarro@example.test',
-                    'contact' => '0916 782 9924',
-                    'birthday' => 'June 2, 2001',
-                    'age' => 25,
-
-                    'province' => 'Laguna',
-                    'municipality' => 'Santa Cruz',
-                    'barangay' => 'Poblacion II',
-                    'street' => 'Pedro Guevara Avenue',
-                    'house_number' => '315',
-
-                    'submitted' => 'Aug 26, 2026',
-                    'status' => 'Pending',
-
-                    'documents' => [
-                        'Government ID',
-                    ],
-                ],
-
-                [
-                    'id' => 'BUY-2057',
-                    'first_name' => 'Nicole',
-                    'middle_initial' => 'A.',
-                    'last_name' => 'Villanueva',
-                    'name' => 'Nicole A. Villanueva',
-                    'sex' => 'Female',
-                    'email' => 'nicole.v@example.test',
-                    'contact' => '0995 384 1160',
-                    'birthday' => 'September 13, 2003',
-                    'age' => 22,
-
-                    'province' => 'Laguna',
-                    'municipality' => 'Pila',
-                    'barangay' => 'Santa Clara Norte',
-                    'street' => 'Bonifacio Street',
-                    'house_number' => '42',
-
-                    'submitted' => 'Aug 26, 2026',
-                    'status' => 'Pending',
-
-                    'documents' => [
-                        'Government ID',
-                    ],
-                ],
-            ],
         ]));
     }
 
@@ -1142,10 +1008,14 @@ class AdminController extends Controller
                 'evidence',
                 'reviewer',
                 'refunds',
+                'refunds.cashPayout',
                 'refunds.sellerRecovery.events.sellerPayout',
                 'refunds.sellerRecovery.events.recorder',
                 'events.actor',
                 'returnShipment.waybill',
+                'returnShipment.originAddress',
+                'returnShipment.logisticsProfile',
+                'returnShipment.shippingSettlement.riderEarning',
                 'returnShipment.events',
             ])
             ->orderByDesc('submitted_at')
@@ -1189,6 +1059,7 @@ class AdminController extends Controller
                     'under_review' => 'Under Review',
                     'awaiting_evidence' => 'Awaiting Evidence',
                     'return_pickup_requested' => 'Return Pickup Requested',
+                    'return_dropoff_pending' => 'Buyer Drop-off Pending',
                     'return_in_transit' => 'Return In Transit',
                     'awaiting_inspection' => 'Awaiting Seller Inspection',
                     'refund_pending' => 'Refund Payout Pending',
@@ -1203,6 +1074,7 @@ class AdminController extends Controller
                     ->toString();
 
                 $refund = $returnRequest->refunds->sortByDesc('id')->first();
+                $cashPayout = $refund?->cashPayout;
                 $items = $returnRequest->items->map(fn ($item): array => [
                     'name' => $item->orderItem?->product_name ?? 'Purchased item',
                     'variant' => $item->orderItem?->variant_name ?? 'Standard',
@@ -1257,11 +1129,42 @@ class AdminController extends Controller
                     'refund_no' => $refund?->refund_no,
                     'refund_status' => $refund?->status,
                     'refund_amount' => $refund ? '₱'.number_format((int) $refund->amount_minor / 100, 2) : null,
+                    'cash_payout' => $cashPayout ? [
+                        'payout_no' => $cashPayout->payout_no,
+                        'status' => $cashPayout->status,
+                        'status_label' => Str::of($cashPayout->status)->replace('_', ' ')->title()->toString(),
+                        'finance_reference' => $cashPayout->finance_issue_reference,
+                        'acknowledgment_reference' => $cashPayout->acknowledgment_reference,
+                        'next_step' => match ($cashPayout->status) {
+                            'awaiting_logistics_receipt' => 'Logistics must acknowledge the physical cash handoff.',
+                            'awaiting_rider_assignment' => 'Logistics must assign an approved Rider.',
+                            'assigned_to_rider' => 'Logistics must print the Buyer acknowledgment slip and give it to the Rider with the cash.',
+                            'cash_with_rider' => 'The Rider has confirmed the cash and printed form; delivery can start.',
+                            'out_for_delivery' => 'The Rider is delivering the cash refund to the Buyer.',
+                            'cash_return_pending' => 'The Rider must return the undelivered cash to Logistics before another attempt.',
+                            'logistics_return_verification' => 'Logistics must confirm the returned cash before reassignment.',
+                            'delivered_pending_verification' => 'Logistics must verify the Buyer’s signed receipt.',
+                            'awaiting_finance_completion' => 'Finance must review the verified receipt and complete the refund.',
+                            'completed' => 'The cash refund is complete.',
+                            default => 'Open Finance Payments to review the next cash-custody step.',
+                        },
+                    ] : null,
                     'payout_amount' => $refund?->payout_amount_minor !== null
                         ? '₱'.number_format((int) $refund->payout_amount_minor / 100, 2)
                         : null,
                     'financially_responsible_party' => $refund?->financially_responsible_party,
                     'financial_responsibility_reason' => $refund?->financial_responsibility_reason,
+                    'return_delivery_method' => $returnRequest->return_delivery_method,
+                    'dropoff_due_at' => $returnRequest->dropoff_due_at?->format('M j, Y · g:i A'),
+                    'return_dropoff_center' => data_get($returnRequest->returnShipment?->return_shipping_quote, 'dropoff_center.name'),
+                    'return_shipping_fee_minor' => data_get($returnRequest->returnShipment?->return_shipping_quote, 'quote_kind') === 'return_shipping_v1'
+                        ? (int) $returnRequest->returnShipment->shipping_fee_minor
+                        : null,
+                    'return_shipping_quote' => $returnRequest->returnShipment?->return_shipping_quote,
+                    'return_shipping_settlement_status' => $returnRequest->returnShipment?->shippingSettlement?->status,
+                    'return_shipping_settlement_no' => $returnRequest->returnShipment?->shippingSettlement?->settlement_no,
+                    'return_shipping_fee_payer' => $returnRequest->returnShipment?->shippingSettlement?->financially_responsible_party
+                        ?? $refund?->financially_responsible_party,
                     'can_decide' => $returnRequest->status === 'under_review',
                     'can_record_responsibility' => $returnRequest->status === 'refund_pending'
                         && $refund?->status === 'pending'
@@ -1273,9 +1176,16 @@ class AdminController extends Controller
                         'amount_minor' => (int) $refund->sellerRecovery->amount_minor,
                         'recovered_amount_minor' => (int) $refund->sellerRecovery->recovered_amount_minor,
                         'outstanding_minor' => $refund->sellerRecovery->outstandingMinor(),
+                        'refund_recovery_minor' => (int) $refund->sellerRecovery->refund_recovery_minor,
+                        'refund_recovered_minor' => (int) $refund->sellerRecovery->refund_recovered_minor,
+                        'refund_outstanding_minor' => $refund->sellerRecovery->refundOutstandingMinor(),
+                        'return_shipping_fee_minor' => (int) $refund->sellerRecovery->return_shipping_fee_minor,
+                        'return_shipping_fee_recovered_minor' => (int) $refund->sellerRecovery->return_shipping_fee_recovered_minor,
+                        'return_shipping_outstanding_minor' => $refund->sellerRecovery->returnShippingOutstandingMinor(),
                         'status' => $refund->sellerRecovery->status,
                         'events' => $refund->sellerRecovery->events->map(fn ($event): array => [
                             'method' => $event->method,
+                            'component' => $event->component,
                             'amount_minor' => (int) $event->amount_minor,
                             'reference' => $event->external_reference,
                             'recovered_on' => $event->recovered_on?->format('M j, Y') ?? '—',

@@ -67,4 +67,19 @@ class RiderProfile extends Model
     {
         return $this->hasMany(DispatchBatch::class);
     }
+
+    public function courierRuns()
+    {
+        return $this->hasMany(LinehaulRun::class, 'courier_rider_profile_id');
+    }
+
+    public function vehicleChangeRequests()
+    {
+        return $this->hasMany(RiderVehicleChangeRequest::class);
+    }
+
+    public function courierVehicleVerifier()
+    {
+        return $this->belongsTo(User::class, 'courier_vehicle_verified_by');
+    }
 }

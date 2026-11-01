@@ -8,6 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    @include('partials.theme-preload')
     @vite(['resources/css/logistics.css', 'resources/css/messages-standard.css', 'resources/css/maps.css', 'resources/css/waybill-scanner.css', 'resources/js/messages-standard.js', 'resources/js/realtime.js', 'resources/js/waybill-scanner.js', 'resources/js/destination-map.js', 'resources/js/logistics.js'])
     @include('partials.session-safety')
     @stack('styles')
@@ -24,7 +25,8 @@
             <p class="ops-nav-label">Overview</p>
             <a href="{{ route('logistics.dashboard') }}" class="ops-nav-link {{ request()->routeIs('logistics.dashboard') ? 'is-active' : '' }}"><i data-lucide="house"></i><span>Dashboard</span></a>
             <p class="ops-nav-label">Operations</p>
-            <a href="{{ route('logistics.riders.index') }}" class="ops-nav-link {{ request()->routeIs('logistics.riders.*') ? 'is-active' : '' }}"><i data-lucide="users-round"></i><span>Rider Management</span>@if(($pendingRiderCount ?? 0) > 0)<span class="nav-count">{{ $pendingRiderCount }}</span>@endif</a>
+            <a href="{{ route('logistics.riders.index') }}" class="ops-nav-link {{ request()->routeIs('logistics.riders.*') && !request()->routeIs('logistics.riders.vehicle-changes*') ? 'is-active' : '' }}"><i data-lucide="users-round"></i><span>Rider Management</span>@if(($pendingRiderCount ?? 0) > 0)<span class="nav-count">{{ $pendingRiderCount }}</span>@endif</a>
+            <a href="{{ route('logistics.riders.vehicle-changes') }}" class="ops-nav-link {{ request()->routeIs('logistics.riders.vehicle-changes*') ? 'is-active' : '' }}"><i data-lucide="file-check-2"></i><span>Vehicle / Courier reviews</span></a>
             <a href="{{ route('logistics.pickups.index') }}" class="ops-nav-link {{ request()->routeIs('logistics.pickups.*') ? 'is-active' : '' }}"><i data-lucide="package-check"></i><span>Pickup Requests</span></a>
             <a href="{{ route('logistics.cash.index') }}" class="ops-nav-link {{ request()->routeIs('logistics.cash.*') ? 'is-active' : '' }}"><i data-lucide="banknote"></i><span>Cash custody</span></a>
             <a href="{{ route('logistics.settlements.index') }}" class="ops-nav-link {{ request()->routeIs('logistics.settlements.*') ? 'is-active' : '' }}"><i data-lucide="wallet"></i><span>Shipping settlement</span></a>
@@ -50,6 +52,7 @@
         <header class="ops-topbar">
             <div class="ops-topbar-left"><button class="icon-button mobile-menu" type="button" data-mobile-menu aria-label="Open navigation"><i data-lucide="menu"></i></button><h1>@yield('page-title', 'Logistics Center')</h1></div>
             <div class="ops-topbar-actions">
+                @include('partials.theme-toggle')
                 <div class="popover-wrap" data-notification-center data-notification-skin="logistics">
                     <button class="icon-button notification-trigger" type="button" data-popover-toggle="notifications" aria-label="Open notifications"><i data-lucide="bell"></i><span class="notification-dot" data-notification-badge="dot" hidden></span></button>
                     <div class="topbar-popover notification-popover" data-popover="notifications" hidden>

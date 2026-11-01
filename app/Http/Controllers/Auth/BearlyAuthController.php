@@ -436,7 +436,13 @@ class BearlyAuthController extends Controller
                     ->where('is_registration_option', true)
                     ->where('is_active', true),
             ],
-            'valid_id' => ['required', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:5120'],
+            'valid_id' => [
+                'exclude_unless:role,seller',
+                'required',
+                'file',
+                'mimes:jpg,jpeg,png,pdf',
+                'max:5120',
+            ],
             'business_permit' => ['required_if:role,seller', 'nullable', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:5120'],
             'password' => ['required', 'confirmed', 'min:8', 'regex:/[a-z]/', 'regex:/[A-Z]/', 'regex:/[0-9]/'],
             'terms' => ['accepted'],
@@ -490,15 +496,15 @@ class BearlyAuthController extends Controller
         $businessPermitPath = null;
 
         try {
-            $validIdPath = $request->file('valid_id')
-                ->store('registration-documents/valid-ids', 'local');
+            if ($data['role'] === UserRole::Seller->value) {
+                $validIdPath = $request->file('valid_id')
+                    ->store('registration-documents/valid-ids', 'local');
 
-            $businessPermitPath = $data['role'] === UserRole::Seller->value
-                ? $request->file('business_permit')?->store(
+                $businessPermitPath = $request->file('business_permit')?->store(
                     'registration-documents/business-permits',
                     'local'
-                )
-                : null;
+                );
+            }
 
             $user = DB::transaction(function () use (
                 $data,
@@ -547,19 +553,25 @@ class BearlyAuthController extends Controller
                     'password' => Hash::make($data['password']),
                 ]);
 
-                app(RegistrationLifecycleService::class)
-                    ->recordPendingApplication(
+                $registrationAddress = [
+                    'house_number' => $data['house_number'],
+                    'street_name' => $data['street_name'],
+                    'barangay' => $data['barangay'],
+                    'city' => $data['city'],
+                    'province' => $data['province'],
+                    'postal_code' => $data['postal_code'],
+                    'city_code' => $data['city_code'] ?? null,
+                ];
+
+                $lifecycle = app(RegistrationLifecycleService::class);
+
+                if ($data['role'] === UserRole::Buyer->value) {
+                    $user = $lifecycle->activateBuyer($user, $registrationAddress);
+                } else {
+                    $lifecycle->recordPendingApplication(
                         $user,
                         $data['role'],
-                        [
-                            'house_number' => $data['house_number'],
-                            'street_name' => $data['street_name'],
-                            'barangay' => $data['barangay'],
-                            'city' => $data['city'],
-                            'province' => $data['province'],
-                            'postal_code' => $data['postal_code'],
-                            'city_code' => $data['city_code'] ?? null,
-                        ],
+                        $registrationAddress,
                         [
                             'business_name' => $data['business_name'] ?? null,
                             'business_category' => $data['business_category'] ?? null,
@@ -580,6 +592,7 @@ class BearlyAuthController extends Controller
                                 : null,
                         ]))
                     );
+                }
 
                 return $user;
             });
@@ -598,6 +611,17 @@ class BearlyAuthController extends Controller
             'logistics_application',
             'rider_application',
         ]);
+
+        if ($user->role === UserRole::Buyer->value) {
+            $request->session()->forget([
+                ApplicationReviewService::SESSION_KEY,
+                'marketplace_application',
+            ]);
+
+            return redirect()
+                ->route('login')
+                ->with('status', 'Your Buyer account is active. Sign in with your email and password to start shopping.');
+        }
 
         session([
             'marketplace_application' => [

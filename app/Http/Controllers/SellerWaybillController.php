@@ -4,9 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\AuditLog;
 use App\Models\Waybill;
+use App\Services\BuyerCatalogService;
 use App\Services\AuditService;
 use App\Services\SellerIdentityService;
 use App\Services\WaybillPdfService;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -17,7 +19,11 @@ use Symfony\Component\HttpFoundation\Response;
 
 class SellerWaybillController extends Controller
 {
-    public function index(Request $request, SellerIdentityService $identity): View
+    public function index(
+        Request $request,
+        SellerIdentityService $identity,
+        BuyerCatalogService $catalog,
+    ): View
     {
         $storeId = (int) ($request->user()->sellerProfile?->store?->id ?? 0);
         abort_unless($storeId > 0, 404, 'Seller Store not found.');
@@ -50,6 +56,8 @@ class SellerWaybillController extends Controller
             ->with([
                 'shipment.sellerOrder.order.buyer',
                 'shipment.sellerOrder.store',
+                'shipment.sellerOrder.items.product.images.variant',
+                'shipment.sellerOrder.items.variant',
                 'shipment.logisticsProfile',
                 'shipment.originAddress' => fn ($query) => $query->withTrashed(),
                 'parcels.pickupRequests',
@@ -60,20 +68,12 @@ class SellerWaybillController extends Controller
                 ->whereNotNull('printed_at')->whereNull('voided_at'))
             ->when($status === 'voided', fn (Builder $query) => $query
                 ->where(fn (Builder $voided) => $voided->whereNotNull('voided_at')->orWhere('status', 'voided')))
-            ->when($search !== '', fn (Builder $query) => $query->where(function (Builder $match) use ($search): void {
-                $like = '%'.$search.'%';
-                $match->where('waybills.waybill_no', 'like', $like)
-                    ->orWhereHas('shipment.sellerOrder', fn (Builder $sellerOrders) => $sellerOrders->where('seller_order_no', 'like', $like))
-                    ->orWhereHas('shipment.sellerOrder.order', fn (Builder $orders) => $orders
-                        ->where('recipient_name', 'like', $like)
-                        ->orWhere('city_municipality', 'like', $like)
-                        ->orWhere('province', 'like', $like));
-            }))
+            ->when($search !== '', fn (Builder $query): Builder => $this->applyWaybillSearch($query, $search))
             ->orderByDesc('waybills.generated_at')
             ->orderByDesc('waybills.id')
             ->paginate(25)
             ->withQueryString()
-            ->through(fn (Waybill $waybill): array => $this->row($waybill, $generatedPdfIds));
+            ->through(fn (Waybill $waybill): array => $this->row($waybill, $generatedPdfIds, $catalog));
 
         $history = AuditLog::query()
             ->where('auditable_type', $waybillMorph)
@@ -232,7 +232,145 @@ class SellerWaybillController extends Controller
             ->whereHas('sellerOrder', fn (Builder $sellerOrders) => $sellerOrders->where('store_id', $storeId)));
     }
 
-    private function row(Waybill $waybill, array $generatedPdfIds): array
+    private function applyWaybillSearch(Builder $query, string $search): Builder
+    {
+        $like = '%'.$search.'%';
+        $normalizedSearch = strtolower($search);
+        $searchDate = $this->parseSearchDate($search);
+
+        return $query->where(function (Builder $match) use ($like, $normalizedSearch, $searchDate, $search): void {
+            $match->where('waybills.waybill_no', 'like', $like)
+                ->orWhere('waybills.barcode_value', 'like', $like)
+                ->orWhere('waybills.status', 'like', $like)
+                ->orWhere('waybills.generated_at', 'like', $like)
+                ->orWhere('waybills.total_weight_kg', 'like', $like)
+                ->orWhere('waybills.length_cm', 'like', $like)
+                ->orWhere('waybills.width_cm', 'like', $like)
+                ->orWhere('waybills.height_cm', 'like', $like)
+                ->orWhere('waybills.void_reason', 'like', $like)
+                ->orWhereHas('shipment', fn (Builder $shipments) => $shipments
+                    ->where(function (Builder $shipmentMatch) use ($like): void {
+                        $shipmentMatch->where('shipment_no', 'like', $like)
+                            ->orWhere('status', 'like', $like)
+                            ->orWhereHas('logisticsProfile', fn (Builder $logistics) => $logistics
+                                ->where('display_name', 'like', $like)
+                                ->orWhere('legal_name', 'like', $like))
+                            ->orWhereHas('sellerOrder', function (Builder $sellerOrders) use ($like): void {
+                                $sellerOrders->where(function (Builder $sellerOrderMatch) use ($like): void {
+                                    $sellerOrderMatch->where('seller_order_no', 'like', $like)
+                                        ->orWhere('status', 'like', $like)
+                                        ->orWhere('seller_note', 'like', $like)
+                                        ->orWhereHas('order', function (Builder $orders) use ($like): void {
+                                            $orders->where(function (Builder $orderMatch) use ($like): void {
+                                                $orderMatch->where('order_no', 'like', $like)
+                                                    ->orWhere('recipient_name', 'like', $like)
+                                                    ->orWhere('recipient_phone', 'like', $like)
+                                                    ->orWhere('address_line', 'like', $like)
+                                                    ->orWhere('barangay', 'like', $like)
+                                                    ->orWhere('city_municipality', 'like', $like)
+                                                    ->orWhere('province', 'like', $like)
+                                                    ->orWhere('postal_code', 'like', $like)
+                                                    ->orWhere('status', 'like', $like)
+                                                    ->orWhere('payment_status', 'like', $like);
+                                            })->orWhereHas('buyer', fn (Builder $buyers) => $buyers
+                                                ->where('name', 'like', $like)
+                                                ->orWhere('email', 'like', $like));
+                                        })
+                                        ->orWhereHas('items', fn (Builder $items) => $items
+                                            ->where('product_name', 'like', $like)
+                                            ->orWhere('variant_name', 'like', $like)
+                                            ->orWhere('sku', 'like', $like));
+                                });
+                            });
+                    }))
+                ->orWhereHas('parcels', fn (Builder $parcels) => $parcels
+                    ->where('parcel_no', 'like', $like)
+                    ->orWhere('size_class', 'like', $like)
+                    ->orWhere('status', 'like', $like)
+                    ->orWhere('weight_kg', 'like', $like)
+                    ->orWhere('length_cm', 'like', $like)
+                    ->orWhere('width_cm', 'like', $like)
+                    ->orWhere('height_cm', 'like', $like))
+                ->orWhereHas('parcels.pickupRequests', fn (Builder $pickupRequests) => $pickupRequests
+                    ->where('pickup_no', 'like', $like)
+                    ->orWhere('status', 'like', $like)
+                    ->orWhere('seller_instructions', 'like', $like)
+                    ->orWhere('requested_date', 'like', $like)
+                    ->orWhere('window_start', 'like', $like)
+                    ->orWhere('window_end', 'like', $like));
+
+            if (is_numeric($search)) {
+                $match->orWhere('waybills.total_weight_kg', $search)
+                    ->orWhere('waybills.length_cm', $search)
+                    ->orWhere('waybills.width_cm', $search)
+                    ->orWhere('waybills.height_cm', $search)
+                    ->orWhereHas('parcels', fn (Builder $parcels) => $parcels
+                        ->where('weight_kg', $search)
+                        ->orWhere('length_cm', $search)
+                        ->orWhere('width_cm', $search)
+                        ->orWhere('height_cm', $search));
+            }
+
+            if (ctype_digit($search)) {
+                $numericSearch = (int) $search;
+                $match->orWhere('waybills.piece_count', $numericSearch)
+                    ->orWhere('waybills.print_count', $numericSearch)
+                    ->orWhereHas('parcels', fn (Builder $parcels) => $parcels->where('piece_sequence', $numericSearch));
+            }
+
+            if (str_contains($normalizedSearch, 'void')) {
+                $match->orWhere(fn (Builder $voided) => $voided
+                    ->whereNotNull('waybills.voided_at')
+                    ->orWhere('waybills.status', 'voided'));
+            }
+
+            if (str_contains($normalizedSearch, 'printed') || str_contains($normalizedSearch, 'attached')) {
+                $match->orWhere(fn (Builder $printed) => $printed
+                    ->whereNotNull('waybills.printed_at')
+                    ->whereNull('waybills.voided_at')
+                    ->where('waybills.status', '!=', 'voided'));
+            } elseif (str_contains($normalizedSearch, 'ready')) {
+                $match->orWhere(fn (Builder $ready) => $ready
+                    ->whereNull('waybills.printed_at')
+                    ->whereNull('waybills.voided_at')
+                    ->where('waybills.status', '!=', 'voided'));
+            }
+
+            if ($searchDate !== null) {
+                $match->orWhereDate('waybills.generated_at', $searchDate)
+                    ->orWhereHas('parcels.pickupRequests', fn (Builder $pickupRequests) => $pickupRequests
+                        ->whereDate('requested_date', $searchDate)
+                        ->orWhereDate('window_start', $searchDate)
+                        ->orWhereDate('window_end', $searchDate));
+            }
+        });
+    }
+
+    private function parseSearchDate(string $search): ?string
+    {
+        foreach ([
+            'M j, Y', 'M d, Y', 'F j, Y', 'F d, Y',
+            'Y-m-d', 'm/d/Y', 'n/j/Y',
+        ] as $format) {
+            try {
+                $date = CarbonImmutable::createFromFormat('!'.$format, $search);
+            } catch (\Throwable) {
+                continue;
+            }
+
+            if ($date !== false && $date->format($format) === $search) {
+                return $date->toDateString();
+            }
+        }
+
+        return null;
+    }
+
+    private function row(
+        Waybill $waybill,
+        array $generatedPdfIds,
+        BuyerCatalogService $catalog,
+    ): array
     {
         $shipment = $waybill->shipment;
         $sellerOrder = $shipment->sellerOrder;
@@ -248,6 +386,15 @@ class SellerWaybillController extends Controller
             'id' => (int) $waybill->id,
             'order' => (string) $sellerOrder->seller_order_no,
             'customer' => (string) ($order->recipient_name ?: $order->buyer?->name ?: 'Recipient'),
+            'products' => $sellerOrder->items
+                ->take(3)
+                ->map(fn ($item): array => [
+                    'name' => (string) ($item->product_name ?: $item->product?->name ?: 'Product'),
+                    'image_url' => $catalog->orderItemImageUrl($item),
+                ])
+                ->values()
+                ->all(),
+            'product_count' => $sellerOrder->items->count(),
             'tracking' => (string) $waybill->waybill_no,
             'courier' => (string) ($shipment->logisticsProfile?->display_name ?? 'Bearly Logistics'),
             'packages' => max(1, (int) $waybill->piece_count),

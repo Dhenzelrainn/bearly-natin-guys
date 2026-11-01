@@ -169,3 +169,315 @@ body.checkout-page .checkout-header .account-avatar .material-symbols-outlined{f
   .checkout-voucher-fields{grid-template-columns:1fr}
   .checkout-voucher-code input{min-width:0}
 }
+
+/* Dark Buyer checkout and confirmation: dark work surfaces, readable copy, untouched product photos. */
+:root[data-theme="dark"] body.checkout-page {
+    background: var(--theme-page);
+    color: #f1e9e1;
+    color-scheme: dark;
+}
+
+:root[data-theme="dark"] body.checkout-page .checkout-back {
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.checkout-page .checkout-card {
+    border-color: var(--theme-border);
+    background: var(--theme-surface);
+    color: #f1e9e1;
+    box-shadow: none;
+}
+
+:root[data-theme="dark"] body.checkout-page .address-card {
+    border-top-color: #d69b43;
+}
+
+:root[data-theme="dark"] body.checkout-page .section-title,
+:root[data-theme="dark"] body.checkout-page .address-row strong,
+:root[data-theme="dark"] body.checkout-page .product-head strong,
+:root[data-theme="dark"] body.checkout-page .checkout-product-name,
+:root[data-theme="dark"] body.checkout-page .payment-head h2,
+:root[data-theme="dark"] body.checkout-page .checkout-voucher-heading h3 {
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.checkout-page .section-title .material-symbols-outlined,
+:root[data-theme="dark"] body.checkout-page .cod-payment > .material-symbols-outlined {
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.checkout-page .address-row span,
+:root[data-theme="dark"] body.checkout-page .address-row p,
+:root[data-theme="dark"] body.checkout-page .product-head,
+:root[data-theme="dark"] body.checkout-page .checkout-product-meta,
+:root[data-theme="dark"] body.checkout-page .checkout-product-main small,
+:root[data-theme="dark"] body.checkout-page .shipping-box small,
+:root[data-theme="dark"] body.checkout-page .checkout-voucher-heading p,
+:root[data-theme="dark"] body.checkout-page .checkout-voucher-empty,
+:root[data-theme="dark"] body.checkout-page .checkout-status {
+    color: #c0b2a5;
+}
+
+:root[data-theme="dark"] body.checkout-page .default-tag {
+    border-color: #806334;
+    background: #45331d;
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.checkout-page .link-btn,
+:root[data-theme="dark"] body.checkout-page .checkout-voucher-clear {
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.checkout-page .checkout-product {
+    border-color: var(--theme-border);
+    color: #f1e9e1;
+}
+
+:root[data-theme="dark"] body.checkout-page .checkout-product-main img {
+    border-color: var(--theme-border);
+    background: #fff;
+}
+
+:root[data-theme="dark"] body.checkout-page .checkout-product-subtotal,
+:root[data-theme="dark"] body.checkout-page .shipping-box > strong,
+:root[data-theme="dark"] body.checkout-page .order-total-line strong,
+:root[data-theme="dark"] body.checkout-page .summary .payment-total strong {
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.checkout-page .seller-options,
+:root[data-theme="dark"] body.checkout-page .checkout-voucher-box {
+    border-color: var(--theme-border);
+    background: var(--theme-surface-soft);
+}
+
+:root[data-theme="dark"] body.checkout-page .message-box {
+    border-color: var(--theme-border);
+}
+
+:root[data-theme="dark"] body.checkout-page .message-box label,
+:root[data-theme="dark"] body.checkout-page .shipping-box > div,
+:root[data-theme="dark"] body.checkout-page .checkout-voucher-fields label {
+    color: #f1e9e1;
+}
+
+:root[data-theme="dark"] body.checkout-page .message-box input,
+:root[data-theme="dark"] body.checkout-page .checkout-voucher-fields select,
+:root[data-theme="dark"] body.checkout-page .checkout-voucher-code input {
+    border-color: var(--theme-border);
+    background: var(--theme-input);
+    color: #fff8ef;
+    color-scheme: dark;
+}
+
+:root[data-theme="dark"] body.checkout-page :is(.message-box input, .checkout-voucher-code input)::placeholder {
+    color: #a99a8d;
+    opacity: 1;
+}
+
+:root[data-theme="dark"] body.checkout-page .checkout-voucher-fields option {
+    background: #211c18;
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.checkout-page .cod-payment {
+    border-color: var(--theme-border);
+    background: #30241d;
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.checkout-page .cod-payment small {
+    color: #c0b2a5;
+}
+
+:root[data-theme="dark"] body.checkout-page .checkout-voucher-code button {
+    border-color: #765337;
+    background: #5b3827;
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.checkout-page .checkout-voucher-code button:hover:not(:disabled) {
+    background: #68472e;
+}
+
+:root[data-theme="dark"] body.checkout-page .checkout-voucher-code button:disabled,
+:root[data-theme="dark"] body.checkout-page .place-order:disabled {
+    opacity: .72;
+}
+
+:root[data-theme="dark"] body.checkout-page .checkout-voucher-status {
+    color: #d5c2ad;
+}
+
+:root[data-theme="dark"] body.checkout-page .checkout-voucher-status[data-tone="error"],
+:root[data-theme="dark"] body.checkout-page #checkout-error,
+:root[data-theme="dark"] body.checkout-page .field-error,
+:root[data-theme="dark"] body.checkout-page .checkout-validation-errors,
+:root[data-theme="dark"] body.checkout-page .checkout-cancel-form button {
+    color: #ff9186;
+}
+
+:root[data-theme="dark"] body.checkout-page .checkout-voucher-status[data-tone="success"] {
+    color: #a9d6b2;
+}
+
+:root[data-theme="dark"] body.checkout-page .checkout-applied-voucher {
+    border-color: #594232;
+    background: #34271e;
+    color: #e4c39d;
+}
+
+:root[data-theme="dark"] body.checkout-page .checkout-applied-voucher .material-symbols-outlined {
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.checkout-page .checkout-applied-voucher strong,
+:root[data-theme="dark"] body.checkout-page .summary #summary-seller-discount,
+:root[data-theme="dark"] body.checkout-page .summary #summary-platform-discount,
+:root[data-theme="dark"] body.checkout-page .summary #summary-shipping-discount,
+:root[data-theme="dark"] body.checkout-page .summary .confirmation-campaign-savings strong,
+:root[data-theme="dark"] body.checkout-page .confirmation-promotion-list p strong,
+:root[data-theme="dark"] body.checkout-page .checkout-campaign-label {
+    color: #a9d6b2;
+}
+
+:root[data-theme="dark"] body.checkout-page .confirmation-promotion-list p small {
+    color: #c0b2a5;
+}
+
+:root[data-theme="dark"] body.checkout-page .checkout-automatic-offer-notes {
+    background: #34271e;
+    color: #d5c2ad;
+}
+
+:root[data-theme="dark"] body.checkout-page .checkout-automatic-offer-notes strong,
+:root[data-theme="dark"] body.checkout-page .checkout-automatic-offer-notes p {
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.checkout-page .summary > div {
+    color: #d5c2ad;
+}
+
+:root[data-theme="dark"] body.checkout-page .summary strong,
+:root[data-theme="dark"] body.checkout-page .summary .payment-total > span,
+:root[data-theme="dark"] body.checkout-page .order-total-line {
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.checkout-page .order-total-line,
+:root[data-theme="dark"] body.checkout-page .place-row,
+:root[data-theme="dark"] body.checkout-page .shipping-breakdown,
+:root[data-theme="dark"] body.checkout-page .confirmation-item,
+:root[data-theme="dark"] body.checkout-page .confirmation-product {
+    border-color: var(--theme-border);
+}
+
+:root[data-theme="dark"] body.checkout-page .shipping-breakdown {
+    color: #c0b2a5;
+}
+
+:root[data-theme="dark"] body.checkout-page .shipping-estimate-row strong,
+:root[data-theme="dark"] body.checkout-page .confirmation-item strong,
+:root[data-theme="dark"] body.checkout-page .confirmation-product-copy strong,
+:root[data-theme="dark"] body.checkout-page .confirmation-product-side strong,
+:root[data-theme="dark"] body.checkout-page .confirmation-meta strong {
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.checkout-page .checkout-modal {
+    background: rgba(0, 0, 0, .72);
+}
+
+:root[data-theme="dark"] body.checkout-page .modal-box {
+    border: 1px solid var(--theme-border);
+    background: var(--theme-surface);
+    color: #f1e9e1;
+}
+
+:root[data-theme="dark"] body.checkout-page .modal-box h2 {
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.checkout-page .modal-close {
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.checkout-page .modal-box p {
+    color: #c0b2a5;
+}
+
+:root[data-theme="dark"] body.checkout-page .choice-option {
+    border-color: var(--theme-border);
+    background: var(--theme-surface-soft);
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.checkout-page .choice-option:hover {
+    border-color: #806334;
+    background: #45331d;
+}
+
+:root[data-theme="dark"] body.checkout-page .preview-notice,
+:root[data-theme="dark"] body.checkout-page .checkout-warning,
+:root[data-theme="dark"] body.checkout-page .checkout-success {
+    border-color: var(--theme-border);
+    background: var(--theme-surface-soft);
+    color: #f1e9e1;
+}
+
+:root[data-theme="dark"] body.checkout-page .checkout-warning {
+    border-left-color: #d69b43;
+    background: #44331d;
+    color: #f3d397;
+}
+
+:root[data-theme="dark"] body.checkout-page .checkout-success {
+    border-left-color: #70aa7b;
+    background: #1e3828;
+    color: #b9e3c3;
+}
+
+:root[data-theme="dark"] body.checkout-page .confirmation-card h1 {
+    color: #fff8ef;
+}
+
+:root[data-theme="dark"] body.checkout-page .confirmation-card > span {
+    color: #88c99a;
+}
+
+:root[data-theme="dark"] body.checkout-page .confirmation-card p,
+:root[data-theme="dark"] body.checkout-page .confirmation-product-copy small,
+:root[data-theme="dark"] body.checkout-page .confirmation-product-side small,
+:root[data-theme="dark"] body.checkout-page .confirmation-meta span,
+:root[data-theme="dark"] body.checkout-page .confirmation-seller-order > p {
+    color: #c0b2a5;
+}
+
+:root[data-theme="dark"] body.checkout-page .confirmation-product img {
+    border-color: var(--theme-border);
+    background: #fff;
+}
+
+:root[data-theme="dark"] body.checkout-page .confirmation-thumb-fallback {
+    border-color: var(--theme-border);
+    background: #34271e;
+    color: #efbd71;
+}
+
+:root[data-theme="dark"] body.checkout-page .checkout-complete-note {
+    border-color: #3d6043;
+    border-left-color: #70aa7b;
+    background: #1e3828;
+    color: #b9e3c3;
+}
+
+:root[data-theme="dark"] body.checkout-page .checkout-confirm-form {
+    border-color: var(--theme-border);
+    background: var(--theme-surface-soft);
+}
+
+:root[data-theme="dark"] body.checkout-page .checkout-confirm-form p {
+    color: #e4c39d;
+}

@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\AccountStatus;
+use App\Enums\UserRole;
 use App\Models\AccountApplication;
 use App\Models\Announcement;
 use App\Models\AuditLog;
@@ -21,7 +23,14 @@ class AdminDashboardController extends Controller
     public function __invoke(Request $request, SellerEarningsService $earnings): View
     {
         $roleCounts = User::query()->selectRaw('role, count(*) as aggregate')->groupBy('role')->pluck('aggregate', 'role');
-        $pendingApplications = AccountApplication::query()->whereIn('status', ['submitted', 'under_review', 'needs_revision'])->count();
+        $pendingApplications = AccountApplication::query()
+            ->whereIn('status', ['submitted', 'under_review', 'needs_revision'])
+            ->whereHas('requestedRole', fn ($query) => $query->whereIn('name', UserRole::adminReviewQueueRoles()))
+            ->whereHas('user', fn ($query) => $query->whereIn('status', [
+                AccountStatus::Pending->value,
+                AccountStatus::NeedsRevision->value,
+            ]))
+            ->count();
         $pendingViolations = ProductViolation::query()->whereIn('status', ['flagged', 'under_review', 'correction_requested'])->count();
         $adminOwned = Announcement::count() + Policy::count() + SystemSetting::count();
 

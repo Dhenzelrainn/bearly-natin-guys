@@ -1219,11 +1219,12 @@ class SellerWorkflowController extends Controller
 
         $returnRequests = ReturnRequest::query()
             ->where('store_id', $store->id)
-            ->with(['order', 'buyer', 'sellerOrder', 'items.orderItem.product.images.variant', 'items.orderItem.variant', 'evidence', 'events.actor', 'refunds.commissions', 'refunds.sellerTransactions', 'refunds.sellerRecovery.events.sellerPayout', 'returnShipment.waybill', 'returnShipment.events'])
+            ->with(['order', 'buyer', 'sellerOrder', 'items.orderItem.product.images.variant', 'items.orderItem.variant', 'evidence', 'events.actor', 'refunds.commissions', 'refunds.sellerTransactions', 'refunds.sellerRecovery.events.sellerPayout', 'returnShipment.waybill', 'returnShipment.events', 'returnShipment.shippingSettlement'])
             ->latest('submitted_at')
             ->latest('id')
             ->get();
         $cases = $returnRequests->map(fn (ReturnRequest $case): array => $this->returnCaseData($case, $catalog))->all();
+        $returnStatusVersion = $this->returnCasesStatusVersion($returnRequests);
         $completedThisMonthMinor = Refund::query()
             ->whereHas('returnRequest', fn ($query) => $query->where('store_id', $store->id))
             ->where('status', 'completed')
@@ -1237,19 +1238,51 @@ class SellerWorkflowController extends Controller
             'summary' => [
                 ['label' => 'Action Required', 'value' => (string) $countFor(['awaiting_seller']), 'note' => 'Seller response required', 'icon' => 'triangle-alert', 'tone' => 'warning'],
                 ['label' => 'Under Review', 'value' => (string) $countFor(['under_review', 'awaiting_evidence']), 'note' => 'Admin review or evidence requested', 'icon' => 'scan-search', 'tone' => 'neutral'],
-                ['label' => 'Return in Progress', 'value' => (string) $countFor(['return_pickup_requested', 'return_in_transit', 'awaiting_inspection']), 'note' => 'Bearly Logistics and Seller inspection', 'icon' => 'package-open', 'tone' => 'info'],
+                ['label' => 'Return in Progress', 'value' => (string) $countFor(['return_pickup_requested', 'return_dropoff_pending', 'return_in_transit', 'awaiting_inspection']), 'note' => 'Buyer handoff, Logistics delivery, and Seller inspection', 'icon' => 'package-open', 'tone' => 'info'],
                 ['label' => 'Refunded This Month', 'value' => $this->money((int) $completedThisMonthMinor / 100), 'note' => 'Externally paid and recorded', 'icon' => 'badge-check', 'tone' => 'success'],
             ],
             'tabs' => [
                 ['key' => 'all', 'label' => 'All Cases', 'count' => $returnRequests->count()],
                 ['key' => 'action-required', 'label' => 'Action Required', 'count' => $countFor(['awaiting_seller'])],
                 ['key' => 'under-review', 'label' => 'Under Review', 'count' => $countFor(['under_review', 'awaiting_evidence'])],
-                ['key' => 'return-shipping', 'label' => 'Return Shipping', 'count' => $countFor(['return_pickup_requested', 'return_in_transit', 'awaiting_inspection'])],
+                ['key' => 'return-shipping', 'label' => 'Return Shipping', 'count' => $countFor(['return_pickup_requested', 'return_dropoff_pending', 'return_in_transit', 'awaiting_inspection'])],
                 ['key' => 'refund-pending', 'label' => 'Refund Pending', 'count' => $countFor(['refund_pending'])],
                 ['key' => 'resolved', 'label' => 'Resolved', 'count' => $countFor(['resolved', 'rejected'])],
             ],
             'returns' => $cases,
+            'returnStatusVersion' => $returnStatusVersion,
         ]);
+    }
+
+    public function returnStatusVersion(Request $request): JsonResponse
+    {
+        $storeId = (int) ($request->user()->sellerProfile?->store?->id ?? 0);
+        abort_unless($storeId > 0, 404, 'Seller Store not found.');
+
+        $cases = ReturnRequest::query()
+            ->where('store_id', $storeId)
+            ->orderBy('id')
+            ->get(['id', 'status', 'updated_at']);
+
+        return response()->json([
+            'data' => ['version' => $this->returnCasesStatusVersion($cases)],
+            'message' => 'Seller return case statuses refreshed.',
+        ])->header('Cache-Control', 'private, no-store');
+    }
+
+    /** @param iterable<ReturnRequest> $cases */
+    private function returnCasesStatusVersion(iterable $cases): string
+    {
+        $snapshot = collect($cases)
+            ->sortBy('id')
+            ->map(fn (ReturnRequest $case): string => implode(':', [
+                (string) $case->id,
+                (string) $case->status,
+                $case->updated_at?->format('Y-m-d H:i:s.u') ?? '',
+            ]))
+            ->implode('|');
+
+        return hash('sha256', $snapshot);
     }
 
     public function returnDetails(Request $request, string $caseId, BuyerCatalogService $catalog): View
@@ -1259,7 +1292,7 @@ class SellerWorkflowController extends Controller
         $returnRequest = ReturnRequest::query()
             ->where('store_id', $store->id)
             ->where('return_no', strtoupper($caseId))
-            ->with(['order', 'buyer', 'sellerOrder', 'items.orderItem.product.images.variant', 'items.orderItem.variant', 'evidence', 'events.actor', 'refunds.commissions', 'refunds.sellerTransactions', 'refunds.sellerRecovery.events.sellerPayout', 'returnShipment.waybill', 'returnShipment.events'])
+            ->with(['order', 'buyer', 'sellerOrder', 'items.orderItem.product.images.variant', 'items.orderItem.variant', 'evidence', 'events.actor', 'refunds.commissions', 'refunds.sellerTransactions', 'refunds.sellerRecovery.events.sellerPayout', 'returnShipment.waybill', 'returnShipment.events', 'returnShipment.shippingSettlement'])
             ->firstOrFail();
         $case = $this->returnCaseData($returnRequest, $catalog);
 
@@ -1383,6 +1416,7 @@ class SellerWorkflowController extends Controller
         $status = match ($case->status) {
             'awaiting_seller' => ['Action Required', 'action-required', 'warning'],
             'under_review', 'awaiting_evidence' => ['Under Review', 'under-review', 'review'],
+            'return_dropoff_pending' => ['Waiting for Buyer drop-off', 'return-shipping', 'shipping'],
             'return_pickup_requested', 'return_in_transit', 'awaiting_inspection' => ['Return in Progress', 'return-shipping', 'shipping'],
             'refund_pending' => ['Refund Payout Pending', 'refund-pending', 'review'],
             'resolved' => ['Resolved', 'resolved', 'resolved'],
@@ -1477,6 +1511,13 @@ class SellerWorkflowController extends Controller
                 ? 'Not required'
                 : ($case->returnShipment?->waybill?->waybill_no ?: 'Awaiting Admin approval'),
             'return_status' => $case->returnShipment?->status,
+            'return_delivery_method' => $case->return_delivery_method,
+            'dropoff_due_at' => $case->dropoff_due_at?->format('M j, Y · g:i A'),
+            'return_shipping_fee_minor' => data_get($case->returnShipment?->return_shipping_quote, 'quote_kind') === 'return_shipping_v1'
+                ? (int) $case->returnShipment->shipping_fee_minor
+                : null,
+            'return_shipping_fee_payer' => $refund?->financially_responsible_party,
+            'return_shipping_settlement_status' => $case->returnShipment?->shippingSettlement?->status,
             'shipment_events' => ($case->returnShipment?->events ?? collect())->map(fn ($event): array => [
                 'label' => Str::headline(str_replace(['shipment_', 'parcel_'], '', $event->event_type)),
                 'note' => $event->notes,
@@ -1501,8 +1542,13 @@ class SellerWorkflowController extends Controller
                     'amount_minor' => (int) $sellerRecovery->amount_minor,
                     'recovered_amount_minor' => (int) $sellerRecovery->recovered_amount_minor,
                     'outstanding_minor' => $sellerRecovery->outstandingMinor(),
+                    'refund_recovery_minor' => (int) $sellerRecovery->refund_recovery_minor,
+                    'refund_outstanding_minor' => $sellerRecovery->refundOutstandingMinor(),
+                    'return_shipping_fee_minor' => (int) $sellerRecovery->return_shipping_fee_minor,
+                    'return_shipping_outstanding_minor' => $sellerRecovery->returnShippingOutstandingMinor(),
                     'status' => $sellerRecovery->status,
                     'events' => $sellerRecovery->events->map(fn ($event): array => [
+                        'component' => $event->component,
                         'method' => $event->method,
                         'amount_minor' => (int) $event->amount_minor,
                         'reference' => $event->external_reference,

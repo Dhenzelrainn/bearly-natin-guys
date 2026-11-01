@@ -13,6 +13,7 @@ class ShippingSettlement extends Model
         return [
             'zone_level' => 'integer',
             'original_shipping_fee_minor' => 'integer',
+            'return_shipping_fee_minor' => 'integer',
             'buyer_paid_shipping_fee_minor' => 'integer',
             'platform_shipping_subsidy_minor' => 'integer',
             'logistics_share_minor' => 'integer',
@@ -29,6 +30,18 @@ class ShippingSettlement extends Model
         return $this->belongsTo(SellerOrder::class);
     }
 
+    public function returnRequest()
+    {
+        return $this->belongsTo(ReturnRequest::class);
+    }
+
+    public function feeAmountMinor(): int
+    {
+        return $this->settlement_type === 'return'
+            ? (int) $this->return_shipping_fee_minor
+            : (int) $this->original_shipping_fee_minor;
+    }
+
     public function shipment()
     {
         return $this->belongsTo(Shipment::class);
@@ -37,6 +50,11 @@ class ShippingSettlement extends Model
     public function logisticsProfile()
     {
         return $this->belongsTo(LogisticsProfile::class);
+    }
+
+    public function logisticsPayoutAccount()
+    {
+        return $this->belongsTo(LogisticsPayoutAccount::class);
     }
 
     public function riderProfile()

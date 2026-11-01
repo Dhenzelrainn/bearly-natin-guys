@@ -122,10 +122,10 @@ class SellerWithdrawalService
         $profile = $this->sellerProfile($seller);
         $this->wallets->refreshForSeller($profile);
 
-        $outstandingRecoveryMinor = $this->wallets->outstandingRecoveryMinor($profile);
+        $outstandingRecoveryMinor = $this->wallets->outstandingRefundRecoveryMinor($profile);
         if ($outstandingRecoveryMinor > 0) {
             throw ValidationException::withMessages([
-                'amount' => 'Your outstanding refund recovery of ₱'.number_format($outstandingRecoveryMinor / 100, 2).' must be cleared before requesting a withdrawal.',
+                'amount' => 'Your outstanding refund-proceeds recovery of ₱'.number_format($outstandingRecoveryMinor / 100, 2).' must be cleared before requesting a withdrawal.',
             ]);
         }
 
@@ -674,10 +674,10 @@ class SellerWithdrawalService
 
     private function assertNoOutstandingRecovery(SellerWithdrawal $withdrawal): void
     {
-        $outstandingRecoveryMinor = $this->wallets->outstandingRecoveryMinorForSellerId((int) $withdrawal->seller_profile_id);
+        $outstandingRecoveryMinor = $this->wallets->outstandingRefundRecoveryMinorForSellerId((int) $withdrawal->seller_profile_id);
         if ($outstandingRecoveryMinor > 0) {
             throw ValidationException::withMessages([
-                'withdrawal' => 'This Seller still has an outstanding refund recovery of ₱'.number_format($outstandingRecoveryMinor / 100, 2).'. Resolve it before approving or processing the withdrawal.',
+                'withdrawal' => 'This Seller still has an outstanding refund-proceeds recovery of ₱'.number_format($outstandingRecoveryMinor / 100, 2).'. Resolve it before approving or processing the withdrawal.',
             ]);
         }
     }

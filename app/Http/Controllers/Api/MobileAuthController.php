@@ -61,7 +61,7 @@ class MobileAuthController extends Controller
 
         if ($user->status !== AccountStatus::Active->value) {
             return response()->json([
-                'message' => $this->statusMessage($user->status),
+                'message' => $this->statusMessage($user->status, $user->role),
                 'account_status' => $user->status,
                 'role' => $user->role,
             ], 403);
@@ -113,14 +113,16 @@ class MobileAuthController extends Controller
         ]);
     }
 
-    private function statusMessage(?string $status): string
+    private function statusMessage(?string $status, ?string $role = null): string
     {
         return match ($status) {
-            AccountStatus::Pending->value =>
-                'Your application is still pending approval.',
+            AccountStatus::Pending->value => $role === UserRole::Buyer->value
+                ? 'This Buyer account is from the previous review process and remains pending outside the active Admin queues. New Buyer registrations activate after email verification; contact Support about this existing account.'
+                : 'Your application is still pending approval.',
 
-            AccountStatus::NeedsRevision->value =>
-                'Your application needs revision before it can be approved.',
+            AccountStatus::NeedsRevision->value => $role === UserRole::Buyer->value
+                ? 'Your existing Buyer application needs revision and is outside the active Admin queues. Contact Support about this existing account.'
+                : 'Your application needs revision before it can be approved.',
 
             AccountStatus::Rejected->value =>
                 'Your application was not approved.',

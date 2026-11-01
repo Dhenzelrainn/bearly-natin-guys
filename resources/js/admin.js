@@ -149,6 +149,46 @@ import {
         refreshIcons();
         setTimeout(refreshIcons, 150);
 
+        document.querySelectorAll('[data-shipping-remittance-form]').forEach((form) => {
+            const method = form.querySelector('select[name="method"]');
+            const referenceField = form.querySelector('[data-external-transfer-reference]');
+            const reference = referenceField?.querySelector('input[name="reference"]');
+            const cashReferenceHint = form.querySelector('[data-generated-cash-reference]');
+            const payoutAccountField = form.querySelector('[data-logistics-payout-account-field]');
+            const payoutAccount = payoutAccountField?.querySelector('[data-logistics-payout-account-select]');
+            if (!method || !referenceField || !reference || !cashReferenceHint) return;
+
+            const updateReferenceField = () => {
+                const cashSelected = method.value === 'cash';
+                referenceField.hidden = cashSelected;
+                reference.disabled = cashSelected;
+                reference.required = !cashSelected;
+                cashReferenceHint.hidden = !cashSelected;
+                if (cashSelected) reference.value = '';
+            };
+
+            const updatePayoutAccountField = () => {
+                if (!payoutAccountField || !payoutAccount) return;
+                const requiredChannel = ['bank_transfer', 'gcash'].includes(method.value) ? method.value : '';
+                payoutAccountField.hidden = requiredChannel === '';
+                payoutAccount.disabled = requiredChannel === '';
+                payoutAccount.required = requiredChannel !== '';
+
+                [...payoutAccount.options].forEach((option) => {
+                    if (!option.dataset.channel) return;
+                    const matches = option.dataset.channel === requiredChannel;
+                    option.hidden = !matches;
+                    option.disabled = !matches;
+                    if (!matches && option.selected) payoutAccount.value = '';
+                });
+            };
+
+            method.addEventListener('change', updateReferenceField);
+            method.addEventListener('change', updatePayoutAccountField);
+            updateReferenceField();
+            updatePayoutAccountField();
+        });
+
         const financeCodLive = document.querySelector('[data-finance-cod-live]');
         if (financeCodLive) {
             let knownCodVersion = String(financeCodLive.dataset.codCashStatusVersion || '');

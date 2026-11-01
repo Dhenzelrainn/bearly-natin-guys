@@ -8,13 +8,14 @@ use App\Models\AccountApplication;
 use App\Models\Category;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\View\View;
 
 class AdminRegistrationController extends Controller
 {
-    public function buyers(Request $request): View
+    public function buyers(): RedirectResponse
     {
-        return $this->roleQueue($request, UserRole::Buyer->value, 'user-plus');
+        return redirect()->route('admin.registrations');
     }
 
     public function sellers(Request $request): View
@@ -67,7 +68,6 @@ class AdminRegistrationController extends Controller
 
         $roleLabel = ucfirst($role);
         $descriptions = [
-            UserRole::Buyer->value => 'Review Buyer identity information and submitted identification documents before granting marketplace access.',
             UserRole::Seller->value => 'Review Seller business information, approved category, identity documents, and business permits.',
             UserRole::Logistics->value => 'Review Logistics business information and submitted requirements before granting operations access.',
         ];

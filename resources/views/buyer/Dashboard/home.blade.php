@@ -120,6 +120,10 @@ $usingLiveCatalog = true;
 
 
 
+@include('partials.theme-toggle')
+
+
+
 @include('buyer.partials.buyer-notification-popover')
 
 <button type="button" onclick="window.location.href='{{ url('/profile#purchases') }}'"><span class="material-symbols-outlined" aria-hidden="true">receipt_long</span><span>Orders</span></button>
@@ -661,7 +665,6 @@ $usingLiveCatalog = true;
         <nav class="footer-column" aria-label="About">
             <h2>About</h2>
             <button type="button" data-info="about">Our Story</button>
-            <a href="{{ url('/seller/dashboard') }}">Careers</a>
             <a href="{{ url('/terms') }}">Terms of Service</a>
             <a href="{{ url('/privacy') }}">Privacy Policy</a>
         </nav>

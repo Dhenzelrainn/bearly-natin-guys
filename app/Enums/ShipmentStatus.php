@@ -6,6 +6,7 @@ enum ShipmentStatus: string
 {
     case Pending = 'pending';
     case ReadyForPickup = 'ready_for_pickup';
+    case AwaitingBuyerDropoff = 'awaiting_buyer_dropoff';
     case PickupAssigned = 'pickup_assigned';
     case PickedUp = 'picked_up';
     case AtSortingCenter = 'at_sorting_center';

@@ -3,8 +3,12 @@
 namespace App\Services;
 
 use App\Enums\ParcelStatus;
+use App\Enums\ReturnDeliveryMethod;
+use App\Enums\ReturnRequestStatus;
 use App\Enums\ShipmentStatus;
 use App\Models\PickupRequest;
+use App\Models\ReturnRequest;
+use App\Models\Shipment;
 use App\Models\SortingCenter;
 use App\Models\User;
 use App\Models\Waybill;
@@ -14,6 +18,8 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 class ParcelIntakeService
 {
+    public function __construct(private readonly ReturnRefundService $returns) {}
+
     public function receive(
         Waybill $waybill,
         SortingCenter $center,
@@ -66,6 +72,7 @@ class ParcelIntakeService
                 ->lockForUpdate()
                 ->with([
                     'shipment.sellerOrder.store',
+                    'shipment.returnRequest',
                     'parcels',
                 ])
                 ->findOrFail($waybill->id);
@@ -82,6 +89,36 @@ class ParcelIntakeService
                 throw new AuthorizationException(
                     'This shipment does not belong to the active Logistics provider.'
                 );
+            }
+
+            $returnRequest = null;
+            $isBuyerReturnDropoff = false;
+            if ($shipment->purpose === 'return') {
+                $returnRequest = ReturnRequest::query()
+                    ->where('return_shipment_id', $shipment->id)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (! $returnRequest) {
+                    throw new ConflictHttpException('This return shipment is not linked to an active return case.');
+                }
+
+                $shipment = Shipment::query()->whereKey($shipment->id)->lockForUpdate()->firstOrFail();
+                $waybill->setRelation('shipment', $shipment);
+                $isBuyerReturnDropoff = $returnRequest->return_delivery_method === ReturnDeliveryMethod::BuyerDropoff->value;
+
+                if ($isBuyerReturnDropoff) {
+                    if ($returnRequest->status !== ReturnRequestStatus::ReturnDropoffPending->value
+                        || (int) $returnRequest->dropoff_sorting_center_id !== (int) $center->id
+                        || ! $returnRequest->dropoff_due_at
+                        || now()->greaterThan($returnRequest->dropoff_due_at)
+                        || $shipment->status !== ShipmentStatus::AwaitingBuyerDropoff->value) {
+                        throw new ConflictHttpException('This return is expired or is no longer awaiting Buyer drop-off.');
+                    }
+                } elseif ($returnRequest->return_delivery_method === ReturnDeliveryMethod::RiderPickup->value
+                    && $waybill->parcels->contains(fn ($parcel): bool => $parcel->status === ParcelStatus::Created->value)) {
+                    throw new ConflictHttpException('The Rider must collect this return parcel before Logistics can receive it.');
+                }
             }
 
             foreach ($waybill->parcels as $parcel) {
@@ -125,6 +162,28 @@ class ParcelIntakeService
             $shipment->update([
                 'status' => ShipmentStatus::AtSortingCenter->value,
             ]);
+
+            if ($isBuyerReturnDropoff && $returnRequest) {
+                $shipment->events()->create([
+                    'event_type' => 'buyer_return_dropoff_received',
+                    'from_status' => ShipmentStatus::AwaitingBuyerDropoff->value,
+                    'to_status' => ShipmentStatus::AtSortingCenter->value,
+                    'sorting_center_id' => $center->id,
+                    'actor_user_id' => $actor->id,
+                    'source' => 'scan',
+                    'scan_method' => $method,
+                    'metadata' => [
+                        'return_request_id' => (int) $returnRequest->id,
+                        'sorting_center_id' => (int) $center->id,
+                    ],
+                    'occurred_at' => now(),
+                ]);
+                $this->returns->recordReturnDropoffReceived(
+                    (int) $returnRequest->id,
+                    $actor,
+                    (int) $shipment->id,
+                );
+            }
 
             $this->completeReceivedPickups(
                 $waybill

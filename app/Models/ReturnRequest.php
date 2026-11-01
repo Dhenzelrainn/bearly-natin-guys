@@ -16,6 +16,7 @@ class ReturnRequest extends Model
             'seller_responded_at' => 'datetime',
             'reviewed_at' => 'datetime',
             'resolved_at' => 'datetime',
+            'dropoff_due_at' => 'datetime',
         ];
     }
 
@@ -47,6 +48,11 @@ class ReturnRequest extends Model
     public function returnShipment()
     {
         return $this->belongsTo(Shipment::class, 'return_shipment_id');
+    }
+
+    public function dropoffSortingCenter()
+    {
+        return $this->belongsTo(SortingCenter::class, 'dropoff_sorting_center_id');
     }
 
     public function items()

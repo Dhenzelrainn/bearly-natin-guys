@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\AccountStatus;
 use App\Enums\ParcelStatus;
+use App\Enums\RiderWorkType;
 use App\Enums\ShipmentStatus;
 use App\Models\DispatchBatch;
 use App\Models\Parcel;
@@ -94,6 +95,7 @@ class DispatchService
 
             if (
                 $rider->verification_status !== 'approved'
+                || ! RiderWorkType::isLocal($rider->work_type)
                 || $rider->availability_status !== 'available'
                 || ! $rider->user
                 || $rider->user->status

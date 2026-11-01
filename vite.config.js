@@ -28,6 +28,7 @@ export default defineConfig({
                 'resources/js/buyer-flash-deals.js',
                 'resources/js/product-detail.js',
                 'resources/js/buyer-notifications.js',
+                'resources/js/bearly-chatbot.js',
                 // Buyer promo slider
                 'resources/css/bearly-promo-slider.css',
                 'resources/js/bearly-promo-slider.js',

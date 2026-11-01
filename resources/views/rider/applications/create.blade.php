@@ -24,19 +24,11 @@
 </head>
 
 <body class="registration-body" data-module="rider">
+@include('partials.registration-application-header', [
+    'registrationHomeUrl' => route('rider.landing'),
+    'registrationLabel' => 'Rider application',
+])
 <main class="registration-shell">
-    <div class="registration-theme-toggle">@include('partials.theme-toggle')</div>
-    <a
-        class="registration-brand registration-brand-compact"
-        href="{{ route('rider.landing') }}"
-        aria-label="Bearly home"
-    >
-        @include('partials.theme-aware-logo', ['themeLogoAlt' => 'Bearly'])
-        <span class="registration-brand-context">
-            Rider application
-        </span>
-    </a>
-
     @if (session('registration_pending') || session('rider_application') || ($applicationReview ?? null))
         @php
             $review = $applicationReview ?? null;
@@ -242,6 +234,7 @@
                                     minlength="2"
                                     maxlength="50"
                                     autocomplete="given-name"
+                                    placeholder="e.g. Juan"
                                     required
                                 >
                             </div>
@@ -276,6 +269,7 @@
                                     minlength="2"
                                     maxlength="50"
                                     autocomplete="family-name"
+                                    placeholder="e.g. Dela Cruz"
                                     required
                                 >
                             </div>
@@ -291,6 +285,7 @@
                                     name="email"
                                     value="{{ old('email') }}"
                                     autocomplete="email"
+                                    placeholder="name@example.com"
                                     required
                                 >
                             </div>
@@ -306,6 +301,7 @@
                                     value="{{ old('contact_number') }}"
                                     pattern="[0-9+() -]{7,20}"
                                     autocomplete="tel"
+                                    placeholder="0917 123 4567"
                                     required
                                 >
                             </div>
@@ -392,7 +388,7 @@
                                     id="rider-age"
                                     data-age
                                     readonly
-                                    placeholder="Calculated automatically"
+                                    placeholder="Auto-calculated"
                                 >
                             </div>
 
@@ -412,6 +408,7 @@
                                         autocomplete="new-password"
                                         aria-describedby="rider-password-status rider-password-requirements"
                                         data-registration-password
+                                        placeholder="Create password"
                                         required
                                     >
 
@@ -443,6 +440,7 @@
                                         autocomplete="new-password"
                                         aria-describedby="rider-password-match"
                                         data-registration-password-confirmation
+                                        placeholder="Confirm password"
                                         required
                                     >
 
@@ -572,7 +570,7 @@
                                     data-city
                                     data-location-select="city"
                                     data-searchable-location
-                                    data-search-placeholder="Search municipality or city"
+                                    data-search-placeholder="Search municipality"
                                     required
                                     disabled
                                 >
@@ -648,7 +646,7 @@
                                     name="street"
                                     value="{{ old('street') }}"
                                     autocomplete="address-line1"
-                                    placeholder="Street, purok, subdivision"
+                                    placeholder="Street or purok"
                                     required
                                 >
                             </div>
@@ -663,7 +661,7 @@
                                     name="house_number"
                                     value="{{ old('house_number') }}"
                                     autocomplete="address-line2"
-                                    placeholder="House, unit, or building no."
+                                    placeholder="House or unit no."
                                     required
                                 >
                             </div>
@@ -730,6 +728,7 @@
                                     id="rider-plate-number"
                                     name="plate_number"
                                     value="{{ old('plate_number') }}"
+                                    placeholder="e.g. ABC 1234"
                                     required
                                 >
                             </div>

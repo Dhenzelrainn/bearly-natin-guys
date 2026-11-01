@@ -207,9 +207,9 @@
 
             <div class="form-grid three">
 
-                <label>First name<input name="first_name" value="{{ old('first_name', $googleRegistration['first_name'] ?? '') }}" minlength="2" maxlength="50" pattern="[A-Za-zÀ-ÿ.' -]+" placeholder="Enter your first name" required></label>
+                <label>First name<input name="first_name" value="{{ old('first_name', $googleRegistration['first_name'] ?? '') }}" minlength="2" maxlength="50" pattern="[A-Za-zÀ-ÿ.' -]+" placeholder="e.g. Juan" required></label>
 
-                <label>Last name<input name="last_name" value="{{ old('last_name', $googleRegistration['last_name'] ?? '') }}" minlength="2" maxlength="50" pattern="[A-Za-zÀ-ÿ.' -]+" placeholder="Enter your last name" required></label>
+                <label>Last name<input name="last_name" value="{{ old('last_name', $googleRegistration['last_name'] ?? '') }}" minlength="2" maxlength="50" pattern="[A-Za-zÀ-ÿ.' -]+" placeholder="e.g. Dela Cruz" required></label>
 
                 <label>
 
@@ -257,7 +257,7 @@
 
                 </label>
 
-                <label>Email address<input type="email" name="email" value="{{ old('email', $googleRegistration['email'] ?? '') }}" placeholder="Enter your email address" autocomplete="email" @readonly($googleRegistration) required></label>
+                <label>Email address<input type="email" name="email" value="{{ old('email', $googleRegistration['email'] ?? '') }}" placeholder="name@example.com" autocomplete="email" @readonly($googleRegistration) required></label>
 
             </div>
 
@@ -295,7 +295,7 @@
 
                         <label class="sr-only" for="phone-national">Mobile number</label>
 
-                        <input id="phone-national" data-phone-national type="tel" inputmode="numeric" autocomplete="tel-national" maxlength="16" aria-describedby="phone-help" required>
+                        <input id="phone-national" data-phone-national type="tel" inputmode="numeric" autocomplete="tel-national" maxlength="16" placeholder="917 123 4567" aria-describedby="phone-help" required>
 
                         <input type="hidden" name="contact_number" value="{{ old('contact_number') }}">
 
@@ -323,7 +323,7 @@
                             minlength="8"
                             pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9]).{8,}"
                             title="Use at least 8 characters with one uppercase letter, one lowercase letter, and one number."
-                            placeholder="Create a strong password"
+                            placeholder="Create password"
                             aria-describedby="password-requirements password-status"
                             required
                         >
@@ -348,7 +348,7 @@
                             type="password"
                             name="password_confirmation"
                             autocomplete="new-password"
-                            placeholder="Re-enter your password"
+                            placeholder="Confirm password"
                             aria-describedby="password-match"
                             required
                         >
@@ -414,7 +414,7 @@
 
                 <label for="province">Province<select id="province" name="province" data-province-select data-searchable-address data-search-placeholder="Search province" data-old-value="{{ old('province') }}" required disabled><option value="">Loading provinces...</option></select></label>
 
-                <label for="city">City / Municipality<select id="city" name="city" data-city-select data-searchable-address data-search-placeholder="Search city or municipality" data-old-value="{{ old('city') }}" required disabled><option value="">Select province first</option></select></label>
+                <label for="city">City / Municipality<select id="city" name="city" data-city-select data-searchable-address data-search-placeholder="Search city" data-old-value="{{ old('city') }}" required disabled><option value="">Select province first</option></select></label>
 
                 <label for="barangay">Barangay<select id="barangay" name="barangay" data-barangay-select data-searchable-address data-search-placeholder="Search barangay" data-old-value="{{ old('barangay') }}" required disabled><option value="">Select city first</option></select></label>
 
@@ -434,7 +434,7 @@
 
             </div>
 
-            <div class="form-grid three"><label>Street name<input name="street_name" value="{{ old('street_name') }}" required></label><label>House / Unit no.<input name="house_number" value="{{ old('house_number') }}" required></label><div class="postal-field"><label for="postal-code">Postal code</label><input id="postal-code" name="postal_code" value="{{ old('postal_code') }}" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" aria-describedby="postal-help" required><label class="sr-only" for="postal-area">Postal area</label><select id="postal-area" data-postal-choices hidden></select><small id="postal-help" data-postal-help>Select your municipality to fill this in.</small><button type="button" class="text-button" data-postal-manual>Enter a different postal code</button><input type="hidden" name="city_code" value="{{ old('city_code') }}"><input type="hidden" name="postal_manual" value="{{ old('postal_manual', '0') }}"></div></div>
+            <div class="form-grid three"><label>Street name<input name="street_name" value="{{ old('street_name') }}" placeholder="Street or purok" required></label><label>House / Unit no.<input name="house_number" value="{{ old('house_number') }}" placeholder="House or unit no." required></label><div class="postal-field"><label for="postal-code">Postal code</label><input id="postal-code" name="postal_code" value="{{ old('postal_code') }}" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="e.g. 1000" aria-describedby="postal-help" required><label class="sr-only" for="postal-area">Postal area</label><select id="postal-area" data-postal-choices hidden></select><small id="postal-help" data-postal-help>Select your municipality to fill this in.</small><button type="button" class="text-button" data-postal-manual>Enter a different postal code</button><input type="hidden" name="city_code" value="{{ old('city_code') }}"><input type="hidden" name="postal_manual" value="{{ old('postal_manual', '0') }}"></div></div>
 
         </section>
 
@@ -464,7 +464,7 @@
 
                             pattern="[A-Za-zÀ-ÿ0-9&.,' -]+"
 
-                            placeholder="Enter your registered business name"
+                            placeholder="Registered business name"
 
                         >
 

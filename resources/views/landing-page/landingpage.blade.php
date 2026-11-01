@@ -9,6 +9,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="Shopping made Bearly a hassle. Discover products from big stores and independent sellers, all in one place.">
     <meta name="theme-color" content="#442214">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Bearly — Shopping made Bearly a hassle.</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -105,5 +106,6 @@
 <p class="lp-toast" role="status" data-toast hidden></p>
 <script id="lp-products-data" type="application/json">{!! json_encode($landingProducts, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR) !!}</script>
 <script id="lp-categories-data" type="application/json">{!! json_encode($homeCategories, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR) !!}</script>
+@include('partials.bearly-chatbot')
 </body>
 </html>

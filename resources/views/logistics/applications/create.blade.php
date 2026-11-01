@@ -24,19 +24,11 @@
 </head>
 
 <body class="registration-body" data-module="logistics">
+@include('partials.registration-application-header', [
+    'registrationHomeUrl' => route('logistics.landing'),
+    'registrationLabel' => 'Logistics partner application',
+])
 <main class="registration-shell">
-    <div class="registration-theme-toggle">@include('partials.theme-toggle')</div>
-    <a
-        class="registration-brand registration-brand-compact"
-        href="{{ route('logistics.landing') }}"
-        aria-label="Bearly home"
-    >
-        @include('partials.theme-aware-logo', ['themeLogoAlt' => 'Bearly'])
-        <span class="registration-brand-context">
-            Logistics partner application
-        </span>
-    </a>
-
     @if (session('registration_pending') || session('logistics_application') || ($applicationReview ?? null))
         @php
             $review = $applicationReview ?? null;
@@ -194,6 +186,7 @@
                                     minlength="2"
                                     maxlength="50"
                                     autocomplete="given-name"
+                                    placeholder="e.g. Juan"
                                     required
                                 >
                             </div>
@@ -226,6 +219,7 @@
                                     minlength="2"
                                     maxlength="50"
                                     autocomplete="family-name"
+                                    placeholder="e.g. Dela Cruz"
                                     required
                                 >
                             </div>
@@ -265,7 +259,7 @@
                                     id="logistics-age"
                                     data-age
                                     readonly
-                                    placeholder="Calculated automatically"
+                                    placeholder="Auto-calculated"
                                 >
                             </div>
 
@@ -279,6 +273,7 @@
                                     name="email"
                                     value="{{ old('email') }}"
                                     autocomplete="email"
+                                    placeholder="name@example.com"
                                     required
                                 >
                             </div>
@@ -293,6 +288,7 @@
                                     value="{{ old('contact_number') }}"
                                     pattern="[0-9+() -]{7,20}"
                                     autocomplete="tel"
+                                    placeholder="0917 123 4567"
                                     required
                                 >
                             </div>
@@ -373,6 +369,7 @@
                                         autocomplete="new-password"
                                         aria-describedby="logistics-password-status logistics-password-requirements"
                                         data-registration-password
+                                        placeholder="Create password"
                                         required
                                     >
 
@@ -404,6 +401,7 @@
                                         autocomplete="new-password"
                                         aria-describedby="logistics-password-match"
                                         data-registration-password-confirmation
+                                        placeholder="Confirm password"
                                         required
                                     >
 
@@ -551,7 +549,7 @@
                                     data-city
                                     data-location-select="city"
                                     data-searchable-location
-                                    data-search-placeholder="Search municipality or city"
+                                    data-search-placeholder="Search municipality"
                                     required
                                     disabled
                                 >
@@ -627,7 +625,7 @@
                                     name="street"
                                     value="{{ old('street') }}"
                                     autocomplete="address-line1"
-                                    placeholder="Street, purok, subdivision"
+                                    placeholder="Street or purok"
                                     required
                                 >
                             </div>
@@ -642,7 +640,7 @@
                                     name="house_number"
                                     value="{{ old('house_number') }}"
                                     autocomplete="address-line2"
-                                    placeholder="House, unit, or building no."
+                                    placeholder="House or unit no."
                                     required
                                 >
                             </div>

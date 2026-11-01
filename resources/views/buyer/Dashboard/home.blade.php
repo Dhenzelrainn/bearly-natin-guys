@@ -686,6 +686,7 @@ $usingLiveCatalog = true;
 
 
 @include('buyer.partials.chat-drawer')
+@include('partials.bearly-chatbot')
 
 <div class="cart-drawer-backdrop" id="cart-drawer-backdrop" data-cart-close hidden></div>
 

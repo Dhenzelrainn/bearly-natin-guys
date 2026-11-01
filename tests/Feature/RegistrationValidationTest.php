@@ -109,7 +109,18 @@ class RegistrationValidationTest extends TestCase
     {
         $response = $this->get(route('register'))
             ->assertOk()
-            ->assertSee('Verified email activates your Buyer account', false);
+            ->assertSee('Verified email activates your Buyer account', false)
+            ->assertSee('placeholder="e.g. Juan"', false)
+            ->assertSee('placeholder="e.g. Dela Cruz"', false)
+            ->assertSee('placeholder="name@example.com"', false)
+            ->assertSee('placeholder="917 123 4567"', false)
+            ->assertSee('placeholder="Create password"', false)
+            ->assertSee('placeholder="Confirm password"', false)
+            ->assertSee('placeholder="Street or purok"', false)
+            ->assertSee('placeholder="House or unit no."', false)
+            ->assertSee('placeholder="e.g. 1000"', false)
+            ->assertSee('data-search-placeholder="Search city"', false)
+            ->assertSee('placeholder="Registered business name"', false);
 
         $html = $response->getContent();
         preg_match('/<input name="valid_id"[^>]*>/s', $html, $matches);
@@ -117,6 +128,41 @@ class RegistrationValidationTest extends TestCase
         $this->assertNotEmpty($matches[0] ?? null);
         $this->assertDoesNotMatchRegularExpression('/\srequired(?:\s|>)/', $matches[0]);
         $this->assertMatchesRegularExpression('/data-seller-document\s+hidden/', $html);
+    }
+
+    public function test_rider_and_logistics_registration_show_short_placeholders_across_all_steps(): void
+    {
+        foreach ([
+            route('rider.register') => 'Rider application',
+            route('logistics.register') => 'Logistics partner application',
+        ] as $registrationRoute => $registrationLabel) {
+            $this->get($registrationRoute)
+                ->assertOk()
+                ->assertSee('<header class="registration-header" data-registration-header>', false)
+                ->assertSee('class="registration-brand-divider" aria-hidden="true"', false)
+                ->assertSee($registrationLabel)
+                ->assertSee('placeholder="e.g. Juan"', false)
+                ->assertSee('placeholder="e.g. Dela Cruz"', false)
+                ->assertSee('placeholder="name@example.com"', false)
+                ->assertSee('placeholder="0917 123 4567"', false)
+                ->assertSee('placeholder="6-digit code"', false)
+                ->assertSee('placeholder="Auto-calculated"', false)
+                ->assertSee('placeholder="Auto-generated"', false)
+                ->assertSee('placeholder="Street or purok"', false)
+                ->assertSee('placeholder="House or unit no."', false)
+                ->assertSee('data-search-placeholder="Search municipality"', false)
+                ->assertSee('placeholder="Create password"', false)
+                ->assertSee('placeholder="Confirm password"', false);
+        }
+
+        $this->get(route('rider.register'))
+            ->assertOk()
+            ->assertSee('placeholder="e.g. Toyota HiAce"', false)
+            ->assertSee('placeholder="e.g. ABC 1234"', false);
+
+        $this->get(route('logistics.register'))
+            ->assertOk()
+            ->assertSee('placeholder="Registered facility or business name"', false);
     }
 
     public function test_buyer_registration_rejects_missing_email_proof_without_persisting_user_or_address(): void

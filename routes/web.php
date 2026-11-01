@@ -34,6 +34,7 @@ use App\Http\Controllers\BuyerMessageController;
 use App\Http\Controllers\BuyerPromotionController;
 use App\Http\Controllers\BuyerReturnController;
 use App\Http\Controllers\BuyerReviewController;
+use App\Http\Controllers\BearlyChatbotController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\DisputeParticipantController;
 use App\Http\Controllers\DeliveryProofController;
@@ -81,6 +82,10 @@ Route::view('/contact', 'landing-page.contact.contact')
 Route::post('/contact', [ContactController::class, 'store'])
     ->middleware('throttle:10,1')
     ->name('contact.store');
+
+Route::post('/chatbot/message', [BearlyChatbotController::class, 'send'])
+    ->middleware('throttle:8,1')
+    ->name('chatbot.message');
 
 Route::middleware('auth')->get(
     '/disputes/evidence/{evidence}/download',

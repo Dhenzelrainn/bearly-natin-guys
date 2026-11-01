@@ -26,6 +26,12 @@ return [
 
     'gemini' => [
         'api_key' => env('GEMINI_API_KEY'),
+        'chatbot' => [
+            'api_key' => env('GEMINI_CHATBOT_API_KEY'),
+            'enabled' => env('GEMINI_CHATBOT_ENABLED', false),
+            'model' => env('GEMINI_CHATBOT_MODEL', 'gemini-3.5-flash-lite'),
+            'timeout' => (int) env('GEMINI_CHATBOT_TIMEOUT', 20),
+        ],
         'product_image_check' => [
             'enabled' => env('GEMINI_PRODUCT_IMAGE_CHECK_ENABLED', false),
             'model' => env('GEMINI_PRODUCT_IMAGE_CHECK_MODEL', 'gemini-3.5-flash-lite'),

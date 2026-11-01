@@ -1,0 +1,755 @@
+.bearly-assistant {
+    --assistant-brown: #35251e;
+    --assistant-ink: #2e2723;
+    --assistant-muted: #746b65;
+    --assistant-line: #e7dfd6;
+    --assistant-cream: #fbf7f1;
+    position: fixed;
+    right: 32px;
+    bottom: 20px;
+    z-index: 120;
+    color: var(--assistant-ink);
+    font-family: Poppins, "DM Sans", Arial, sans-serif;
+}
+
+.bearly-assistant,
+.bearly-assistant * {
+    box-sizing: border-box;
+}
+
+.bearly-assistant .bearly-assistant-launcher {
+    display: grid;
+    width: 56px;
+    height: 56px;
+    place-items: center;
+    overflow: visible;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    box-shadow: none;
+    cursor: pointer;
+    transition: transform 140ms ease;
+}
+
+.bearly-assistant .bearly-assistant-launcher:hover {
+    transform: translateY(-2px);
+}
+
+.bearly-assistant-launcher:focus-visible,
+.bearly-assistant button:focus-visible,
+.bearly-assistant textarea:focus-visible,
+.bearly-assistant a:focus-visible {
+    outline: 3px solid #e9a72f;
+    outline-offset: 3px;
+}
+
+.bearly-assistant .bearly-assistant-launcher .bearly-assistant-launcher-icon {
+    display: block;
+    width: 72px;
+    height: 72px;
+    max-width: none;
+    object-fit: contain;
+}
+
+.bearly-assistant-icon-fallback {
+    color: var(--assistant-brown);
+    font-size: 24px;
+    font-weight: 700;
+}
+
+.bearly-assistant-icon-fallback[hidden] {
+    display: none;
+}
+
+.bearly-assistant-panel[hidden] {
+    display: none;
+}
+
+.bearly-assistant-panel {
+    position: absolute;
+    right: 0;
+    bottom: 76px;
+    display: flex;
+    width: min(520px, calc(100vw - 32px));
+    height: min(720px, calc(100dvh - 112px));
+    min-height: min(440px, calc(100dvh - 112px));
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--assistant-line);
+    border-radius: 15px;
+    background: #fffdfa;
+    box-shadow: 0 16px 42px rgb(43 29 22 / 18%);
+}
+
+.bearly-assistant-header {
+    display: flex;
+    min-height: 104px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 16px 18px;
+    background: #5a3526;
+    color: #fff;
+}
+
+.bearly-assistant-header-brand {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 14px;
+}
+
+.bearly-assistant .bearly-assistant-header-avatar {
+    display: block;
+    width: 58px;
+    height: 58px;
+    max-width: none;
+    flex: 0 0 58px;
+    transform: translate(-4px, -7px);
+    object-fit: contain;
+}
+
+.bearly-assistant-header-divider {
+    width: 1px;
+    height: 56px;
+    flex: 0 0 1px;
+    background: rgb(255 255 255 / 48%);
+}
+
+.bearly-assistant-header-copy {
+    min-width: 0;
+}
+
+.bearly-assistant .bearly-assistant-header h2,
+.bearly-assistant .bearly-assistant-header p {
+    margin: 0;
+    font: inherit;
+}
+
+.bearly-assistant .bearly-assistant-header .bearly-assistant-header-title {
+    color: #fff;
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1.3;
+}
+
+.bearly-assistant .bearly-assistant-header .bearly-assistant-header-subtitle {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-top: 4px;
+    color: #f2e6dc;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.bearly-assistant-header-dot {
+    width: 10px;
+    height: 10px;
+    flex: 0 0 10px;
+    border-radius: 50%;
+    background: #8fca83;
+}
+
+.bearly-assistant-header-actions {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 6px;
+}
+
+.bearly-assistant .bearly-assistant-header-action {
+    display: grid;
+    width: 40px;
+    height: 40px;
+    flex: 0 0 40px;
+    place-items: center;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: #fff;
+    cursor: pointer;
+}
+
+.bearly-assistant .bearly-assistant-header-action:hover {
+    background: rgb(255 255 255 / 12%);
+}
+
+.bearly-assistant .bearly-assistant-header-action span {
+    font-size: 31px;
+    line-height: 1;
+}
+
+.bearly-assistant-disclosure {
+    display: flex;
+    align-items: center;
+    gap: 13px;
+    margin: 16px 18px 0;
+    padding: 12px 14px;
+    border: 1px solid #eee3d9;
+    border-radius: 12px;
+    background: #f8f1e9;
+    color: #54483f;
+}
+
+.bearly-assistant .bearly-assistant-disclosure[hidden] {
+    display: none;
+}
+
+.bearly-assistant .bearly-assistant-disclosure .bearly-assistant-disclosure-copy {
+    min-width: 0;
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.bearly-assistant-disclosure-icon {
+    display: grid;
+    width: 30px;
+    height: 30px;
+    flex: 0 0 30px;
+    place-items: center;
+    border: 2px solid #83572f;
+    border-radius: 50%;
+    color: #70451f;
+    font-size: 19px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.bearly-assistant-messages {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+    gap: 16px;
+    overflow-y: auto;
+    padding: 20px 18px;
+    background: #fffdfa;
+    overscroll-behavior: contain;
+}
+
+.bearly-assistant-message {
+    max-width: 90%;
+    margin: 0;
+    padding: 13px 16px;
+    border-radius: 18px;
+    font-size: 14px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+
+.bearly-assistant .bearly-assistant-message {
+    text-align: left;
+}
+
+.bearly-assistant-message-row {
+    display: flex;
+    width: 100%;
+    max-width: 100%;
+    align-self: flex-start;
+    align-items: flex-end;
+    gap: 10px;
+}
+
+.bearly-assistant-avatar {
+    display: block;
+    width: 44px;
+    height: 44px;
+    flex: 0 0 44px;
+    border-radius: 50%;
+    background: #f8f1e9;
+    object-fit: contain;
+}
+
+.bearly-assistant-message-row .bearly-assistant-message {
+    max-width: calc(100% - 54px);
+}
+
+.bearly-assistant .bearly-assistant-message--bot,
+.bearly-assistant .bearly-assistant-message--loading,
+.bearly-assistant .bearly-assistant-message--error {
+    background: #f5f0ea;
+    color: var(--assistant-ink);
+}
+
+.bearly-assistant .bearly-assistant-message--user {
+    align-self: flex-end;
+    background: #eee0cf;
+    color: #35251e;
+}
+
+.bearly-assistant .bearly-assistant-message--loading {
+    color: var(--assistant-muted);
+    font-style: italic;
+}
+
+.bearly-assistant .bearly-assistant-message--error {
+    border-left: 3px solid #aa4d42;
+}
+
+.bearly-assistant-quick-help {
+    display: grid;
+    gap: 12px;
+    margin-top: 4px;
+}
+
+.bearly-assistant-quick-help[hidden] {
+    display: none;
+}
+
+.bearly-assistant .bearly-assistant-quick-help .bearly-assistant-quick-help-title {
+    margin: 0;
+    color: var(--assistant-brown);
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 1.3;
+}
+
+.bearly-assistant-quick-help-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.bearly-assistant .bearly-assistant-quick-help .bearly-assistant-quick-help-button {
+    display: flex;
+    min-width: 0;
+    min-height: 62px;
+    align-items: center;
+    gap: 9px;
+    padding: 10px 11px;
+    border: 1px solid #e6dbd0;
+    border-radius: 11px;
+    background: #fffdfa;
+    color: #35251e;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.3;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 140ms ease, background-color 140ms ease;
+}
+
+.bearly-assistant .bearly-assistant-quick-help .bearly-assistant-quick-help-button:hover {
+    border-color: #bd9a79;
+    background: #fbf5ee;
+}
+
+.bearly-assistant-quick-help-icon {
+    display: block;
+    width: 27px;
+    height: 27px;
+    flex: 0 0 27px;
+    color: #825027;
+}
+
+.bearly-assistant-quick-help-button > span {
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.bearly-assistant-quick-help-chevron {
+    display: block;
+    width: 18px;
+    height: 18px;
+    flex: 0 0 18px;
+    color: #825027;
+}
+
+.bearly-assistant-products {
+    display: grid;
+    gap: 7px;
+}
+
+.bearly-assistant-product {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 10px;
+    padding: 9px;
+    border: 1px solid var(--assistant-line);
+    border-radius: 8px;
+    background: #fff;
+    color: var(--assistant-ink);
+    text-decoration: none;
+}
+
+.bearly-assistant-product:hover {
+    border-color: #c5a57b;
+    background: #fffdf9;
+}
+
+.bearly-assistant-product-image {
+    width: 54px;
+    height: 54px;
+    flex: 0 0 54px;
+    border-radius: 5px;
+    background: var(--assistant-cream);
+    object-fit: cover;
+}
+
+.bearly-assistant-product-details {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.bearly-assistant-product-details strong {
+    overflow: hidden;
+    font-size: 12px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bearly-assistant-product-details small {
+    color: var(--assistant-muted);
+    font-size: 11px;
+}
+
+.bearly-assistant-product-price {
+    color: #6f3f1f;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.bearly-assistant-product-details .bearly-assistant-stock-note {
+    color: #8b4c28;
+}
+
+.bearly-assistant-bottom {
+    padding: 12px 16px 10px;
+    border-top: 1px solid var(--assistant-line);
+    background: #fffdfa;
+}
+
+.bearly-assistant-form {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px;
+    border: 1px solid #d7c9bc;
+    border-radius: 13px;
+    background: #fff;
+}
+
+.bearly-assistant-form textarea {
+    display: block;
+    width: 100%;
+    min-height: 52px;
+    max-height: 120px;
+    resize: vertical;
+    padding: 13px 12px;
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    color: var(--assistant-ink);
+    font: inherit;
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.bearly-assistant-form textarea::placeholder {
+    color: #81766f;
+}
+
+.bearly-assistant .bearly-assistant-form .bearly-assistant-send {
+    display: grid;
+    width: 52px;
+    height: 52px;
+    flex: 0 0 52px;
+    place-items: center;
+    padding: 0;
+    border: 1px solid var(--assistant-brown);
+    border-radius: 10px;
+    background: var(--assistant-brown);
+    color: #fff;
+    font: inherit;
+    cursor: pointer;
+}
+
+.bearly-assistant .bearly-assistant-form .bearly-assistant-send svg {
+    width: 25px;
+    height: 25px;
+}
+
+.bearly-assistant .bearly-assistant-form .bearly-assistant-send:hover {
+    background: #533626;
+}
+
+.bearly-assistant .bearly-assistant-form .bearly-assistant-send:disabled {
+    cursor: wait;
+    opacity: .65;
+}
+
+.bearly-assistant .bearly-assistant-contact {
+    display: inline-block;
+    margin-top: 8px;
+    color: #68472f;
+    font-size: 11px;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.bearly-assistant-sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    clip-path: inset(50%);
+}
+
+:root[data-theme="dark"] .bearly-assistant {
+    --assistant-ink: #f2ebe4;
+    --assistant-muted: #c0b2a7;
+    --assistant-line: #4b3c32;
+    --assistant-cream: #2b221d;
+}
+
+:root[data-theme="dark"] .bearly-assistant-panel,
+:root[data-theme="dark"] .bearly-assistant-messages,
+:root[data-theme="dark"] .bearly-assistant-bottom,
+:root[data-theme="dark"] .bearly-assistant-product {
+    background: #211a16;
+}
+
+:root[data-theme="dark"] .bearly-assistant-disclosure {
+    border-color: #4b3c32;
+    background: #30251e;
+    color: #e0d3c8;
+}
+
+:root[data-theme="dark"] .bearly-assistant-disclosure-icon {
+    border-color: #d3a66e;
+    color: #efc58a;
+}
+
+:root[data-theme="dark"] .bearly-assistant-message--bot,
+:root[data-theme="dark"] .bearly-assistant-message--loading,
+:root[data-theme="dark"] .bearly-assistant-message--error {
+    background: #332820;
+    color: #f2ebe4;
+}
+
+:root[data-theme="dark"] .bearly-assistant-avatar {
+    background: #51402f;
+}
+
+:root[data-theme="dark"] .bearly-assistant-message--user {
+    background: #51402f;
+    color: #fff;
+}
+
+:root[data-theme="dark"] .bearly-assistant-icon-fallback {
+    color: #f2ebe4;
+}
+
+:root[data-theme="dark"] .bearly-assistant-product {
+    color: #f2ebe4;
+}
+
+:root[data-theme="dark"] .bearly-assistant-product:hover {
+    background: #30251e;
+}
+
+:root[data-theme="dark"] .bearly-assistant .bearly-assistant-quick-help .bearly-assistant-quick-help-title {
+    color: #f2ebe4;
+}
+
+:root[data-theme="dark"] .bearly-assistant .bearly-assistant-quick-help .bearly-assistant-quick-help-button {
+    border-color: #4b3c32;
+    background: #271f1a;
+    color: #f2ebe4;
+}
+
+:root[data-theme="dark"] .bearly-assistant .bearly-assistant-quick-help .bearly-assistant-quick-help-button:hover {
+    border-color: #8b6848;
+    background: #34271f;
+}
+
+:root[data-theme="dark"] .bearly-assistant-quick-help-button {
+    color: #f2ebe4;
+}
+
+:root[data-theme="dark"] .bearly-assistant-quick-help-icon,
+:root[data-theme="dark"] .bearly-assistant-quick-help-chevron {
+    color: #efc58a;
+}
+
+:root[data-theme="dark"] .bearly-assistant-form {
+    border-color: #665648;
+    background: #211a16;
+}
+
+:root[data-theme="dark"] .bearly-assistant-form textarea {
+    background: transparent;
+    color: #f2ebe4;
+}
+
+:root[data-theme="dark"] .bearly-assistant-form textarea::placeholder {
+    color: #bdafa3;
+}
+
+:root[data-theme="dark"] .bearly-assistant-contact,
+:root[data-theme="dark"] .bearly-assistant-product-price {
+    color: #efc58a;
+}
+
+@media (max-width: 520px) {
+    .bearly-assistant {
+        right: 26px;
+        bottom: 14px;
+    }
+
+    .bearly-assistant-panel {
+        right: -10px;
+        bottom: 72px;
+        width: min(520px, calc(100vw - 28px));
+        height: min(760px, calc(100dvh - 110px));
+        min-height: min(420px, calc(100dvh - 110px));
+    }
+
+    .bearly-assistant-header {
+        min-height: 88px;
+        gap: 6px;
+        padding: 13px 12px;
+    }
+
+    .bearly-assistant-header-brand {
+        gap: 9px;
+    }
+
+    .bearly-assistant .bearly-assistant-header-avatar {
+        width: 48px;
+        height: 48px;
+        flex-basis: 48px;
+    }
+
+    .bearly-assistant-header-divider {
+        height: 48px;
+    }
+
+    .bearly-assistant .bearly-assistant-header .bearly-assistant-header-title {
+        font-size: 18px;
+    }
+
+    .bearly-assistant .bearly-assistant-header .bearly-assistant-header-subtitle {
+        gap: 5px;
+        font-size: 11px;
+    }
+
+    .bearly-assistant-header-dot {
+        width: 8px;
+        height: 8px;
+        flex-basis: 8px;
+    }
+
+    .bearly-assistant-header-actions {
+        gap: 0;
+    }
+
+    .bearly-assistant .bearly-assistant-header-action {
+        width: 34px;
+        height: 38px;
+        flex-basis: 34px;
+    }
+
+    .bearly-assistant-disclosure {
+        align-items: flex-start;
+        gap: 9px;
+        margin: 12px 12px 0;
+        padding: 10px;
+    }
+
+    .bearly-assistant .bearly-assistant-disclosure .bearly-assistant-disclosure-copy {
+        font-size: 11px;
+    }
+
+    .bearly-assistant-messages {
+        gap: 13px;
+        padding: 15px 12px;
+    }
+
+    .bearly-assistant-message {
+        padding: 11px 12px;
+        font-size: 13px;
+    }
+
+    .bearly-assistant-avatar {
+        width: 38px;
+        height: 38px;
+        flex-basis: 38px;
+    }
+
+    .bearly-assistant-message-row .bearly-assistant-message {
+        max-width: calc(100% - 48px);
+    }
+
+    .bearly-assistant .bearly-assistant-quick-help .bearly-assistant-quick-help-title {
+        font-size: 18px;
+    }
+
+    .bearly-assistant-quick-help-grid {
+        gap: 8px;
+    }
+
+    .bearly-assistant .bearly-assistant-quick-help .bearly-assistant-quick-help-button {
+        min-height: 58px;
+        gap: 7px;
+        padding: 8px;
+        font-size: 12px;
+    }
+
+    .bearly-assistant-quick-help-icon {
+        width: 23px;
+        height: 23px;
+        flex-basis: 23px;
+    }
+
+    .bearly-assistant-quick-help-chevron {
+        width: 15px;
+        height: 15px;
+        flex-basis: 15px;
+    }
+
+    .bearly-assistant-bottom {
+        padding: 10px 12px 8px;
+    }
+
+    .bearly-assistant-form textarea {
+        min-height: 48px;
+        padding: 11px 10px;
+        font-size: 13px;
+    }
+
+    .bearly-assistant .bearly-assistant-form .bearly-assistant-send {
+        width: 48px;
+        height: 48px;
+        flex-basis: 48px;
+    }
+
+    .bearly-assistant .bearly-assistant-contact {
+        margin-top: 6px;
+        font-size: 11px;
+    }
+}
+
+@media (max-width: 380px) {
+    .bearly-assistant-quick-help-grid {
+        grid-template-columns: 1fr;
+    }
+
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .bearly-assistant-launcher {
+        transition: none;
+    }
+}

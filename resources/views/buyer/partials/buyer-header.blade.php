@@ -90,3 +90,4 @@
 @vite('resources/js/buyer-notifications.js')
 @include('partials.realtime-identity')
 @vite('resources/js/realtime.js')
+@include('partials.bearly-chatbot')

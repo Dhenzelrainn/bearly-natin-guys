@@ -4412,3 +4412,519 @@ html[data-theme-transition] body * {
     html[data-theme="dark"] .theme-logo-light { display: block !important; }
     html[data-theme="dark"] .theme-logo-dark { display: none !important; }
 }
+
+@media screen {
+    /* Match the Rider/Logistics application branding to Bearly account headers. */
+    body.registration-body .registration-brand-compact {
+        width: 100%;
+        min-height: 56px;
+        align-items: center;
+        gap: 12px;
+    }
+
+    body.registration-body .registration-brand-compact img {
+        display: block;
+        width: 140px;
+        flex: 0 0 140px;
+        max-width: 100%;
+        height: auto;
+        object-fit: contain;
+        object-position: left center;
+    }
+
+    body.registration-body .registration-brand-compact .registration-brand-context {
+        display: block;
+        min-width: 0;
+        line-height: 1.3;
+    }
+
+    /* Registration portals/forms use some component-level light colors instead of shared tokens. */
+    :root[data-theme="dark"] body.registration-body {
+        --brown-950: #1c1511;
+        --brown-900: #e2c7a6;
+        --brown-800: #c59a70;
+        --brown-700: #d6a258;
+        --gold: #f0b84d;
+        --gold-soft: #45331d;
+        --cream: var(--theme-page);
+        --paper: var(--theme-surface);
+        --ink: var(--theme-text);
+        --muted: var(--theme-muted);
+        --line: var(--theme-border);
+        --green: #88c99a;
+        --green-soft: #1e3828;
+        --red: #ff9186;
+        --red-soft: #452521;
+        --blue: #8bc4e8;
+        --blue-soft: #1e3041;
+        --amber: #efba60;
+        --amber-soft: #44331d;
+        --registration-muted: #d0c2b5;
+    }
+
+    :root[data-theme="dark"] body.registration-body .registration-card {
+        border-color: var(--theme-border);
+        background: var(--theme-surface);
+        color: var(--theme-text);
+        box-shadow: 0 18px 48px rgba(0, 0, 0, .28);
+    }
+
+    :root[data-theme="dark"] body.registration-body .registration-main {
+        background: var(--theme-page);
+        color: var(--theme-text);
+    }
+
+    :root[data-theme="dark"] body.registration-body .registration-brand :is(strong, .registration-brand-context) {
+        color: var(--theme-text);
+    }
+
+    :root[data-theme="dark"] body.registration-body .registration-brand small {
+        color: var(--registration-muted);
+    }
+
+    :root[data-theme="dark"] body.registration-body .registration-aside {
+        background: linear-gradient(155deg, #35251e 0%, #241a14 72%, #1b1511 100%);
+        color: var(--theme-text);
+    }
+
+    :root[data-theme="dark"] body.registration-body .registration-aside p {
+        color: #dfd1c5;
+        font-size: 13px;
+    }
+
+    :root[data-theme="dark"] body.registration-body .step-marker:not(.is-active) {
+        color: var(--registration-muted);
+    }
+
+    :root[data-theme="dark"] body.registration-body .step-marker small {
+        color: var(--registration-muted);
+        font-size: 11px;
+    }
+
+    :root[data-theme="dark"] body.registration-body .registration-main :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+        border-color: var(--theme-border);
+        background: var(--theme-input);
+        color: var(--theme-text);
+        color-scheme: dark;
+    }
+
+    :root[data-theme="dark"] body.registration-body .registration-main :is(input, textarea)::placeholder {
+        color: var(--registration-muted);
+        opacity: 1;
+    }
+
+    :root[data-theme="dark"] body.registration-body .registration-main > p,
+    :root[data-theme="dark"] body.registration-body .registration-main :is(.field-hint, .field-help, .toggle-copy small) {
+        color: var(--registration-muted);
+    }
+
+    :root[data-theme="dark"] body.registration-body .registration-main > p {
+        font-size: 13px;
+    }
+
+    :root[data-theme="dark"] body.registration-body .upload-field {
+        border-color: #725b48;
+        background: var(--theme-surface-soft);
+        color: var(--theme-text);
+    }
+
+    :root[data-theme="dark"] body.registration-body .upload-field small {
+        color: var(--registration-muted);
+        font-size: 10px;
+    }
+
+    :root[data-theme="dark"] body.registration-body .registration-main :is(.field-hint, .field-help, .toggle-copy small) {
+        font-size: 11px;
+    }
+
+    :root[data-theme="dark"] body.registration-body[data-module="logistics"] .registration-email-verification :is(small, p),
+    :root[data-theme="dark"] body.registration-body[data-module="rider"] .registration-email-verification :is(small, p) {
+        color: var(--registration-muted);
+        font-size: 11px;
+    }
+
+    :root[data-theme="dark"] body.registration-body[data-module="logistics"] .registration-email-verification .verification-status[data-state="verified"],
+    :root[data-theme="dark"] body.registration-body[data-module="rider"] .registration-email-verification .verification-status[data-state="verified"] {
+        color: #a8d5b0;
+    }
+
+    :root[data-theme="dark"] body.registration-body[data-module="logistics"] .registration-email-verification .verification-status[data-state="error"],
+    :root[data-theme="dark"] body.registration-body[data-module="rider"] .registration-email-verification .verification-status[data-state="error"] {
+        color: #ffaaa2;
+    }
+
+    :root[data-theme="dark"] body.registration-body[data-module="logistics"] .registration-password-guidance :is(small, p, li:not(.is-met)),
+    :root[data-theme="dark"] body.registration-body[data-module="rider"] .registration-password-guidance :is(small, p, li:not(.is-met)) {
+        color: var(--registration-muted);
+        font-size: 11px;
+    }
+
+    :root[data-theme="dark"] body.registration-body[data-module="logistics"] .registration-password-guidance li.is-met,
+    :root[data-theme="dark"] body.registration-body[data-module="rider"] .registration-password-guidance li.is-met {
+        color: #a8d5b0;
+    }
+
+    :root[data-theme="dark"] body.registration-body[data-module="logistics"] .registration-password-guidance .password-guidance-heading span:not([data-strength="4"]),
+    :root[data-theme="dark"] body.registration-body[data-module="rider"] .registration-password-guidance .password-guidance-heading span:not([data-strength="4"]) {
+        color: var(--registration-muted);
+        font-size: 11px;
+    }
+
+    :root[data-theme="dark"] body.registration-body[data-module="logistics"] .registration-password-guidance .registration-password-status:not([data-state="success"]):not([data-state="error"]),
+    :root[data-theme="dark"] body.registration-body[data-module="rider"] .registration-password-guidance .registration-password-status:not([data-state="success"]):not([data-state="error"]) {
+        color: var(--registration-muted);
+        font-size: 11px;
+    }
+
+    :root[data-theme="dark"] body.registration-body[data-module="logistics"] .registration-password-guidance :is(.registration-password-status[data-state="success"], .registration-password-match[data-state="success"]),
+    :root[data-theme="dark"] body.registration-body[data-module="rider"] .registration-password-guidance :is(.registration-password-status[data-state="success"], .registration-password-match[data-state="success"]) {
+        color: #a8d5b0;
+    }
+
+    :root[data-theme="dark"] body.registration-body[data-module="logistics"] .registration-password-guidance :is(.registration-password-status[data-state="error"], .registration-password-match[data-state="error"]),
+    :root[data-theme="dark"] body.registration-body[data-module="rider"] .registration-password-guidance :is(.registration-password-status[data-state="error"], .registration-password-match[data-state="error"]) {
+        color: #ffaaa2;
+    }
+
+    :root[data-theme="dark"] body.registration-body .registration-password-toggle {
+        color: var(--theme-muted);
+    }
+
+    :root[data-theme="dark"] body.registration-body .registration-password-toggle:hover {
+        background: #3b3027;
+        color: var(--theme-text);
+    }
+
+    :root[data-theme="dark"] body.registration-body .registration-password-meter {
+        background: #453a31;
+    }
+
+    :root[data-theme="dark"] body.registration-body .detail-item {
+        border-color: var(--theme-border);
+        background: var(--theme-surface-soft);
+        color: var(--theme-text);
+    }
+
+    :root[data-theme="dark"] body.registration-body .detail-item small {
+        color: var(--registration-muted);
+    }
+
+    :root[data-theme="dark"] body.registration-body .quick-action {
+        border-color: var(--theme-border);
+        background: var(--theme-surface);
+        color: var(--theme-text);
+    }
+
+    :root[data-theme="dark"] body.registration-body .quick-action:hover,
+    :root[data-theme="dark"] body.registration-body .quick-action:focus-visible {
+        border-color: #80664d;
+        background: var(--theme-surface-soft);
+        color: #fff8ef;
+    }
+
+    :root[data-theme="dark"] body.registration-body .quick-action strong {
+        color: inherit;
+    }
+
+    :root[data-theme="dark"] body.registration-body .quick-action small {
+        color: var(--registration-muted);
+        font-size: 11px;
+    }
+
+    :root[data-theme="dark"] body.registration-body .button:not(.button-primary) {
+        border-color: var(--theme-border);
+        background: var(--theme-surface-soft);
+        color: var(--theme-text);
+    }
+
+    :root[data-theme="dark"] body.registration-body .button:not(.button-primary):hover,
+    :root[data-theme="dark"] body.registration-body .button:not(.button-primary):focus-visible {
+        border-color: #80664d;
+        background: #3b3027;
+        color: #fff8ef;
+    }
+
+    :root[data-theme="dark"] body.registration-body .status-badge {
+        border: 1px solid #72563e;
+        background: #3b3027;
+        color: #efbd71;
+    }
+
+    :root[data-theme="dark"] body.registration-body .status-badge.is-warning {
+        border-color: #806334;
+        background: #44331d;
+        color: #efbd71;
+    }
+
+    :root[data-theme="dark"] body.registration-body .flash-banner:not(.is-danger) {
+        border-color: #386146;
+        background: #1e3828;
+        color: #a8d5b0;
+    }
+
+    :root[data-theme="dark"] body.registration-body .flash-banner.is-danger {
+        border-color: #79443d;
+        background: #452521;
+        color: #ffaaa2;
+    }
+}
+
+@media screen and (max-width: 600px) {
+    body.registration-body .registration-brand-compact img {
+        width: 122px;
+        flex-basis: 122px;
+    }
+}
+
+@media screen {
+    body.registration-body[data-module] .registration-header {
+        width: 100%;
+        border-bottom: 1px solid var(--theme-border);
+        background: var(--theme-page);
+    }
+
+    body.registration-body[data-module] .registration-header-inner {
+        display: flex;
+        width: 100%;
+        max-width: 1176px;
+        min-height: 80px;
+        align-items: center;
+        justify-content: space-between;
+        gap: 24px;
+        margin-inline: auto;
+        padding-inline: 20px;
+    }
+
+    body.registration-body[data-module] .registration-header .registration-brand-compact {
+        width: auto;
+        min-width: 0;
+        flex: 1 1 auto;
+        gap: 0;
+        margin: 0;
+    }
+
+    body.registration-body[data-module] .registration-brand-compact img {
+        width: 140px;
+        flex: 0 0 140px;
+    }
+
+    body.registration-body[data-module] .registration-brand-divider {
+        width: 1px;
+        height: 34px;
+        flex: 0 0 1px;
+        margin: 0 28px 0 16px;
+        background: var(--theme-border);
+    }
+
+    body.registration-body[data-module] .registration-brand-context {
+        min-width: 0;
+        color: var(--theme-text);
+        font-size: 18px;
+        font-weight: 700;
+        line-height: 1.25;
+        white-space: nowrap;
+    }
+
+    body.registration-body[data-module] .registration-header .registration-theme-toggle {
+        width: auto;
+        flex: 0 0 auto;
+        align-items: center;
+        margin: 0;
+    }
+
+    body.registration-body[data-module] .registration-shell {
+        max-width: 1176px;
+        margin-inline: auto;
+        padding: 24px 20px 40px;
+    }
+
+    body.registration-body[data-module="rider"] .registration-card.rider-registration:not([data-application-status]),
+    body.registration-body[data-module="logistics"] .registration-card:not([data-application-status]) {
+        min-width: 0;
+        grid-template-columns: minmax(300px, 352px) minmax(0, 1fr);
+        border-radius: 20px;
+    }
+
+    body.registration-body[data-module="rider"] .registration-card.rider-registration:not([data-application-status]) .registration-aside,
+    body.registration-body[data-module="logistics"] .registration-card:not([data-application-status]) .registration-aside {
+        min-width: 0;
+        padding: 30px 40px;
+    }
+
+    body.registration-body[data-module="rider"] .registration-card.rider-registration:not([data-application-status]) .registration-main,
+    body.registration-body[data-module="logistics"] .registration-card:not([data-application-status]) .registration-main {
+        min-width: 0;
+        padding: 28px 48px 24px;
+    }
+
+    body.registration-body[data-module] .registration-main h2 {
+        font-size: 26px;
+        line-height: 1.25;
+    }
+
+    body.registration-body[data-module] .registration-main > p {
+        margin: 6px 0 22px;
+        font-size: 14px;
+        line-height: 1.45;
+    }
+
+    body.registration-body[data-module] .registration-aside h1 {
+        font-size: 28px;
+        line-height: 1.4;
+    }
+
+    body.registration-body[data-module] .registration-aside p {
+        font-size: 14px;
+        line-height: 1.55;
+    }
+
+    body.registration-body[data-module] .step-list {
+        gap: 24px;
+        margin-top: 28px;
+    }
+
+    body.registration-body[data-module] .step-marker {
+        align-items: center;
+        gap: 12px;
+    }
+
+    body.registration-body[data-module] .step-marker > span:first-child {
+        position: relative;
+        width: 32px;
+        height: 32px;
+        flex: 0 0 32px;
+        font-size: 12px;
+    }
+
+    body.registration-body[data-module] .step-marker:not(:last-child) > span:first-child::after {
+        position: absolute;
+        top: calc(100% + 1px);
+        left: 50%;
+        width: 1px;
+        height: 24px;
+        background: rgba(220, 194, 166, .28);
+        content: "";
+    }
+
+    body.registration-body[data-module] .step-marker strong {
+        font-size: 13px;
+        line-height: 1.25;
+    }
+
+    body.registration-body[data-module] .step-marker small {
+        display: block;
+        margin-top: 3px;
+        font-size: 12px;
+        line-height: 1.3;
+    }
+
+    body.registration-body[data-module] .registration-main .field-grid {
+        gap: 14px 20px;
+    }
+
+    body.registration-body[data-module] .registration-main .field label {
+        font-size: 12px;
+    }
+
+    body.registration-body[data-module] .registration-main .registration-email-verification,
+    body.registration-body[data-module] .registration-main .registration-password-guidance {
+        border-radius: 12px;
+    }
+
+    body.registration-body .registration-card[data-application-status] {
+        max-width: 760px;
+        margin-inline: auto;
+    }
+}
+
+@media screen and (max-width: 960px) {
+    body.registration-body[data-module="rider"] .registration-card.rider-registration:not([data-application-status]),
+    body.registration-body[data-module="logistics"] .registration-card:not([data-application-status]) {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    body.registration-body[data-module="rider"] .registration-card.rider-registration:not([data-application-status]) .registration-aside,
+    body.registration-body[data-module="logistics"] .registration-card:not([data-application-status]) .registration-aside {
+        padding: 24px 28px;
+    }
+
+    body.registration-body[data-module] .step-list {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 22px;
+    }
+
+    body.registration-body[data-module] .step-marker {
+        display: grid;
+        justify-items: center;
+        gap: 7px;
+        text-align: center;
+    }
+
+    body.registration-body[data-module] .step-marker:not(:last-child) > span:first-child::after,
+    body.registration-body[data-module] .step-marker small {
+        display: none;
+    }
+
+    body.registration-body[data-module="rider"] .registration-card.rider-registration:not([data-application-status]) .registration-main,
+    body.registration-body[data-module="logistics"] .registration-card:not([data-application-status]) .registration-main {
+        padding: 30px 32px;
+    }
+}
+
+@media screen and (max-width: 600px) {
+    body.registration-body[data-module] .registration-header-inner {
+        min-height: 0;
+        flex-wrap: wrap;
+        gap: 8px 16px;
+        padding: 12px 14px;
+    }
+
+    body.registration-body[data-module] .registration-header .registration-brand-compact {
+        min-height: 48px;
+        flex: 1 1 100%;
+    }
+
+    body.registration-body[data-module] .registration-brand-compact img {
+        width: 122px;
+        flex-basis: 122px;
+    }
+
+    body.registration-body[data-module] .registration-brand-divider {
+        height: 28px;
+        margin: 0 14px 0 8px;
+    }
+
+    body.registration-body[data-module] .registration-brand-context {
+        font-size: 15px;
+        white-space: normal;
+    }
+
+    body.registration-body[data-module] .registration-header .registration-theme-toggle {
+        width: 100%;
+        justify-content: flex-end;
+    }
+
+    body.registration-body[data-module] .registration-shell {
+        padding: 16px 14px 28px;
+    }
+
+    body.registration-body[data-module="rider"] .registration-card.rider-registration:not([data-application-status]),
+    body.registration-body[data-module="logistics"] .registration-card:not([data-application-status]) {
+        border-radius: 14px;
+    }
+
+    body.registration-body[data-module="rider"] .registration-card.rider-registration:not([data-application-status]) .registration-aside,
+    body.registration-body[data-module="logistics"] .registration-card:not([data-application-status]) .registration-aside {
+        padding: 20px 18px;
+    }
+
+    body.registration-body[data-module="rider"] .registration-card.rider-registration:not([data-application-status]) .registration-main,
+    body.registration-body[data-module="logistics"] .registration-card:not([data-application-status]) .registration-main {
+        padding: 24px 18px;
+    }
+
+    body.registration-body[data-module] .registration-main h2 {
+        font-size: 23px;
+    }
+}
